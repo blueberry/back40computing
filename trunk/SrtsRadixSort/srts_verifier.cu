@@ -13,6 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
+ * 
+ * 
+ * 
+ * AUTHORS' REQUEST: 
+ * 
+ * 		If you use|reference|benchmark this code, please cite our Technical 
+ * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
+ * 
+ * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
+ * 		Stream Architectures," University of Virginia, Department of 
+ * 		Computer Science, Charlottesville, VA, USA, Technical Report 
+ * 		CS2010-03, 2010.
+ * 
+ * For more information, see our Google Code project site: 
+ * http://code.google.com/p/back40computing/
+ * 
+ * Thanks!
  */
 
 
@@ -25,15 +42,7 @@
 
 
 template<typename T> 
-void PrintValue(T val);
-
-template<>
-void PrintValue<short>(short val) {
-	printf("%d", val);
-}
-
-template<>
-void PrintValue<unsigned short>(unsigned short val) {
+void PrintValue(T val) {
 	printf("%d", val);
 }
 
@@ -43,8 +52,18 @@ void PrintValue<float>(float val) {
 }
 
 template<>
-void PrintValue<int>(int val) {
-	printf("%d", val);
+void PrintValue<double>(double val) {
+	printf("%f", val);
+}
+
+template<>
+void PrintValue<unsigned char>(unsigned char val) {
+	printf("%u", val);
+}
+
+template<>
+void PrintValue<unsigned short>(unsigned short val) {
+	printf("%u", val);
 }
 
 template<>
@@ -61,6 +80,17 @@ template<>
 void PrintValue<unsigned long>(unsigned long val) {
 	printf("%lu", val);
 }
+
+template<>
+void PrintValue<long long>(long long val) {
+	printf("%lld", val);
+}
+
+template<>
+void PrintValue<unsigned long long>(unsigned long long val) {
+	printf("%llu", val);
+}
+
 
 
 template <typename T>
