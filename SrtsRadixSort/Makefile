@@ -13,26 +13,51 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License. 
+#
 # 
+#  
+#  AUTHORS' REQUEST: 
+#  
+#  		If you use|reference|benchmark this code, please cite our Technical 
+#  		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
+#  
+#  		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
+#  		Stream Architectures," University of Virginia, Department of 
+#  		Computer Science, Charlottesville, VA, USA, Technical Report 
+#  		CS2010-03, 2010.
+#  
+#  For more information, see our Google Code project site: 
+#  http://code.google.com/p/back40computing/
+#  
+#  Thanks!
 #-------------------------------------------------------------------------------
  
 #-------------------------------------------------------------------------------
 # Build script for project
+#
+# IMPORTANT NOTE: We need to compile the kernels to use 32-bit device 
+# pointers.  Otherwise our kernel register counts will skyrocket and we won't be 
+# able to meet our targeted occupancy.
+#
 #-------------------------------------------------------------------------------
 
-EXECUTABLE		:= test_radix_sort
+NVCC = $(shell which nvcc) 
+CUDA_LIB32 = $(shell dirname $(NVCC))/../lib32
+CUDA_INC = $(shell dirname $(NVCC))/../inc
+ARCH = -m32
 
-CUFILES_sm_13	:= test_radix_sort.cu
+bin/test_radix_sort : obj/test_radix_sort.cu_sm.o
+	mkdir -p bin
+	g++ -fPIC $(ARCH) -o bin/test_radix_sort obj/test_radix_sort.cu_sm.o -L./lib -L$(CUDA_LIB32) -lcudart -lcutil_i386 -lshrutil_i386
+	
+obj/test_radix_sort.cu_sm.o : test_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu srts_verifier.cu
+	mkdir -p obj
+	$(NVCC) -gencode=arch=compute_20,code=\"sm_20,compute_20\" -gencode=arch=compute_13,code=\"sm_13,compute_13\" -gencode=arch=compute_10,code=\"sm_10,compute_10\" -o obj/test_radix_sort.cu_sm.o -c test_radix_sort.cu -Xptxas -v $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
+
+clean :
+	rm -f obj/test_radix_sort.cu_sm.o
+	rm -f bin/test_radix_sort
 
 
-CU_DEPS 						:= \
-	srts_radix_sort.cu 			   \
-	srts_radix_sort_kernel.cu	   \
-	srts_verifier.cu
 
-CCFILES			:= 
-
-
-# Include common targets and rules
-include ../../common/common.mk
 

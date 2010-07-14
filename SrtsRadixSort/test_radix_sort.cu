@@ -13,6 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
+ * 
+ * 
+ * 
+ * AUTHORS' REQUEST: 
+ * 
+ * 		If you use|reference|benchmark this code, please cite our Technical 
+ * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
+ * 
+ * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
+ * 		Stream Architectures," University of Virginia, Department of 
+ * 		Computer Science, Charlottesville, VA, USA, Technical Report 
+ * 		CS2010-03, 2010.
+ * 
+ * For more information, see our Google Code project site: 
+ * http://code.google.com/p/back40computing/
+ * 
+ * Thanks!
  */
 
 
@@ -22,7 +39,7 @@
 #include <math.h> 
 #include <float.h>
 
-#include <cutil.h>
+#include <inc/cutil.h>
 
 
 //------------------------------------------------------------------------------
@@ -32,7 +49,7 @@
 // Sorting includes
 #include <srts_radix_sort.cu>
 
-// For correctness-checking only
+// Utilities and correctness-checking
 #include <srts_verifier.cu>
 
 
@@ -45,8 +62,7 @@ unsigned int g_timer;
 bool g_verbose;
 bool g_verbose2;
 bool g_verify;
-bool g_measure_cpu;
-bool g_keys_only;
+int  g_entropy_reduction = 0;
 
 
 //------------------------------------------------------------------------------
@@ -66,13 +82,55 @@ void Usage()
 	printf("\t--v2\tSame as --v, but displays the results to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the sorting operation <num-iterations> times\n");
-	printf("\t\t\ton the device.  (Only copies input/output once.) Default=1\n");
+	printf("\t\t\ton the device.  (Only copies input/output once.) Default = 1\n");
 	printf("\n");
-	printf("\t--n\tThe number of elements to comprise the sample \n");
-	printf("\t\t\tproblem.  Default=512\n");
+	printf("\t--n\tThe number of elements to comprise the sample problem\n");
+	printf("\t\t\tDefault = 512\n");
 	printf("\t--keys-only\tSpecifies that keys are not accommodated by value pairings\n");
-	printf("\t\t\tproblem.  Default=512\n");
 	printf("\n");
+	printf("[--entropy-reduction=<level>\tSpecifies the number of bitwise-AND'ing\n");
+	printf("\t\t\titerations for random key data.  Default = 0, Identical keys = -1\n");
+	printf("\n");
+}
+
+
+/**
+ * Generates random 32-bit keys.
+ * 
+ * We always take the second-order byte from rand() because the higher-order 
+ * bits returned by rand() are commonly considered more uniformly distributed
+ * than the lower-order bits.
+ * 
+ * We can decrease the entropy level of keys by adopting the technique 
+ * of Thearling and Smith in which keys are computed from the bitwise AND of 
+ * multiple random samples: 
+ * 
+ * entropy_reduction	| Effectively-unique bits per key
+ * -----------------------------------------------------
+ * -1					| 0
+ * 0					| 32
+ * 1					| 25.95
+ * 2					| 17.41
+ * 3					| 10.78
+ * 4					| 6.42
+ * ...					| ...
+ * 
+ */
+template <typename K>
+void RandomBits(K &key, int entropy_reduction) 
+{
+	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
+	unsigned short key_bits[NUM_USHORTS];
+	
+	for (int j = 0; j < NUM_USHORTS; j++) {
+		unsigned short halfword = 0xffff; 
+		for (int i = 0; i <= entropy_reduction; i++) {
+			halfword &= (rand() >> 8);
+		}
+		key_bits[j] = halfword;
+	}
+		
+	memcpy(&key, key_bits, sizeof(K));
 }
 
 
@@ -90,94 +148,87 @@ void Usage()
  * 		Number of times to invoke the GPU sorting primitive
  */
 template <typename K, typename V>
-void SortFromHost(
+void TimedSort(
 	unsigned int num_elements, 
 	K *h_keys,
 	V *h_data, 
 	unsigned int iterations
 ) 
 {
-	// Place holder for temporary spine data (will get allocated upon first use)
-	unsigned int *d_spine = NULL;
-	bool results_placed_in_output;
-	
 	//
+	// Create device storage for the sorting problem
+	//
+
+    GlobalStorage<K, V> device_storage = {NULL, NULL, NULL, NULL, NULL};
+
 	// Allocate and initialize device memory for keys
-	//
+	unsigned int keys_mem_size = sizeof(K) * num_elements;
+	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.keys, keys_mem_size) );
 
-	K* d_in_keys;
-	K* d_out_keys;
-    unsigned int keys_mem_size = sizeof(K) * num_elements;
-	CUDA_SAFE_CALL( cudaMalloc((void**) &d_in_keys, keys_mem_size) );
-	CUDA_SAFE_CALL( cudaMalloc((void**) &d_out_keys, keys_mem_size) );
-	CUDA_SAFE_CALL( cudaMemcpy(d_in_keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
-
-	// Initialize output device memory (not necessary, but can help with debugging
-	// Todo: remove
-	for (int i = 0; i < num_elements; i++) {
-		h_keys[i] = 9999;
-	}
-	CUDA_SAFE_CALL( cudaMemcpy(d_out_keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
-
-	//
 	// Allocate and initialize device memory for data
-	//
-
-	V* d_in_data = NULL;
-	V* d_out_data = NULL;
 	unsigned int data_mem_size = sizeof(V) * num_elements;
 	if (h_data != NULL) {
-		CUDA_SAFE_CALL( cudaMalloc((void**) &d_in_data, data_mem_size) );
-		CUDA_SAFE_CALL( cudaMalloc((void**) &d_out_data, data_mem_size) );
-		CUDA_SAFE_CALL( cudaMemcpy(d_in_data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
+		CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.data, data_mem_size) );
 	}
+	
+	
+	//
+	// Perform a single iteration to allocate memory, prime code caches, etc.
+	//
+	
+	CUDA_SAFE_CALL( cudaMemcpy(device_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
+	if (h_data != NULL) CUDA_SAFE_CALL( cudaMemcpy(device_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
 
+	LaunchSort<K, V>(
+		num_elements, 
+		device_storage,
+		g_verbose);
+
+	
 	//
 	// Perform the timed number of sorting iterations
 	//
 	
+	// Create timing records
+	cudaEvent_t start_event, stop_event;
+	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
+	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
+
 	// Make sure there are no CUDA errors before we launch
 	CUT_CHECK_ERROR("Kernel execution failed (errors before launch)");
-
-	// Start the timer and perform the scan iterations
-	CUT_SAFE_CALL( cutCreateTimer(&g_timer) );
-	CUT_SAFE_CALL( cutStartTimer(g_timer) );
+	double elapsed = 0;
+	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		if (g_keys_only) {
-		
-			results_placed_in_output = LaunchSort<K>(
-				num_elements, 
-				d_in_keys, 
-				d_out_keys,
-				&d_spine, 
-				(g_verbose && (i == 0)));
+		// Move a fresh copy of the problem into device storage
+		CUDA_SAFE_CALL( cudaMemcpy(device_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
+		if (h_data != NULL) CUDA_SAFE_CALL( cudaMemcpy(device_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
 
-		} else {
+		// Start cuda timing record
+		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
 
-			results_placed_in_output = LaunchSort<K, V>(
-				num_elements, 
-				d_in_keys, 
-				d_out_keys,
-				d_in_data, 
-				d_out_data, 
-				&d_spine, 
-				(g_verbose && (i == 0)));
-		}
+		LaunchSort<K, V>(
+			num_elements, 
+			device_storage,
+			false);
+
+		// End cuda timing record
+		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
+		CUDA_SAFE_CALL( cudaEventSynchronize(stop_event) );
+		CUDA_SAFE_CALL( cudaEventElapsedTime(&duration, start_event, stop_event));
+		elapsed += (double) duration;		
 	}
-    cudaThreadSynchronize();
-    CUT_SAFE_CALL( cutStopTimer(g_timer) );
-
 
 	//
 	// Display timing information
 	//
 	
-	double avg_runtime = cutGetTimerValue(g_timer) / iterations;
-	double throughput = ((double) num_elements) / 1000.0 / 1000.0 / cutGetTimerValue(g_timer) * ((double) iterations); 
-    CUT_SAFE_CALL( cutDeleteTimer(g_timer) );
-
-    printf("%d iterations, %d elements, %f GPU ms, %f x10^9 elts/sec\n", 
+	// Display 
+	double avg_runtime = elapsed / iterations;
+	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
+    printf("%s, %d entropy reduction, %d iterations, %d elements, %f GPU ms, %f x10^9 elts/sec\n", 
+		(h_data == NULL) ? "keys-only" : "key-value",
+		g_entropy_reduction,
 		iterations, 
 		num_elements,
 		avg_runtime,
@@ -189,28 +240,23 @@ void SortFromHost(
     //
     
 	// Sorted keys 
-	if (results_placed_in_output) {
-		CUDA_SAFE_CALL( cudaMemcpy(h_keys, d_out_keys, keys_mem_size, cudaMemcpyDeviceToHost) );
-	} else {
-		CUDA_SAFE_CALL( cudaMemcpy(h_keys, d_in_keys, keys_mem_size, cudaMemcpyDeviceToHost) );
-	}
-    CUDA_SAFE_CALL( cudaFree(d_in_keys) );
-    CUDA_SAFE_CALL( cudaFree(d_out_keys) );
+	CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.keys, keys_mem_size, cudaMemcpyDeviceToHost) );
+    CUDA_SAFE_CALL( cudaFree(device_storage.keys) );
+    CUDA_SAFE_CALL( cudaFree(device_storage.temp_keys) );
 
+	// Sorted values 
 	if (h_data != NULL) {
-		// Sorted values back to host
-		if (results_placed_in_output) {
-			CUDA_SAFE_CALL( cudaMemcpy(h_data, d_out_data, data_mem_size, cudaMemcpyDeviceToHost) );
-		} else {
-			CUDA_SAFE_CALL( cudaMemcpy(h_data, d_in_data, data_mem_size, cudaMemcpyDeviceToHost) );
-		}
-	    CUDA_SAFE_CALL( cudaFree(d_in_data) );
-	    CUDA_SAFE_CALL( cudaFree(d_out_data) );
+		CUDA_SAFE_CALL( cudaMemcpy(h_data, device_storage.data, data_mem_size, cudaMemcpyDeviceToHost) );
+	    CUDA_SAFE_CALL( cudaFree(device_storage.data) );
+	    CUDA_SAFE_CALL( cudaFree(device_storage.temp_data) );
 	}
 
-	// free spine
-    CUDA_SAFE_CALL( cudaFree(d_spine) );
+	// Free spine storage
+    CUDA_SAFE_CALL( cudaFree(device_storage.temp_spine) );
 
+    // Clean up events
+	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
+	CUDA_SAFE_CALL( cudaEventDestroy(stop_event) );
 }
 
 
@@ -227,58 +273,32 @@ void SortFromHost(
 template<typename K, typename V>
 void TestSort(
 	unsigned int iterations,
-	int num_elements)
+	int num_elements,
+	bool keys_only)
 {
-	K *h_keys;
-	V *h_data;
+    // Allocate the sorting problem on the host and fill the keys with random bytes
 
-	//
-    // Allocate the sorting problem on the host
-	//
-
+	K *h_keys = NULL;
+	V *h_data = NULL;
 	h_keys = (K*) malloc(num_elements * sizeof(K));
-	h_data = (V*) malloc(num_elements * sizeof(V));
+	if (!keys_only) h_data = (V*) malloc(num_elements * sizeof(V));
 
-	
-	//
-	// Fill the keys with random bytes
-	//
-	
-	unsigned char key_bytes[sizeof(K)];
-//	srand(time(NULL));
-	srand(0);
 	for (unsigned int i = 0; i < num_elements; ++i) {
-    	for (unsigned int j = 0; j < sizeof(K); j++) {
-    		key_bytes[j] = (unsigned char) (rand() >> 8);
-    	}
-    	
-    	memcpy(&h_keys[i], key_bytes, sizeof(K));
+		RandomBits<K>(h_keys[i], g_entropy_reduction);
 	}
-    
-    // 
-    // Run the primitive 
-    //
-    
-    SortFromHost<K, V>(
-    	num_elements, 
-    	h_keys,
-    	h_data, 
-    	iterations);
-    
 	
-    //
-    // Verify solution
-    //
+    // Run the timing test 
+
+	TimedSort<K, V>(num_elements, h_keys, h_data, iterations);
     
-    if (g_verify) VerifySort<K>(h_keys, num_elements, g_verbose);
+    // Verify solution
+
+	if (g_verify) VerifySort<K>(h_keys, num_elements, g_verbose);
 	printf("\n");
 	fflush(stdout);
 	
-	
-	//
 	// Display sorted key data
-	//
-	
+
 	if (g_verbose2) {
 		printf("\n\nKeys:\n");
 		for (int i = 0; i < num_elements; i++) {	
@@ -288,13 +308,10 @@ void TestSort(
 		printf("\n");
 	}	
 	
-	
-	//
 	// Free our allocated host memory 
-	//
-	
-    free(h_keys);
-    free(h_data);
+
+	if (h_keys != NULL) free(h_keys);
+    if (h_data != NULL) free(h_data);
 }
 
 
@@ -306,8 +323,12 @@ int main( int argc, char** argv) {
 
 	CUT_DEVICE_INIT(argc, argv);
 
-    unsigned int num_elements 					= 512;
+	//srand(time(NULL));	
+	srand(0);				// presently deterministic
+
+    unsigned int num_elements 					= 1024;
     unsigned int iterations  					= 1;
+    bool keys_only;
 
     //
 	// Check command line arguments
@@ -320,7 +341,8 @@ int main( int argc, char** argv) {
 
     cutGetCmdLineArgumenti( argc, (const char**) argv, "i", (int*)&iterations);
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
-	g_keys_only = cutCheckCmdLineFlag( argc, (const char**) argv, "keys-only");
+	cutGetCmdLineArgumenti( argc, (const char**) argv, "entropy-reduction", (int*)&g_entropy_reduction);
+    keys_only = cutCheckCmdLineFlag( argc, (const char**) argv, "keys-only");
 	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
 		g_verbose = true;
 	} else {
@@ -329,9 +351,19 @@ int main( int argc, char** argv) {
 	g_verify = !cutCheckCmdLineFlag( argc, (const char**) argv, "noverify");
 	
 	// Execute test
-	TestSort<unsigned long, unsigned long>(
+//	TestSort<float, float>(
+//	TestSort<double, double>(
+//	TestSort<char, char>(
+//	TestSort<unsigned char, unsigned char>(
+//	TestSort<short, short>(
+//	TestSort<unsigned short, unsigned short>(
+//	TestSort<int, int>(
+	TestSort<unsigned int, unsigned int>(
+//	TestSort<long long, long long>(
+//	TestSort<unsigned long long, unsigned long long>(
 		iterations,
-		num_elements);
+		num_elements, 
+		keys_only);
 
 	CUT_EXIT(argc, argv);
 }
