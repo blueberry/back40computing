@@ -46,33 +46,32 @@
 
 template <typename T> 
 __device__ inline T DefaultOobValue() {
-	T retval = T();
-	return retval;
+	return T();
 }
 
 template <> 
 __device__ inline unsigned char DefaultOobValue<unsigned char>() {
-	return -1;
+	return (unsigned char) -1;
 }
 
 template <> 
 __device__ inline unsigned short DefaultOobValue<unsigned short>() {
-	return -1;
+	return (unsigned short) -1;
 }
 
 template <> 
 __device__ inline unsigned int DefaultOobValue<unsigned int>() {
-	return -1;
+	return (unsigned int) -1;
 }
 
 template <> 
 __device__ inline unsigned long DefaultOobValue<unsigned long>() {
-	return -1;
+	return (unsigned long) -1;
 }
 
 template <> 
 __device__ inline unsigned long long DefaultOobValue<unsigned long long>() {
-	return -1;
+	return (unsigned long long) -1;
 }
 
 
