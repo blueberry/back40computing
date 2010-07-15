@@ -443,7 +443,7 @@ cudaError_t LaunchSort(
 	// Pointer swizzle if necessary
 	if (swizzle_ptrs) {
 		Swap<K*>(problem_storage.keys, problem_storage.temp_keys);
-		Swap<K*>(problem_storage.data, problem_storage.temp_data);
+		Swap<V*>(problem_storage.data, problem_storage.temp_data);
 	}
 	
 	return cudaSuccess;

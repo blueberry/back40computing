@@ -369,6 +369,29 @@ struct PostprocessKeyFunctor<long long> {
 
 template <typename K, int vec_elements> struct VecType;
 
+// Arbitrary
+
+template <typename K> 
+struct VecType<K, 1> {
+	typedef K Type;
+};
+
+template <typename K> 
+struct VecType<K, 2> {
+	K x;
+	K y;
+	typedef VecType<K, 2> Type;
+};
+
+template <typename K> 
+struct VecType<K, 4> {
+	K x;
+	K y;
+	K z;
+	K w;
+	typedef VecType<K, 4> Type;
+};
+
 // Floats
 
 template<>
