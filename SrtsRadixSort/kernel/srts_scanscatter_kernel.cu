@@ -44,6 +44,38 @@
 //------------------------------------------------------------------------------
 
 
+template <typename T> 
+__device__ inline T DefaultOobValue() {
+	T retval = T();
+	return retval;
+}
+
+template <> 
+__device__ inline unsigned char DefaultOobValue<unsigned char>() {
+	return -1;
+}
+
+template <> 
+__device__ inline unsigned short DefaultOobValue<unsigned short>() {
+	return -1;
+}
+
+template <> 
+__device__ inline unsigned int DefaultOobValue<unsigned int>() {
+	return -1;
+}
+
+template <> 
+__device__ inline unsigned long DefaultOobValue<unsigned long>() {
+	return -1;
+}
+
+template <> 
+__device__ inline unsigned long long DefaultOobValue<unsigned long long>() {
+	return -1;
+}
+
+
 template <typename K, unsigned long long RADIX_DIGITS, unsigned int BIT>
 __device__ inline unsigned int DecodeDigit(K key) 
 {
@@ -120,10 +152,10 @@ __device__ inline void ReadSets(
 		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
 			
 			offset = idx + (SRTS_THREADS * 2 * SET);
-			pairs[SET].x = (offset < oob[0]) ? in[offset] : 0xffffffff;
+			pairs[SET].x = (offset < oob[0]) ? in[offset] : DefaultOobValue<T>();
 
 			offset = idx + (SRTS_THREADS * 2 * SET) + 1;
-			pairs[SET].y = (offset < oob[0]) ? in[offset] : 0xffffffff;
+			pairs[SET].y = (offset < oob[0]) ? in[offset] : DefaultOobValue<T>();
 		}
 	}
 	

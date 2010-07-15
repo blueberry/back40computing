@@ -46,13 +46,19 @@ CUDA_LIB32 = $(shell dirname $(NVCC))/../lib32
 CUDA_INC = $(shell dirname $(NVCC))/../inc
 ARCH = -m32
 
+NVCCFLAGS = -Xptxas -v
+
+ifeq ($(keep), 1)
+    NVCCFLAGS += -keep
+endif
+
 bin/test_radix_sort : obj/test_radix_sort.cu_sm.o
 	mkdir -p bin
 	g++ -fPIC $(ARCH) -o bin/test_radix_sort obj/test_radix_sort.cu_sm.o -L./lib -L$(CUDA_LIB32) -lcudart -lcutil_i386 -lshrutil_i386
 	
 obj/test_radix_sort.cu_sm.o : test_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu srts_verifier.cu
 	mkdir -p obj
-	$(NVCC) -gencode=arch=compute_20,code=\"sm_20,compute_20\" -gencode=arch=compute_13,code=\"sm_13,compute_13\" -gencode=arch=compute_10,code=\"sm_10,compute_10\" -o obj/test_radix_sort.cu_sm.o -c test_radix_sort.cu -Xptxas -v $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
+	$(NVCC) -gencode=arch=compute_20,code=\"sm_20,compute_20\" -gencode=arch=compute_13,code=\"sm_13,compute_13\" -gencode=arch=compute_10,code=\"sm_10,compute_10\" -o obj/test_radix_sort.cu_sm.o -c test_radix_sort.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
 
 clean :
 	rm -f obj/test_radix_sort.cu_sm.o
