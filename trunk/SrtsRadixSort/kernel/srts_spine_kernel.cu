@@ -33,6 +33,10 @@
  */
 
 
+//------------------------------------------------------------------------------
+// SrtsScanSpine
+//------------------------------------------------------------------------------
+
 #ifndef _SRTS_RADIX_SORT_SPINE_KERNEL_H_
 #define _SRTS_RADIX_SORT_SPINE_KERNEL_H_
 
@@ -43,18 +47,15 @@
 // SRTS Spine Configuration
 //------------------------------------------------------------------------------
 
-// 128 threads
-#define SRTS_LOG_SPINE_THREADS						7							
+#define SRTS_LOG_SPINE_THREADS						7		// 128 threads
 #define SRTS_SPINE_THREADS							(1 << SRTS_LOG_SPINE_THREADS)	
 
-// 512 elements
-#define SRTS_LOG_SPINE_CYCLE_ELEMENTS				9
+#define SRTS_LOG_SPINE_CYCLE_ELEMENTS				9		// 512 elements
 #define SRTS_SPINE_CYCLE_ELEMENTS					(1 << SRTS_LOG_SPINE_CYCLE_ELEMENTS)
 
 
-
 //------------------------------------------------------------------------------
-// SrtsScanSpine
+// Scan cycle of SRTS_CYCLE_ELEMENTS elements 
 //------------------------------------------------------------------------------
 
 template<
@@ -62,7 +63,7 @@ template<
 	unsigned int RAKING_THREADS,
 	unsigned int PARTIALS_PER_ROW,
 	unsigned int PARTIALS_PER_SEG>
-__device__ inline void SrtsScan512(
+__device__ inline void SrtsScanCycle(
 	unsigned int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1],
 	unsigned int *smem_offset,
 	unsigned int *smem_segment,
@@ -109,6 +110,10 @@ __device__ inline void SrtsScan512(
 	out[threadIdx.x] = datum;
 }
 
+
+//------------------------------------------------------------------------------
+// Spine/histogram Scan Kernel Entry Point
+//------------------------------------------------------------------------------
 
 __global__ void SrtsScanSpine(
 	unsigned int *d_ispine,
@@ -163,7 +168,7 @@ __global__ void SrtsScanSpine(
 	unsigned int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
-		SrtsScan512<SMEM_ROWS, RAKING_THREADS, PARTIALS_PER_ROW, PARTIALS_PER_SEG>(	
+		SrtsScanCycle<SMEM_ROWS, RAKING_THREADS, PARTIALS_PER_ROW, PARTIALS_PER_SEG>(	
 			smem, smem_offset, smem_segment, warpscan,
 			(uint4 *) &d_ispine[block_offset], 
 			(uint4 *) &d_ospine[block_offset], 

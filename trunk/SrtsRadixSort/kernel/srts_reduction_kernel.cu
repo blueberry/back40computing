@@ -33,20 +33,26 @@
  */
 
 
+//------------------------------------------------------------------------------
+// RakingReduction
+//------------------------------------------------------------------------------
+
 #ifndef _SRTS_RADIX_SORT_REDUCTION_KERNEL_H_
 #define _SRTS_RADIX_SORT_REDUCTION_KERNEL_H_
-
 
 #include <kernel/srts_radixsort_kernel_common.cu>
 
 
 //------------------------------------------------------------------------------
-// RakingReduction
+// Defines
 //------------------------------------------------------------------------------
 
+#define BYTE_ENCODE_SHIFT		0x3
 
-#define BYTE_ENCODE_SHIFT 	3u
 
+//------------------------------------------------------------------------------
+// Cycle-processing Routines
+//------------------------------------------------------------------------------
 
 __device__ inline unsigned int DecodeInt(unsigned int encoded, unsigned int quad_byte){
 	return (encoded >> quad_byte) & 0xff;		// shift right 8 bits per digit and return rightmost 8 bits
@@ -64,19 +70,11 @@ __device__ inline void DecodeDigit(
 	unsigned int &lane, 
 	unsigned int &quad_shift) 
 {
-	const K DIGIT_MASK1 = RADIX_DIGITS - 1;
-	const K DIGIT_MASK2 = (RADIX_DIGITS < 4) ? 0x1 : 0x3;
-
-	lane = (key & (DIGIT_MASK1 << BIT)) >> (BIT + 2);
-
-	// The stupid template generator causes warnings because it has 
-	// not done dead-code-elimination by the time it checks for shift errors
-
-	if (BIT > BYTE_ENCODE_SHIFT) {
-		quad_shift = (key & (DIGIT_MASK2 << BIT)) >> (BIT - BYTE_ENCODE_SHIFT);
-	} else {
-		quad_shift = (key & (DIGIT_MASK2 << BIT)) << (BYTE_ENCODE_SHIFT - BIT);
-	}
+	const K DIGIT_MASK = RADIX_DIGITS - 1;
+	lane = (key & (DIGIT_MASK << BIT)) >> (BIT + 2);
+	
+	const K QUAD_MASK = (RADIX_DIGITS < 4) ? 0x1 : 0x3;
+	quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
 }
 
 
@@ -256,6 +254,10 @@ __device__ inline unsigned int ProcessLoads(
 	return retval;
 }
 
+
+//------------------------------------------------------------------------------
+// Reduction/counting Kernel Entry Point
+//------------------------------------------------------------------------------
 
 template <typename K, typename V, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor>
 __launch_bounds__ (SRTS_THREADS, SRTS_REDUCE_CTA_OCCUPANCY(__CUDA_ARCH__))

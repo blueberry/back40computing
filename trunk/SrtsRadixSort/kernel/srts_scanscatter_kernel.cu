@@ -33,16 +33,20 @@
  */
 
 
+//------------------------------------------------------------------------------
+// SrtsScanDigit
+//------------------------------------------------------------------------------
+
 #ifndef _SRTS_RADIX_SORT_SCANSCATTER_KERNEL_H_
 #define _SRTS_RADIX_SORT_SCANSCATTER_KERNEL_H_
 
 #include <kernel/srts_radixsort_kernel_common.cu>
 
 
-//------------------------------------------------------------------------------
-// SrtsScanDigit
-//------------------------------------------------------------------------------
 
+//------------------------------------------------------------------------------
+// Appropriate substitutes to use for out-of-bounds key (and value) offsets 
+//------------------------------------------------------------------------------
 
 template <typename T> 
 __device__ inline T DefaultOobValue() {
@@ -74,6 +78,10 @@ __device__ inline unsigned long long DefaultOobValue<unsigned long long>() {
 	return (unsigned long long) -1;
 }
 
+
+//------------------------------------------------------------------------------
+// Cycle-processing Routines
+//------------------------------------------------------------------------------
 
 template <typename K, unsigned long long RADIX_DIGITS, unsigned int BIT>
 __device__ inline unsigned int DecodeDigit(K key) 
@@ -123,6 +131,18 @@ __device__ inline void DecodeDigits(
 }
 
 
+template <typename T>
+__device__ inline void GuardedReadSet(
+	T *in, 
+	typename VecType<T, 2>::Type &pair,
+	unsigned int offset,
+	unsigned int oob[1])				
+{
+	pair.x = (offset < oob[0]) ? in[offset] : DefaultOobValue<T>();
+	pair.y = (offset + 1 < oob[0]) ? in[offset + 1] : DefaultOobValue<T>();
+}
+
+
 template <typename T, bool UNGUARDED_IO, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS, typename PreprocessFunctor>
 __device__ inline void ReadSets(
 	typename VecType<T, 2>::Type *d_in, 
@@ -145,17 +165,15 @@ __device__ inline void ReadSets(
 
 		T* in = (T*) d_in;
 		idx <<= 1;
-		unsigned int offset;
 		
-		#pragma unroll 
-		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-			
-			offset = idx + (SRTS_THREADS * 2 * SET);
-			pairs[SET].x = (offset < oob[0]) ? in[offset] : DefaultOobValue<T>();
-
-			offset = idx + (SRTS_THREADS * 2 * SET) + 1;
-			pairs[SET].y = (offset < oob[0]) ? in[offset] : DefaultOobValue<T>();
-		}
+		// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
+		// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
+		
+		if (SETS_PER_PASS > 0) GuardedReadSet<T>(in, pairs[0], idx + (SRTS_THREADS * 2 * 0), oob);
+		if (SETS_PER_PASS > 1) GuardedReadSet<T>(in, pairs[1], idx + (SRTS_THREADS * 2 * 1), oob);
+		if (SETS_PER_PASS > 2) GuardedReadSet<T>(in, pairs[2], idx + (SRTS_THREADS * 2 * 2), oob);
+		if (SETS_PER_PASS > 3) GuardedReadSet<T>(in, pairs[3], idx + (SRTS_THREADS * 2 * 3), oob);
+		
 	}
 	
 	#pragma unroll 
@@ -164,280 +182,6 @@ __device__ inline void ReadSets(
 		preprocess(pairs[SET].y);
 	}
 }
-
-
-template <typename T, bool UNGUARDED_IO, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS, typename PostprocessFunctor>
-__device__ inline void ScatterSets(
-	T *d_out, 
-	typename VecType<T, 2>::Type pairs[SETS_PER_PASS],
-	uint2 offsets[SETS_PER_PASS],
-	const unsigned int BASE4,
-	unsigned int oob[1],
-	PostprocessFunctor postprocess = PostprocessFunctor())				
-{
-	#pragma unroll 
-	for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-		postprocess(pairs[SET].x);
-		postprocess(pairs[SET].y);
-	}
-
-	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower 
-		
-	if (SETS_PER_PASS > 0) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 0) < oob[0])) 
-			d_out[offsets[0].x] = pairs[0].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 1) < oob[0])) 
-			d_out[offsets[0].y] = pairs[0].y;
-	}
-
-	if (SETS_PER_PASS > 1) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 2) < oob[0])) 
-			d_out[offsets[1].x] = pairs[1].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 3) < oob[0])) 
-			d_out[offsets[1].y] = pairs[1].y;
-	}
-
-	if (SETS_PER_PASS > 2) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 4) < oob[0])) 
-			d_out[offsets[2].x] = pairs[2].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 5) < oob[0])) 
-			d_out[offsets[2].y] = pairs[2].y;
-	}
-
-	if (SETS_PER_PASS > 3) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 6) < oob[0])) 
-			d_out[offsets[3].x] = pairs[3].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 7) < oob[0])) 
-			d_out[offsets[3].y] = pairs[3].y;
-	}
-}
-
-template <typename T, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
-__device__ inline void PushPairs(
-	T *swap, 
-	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS],
-	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS])				
-{
-	#pragma unroll 
-	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-	
-		#pragma unroll 
-		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-			swap[ranks[PASS][SET].x] = pairs[PASS][SET].x;
-			swap[ranks[PASS][SET].y] = pairs[PASS][SET].y;
-		}
-	}
-}
-	
-template <typename T, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
-__device__ inline void ExchangePairs(
-	T *swap, 
-	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS],
-	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS])				
-{
-	// Push in Pairs
-	PushPairs<T, PASSES_PER_CYCLE, SETS_PER_PASS>(swap, pairs, ranks);
-	
-	__syncthreads();
-	
-	// Extract pairs
-	#pragma unroll 
-	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-		
-		#pragma unroll 
-		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
-			pairs[PASS][SET].x = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 0))];
-			pairs[PASS][SET].y = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 1))];
-		}
-	}
-}
-
-
-template <
-	typename K,
-	typename V,	
-	bool KEYS_ONLY, 
-	unsigned int RADIX_DIGITS, 
-	unsigned int BIT, 
-	unsigned int PASSES_PER_CYCLE,
-	unsigned int SETS_PER_PASS,
-	bool UNGUARDED_IO,
-	typename PostprocessFunctor>
-__device__ inline void SwapAndScatterSm13(
-	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
-	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
-	unsigned int *exchange,
-	typename VecType<V, 2>::Type *d_in_data, 
-	K *d_out_keys, 
-	V *d_out_data, 
-	unsigned int carry[RADIX_DIGITS], 
-	unsigned int oob[1])				
-{
-	uint2 offsets[PASSES_PER_CYCLE][SETS_PER_PASS];
-	
-	// Swap keys according to ranks
-	ExchangePairs<K, PASSES_PER_CYCLE, SETS_PER_PASS>((K*) exchange, keypairs, ranks);				
-	
-	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits) 
-	#pragma unroll 
-	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-		
-		#pragma unroll 
-		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
-			offsets[PASS][SET].x = threadIdx.x + (SRTS_THREADS * (BLOCK + 0)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].x)];
-			offsets[PASS][SET].y = threadIdx.x + (SRTS_THREADS * (BLOCK + 1)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].y)];
-		}
-	}
-	
-	// Scatter keys
-	#pragma unroll 
-	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-		const int BLOCK = PASS * SETS_PER_PASS * 2;
-		ScatterSets<K, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, PostprocessFunctor>(d_out_keys, keypairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, oob);
-	}
-
-	if (!KEYS_ONLY) {
-	
-		__syncthreads();
-
-		// Read input data
-		typename VecType<V, 2>::Type datapairs[PASSES_PER_CYCLE][SETS_PER_PASS];
-
-		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
-		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
-
-		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, oob);
-		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, oob);
-		
-		// Swap data according to ranks
-		ExchangePairs<V, PASSES_PER_CYCLE, SETS_PER_PASS>((V*) exchange, datapairs, ranks);
-		
-		// Scatter data
-		#pragma unroll 
-		for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-			const int BLOCK = PASS * SETS_PER_PASS * 2;
-			ScatterSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_out_data, datapairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, oob);
-		}
-	}
-}
-
-
-template <
-	typename T, 
-	unsigned int RADIX_DIGITS,
-	bool UNGUARDED_IO,
-	typename PostprocessFunctor> 
-__device__ inline void ScatterPass(
-	T *swapmem,
-	T *d_out, 
-	unsigned int digit_scan[2][RADIX_DIGITS], 
-	unsigned int carry[RADIX_DIGITS], 
-	unsigned int oob[1],
-	unsigned int base_digit)				
-{
-	const unsigned int LOG_HALF_WARP_THREADS = LOG_WARP_THREADS - 1;
-	const unsigned int HALF_WARP_THREADS = 1 << LOG_HALF_WARP_THREADS;
-	
-	int half_warp_idx = threadIdx.x & (HALF_WARP_THREADS - 1);
-	int half_warp_digit = threadIdx.x >> LOG_HALF_WARP_THREADS;
-	
-	int my_digit = base_digit + half_warp_digit;
-	if (my_digit < RADIX_DIGITS) {
-	
-		int my_exclusive_scan = digit_scan[1][my_digit - 1];
-		int my_inclusive_scan = digit_scan[1][my_digit];
-		int my_digit_count = my_inclusive_scan - my_exclusive_scan;
-
-		int my_carry = carry[my_digit] + my_exclusive_scan;
-		int my_aligned_offset = half_warp_idx - (my_carry & (HALF_WARP_THREADS - 1));
-		
-		while (my_aligned_offset < my_digit_count) {
-			if ((my_aligned_offset >= 0) && (UNGUARDED_IO || (my_exclusive_scan + my_aligned_offset < oob[0]))) { 
-				d_out[my_carry + my_aligned_offset] = swapmem[my_exclusive_scan + my_aligned_offset];
-			}
-			my_aligned_offset += 16;
-		}
-	}
-}
-
-template <
-	typename T,
-	unsigned int RADIX_DIGITS, 
-	unsigned int PASSES_PER_CYCLE,
-	unsigned int SETS_PER_PASS,
-	bool UNGUARDED_IO,
-	typename PostprocessFunctor>
-__device__ inline void SwapAndScatterPairs(
-	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
-	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
-	T *exchange,
-	T *d_out, 
-	unsigned int carry[RADIX_DIGITS], 
-	unsigned int digit_scan[2][RADIX_DIGITS], 
-	unsigned int oob[1])				
-{
-	const unsigned int SCATTER_PASS_DIGITS = SRTS_WARPS * 2;
-	const unsigned int SCATTER_PASSES = RADIX_DIGITS / SCATTER_PASS_DIGITS;
-
-	// Push in pairs
-	PushPairs<T, PASSES_PER_CYCLE, SETS_PER_PASS>(exchange, pairs, ranks);
-
-	__syncthreads();
-
-	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
-	// telling me "Advisory: Loop was not unrolled, not an innermost loop"
-
-	if (SCATTER_PASSES > 0) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 0);
-	if (SCATTER_PASSES > 1) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 1);
-	if (SCATTER_PASSES > 2) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 2);
-	if (SCATTER_PASSES > 3) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 3);
-}
-
-
-template <
-	typename K,
-	typename V,	
-	bool KEYS_ONLY, 
-	unsigned int RADIX_DIGITS, 
-	unsigned int PASSES_PER_CYCLE,
-	unsigned int SETS_PER_PASS,
-	bool UNGUARDED_IO,
-	typename PostprocessFunctor>
-__device__ inline void SwapAndScatterSm10(
-	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
-	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
-	unsigned int *exchange,
-	typename VecType<V, 2>::Type *d_in_data, 
-	K *d_out_keys, 
-	V *d_out_data, 
-	unsigned int carry[RADIX_DIGITS], 
-	unsigned int digit_scan[2][RADIX_DIGITS], 
-	unsigned int oob[1])				
-{
-	// Swap and scatter keys
-	SwapAndScatterPairs<K, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
-		keypairs, ranks, (K*) exchange, d_out_keys, carry, digit_scan, oob);				
-	
-	if (!KEYS_ONLY) {
-
-		__syncthreads();
-		
-		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
-		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
-
-		// Read input data
-		typename VecType<V, 2>::Type datapairs[PASSES_PER_CYCLE][SETS_PER_PASS];
-		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, oob);
-		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, oob);
-
-		// Swap and scatter data
-		SwapAndScatterPairs<V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
-			datapairs, ranks, (V*) exchange, d_out_data, carry, digit_scan, oob);				
-	}
-}
-
 
 
 template <unsigned int SETS_PER_PASS>
@@ -655,6 +399,297 @@ __device__ inline void ScanPass(
 }	
 	
 
+//------------------------------------------------------------------------------
+// SM1.3 Local Exchange Routines
+//
+// Routines for exchanging keys (and values) in shared memory (i.e., local 
+// scattering) in order to to facilitate coalesced global scattering
+//------------------------------------------------------------------------------
+
+template <typename T, bool UNGUARDED_IO, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS, typename PostprocessFunctor>
+__device__ inline void ScatterSets(
+	T *d_out, 
+	typename VecType<T, 2>::Type pairs[SETS_PER_PASS],
+	uint2 offsets[SETS_PER_PASS],
+	const unsigned int BASE4,
+	unsigned int oob[1],
+	PostprocessFunctor postprocess = PostprocessFunctor())				
+{
+	#pragma unroll 
+	for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
+		postprocess(pairs[SET].x);
+		postprocess(pairs[SET].y);
+	}
+
+	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower 
+		
+	if (SETS_PER_PASS > 0) { 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 0) < oob[0])) 
+			d_out[offsets[0].x] = pairs[0].x;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 1) < oob[0])) 
+			d_out[offsets[0].y] = pairs[0].y;
+	}
+
+	if (SETS_PER_PASS > 1) { 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 2) < oob[0])) 
+			d_out[offsets[1].x] = pairs[1].x;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 3) < oob[0])) 
+			d_out[offsets[1].y] = pairs[1].y;
+	}
+
+	if (SETS_PER_PASS > 2) { 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 4) < oob[0])) 
+			d_out[offsets[2].x] = pairs[2].x;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 5) < oob[0])) 
+			d_out[offsets[2].y] = pairs[2].y;
+	}
+
+	if (SETS_PER_PASS > 3) { 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 6) < oob[0])) 
+			d_out[offsets[3].x] = pairs[3].x;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 7) < oob[0])) 
+			d_out[offsets[3].y] = pairs[3].y;
+	}
+}
+
+template <typename T, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
+__device__ inline void PushPairs(
+	T *swap, 
+	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS],
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS])				
+{
+	#pragma unroll 
+	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
+	
+		#pragma unroll 
+		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
+			swap[ranks[PASS][SET].x] = pairs[PASS][SET].x;
+			swap[ranks[PASS][SET].y] = pairs[PASS][SET].y;
+		}
+	}
+}
+	
+template <typename T, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
+__device__ inline void ExchangePairs(
+	T *swap, 
+	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS],
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS])				
+{
+	// Push in Pairs
+	PushPairs<T, PASSES_PER_CYCLE, SETS_PER_PASS>(swap, pairs, ranks);
+	
+	__syncthreads();
+	
+	// Extract pairs
+	#pragma unroll 
+	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
+		
+		#pragma unroll 
+		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
+			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
+			pairs[PASS][SET].x = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 0))];
+			pairs[PASS][SET].y = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 1))];
+		}
+	}
+}
+
+
+template <
+	typename K,
+	typename V,	
+	bool KEYS_ONLY, 
+	unsigned int RADIX_DIGITS, 
+	unsigned int BIT, 
+	unsigned int PASSES_PER_CYCLE,
+	unsigned int SETS_PER_PASS,
+	bool UNGUARDED_IO,
+	typename PostprocessFunctor>
+__device__ inline void SwapAndScatterSm13(
+	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
+	unsigned int *exchange,
+	typename VecType<V, 2>::Type *d_in_data, 
+	K *d_out_keys, 
+	V *d_out_data, 
+	unsigned int carry[RADIX_DIGITS], 
+	unsigned int oob[1])				
+{
+	uint2 offsets[PASSES_PER_CYCLE][SETS_PER_PASS];
+	
+	// Swap keys according to ranks
+	ExchangePairs<K, PASSES_PER_CYCLE, SETS_PER_PASS>((K*) exchange, keypairs, ranks);				
+	
+	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits) 
+	#pragma unroll 
+	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
+		
+		#pragma unroll 
+		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
+			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
+			offsets[PASS][SET].x = threadIdx.x + (SRTS_THREADS * (BLOCK + 0)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].x)];
+			offsets[PASS][SET].y = threadIdx.x + (SRTS_THREADS * (BLOCK + 1)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].y)];
+		}
+	}
+	
+	// Scatter keys
+	#pragma unroll 
+	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
+		const int BLOCK = PASS * SETS_PER_PASS * 2;
+		ScatterSets<K, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, PostprocessFunctor>(d_out_keys, keypairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, oob);
+	}
+
+	if (!KEYS_ONLY) {
+	
+		__syncthreads();
+
+		// Read input data
+		typename VecType<V, 2>::Type datapairs[PASSES_PER_CYCLE][SETS_PER_PASS];
+
+		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
+		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
+
+		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, oob);
+		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, oob);
+		
+		// Swap data according to ranks
+		ExchangePairs<V, PASSES_PER_CYCLE, SETS_PER_PASS>((V*) exchange, datapairs, ranks);
+		
+		// Scatter data
+		#pragma unroll 
+		for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
+			const int BLOCK = PASS * SETS_PER_PASS * 2;
+			ScatterSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_out_data, datapairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, oob);
+		}
+	}
+}
+
+
+//------------------------------------------------------------------------------
+// SM1.0 Local Exchange Routines
+//
+// Routines for exchanging keys (and values) in shared memory (i.e., local 
+// scattering) in order to to facilitate coalesced global scattering
+//------------------------------------------------------------------------------
+
+template <
+	typename T, 
+	unsigned int RADIX_DIGITS,
+	bool UNGUARDED_IO,
+	typename PostprocessFunctor> 
+__device__ inline void ScatterPass(
+	T *swapmem,
+	T *d_out, 
+	unsigned int digit_scan[2][RADIX_DIGITS], 
+	unsigned int carry[RADIX_DIGITS], 
+	unsigned int oob[1],
+	unsigned int base_digit)				
+{
+	const unsigned int LOG_HALF_WARP_THREADS = LOG_WARP_THREADS - 1;
+	const unsigned int HALF_WARP_THREADS = 1 << LOG_HALF_WARP_THREADS;
+	
+	int half_warp_idx = threadIdx.x & (HALF_WARP_THREADS - 1);
+	int half_warp_digit = threadIdx.x >> LOG_HALF_WARP_THREADS;
+	
+	int my_digit = base_digit + half_warp_digit;
+	if (my_digit < RADIX_DIGITS) {
+	
+		int my_exclusive_scan = digit_scan[1][my_digit - 1];
+		int my_inclusive_scan = digit_scan[1][my_digit];
+		int my_digit_count = my_inclusive_scan - my_exclusive_scan;
+
+		int my_carry = carry[my_digit] + my_exclusive_scan;
+		int my_aligned_offset = half_warp_idx - (my_carry & (HALF_WARP_THREADS - 1));
+		
+		while (my_aligned_offset < my_digit_count) {
+			if ((my_aligned_offset >= 0) && (UNGUARDED_IO || (my_exclusive_scan + my_aligned_offset < oob[0]))) { 
+				d_out[my_carry + my_aligned_offset] = swapmem[my_exclusive_scan + my_aligned_offset];
+			}
+			my_aligned_offset += 16;
+		}
+	}
+}
+
+template <
+	typename T,
+	unsigned int RADIX_DIGITS, 
+	unsigned int PASSES_PER_CYCLE,
+	unsigned int SETS_PER_PASS,
+	bool UNGUARDED_IO,
+	typename PostprocessFunctor>
+__device__ inline void SwapAndScatterPairs(
+	typename VecType<T, 2>::Type pairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
+	T *exchange,
+	T *d_out, 
+	unsigned int carry[RADIX_DIGITS], 
+	unsigned int digit_scan[2][RADIX_DIGITS], 
+	unsigned int oob[1])				
+{
+	const unsigned int SCATTER_PASS_DIGITS = SRTS_WARPS * 2;
+	const unsigned int SCATTER_PASSES = RADIX_DIGITS / SCATTER_PASS_DIGITS;
+
+	// Push in pairs
+	PushPairs<T, PASSES_PER_CYCLE, SETS_PER_PASS>(exchange, pairs, ranks);
+
+	__syncthreads();
+
+	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
+	// telling me "Advisory: Loop was not unrolled, not an innermost loop"
+
+	if (SCATTER_PASSES > 0) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 0);
+	if (SCATTER_PASSES > 1) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 1);
+	if (SCATTER_PASSES > 2) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 2);
+	if (SCATTER_PASSES > 3) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, oob, SCATTER_PASS_DIGITS * 3);
+}
+
+
+template <
+	typename K,
+	typename V,	
+	bool KEYS_ONLY, 
+	unsigned int RADIX_DIGITS, 
+	unsigned int PASSES_PER_CYCLE,
+	unsigned int SETS_PER_PASS,
+	bool UNGUARDED_IO,
+	typename PostprocessFunctor>
+__device__ inline void SwapAndScatterSm10(
+	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
+	unsigned int *exchange,
+	typename VecType<V, 2>::Type *d_in_data, 
+	K *d_out_keys, 
+	V *d_out_data, 
+	unsigned int carry[RADIX_DIGITS], 
+	unsigned int digit_scan[2][RADIX_DIGITS], 
+	unsigned int oob[1])				
+{
+	// Swap and scatter keys
+	SwapAndScatterPairs<K, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
+		keypairs, ranks, (K*) exchange, d_out_keys, carry, digit_scan, oob);				
+	
+	if (!KEYS_ONLY) {
+
+		__syncthreads();
+		
+		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
+		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
+
+		// Read input data
+		typename VecType<V, 2>::Type datapairs[PASSES_PER_CYCLE][SETS_PER_PASS];
+		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, oob);
+		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, oob);
+
+		// Swap and scatter data
+		SwapAndScatterPairs<V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
+			datapairs, ranks, (V*) exchange, d_out_data, carry, digit_scan, oob);				
+	}
+}
+
+
+//------------------------------------------------------------------------------
+// Cycle of SRTS_CYCLE_ELEMENTS keys (and values)
+//------------------------------------------------------------------------------
+
 template <
 	typename K,
 	typename V,	
@@ -671,9 +706,7 @@ template <
 	unsigned int LOG_SCAN_LANES_PER_PASS,
 	unsigned int SCAN_LANES_PER_PASS,
 	unsigned int LOG_PARTIALS_PER_LANE,
-	unsigned int PARTIALS_PER_LANE,
 	unsigned int LOG_PARTIALS_PER_PASS,
-	unsigned int PARTIALS_PER_PASS,
 	unsigned int LOG_RAKING_THREADS_PER_PASS,
 	unsigned int RAKING_THREADS_PER_PASS,
 	unsigned int LOG_RAKING_THREADS_PER_LANE,
@@ -685,7 +718,6 @@ template <
 	unsigned int LOG_SEGS_PER_ROW,	
 	unsigned int SEGS_PER_ROW,
 	unsigned int LOG_ROWS_PER_SET,
-	unsigned int ROWS_PER_SET,
 	unsigned int LOG_ROWS_PER_LANE,
 	unsigned int ROWS_PER_LANE,
 	unsigned int LOG_ROWS_PER_PASS,
@@ -857,6 +889,10 @@ __device__ inline void SrtsScanDigitCycle(
 
 
 
+//------------------------------------------------------------------------------
+// Scan/Scatter Kernel Entry Point
+//------------------------------------------------------------------------------
+
 template <typename K, typename V, bool KEYS_ONLY, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
 __launch_bounds__ (SRTS_THREADS, SRTS_BULK_CTA_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
@@ -884,10 +920,8 @@ void SrtsScanDigitBulk(
 	const unsigned int SCAN_LANES_PER_PASS		= 1 << LOG_SCAN_LANES_PER_PASS;
 	
 	const unsigned int LOG_PARTIALS_PER_LANE 	= SRTS_LOG_THREADS;
-	const unsigned int PARTIALS_PER_LANE 		= 1 << LOG_PARTIALS_PER_LANE;
 	
 	const unsigned int LOG_PARTIALS_PER_PASS	= LOG_SCAN_LANES_PER_PASS + LOG_PARTIALS_PER_LANE;
-	const unsigned int PARTIALS_PER_PASS		= 1 << LOG_PARTIALS_PER_PASS;
 
 	const unsigned int LOG_RAKING_THREADS_PER_PASS 		= SRTS_LOG_RAKING_THREADS_PER_PASS(__CUDA_ARCH__);
 	const unsigned int RAKING_THREADS_PER_PASS			= 1 << LOG_RAKING_THREADS_PER_PASS;
@@ -906,7 +940,6 @@ void SrtsScanDigitBulk(
 	const unsigned int SEGS_PER_ROW				= 1 << LOG_SEGS_PER_ROW;
 
 	const unsigned int LOG_ROWS_PER_SET 		= LOG_PARTIALS_PER_PASS - LOG_PARTIALS_PER_ROW;
-	const unsigned int ROWS_PER_SET 			= 1 << LOG_ROWS_PER_SET;
 
 	const unsigned int LOG_ROWS_PER_LANE 		= LOG_PARTIALS_PER_LANE - LOG_PARTIALS_PER_ROW;
 	const unsigned int ROWS_PER_LANE 			= 1 << LOG_ROWS_PER_LANE;
@@ -984,7 +1017,7 @@ void SrtsScanDigitBulk(
 	// Scan in tiles of cycle_elements
 	while (block_offset < oob[0]) {
 
-		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, LOG_SETS_PER_PASS, SETS_PER_PASS, LOG_PASSES_PER_CYCLE, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, LOG_SETS_PER_PASS, SETS_PER_PASS, LOG_PASSES_PER_CYCLE, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
 			(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
 			(typename VecType<V, 2>::Type *) &d_in_data[block_offset], 
 			d_out_keys, 
@@ -1003,7 +1036,7 @@ void SrtsScanDigitBulk(
 
 	if (extra[0]) {
 		
-		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, LOG_SETS_PER_PASS, SETS_PER_PASS, LOG_PASSES_PER_CYCLE, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, LOG_SETS_PER_PASS, SETS_PER_PASS, LOG_PASSES_PER_CYCLE, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
 			(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
 			(typename VecType<V, 2>::Type *) &d_in_data[block_offset], 
 			d_out_keys, 
