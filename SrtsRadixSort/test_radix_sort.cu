@@ -33,6 +33,10 @@
  */
 
 
+//------------------------------------------------------------------------------
+// Simple test driver program for SRTS Radix Sorting  
+//------------------------------------------------------------------------------
+
 #include <stdlib.h> 
 #include <stdio.h> 
 #include <string.h> 
@@ -57,8 +61,6 @@
 // Defines, constants, globals 
 //------------------------------------------------------------------------------
 
-unsigned int g_timer;
-
 bool g_verbose;
 bool g_verbose2;
 bool g_verify;
@@ -66,9 +68,20 @@ int  g_entropy_reduction = 0;
 
 
 //------------------------------------------------------------------------------
-// Routines
+// Test structures
 //------------------------------------------------------------------------------
 
+// Test value-type structure 
+struct Fribbitz {
+	char a;
+	double b;
+	unsigned short c;
+};
+
+
+//------------------------------------------------------------------------------
+// Routines
+//------------------------------------------------------------------------------
 
 /**
  * Displays the commandline usage for this tool
@@ -152,23 +165,25 @@ void TimedSort(
 	unsigned int num_elements, 
 	K *h_keys,
 	V *h_data, 
-	unsigned int iterations
-) 
+	unsigned int iterations,
+	bool keys_only) 
 {
 	//
 	// Create device storage for the sorting problem
 	//
 
-    GlobalStorage<K, V> device_storage = {NULL, NULL, NULL, NULL, NULL};
+    GlobalStorage<K, V> key_value_storage = {NULL, NULL, NULL, NULL, NULL};
+    GlobalStorage<K> keys_only_storage = {NULL, NULL, NULL, NULL, NULL};
 
 	// Allocate and initialize device memory for keys
 	unsigned int keys_mem_size = sizeof(K) * num_elements;
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.keys, keys_mem_size) );
+	CUDA_SAFE_CALL( cudaMalloc((void**) &key_value_storage.keys, keys_mem_size) );
+	keys_only_storage.keys = key_value_storage.keys;
 
 	// Allocate and initialize device memory for data
 	unsigned int data_mem_size = sizeof(V) * num_elements;
-	if (h_data != NULL) {
-		CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.data, data_mem_size) );
+	if (!keys_only) {
+		CUDA_SAFE_CALL( cudaMalloc((void**) &key_value_storage.data, data_mem_size) );
 	}
 	
 	
@@ -176,14 +191,13 @@ void TimedSort(
 	// Perform a single iteration to allocate memory, prime code caches, etc.
 	//
 	
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
-	if (h_data != NULL) CUDA_SAFE_CALL( cudaMemcpy(device_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
+	CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
+	if (!keys_only) CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
 
-	LaunchSort<K, V>(
-		num_elements, 
-		device_storage,
-		g_verbose);
-
+	if (keys_only) 
+		LaunchKeysOnlySort<K>(num_elements, keys_only_storage, g_verbose);
+	else 
+		LaunchKeyValueSort<K, V>(num_elements, key_value_storage, g_verbose);
 	
 	//
 	// Perform the timed number of sorting iterations
@@ -201,16 +215,17 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
-		if (h_data != NULL) CUDA_SAFE_CALL( cudaMemcpy(device_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
+		CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
+		if (h_data != NULL) CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
 
 		// Start cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
 
-		LaunchSort<K, V>(
-			num_elements, 
-			device_storage,
-			false);
+		// Call the sorting API routine
+		if (keys_only) 
+			LaunchKeysOnlySort<K>(num_elements, keys_only_storage, false);
+		else 
+			LaunchKeyValueSort<K, V>(num_elements, key_value_storage, false);
 
 		// End cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
@@ -240,19 +255,19 @@ void TimedSort(
     //
     
 	// Sorted keys 
-	CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.keys, keys_mem_size, cudaMemcpyDeviceToHost) );
-    CUDA_SAFE_CALL( cudaFree(device_storage.keys) );
-    CUDA_SAFE_CALL( cudaFree(device_storage.temp_keys) );
+	CUDA_SAFE_CALL( cudaMemcpy(h_keys, key_value_storage.keys, keys_mem_size, cudaMemcpyDeviceToHost) );
+    CUDA_SAFE_CALL( cudaFree(key_value_storage.keys) );
+    CUDA_SAFE_CALL( cudaFree(key_value_storage.temp_keys) );
 
 	// Sorted values 
 	if (h_data != NULL) {
-		CUDA_SAFE_CALL( cudaMemcpy(h_data, device_storage.data, data_mem_size, cudaMemcpyDeviceToHost) );
-	    CUDA_SAFE_CALL( cudaFree(device_storage.data) );
-	    CUDA_SAFE_CALL( cudaFree(device_storage.temp_data) );
+		CUDA_SAFE_CALL( cudaMemcpy(h_data, key_value_storage.data, data_mem_size, cudaMemcpyDeviceToHost) );
+	    CUDA_SAFE_CALL( cudaFree(key_value_storage.data) );
+	    CUDA_SAFE_CALL( cudaFree(key_value_storage.temp_data) );
 	}
 
 	// Free spine storage
-    CUDA_SAFE_CALL( cudaFree(device_storage.temp_spine) );
+    CUDA_SAFE_CALL( cudaFree(key_value_storage.temp_spine) );
 
     // Clean up events
 	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
@@ -289,7 +304,7 @@ void TestSort(
 	
     // Run the timing test 
 
-	TimedSort<K, V>(num_elements, h_keys, h_data, iterations);
+	TimedSort<K, V>(num_elements, h_keys, h_data, iterations, keys_only);
     
     // Verify solution
 
@@ -350,21 +365,58 @@ int main( int argc, char** argv) {
 	}
 	g_verify = !cutCheckCmdLineFlag( argc, (const char**) argv, "noverify");
 	
-	// Execute test
-//	TestSort<float, float>(
-//	TestSort<double, double>(
-//	TestSort<char, char>(
-//	TestSort<unsigned char, unsigned char>(
-//	TestSort<short, short>(
-//	TestSort<unsigned short, unsigned short>(
-//	TestSort<int, int>(
+	// Execute test(s)
+	
+/*	
+	TestSort<float, float>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<double, double>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<char, char>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<unsigned char, unsigned char>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<short, short>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<unsigned short, unsigned short>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<int, int>(
+			iterations,
+			num_elements, 
+			keys_only);
+*/			
 	TestSort<unsigned int, unsigned int>(
-//	TestSort<long long, long long>(
-//	TestSort<unsigned long long, unsigned long long>(
-		iterations,
-		num_elements, 
-		keys_only);
+			iterations,
+			num_elements, 
+			keys_only);
+/*	
+	TestSort<long long, long long>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<unsigned long long, unsigned long long>(
+			iterations,
+			num_elements, 
+			keys_only);
+	TestSort<float, Fribbitz>(
+			iterations,
+			num_elements, 
+			keys_only);
+*/
 
+	
 	CUT_EXIT(argc, argv);
 }
 

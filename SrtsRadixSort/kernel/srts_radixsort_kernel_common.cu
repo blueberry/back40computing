@@ -33,15 +33,19 @@
  */
 
 
+//------------------------------------------------------------------------------
+// Common SRTS Radix Sorting Properties and Routines 
+//------------------------------------------------------------------------------
+
+
 #ifndef _SRTS_RADIX_SORT_COMMON_KERNEL_H_
 #define _SRTS_RADIX_SORT_COMMON_KERNEL_H_
 
 
 //------------------------------------------------------------------------------
-// Device properties and intrinsics
+// Device properties 
 //------------------------------------------------------------------------------
 
-#define MAX(a, b) ((a > b) ? a : b)
 
 #ifndef __CUDA_ARCH__
 #define __CUDA_ARCH__ 0
@@ -66,6 +70,50 @@
 	#define WarpVoteAll(predicate) (EmulatedWarpVoteAll(predicate))
 #endif
 
+
+
+//------------------------------------------------------------------------------
+// Handy routines 
+//------------------------------------------------------------------------------
+
+#define MAX(a, b) ((a > b) ? a : b)
+
+
+/**
+ * Support structures for MagnitudeShift() below.  Allows you to shift 
+ * left for positive magnitude values, right for negative.   
+ * 
+ * N.B. This code is a little strange; we are using this meta-programming 
+ * pattern of partial template specialization for structures in order to 
+ * decide whether to shift left or right.  Normally we would just use a 
+ * conditional to decide if something was negative or not and then shift 
+ * accordingly, knowing that the compiler will elide the untaken branch, 
+ * i.e., the out-of-bounds shift during dead code elimination. However, 
+ * the pass for bounds-checking shifts seems to happen before the DCE 
+ * phase, which results in a an unsightly number of compiler warnings, so 
+ * we force the issue earlier using structural template specialization.
+ */
+
+template <typename K, int magnitude, bool shift_left> struct MagnitudeShiftOp;
+
+template <typename K, int magnitude> 
+struct MagnitudeShiftOp<K, magnitude, true> {
+	__device__ inline static K Shift(K key) {
+		return key << magnitude;
+	}
+};
+
+template <typename K, int magnitude> 
+struct MagnitudeShiftOp<K, magnitude, false> {
+	__device__ inline static K Shift(K key) {
+		return key >> magnitude;
+	}
+};
+
+template <typename K, int magnitude> 
+__device__ inline K MagnitudeShift(K key) {
+	return MagnitudeShiftOp<K, (magnitude > 0) ? magnitude : magnitude * -1, (magnitude > 0)>::Shift(key);
+}
 
 
 //------------------------------------------------------------------------------
