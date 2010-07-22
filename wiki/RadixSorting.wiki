@@ -51,11 +51,9 @@ Bibtex:
 
 Our radix sorting methods exhibit 2.0-3.7x speedup over state-of-the-art GPU implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP's implementation]) For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including [http://doi.acm.org/10.1145/1454159.1454171 implementations for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry] accelerators.
 
-Average sorting rates for problem sizes > 32M elements:
+Average sorting rates for problem sizes > 32M elements
 
-====<FONT color=#003333>Keys-Only</FONT>====
-
-====<FONT color=#003333>Keys-Only</FONT>====
+====<FONT color=#003333>Key-Value Pairs</FONT>====
 
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || _8-bit keys (uchar)_    ||               ||               ||           ||                 ||           ||           ||             ||           ||
