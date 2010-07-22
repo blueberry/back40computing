@@ -7,6 +7,7 @@ Report] :
 
 _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
 
+{{{
 @TechReport{ Merrill:Sorting:2010,
 	author = "Duane Merrill and Andrew Grimshaw",
 	title = "Revisiting Sorting for GPGPU Stream Architectures",
@@ -15,22 +16,22 @@ _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Archite
 	address = "Charlottesville, VA, USA",
 	number = "CS2010-03"
 }
-
+}}}
 
 = Performance =
 
 Average sorting rates for problem sizes > 32M elements:
 
-Input Data            || GTX 480 || GTX 285 || GTX 280 ||
-8-bit keys (uchar)    || 1900 || -10 || 25 ||
-16-bit keys (ushort)  || 1900 || -10 || 25 ||
-32-bit keys (uint)    || 1900 || -10 || 25 ||
-64-bit keys (ulong)   || 1910 || -15 || 30 ||
-|| || || ||
-8-bit pairs (uchar)   || 1900 || -10 || 25 ||
-16-bit pairs (ushort) || 1900 || -10 || 25 ||
-32-bit pairs (uint)   || 1900 || -10 || 25 ||
-64-bit pairs (ulong)  || 1910 || -15 || 30 ||
+|| Input Data            || GTX 480 || GTX 285 || GTX 280 ||
+|| 8-bit keys (uchar)    || 1900 || -10 || 25 ||
+|| 16-bit keys (ushort)  || 1900 || -10 || 25 ||
+|| 32-bit keys (uint)    || 1900 || -10 || 25 ||
+|| 64-bit keys (ulong)   || 1910 || -15 || 30 ||
+|| || || || ||
+|| 8-bit pairs (uchar)   || 1900 || -10 || 25 ||
+|| 16-bit pairs (ushort) || 1900 || -10 || 25 ||
+|| 32-bit pairs (uint)   || 1900 || -10 || 25 ||
+|| 64-bit pairs (ulong)  || 1910 || -15 || 30 ||
 
 
 † 16M+ elements (restricted by global memory size)
