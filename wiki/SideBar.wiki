@@ -1,4 +1,12 @@
 #summary Sidebar navigation
 
-[http://code.google.com/p/back40computing Back 40 Computing]
- * [RadixSorting Radix Sorting]
+* [Articles HOWTO articles]
+  * [ArticlesXSS Web security]
+  * [ArticlesDom DOM manipulation]
+  * [ArticlesStyle CSS and style]
+  * [ArticlesTips Tips and tricks]
+  * [DOMReference DOM reference]
+  * [HTMLElements HTML reference]
+  * [CSSReference CSS reference]
+* [http://code.google.com/p/back40computing Back 40 Computing]
+  * [RadixSorting Radix Sorting]
