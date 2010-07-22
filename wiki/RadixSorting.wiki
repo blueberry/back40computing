@@ -51,9 +51,9 @@ Bibtex:
 
 The following tables present average sorting rates (for saturating problem sizes > 32M elements) on various CUDA GPUs.  These results were measured using a suite of ~2,500 randomly-sized input sequences (sized 32 - 180M elements), each initialized with keys and values whose bits were sampled from a uniformly random distribution.  Our measurements for elapsed time were taken directly from GPU hardware performance counters.  Therefore these results are reflective of in situ sorting problems: they preclude the driver overhead and the overheads of staging data to/from the accelerator, allowing us to directly contrast the individual and cumulative performance of the stream kernels involved.
 
-Please note that the following measurements were made using the Cuda 3.0 compiler and driver framework.  For Fermi-class devices, we compiled our device kernels for 32-bit device pointer.  (See the section on [Building_(and_Adapting)_this_Code building and adapting] below).
+Please note that the following measurements were made using the Cuda 3.0 compiler and driver framework.  For Fermi-class devices, we compiled our device kernels for 32-bit device pointer.  (See the section on [#Building_and_Adapting building and adapting] below).
 
-====<FONT color=#003333>Keys Only:</FONT>====
+====<FONT color=#003333>Keys Only (10^6^ keys/s)</FONT>====
 
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || _8-bit keys (uchar)_    ||               ||               ||           ||                 ||           ||           ||             ||           ||
@@ -61,7 +61,7 @@ Please note that the following measurements were made using the Cuda 3.0 compile
 || _32-bit keys (uint)_    ||               ||               || 1007.39   ||                 || 617.47    || 536.25    || 265.18      ||           ||
 || _64-bit keys (ulong)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
 
-====<FONT color=#003333>Key-Value Pairs</FONT>====
+====<FONT color=#003333>Key-Value Pairs (10^6^ pairs/s)</FONT>====
 
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || _8-bit pairs (uchar)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
@@ -84,7 +84,7 @@ http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG htt
 <BR><BR>
 ----
 
-=Building (and Adapting) this Code=
+=Building and Adapting=
 
 You can obtain the source code for SRTS Radix Sort (and other B40C subprojects from [http://code.google.com/p/back40computing/source/checkout the SVN repository].  This subproject can be found in the `/trunk/SrtsRadixSort` subtree.  It contains C++/CUDA code for:
 
