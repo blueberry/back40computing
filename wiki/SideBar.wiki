@@ -1,6 +1,6 @@
 #summary Sidebar navigation
 
-* Subprojects
+* [Subprojects]
   * [ArticlesXSS Web security]
   * [ArticlesDom DOM manipulation]
   * [ArticlesStyle CSS and style]
