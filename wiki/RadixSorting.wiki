@@ -9,13 +9,13 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 <BR><BR>
 ----
 
-=GigaKey Sorting Overview=
+=Sorting Overview=
 
 We have designed extremely efficient strategies for sorting large sequences of fixed-length keys (and values) using GPU stream processors.  Specifically, this project implements a very fast, efficient radix sorting method for CUDA-capable devices (e.g., NVIDIA GPUs).  Our critical performance insights leverage:
  * Very efficient, generalized parallel prefix scan
  * Kernel fusion
 
-In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of GigaKey/s sorting rates (i.e., sorting more than a billion 32-bit keys per second).
+In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of _*GigaKey/s sorting rates*_ (i.e., sorting more than a billion 32-bit keys per second).
 
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
