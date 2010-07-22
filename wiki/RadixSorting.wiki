@@ -18,11 +18,11 @@ We have designed extremely efficient strategies for sorting large sequences of f
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
 
-The radix sorting method works by iterating over the _d_-bit digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2^d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.
+The radix sorting method works by iterating over the _d_-bit digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an _n_-element sequence of _k_-bit keys and a radix _r_ = 2^_d_^, a radix sort of these keys will require _k_/_d_ iterations of a distribution sort over all n keys.
 
 The distribution sort (a.k.a. counting sort) is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory model of computation, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the input sequence.  
 
-We implement these distribution sorting passes using a very efficient implementation of a generalized parallel prefix scan.  Our generalized scan is designed to operate over multiple, concurrent scan problems.  For example, with d = 4 bits (r = 16 digits), our multi-scan does sixteen scan operations: one for each digit.  For each of the scan operations (e.g., the 0s scan, the 1s scan, the 2s scan, etc.), the input for each key is a 1 if the key's digit place contains that operation's digit.  When the mulit-scan is done, the logical processor for each key can look up the scan result from the appropriate scan operation to determine where its key should be placed.
+We implement these distribution sorting passes using a very efficient implementation of a generalized parallel prefix scan.  Our generalized scan is designed to operate over multiple, concurrent scan problems.  For example, with _d_ = 4 bits (_r_ = 16 digits), our multi-scan does sixteen scan operations: one for each digit.  For each of the scan operations (e.g., the 0s scan, the 1s scan, the 2s scan, etc.), the input for each key is a 1 if the key's digit place contains that operation's digit.  When the mulit-scan is done, the logical processor for each key can look up the scan result from the appropriate scan operation to determine where its key should be placed.
 
 ====<FONT color=#003333>Authors' Request</FONT>====
 
@@ -90,4 +90,3 @@ You can obtain the source code for SRTS Radix Sort (and other B40C subprojects f
  * The GPU kernel sources
  * A templated API for invoking a sorting operation from a host program.  By including the sorting API like a header file, `nvcc` will only generate the appropriate 
  * A simple toy program (and a more advanced benchtest program) that demonstrate how the sorting implementation can be integrated into and called from host programs.
-
