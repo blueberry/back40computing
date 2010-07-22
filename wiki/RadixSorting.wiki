@@ -9,11 +9,13 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 <BR><BR>
 ----
 
-=Overview=
+=GigaKey Sorting Overview=
 
 We have designed extremely efficient strategies for sorting large sequences of fixed-length keys (and values) using GPU stream processors.  Specifically, this project implements a very fast, efficient radix sorting method for CUDA-capable devices (e.g., NVIDIA GPUs).  Our critical performance insights leverage:
  * Very efficient, generalized parallel prefix scan
  * Kernel fusion
+
+In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of GigaKey/s sorting rates (i.e., sorting more than a billion 32-bit keys per second).
 
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
@@ -47,7 +49,7 @@ Bibtex:
 
 =Performance=
 
-Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.
+Our radix sorting methods exhibit 2.0-3.7x speedup over state-of-the-art GPU implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP's implementation]) For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including [http://doi.acm.org/10.1145/1454159.1454171 implementations for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry] accelerators.
 
 
 Average sorting rates for problem sizes > 32M elements:
