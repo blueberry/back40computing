@@ -55,6 +55,8 @@ _*Key-value Pairs*_
 
 Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys, and 32-bit (uint) keys and values.
 
+http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.png http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.png
+
 
 
 <BR><BR>
