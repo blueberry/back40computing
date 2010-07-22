@@ -1,5 +1,5 @@
 #summary Sidebar
 
-* [RadixSorting Radix Sorting]
-  * [RadixSorting#Overview Overview]
-  * [RadixSorting#Performance  Performance]
+ * [RadixSorting Radix Sorting]
+   * [RadixSorting#Overview Overview]
+   * [RadixSorting#Performance  Performance]
