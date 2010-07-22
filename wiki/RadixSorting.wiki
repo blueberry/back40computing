@@ -77,6 +77,8 @@ Please note that the following measurements were made using the Cuda 3.0 compile
 † 16M+ elements (restricted by global memory size)<BR>
 †† 8M+ elements (restricted by global memory size)
 
+Of course, our implementation also allows keys and values may be of different types (e.g., `ushort` and `double`).
+
 
 ====<FONT color=#003333>Performance Plots</FONT>====
 
