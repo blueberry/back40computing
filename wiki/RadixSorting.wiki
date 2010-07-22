@@ -15,7 +15,7 @@ If you use/reference/benchmark this code, please cite our [http://www.cs.virgini
 	address = "Charlottesville, VA, USA",
 	number = "CS2010-03"
  }
-<code>
+</code>
 
 <BR>
 
