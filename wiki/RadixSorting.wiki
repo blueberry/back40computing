@@ -5,6 +5,7 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 <wiki:toc max_depth="1" />
 
 ----
+
 = Overview =
 
 If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report] :
@@ -26,6 +27,7 @@ Bibtex:
 <BR>
 
 ----
+
 = Performance =
 
 Average sorting rates for problem sizes > 32M elements:
@@ -57,6 +59,7 @@ Below are plots of sorting rate as a function of problem size for 32-bit (uint) 
 <BR>
 
 ----
+
 = Building (and Adapting) this Code =
 
 Add your content here.  Format your content with:
