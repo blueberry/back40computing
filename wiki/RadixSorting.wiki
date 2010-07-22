@@ -1,12 +1,10 @@
 #summary High performance GPU radix sorting in CUDA
 
-
-
 = Overview =
 
-If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d Technical Report] :
+If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report] :
 
-_Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
+ _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
 
 {{{
 @TechReport{ Merrill:Sorting:2010,
@@ -18,6 +16,8 @@ _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Archite
 	number = "CS2010-03"
 }
 }}}
+
+<BR>
 
 = Performance =
 
@@ -38,6 +38,8 @@ Average sorting rates for problem sizes > 32M elements:
 † 16M+ elements (restricted by global memory size)
 
 †† 8M+ elements (restricted by global memory size)
+
+<BR>
 
 = Building (and Adapting) this Code =
 
