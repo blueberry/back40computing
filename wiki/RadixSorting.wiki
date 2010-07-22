@@ -6,16 +6,16 @@ If you use/reference/benchmark this code, please cite our [http://www.cs.virgini
 
  _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
 
-{{{
-@TechReport{ Merrill:Sorting:2010,
+<code>
+ @TechReport{ Merrill:Sorting:2010,
 	author = "Duane Merrill and Andrew Grimshaw",
 	title = "Revisiting Sorting for GPGPU Stream Architectures",
 	year = "2010",
 	institution = "University of Virginia, Department of Computer Science",
 	address = "Charlottesville, VA, USA",
 	number = "CS2010-03"
-}
-}}}
+ }
+<code>
 
 <BR>
 
