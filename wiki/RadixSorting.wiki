@@ -15,7 +15,7 @@ We have designed extremely efficient strategies for sorting large sequences of f
  * Very efficient, generalized parallel prefix scan
  * Kernel fusion
 
-In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of <FONT color=#400000>_*GigaKey/s sorting rates*_</FONT> (i.e., sorting more than a billion 32-bit keys per second).
+Our radix sorting methods exhibit 2.0-3.7x speedup over state-of-the-art GPU implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP's implementation]) For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including [http://doi.acm.org/10.1145/1454159.1454171 implementations for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry] accelerators.  In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of <FONT color=#400000>_*GigaKey/s sorting rates*_</FONT> (i.e., sorting more than a billion 32-bit keys per second).  
 
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
@@ -49,9 +49,9 @@ Bibtex:
 
 =Performance=
 
-Our radix sorting methods exhibit 2.0-3.7x speedup over state-of-the-art GPU implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP's implementation]) For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including [http://doi.acm.org/10.1145/1454159.1454171 implementations for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry] accelerators.
+The following tables present average sorting rates (for saturating problem sizes > 32M elements) on various CUDA GPUs.  These results were measured using a suite of ~2,500 randomly-sized input sequences (sized 32 - 180M elements), each initialized with keys and values whose bits were sampled from a uniformly random distribution.  Our measurements for elapsed time were taken directly from GPU hardware performance counters.  Therefore these results are reflective of in situ sorting problems: they preclude the driver overhead and the overheads of staging data to/from the accelerator, allowing us to directly contrast the individual and cumulative performance of the stream kernels involved.
 
-The following tables present average sorting rates (for saturating problem sizes > 32M elements) on various CUDA GPUs : 
+Please note that the following measurements were made using the Cuda 3.0 compiler and driver framework.  For Fermi-class devices, we compiled our device kernels for 32-bit device pointer.  (See the section on [Building_(and_Adapting)_this_Code building and adapting] below).
 
 ====<FONT color=#003333>Keys Only:</FONT>====
 
