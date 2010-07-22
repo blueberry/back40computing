@@ -28,13 +28,14 @@ Bibtex:
 
 Average sorting rates for problem sizes > 32M elements:
 
+_*Keys-only*_
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* ||
-|| Keys-only || 
-|| _8-bit keys (uchar)_    || TBD           || TBD           || 1007.39   || TBD             || 617.47    || 536.25    || 265.18      || 
+|| _8-bit keys (uchar)_    || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
 || _16-bit keys (ushort)_  || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
-|| _32-bit keys (uint)_    || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| _32-bit keys (uint)_    || TBD           || TBD           || 1007.39   || TBD             || 617.47    || 536.25    || 265.18      || 
 || _64-bit keys (ulong)_   || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
-|| Keys-value pairs || 
+
+_*Key-value Pairs*_
 || _8-bit pairs (uchar)_   || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
 || _16-bit pairs (ushort)_ || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
 || _32-bit pairs (uint)_   || TBD           || TBD           || 776.66    || TBD             || 490.14    || 450.30    || 188.84      ||
