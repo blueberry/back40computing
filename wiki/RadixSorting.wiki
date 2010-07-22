@@ -11,6 +11,16 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 =Overview=
 
+===Radix Sorting===
+The radix sorting method works by iterating over the digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.
+ 
+The distribution sort is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory decomposition, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the sequence.  
+
+===Our Implementation===
+
+We have designed extremely efficient strategies for sorting large sequences of fixed-length keys (and values) using GPGPU stream processors.  Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.
+
+===Authors' Request===
 If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report] :
 
  _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
@@ -35,18 +45,18 @@ Bibtex:
 Average sorting rates for problem sizes > 32M elements:
 
 _*Keys-only*_
-|| *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* ||
-|| _8-bit keys (uchar)_    ||               ||               ||           ||                 ||           ||           ||             ||
-|| _16-bit keys (ushort)_  ||               ||               ||           ||                 ||           ||           ||             ||
-|| _32-bit keys (uint)_    ||               ||               || 1007.39   ||                 || 617.47    || 536.25    || 265.18      || 
-|| _64-bit keys (ulong)_   ||               ||               ||           ||                 ||           ||           ||             ||
+|| *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
+|| _8-bit keys (uchar)_    ||               ||               ||           ||                 ||           ||           ||             ||           ||
+|| _16-bit keys (ushort)_  ||               ||               ||           ||                 ||           ||           ||             ||           ||
+|| _32-bit keys (uint)_    ||               ||               || 1007.39   ||                 || 617.47    || 536.25    || 265.18      ||           ||
+|| _64-bit keys (ulong)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
 
 _*Key-value Pairs*_
-|| *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* ||
-|| _8-bit pairs (uchar)_   ||               ||               ||           ||                 ||           ||           ||             ||
-|| _16-bit pairs (ushort)_ ||               ||               ||           ||                 ||           ||           ||             ||
-|| _32-bit pairs (uint)_   ||               ||               || 776.66    ||                 || 490.14    || 450.30    || 188.84†     ||
-|| _64-bit pairs (ulong)_  ||               ||               ||           ||                 ||           ||           ||             ||
+|| *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
+|| _8-bit pairs (uchar)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
+|| _16-bit pairs (ushort)_ ||               ||               ||           ||                 ||           ||           ||             ||           ||
+|| _32-bit pairs (uint)_   ||               ||               || 776.66    ||                 || 490.14    || 450.30    || 188.84†     ||           ||
+|| _64-bit pairs (ulong)_  ||               ||               ||           ||                 ||           ||           ||             ||           ||
 
 † 16M+ elements (restricted by global memory size)<BR>
 †† 8M+ elements (restricted by global memory size)
