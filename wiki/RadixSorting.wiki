@@ -17,7 +17,7 @@ We have designed extremely efficient strategies for sorting large sequences of f
 
 Our radix sorting methods exhibit 2.0-3.7x speedup over state-of-the-art GPU implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP's implementation]) For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including [http://doi.acm.org/10.1145/1454159.1454171 implementations for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry] accelerators.  
 
-In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of GigaKey/s sorting rates (i.e., sorting more than a billion 32-bit keys per second).  
+In particular, our implementation running on a (stock) NVIDIA GTX 480 is capable of *GigaKey/s sorting rates* (i.e., sorting more than a billion 32-bit keys per second).  
 
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
