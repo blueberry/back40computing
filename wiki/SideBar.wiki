@@ -1,4 +1,4 @@
 #summary Sidebar navigation
 
-* [http://code.google.com/p/back40computing Back 40 Computing]
+* Back 40 Computing
   * [RadixSorting Radix Sorting]
