@@ -48,7 +48,7 @@ _*Key-value Pairs*_
 || _32-bit pairs (uint)_   ||               ||               || 776.66    ||                 || 490.14    || 450.30    || 188.84†     ||
 || _64-bit pairs (ulong)_  ||               ||               ||           ||                 ||           ||           ||             ||
 
-† 16M+ elements (restricted by global memory size)
+† 16M+ elements (restricted by global memory size)<BR>
 †† 8M+ elements (restricted by global memory size)
 
 <BR>
