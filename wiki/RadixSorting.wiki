@@ -2,6 +2,8 @@
 
 http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
+<wiki:toc max_depth="1" />
+
 = Overview =
 
 If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report] :
