@@ -11,22 +11,22 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 =Overview=
 
+We have designed extremely efficient strategies for sorting large sequences of fixed-length keys (and values) using GPU stream processors.  Specifically, this project implements a very fast, efficient radix sorting method for CUDA-capable devices (e.g., NVIDIA GPUs).  Our critical performance insights leverage:
+ * Very efficient, generalized parallel prefix scan
+ * Kernel fusion
 
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
 
-The radix sorting method works by iterating over the digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.
+The radix sorting method works by iterating over the _d_-bit digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2^d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.
 
+The distribution sort (a.k.a. counting sort) is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory model of computation, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the input sequence.  
 
-The distribution sort is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory decomposition, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the sequence.
-
-====<FONT color=#003333>Our Implementation</FONT>====
-
-We have designed extremely efficient strategies for sorting large sequences of fixed-length keys (and values) using GPGPU stream processors.  
+We implement these distribution sorting passes using a very efficient implementation of a generalized parallel prefix scan.  Our generalized scan is designed to operate over multiple, concurrent scan problems.  For example, with d = 4 bits (r = 16 digits), our multi-scan does sixteen scan operations: one for each digit.  For each of the scan operations (e.g., the 0s scan, the 1s scan, the 2s scan, etc.), the input for each key is a 1 if the key's digit place contains that operation's digit.  When the mulit-scan is done, the logical processor for each key can look up the scan result from the appropriate scan operation to determine where its key should be placed.
 
 ====<FONT color=#003333>Authors' Request</FONT>====
 
-If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report] :
+If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report]:
 
  _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
 
@@ -47,11 +47,12 @@ Bibtex:
 
 =Performance=
 
-<P>Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.</P>
+Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.
 
-</P>Average sorting rates for problem sizes > 32M elements:</P>
 
-====Keys-Only====
+Average sorting rates for problem sizes > 32M elements:
+
+====<FONT color=#003333>Keys-Only</FONT>====
 
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || _8-bit keys (uchar)_    ||               ||               ||           ||                 ||           ||           ||             ||           ||
@@ -59,7 +60,7 @@ Bibtex:
 || _32-bit keys (uint)_    ||               ||               || 1007.39   ||                 || 617.47    || 536.25    || 265.18      ||           ||
 || _64-bit keys (ulong)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
 
-====Key-Value Pairs====
+====<FONT color=#003333>Key-Value Pairs</FONT>====
 
 || *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || _8-bit pairs (uchar)_   ||               ||               ||           ||                 ||           ||           ||             ||           ||
@@ -71,7 +72,7 @@ Bibtex:
 †† 8M+ elements (restricted by global memory size)
 
 
-====Performance Plots====
+====<FONT color=#003333>Performance Plots</FONT>====
 
 Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys, and 32-bit (uint) keys and values.
 
@@ -84,7 +85,9 @@ http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG htt
 
 =Building (and Adapting) this Code=
 
-Add your content here.  Format your content with:
-  * Text in *bold* or _italic_
-  * Headings, paragraphs, and lists
-  * Automatic links to other wiki pages
+You can obtain the source code for SRTS Radix Sort (and other B40C subprojects from [http://code.google.com/p/back40computing/source/checkout the SVN repository].  This subproject can be found in the `/trunk/SrtsRadixSort` subtree.  It contains C++/CUDA code for:
+
+ * The GPU kernel sources
+ * A templated API for invoking a sorting operation from a host program.  By including the sorting API like a header file, `nvcc` will only generate the appropriate 
+ * A simple toy program (and a more advanced benchtest program) that demonstrate how the sorting implementation can be integrated into and called from host programs.
+
