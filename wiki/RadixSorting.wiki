@@ -28,21 +28,28 @@ Bibtex:
 
 Average sorting rates for problem sizes > 32M elements:
 
-|| Input Data            || GTX 480 || GTX 285 || GTX 280 ||
-|| 8-bit keys (uchar)    || 1900 || -10 || 25 ||
-|| 16-bit keys (ushort)  || 1900 || -10 || 25 ||
-|| 32-bit keys (uint)    || 1900 || -10 || 25 ||
-|| 64-bit keys (ulong)   || 1910 || -15 || 30 ||
-|| || || || ||
-|| 8-bit pairs (uchar)   || 1900 || -10 || 25 ||
-|| 16-bit pairs (ushort) || 1900 || -10 || 25 ||
-|| 32-bit pairs (uint)   || 1900 || -10 || 25 ||
-|| 64-bit pairs (ulong)  || 1910 || -15 || 30 ||
+|| *Input Data*            || *Tesla C2050* || *Tesla C1060* || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* ||
+|| Keys-only || 
+|| _8-bit keys (uchar)_    || TBD           || TBD           || 1007.39   || TBD             || 617.47    || 536.25    || 265.18      || 
+|| _16-bit keys (ushort)_  || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| _32-bit keys (uint)_    || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| _64-bit keys (ulong)_   || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| Keys-value pairs || 
+|| _8-bit pairs (uchar)_   || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| _16-bit pairs (ushort)_ || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
+|| _32-bit pairs (uint)_   || TBD           || TBD           || 776.66    || TBD             || 490.14    || 450.30    || 188.84      ||
+|| _64-bit pairs (ulong)_  || TBD           || TBD           || TBD       || TBD             || TBD       || TBD       || TBD         ||
 
 
 † 16M+ elements (restricted by global memory size)
 
 †† 8M+ elements (restricted by global memory size)
+
+<BR>
+
+Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys, and 32-bit (uint) keys and values.
+
+
 
 <BR>
 
