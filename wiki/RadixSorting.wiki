@@ -2,12 +2,10 @@
 
 = Overview =
 
-If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical 
+If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d Technical 
 Report] :
 
-<P>
 _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
-</P>
 
 {{{
 @TechReport{ Merrill:Sorting:2010,
