@@ -15,9 +15,10 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 ====<FONT color=#003333>Radix Sorting</FONT>====
 
-<P>The radix sorting method works by iterating over the digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.</P>
+The radix sorting method works by iterating over the digit-places of the keys from least-significant to most-significant.  For each digit-place, the method performs a stable distribution sort of the keys based upon their digit at that digit-place.  Given an n-element sequence of k-bit keys and a radix r = 2d, a radix sort of these keys will require k/d iterations of a distribution sort over all n keys.
 
-<P>The distribution sort is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory decomposition, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the sequence.</P>
+
+The distribution sort is the fundamental component of the radix sorting method.  In a data-parallel, shared-memory decomposition, each logical processor gathers its key, decodes the specific digit at the given digit-place, and then must cooperate with other processors to determine where the key should be relocated.  The relocation offset will be the key’s global rank, i.e., the number of keys with “lower” digits at that digit place plus the number of keys having the same digit, yet occurring earlier in the sequence.
 
 ====<FONT color=#003333>Our Implementation</FONT>====
 
@@ -46,13 +47,9 @@ Bibtex:
 
 =Performance=
 
-<P>
-Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.
-</P>
+<P>Compared to the state-of-the-art, our radix sorting methods exhibit speedup (over [http://gpgpu.org/developer/cudpp CUDPP]) of 2x to 3.7x for NVIDIA GPGPUs.  For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture, including the Intel Larrabee/MIC/Knight's XXX accelerators.</P>
 
-</P>
-Average sorting rates for problem sizes > 32M elements:
-</P>
+</P>Average sorting rates for problem sizes > 32M elements:</P>
 
 ====Keys-Only====
 
