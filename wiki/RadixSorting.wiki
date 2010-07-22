@@ -35,6 +35,7 @@ Average sorting rates for problem sizes > 32M elements:
 
 
 † 16M+ elements (restricted by global memory size)
+
 †† 8M+ elements (restricted by global memory size)
 
 = Building (and Adapting) this Code =
