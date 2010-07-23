@@ -1,7 +1,4 @@
-#summary Sidebar
-
 [http://code.google.com/p/back40computing Back 40 Computing Home]
-
  * [RadixSorting Radix Sorting]
    * [RadixSorting#Sorting_Overview Overview]
    * [RadixSorting#Performance  Performance]
