@@ -17,8 +17,13 @@ AUTHORS' REQUEST:
 	If you use|reference|benchmark this code, please cite our Technical 
 	Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
 	
-	Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream 
-	Architectures," University of Virginia, Department of Computer Science, 
-	Charlottesville, VA, USA, Technical Report CS2010-03, 2010.
+	@TechReport{ Merrill:Sorting:2010,
+       	author = "Duane Merrill and Andrew Grimshaw",
+       	title = "Revisiting Sorting for GPGPU Stream Architectures",
+       	year = "2010",
+       	institution = "University of Virginia, Department of Computer Science",
+       	address = "Charlottesville, VA, USA",
+       	number = "CS2010-03"
+	}
 	
 	Thanks!

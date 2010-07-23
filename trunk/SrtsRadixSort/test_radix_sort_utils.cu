@@ -21,10 +21,14 @@
  * 		If you use|reference|benchmark this code, please cite our Technical 
  * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
  * 
- * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
- * 		Stream Architectures," University of Virginia, Department of 
- * 		Computer Science, Charlottesville, VA, USA, Technical Report 
- * 		CS2010-03, 2010.
+ *		@TechReport{ Merrill:Sorting:2010,
+ *        	author = "Duane Merrill and Andrew Grimshaw",
+ *        	title = "Revisiting Sorting for GPGPU Stream Architectures",
+ *        	year = "2010",
+ *        	institution = "University of Virginia, Department of Computer Science",
+ *        	address = "Charlottesville, VA, USA",
+ *        	number = "CS2010-03"
+ *		}
  * 
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
@@ -40,6 +44,10 @@
 #include <math.h>
 #include <float.h>
 
+
+//------------------------------------------------------------------------------
+// Templated routines for printing keys/values to the console 
+//------------------------------------------------------------------------------
 
 template<typename T> 
 void PrintValue(T val) {
@@ -93,6 +101,54 @@ void PrintValue<unsigned long long>(unsigned long long val) {
 
 
 
+//------------------------------------------------------------------------------
+// Helper routines for list construction and validation 
+//------------------------------------------------------------------------------
+
+
+/**
+ * Generates random 32-bit keys.
+ * 
+ * We always take the second-order byte from rand() because the higher-order 
+ * bits returned by rand() are commonly considered more uniformly distributed
+ * than the lower-order bits.
+ * 
+ * We can decrease the entropy level of keys by adopting the technique 
+ * of Thearling and Smith in which keys are computed from the bitwise AND of 
+ * multiple random samples: 
+ * 
+ * entropy_reduction	| Effectively-unique bits per key
+ * -----------------------------------------------------
+ * -1					| 0
+ * 0					| 32
+ * 1					| 25.95
+ * 2					| 17.41
+ * 3					| 10.78
+ * 4					| 6.42
+ * ...					| ...
+ * 
+ */
+template <typename K>
+void RandomBits(K &key, int entropy_reduction) 
+{
+	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
+	unsigned short key_bits[NUM_USHORTS];
+	
+	for (int j = 0; j < NUM_USHORTS; j++) {
+		unsigned short halfword = 0xffff; 
+		for (int i = 0; i <= entropy_reduction; i++) {
+			halfword &= (rand() >> 8);
+		}
+		key_bits[j] = halfword;
+	}
+		
+	memcpy(&key, key_bits, sizeof(K));
+}
+
+
+/**
+ * Verifies the "less than" property for sorted lists 
+ */
 template <typename T>
 int VerifySort(T* sorted_keys, const unsigned int len, bool verbose) 
 {
