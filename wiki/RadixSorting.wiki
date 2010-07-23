@@ -98,9 +98,13 @@ Of course, our implementation also allows keys and values may be of different ty
 
 ====<FONT color=#003333>Performance Plots</FONT>====
 
-Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys, and 32-bit (uint) keys and values.
+Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys:
 
-http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
+http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG 
+
+And 32-bit (uint) keys and values:
+
+http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
 
 
 
