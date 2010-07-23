@@ -21,10 +21,14 @@
  * 		If you use|reference|benchmark this code, please cite our Technical 
  * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
  * 
- * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
- * 		Stream Architectures," University of Virginia, Department of 
- * 		Computer Science, Charlottesville, VA, USA, Technical Report 
- * 		CS2010-03, 2010.
+ *		@TechReport{ Merrill:Sorting:2010,
+ *        	author = "Duane Merrill and Andrew Grimshaw",
+ *        	title = "Revisiting Sorting for GPGPU Stream Architectures",
+ *        	year = "2010",
+ *        	institution = "University of Virginia, Department of Computer Science",
+ *        	address = "Charlottesville, VA, USA",
+ *        	number = "CS2010-03"
+ *		}
  * 
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
@@ -63,7 +67,7 @@ template<
 	unsigned int RAKING_THREADS,
 	unsigned int PARTIALS_PER_ROW,
 	unsigned int PARTIALS_PER_SEG>
-__device__ inline void SrtsScanCycle(
+__device__ __forceinline__ void SrtsScanCycle(
 	unsigned int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1],
 	unsigned int *smem_offset,
 	unsigned int *smem_segment,

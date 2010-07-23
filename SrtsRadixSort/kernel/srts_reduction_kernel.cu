@@ -21,10 +21,14 @@
  * 		If you use|reference|benchmark this code, please cite our Technical 
  * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
  * 
- * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
- * 		Stream Architectures," University of Virginia, Department of 
- * 		Computer Science, Charlottesville, VA, USA, Technical Report 
- * 		CS2010-03, 2010.
+ *		@TechReport{ Merrill:Sorting:2010,
+ *        	author = "Duane Merrill and Andrew Grimshaw",
+ *        	title = "Revisiting Sorting for GPGPU Stream Architectures",
+ *        	year = "2010",
+ *        	institution = "University of Virginia, Department of Computer Science",
+ *        	address = "Charlottesville, VA, USA",
+ *        	number = "CS2010-03"
+ *		}
  * 
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
@@ -54,18 +58,18 @@
 // Cycle-processing Routines
 //------------------------------------------------------------------------------
 
-__device__ inline unsigned int DecodeInt(unsigned int encoded, unsigned int quad_byte){
+__device__ __forceinline__ unsigned int DecodeInt(unsigned int encoded, unsigned int quad_byte){
 	return (encoded >> quad_byte) & 0xff;		// shift right 8 bits per digit and return rightmost 8 bits
 }
 
 
-__device__ inline unsigned int EncodeInt(unsigned int count, unsigned int quad_byte) {
+__device__ __forceinline__ unsigned int EncodeInt(unsigned int count, unsigned int quad_byte) {
 	return count << quad_byte;					// shift left 8 bits per digit
 }
 
 
 template <typename K, unsigned long long RADIX_DIGITS, int BIT>
-__device__ inline void DecodeDigit(
+__device__ __forceinline__ void DecodeDigit(
 	K key, 
 	unsigned int &lane, 
 	unsigned int &quad_shift) 
@@ -79,7 +83,7 @@ __device__ inline void DecodeDigit(
 
 
 template <unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int LANES_PER_WARP, unsigned int BIT, bool FINAL_REDUCE>
-__device__ inline void ReduceEncodedCounts(
+__device__ __forceinline__ void ReduceEncodedCounts(
 	unsigned int local_counts[LANES_PER_WARP][4],
 	unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS]) 
 {
@@ -124,7 +128,7 @@ __device__ inline void ReduceEncodedCounts(
 	
 
 template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
-__device__ inline void Bucket(
+__device__ __forceinline__ void Bucket(
 	K input, 
 	unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS],
 	PreprocessFunctor preprocess = PreprocessFunctor()) 
@@ -136,54 +140,128 @@ __device__ inline void Bucket(
 }
 
 
-template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor, unsigned int CYCLES>
-__device__ inline void BlockOfLoads4(
-	K *d_in_keys,
-	unsigned int &offset,
-	unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS]) 
-{
-	K keys[4];
-
-	#pragma unroll
-	for (int i = 0; i < (int) CYCLES; i += 4) {
-		
-		keys[0] = d_in_keys[offset + (SRTS_THREADS * (i + 0)) + threadIdx.x];
-		keys[1] = d_in_keys[offset + (SRTS_THREADS * (i + 1)) + threadIdx.x];
-		keys[2] = d_in_keys[offset + (SRTS_THREADS * (i + 2)) + threadIdx.x];
-		keys[3] = d_in_keys[offset + (SRTS_THREADS * (i + 3)) + threadIdx.x];
-
-		if (FERMI(__CUDA_ARCH__)) __syncthreads();
-		
-		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[0], encoded_carry);
-		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[1], encoded_carry);
-		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[2], encoded_carry);
-		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[3], encoded_carry);
-	}
-
-	offset += SRTS_THREADS * CYCLES;
-}
 
 
 template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor, unsigned int CYCLES>
-__device__ inline void BlockOfLoads(
-	K *d_in_keys,
-	unsigned int &offset,
-	unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS]) 
+struct LoadOp;
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 1> 
 {
-	#pragma unroll
-	for (int i = 0; i < (int) CYCLES; i++) {
-	
-		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(
-			d_in_keys[offset + (SRTS_THREADS * i) + threadIdx.x], 
-			encoded_carry);
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		K key = d_in_keys[offset + threadIdx.x];
+		Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(key, encoded_carry);
 	}
-	
-	offset += SRTS_THREADS * CYCLES;
-}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 2> 
+{
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 1), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 4> 
+{
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 2), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8> 
+{
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+			K keys[8];
+				
+			keys[0] = d_in_keys[offset + (SRTS_THREADS * 0) + threadIdx.x];
+			keys[1] = d_in_keys[offset + (SRTS_THREADS * 1) + threadIdx.x];
+			keys[2] = d_in_keys[offset + (SRTS_THREADS * 2) + threadIdx.x];
+			keys[3] = d_in_keys[offset + (SRTS_THREADS * 3) + threadIdx.x];
+
+			if (FERMI(__CUDA_ARCH__)) __syncthreads();
+			
+			keys[4] = d_in_keys[offset + (SRTS_THREADS * 4) + threadIdx.x];
+			keys[5] = d_in_keys[offset + (SRTS_THREADS * 5) + threadIdx.x];
+			keys[6] = d_in_keys[offset + (SRTS_THREADS * 6) + threadIdx.x];
+			keys[7] = d_in_keys[offset + (SRTS_THREADS * 7) + threadIdx.x];
+			
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[0], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[1], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[2], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[3], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[4], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[5], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[6], encoded_carry);
+			Bucket<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor>(keys[7], encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16> {
+
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 8), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32> {
+
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 16), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64> {
+
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 32), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 128> {
+
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 64), encoded_carry);
+	}
+};
+
+template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int BIT, typename PreprocessFunctor>
+struct LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 252> {
+
+	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, unsigned int offset, unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
+	{
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 0), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 128), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 192), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 224), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 240), encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, offset + (SRTS_THREADS * 248), encoded_carry);
+	}
+};
 
 
 template <unsigned int SCAN_LANES>
-__device__ inline void ResetEncodedCarry(
+__device__ __forceinline__ void ResetEncodedCarry(
 	unsigned int encoded_carry[SCAN_LANES][SRTS_THREADS])
 {
 	#pragma unroll
@@ -194,7 +272,7 @@ __device__ inline void ResetEncodedCarry(
 
 
 template <typename K, unsigned int RADIX_DIGITS, unsigned int SCAN_LANES, unsigned int LANES_PER_WARP, unsigned int BIT, typename PreprocessFunctor>
-__device__ inline unsigned int ProcessLoads(
+__device__ __forceinline__ unsigned int ProcessLoads(
 	K *d_in_keys,
 	unsigned int loads,
 	unsigned int &offset,
@@ -204,7 +282,8 @@ __device__ inline unsigned int ProcessLoads(
 	// Unroll batches of loads with occasional reduction to avoid overflow
 	while (loads >= 252) {
 	
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 252>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 252>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 252;
 		loads -= 252;
 
 		// Reduce int local count registers to prevent overflow
@@ -220,35 +299,43 @@ __device__ inline unsigned int ProcessLoads(
 	
 	// Wind down loads in decreasing batch sizes
 	if (loads >= 128) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 128>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 128;
 		loads -= 128;
 	}
 	if (loads >= 64) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 64;
 		loads -= 64;
 	}
 	if (loads >= 32) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 32;
 		loads -= 32;
 	}
 	if (loads >= 16) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 16;
 		loads -= 16;
 	}
 	if (loads >= 8) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 8;
 		loads -= 8;
 	}
 	if (loads >= 4) {
-		BlockOfLoads4<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 4>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 4;
 		loads -= 4;
 	}
 	if (loads >= 2) {
-		BlockOfLoads<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 2>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 2;
 		loads -= 2;
 	}
 	if (loads) {
-		BlockOfLoads<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 1>(d_in_keys, offset, encoded_carry);
+		LoadOp<K, RADIX_DIGITS, SCAN_LANES, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, offset, encoded_carry);
+		offset += SRTS_THREADS * 1;
 	}
 	
 	return retval;

@@ -21,10 +21,14 @@
  * 		If you use|reference|benchmark this code, please cite our Technical 
  * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
  * 
- * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
- * 		Stream Architectures," University of Virginia, Department of 
- * 		Computer Science, Charlottesville, VA, USA, Technical Report 
- * 		CS2010-03, 2010.
+ *		@TechReport{ Merrill:Sorting:2010,
+ *        	author = "Duane Merrill and Andrew Grimshaw",
+ *        	title = "Revisiting Sorting for GPGPU Stream Architectures",
+ *        	year = "2010",
+ *        	institution = "University of Virginia, Department of Computer Science",
+ *        	address = "Charlottesville, VA, USA",
+ *        	number = "CS2010-03"
+ *		}
  * 
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
@@ -40,6 +44,8 @@
 
 #ifndef _SRTS_RADIX_SORT_COMMON_KERNEL_H_
 #define _SRTS_RADIX_SORT_COMMON_KERNEL_H_
+
+#include <cuda.h>
 
 
 //------------------------------------------------------------------------------
@@ -71,6 +77,12 @@
 #endif
 
 
+#ifdef __LP64__
+	#define SRTS_LP64 true
+#else
+	#define SRTS_LP64 false
+#endif
+
 
 //------------------------------------------------------------------------------
 // Handy routines 
@@ -98,20 +110,20 @@ template <typename K, int magnitude, bool shift_left> struct MagnitudeShiftOp;
 
 template <typename K, int magnitude> 
 struct MagnitudeShiftOp<K, magnitude, true> {
-	__device__ inline static K Shift(K key) {
+	__device__ __forceinline__ static K Shift(K key) {
 		return key << magnitude;
 	}
 };
 
 template <typename K, int magnitude> 
 struct MagnitudeShiftOp<K, magnitude, false> {
-	__device__ inline static K Shift(K key) {
+	__device__ __forceinline__ static K Shift(K key) {
 		return key >> magnitude;
 	}
 };
 
 template <typename K, int magnitude> 
-__device__ inline K MagnitudeShift(K key) {
+__device__ __forceinline__ K MagnitudeShift(K key) {
 	return MagnitudeShiftOp<K, (magnitude > 0) ? magnitude : magnitude * -1, (magnitude > 0)>::Shift(key);
 }
 
@@ -187,9 +199,9 @@ struct GlobalStorage {
 																		SM10_LOG_SETS_PER_PASS())		
 
 // Number of raking passes per cycle
-#define SM20_LOG_PASSES_PER_CYCLE(K, V)				(MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)		// 2 passes on GF100 (only for large keys/values)
-#define SM12_LOG_PASSES_PER_CYCLE(K, V)				(MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)		// 2 passes on GT200 (only for large keys/values)
-#define SM10_LOG_PASSES_PER_CYCLE(K, V)				(0)											// 1 pass on G80
+#define SM20_LOG_PASSES_PER_CYCLE(K, V)				(((MAX(sizeof(K), sizeof(V)) > 4) || SRTS_LP64) ? 0 : 1)	// 2 passes on GF100 (only one for large keys/values, or for 64-bit device pointers)
+#define SM12_LOG_PASSES_PER_CYCLE(K, V)				(MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)						// 2 passes on GT200 (only for large keys/values)
+#define SM10_LOG_PASSES_PER_CYCLE(K, V)				(0)															// 1 pass on G80
 #define SRTS_LOG_PASSES_PER_CYCLE(version, K, V)	((version >= 200) ? SM20_LOG_PASSES_PER_CYCLE(K, V) : 	\
 													 (version >= 120) ? SM12_LOG_PASSES_PER_CYCLE(K, V) : 	\
 																		SM10_LOG_PASSES_PER_CYCLE(K, V))		
@@ -223,12 +235,12 @@ struct GlobalStorage {
 
 template <typename T>
 struct NopFunctor{
-	__device__ __host__ inline void operator()(T &converted_key) {}
+	__device__ __host__ __forceinline__ void operator()(T &converted_key) {}
 };
 
 template <>
 struct NopFunctor<char>{
-	__device__ __host__ inline void operator()(signed char &converted_key) {}		// Funny....
+	__device__ __host__ __forceinline__ void operator()(signed char &converted_key) {}		// Funny....
 };
 
 // Generic unsigned types
@@ -239,12 +251,12 @@ template <typename T> struct KeyConversion {
 
 template <typename T>
 struct PreprocessKeyFunctor{
-	__device__ __host__ inline void operator()(T &converted_key) {}
+	__device__ __host__ __forceinline__ void operator()(T &converted_key) {}
 };
 
 template <typename T>
 struct PostprocessKeyFunctor {
-	__device__ __host__ inline void operator()(T &converted_key) {}
+	__device__ __host__ __forceinline__ void operator()(T &converted_key) {}
 };
 
 
@@ -256,7 +268,7 @@ template <> struct KeyConversion<float> {
 
 template <>
 struct PreprocessKeyFunctor<float> {
-	__device__ __host__ inline void operator()(unsigned int &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
 		int mask = -int(converted_key >> 31) | 0x80000000;
 		converted_key ^= mask;
 	}
@@ -264,7 +276,7 @@ struct PreprocessKeyFunctor<float> {
 
 template <>
 struct PostprocessKeyFunctor<float> {
-	__device__ __host__ inline void operator()(unsigned int &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
         int mask = ((converted_key >> 31) - 1) | 0x80000000;
         converted_key ^= mask;
     }
@@ -279,7 +291,7 @@ template <> struct KeyConversion<double> {
 
 template <>
 struct PreprocessKeyFunctor<double> {
-	__device__ __host__ inline void operator()(unsigned long long &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key) {
 		long long mask = -(long long)(converted_key >> 63) | 0x8000000000000000;
 		converted_key ^= mask;
 	}
@@ -287,7 +299,7 @@ struct PreprocessKeyFunctor<double> {
 
 template <>
 struct PostprocessKeyFunctor<double> {
-	__device__ __host__ inline void operator()(unsigned long long &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key)  {
 		long long mask = ((converted_key >> 63) - 1) | 0x8000000000000000;
         converted_key ^= mask;
     }
@@ -302,7 +314,7 @@ template <> struct KeyConversion<char> {
 
 template <>
 struct PreprocessKeyFunctor<char> {
-	__device__ __host__ inline void operator()(unsigned char &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key) {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
 	}
@@ -310,7 +322,7 @@ struct PreprocessKeyFunctor<char> {
 
 template <>
 struct PostprocessKeyFunctor<char> {
-	__device__ __host__ inline void operator()(unsigned char &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key)  {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
@@ -325,7 +337,7 @@ template <> struct KeyConversion<short> {
 
 template <>
 struct PreprocessKeyFunctor<short> {
-	__device__ __host__ inline void operator()(unsigned short &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned short &converted_key) {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(short) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
 	}
@@ -333,7 +345,7 @@ struct PreprocessKeyFunctor<short> {
 
 template <>
 struct PostprocessKeyFunctor<short> {
-	__device__ __host__ inline void operator()(unsigned short &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned short &converted_key)  {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(short) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
@@ -348,7 +360,7 @@ template <> struct KeyConversion<int> {
 
 template <>
 struct PreprocessKeyFunctor<int> {
-	__device__ __host__ inline void operator()(unsigned int &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(int) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
 	}
@@ -356,7 +368,7 @@ struct PreprocessKeyFunctor<int> {
 
 template <>
 struct PostprocessKeyFunctor<int> {
-	__device__ __host__ inline void operator()(unsigned int &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key)  {
 		const unsigned int SIGN_MASK = 1u << ((sizeof(int) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
@@ -370,7 +382,7 @@ template <> struct KeyConversion<long> {
 
 template <>
 struct PreprocessKeyFunctor<long> {
-	__device__ __host__ inline void operator()(unsigned long &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned long &converted_key) {
 		const unsigned long SIGN_MASK = 1ul << ((sizeof(long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
 	}
@@ -378,7 +390,7 @@ struct PreprocessKeyFunctor<long> {
 
 template <>
 struct PostprocessKeyFunctor<long> {
-	__device__ __host__ inline void operator()(unsigned long &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned long &converted_key)  {
 		const unsigned long SIGN_MASK = 1ul << ((sizeof(long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
@@ -393,7 +405,7 @@ template <> struct KeyConversion<long long> {
 
 template <>
 struct PreprocessKeyFunctor<long long> {
-	__device__ __host__ inline void operator()(unsigned long long &converted_key) {
+	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key) {
 		const unsigned long long SIGN_MASK = 1ull << ((sizeof(long long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
 	}
@@ -401,7 +413,7 @@ struct PreprocessKeyFunctor<long long> {
 
 template <>
 struct PostprocessKeyFunctor<long long> {
-	__device__ __host__ inline void operator()(unsigned long long &converted_key)  {
+	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key)  {
 		const unsigned long long SIGN_MASK = 1ull << ((sizeof(long long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
@@ -647,12 +659,12 @@ struct VecType<unsigned long long, 4> {
 
 
 //------------------------------------------------------------------------------
-// Common Inline Routines
+// Common __forceinline__ Routines
 //------------------------------------------------------------------------------
 
 
 template <unsigned int NUM_ELEMENTS, bool MULTI_SCAN> 
-__device__ inline unsigned int WarpScan(
+__device__ __forceinline__ unsigned int WarpScan(
 	volatile unsigned int warpscan[][NUM_ELEMENTS],
 	unsigned int partial_reduction,
 	unsigned int copy_section) {
@@ -685,7 +697,7 @@ __device__ inline unsigned int WarpScan(
 }
 
 
-__device__ inline void WarpReduce(
+__device__ __forceinline__ void WarpReduce(
 	unsigned int idx, 
 	volatile unsigned int *smem_tree, 
 	unsigned int partial_reduction) 
@@ -700,7 +712,7 @@ __device__ inline void WarpReduce(
 
 
 __shared__ unsigned int vote_reduction[2][WARP_THREADS];
-__device__ inline unsigned int EmulatedWarpVoteAll(unsigned int predicate) {
+__device__ __forceinline__ unsigned int EmulatedWarpVoteAll(unsigned int predicate) {
 
 	WarpReduce(threadIdx.x, vote_reduction[0], predicate);
 	return (vote_reduction[0][0] == WARP_THREADS);
@@ -708,7 +720,7 @@ __device__ inline unsigned int EmulatedWarpVoteAll(unsigned int predicate) {
 
 
 template <unsigned int LENGTH>
-__device__ inline unsigned int 
+__device__ __forceinline__ unsigned int 
 SerialReduce(unsigned int segment[]) {
 	
 	unsigned int reduce = segment[0];
@@ -723,7 +735,7 @@ SerialReduce(unsigned int segment[]) {
 
 
 template <unsigned int LENGTH>
-__device__ inline
+__device__ __forceinline__
 void SerialScan(unsigned int segment[], unsigned int seed0) {
 	
 	unsigned int seed1;

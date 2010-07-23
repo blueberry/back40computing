@@ -21,10 +21,14 @@
  * 		If you use|reference|benchmark this code, please cite our Technical 
  * 		Report (http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf):
  * 
- * 		Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU 
- * 		Stream Architectures," University of Virginia, Department of 
- * 		Computer Science, Charlottesville, VA, USA, Technical Report 
- * 		CS2010-03, 2010.
+ *		@TechReport{ Merrill:Sorting:2010,
+ *        	author = "Duane Merrill and Andrew Grimshaw",
+ *        	title = "Revisiting Sorting for GPGPU Stream Architectures",
+ *        	year = "2010",
+ *        	institution = "University of Virginia, Department of Computer Science",
+ *        	address = "Charlottesville, VA, USA",
+ *        	number = "CS2010-03"
+ *		}
  * 
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
@@ -34,7 +38,10 @@
 
 
 //------------------------------------------------------------------------------
-// Simple test driver program for SRTS Radix Sorting  
+// Simple test driver program for SRTS Radix Sorting.
+//
+// Useful for demonstrating how to integrate SRTS Radix Sorting into your 
+// application
 //------------------------------------------------------------------------------
 
 #include <stdlib.h> 
@@ -50,11 +57,8 @@
 // Sorting includes
 //------------------------------------------------------------------------------
 
-// Sorting includes
-#include <srts_radix_sort.cu>
-
-// Utilities and correctness-checking
-#include <srts_verifier.cu>
+#include <srts_radix_sort.cu>			// Sorting includes
+#include <test_radix_sort_utils.cu>		// Utilities and correctness-checking
 
 
 //------------------------------------------------------------------------------
@@ -62,9 +66,6 @@
 //------------------------------------------------------------------------------
 
 bool g_verbose;
-bool g_verbose2;
-bool g_verify;
-int  g_entropy_reduction = 0;
 
 
 //------------------------------------------------------------------------------
@@ -88,63 +89,21 @@ struct Fribbitz {
  */
 void Usage() 
 {
-	printf("\nsrts_radix_sort [--noprompt] [--v[2]] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
+	printf("\nsrts_radix_sort [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
 	printf("\n");
-	printf("\t--v\tDisplays kernel launch config info.\n");
-	printf("\n");
-	printf("\t--v2\tSame as --v, but displays the results to the console.\n");
+	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the sorting operation <num-iterations> times\n");
-	printf("\t\t\ton the device.  (Only copies input/output once.) Default = 1\n");
+	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
+	printf("\n");
 	printf("\t--keys-only\tSpecifies that keys are not accommodated by value pairings\n");
 	printf("\n");
-	printf("[--entropy-reduction=<level>\tSpecifies the number of bitwise-AND'ing\n");
-	printf("\t\t\titerations for random key data.  Default = 0, Identical keys = -1\n");
-	printf("\n");
 }
 
 
-/**
- * Generates random 32-bit keys.
- * 
- * We always take the second-order byte from rand() because the higher-order 
- * bits returned by rand() are commonly considered more uniformly distributed
- * than the lower-order bits.
- * 
- * We can decrease the entropy level of keys by adopting the technique 
- * of Thearling and Smith in which keys are computed from the bitwise AND of 
- * multiple random samples: 
- * 
- * entropy_reduction	| Effectively-unique bits per key
- * -----------------------------------------------------
- * -1					| 0
- * 0					| 32
- * 1					| 25.95
- * 2					| 17.41
- * 3					| 10.78
- * 4					| 6.42
- * ...					| ...
- * 
- */
-template <typename K>
-void RandomBits(K &key, int entropy_reduction) 
-{
-	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
-	unsigned short key_bits[NUM_USHORTS];
-	
-	for (int j = 0; j < NUM_USHORTS; j++) {
-		unsigned short halfword = 0xffff; 
-		for (int i = 0; i <= entropy_reduction; i++) {
-			halfword &= (rand() >> 8);
-		}
-		key_bits[j] = halfword;
-	}
-		
-	memcpy(&key, key_bits, sizeof(K));
-}
 
 
 /**
@@ -168,12 +127,18 @@ void TimedSort(
 	unsigned int iterations,
 	bool keys_only) 
 {
+    printf("%s, %d iterations, %d elements", 
+		(h_data == NULL) ? "keys-only" : "key-value",
+		iterations, 
+		num_elements);
+    fflush(stdout);
+	
 	//
 	// Create device storage for the sorting problem
 	//
 
-    GlobalStorage<K, V> key_value_storage = {NULL, NULL, NULL, NULL, NULL};
-    GlobalStorage<K> keys_only_storage = {NULL, NULL, NULL, NULL, NULL};
+    GlobalStorage<K, V> 	key_value_storage = {NULL, NULL, NULL, NULL, NULL};
+    GlobalStorage<K> 		keys_only_storage = {NULL, NULL, NULL, NULL, NULL};
 
 	// Allocate and initialize device memory for keys
 	unsigned int keys_mem_size = sizeof(K) * num_elements;
@@ -186,18 +151,20 @@ void TimedSort(
 		CUDA_SAFE_CALL( cudaMalloc((void**) &key_value_storage.data, data_mem_size) );
 	}
 	
+	CUT_CHECK_ERROR("Kernel execution failed (errors before launch)");
+	
 	
 	//
 	// Perform a single iteration to allocate memory, prime code caches, etc.
 	//
+	CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );	// copy keys
+	if (keys_only) { 
+		LaunchKeysOnlySort<K>(num_elements, keys_only_storage);
+	} else {
+		CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
+		LaunchKeyValueSort<K, V>(num_elements, key_value_storage);
+	}
 	
-	CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.keys, h_keys, keys_mem_size, cudaMemcpyHostToDevice) );
-	if (!keys_only) CUDA_SAFE_CALL( cudaMemcpy(key_value_storage.data, h_data, data_mem_size, cudaMemcpyHostToDevice) );
-
-	if (keys_only) 
-		LaunchKeysOnlySort<K>(num_elements, keys_only_storage, g_verbose);
-	else 
-		LaunchKeyValueSort<K, V>(num_elements, key_value_storage, g_verbose);
 	
 	//
 	// Perform the timed number of sorting iterations
@@ -208,8 +175,6 @@ void TimedSort(
 	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
 	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
 
-	// Make sure there are no CUDA errors before we launch
-	CUT_CHECK_ERROR("Kernel execution failed (errors before launch)");
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
@@ -223,9 +188,9 @@ void TimedSort(
 
 		// Call the sorting API routine
 		if (keys_only) 
-			LaunchKeysOnlySort<K>(num_elements, keys_only_storage, false);
+			LaunchKeysOnlySort<K>(num_elements, keys_only_storage);
 		else 
-			LaunchKeyValueSort<K, V>(num_elements, key_value_storage, false);
+			LaunchKeyValueSort<K, V>(num_elements, key_value_storage);
 
 		// End cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
@@ -238,17 +203,11 @@ void TimedSort(
 	// Display timing information
 	//
 	
-	// Display 
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
-    printf("%s, %d entropy reduction, %d iterations, %d elements, %f GPU ms, %f x10^9 elts/sec\n", 
-		(h_data == NULL) ? "keys-only" : "key-value",
-		g_entropy_reduction,
-		iterations, 
-		num_elements,
+    printf(", %f GPU ms, %f x10^9 elts/sec\n", 
 		avg_runtime,
 		throughput);
-    
 	
     // 
     // Copy out data & free allocated memory
@@ -298,33 +257,30 @@ void TestSort(
 	h_keys = (K*) malloc(num_elements * sizeof(K));
 	if (!keys_only) h_data = (V*) malloc(num_elements * sizeof(V));
 
+	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-		RandomBits<K>(h_keys[i], g_entropy_reduction);
+		RandomBits<K>(h_keys[i], 0);
 	}
-	
-    // Run the timing test 
 
+    // Run the timing test 
 	TimedSort<K, V>(num_elements, h_keys, h_data, iterations, keys_only);
     
-    // Verify solution
-
-	if (g_verify) VerifySort<K>(h_keys, num_elements, g_verbose);
-	printf("\n");
-	fflush(stdout);
-	
 	// Display sorted key data
-
-	if (g_verbose2) {
+	if (g_verbose) {
 		printf("\n\nKeys:\n");
 		for (int i = 0; i < num_elements; i++) {	
 			PrintValue<K>(h_keys[i]);
 			printf(", ");
 		}
-		printf("\n");
+		printf("\n\n");
 	}	
 	
-	// Free our allocated host memory 
+    // Verify solution
+	VerifySort<K>(h_keys, num_elements, true);
+	printf("\n");
+	fflush(stdout);
 
+	// Free our allocated host memory 
 	if (h_keys != NULL) free(h_keys);
     if (h_data != NULL) free(h_data);
 }
@@ -356,17 +312,10 @@ int main( int argc, char** argv) {
 
     cutGetCmdLineArgumenti( argc, (const char**) argv, "i", (int*)&iterations);
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "entropy-reduction", (int*)&g_entropy_reduction);
     keys_only = cutCheckCmdLineFlag( argc, (const char**) argv, "keys-only");
-	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
-		g_verbose = true;
-	} else {
-		g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
-	}
-	g_verify = !cutCheckCmdLineFlag( argc, (const char**) argv, "noverify");
+	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 	
 	// Execute test(s)
-	
 /*	
 	TestSort<float, float>(
 			iterations,
@@ -414,10 +363,7 @@ int main( int argc, char** argv) {
 			iterations,
 			num_elements, 
 			keys_only);
-*/
-
-	
-	CUT_EXIT(argc, argv);
+*/			
 }
 
 
