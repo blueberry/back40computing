@@ -72,6 +72,14 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
+DEFINES = 
+
+ifeq ($(fermi-ecc), 1)
+	# Define if you're planning on using Fermi with ECC. (This enables logic 
+	# designed for SM1.0 in order to programmatically coalesce unaligned 
+	# scatters becuase they are so painfully expensive with ECC) 
+	DEFINES += -DFERMI_ECC		
+endif
 
 NVCCFLAGS = -Xptxas -v
 
@@ -103,7 +111,7 @@ bin/test_radix_sort_simple_$(NVCC_VERSION) : obj/test_radix_sort_simple.cu.sm.$(
 	
 obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o : test_radix_sort_simple.cu srts_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu test_radix_sort_utils.cu
 	mkdir -p obj
-	$(NVCC) $(SM_TARGETS) -o obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
 
 
 #
@@ -119,7 +127,7 @@ bin/test_radix_sort_advanced_$(NVCC_VERSION) : obj/test_radix_sort_advanced.cu.s
 
 obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o : test_radix_sort_advanced.cu srts_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu test_radix_sort_utils.cu
 	mkdir -p obj
-	$(NVCC) $(SM_TARGETS) -o obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
 
 
 #

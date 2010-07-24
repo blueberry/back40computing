@@ -61,7 +61,7 @@
 #define LOG_WARP_THREADS							5									// 32 threads in a warp
 #define WARP_THREADS								(1 << LOG_WARP_THREADS)
 #define LOG_MEM_BANKS(version) 						((version >= 200) ? 5 : 4)			// 32 banks on fermi, 16 on tesla
-
+#define MEM_BANKS(version)							(1 << LOG_MEM_BANKS(version))
 
 #if __CUDA_ARCH__ >= 200
 	#define FastMul(a, b) (a * b)

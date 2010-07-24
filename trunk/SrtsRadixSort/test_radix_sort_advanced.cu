@@ -182,7 +182,7 @@ bool CanFit(cudaDeviceProp &device_props, bool keys_only, unsigned long long pro
 	
 	long long bytes = problem_size * sizeof(K) * 2;
 	if (!keys_only) bytes += problem_size * sizeof(V) * 2;
-	return (bytes < ((double) device_props.totalGlobalMem) * 0.90); 	// allow up to 90% capacity 
+	return (bytes < ((double) device_props.totalGlobalMem) * 0.89); 	// allow up to 90% capacity 
 }
 
 
