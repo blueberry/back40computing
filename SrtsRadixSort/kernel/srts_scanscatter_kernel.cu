@@ -595,15 +595,16 @@ __device__ __forceinline__ void ScatterPass(
 	unsigned int digit_scan[2][RADIX_DIGITS], 
 	unsigned int carry[RADIX_DIGITS], 
 	int extra[1],
-	unsigned int base_digit)				
+	unsigned int base_digit,				
+	PostprocessFunctor postprocess = PostprocessFunctor())				
 {
-	const unsigned int LOG_HALF_WARP_THREADS = LOG_WARP_THREADS - 1;
-	const unsigned int HALF_WARP_THREADS = 1 << LOG_HALF_WARP_THREADS;
+	const unsigned int LOG_STORE_TXN_THREADS = LOG_MEM_BANKS(__CUDA_ARCH__);
+	const unsigned int STORE_TXN_THREADS = 1 << LOG_STORE_TXN_THREADS;
 	
-	int half_warp_idx = threadIdx.x & (HALF_WARP_THREADS - 1);
-	int half_warp_digit = threadIdx.x >> LOG_HALF_WARP_THREADS;
+	int store_txn_idx = threadIdx.x & (STORE_TXN_THREADS - 1);
+	int store_txn_digit = threadIdx.x >> LOG_STORE_TXN_THREADS;
 	
-	int my_digit = base_digit + half_warp_digit;
+	int my_digit = base_digit + store_txn_digit;
 	if (my_digit < RADIX_DIGITS) {
 	
 		int my_exclusive_scan = digit_scan[1][my_digit - 1];
@@ -611,13 +612,17 @@ __device__ __forceinline__ void ScatterPass(
 		int my_digit_count = my_inclusive_scan - my_exclusive_scan;
 
 		int my_carry = carry[my_digit] + my_exclusive_scan;
-		int my_aligned_offset = half_warp_idx - (my_carry & (HALF_WARP_THREADS - 1));
+		int my_aligned_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
 		
 		while (my_aligned_offset < my_digit_count) {
+
 			if ((my_aligned_offset >= 0) && (UNGUARDED_IO || (my_exclusive_scan + my_aligned_offset < extra[0]))) { 
-				d_out[my_carry + my_aligned_offset] = swapmem[my_exclusive_scan + my_aligned_offset];
+			
+				T datum = swapmem[my_exclusive_scan + my_aligned_offset];
+				postprocess(datum);
+				d_out[my_carry + my_aligned_offset] = datum;
 			}
-			my_aligned_offset += 16;
+			my_aligned_offset += STORE_TXN_THREADS;
 		}
 	}
 }
@@ -638,7 +643,7 @@ __device__ __forceinline__ void SwapAndScatterPairs(
 	unsigned int digit_scan[2][RADIX_DIGITS], 
 	int extra[1])				
 {
-	const unsigned int SCATTER_PASS_DIGITS = SRTS_WARPS * 2;
+	const unsigned int SCATTER_PASS_DIGITS = SRTS_WARPS * (WARP_THREADS / MEM_BANKS(__CUDA_ARCH__));
 	const unsigned int SCATTER_PASSES = RADIX_DIGITS / SCATTER_PASS_DIGITS;
 
 	// Push in pairs
@@ -653,6 +658,10 @@ __device__ __forceinline__ void SwapAndScatterPairs(
 	if (SCATTER_PASSES > 1) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 1);
 	if (SCATTER_PASSES > 2) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 2);
 	if (SCATTER_PASSES > 3) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 3);
+	if (SCATTER_PASSES > 4) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 4);
+	if (SCATTER_PASSES > 5) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 5);
+	if (SCATTER_PASSES > 6) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 6);
+	if (SCATTER_PASSES > 7) ScatterPass<T, RADIX_DIGITS, UNGUARDED_IO, PostprocessFunctor>(exchange, d_out, digit_scan, carry, extra, SCATTER_PASS_DIGITS * 7);
 }
 
 
@@ -693,7 +702,7 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, extra);
 
 		// Swap and scatter data
-		SwapAndScatterPairs<V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
+		SwapAndScatterPairs<V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, NopFunctor<V> >(
 			datapairs, ranks, (V*) exchange, d_out_data, carry, digit_scan, extra);				
 	}
 }
@@ -867,7 +876,7 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 	// Scatter 
 	//-------------------------------------------------------------------------
 
-#if __CUDA_ARCH__ < 130		
+#if ((__CUDA_ARCH__ < 130) || FERMI_ECC)		
 
 	SwapAndScatterSm10<K, V, KEYS_ONLY, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
