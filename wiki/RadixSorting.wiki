@@ -13,7 +13,11 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 This project implements a very fast, efficient radix sorting method for CUDA-capable devices (e.g., NVIDIA GPUs).  For sorting large sequences of fixed-length keys (and values), we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results _*exceed the Giga-keys/sec average sorting rate*_ (i.e., one billion 32-bit keys sorted per second).  
 
-In addition, one of our design goals for this project is flexibility.  We've designed our implementation to adapt itself and perform well for any target architecture or input type(s).  [#Building_and_Adapting Download] and play around with the implementation yourself!
+In addition, one of our design goals for this project is flexibility.  We've designed our implementation to adapt itself and perform well for
+ * A wide variety of input types
+ * On all generations and configurations of programmable NVIDIA GPUs.  
+
+[#Building_and_Adapting Download] and play around with the implementation yourself!
 
 
 ====<FONT color=#006666>Radix Sorting</FONT>====
