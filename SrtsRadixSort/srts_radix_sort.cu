@@ -116,18 +116,18 @@ unsigned int GridSize(
 				max_grid_size = device_props.multiProcessorCount * SRTS_BULK_CTA_OCCUPANCY(sm_version);
 				if (num_elements / cycle_elements > max_grid_size) {
 	
-					unsigned int multiplier = 16;
+					double multiplier = 16.0;
 	
-					double top_delta = 0.078;	
-					double bottom_delta = 0.078;
+					double top_delta = 0.125;	
+					double bottom_delta = 0.125;
 	
 					unsigned int dividend = (num_elements + cycle_elements - 1) / cycle_elements;
 	
 					while(true) {
 	
-						double quotient = ((double) dividend) / (multiplier * max_grid_size);
+						double quotient = ((double) dividend) / (multiplier * max_grid_size / 3.0);
 						quotient -= (int) quotient;
-	
+
 						if ((quotient > top_delta) && (quotient < 1 - bottom_delta)) {
 							break;
 						}
@@ -167,7 +167,7 @@ unsigned int GridSize(
 /**
  * 
  */
-template <typename K, typename V, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
+template <typename K, typename V, bool KEYS_ONLY, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
 cudaError_t SortDigit(
 	cudaDeviceProp device_props,
 	unsigned int sm_version,
@@ -217,25 +217,13 @@ cudaError_t SortDigit(
 			FlushKernel<<<grid_size, SRTS_THREADS, 3000>>>();
 
 	dynamic_smem = 0;
-	if (problem_storage.data == NULL) {
-		// keys-only
-		SrtsScanDigitBulk<K, V, true, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, threads, 0>>>(
-			problem_storage.temp_spine,
-			problem_storage.keys,
-			problem_storage.temp_keys,
-			problem_storage.data,
-			problem_storage.temp_data,
-			work_decomposition);
-	} else {
-		// key-value
-		SrtsScanDigitBulk<K, V, false, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, threads, 0>>>(
-			problem_storage.temp_spine,
-			problem_storage.keys,
-			problem_storage.temp_keys,
-			problem_storage.data,
-			problem_storage.temp_data,
-			work_decomposition);
-	}
+	SrtsScanDigitBulk<K, V, KEYS_ONLY, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, threads, 0>>>(
+		problem_storage.temp_spine,
+		problem_storage.keys,
+		problem_storage.temp_keys,
+		problem_storage.data,
+		problem_storage.temp_data,
+		work_decomposition);
 	
 	return cudaSuccess;
 }
@@ -257,14 +245,14 @@ cudaError_t SortDigit(
  *   (2) As a consequence, you get a mess of shift-bounds warnings for these 
  *       illegitimate kernels that can never be called. 
  */
-template <typename K, typename V, unsigned int RADIX_BITS, typename PreprocessFunctor, typename PostprocessFunctor> struct SortingEnactor;
+template <typename K, typename V, bool KEYS_ONLY,unsigned int RADIX_BITS, typename PreprocessFunctor, typename PostprocessFunctor> struct SortingEnactor;
 
 
 /**
  * Enactor for sorting 1-byte keys 
  */
-template <typename V, typename PreprocessFunctor, typename PostprocessFunctor> 
-struct SortingEnactor<unsigned char, V, 4, PreprocessFunctor, PostprocessFunctor> {
+template <typename V, bool KEYS_ONLY,typename PreprocessFunctor, typename PostprocessFunctor> 
+struct SortingEnactor<unsigned char, V, KEYS_ONLY, 4, PreprocessFunctor, PostprocessFunctor> {
 	
 	static cudaError_t EnactDigitPlacePasses(
 			cudaDeviceProp device_props,
@@ -280,8 +268,8 @@ struct SortingEnactor<unsigned char, V, 4, PreprocessFunctor, PostprocessFunctor
 		
 		// Sort using 4-bit radix digit passes  
 		
-		SortDigit<ConvertedKeyType, V, 4, 0, PreprocessFunctor, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
-		SortDigit<ConvertedKeyType, V, 4, 4, NopFunctor<ConvertedKeyType>, PostprocessFunctor> (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 0, PreprocessFunctor, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 4, NopFunctor<ConvertedKeyType>, PostprocessFunctor> (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
 
 		return cudaSuccess;
 	}
@@ -291,8 +279,8 @@ struct SortingEnactor<unsigned char, V, 4, PreprocessFunctor, PostprocessFunctor
 /**
  * Enactor for sorting 2-byte keys 
  */
-template <typename V, typename PreprocessFunctor, typename PostprocessFunctor> 
-struct SortingEnactor<unsigned short, V, 4, PreprocessFunctor, PostprocessFunctor> {
+template <typename V, bool KEYS_ONLY,typename PreprocessFunctor, typename PostprocessFunctor> 
+struct SortingEnactor<unsigned short, V, KEYS_ONLY, 4, PreprocessFunctor, PostprocessFunctor> {
 	
 	static cudaError_t EnactDigitPlacePasses(
 			cudaDeviceProp device_props,
@@ -307,10 +295,10 @@ struct SortingEnactor<unsigned short, V, 4, PreprocessFunctor, PostprocessFuncto
 		typedef unsigned short ConvertedKeyType;
 
 		// Sort using 4-bit radix digit passes  
-		SortDigit<ConvertedKeyType, V, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
-		SortDigit<ConvertedKeyType, V, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 12, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 12, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
 
 		return cudaSuccess;
 	}
@@ -320,8 +308,8 @@ struct SortingEnactor<unsigned short, V, 4, PreprocessFunctor, PostprocessFuncto
 /**
  * Enactor for sorting 4-byte keys 
  */
-template <typename V, typename PreprocessFunctor, typename PostprocessFunctor> 
-struct SortingEnactor<unsigned int, V, 4, PreprocessFunctor, PostprocessFunctor> {
+template <typename V, bool KEYS_ONLY,typename PreprocessFunctor, typename PostprocessFunctor> 
+struct SortingEnactor<unsigned int, V, KEYS_ONLY, 4, PreprocessFunctor, PostprocessFunctor> {
 	
 	static cudaError_t EnactDigitPlacePasses(
 			cudaDeviceProp device_props,
@@ -336,14 +324,14 @@ struct SortingEnactor<unsigned int, V, 4, PreprocessFunctor, PostprocessFunctor>
 		typedef unsigned int ConvertedKeyType;
 		
 		// Sort using 4-bit radix digit passes  
-		SortDigit<ConvertedKeyType, V, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
-		SortDigit<ConvertedKeyType, V, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 28, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 28, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
 
 		return cudaSuccess;
 	}
@@ -353,8 +341,8 @@ struct SortingEnactor<unsigned int, V, 4, PreprocessFunctor, PostprocessFunctor>
 /**
  * Enactor for sorting 8-byte keys 
  */
-template <typename V, typename PreprocessFunctor, typename PostprocessFunctor> 
-struct SortingEnactor<unsigned long long, V, 4, PreprocessFunctor, PostprocessFunctor> {
+template <typename V, bool KEYS_ONLY,typename PreprocessFunctor, typename PostprocessFunctor> 
+struct SortingEnactor<unsigned long long, V, KEYS_ONLY, 4, PreprocessFunctor, PostprocessFunctor> {
 	
 	static cudaError_t EnactDigitPlacePasses(
 			cudaDeviceProp device_props,
@@ -369,26 +357,146 @@ struct SortingEnactor<unsigned long long, V, 4, PreprocessFunctor, PostprocessFu
 		typedef unsigned long long ConvertedKeyType;
 		
 		// Sort using 4-bit radix digit passes  
-		SortDigit<ConvertedKeyType, V, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
-		SortDigit<ConvertedKeyType, V, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 28, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 32, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 36, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 40, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 44, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 48, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 52, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 56, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
-		SortDigit<ConvertedKeyType, V, 4, 60, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 0,  PreprocessFunctor,            NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements);
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 28, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 32, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 36, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 40, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 44, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 48, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 52, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 56, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> > (device_props, sm_version, num_elements, grid_size, problem_storage, work_decomposition, spine_block_elements); 
+		SortDigit<ConvertedKeyType, V, KEYS_ONLY, 4, 60, NopFunctor<ConvertedKeyType>, PostprocessFunctor>            (device_props, sm_version, num_elements, grid_size, swizzle_storage, work_decomposition, spine_block_elements); 
 
 		return cudaSuccess;
 	}
 };
+
+
+
+/**
+ */
+template <typename K, typename V, bool KEYS_ONLY>
+cudaError_t EnactSort(
+	unsigned int num_elements, 
+	GlobalStorage<K, V> &problem_storage,	
+	int max_grid_size) 
+{
+	// Sort using 4-bit radix digit passes  
+	const unsigned int RADIX_BITS = 4;
+	
+	//
+	// Get device properties
+	// 
+	
+	int current_device;
+	cudaDeviceProp device_props;
+	cudaGetDevice(&current_device);
+	cudaGetDeviceProperties(&device_props, current_device);
+	unsigned int sm_version = device_props.major * 100 + device_props.minor * 10;
+	
+	//
+	// Determine number of CTAs to launch, shared memory, cycle elements, etc.
+	//
+
+	unsigned int cycle_elements = SRTS_CYCLE_ELEMENTS(sm_version, K, V);
+	unsigned int grid_size = GridSize(num_elements, max_grid_size, cycle_elements, device_props, sm_version);
+	
+	//
+	// Determine how many elements each CTA will process
+	//
+	
+	unsigned int total_cycles 			= num_elements / cycle_elements;
+	unsigned int cycles_per_block 		= total_cycles / grid_size;						
+	unsigned int extra_cycles 			= total_cycles - (cycles_per_block * grid_size);
+	unsigned int spine_cycles 			= ((grid_size * (1 << RADIX_BITS)) + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS;
+	unsigned int spine_block_elements 	= spine_cycles * SRTS_SPINE_CYCLE_ELEMENTS;
+
+	CtaDecomposition work_decomposition = {
+		extra_cycles,										// num_big_blocks
+		(cycles_per_block + 1) * cycle_elements,			// big_block_elements
+		cycles_per_block * cycle_elements,					// normal_block_elements
+		num_elements - (total_cycles * cycle_elements)};	// extra_elements_last_block
+
+	//
+	// Allocate device memory for temporary storage (if necessary)
+	//
+
+	if (problem_storage.temp_keys == NULL) {
+		cudaMalloc((void**) &problem_storage.temp_keys, num_elements * sizeof(K));
+	}
+	if (!KEYS_ONLY && (problem_storage.temp_data == NULL)) {
+		cudaMalloc((void**) &problem_storage.temp_data, num_elements * sizeof(V));
+	}
+	if (problem_storage.temp_spine == NULL) {
+		cudaMalloc((void**) &problem_storage.temp_spine, spine_block_elements * sizeof(unsigned int));
+	}
+	
+	//
+	// Create storage management structures
+	//
+	
+	// Determine suitable type of unsigned byte storage to use for keys 
+	typedef typename KeyConversion<K>::UnsignedBits ConvertedKeyType;
+	
+	// Copy storage pointers to an appropriately typed stucture 
+	GlobalStorage<ConvertedKeyType, V> converted_storage = {
+		(ConvertedKeyType *) problem_storage.keys,				// keys
+		problem_storage.data,									// data
+		(ConvertedKeyType *) problem_storage.temp_keys,			// temp_keys
+		problem_storage.temp_data,								// temp_data
+		problem_storage.temp_spine};							// temp_spine
+
+	// Create a secondary structure for flip-flopping between passes
+	GlobalStorage<ConvertedKeyType, V> swizzle_storage = {
+		(ConvertedKeyType *) problem_storage.temp_keys,			// keys
+		problem_storage.temp_data,								// data
+		(ConvertedKeyType *) problem_storage.keys,				// temp_keys
+		problem_storage.data,									// temp_data
+		problem_storage.temp_spine};							// temp_spine
+
+	// 
+	// Enact the sorting operation
+	//
+	
+	if (SRTS_DEBUG) {
+		printf("RakingReduction <<<%d,%d>>>(\n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d)\n\n",
+			grid_size, SRTS_THREADS, 0, SRTS_CYCLE_ELEMENTS(sm_version, K, V), work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
+		printf("SrtsScanSpine<<<%d,%d>>>(\n\tspine_block_elements: %d)\n\n", 
+			grid_size, SRTS_SPINE_THREADS, spine_block_elements);
+		printf("SrtsScanDigitBulk <<<%d,%d>>>(\n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d,\n\textra_elements_last_block: %d)\n\n", 
+			grid_size, SRTS_THREADS, SRTS_CYCLE_ELEMENTS(sm_version, K, V), work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
+	}	
+
+	cudaError_t retval = SortingEnactor<ConvertedKeyType, V, KEYS_ONLY, RADIX_BITS, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> >::EnactDigitPlacePasses(
+		device_props,
+		sm_version,
+		num_elements,
+		spine_block_elements,
+		grid_size,
+		converted_storage,
+		swizzle_storage,
+		work_decomposition);
+	
+	// 
+	// Copy (possibly updated/swizzled) storage pointers back
+	//
+
+	problem_storage.keys = (K*) converted_storage.keys;
+	problem_storage.data = (V*) converted_storage.data;
+	problem_storage.temp_keys = (K*) converted_storage.temp_keys;
+	problem_storage.temp_data = (V*) converted_storage.temp_data;
+	problem_storage.temp_spine = converted_storage.temp_spine;
+	
+	return retval;
+}
+
 
 
 /**
@@ -444,114 +552,10 @@ cudaError_t LaunchKeyValueSort(
 	GlobalStorage<K, V> &problem_storage,	
 	int max_grid_size = -1) 
 {
-	// Sort using 4-bit radix digit passes  
-	const unsigned int RADIX_BITS = 4;
-	bool keys_only = (problem_storage.data == NULL);
-	
-	//
-	// Get device properties
-	// 
-	
-	int current_device;
-	cudaDeviceProp device_props;
-	cudaGetDevice(&current_device);
-	cudaGetDeviceProperties(&device_props, current_device);
-	unsigned int sm_version = device_props.major * 100 + device_props.minor * 10;
-	
-	//
-	// Determine number of CTAs to launch, shared memory, cycle elements, etc.
-	//
-
-	unsigned int cycle_elements = SRTS_CYCLE_ELEMENTS(sm_version, K, V);
-	unsigned int grid_size = GridSize(num_elements, max_grid_size, cycle_elements, device_props, sm_version);
-	
-	//
-	// Determine how many elements each CTA will process
-	//
-	
-	unsigned int total_cycles 			= num_elements / cycle_elements;
-	unsigned int cycles_per_block 		= total_cycles / grid_size;						
-	unsigned int extra_cycles 			= total_cycles - (cycles_per_block * grid_size);
-	unsigned int spine_cycles 			= ((grid_size * (1 << RADIX_BITS)) + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS;
-	unsigned int spine_block_elements 	= spine_cycles * SRTS_SPINE_CYCLE_ELEMENTS;
-
-	CtaDecomposition work_decomposition = {
-		extra_cycles,										// num_big_blocks
-		(cycles_per_block + 1) * cycle_elements,			// big_block_elements
-		cycles_per_block * cycle_elements,					// normal_block_elements
-		num_elements - (total_cycles * cycle_elements)};	// extra_elements_last_block
-
-	//
-	// Allocate device memory for temporary storage (if necessary)
-	//
-
-	if (problem_storage.temp_keys == NULL) {
-		cudaMalloc((void**) &problem_storage.temp_keys, num_elements * sizeof(K));
-	}
-	if (!keys_only && (problem_storage.temp_data == NULL)) {
-		cudaMalloc((void**) &problem_storage.temp_data, num_elements * sizeof(V));
-	}
-	if (problem_storage.temp_spine == NULL) {
-		cudaMalloc((void**) &problem_storage.temp_spine, spine_block_elements * sizeof(unsigned int));
-	}
-	
-	//
-	// Create storage management structures
-	//
-	
-	// Determine suitable type of unsigned byte storage to use for keys 
-	typedef typename KeyConversion<K>::UnsignedBits ConvertedKeyType;
-	
-	// Copy storage pointers to an appropriately typed stucture 
-	GlobalStorage<ConvertedKeyType, V> converted_storage = {
-		(ConvertedKeyType *) problem_storage.keys,				// keys
-		problem_storage.data,									// data
-		(ConvertedKeyType *) problem_storage.temp_keys,			// temp_keys
-		problem_storage.temp_data,								// temp_data
-		problem_storage.temp_spine};							// temp_spine
-
-	// Create a secondary structure for flip-flopping between passes
-	GlobalStorage<ConvertedKeyType, V> swizzle_storage = {
-		(ConvertedKeyType *) problem_storage.temp_keys,			// keys
-		problem_storage.temp_data,								// data
-		(ConvertedKeyType *) problem_storage.keys,				// temp_keys
-		problem_storage.data,									// temp_data
-		problem_storage.temp_spine};							// temp_spine
-
-	// 
-	// Enact the sorting operation
-	//
-	
-	if (SRTS_DEBUG) {
-		printf("RakingReduction <<<%d,%d>>>(\n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d)\n\n",
-			grid_size, SRTS_THREADS, 0, SRTS_CYCLE_ELEMENTS(sm_version, K, V), work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
-		printf("SrtsScanSpine<<<%d,%d>>>(\n\tspine_block_elements: %d)\n\n", 
-			grid_size, SRTS_SPINE_THREADS, spine_block_elements);
-		printf("SrtsScanDigitBulk <<<%d,%d>>>(\n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d,\n\textra_elements_last_block: %d)\n\n", 
-			grid_size, SRTS_THREADS, SRTS_CYCLE_ELEMENTS(sm_version, K, V), work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
-	}	
-
-	cudaError_t retval = SortingEnactor<ConvertedKeyType, V, RADIX_BITS, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> >::EnactDigitPlacePasses(
-		device_props,
-		sm_version,
-		num_elements,
-		spine_block_elements,
-		grid_size,
-		converted_storage,
-		swizzle_storage,
-		work_decomposition);
-	
-	// 
-	// Copy (possibly updated/swizzled) storage pointers back
-	//
-
-	problem_storage.keys = (K*) converted_storage.keys;
-	problem_storage.data = (V*) converted_storage.data;
-	problem_storage.temp_keys = (K*) converted_storage.temp_keys;
-	problem_storage.temp_data = (V*) converted_storage.temp_data;
-	problem_storage.temp_spine = converted_storage.temp_spine;
-	
-	return retval;
+	return EnactSort<K, V, false>(
+		num_elements, 
+		problem_storage,	
+		max_grid_size);
 }
 
 
@@ -613,7 +617,7 @@ cudaError_t LaunchKeysOnlySort(
 	K *satellite_data = problem_storage.data;
 	problem_storage.data = NULL;
 	
-	cudaError_t retval = LaunchKeyValueSort<K, K>(
+	cudaError_t retval = EnactSort<K, K, true>(
 		num_elements, 
 		problem_storage,	
 		max_grid_size);

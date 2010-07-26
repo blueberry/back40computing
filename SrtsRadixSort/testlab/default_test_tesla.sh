@@ -3,9 +3,9 @@
 export CUDA_PROFILE=1
 export CUDA_PROFILE_CSV=1
 
-for KEYBYTES in 1 2 4 8
+for KEYBYTES in 4 8 1 2
 do
-	for VALUEBYTES in 0 4 8 16
+	for VALUEBYTES in 4 0 8 16
 	do
 
 		export CUDA_PROFILE_LOG=output/$HOSTNAME.Cuda30.${KEYBYTES}ByteKeys.${VALUEBYTES}ByteValues.MaxSize268M.profile.a
