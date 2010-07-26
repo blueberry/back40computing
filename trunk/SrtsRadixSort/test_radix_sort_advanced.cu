@@ -51,6 +51,7 @@
 #include <string.h> 
 #include <math.h> 
 #include <float.h>
+#include <pthread.h>
 
 #include <inc/cutil.h>
 
@@ -178,10 +179,15 @@ void ReadList(
  * Returns whether or not the problem will fit on the device.
  */
 template <typename K, typename V>
-bool CanFit(cudaDeviceProp &device_props, bool keys_only, unsigned long long problem_size) {
+bool CanFit(cudaDeviceProp &device_props, bool keys_only, unsigned long long problem_size, unsigned long long spine_len) {
 	
-	long long bytes = problem_size * sizeof(K) * 2;
+	long long bytes = (problem_size * sizeof(K) * 2) + (spine_len * sizeof(unsigned int));
 	if (!keys_only) bytes += problem_size * sizeof(V) * 2;
+
+	if (device_props.totalGlobalMem < 1024 * 1024 * 513) {
+		return (bytes < ((double) device_props.totalGlobalMem) * 0.81); 	// allow up to 81% capacity for 512MB   
+	}
+	
 	return (bytes < ((double) device_props.totalGlobalMem) * 0.89); 	// allow up to 90% capacity 
 }
 
@@ -291,9 +297,9 @@ void TestSort(
 {
 	unsigned int radix_bits = 4;
 	
-    GlobalStorage<K, V> device_storage = {NULL, NULL, NULL, NULL, NULL};
+	GlobalStorage<K, V> device_storage = {NULL, NULL, NULL, NULL, NULL};
 	K* h_keys;
-
+	
 	// Get device properties
 	int current_device;
 	cudaDeviceProp device_props;
@@ -302,23 +308,6 @@ void TestSort(
 	unsigned int sm_version = device_props.major * 100 + device_props.minor * 10;
 	unsigned int cycle_elements = SRTS_CYCLE_ELEMENTS(sm_version, K, V);
 	
-	// find maximum problem size in the list of problem sizes
-	unsigned int max_problem_size = 0;
-	for (int i = 0; i < num_problem_sizes; i++) {
-		if ((problem_sizes[i] > max_problem_size) && CanFit<K, V>(device_props, keys_only, problem_sizes[i])) {
-			max_problem_size = problem_sizes[i];
-		}
-	}
-	
-	// Allocate device memory
-	h_keys = (K*) malloc(max_problem_size * sizeof(K));
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.keys, max_problem_size * sizeof(K)) );
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.temp_keys, max_problem_size * sizeof(K)));
-	if (!keys_only) {
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.data, max_problem_size * sizeof(V)));
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.temp_data, max_problem_size * sizeof(V)));
-	}
-
 	// Find largest maximum grid size in list of maximum grid sizes
 	int max_grid_size = -1;
 	for (int i = 0; i < num_max_grid_sizes; i++) {
@@ -327,16 +316,37 @@ void TestSort(
 		}
 	}
 
-	// Allocate device vector for holding the spine
-	unsigned int max_spine_len = GridSize(max_problem_size, max_grid_size, cycle_elements, device_props, sm_version);   
-	max_spine_len *= (1 << radix_bits);																						// multiply by number of histogram digits  
-	max_spine_len = ((max_spine_len + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS) * SRTS_SPINE_CYCLE_ELEMENTS;	// round up to nearest cycle size
+	// find maximum problem size in the list of problem sizes
+	unsigned int max_problem_size = 0;
+	unsigned int max_spine_len = 0; 
+	for (int i = 0; i < num_problem_sizes; i++) {
+
+		unsigned int spine_len = GridSize(problem_sizes[i], max_grid_size, cycle_elements, device_props, sm_version);   
+		spine_len *= (1 << radix_bits);																						// multiply by number of histogram digits  
+		spine_len = ((spine_len + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS) * SRTS_SPINE_CYCLE_ELEMENTS;	// round up to nearest cycle size 
+
+		if ((problem_sizes[i] > max_problem_size) && CanFit<K, V>(device_props, keys_only, problem_sizes[i], spine_len)) {
+			max_problem_size = problem_sizes[i];
+			max_spine_len = spine_len;
+		}
+	}
+	
+	// Allocate host memory
+	h_keys = (K*) malloc(max_problem_size * sizeof(K));
+
+	// Allocate device memory
+	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.keys, max_problem_size * sizeof(K)) );
+	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.temp_keys, max_problem_size * sizeof(K)));
+	if (!keys_only) {
+		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.data, max_problem_size * sizeof(V)));
+		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.temp_data, max_problem_size * sizeof(V)));
+	}
 	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.temp_spine, max_spine_len * sizeof(unsigned int)) );
 
 	// Run combinations of specified problem-sizes & max-grid-sizes
 	for (int i = 0; i < num_problem_sizes; i++) {
 
-		if (!CanFit<K, V>(device_props, keys_only, problem_sizes[i])) {
+		if (problem_sizes[i] > max_problem_size) {
 			printf("Problem size %d too large\n", problem_sizes[i]);
 			continue;
 		}
@@ -345,7 +355,7 @@ void TestSort(
 		for (unsigned int j = 0; j < problem_sizes[i]; j++) {
 			RandomBits<K>(h_keys[j], g_entropy_reduction);
 		}
-		
+
 		for (int j = 0; j < num_max_grid_sizes; j++) {
 
 			// Run a dummy kernel to demarcate the start of this set of iterations in the counter logs
@@ -355,7 +365,7 @@ void TestSort(
 			TimedSort<K, V>(problem_sizes[i], max_grid_sizes[j], h_keys, device_storage, iterations, keys_only);
 		}
 	}
-    
+	
     // cleanup memory
 	free(h_keys);
 	CUDA_SAFE_CALL(cudaFree(device_storage.keys));
@@ -365,7 +375,6 @@ void TestSort(
 		CUDA_SAFE_CALL(cudaFree(device_storage.data));
 		CUDA_SAFE_CALL(cudaFree(device_storage.temp_data));
 	}	
-	
 }
 
 

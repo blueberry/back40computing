@@ -187,10 +187,11 @@ void TimedSort(
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
 
 		// Call the sorting API routine
-		if (keys_only) 
+		if (keys_only) { 
 			LaunchKeysOnlySort<K>(num_elements, keys_only_storage);
-		else 
+		} else { 
 			LaunchKeyValueSort<K, V>(num_elements, key_value_storage);
+		}
 
 		// End cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
