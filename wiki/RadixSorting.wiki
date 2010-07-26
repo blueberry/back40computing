@@ -75,7 +75,7 @@ We invite the reader to compare our results with the current state-of-the-art fo
 
 Unless otherwise noted, the following tables present average sorting rates for problem sizes greater than or equal to 32M elements.  
 
-We also note that our implementation sorts signed and floating-point key types as well e.g., `float`, `int, `double`, etc.), with only a 0.5% - 1.5% performance overhead.
+We also note that our implementation sorts signed and floating-point key types as well (e.g., `float`, `int, `double`, etc.), with only a 0.5% - 1.5% performance overhead.
 
 
   ====<FONT color=#006666>8-bit `uchar` Keys (10^6^ elements/s)</FONT>====
@@ -99,8 +99,8 @@ We also note that our implementation sorts signed and floating-point key types a
   ====<FONT color=#006666>32-bit `uint` Keys (10^6^ elements/s)</FONT>====
 
 || *Satellite Values*     || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
-|| _None (keys-only)_     || || 741.52           || 580.41        ||         || || 1,005.49  ||                 ||           ||           || || 265.19      ||           ||
-|| _32-bit values_        || || 581.14           || 350.01        ||         || || 775.12    ||                 ||           ||           || || 188.71†     ||           ||
+|| _None (keys-only)_     || || 741.52           || 580.41        ||         || || 1,005.49  ||                 || 616.73    || 535.65    || || 265.19      ||           ||
+|| _32-bit values_        || || 581.14           || 350.01        ||         || || 775.12    ||                 || 489.85    || 449.80    || || 188.71†     ||           ||
 || _64-bit values_        || || 423.85           || 221.88        ||         || || 492.28    ||                 ||           ||           || || 169.73†     ||           ||
 || _128-bit values_       || || 172.65           || 134.56        ||         || || 206.16    ||                 ||           ||           || || 54.86††     ||           ||
 
