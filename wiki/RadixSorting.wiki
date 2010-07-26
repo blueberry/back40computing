@@ -15,11 +15,12 @@ We have designed extremely efficient strategies for sorting large sequences of f
  * Very efficient, generalized parallel prefix scan
  * Kernel fusion
 
-For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results exceed the Giga-keys/sec average sorting rate (i.e., one billion 32-bit keys sorted per second).  We invite the reader to compare our results against the current state-of-the-art for GPUs and CPUs (and for experimental architectures), e.g.:
+For this domain of sorting problems, we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results exceed the Giga-keys/sec average sorting rate (i.e., one billion 32-bit keys sorted per second).  We invite the reader to compare our results below against the current state-of-the-art for GPUs and CPUs (and for experimental architectures), e.g.:
  * GPU sorting implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP])  
  * CPU implementations (e.g., [http://doi.acm.org/10.1145/1807167.1807207 for the Intel quad-core Core i7])
  * Experimental many-core implementations (e.g., [http://doi.acm.org/10.1145/1454159.1454171 for the Intel Larrabee] and [http://doi.acm.org/10.1145/1807167.1807207 for the Intel MIC/Knight's Ferry])
 
+Even better, download and play around with the implementation yourself!
 
 
 ====<FONT color=#006666>Radix Sorting</FONT>====
