@@ -62,19 +62,21 @@ Please note that the following measurements were made using the Cuda 3.0 compile
 Of course, our implementation also allows keys and values may be of different types (e.g., `ushort` and `double`).
 
 
-====<FONT color=#006666>Selected Performance Plots</FONT>====
+===<FONT color=#006666>Selected Performance Plots</FONT>===
 
-Below are plots of sorting rate as a function of problem size for 32-bit (uint) keys:
+  Sorting rates as a function of problem size for 32-bit (uint) keys:
 
-http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG 
+  http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitkeys.PNG 
 
-And 32-bit (uint) keys and values:
+  And for 32-bit (uint) keys paired with 32-bit values:
 
-http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
+  http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
 
 
+===<FONT color=#006666>Selected Performance Plots</FONT>===
 
-====<FONT color=#006666>8-bit (uchar) Keys (10^6^ elements/s)</FONT>====
+
+  ====<FONT color=#006666>8-bit (uchar) Keys (10^6^ elements/s)</FONT>====
 
 || *Satellite Values*     || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
 || _None (keys-only)_     || ||                  ||               ||         || || 4,310.29  ||                 ||           ||           || || 310.07      ||           ||
@@ -83,7 +85,7 @@ http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
 || _128-bit values_       || ||                  ||               ||         || || 888.38    ||                 ||           ||           || || 154.54      ||           ||
 
 
-====<FONT color=#006666>16-bit (ushort) Keys (10^6^ elements/s)</FONT>====
+  ====<FONT color=#006666>16-bit (ushort) Keys (10^6^ elements/s)</FONT>====
 
 || *Satellite Values*     || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
 || _None (keys-only)_     || ||                  ||               ||         || || 2,129.14  ||                 ||           ||           || || 184.93      ||           ||
@@ -92,7 +94,7 @@ http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
 || _128-bit values_       || ||                  ||               ||         || || 436.78    ||                 ||           ||           || || 81.59       ||           ||
 
 
-====<FONT color=#006666>32-bit (uint) Keys (10^6^ elements/s)</FONT>====
+  ====<FONT color=#006666>32-bit (uint) Keys (10^6^ elements/s)</FONT>====
 
 || *Satellite Values*     || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
 || _None (keys-only)_     || ||                  ||               ||         || || 1,005.49  ||                 ||           ||           || || 265.19      ||           ||
@@ -101,7 +103,7 @@ http://back40computing.googlecode.com/svn/trunk/images/sorting/32bitpairs.PNG
 || _128-bit values_       || ||                  ||               ||         || || 206.16    ||                 ||           ||           || || 54.86       ||           ||
 
   
-====<FONT color=#006666>64-bit (ulong) Keys (10^6^ elements/s)</FONT>====
+  ====<FONT color=#006666>64-bit (ulong) Keys (10^6^ elements/s)</FONT>====
 
 || *Input Data*           || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
 || _8-bit keys (uchar)_   || ||                  ||               ||         || || 304.86    ||                 ||           ||           || || 70.21       ||           ||
