@@ -79,7 +79,7 @@ We invite the reader to compare our results with the current state-of-the-art fo
 
 ===<FONT color=#006666>Average Saturated Sorting Rates</FONT>===
 
-Unless otherwise noted, the following tables present average saturated sorting rates for problem sizes greater than or equal to 32M elements.  Our implementation sorts signed and floating-point key types as well (e.g., `float`, `int`, `double`, etc.), with only a 0.5% - 1.5% performance overhead.
+Unless otherwise noted, the following tables present average saturated sorting rates for problem sizes greater than or equal to 32M elements.  Our implementation is also capable of sorting signed and floating-point key types (e.g., `float`, `int`, `double`, etc.) at a  0.5% - 1.5% performance overhead.
 
 
   ====<FONT color=#006666>8-bit `uchar` Keys (10^6^ elements/s)</FONT>====
