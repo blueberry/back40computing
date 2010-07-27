@@ -81,6 +81,27 @@ We invite the reader to compare our results with the current state-of-the-art fo
 
 Unless otherwise noted, the following tables present average saturated sorting rates for problem sizes greater than or equal to 32M elements.  Our implementation is also capable of sorting signed and floating-point key types (e.g., `float`, `int`, `double`, etc.) at a  0.5% - 1.5% performance overhead.
 
+{| class="wikitable" style="text-align: center; width: 200px; height: 200px;"
+|+ Multiplication table
+|-
+! × !! 1 !! 2 !! 3
+|-
+! 1
+| 1 || 2 || 3
+|-
+! 2
+| 2 || 4 || 6
+|-
+! 3
+| 3 || 6 || 9
+|-
+! 4
+| 4 || 8 || 12
+|-
+! 5
+| 5 || 10 || 15
+|}
+
 
 || <FONT color=#006666>8-bit Keys (`uchar`)</FONT> ||
 ||                        || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || || *9800 GTX+* || *8800 GTX ||
