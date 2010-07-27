@@ -78,7 +78,14 @@ __device__ __forceinline__ void DecodeDigit(
 	lane = (key & (DIGIT_MASK << BIT)) >> (BIT + 2);
 	
 	const K QUAD_MASK = (RADIX_DIGITS < 4) ? 0x1 : 0x3;
-	quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
+	if (BIT == 32) {
+		// N.B.: This takes one more instruction than the code below it, but 
+		// otherwise the compiler goes nuts and shoves hundreds of bytes 
+		// to lmem when bit = 32 on 64-bit keys.		
+		quad_shift = ((key >> BIT) & QUAD_MASK) << BYTE_ENCODE_SHIFT;	
+	} else {
+		quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
+	}
 }
 
 
