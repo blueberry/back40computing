@@ -10,7 +10,7 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
  <wiki:toc max_depth="1" />
 </td></tr></table>
 
-<BR><BR>
+<BR>
 ----
 
 =Sorting Overview=
