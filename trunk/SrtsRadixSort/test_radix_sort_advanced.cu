@@ -72,6 +72,7 @@ bool g_verbose;
 bool g_verbose2;
 bool g_verify;
 int  g_entropy_reduction = 0;
+bool g_regen;
 
 
 //------------------------------------------------------------------------------
@@ -97,7 +98,7 @@ __global__ void DummyKernel()
 void Usage() 
 {
 	printf("\nsrts_radix_sort [--device=<device index>] [--v[2]] [--noverify]\n");
-	printf("[--i=<num-iterations>] [--entropy-reduction=<level>]\n");
+	printf("[--i=<num-iterations>] [--entropy-reduction=<level>] [--regen]\n");
 	printf("[--key-bytes=<1|2|4|8>] [--value-bytes=<0|4|8|16>]\n");
 	printf("[--n=<num-elements> | --n-input=<num-elements listfile>]\n");
 	printf("[--max-blocks=<max-thread-blocks> | --max-blocks-input=<max-thread-blocks listfile>]\n");
@@ -126,6 +127,9 @@ void Usage()
 	printf("\n");
 	printf("[\t--entropy-reduction=<level>\tSpecifies the number of bitwise-AND'ing\n");
 	printf("\t\t\titerations for random key data.  Default = 0, Identical keys = -1\n");
+	printf("\n");
+	printf("[\t--regen\tGenerates new random numbers for every problem size \n");
+	printf("\t\t\tin <num-elements-listfile>\n");
 	printf("\n");
 	printf("\t--noverify\tSpecifies that results should not be copied back and checked for correctness\n");
 	printf("\n");
@@ -201,6 +205,7 @@ void TimedSort(
 	unsigned int num_elements, 
 	unsigned int max_grid_size,
 	K *h_keys,
+	K *h_keys_result,
 	GlobalStorage<K, V>	&device_storage,
 	unsigned int iterations,
 	bool keys_only) 
@@ -226,7 +231,11 @@ void TimedSort(
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
 
 		// Call the sorting API routine
-		LaunchKeyValueSort<K, V>(num_elements, device_storage, max_grid_size);
+		if (keys_only) {
+			EnactSort<K, V, true>(num_elements, device_storage, max_grid_size);
+		} else {
+			EnactSort<K, V, false>(num_elements, device_storage, max_grid_size);
+		}
 
 		// End cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
@@ -235,11 +244,12 @@ void TimedSort(
 		elapsed += (double) duration;
 		
 		if (i == 0) {
-			printf("%d-byte keys, %d-byte values, %d iterations, %d elements", 
+			printf("%d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size", 
 				sizeof(K), 
 				(keys_only) ? 0 : sizeof(V),
 				iterations, 
-				num_elements);
+				num_elements,
+				max_grid_size);
 			fflush(stdout);
 		}
 	}
@@ -258,13 +268,13 @@ void TimedSort(
 	// Copy out sorted keys and check
     if (g_verify || g_verbose) {
 
-    	CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.keys, num_elements * sizeof(K), cudaMemcpyDeviceToHost) );
+    	CUDA_SAFE_CALL( cudaMemcpy(h_keys_result, device_storage.keys, num_elements * sizeof(K), cudaMemcpyDeviceToHost) );
 
 		// Display sorted key data
 		if (g_verbose2) {
 			printf("\n\nKeys:\n");
 			for (int i = 0; i < num_elements; i++) {	
-				PrintValue<K>(h_keys[i]);
+				PrintValue<K>(h_keys_result[i]);
 				printf(", ");
 			}
 			printf("\n\n");
@@ -272,7 +282,7 @@ void TimedSort(
 		
 	    // Verify solution
 		if (g_verify) {
-			VerifySort<K>(h_keys, num_elements, true);
+			VerifySort<K>(h_keys_result, num_elements, true);
 			printf("\n");
 			fflush(stdout);
 		}
@@ -298,7 +308,7 @@ void TestSort(
 	unsigned int radix_bits = 4;
 	
 	GlobalStorage<K, V> device_storage = {NULL, NULL, NULL, NULL, NULL};
-	K* h_keys;
+	K *h_keys, *h_keys_result;
 	
 	// Get device properties
 	int current_device;
@@ -321,7 +331,7 @@ void TestSort(
 	unsigned int max_spine_len = 0; 
 	for (int i = 0; i < num_problem_sizes; i++) {
 
-		unsigned int spine_len = GridSize(problem_sizes[i], max_grid_size, cycle_elements, device_props, sm_version);   
+		unsigned int spine_len = GridSize(problem_sizes[i], max_grid_size, cycle_elements, device_props, sm_version, keys_only);   
 		spine_len *= (1 << radix_bits);																						// multiply by number of histogram digits  
 		spine_len = ((spine_len + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS) * SRTS_SPINE_CYCLE_ELEMENTS;	// round up to nearest cycle size 
 
@@ -333,6 +343,12 @@ void TestSort(
 	
 	// Allocate host memory
 	h_keys = (K*) malloc(max_problem_size * sizeof(K));
+	h_keys_result = (K*) malloc(max_problem_size * sizeof(K));
+
+	// Randomly initialize the keyset on the host
+	for (unsigned int j = 0; j < max_problem_size; j++) {
+		RandomBits<K>(h_keys[j], g_entropy_reduction);
+	}
 
 	// Allocate device memory
 	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.keys, max_problem_size * sizeof(K)) );
@@ -351,18 +367,20 @@ void TestSort(
 			continue;
 		}
 
-		// Randomly initialize the keyset on the host
-		for (unsigned int j = 0; j < problem_sizes[i]; j++) {
-			RandomBits<K>(h_keys[j], g_entropy_reduction);
+		// Regenerate random keys if specified
+		if ((i > 0) && g_regen) {
+			for (unsigned int j = 0; j < problem_sizes[i]; j++) {
+				RandomBits<K>(h_keys[j], g_entropy_reduction);
+			}
 		}
-
+		
 		for (int j = 0; j < num_max_grid_sizes; j++) {
 
 			// Run a dummy kernel to demarcate the start of this set of iterations in the counter logs
 			DummyKernel<<<1,1,0>>>();
 
 			// Run the timing test 
-			TimedSort<K, V>(problem_sizes[i], max_grid_sizes[j], h_keys, device_storage, iterations, keys_only);
+			TimedSort<K, V>(problem_sizes[i], max_grid_sizes[j], h_keys, h_keys_result, device_storage, iterations, keys_only);
 		}
 	}
 	
@@ -453,6 +471,7 @@ int main( int argc, char** argv) {
 		g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 	}
 	g_verify = !cutCheckCmdLineFlag( argc, (const char**) argv, "noverify");
+	g_regen = cutCheckCmdLineFlag( argc, (const char**) argv, "regen");
 	
 	// Attempt to read list of problem sizes to run
 	ReadList(

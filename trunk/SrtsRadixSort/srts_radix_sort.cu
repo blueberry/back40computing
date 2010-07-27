@@ -90,7 +90,8 @@ unsigned int GridSize(
 	int max_grid_size,
 	unsigned int cycle_elements,
 	cudaDeviceProp device_props,
-	unsigned int sm_version) 
+	unsigned int sm_version, 
+	bool keys_only) 
 {
 	const unsigned int SINGLE_CTA_CUTOFF = 0;		// right now zero; we have no single-cta sorting
 
@@ -112,28 +113,40 @@ unsigned int GridSize(
 				
 			} else if (sm_version < 200) {
 				
-				// GT200
-				max_grid_size = device_props.multiProcessorCount * SRTS_BULK_CTA_OCCUPANCY(sm_version);
+				// GT200 (has some kind of TLB or icache drama)
+				unsigned int orig_max_grid_size = device_props.multiProcessorCount * SRTS_BULK_CTA_OCCUPANCY(sm_version);
+				if (keys_only) { 
+					orig_max_grid_size *= (num_elements + (1024 * 1024 * 96) - 1) / (1024 * 1024 * 96);
+				} else {
+					orig_max_grid_size *= (num_elements + (1024 * 1024 * 64) - 1) / (1024 * 1024 * 64);
+				}
+				max_grid_size = orig_max_grid_size;
+
 				if (num_elements / cycle_elements > max_grid_size) {
 	
-					double multiplier = 16.0;
-	
-					double top_delta = 0.125;	
-					double bottom_delta = 0.125;
+					double multiplier1 = 4.0;
+					double multiplier2 = 16.0;
+
+					double delta1 = 0.068;
+					double delta2 = 0.127;	
 	
 					unsigned int dividend = (num_elements + cycle_elements - 1) / cycle_elements;
 	
 					while(true) {
 	
-						double quotient = ((double) dividend) / (multiplier * max_grid_size / 3.0);
+						double quotient = ((double) dividend) / (multiplier1 * max_grid_size);
 						quotient -= (int) quotient;
+						if ((quotient > delta1) && (quotient < 1 - delta1)) {
 
-						if ((quotient > top_delta) && (quotient < 1 - bottom_delta)) {
-							break;
+							quotient = ((double) dividend) / (multiplier2 * max_grid_size / 3.0);
+							quotient -= (int) quotient;
+							if ((quotient > delta2) && (quotient < 1 - delta2)) {
+								break;
+							}
 						}
-	
-						if (max_grid_size == 147) {
-							max_grid_size = 120;
+						
+						if (max_grid_size == orig_max_grid_size - 2) {
+							max_grid_size = orig_max_grid_size - 30;
 						} else {
 							max_grid_size -= 1;
 						}
@@ -406,7 +419,7 @@ cudaError_t EnactSort(
 	//
 
 	unsigned int cycle_elements = SRTS_CYCLE_ELEMENTS(sm_version, K, V);
-	unsigned int grid_size = GridSize(num_elements, max_grid_size, cycle_elements, device_props, sm_version);
+	unsigned int grid_size = GridSize(num_elements, max_grid_size, cycle_elements, device_props, sm_version, KEYS_ONLY);
 	
 	//
 	// Determine how many elements each CTA will process
