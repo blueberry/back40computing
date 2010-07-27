@@ -4,7 +4,7 @@
 http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 </td><td valign="top">
 *
-  =Table of Contents=
+  <h1>Table of Contents</h1>
 *
 
  <wiki:toc max_depth="1" />
