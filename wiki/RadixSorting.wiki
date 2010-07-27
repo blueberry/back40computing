@@ -121,7 +121,7 @@ Unless otherwise noted, the following tables present average saturated sorting r
 
 =Building and Adapting=
 
-The current version is: *1.0.1 (SVN revision 137).*
+The current version is: *1.0.1 (SVN revision 137)*
 
 Like [http://code.google.com/p/thrust/ Thrust], the sources for our implementation are designed to be included and built as part of larger applications (as opposed to linked in as a shared or static library).  This prevents kernel bloat and allows the implementation to tailor itself to your data types. The current implementation can sort:
  * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
