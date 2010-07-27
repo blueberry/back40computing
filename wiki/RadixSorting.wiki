@@ -3,9 +3,9 @@
 <table><tr><td>
 http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 </td><td valign="top">
-  *TABLE OF CONTENTS*
+ *TABLE OF CONTENTS*
 
-  <wiki:toc max_depth="1" />
+ <wiki:toc max_depth="1" />
 </td></tr></table>
 
 <BR><BR>
