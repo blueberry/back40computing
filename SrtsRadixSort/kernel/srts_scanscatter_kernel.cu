@@ -147,15 +147,27 @@ __device__ __forceinline__ void DecodeDigits(
 }
 
 
-template <typename T>
+template <typename T, typename PreprocessFunctor>
 __device__ __forceinline__ void GuardedReadSet(
 	T *in, 
 	typename VecType<T, 2>::Type &pair,
 	int offset,
-	int extra[1])				
+	int extra[1],
+	PreprocessFunctor preprocess = PreprocessFunctor())				
 {
-	pair.x = (offset - extra[0] < 0) ? in[offset] : DefaultextraValue<T>();
-	pair.y = (offset + 1 - extra[0] < 0) ? in[offset + 1] : DefaultextraValue<T>();
+	if (offset - extra[0] < 0) {
+		pair.x = in[offset];
+		preprocess(pair.x);
+	} else {
+		pair.x = DefaultextraValue<T>();
+	}
+	
+	if (offset + 1 - extra[0] < 0) {
+		pair.y = in[offset + 1];
+		preprocess(pair.y);
+	} else {
+		pair.y = DefaultextraValue<T>();
+	}
 }
 
 
@@ -175,6 +187,12 @@ __device__ __forceinline__ void ReadSets(
 		if (SETS_PER_PASS > 2) pairs[2] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 2)];
 		if (SETS_PER_PASS > 3) pairs[3] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 3)];
 
+		#pragma unroll 
+		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
+			preprocess(pairs[SET].x);
+			preprocess(pairs[SET].y);
+		}
+		
 	} else {
 
 		T* in = (T*) d_in;
@@ -182,17 +200,10 @@ __device__ __forceinline__ void ReadSets(
 		// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
 		// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
 		
-		if (SETS_PER_PASS > 0) GuardedReadSet<T>(in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 0), extra);
-		if (SETS_PER_PASS > 1) GuardedReadSet<T>(in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 1), extra);
-		if (SETS_PER_PASS > 2) GuardedReadSet<T>(in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 2), extra);
-		if (SETS_PER_PASS > 3) GuardedReadSet<T>(in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 3), extra);
-		
-	}
-	
-	#pragma unroll 
-	for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-		preprocess(pairs[SET].x);
-		preprocess(pairs[SET].y);
+		if (SETS_PER_PASS > 0) GuardedReadSet<T, PreprocessFunctor>(in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 0), extra);
+		if (SETS_PER_PASS > 1) GuardedReadSet<T, PreprocessFunctor>(in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 1), extra);
+		if (SETS_PER_PASS > 2) GuardedReadSet<T, PreprocessFunctor>(in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 2), extra);
+		if (SETS_PER_PASS > 3) GuardedReadSet<T, PreprocessFunctor>(in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 3), extra);
 	}
 }
 

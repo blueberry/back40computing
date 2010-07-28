@@ -79,9 +79,24 @@ bool SRTS_DEBUG = false;
  *   
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
+ * 
  * @param[in] 		max_grid_size  
  * 		Maximum allowable number of CTAs to launch.  A value of -1 indicates 
  * 		that the default value should be used.
+ * 
+ * @param[in] 		cycle_elements  
+ * 		Number of elements per cycle (a.k.a. tile), i.e., 
+ * 		SRTS_CYCLE_ELEMENTS(sm_version, K, V).
+ * 
+ * @param[in] 		device_props  
+ * 		Cuda device properties for the device being used.
+ * 
+ * @param[in] 		sm_version  
+ * 		The SM version number, formatted a-la-"__CUDA_ARCH__" (e.g., 100, 
+ *		120, 130, 200, etc.).
+ * 
+ * @param[in] 		keys_only  
+ * 		Whether or not satellite values are paired with keys.
  * 
  * @return The actual number of CTAs that should be launched
  */
@@ -174,6 +189,23 @@ unsigned int GridSize(
 	} 
 
 	return grid_size;
+}
+
+/**
+ * Returns the number of unsigned int elements that need to be allocated
+ * for the spine vector (a.k.a., histogram storage).
+ * 
+ * @param 	radix_bits	
+ * 		The number of bits per radix digit place
+ * @param 	grid_size
+ * 		The number of CTAs that will be launched
+ */
+unsigned int SpineElements(
+	unsigned int radix_bits,
+	unsigned int grid_size) 
+{
+	unsigned int spine_cycles = ((grid_size * (1 << radix_bits)) + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS;
+	return spine_cycles * SRTS_SPINE_CYCLE_ELEMENTS;
 }
 
 
@@ -428,8 +460,8 @@ cudaError_t EnactSort(
 	unsigned int total_cycles 			= num_elements / cycle_elements;
 	unsigned int cycles_per_block 		= total_cycles / grid_size;						
 	unsigned int extra_cycles 			= total_cycles - (cycles_per_block * grid_size);
-	unsigned int spine_cycles 			= ((grid_size * (1 << RADIX_BITS)) + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS;
-	unsigned int spine_block_elements 	= spine_cycles * SRTS_SPINE_CYCLE_ELEMENTS;
+
+	unsigned int spine_block_elements 	= SpineElements(RADIX_BITS, grid_size);
 
 	CtaDecomposition work_decomposition = {
 		extra_cycles,										// num_big_blocks

@@ -331,9 +331,9 @@ void TestSort(
 	unsigned int max_spine_len = 0; 
 	for (int i = 0; i < num_problem_sizes; i++) {
 
-		unsigned int spine_len = GridSize(problem_sizes[i], max_grid_size, cycle_elements, device_props, sm_version, keys_only);   
-		spine_len *= (1 << radix_bits);																						// multiply by number of histogram digits  
-		spine_len = ((spine_len + SRTS_SPINE_CYCLE_ELEMENTS - 1) / SRTS_SPINE_CYCLE_ELEMENTS) * SRTS_SPINE_CYCLE_ELEMENTS;	// round up to nearest cycle size 
+		unsigned int spine_len = SpineElements(
+				radix_bits, 
+				GridSize(problem_sizes[i], max_grid_size, cycle_elements, device_props, sm_version, keys_only));   
 
 		if ((problem_sizes[i] > max_problem_size) && CanFit<K, V>(device_props, keys_only, problem_sizes[i], spine_len)) {
 			max_problem_size = problem_sizes[i];
