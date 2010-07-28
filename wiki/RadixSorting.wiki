@@ -25,7 +25,7 @@ The current version is: *1.0.2 (SVN revision 168)*
 
 =Sorting Overview=
 
-This project implements a very fast, efficient radix sorting method for CUDA-capable devices.  For sorting large sequences of fixed-length keys (and values), we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results _*exceed the Giga-keys/sec average sorting rate*_ (i.e., one billion 32-bit keys sorted per second).  
+This project implements a very fast, efficient radix sorting method for CUDA-capable devices.  For sorting large sequences of fixed-length keys (and values), we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results _*exceed the 1G keys/sec average sorting rate*_ (i.e., one billion 32-bit keys sorted per second).  
 
 In addition, one of our design goals for this project is flexibility.  We've designed our implementation to adapt itself and perform well on all generations and configurations of programmable NVIDIA GPUs, and for a wide variety of input types.
 
@@ -96,35 +96,35 @@ Unless otherwise noted, the following tables present average saturated sorting r
 || <i>10^6^ elements / sec</i> || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || <b>Keys-only</b>            || || 3,188.67         || 2,599.39      ||         || || 4,310.29  ||                 || 2,108.10  || 1,831.18  || 310.07      ||           ||
 || <b>32-bit values</b>        || || 2,465.85         || 1,774.62      ||         || || 3,391.34  ||                 || 1,852.49  || 1,612.23  || 273.62      ||           ||
-|| <b>64-bit values</b>        || || 1,904.50         || 1,136.93      ||         || || 2,416.20  ||                 || 1,526.05  || 1,394.84  || 254.46†     ||           ||
-|| <b>128-bit values</b>       || || 731.30           || 613.10        ||         || || 888.38    ||                 || 418.77†   || 373.60†   || 154.54††    ||           ||
+|| <b>64-bit values</b>        || || 1,904.50         || 1,136.93      ||         || || 2,416.20  ||                 || 1,526.05  || 1,394.84  || 254.46^†^   ||           ||
+|| <b>128-bit values</b>       || || 731.30           || 613.10        ||         || || 888.38    ||                 || 418.77^†^ || 373.60^†^ || 154.54††    ||           ||
 
 <BR>
 || <FONT color=#006666>*16 Bit Keys*</FONT> ||
 || <i>10^6^ elements / sec</i> || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || <b>Keys-only</b>            || || 1,572.03         || 1,270.92      ||         || || 2,129.14  ||                 || 1,128.11  || 979.19    || 184.93      ||           ||
 || <b>32-bit values</b>        || || 1,209.04         || 811.15        ||         || || 1,656.37  ||                 || 970.28    || 845.22    || 162.88      ||           ||
-|| <b>64-bit values</b>        || || 958.20           || 518.56        ||         || || 1,139.69  ||                 || 743.45    || 676.64    || 150.68†     ||           ||
-|| <b>128-bit values</b>       || || 361.50           || 293.92        ||         || || 436.78    ||                 || 210.81†   || 187.41†   || 81.59††     ||           ||
+|| <b>64-bit values</b>        || || 958.20           || 518.56        ||         || || 1,139.69  ||                 || 743.45    || 676.64    || 150.68^†^   ||           ||
+|| <b>128-bit values</b>       || || 361.50           || 293.92        ||         || || 436.78    ||                 || 210.81^†^ || 187.41^†^ || 81.59††     ||           ||
 
 <BR>
 || <FONT color=#006666>*32 Bit Keys*</FONT> ||
 || <i>10^6^ elements / sec</i> || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
 || <b>Keys-only</b>            || || 741.52           || 580.41        ||         || || 1,005.49  ||                 || 615.36    || 534.53    || 265.19      ||           ||
-|| <b>32-bit values</b>        || || 581.14           || 350.01        ||         || || 775.12    ||                 || 489.72    || 449.46    || 188.71†     ||           ||
-|| <b>64-bit values</b>        || || 423.85           || 221.88        ||         || || 492.28    ||                 || 346.98    || 315.10    || 169.73†     ||           ||
-|| <b>128-bit values</b>       || || 172.65           || 134.56        ||         || || 206.16    ||                 || 102.98†   || 92.06†    || 54.86††     ||           ||
+|| <b>32-bit values</b>        || || 581.14           || 350.01        ||         || || 775.12    ||                 || 489.72    || 449.46    || 188.71^†^   ||           ||
+|| <b>64-bit values</b>        || || 423.85           || 221.88        ||         || || 492.28    ||                 || 346.98    || 315.10    || 169.73^†^   ||           ||
+|| <b>128-bit values</b>       || || 172.65           || 134.56        ||         || || 206.16    ||                 || 102.98^†^ || 92.06^†^  || 54.86^††^   ||           ||
 
 <BR>
 || <FONT color=#006666>*64 Bit Keys*</FONT> ||
 || <i>10^6^ elements / sec</i> || || *C2050 (No ECC)* || *C2050 (ECC)* || *C1060* || || *GTX 480* || *GTX 460 (1GB)* || *GTX 285* || *GTX 280* || *9800 GTX+* || *8800 GTX ||
-|| <b>Keys-only</b>            || || 240.3            || 161.1         ||         || || 304.86    ||                 || 219.55    || 191.18    || 70.21†      ||           ||
-|| <b>32-bit values</b>        || || 190.9            || 105.8         ||         || || 224.30    ||                 || 157.80    || 143.01    || 54.86†      ||           ||
-|| <b>64-bit values</b>        || || 157.6            || 91.01         ||         || || 186.40    ||                 || 138.59†   || 125.70†   || 51.20††     ||           ||
-|| <b>128-bit values</b>       || || 76.08            || 59.41         ||         || || 90.61†    ||                 || 47.51†    || 42.46†    || 24.23††     ||           ||
+|| <b>Keys-only</b>            || || 240.3            || 161.1         ||         || || 304.86    ||                 || 219.55    || 191.18    || 70.21^†^    ||           ||
+|| <b>32-bit values</b>        || || 190.9            || 105.8         ||         || || 224.30    ||                 || 157.80    || 143.01    || 54.86^†^    ||           ||
+|| <b>64-bit values</b>        || || 157.6            || 91.01         ||         || || 186.40    ||                 || 138.59^†^ || 125.70^†^ || 51.20^††^   ||           ||
+|| <b>128-bit values</b>       || || 76.08            || 59.41         ||         || || 90.61^†^  ||                 || 47.51^†^  || 42.46^†^  || 24.23^††^   ||           ||
 
-† 16M+ elements (restricted by global memory size)<BR>
-†† 8M+ elements (restricted by global memory size)
+^†^ 16M+ elements (restricted by global memory size)<BR>
+^††^ 8M+ elements (restricted by global memory size)
 
 
 
