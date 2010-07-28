@@ -17,7 +17,7 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
 
-The current version is: *1.0.2 (SVN revision 168)*
+The current version is: *1.0.175 (SVN revision 175, 07/28/2010)*
 
 
 <BR>
@@ -133,7 +133,7 @@ Unless otherwise noted, the following tables present average saturated sorting r
 
 =Building and Adapting=
 
-The current version is: *1.0.2 (SVN revision 168)*
+The current version is: *1.0.175 (SVN revision 175, 07/28/2010)*
 
 Like [http://code.google.com/p/thrust/ Thrust], the sources for our implementation are designed to be included and built as part of larger applications (as opposed to linked in as a shared or static library).  This prevents kernel bloat and allows the implementation to tailor itself to your data types. The current implementation can sort:
  * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
