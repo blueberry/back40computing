@@ -17,7 +17,7 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
 
-The current version is: *1.0.175 (SVN revision 175, 07/28/2010)*
+The current version is: *1.0.175* (SVN revision 175, 07/28/2010)
 
 
 <BR>
