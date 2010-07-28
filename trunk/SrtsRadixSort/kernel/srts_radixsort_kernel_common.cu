@@ -269,7 +269,8 @@ template <> struct KeyConversion<float> {
 template <>
 struct PreprocessKeyFunctor<float> {
 	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
-		int mask = -int(converted_key >> 31) | 0x80000000;
+
+		unsigned int mask = (converted_key & 0x80000000) ? 0xffffffff : 0x80000000; 
 		converted_key ^= mask;
 	}
 };
@@ -277,8 +278,9 @@ struct PreprocessKeyFunctor<float> {
 template <>
 struct PostprocessKeyFunctor<float> {
 	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
-        int mask = ((converted_key >> 31) - 1) | 0x80000000;
-        converted_key ^= mask;
+
+		unsigned int mask = (converted_key & 0x80000000) ? 0x80000000 : 0xffffffff; 
+		converted_key ^= mask;
     }
 };
 
@@ -292,7 +294,8 @@ template <> struct KeyConversion<double> {
 template <>
 struct PreprocessKeyFunctor<double> {
 	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key) {
-		long long mask = -(long long)(converted_key >> 63) | 0x8000000000000000;
+
+		unsigned long long mask = (converted_key & 0x8000000000000000) ? 0xffffffffffffffff : 0x8000000000000000; 
 		converted_key ^= mask;
 	}
 };
@@ -300,7 +303,7 @@ struct PreprocessKeyFunctor<double> {
 template <>
 struct PostprocessKeyFunctor<double> {
 	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key)  {
-		long long mask = ((converted_key >> 63) - 1) | 0x8000000000000000;
+		unsigned long long mask = (converted_key & 0x8000000000000000) ? 0x8000000000000000 : 0xffffffffffffffff; 
         converted_key ^= mask;
     }
 };
