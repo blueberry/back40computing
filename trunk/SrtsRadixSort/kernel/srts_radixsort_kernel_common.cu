@@ -127,6 +127,9 @@ __device__ __forceinline__ K MagnitudeShift(K key) {
 	return MagnitudeShiftOp<K, (magnitude > 0) ? magnitude : magnitude * -1, (magnitude > 0)>::Shift(key);
 }
 
+template <typename T>
+__device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
+
 
 //------------------------------------------------------------------------------
 // SRTS Control Structures

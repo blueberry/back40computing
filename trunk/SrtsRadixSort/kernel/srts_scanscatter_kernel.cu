@@ -52,7 +52,7 @@
 // Scan/Scatter Configuration
 //------------------------------------------------------------------------------
 
-#if ((__CUDA_ARCH__ >= 200) || (CUDA_VERSION < 3010))
+#if (__CUDA_ARCH__ >= 200)
 	#define REG_MISER_QUALIFIER __shared__
 #else
 	#define REG_MISER_QUALIFIER 
@@ -772,8 +772,14 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 	unsigned int 					*raking_partial)		
 {
 	
-	const unsigned int PADDED_PARTIALS_PER_LANE 		= ROWS_PER_LANE * (PARTIALS_PER_ROW + 1);	// N.B.: we have "declared but never referenced" warnings for these, but they're actually used for template instantiation 
+	const unsigned int PADDED_PARTIALS_PER_LANE 		= ROWS_PER_LANE * (PARTIALS_PER_ROW + 1);	 
 	const unsigned int SETS_PER_CYCLE 					= PASSES_PER_CYCLE * SETS_PER_PASS;
+
+	// N.B.: We use the following voodoo incantations to elide the compiler's miserable 
+	// "declared but never referenced" warnings for these (which are actually used for 
+	// template instantiation)	
+	SuppressUnusedConstantWarning(PADDED_PARTIALS_PER_LANE);
+	SuppressUnusedConstantWarning(SETS_PER_CYCLE);
 	
 	typename VecType<K, 2>::Type 	keypairs[PASSES_PER_CYCLE][SETS_PER_PASS];
 	uint2 							digits[PASSES_PER_CYCLE][SETS_PER_PASS];
@@ -983,6 +989,15 @@ void SrtsScanDigitBulk(
 													SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(K) : 
 													SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(V);
 	const unsigned int EXCHANGE_PADDING_QUADS	= (MAX_EXCHANGE_BYTES > SCAN_LANE_BYTES) ? (MAX_EXCHANGE_BYTES - SCAN_LANE_BYTES + sizeof(unsigned int) - 1) / sizeof(unsigned int) : 0;
+
+
+	// N.B.: We use the following voodoo incantations to elide the compiler's miserable 
+	// "declared but never referenced" warnings for these (which are actually used for 
+	// template instantiation)	
+	SuppressUnusedConstantWarning(SCAN_LANES_PER_SET);
+	SuppressUnusedConstantWarning(PARTIALS_PER_SEG);
+	SuppressUnusedConstantWarning(LOG_ROWS_PER_SET);
+	SuppressUnusedConstantWarning(ROWS_PER_LANE);
 
 	
 	__shared__ unsigned int 	scan_lanes[(ROWS_PER_PASS * PADDED_PARTIALS_PER_ROW) + EXCHANGE_PADDING_QUADS];
