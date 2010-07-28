@@ -15,8 +15,9 @@ http://back40computing.googlecode.com/svn/trunk/images/SortingSmall.jpg
 
 =News=
 
- *For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
- *The current version is: *1.0.2 (SVN revision 168)*
+For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
+
+The current version is: *1.0.2 (SVN revision 168)*
 
 
 <BR>
