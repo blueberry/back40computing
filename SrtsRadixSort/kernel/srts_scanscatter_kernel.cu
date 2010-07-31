@@ -52,11 +52,7 @@
 // Scan/Scatter Configuration
 //------------------------------------------------------------------------------
 
-#if (__CUDA_ARCH__ >= 200)
-	#define REG_MISER_QUALIFIER __shared__
-#else
-	#define REG_MISER_QUALIFIER 
-#endif
+#define REG_MISER_QUALIFIER __shared__
 
 
 
