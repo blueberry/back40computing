@@ -239,11 +239,42 @@ __device__ __forceinline__ void UpdateRanks(
 	uint2 ranks[SETS_PER_PASS],
 	unsigned int digit_counts[SETS_PER_PASS][RADIX_DIGITS])
 {
-	#pragma unroll
-	for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
-		ranks[SET].x += digit_counts[SET][digits[SET].x];
-		ranks[SET].y += digit_counts[SET][digits[SET].y]; 
-	}
+	// N.B.: I wish we could pragma unroll here, but doing so currently 
+	// results in the 3.1 compilier on 64-bit platforms generating bad
+	// code for SM1.3, resulting in incorrect sorting (e.g., problem size 16)
+	
+	if (SETS_PER_PASS > 0) {
+		ranks[0].x += digit_counts[0][digits[0].x];
+		ranks[0].y += digit_counts[0][digits[0].y]; 
+	}	
+	if (SETS_PER_PASS > 1) {
+		ranks[1].x += digit_counts[1][digits[1].x];
+		ranks[1].y += digit_counts[1][digits[1].y]; 
+	}	
+	if (SETS_PER_PASS > 2) {
+		ranks[2].x += digit_counts[2][digits[2].x];
+		ranks[2].y += digit_counts[2][digits[2].y]; 
+	}	
+	if (SETS_PER_PASS > 3) {
+		ranks[3].x += digit_counts[3][digits[3].x];
+		ranks[3].y += digit_counts[3][digits[3].y]; 
+	}	
+}
+
+template <unsigned int RADIX_DIGITS, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
+__device__ __forceinline__ void UpdateRanks(
+	uint2 digits[PASSES_PER_CYCLE][SETS_PER_PASS],
+	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
+	unsigned int digit_counts[PASSES_PER_CYCLE][SETS_PER_PASS][RADIX_DIGITS])
+{
+	// N.B.: I wish we could pragma unroll here, but doing so currently 
+	// results in the 3.1 compilier on 64-bit platforms generating bad
+	// code for SM1.3, resulting in incorrect sorting (e.g., problem size 16)
+	
+	if (PASSES_PER_CYCLE > 0) UpdateRanks<RADIX_DIGITS, SETS_PER_PASS>(digits[0], ranks[0], digit_counts[0]);
+	if (PASSES_PER_CYCLE > 1) UpdateRanks<RADIX_DIGITS, SETS_PER_PASS>(digits[1], ranks[1], digit_counts[1]);
+	if (PASSES_PER_CYCLE > 2) UpdateRanks<RADIX_DIGITS, SETS_PER_PASS>(digits[2], ranks[2], digit_counts[2]);
+	if (PASSES_PER_CYCLE > 3) UpdateRanks<RADIX_DIGITS, SETS_PER_PASS>(digits[3], ranks[3], digit_counts[3]);
 }
 
 
@@ -879,10 +910,7 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 	// Update Ranks
 	//-------------------------------------------------------------------------
 
-	#pragma unroll
-	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
-		UpdateRanks<RADIX_DIGITS, SETS_PER_PASS>(digits[PASS], ranks[PASS], digit_counts[PASS]);
-	}
+	UpdateRanks<RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS>(digits, ranks, digit_counts);
 	
 	
 	//-------------------------------------------------------------------------
