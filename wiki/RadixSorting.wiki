@@ -155,7 +155,9 @@ This subproject can be found in the `/trunk/LsbRadixSort` subtree.  It contains 
 
 Like [http://code.google.com/p/thrust/ Thrust], the sources for our implementation are designed to be included and built as part of larger applications (as opposed to linked in as a shared or static library).  This prevents kernel bloat and allows the implementation to tailor itself to your data types. 
 
-The subproject sources require compilation using CUDA Toolkit version 3.0 or higher.  The repository includes a `Makefile` to build the example programs on Linux.  This Makefile can be used as a guide for constructing an equivalent VC++ project for evaluation on Windows systems.  In addition, we suggest that you compile the kernels with the following options:
+The subproject sources require compilation using CUDA Toolkit version 3.0 or higher.  The repository includes a `Makefile` to build the example programs on Linux.  This Makefile can be used as a guide for constructing an equivalent VC++ project for evaluation on Windows systems.  
+
+When performance benchmarking our implementaion, we suggest that you compile the kernels with the following options:
 
  * 32-bit device pointers, regardless of whether we're on a 64-bit machine or not.  64-bit device pointers incur ~10-15% slowdown because it causes fairly increased kernel register counts which can prevent us from being able to meet our targeted occupancies.
  * Without the newly-introduced-for-3.1 ABI (that gives programmers a program stack).  Even though this code does not utilize a program stack for sorting, the ABI incurs extra register pressure regardless and results in a ~1-5% slowdown.   
