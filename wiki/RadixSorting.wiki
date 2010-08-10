@@ -25,14 +25,16 @@ The current version is: *[#Building_and_Adapting 1.0.175]* (SVN revision 181, 08
 
 =Sorting Overview=
 
-This project implements a very fast, efficient radix sorting method for CUDA-capable devices.  For sorting large sequences of fixed-length keys (and values), we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results _*exceed the 1G keys/sec average sorting rate*_ (i.e., one billion 32-bit keys sorted per second).  
+This project implements a very fast, efficient radix sorting method for CUDA-capable devices.  For sorting large sequences of fixed-length keys (and values), we believe our sorting primitive to be the fastest available for any fully-programmable microarchitecture: our stock NVIDIA GTX480 sorting results *exceed the 1G keys/sec* average sorting rate (i.e., one billion 32-bit keys sorted per second).  
 
 In addition, one of our design goals for this project is flexibility.  We've designed our implementation to adapt itself and perform well on all generations and configurations of programmable NVIDIA GPUs, and for a wide variety of input types.
 
-Features:
+*Features:*
+
  * The current implementation can sort:
    * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
    * Any structured payload type (within reason).
+
  * Early-exit digit-passes.  When the sorting operation detects that all keys have the same digit at the same digit-place, the pass for that digit-place is short-circuited, reducing the cost of that pass by 80%.  This makes our implementation suitable for even low-degree binning problems (where sorting would normally be overkill).
 
 [#Building_and_Adapting Download] and play around with the implementation yourself!
