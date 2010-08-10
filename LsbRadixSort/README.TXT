@@ -4,10 +4,9 @@ BUILD NOTES:
 	The accompanying sorting benchtest should build under most Linux 
 	platforms using CUDA Toolkit 3.0 or higher.
 
-	NOTE: when adapting this code, you should compile the kernels to 
+	NOTE: when adapting this code, you may consider compile the kernels to 
 	use 32-bit device pointers.  Otherwise our kernel register counts 
-	will be excessive and we won't be able to meet our targeted 
-	threadblock occupancy.
+	may be excessive, causing lmem spills and ~10% performance overhead.
 	
 	For more information, see our Google Code project site: 
 	http://code.google.com/p/back40computing/

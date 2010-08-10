@@ -1,4 +1,4 @@
-/**
+/******************************************************************************
  * Copyright 2010 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,7 +34,7 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
- */
+ ******************************************************************************/
 
 
 #ifndef _SRTS_RADIX_SORT_VERIFIER_H_
@@ -45,9 +45,9 @@
 #include <float.h>
 
 
-//------------------------------------------------------------------------------
-// Templated routines for printing keys/values to the console 
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Templated routines for printing keys/values to the console 
+ ******************************************************************************/
 
 template<typename T> 
 void PrintValue(T val) {
@@ -101,9 +101,9 @@ void PrintValue<unsigned long long>(unsigned long long val) {
 
 
 
-//------------------------------------------------------------------------------
-// Helper routines for list construction and validation 
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Helper routines for list construction and validation 
+ ******************************************************************************/
 
 
 /**
