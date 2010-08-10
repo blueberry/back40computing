@@ -29,6 +29,12 @@ This project implements a very fast, efficient radix sorting method for CUDA-cap
 
 In addition, one of our design goals for this project is flexibility.  We've designed our implementation to adapt itself and perform well on all generations and configurations of programmable NVIDIA GPUs, and for a wide variety of input types.
 
+Features:
+ * The current implementation can sort:
+   * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
+   * Any structured payload type (within reason).
+ * Early-exit digit-passes.  When the sorting operation detects that all keys have the same digit at the same digit-place, the pass for that digit-place is short-circuited, reducing the cost of that pass by 80%.  This makes our implementation suitable for even low-degree binning problems (where sorting would normally be overkill).
+
 [#Building_and_Adapting Download] and play around with the implementation yourself!
 
 
@@ -145,9 +151,7 @@ This subproject can be found in the `/trunk/LsbRadixSort` subtree.  It contains 
  * A templated API for invoking a sorting operation from a host program.  By including the sorting API like a header file, `nvcc` will specialize kernels and runtime code needed to sort the data types specified by the enclosing application.
  * A simple toy program (and a more advanced benchtest program) that demonstrate how the sorting implementation can be integrated into and called from host programs.
 
-Like [http://code.google.com/p/thrust/ Thrust], the sources for our implementation are designed to be included and built as part of larger applications (as opposed to linked in as a shared or static library).  This prevents kernel bloat and allows the implementation to tailor itself to your data types. The current implementation can sort:
- * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
- * Any structured payload type (within reason).
+Like [http://code.google.com/p/thrust/ Thrust], the sources for our implementation are designed to be included and built as part of larger applications (as opposed to linked in as a shared or static library).  This prevents kernel bloat and allows the implementation to tailor itself to your data types. 
 
 The subproject sources require compilation using CUDA Toolkit version 3.0 or higher.  The repository includes a `Makefile` to build the example programs on Linux.  This Makefile can be used as a guide for constructing an equivalent VC++ project for evaluation on Windows systems.  In addition, we suggest that you compile the kernels with the following options:
 
