@@ -35,7 +35,7 @@ In addition, one of our design goals for this project is flexibility.  We've des
    * Keys of any C/C++ built-in, numeric type (e.g., `signed char`, `float`, `unsigned long long`, etc.)
    * Any structured payload type (within reason).
 
- * Early-exit digit-passes.  When the sorting operation detects that all keys have the same digit at the same digit-place, the pass for that digit-place is short-circuited, reducing the cost of that pass by 80%.  This makes our implementation suitable for even low-degree binning problems (where sorting would normally be overkill).
+ * Early-exit digit-passes.  When the sorting operation detects that all keys have the same digit at the same digit-place, the pass for that digit-place is short-circuited, reducing the cost of that pass by 80%.  This makes our implementation suitable for even low-degree binning problems where sorting would normally be overkill. (We note that the random keys used to produce our performance results do not trigger this feature.)
 
 [#Building_and_Adapting Download] and play around with the implementation yourself!
 
