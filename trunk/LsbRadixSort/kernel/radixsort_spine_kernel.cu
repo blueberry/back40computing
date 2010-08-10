@@ -1,4 +1,5 @@
-/**
+/******************************************************************************
+ * 
  * Copyright 2010 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,33 +35,26 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
- */
+ * 
+ ******************************************************************************/
 
 
-//------------------------------------------------------------------------------
-// SrtsScanSpine
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Top-level histogram/spine scanning kernel
+ ******************************************************************************/
 
-#ifndef _SRTS_RADIX_SORT_SPINE_KERNEL_H_
-#define _SRTS_RADIX_SORT_SPINE_KERNEL_H_
+#ifndef _B40C_RADIX_SORT_SPINE_KERNEL_H_
+#define _B40C_RADIX_SORT_SPINE_KERNEL_H_
 
-#include <kernel/srts_radixsort_kernel_common.cu>
+#include "radixsort_kernel_common.cu"
 
-
-//------------------------------------------------------------------------------
-// SRTS Spine Configuration
-//------------------------------------------------------------------------------
-
-#define SRTS_LOG_SPINE_THREADS						7		// 128 threads
-#define SRTS_SPINE_THREADS							(1 << SRTS_LOG_SPINE_THREADS)	
-
-#define SRTS_LOG_SPINE_CYCLE_ELEMENTS				9		// 512 elements
-#define SRTS_SPINE_CYCLE_ELEMENTS					(1 << SRTS_LOG_SPINE_CYCLE_ELEMENTS)
+namespace b40c {
 
 
-//------------------------------------------------------------------------------
-// Scan cycle of SRTS_CYCLE_ELEMENTS elements 
-//------------------------------------------------------------------------------
+
+/******************************************************************************
+ * Scans a cycle of RADIXSORT_CYCLE_ELEMENTS elements 
+ ******************************************************************************/
 
 template<
 	unsigned int SMEM_ROWS,
@@ -115,9 +109,9 @@ __device__ __forceinline__ void SrtsScanCycle(
 }
 
 
-//------------------------------------------------------------------------------
-// Spine/histogram Scan Kernel Entry Point
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Spine/histogram Scan Kernel Entry Point
+ ******************************************************************************/
 
 __global__ void SrtsScanSpine(
 	unsigned int *d_ispine,
@@ -127,7 +121,7 @@ __global__ void SrtsScanSpine(
 	const unsigned int LOG_RAKING_THREADS 		= LOG_WARP_THREADS;				
 	const unsigned int RAKING_THREADS 			= 1 << LOG_RAKING_THREADS;		
 	
-	const unsigned int LOG_PARTIALS				= SRTS_LOG_THREADS;				
+	const unsigned int LOG_PARTIALS				= RADIXSORT_LOG_THREADS;				
 	const unsigned int PARTIALS			 		= 1 << LOG_PARTIALS;
 	
 	const unsigned int LOG_PARTIALS_PER_SEG 	= LOG_PARTIALS - LOG_RAKING_THREADS;	
@@ -178,10 +172,12 @@ __global__ void SrtsScanSpine(
 			(uint4 *) &d_ospine[block_offset], 
 			carry);
 
-		block_offset += SRTS_SPINE_CYCLE_ELEMENTS;
+		block_offset += RADIXSORT_SPINE_CYCLE_ELEMENTS;
 	}
 } 
 
+
+} // namespace b40c
 
 #endif
 

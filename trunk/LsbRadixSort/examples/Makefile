@@ -56,8 +56,47 @@
 
 NVCC = $(shell which nvcc)
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
+
+KERNELS = 
+
+#-------------------------------------------------------------------------------
+# Gen targets
+#-------------------------------------------------------------------------------
+
+GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
+GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
+GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
+SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
+
+#-------------------------------------------------------------------------------
+# Libs
+#-------------------------------------------------------------------------------
+
 CUDA_LIB32 = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib -L$(shell dirname $(NVCC))/../lib64
+
+#-------------------------------------------------------------------------------
+# Includes
+#-------------------------------------------------------------------------------
+
 CUDA_INC = $(shell dirname $(NVCC))/../include
+INC = -I. -I$(CUDA_INC) -I.. -I../../KernelCommon
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+
+DEFINES = 
+
+ifeq ($(fermi-ecc), 1)
+	# Define if you're planning on using Fermi with ECC. (This enables logic 
+	# designed for SM1.0 in order to programmatically coalesce unaligned 
+	# scatters becuase they are so painfully expensive with ECC) 
+	DEFINES += -DFERMI_ECC		
+endif
+
+#-------------------------------------------------------------------------------
+# Compiler Flags
+#-------------------------------------------------------------------------------
 
 ifneq ($(force64), 1)
 	# Compile with 32-bit device pointers by default
@@ -66,19 +105,6 @@ ifneq ($(force64), 1)
 else
 	ARCH_SUFFIX = x86_64
 	ARCH = -m64
-endif
-
-GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
-GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
-GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
-SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-DEFINES = 
-
-ifeq ($(fermi-ecc), 1)
-	# Define if you're planning on using Fermi with ECC. (This enables logic 
-	# designed for SM1.0 in order to programmatically coalesce unaligned 
-	# scatters becuase they are so painfully expensive with ECC) 
-	DEFINES += -DFERMI_ECC		
 endif
 
 NVCCFLAGS = -Xptxas -v
@@ -98,36 +124,34 @@ ifdef maxregisters
     NVCCFLAGS += -maxrregcount $(maxregisters)
 endif
 
+#-------------------------------------------------------------------------------
+# Dependency Lists
+#-------------------------------------------------------------------------------
 
-#
+SORTING_DEPS = ../radixsort_api.cu ../kernel/radixsort_kernel_common.cu ../kernel/radixsort_reduction_kernel.cu ../kernel/radixsort_scanscatter_kernel.cu ../kernel/radixsort_spine_kernel.cu ../kernel/radixsort_key_conversion.cu 
+
+
+#-------------------------------------------------------------------------------
 # Simple test driver
-#
+#-------------------------------------------------------------------------------
 
-simple: bin/test_radix_sort_simple_$(NVCC_VERSION)
+simple: bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_radix_sort_simple_$(NVCC_VERSION) : obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o
+bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_simple.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	g++ -fPIC $(ARCH) -o bin/test_radix_sort_simple_$(NVCC_VERSION) obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
 	
-obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o : test_radix_sort_simple.cu srts_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu test_radix_sort_utils.cu
-	mkdir -p obj
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
 
-
-#
+#-------------------------------------------------------------------------------
 # Advanced test driver (this can take quite some time to compile as it generates
 # kernels for a wide variety of key and value type combinations
-#
+#-------------------------------------------------------------------------------
 
-advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)
+advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_radix_sort_advanced_$(NVCC_VERSION) : obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o
+bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	g++ -fPIC $(ARCH) -o bin/test_radix_sort_advanced_$(NVCC_VERSION) obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
-
-obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o : test_radix_sort_advanced.cu srts_radix_sort.cu kernel/srts_radixsort_kernel_common.cu kernel/srts_reduction_kernel.cu kernel/srts_scanscatter_kernel.cu kernel/srts_spine_kernel.cu test_radix_sort_utils.cu
-	mkdir -p obj
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o -c test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) --compiler-options -fno-strict-aliasing  -I. -I$(CUDA_INC) -DUNIX -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
 
 
 #
@@ -135,8 +159,7 @@ obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o : test_radix_sort_advanced.
 #
 
 clean :
-	rm -f obj/test_radix_sort_simple.cu.sm.$(NVCC_VERSION).o obj/test_radix_sort_advanced.cu.sm.$(NVCC_VERSION).o
-	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION) bin/test_radix_sort_advanced_$(NVCC_VERSION)
+	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp
 
 

@@ -1,4 +1,5 @@
-/**
+/******************************************************************************
+ * 
  * Copyright 2010 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -34,31 +35,25 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
- */
+ * 
+ ******************************************************************************/
 
 
-//------------------------------------------------------------------------------
-// SrtsScanDigit
-//------------------------------------------------------------------------------
+/******************************************************************************
+// Bottom-level digit scanning/scattering kernel
+ ******************************************************************************/
 
-#ifndef _SRTS_RADIX_SORT_SCANSCATTER_KERNEL_H_
-#define _SRTS_RADIX_SORT_SCANSCATTER_KERNEL_H_
+#ifndef _B40C_RADIX_SORT_SCANSCATTER_KERNEL_H_
+#define _B40C_RADIX_SORT_SCANSCATTER_KERNEL_H_
 
-#include <kernel/srts_radixsort_kernel_common.cu>
+#include "radixsort_kernel_common.cu"
 
-
-
-//------------------------------------------------------------------------------
-// Scan/Scatter Configuration
-//------------------------------------------------------------------------------
-
-#define REG_MISER_QUALIFIER __shared__
+namespace b40c {
 
 
-
-//------------------------------------------------------------------------------
-// Appropriate substitutes to use for out-of-bounds key (and value) offsets 
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Appropriate substitutes to use for out-of-bounds key (and value) offsets 
+ ******************************************************************************/
 
 template <typename T> 
 __device__ __forceinline__ T DefaultextraValue() {
@@ -91,9 +86,9 @@ __device__ __forceinline__ unsigned long long DefaultextraValue<unsigned long lo
 }
 
 
-//------------------------------------------------------------------------------
-// Cycle-processing Routines
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Cycle-processing Routines
+ ******************************************************************************/
 
 template <typename K, unsigned long long RADIX_DIGITS, unsigned int BIT>
 __device__ __forceinline__ unsigned int DecodeDigit(K key) 
@@ -178,10 +173,10 @@ __device__ __forceinline__ void ReadSets(
 	if (UNGUARDED_IO) {
 
 		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower
-		if (SETS_PER_PASS > 0) pairs[0] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 0)];
-		if (SETS_PER_PASS > 1) pairs[1] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 1)];
-		if (SETS_PER_PASS > 2) pairs[2] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 2)];
-		if (SETS_PER_PASS > 3) pairs[3] = d_in[threadIdx.x + BASE2 + (SRTS_THREADS * 3)];
+		if (SETS_PER_PASS > 0) pairs[0] = d_in[threadIdx.x + BASE2 + (RADIXSORT_THREADS * 0)];
+		if (SETS_PER_PASS > 1) pairs[1] = d_in[threadIdx.x + BASE2 + (RADIXSORT_THREADS * 1)];
+		if (SETS_PER_PASS > 2) pairs[2] = d_in[threadIdx.x + BASE2 + (RADIXSORT_THREADS * 2)];
+		if (SETS_PER_PASS > 3) pairs[3] = d_in[threadIdx.x + BASE2 + (RADIXSORT_THREADS * 3)];
 
 		#pragma unroll 
 		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
@@ -196,10 +191,10 @@ __device__ __forceinline__ void ReadSets(
 		// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
 		// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
 		
-		if (SETS_PER_PASS > 0) GuardedReadSet<T, PreprocessFunctor>(in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 0), extra);
-		if (SETS_PER_PASS > 1) GuardedReadSet<T, PreprocessFunctor>(in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 1), extra);
-		if (SETS_PER_PASS > 2) GuardedReadSet<T, PreprocessFunctor>(in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 2), extra);
-		if (SETS_PER_PASS > 3) GuardedReadSet<T, PreprocessFunctor>(in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (SRTS_THREADS * 2 * 3), extra);
+		if (SETS_PER_PASS > 0) GuardedReadSet<T, PreprocessFunctor>(in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (RADIXSORT_THREADS * 2 * 0), extra);
+		if (SETS_PER_PASS > 1) GuardedReadSet<T, PreprocessFunctor>(in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (RADIXSORT_THREADS * 2 * 1), extra);
+		if (SETS_PER_PASS > 2) GuardedReadSet<T, PreprocessFunctor>(in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (RADIXSORT_THREADS * 2 * 2), extra);
+		if (SETS_PER_PASS > 3) GuardedReadSet<T, PreprocessFunctor>(in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (RADIXSORT_THREADS * 2 * 3), extra);
 	}
 }
 
@@ -317,18 +312,18 @@ __device__ __forceinline__ void RecoverDigitCounts(
 	}
 }
 
-
+template<unsigned int RADIX_DIGITS>
 __device__ __forceinline__ void CorrectUnguardedSetOverflow(
 	uint2 			set_digits,
 	unsigned int 	&set_count)				
 {
-	if (WarpVoteAll(set_count <= 1)) {
+	if (WarpVoteAll(RADIX_DIGITS, set_count <= 1)) {
 		// All first-pass, first set keys have same digit. 
 		set_count = (threadIdx.x == set_digits.x) ? 256 : 0;
 	}
 }
 
-template <unsigned int SETS_PER_PASS>
+template <unsigned int RADIX_DIGITS, unsigned int SETS_PER_PASS>
 __device__ __forceinline__ void CorrectUnguardedPassOverflow(
 	uint2 			pass_digits[SETS_PER_PASS],
 	unsigned int 	pass_counts[SETS_PER_PASS])				
@@ -336,14 +331,14 @@ __device__ __forceinline__ void CorrectUnguardedPassOverflow(
 	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
 	// telling me "Advisory: Loop was not unrolled, unexpected call OPs"
 
-	if (SETS_PER_PASS > 0) CorrectUnguardedSetOverflow(pass_digits[0], pass_counts[0]);
-	if (SETS_PER_PASS > 1) CorrectUnguardedSetOverflow(pass_digits[1], pass_counts[1]);
-	if (SETS_PER_PASS > 2) CorrectUnguardedSetOverflow(pass_digits[2], pass_counts[2]);
-	if (SETS_PER_PASS > 3) CorrectUnguardedSetOverflow(pass_digits[3], pass_counts[3]);
+	if (SETS_PER_PASS > 0) CorrectUnguardedSetOverflow<RADIX_DIGITS>(pass_digits[0], pass_counts[0]);
+	if (SETS_PER_PASS > 1) CorrectUnguardedSetOverflow<RADIX_DIGITS>(pass_digits[1], pass_counts[1]);
+	if (SETS_PER_PASS > 2) CorrectUnguardedSetOverflow<RADIX_DIGITS>(pass_digits[2], pass_counts[2]);
+	if (SETS_PER_PASS > 3) CorrectUnguardedSetOverflow<RADIX_DIGITS>(pass_digits[3], pass_counts[3]);
 }
 
 
-template <unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
+template <unsigned int RADIX_DIGITS, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS>
 __device__ __forceinline__ void CorrectUnguardedCycleOverflow(
 	uint2 			cycle_digits[PASSES_PER_CYCLE][SETS_PER_PASS],
 	unsigned int 	cycle_counts[PASSES_PER_CYCLE][SETS_PER_PASS])
@@ -351,15 +346,15 @@ __device__ __forceinline__ void CorrectUnguardedCycleOverflow(
 	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
 	// telling me "Advisory: Loop was not unrolled, unexpected call OPs"
 
-	if (PASSES_PER_CYCLE > 0) CorrectUnguardedPassOverflow<SETS_PER_PASS>(cycle_digits[0], cycle_counts[0]);
-	if (PASSES_PER_CYCLE > 1) CorrectUnguardedPassOverflow<SETS_PER_PASS>(cycle_digits[1], cycle_counts[1]);
+	if (PASSES_PER_CYCLE > 0) CorrectUnguardedPassOverflow<RADIX_DIGITS, SETS_PER_PASS>(cycle_digits[0], cycle_counts[0]);
+	if (PASSES_PER_CYCLE > 1) CorrectUnguardedPassOverflow<RADIX_DIGITS, SETS_PER_PASS>(cycle_digits[1], cycle_counts[1]);
 }
 
 
 template <unsigned int RADIX_DIGITS>
 __device__ __forceinline__ void CorrectLastLaneOverflow(unsigned int &count, int extra[1]) 
 {
-	if (WarpVoteAll(count == 0) && (threadIdx.x == RADIX_DIGITS - 1)) {
+	if (WarpVoteAll(RADIX_DIGITS, count == 0) && (threadIdx.x == RADIX_DIGITS - 1)) {
 		// We're 'f' and we overflowed b/c of invalid 'f' placemarkers; the number of valid items in this set is the count of valid f's 
 		count = extra[0] & 255;
 	}
@@ -385,7 +380,7 @@ __device__ __forceinline__ void CorrectForOverflows(
 		if (SETS_PER_CYCLE > 3) if (extra[0] < 3 * 256) CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[3], extra);
 	}
 
-	CorrectUnguardedCycleOverflow<PASSES_PER_CYCLE, SETS_PER_PASS>(digits, counts);
+	CorrectUnguardedCycleOverflow<RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS>(digits, counts);
 }
 
 
@@ -450,12 +445,12 @@ __device__ __forceinline__ void ScanPass(
 }	
 	
 
-//------------------------------------------------------------------------------
-// SM1.3 Local Exchange Routines
-//
-// Routines for exchanging keys (and values) in shared memory (i.e., local 
-// scattering) in order to to facilitate coalesced global scattering
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * SM1.3 Local Exchange Routines
+ * 
+ * Routines for exchanging keys (and values) in shared memory (i.e., local 
+ * scattering) in order to to facilitate coalesced global scattering
+ ******************************************************************************/
 
 template <typename T, bool UNGUARDED_IO, unsigned int PASSES_PER_CYCLE, unsigned int SETS_PER_PASS, typename PostprocessFunctor>
 __device__ __forceinline__ void ScatterSets(
@@ -475,30 +470,30 @@ __device__ __forceinline__ void ScatterSets(
 	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower 
 		
 	if (SETS_PER_PASS > 0) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 0) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 0) < extra[0])) 
 			d_out[offsets[0].x] = pairs[0].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 1) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 1) < extra[0])) 
 			d_out[offsets[0].y] = pairs[0].y;
 	}
 
 	if (SETS_PER_PASS > 1) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 2) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 2) < extra[0])) 
 			d_out[offsets[1].x] = pairs[1].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 3) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 3) < extra[0])) 
 			d_out[offsets[1].y] = pairs[1].y;
 	}
 
 	if (SETS_PER_PASS > 2) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 4) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 4) < extra[0])) 
 			d_out[offsets[2].x] = pairs[2].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 5) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 5) < extra[0])) 
 			d_out[offsets[2].y] = pairs[2].y;
 	}
 
 	if (SETS_PER_PASS > 3) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 6) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 6) < extra[0])) 
 			d_out[offsets[3].x] = pairs[3].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (SRTS_THREADS * 7) < extra[0])) 
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (RADIXSORT_THREADS * 7) < extra[0])) 
 			d_out[offsets[3].y] = pairs[3].y;
 	}
 }
@@ -538,8 +533,8 @@ __device__ __forceinline__ void ExchangePairs(
 		#pragma unroll 
 		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
 			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
-			pairs[PASS][SET].x = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 0))];
-			pairs[PASS][SET].y = swap[threadIdx.x + (SRTS_THREADS * (BLOCK + 1))];
+			pairs[PASS][SET].x = swap[threadIdx.x + (RADIXSORT_THREADS * (BLOCK + 0))];
+			pairs[PASS][SET].y = swap[threadIdx.x + (RADIXSORT_THREADS * (BLOCK + 1))];
 		}
 	}
 }
@@ -548,7 +543,6 @@ __device__ __forceinline__ void ExchangePairs(
 template <
 	typename K,
 	typename V,	
-	bool KEYS_ONLY, 
 	unsigned int RADIX_DIGITS, 
 	unsigned int BIT, 
 	unsigned int PASSES_PER_CYCLE,
@@ -559,9 +553,9 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
 	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
 	unsigned int *exchange,
-	typename VecType<V, 2>::Type *d_in_data, 
+	typename VecType<V, 2>::Type *d_in_values, 
 	K *d_out_keys, 
-	V *d_out_data, 
+	V *d_out_values, 
 	unsigned int carry[RADIX_DIGITS], 
 	int extra[1])				
 {
@@ -577,8 +571,8 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		#pragma unroll 
 		for (int SET = 0; SET < (int) SETS_PER_PASS; SET++) {
 			const int BLOCK = ((PASS * SETS_PER_PASS) + SET) * 2;
-			offsets[PASS][SET].x = threadIdx.x + (SRTS_THREADS * (BLOCK + 0)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].x)];
-			offsets[PASS][SET].y = threadIdx.x + (SRTS_THREADS * (BLOCK + 1)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].y)];
+			offsets[PASS][SET].x = threadIdx.x + (RADIXSORT_THREADS * (BLOCK + 0)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].x)];
+			offsets[PASS][SET].y = threadIdx.x + (RADIXSORT_THREADS * (BLOCK + 1)) + carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[PASS][SET].y)];
 		}
 	}
 	
@@ -586,10 +580,10 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 	#pragma unroll 
 	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
 		const int BLOCK = PASS * SETS_PER_PASS * 2;
-		ScatterSets<K, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, PostprocessFunctor>(d_out_keys, keypairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, extra);
+		ScatterSets<K, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, PostprocessFunctor>(d_out_keys, keypairs[PASS], offsets[PASS], RADIXSORT_THREADS * BLOCK, extra);
 	}
 
-	if (!KEYS_ONLY) {
+	if (!IsKeysOnly<V>()) {
 	
 		__syncthreads();
 
@@ -599,8 +593,8 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
 		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
 
-		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, extra);
-		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, extra);
+		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_values, datapairs[0], RADIXSORT_THREADS * SETS_PER_PASS * 0, extra);
+		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_values, datapairs[1], RADIXSORT_THREADS * SETS_PER_PASS * 1, extra);
 		
 		// Swap data according to ranks
 		ExchangePairs<V, PASSES_PER_CYCLE, SETS_PER_PASS>((V*) exchange, datapairs, ranks);
@@ -609,18 +603,18 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		#pragma unroll 
 		for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
 			const int BLOCK = PASS * SETS_PER_PASS * 2;
-			ScatterSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_out_data, datapairs[PASS], offsets[PASS], SRTS_THREADS * BLOCK, extra);
+			ScatterSets<V, UNGUARDED_IO, PASSES_PER_CYCLE, SETS_PER_PASS, NopFunctor<V> >(d_out_values, datapairs[PASS], offsets[PASS], RADIXSORT_THREADS * BLOCK, extra);
 		}
 	}
 }
 
 
-//------------------------------------------------------------------------------
-// SM1.0 Local Exchange Routines
-//
-// Routines for exchanging keys (and values) in shared memory (i.e., local 
-// scattering) in order to to facilitate coalesced global scattering
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * SM1.0 Local Exchange Routines
+ *
+ * Routines for exchanging keys (and values) in shared memory (i.e., local 
+ * scattering) in order to to facilitate coalesced global scattering
+ ******************************************************************************/
 
 template <
 	typename T, 
@@ -681,7 +675,7 @@ __device__ __forceinline__ void SwapAndScatterPairs(
 	unsigned int digit_scan[2][RADIX_DIGITS], 
 	int extra[1])				
 {
-	const unsigned int SCATTER_PASS_DIGITS = SRTS_WARPS * (WARP_THREADS / MEM_BANKS(__CUDA_ARCH__));
+	const unsigned int SCATTER_PASS_DIGITS = RADIXSORT_WARPS * (WARP_THREADS / MEM_BANKS(__CUDA_ARCH__));
 	const unsigned int SCATTER_PASSES = RADIX_DIGITS / SCATTER_PASS_DIGITS;
 
 	// Push in pairs
@@ -706,7 +700,6 @@ __device__ __forceinline__ void SwapAndScatterPairs(
 template <
 	typename K,
 	typename V,	
-	bool KEYS_ONLY, 
 	unsigned int RADIX_DIGITS, 
 	unsigned int PASSES_PER_CYCLE,
 	unsigned int SETS_PER_PASS,
@@ -716,9 +709,9 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 	typename VecType<K, 2>::Type keypairs[PASSES_PER_CYCLE][SETS_PER_PASS], 
 	uint2 ranks[PASSES_PER_CYCLE][SETS_PER_PASS],
 	unsigned int *exchange,
-	typename VecType<V, 2>::Type *d_in_data, 
+	typename VecType<V, 2>::Type *d_in_values, 
 	K *d_out_keys, 
-	V *d_out_data, 
+	V *d_out_values, 
 	unsigned int carry[RADIX_DIGITS], 
 	unsigned int digit_scan[2][RADIX_DIGITS], 
 	int extra[1])				
@@ -727,7 +720,7 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 	SwapAndScatterPairs<K, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, ranks, (K*) exchange, d_out_keys, carry, digit_scan, extra);				
 	
-	if (!KEYS_ONLY) {
+	if (!IsKeysOnly<V>()) {
 
 		__syncthreads();
 		
@@ -736,24 +729,23 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 
 		// Read input data
 		typename VecType<V, 2>::Type datapairs[PASSES_PER_CYCLE][SETS_PER_PASS];
-		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[0], SRTS_THREADS * SETS_PER_PASS * 0, extra);
-		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_data, datapairs[1], SRTS_THREADS * SETS_PER_PASS * 1, extra);
+		if (PASSES_PER_CYCLE > 0) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_values, datapairs[0], RADIXSORT_THREADS * SETS_PER_PASS * 0, extra);
+		if (PASSES_PER_CYCLE > 1) ReadSets<V, UNGUARDED_IO, SETS_PER_PASS, NopFunctor<V> >(d_in_values, datapairs[1], RADIXSORT_THREADS * SETS_PER_PASS * 1, extra);
 
 		// Swap and scatter data
 		SwapAndScatterPairs<V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, NopFunctor<V> >(
-			datapairs, ranks, (V*) exchange, d_out_data, carry, digit_scan, extra);				
+			datapairs, ranks, (V*) exchange, d_out_values, carry, digit_scan, extra);				
 	}
 }
 
 
-//------------------------------------------------------------------------------
-// Cycle of SRTS_CYCLE_ELEMENTS keys (and values)
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Cycle of RADIXSORT_CYCLE_ELEMENTS keys (and values)
+ ******************************************************************************/
 
 template <
 	typename K,
 	typename V,	
-	bool KEYS_ONLY, 
 	unsigned int BIT, 
 	bool UNGUARDED_IO,
 	unsigned int RADIX_DIGITS,
@@ -786,9 +778,9 @@ template <
 
 __device__ __forceinline__ void SrtsScanDigitCycle(
 	typename VecType<K, 2>::Type 	*d_in_keys, 
-	typename VecType<V, 2>::Type 	*d_in_data, 
+	typename VecType<V, 2>::Type 	*d_in_values, 
 	K								*d_out_keys, 
-	V								*d_out_data, 
+	V								*d_out_values, 
 	unsigned int 					*exchange,								
 	unsigned int 					warpscan[SCAN_LANES_PER_PASS][3][RAKING_THREADS_PER_LANE],
 	unsigned int 					carry[RADIX_DIGITS],
@@ -822,8 +814,8 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 	// telling me "Advisory: Loop was not unrolled, unexpected control flow construct"
 	
 	// Read Keys
-	if (PASSES_PER_CYCLE > 0) ReadSets<K, UNGUARDED_IO, SETS_PER_PASS, PreprocessFunctor>(d_in_keys, keypairs[0], SRTS_THREADS * SETS_PER_PASS * 0, extra);		 
-	if (PASSES_PER_CYCLE > 1) ReadSets<K, UNGUARDED_IO, SETS_PER_PASS, PreprocessFunctor>(d_in_keys, keypairs[1], SRTS_THREADS * SETS_PER_PASS * 1, extra); 	
+	if (PASSES_PER_CYCLE > 0) ReadSets<K, UNGUARDED_IO, SETS_PER_PASS, PreprocessFunctor>(d_in_keys, keypairs[0], RADIXSORT_THREADS * SETS_PER_PASS * 0, extra);		 
+	if (PASSES_PER_CYCLE > 1) ReadSets<K, UNGUARDED_IO, SETS_PER_PASS, PreprocessFunctor>(d_in_keys, keypairs[1], RADIXSORT_THREADS * SETS_PER_PASS * 1, extra); 	
 	
 	//-------------------------------------------------------------------------
 	// Lane-scanning Passes
@@ -919,26 +911,26 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 
 #if ((__CUDA_ARCH__ < 130) || FERMI_ECC)		
 
-	SwapAndScatterSm10<K, V, KEYS_ONLY, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
+	SwapAndScatterSm10<K, V, RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
 		ranks,
 		exchange,
-		d_in_data, 
+		d_in_values, 
 		d_out_keys, 
-		d_out_data, 
+		d_out_values, 
 		carry, 
 		digit_scan,
 		extra);
 	
 #else 
 
-	SwapAndScatterSm13<K, V, KEYS_ONLY, RADIX_DIGITS, BIT, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
+	SwapAndScatterSm13<K, V, RADIX_DIGITS, BIT, PASSES_PER_CYCLE, SETS_PER_PASS, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
 		ranks,
 		exchange,
-		d_in_data, 
+		d_in_values, 
 		d_out_keys, 
-		d_out_data, 
+		d_out_values, 
 		carry, 
 		extra);
 	
@@ -950,19 +942,20 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 
 
 
-//------------------------------------------------------------------------------
-// Scan/Scatter Kernel Entry Point
-//------------------------------------------------------------------------------
+/******************************************************************************
+ * Scan/Scatter Kernel Entry Point
+ ******************************************************************************/
 
-template <typename K, typename V, bool KEYS_ONLY, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
-__launch_bounds__ (SRTS_THREADS, SRTS_BULK_CTA_OCCUPANCY(__CUDA_ARCH__))
+template <typename K, typename V, unsigned int PASS, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
+__launch_bounds__ (RADIXSORT_THREADS, RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
-void SrtsScanDigitBulk(
+void ScanScatterDigits(
+	bool *d_from_alt_storage,
 	unsigned int* d_spine,
 	K* d_in_keys,
 	K* d_out_keys,
-	V* d_in_data,
-	V* d_out_data,
+	V* d_in_values,
+	V* d_out_values,
 	CtaDecomposition work_decomposition)
 {
 
@@ -971,20 +964,20 @@ void SrtsScanDigitBulk(
 	const unsigned int LOG_SCAN_LANES_PER_SET	= (RADIX_BITS > 2) ? RADIX_BITS - 2 : 0;					// Always at one lane per set
 	const unsigned int SCAN_LANES_PER_SET		= 1 << LOG_SCAN_LANES_PER_SET;								// N.B.: we have "declared but never referenced" warnings for these, but they're actually used for template instantiation
 	
-	const unsigned int LOG_SETS_PER_PASS		= SRTS_LOG_SETS_PER_PASS(__CUDA_ARCH__);			
+	const unsigned int LOG_SETS_PER_PASS		= RADIXSORT_LOG_SETS_PER_PASS(__CUDA_ARCH__);			
 	const unsigned int SETS_PER_PASS			= 1 << LOG_SETS_PER_PASS;
 	
-	const unsigned int LOG_PASSES_PER_CYCLE		= SRTS_LOG_PASSES_PER_CYCLE(__CUDA_ARCH__, K, V);			
+	const unsigned int LOG_PASSES_PER_CYCLE		= RADIXSORT_LOG_PASSES_PER_CYCLE(__CUDA_ARCH__, K, V);			
 	const unsigned int PASSES_PER_CYCLE			= 1 << LOG_PASSES_PER_CYCLE;
 
 	const unsigned int LOG_SCAN_LANES_PER_PASS	= LOG_SETS_PER_PASS + LOG_SCAN_LANES_PER_SET;
 	const unsigned int SCAN_LANES_PER_PASS		= 1 << LOG_SCAN_LANES_PER_PASS;
 	
-	const unsigned int LOG_PARTIALS_PER_LANE 	= SRTS_LOG_THREADS;
+	const unsigned int LOG_PARTIALS_PER_LANE 	= RADIXSORT_LOG_THREADS;
 	
 	const unsigned int LOG_PARTIALS_PER_PASS	= LOG_SCAN_LANES_PER_PASS + LOG_PARTIALS_PER_LANE;
 
-	const unsigned int LOG_RAKING_THREADS_PER_PASS 		= SRTS_LOG_RAKING_THREADS_PER_PASS(__CUDA_ARCH__);
+	const unsigned int LOG_RAKING_THREADS_PER_PASS 		= RADIXSORT_LOG_RAKING_THREADS_PER_PASS(__CUDA_ARCH__);
 	const unsigned int RAKING_THREADS_PER_PASS			= 1 << LOG_RAKING_THREADS_PER_PASS;
 
 	const unsigned int LOG_RAKING_THREADS_PER_LANE 		= LOG_RAKING_THREADS_PER_PASS - LOG_SCAN_LANES_PER_PASS;
@@ -1010,8 +1003,8 @@ void SrtsScanDigitBulk(
 	
 	const unsigned int SCAN_LANE_BYTES			= ROWS_PER_PASS * PADDED_PARTIALS_PER_ROW * sizeof(unsigned int);
 	const unsigned int MAX_EXCHANGE_BYTES		= (sizeof(K) > sizeof(V)) ? 
-													SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(K) : 
-													SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(V);
+													RADIXSORT_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(K) : 
+													RADIXSORT_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V) * sizeof(V);
 	const unsigned int EXCHANGE_PADDING_QUADS	= (MAX_EXCHANGE_BYTES > SCAN_LANE_BYTES) ? (MAX_EXCHANGE_BYTES - SCAN_LANE_BYTES + sizeof(unsigned int) - 1) / sizeof(unsigned int) : 0;
 
 
@@ -1029,9 +1022,11 @@ void SrtsScanDigitBulk(
 	__shared__ unsigned int 	carry[RADIX_DIGITS];
 	__shared__ unsigned int 	digit_scan[2][RADIX_DIGITS];						 
 	__shared__ unsigned int 	digit_counts[PASSES_PER_CYCLE][SETS_PER_PASS][RADIX_DIGITS];
-
-	REG_MISER_QUALIFIER int	extra[1];
-	REG_MISER_QUALIFIER int oob[1];
+	__shared__ bool 			non_trivial_digit_pass;
+	__shared__ bool				from_alt_storage;
+	
+	_B40C_REG_MISER_QUALIFIER_ int extra[1];
+	_B40C_REG_MISER_QUALIFIER_ int oob[1];
 
 	
 	extra[0] = (blockIdx.x == gridDim.x - 1) ? work_decomposition.extra_elements_last_block : 0;
@@ -1042,7 +1037,7 @@ void SrtsScanDigitBulk(
 		block_offset = work_decomposition.big_block_elements * blockIdx.x;
 		block_elements = work_decomposition.big_block_elements;
 	} else {
-		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V));
+		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * RADIXSORT_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V));
 		block_elements = work_decomposition.normal_block_elements;
 	}
 	oob[0] = block_offset + block_elements;	// out-of-bounds
@@ -1070,12 +1065,41 @@ void SrtsScanDigitBulk(
 		// initialize digit warpscans
 		if (threadIdx.x < RADIX_DIGITS) {
 
-			// read carry in parallel 
-			carry[threadIdx.x] = d_spine[(gridDim.x * threadIdx.x) + blockIdx.x];
-
-			// initialize digit_scan
+			// Initialize digit_scan
 			digit_scan[0][threadIdx.x] = 0;
 			digit_scan[1][threadIdx.x] = 0;
+
+			// Determine where to read our input
+			from_alt_storage = (PASS == 0) ? false : d_from_alt_storage[PASS & 0x1];
+
+			// Read carry in parallel 
+			unsigned int my_digit_carry = d_spine[(gridDim.x * threadIdx.x) + blockIdx.x];
+			carry[threadIdx.x] = my_digit_carry;
+
+			// Determine whether or not we have work to do and setup the next round 
+			// accordingly.  Everybody but the first threadblock can determine this 
+			// from the number of non-zero-and-non-oob digit carries.  First block 
+			// needs someone else's because he always writes the zero offset.
+			
+			if (PreprocessFunctor::MustApply() || PostprocessFunctor::MustApply()) {
+
+				non_trivial_digit_pass = true;
+
+			} else if (blockIdx.x == 0) {
+				
+				// First CTA
+				unsigned int predicate = ((my_digit_carry > 0) && (my_digit_carry < work_decomposition.num_elements));
+				non_trivial_digit_pass = (TallyWarpVote(RADIX_DIGITS, predicate, scan_lanes) > 0);
+				
+			} else {
+				
+				// Non-first CTA
+				unsigned int predicate = ((my_digit_carry > 0) && (my_digit_carry < work_decomposition.num_elements));
+				non_trivial_digit_pass = (TallyWarpVote(RADIX_DIGITS, predicate, scan_lanes) > 1);
+			}
+
+			// Let the next round know which set of buffers to use
+			if (blockIdx.x == 0) d_from_alt_storage[(PASS + 1) & 0x1] = from_alt_storage ^ non_trivial_digit_pass;
 		}
 
 		// initialize raking segment
@@ -1084,45 +1108,95 @@ void SrtsScanDigitBulk(
 		raking_partial = scan_lanes + (row * PADDED_PARTIALS_PER_ROW) + col; 
 	}
 
-	// Scan in tiles of cycle_elements
-	while (block_offset < oob[0]) {
+	// Sync to acquire non_trivial_digit_pass and from_temp_storage
+	__syncthreads();
+	
+	// Short-circuit this entire pass
+	if (!non_trivial_digit_pass) return; 
 
-		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
-			(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
-			(typename VecType<V, 2>::Type *) &d_in_data[block_offset], 
-			d_out_keys, 
-			d_out_data, 
-			scan_lanes,
-			warpscan,
-			carry,
-			digit_scan,						 
-			digit_counts,
-			extra,
-			base_partial,
-			raking_partial);		
+	if (!from_alt_storage) {
+	
+		// Scan in tiles of cycle_elements
+		while (block_offset < oob[0]) {
+	
+			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+				(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
+				(typename VecType<V, 2>::Type *) &d_in_values[block_offset], 
+				d_out_keys, 
+				d_out_values, 
+				scan_lanes,
+				warpscan,
+				carry,
+				digit_scan,						 
+				digit_counts,
+				extra,
+				base_partial,
+				raking_partial);		
+	
+			block_offset += RADIXSORT_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V);
+		}
+	
+		if (extra[0]) {
+			
+			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+				(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
+				(typename VecType<V, 2>::Type *) &d_in_values[block_offset], 
+				d_out_keys, 
+				d_out_values, 
+				scan_lanes,
+				warpscan,
+				carry,
+				digit_scan,						 
+				digit_counts,
+				extra,
+				base_partial,
+				raking_partial);		
+		}
 
-		block_offset += SRTS_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V);
-	}
-
-	if (extra[0]) {
+	} else {
 		
-		SrtsScanDigitCycle<K, V, KEYS_ONLY, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
-			(typename VecType<K, 2>::Type *) &d_in_keys[block_offset], 
-			(typename VecType<V, 2>::Type *) &d_in_data[block_offset], 
-			d_out_keys, 
-			d_out_data, 
-			scan_lanes,
-			warpscan,
-			carry,
-			digit_scan,						 
-			digit_counts,
-			extra,
-			base_partial,
-			raking_partial);		
+		// Scan in tiles of cycle_elements
+		while (block_offset < oob[0]) {
+
+			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+				(typename VecType<K, 2>::Type *) &d_out_keys[block_offset], 
+				(typename VecType<V, 2>::Type *) &d_out_values[block_offset], 
+				d_in_keys, 
+				d_in_values, 
+				scan_lanes,
+				warpscan,
+				carry,
+				digit_scan,						 
+				digit_counts,
+				extra,
+				base_partial,
+				raking_partial);		
+
+			block_offset += RADIXSORT_CYCLE_ELEMENTS(__CUDA_ARCH__, K, V);
+		}
+
+		if (extra[0]) {
+			
+			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+				(typename VecType<K, 2>::Type *) &d_out_keys[block_offset], 
+				(typename VecType<V, 2>::Type *) &d_out_values[block_offset], 
+				d_in_keys, 
+				d_in_values, 
+				scan_lanes,
+				warpscan,
+				carry,
+				digit_scan,						 
+				digit_counts,
+				extra,
+				base_partial,
+				raking_partial);		
+		}
+		
 	}
 }
 
 
+} // namespace b40c
 
 #endif
 
