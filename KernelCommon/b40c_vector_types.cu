@@ -19,10 +19,7 @@
  * Thanks!
  */
 
-
-#ifndef _VECTOR_TYPES_H_
-#define _VECTOR_TYPES_H_
-
+#pragma once
 
 //------------------------------------------------------------------------------
 // Vector types
@@ -295,12 +292,4 @@ template<>
 struct VecType<unsigned long long, 4> {
 	typedef ulonglong4 Type;
 };
-
-
-
-
-
-#endif
-
-
 

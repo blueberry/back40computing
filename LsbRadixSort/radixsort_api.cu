@@ -77,10 +77,7 @@
  *
  ******************************************************************************/
 
- 
- 
-#ifndef _B40C_RADIX_SORT_API_H_
-#define _B40C_RADIX_SORT_API_H_
+#pragma once
 
 #include <stdlib.h> 
 #include <stdio.h> 
@@ -822,12 +819,5 @@ public:
 };
 
 
-
-
-
-
-
 } // namespace b40c
-
-#endif
 

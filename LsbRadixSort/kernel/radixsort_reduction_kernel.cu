@@ -43,8 +43,7 @@
  * Bottom-level digit-reduction/counting kernel
  ******************************************************************************/
 
-#ifndef _B40C_RADIX_SORT_REDUCTION_KERNEL_H_
-#define _B40C_RADIX_SORT_REDUCTION_KERNEL_H_
+#pragma once
 
 #include "radixsort_kernel_common.cu"
 
@@ -379,8 +378,4 @@ void RakingReduction(
  
 
 } // namespace b40c
-
-#endif
-
-
 

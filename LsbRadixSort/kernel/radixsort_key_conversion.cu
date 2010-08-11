@@ -44,8 +44,7 @@
  * suitable for radix sorting  
  ******************************************************************************/
 
-#ifndef _BC40_RADIX_SORT_KEY_CONVERSION_H_
-#define _BC40_RADIX_SORT_KEY_CONVERSION_H_
+#pragma once
 
 namespace b40c {
 
@@ -289,8 +288,4 @@ struct PostprocessKeyFunctor<long long> {
 
 
 } // namespace b40c
-
-#endif
-
-
 
