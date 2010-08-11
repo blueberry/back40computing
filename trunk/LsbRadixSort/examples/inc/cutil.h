@@ -940,4 +940,14 @@ extern "C" {
 }
 #endif  // #ifdef _DEBUG (else branch)
 
+
+
+// inlining sources...
+#include "bank_checker.cpp"
+#include "cmd_arg_reader.cpp"
+#include "cutil.cpp"
+#include "stopwatch.cpp"
+#include "stopwatch_linux.cpp"
+
+
 #endif  // #ifndef _CUTIL_H_

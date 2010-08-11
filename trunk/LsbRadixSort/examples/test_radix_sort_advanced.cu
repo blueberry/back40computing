@@ -58,7 +58,7 @@
 
 #include <radixsort_api.cu>			// Sorting includes
 #include "test_utils.cu"			// Utilities and correctness-checking
-#include "inc/cutil.h"				// Utilities for commandline parsing
+#include <cutil.h>					// Utilities for commandline parsing
 
 using namespace b40c;
 
