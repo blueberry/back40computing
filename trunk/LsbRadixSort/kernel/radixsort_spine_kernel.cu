@@ -43,8 +43,7 @@
  * Top-level histogram/spine scanning kernel
  ******************************************************************************/
 
-#ifndef _B40C_RADIX_SORT_SPINE_KERNEL_H_
-#define _B40C_RADIX_SORT_SPINE_KERNEL_H_
+#pragma once
 
 #include "radixsort_kernel_common.cu"
 
@@ -178,8 +177,4 @@ __global__ void SrtsScanSpine(
 
 
 } // namespace b40c
-
-#endif
-
-
 

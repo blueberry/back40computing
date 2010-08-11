@@ -25,8 +25,7 @@
 //------------------------------------------------------------------------------
 
 
-#ifndef _B40C_COMMON_KERNEL_H_
-#define _B40C_COMMON_KERNEL_H_
+#pragma once
 
 #include <cuda.h>
 
@@ -278,16 +277,5 @@ void SerialScan(unsigned int segment[], unsigned int seed0) {
 __global__ void FlushKernel()
 {
 }
-
-
-
-
-
-
-
-
-
-#endif
-
 
 

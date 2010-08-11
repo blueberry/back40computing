@@ -43,8 +43,7 @@
  * Configuration management for B40C radix sorting kernels  
  ******************************************************************************/
 
-#ifndef _B40C_RADIX_SORT_COMMON_KERNEL_H_
-#define _B40C_RADIX_SORT_COMMON_KERNEL_H_
+#pragma once
 
 #include <b40c_kernel_utils.cu>
 #include <b40c_vector_types.cu>
@@ -163,8 +162,4 @@ struct CtaDecomposition {
 
 
 } // namespace b40c
-
-#endif
-
-
 

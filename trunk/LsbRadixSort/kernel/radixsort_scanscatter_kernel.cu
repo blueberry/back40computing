@@ -43,8 +43,7 @@
 // Bottom-level digit scanning/scattering kernel
  ******************************************************************************/
 
-#ifndef _B40C_RADIX_SORT_SCANSCATTER_KERNEL_H_
-#define _B40C_RADIX_SORT_SCANSCATTER_KERNEL_H_
+#pragma once
 
 #include "radixsort_kernel_common.cu"
 
@@ -1197,8 +1196,4 @@ void ScanScatterDigits(
 
 
 } // namespace b40c
-
-#endif
-
-
 
