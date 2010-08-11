@@ -29,6 +29,7 @@
 
 #include <cuda.h>
 
+namespace b40c {
 
 //------------------------------------------------------------------------------
 // Device properties 
@@ -278,4 +279,5 @@ __global__ void FlushKernel()
 {
 }
 
+} // namespace b40c
 

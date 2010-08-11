@@ -21,6 +21,8 @@
 
 #pragma once
 
+namespace b40c {
+
 //------------------------------------------------------------------------------
 // Vector types
 //------------------------------------------------------------------------------
@@ -292,4 +294,6 @@ template<>
 struct VecType<unsigned long long, 4> {
 	typedef ulonglong4 Type;
 };
+
+} // namespace b40c
 
