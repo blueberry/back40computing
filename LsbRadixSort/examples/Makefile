@@ -79,7 +79,7 @@ CUDA_LIB32 = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../l
 #-------------------------------------------------------------------------------
 
 CUDA_INC = $(shell dirname $(NVCC))/../include
-INC = -I. -I$(CUDA_INC) -I.. -I../../KernelCommon
+INC = -I. -I$(CUDA_INC) -I.. -I../../KernelCommon -I./inc
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -132,18 +132,18 @@ SORTING_DEPS = ../radixsort_api.cu ../kernel/radixsort_kernel_common.cu ../kerne
 
 
 #-------------------------------------------------------------------------------
-# Simple test driver
+# (make simple) Simple test driver 
 #-------------------------------------------------------------------------------
 
 simple: bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_simple.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB32) -lcudart 
 	
 
 #-------------------------------------------------------------------------------
-# Advanced test driver (this can take quite some time to compile as it generates
+# (make advanced) Advanced test driver (this can take quite some time to compile as it generates
 # kernels for a wide variety of key and value type combinations
 #-------------------------------------------------------------------------------
 
@@ -151,15 +151,28 @@ advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 -L./lib $(CUDA_LIB32) -lcudart -lcutil_$(ARCH_SUFFIX) -lshrutil_$(ARCH_SUFFIX)
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
+
+#-------------------------------------------------------------------------------
+# (make enactor) Illustrates a custom sorting enactor that explicitly only sorts 
+# 17-bits.  It uses a third storage array to perform in-place sorting in the 
+# face of odd-passes without having to resort to (a) re-aliasing device input 
+# pointers, or (b) an extra memcpy back to the original input array.
+#-------------------------------------------------------------------------------
+
+enactor: bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX) : example_derived_enactor.cu test_utils.cu $(SORTING_DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX) example_derived_enactor.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 #
 # Clean
 #
 
 clean :
-	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp
 
 

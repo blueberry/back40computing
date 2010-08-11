@@ -64,16 +64,103 @@ using namespace b40c;
 bool g_verbose;
 
 
+
 /******************************************************************************
- * Test structures
+ * Customized 17-bit in-place enactor
  ******************************************************************************/
 
-// Test value-type structure 
-struct Fribbitz {
-	char a;
-	double b;
-	unsigned short c;
+
+/**
+ * Example 5-pass custom sorting enactor that is specialized for 17-effective-bit 
+ * uint32 key types.  
+ * 
+ * It also demonstrates the use of a third storage array to perform in-place sorting 
+ * in the face of odd-passes without having to resort to (a) re-aliasing device 
+ * input pointers, or (b) an extra memcpy back to the original input array.
+ */
+template <typename V = KeysOnlyType>
+class AmberRadixSortingEnactor : public BaseRadixSortingEnactor<unsigned int, V>
+{
+protected:
+
+	typedef BaseRadixSortingEnactor<unsigned int, V> Base; 
+	typedef typename Base::ConvertedKeyType ConvertedKeyType;
+	
+	unsigned int *d_inner_keys;
+	V *d_inner_values;
+
+	cudaError_t EnactDigitPlacePasses(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
+	{
+		
+		//
+		// Allocate a second set of temporary vectors to be used for flip-flopping between digit_place 
+		// passes in the "inner" passes
+		//
+		
+		if (!d_inner_keys) cudaMalloc((void**) &d_inner_keys, Base::_num_elements * sizeof(unsigned int));							// Alloc the third keys vector
+		if (!IsKeysOnly<V>() && !d_inner_values) cudaMalloc((void**) &d_inner_values, Base::_num_elements * sizeof(V));				// Same for values...
+
+		//
+		// Create a second storage management structure that will contains our pair of temporary vectors
+		// to be used for flip-flopping between digit_place passes in the "inner" passes
+		//
+		
+		RadixSortStorage<ConvertedKeyType, V> inner_pass_storage = converted_storage;
+		inner_pass_storage.d_keys = d_inner_keys;
+		inner_pass_storage.d_values = d_inner_values;
+		
+	
+		//
+		// Create a third storage management structure that will convey inner_pass_storage.d_keys to 
+		// converted_storage.d_keys on the final pass.
+		//
+		
+		RadixSortStorage<ConvertedKeyType, V> final_pass_storage = inner_pass_storage;
+		final_pass_storage.d_alt_keys = converted_storage.d_keys;
+		if (!IsKeysOnly<V>()) final_pass_storage.d_alt_values = converted_storage.d_values;
+		
+		//
+		// Enact the sorting procedure, making sure that the first and last passes are performed 
+		// regardless of digit-uniformity in order to guarantee that the sorted output
+		// always ends up back the the orignial input array.
+		//
+		
+		Base::template DigitPlacePass<0, 4, 0,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(converted_storage);		// d_keys (orig) -> d_alt_keys (orig, inner)
+		Base::template DigitPlacePass<1, 4, 4,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_alt_keys (orig, inner) -> d_keys (inner)
+		Base::template DigitPlacePass<2, 4, 8,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_keys (inner) -> d_alt_keys  (orig, inner)
+		Base::template DigitPlacePass<3, 3, 12, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_alt_keys (orig, inner) -> d_keys (inner)
+		Base::template DigitPlacePass<4, 2, 15, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(final_pass_storage); 	// d_keys (inner) -> d_keys (orig)
+
+		return cudaSuccess;
+	}
+
+public:
+	
+	/**
+	 * Constructor.
+	 * 
+	 * @param[in] 		num_elements 
+	 * 		Length (in elements) of the input to a sorting operation
+	 * 
+	 * @param[in] 		max_grid_size  
+	 * 		Maximum allowable number of CTAs to launch.  The default value of -1 indicates 
+	 * 		that the dispatch logic should select an appropriate value for the target device.
+	 */	
+	AmberRadixSortingEnactor(unsigned int num_elements, int max_grid_size = -1) : 
+		Base::BaseRadixSortingEnactor(5, 4, num_elements, max_grid_size, false), d_inner_keys(NULL), d_inner_values(NULL) {}
+
+
+	// Clean up inner temporary storage native to this enactor 
+	cudaError_t CleanupTempStorage() 
+	{
+		if (d_inner_keys) cudaFree(d_inner_keys);
+		if (d_inner_values) cudaFree(d_inner_values);
+		
+		return cudaSuccess;
+	}
 };
+
+
 
 
 /******************************************************************************
@@ -85,7 +172,7 @@ struct Fribbitz {
  */
 void Usage() 
 {
-	printf("\nsrts_radix_sort [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
+	printf("\nderived_enactor [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
 	printf("\n");
 	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");
@@ -94,8 +181,6 @@ void Usage()
 	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
-	printf("\n");
-	printf("\t--keys-only\tSpecifies that keys are not accommodated by value pairings\n");
 	printf("\n");
 }
 
@@ -112,22 +197,21 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-template <typename K>
-void TimedSort(
+void CustomTimedSort(
 	unsigned int num_elements, 
-	K *h_keys,
+	unsigned int *h_keys,
 	unsigned int iterations)
 {
-	printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
+	printf("Custom enactor on 17-bit-effective keys, %d iterations, %d elements", iterations, num_elements);
 	
 	//
 	// Allocate device storage and create sorting enactor  
 	//
 
-	RadixSortStorage<K> device_storage;	
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(K) * num_elements) );
+	RadixSortStorage<unsigned int> device_storage;	
+	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(unsigned int) * num_elements) );
 
-	RadixSortingEnactor<K> sorting_enactor(num_elements);
+	AmberRadixSortingEnactor<> sorting_enactor(num_elements);
 
 
 	
@@ -135,7 +219,7 @@ void TimedSort(
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	//
 	
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );		// copy keys
+	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(unsigned int) * num_elements, cudaMemcpyHostToDevice) );		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 	
 	
@@ -153,7 +237,7 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );	// copy keys
+		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(unsigned int) * num_elements, cudaMemcpyHostToDevice) );	// copy keys
 
 		// Start cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
@@ -182,9 +266,10 @@ void TimedSort(
     // Copy out data & free allocated memory
     //
     
-    device_storage.CleanupTempStorage();						// clean up sort-allocated storage 
+    sorting_enactor.CleanupTempStorage();						// clean up internal enactor storage
+    device_storage.CleanupTempStorage();						// clean up resort-allocated storage 
 
-    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(K) * num_elements, cudaMemcpyDeviceToHost) );
+    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(unsigned int) * num_elements, cudaMemcpyDeviceToHost) );
 	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );		// clean up keys
 
     // Clean up events
@@ -195,44 +280,39 @@ void TimedSort(
 
 
 /**
- * Key-value sorting.  Uses the GPU to sort the specified vector of elements for the given 
+ * Keys-only sorting.  Uses the GPU to sort the specified vector of elements for the given 
  * number of iterations, displaying runtime information.
  *
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
  * @param[in] 		h_keys 
  * 		Vector of keys to sort 
- * @param[in,out] 	h_values  
- * 		Vector of values to sort 
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-template <typename K, typename V>
-void TimedSort(
+void DefaultTimedSort(
 	unsigned int num_elements, 
-	K *h_keys,
-	V *h_values, 
-	unsigned int iterations) 
+	unsigned int *h_keys,
+	unsigned int iterations)
 {
-	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
+	printf("Default enactor on 17-bit-effective keys, %d iterations, %d elements", iterations, num_elements);
 	
 	//
 	// Allocate device storage and create sorting enactor  
 	//
 
-	RadixSortStorage<K, V> device_storage;	
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(K) * num_elements) );
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_values, sizeof(V) * num_elements) );
+	RadixSortStorage<unsigned int> device_storage;	
+	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(unsigned int) * num_elements) );
 
-	RadixSortingEnactor<K, V> sorting_enactor(num_elements);
+	RadixSortingEnactor<unsigned int> sorting_enactor(num_elements);
+
 
 	
 	//
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	//
 	
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );			// copy keys
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_values, h_values, sizeof(V) * num_elements, cudaMemcpyHostToDevice) );		// copy values
+	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(unsigned int) * num_elements, cudaMemcpyHostToDevice) );		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 	
 	
@@ -250,8 +330,7 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );			// copy keys
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_values, h_values, sizeof(V) * num_elements, cudaMemcpyHostToDevice) );		// copy values
+		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(unsigned int) * num_elements, cudaMemcpyHostToDevice) );	// copy keys
 
 		// Start cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
@@ -280,12 +359,10 @@ void TimedSort(
     // Copy out data & free allocated memory
     //
     
-    device_storage.CleanupTempStorage();						// clean up sort-allocated storage 
+    device_storage.CleanupTempStorage();						// clean up resort-allocated storage 
 
-    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(K) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaMemcpy(h_values, device_storage.d_values, sizeof(V) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );			// clean up keys
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_values) );		// clean up values
+    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(unsigned int) * num_elements, cudaMemcpyDeviceToHost) );
+	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );		// clean up keys
 
     // Clean up events
 	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
@@ -293,9 +370,10 @@ void TimedSort(
 }
 
 
+
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
- * number of K elements, values of V elements, and then dispatches the problem 
+ * number of unsigned int elements, values of V elements, and then dispatches the problem 
  * to the GPU for the given number of iterations, displaying runtime information.
  *
  * @param[in] 		iterations  
@@ -303,49 +381,47 @@ void TimedSort(
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
  */
-template<typename K, typename V>
 void TestSort(
 	unsigned int iterations,
-	int num_elements,
-	bool keys_only)
+	int num_elements, 
+	bool custom)
 {
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
-	K *h_keys = NULL;
-	V *h_values = NULL;
-	h_keys = (K*) malloc(num_elements * sizeof(K));
-	if (!keys_only) h_values = (V*) malloc(num_elements * sizeof(V));
+	unsigned int *h_keys = NULL;
+	h_keys = (unsigned int*) malloc(num_elements * sizeof(unsigned int));
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-		RandomBits<K>(h_keys[i], 0);
+		RandomBits<unsigned int>(h_keys[i], 0);
+		
+		// only use 17 effective bits of key data
+		h_keys[i] &= (1 << 17) - 1;
 	}
 
-    // Run the timing test 
-	if (keys_only) {
-		TimedSort<K>(num_elements, h_keys, iterations);
-	} else {
-		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
-	}
+    // Run the timing test
+	if (custom) 
+		CustomTimedSort(num_elements, h_keys, iterations);
+	else 
+		DefaultTimedSort(num_elements, h_keys, iterations);
     
 	// Display sorted key data
 	if (g_verbose) {
 		printf("\n\nKeys:\n");
 		for (int i = 0; i < num_elements; i++) {	
-			PrintValue<K>(h_keys[i]);
+			PrintValue<unsigned int>(h_keys[i]);
 			printf(", ");
 		}
 		printf("\n\n");
 	}	
 	
     // Verify solution
-	VerifySort<K>(h_keys, num_elements, true);
+	VerifySort<unsigned int>(h_keys, num_elements, true);
 	printf("\n");
 	fflush(stdout);
 
 	// Free our allocated host memory 
 	if (h_keys != NULL) free(h_keys);
-    if (h_values != NULL) free(h_values);
 }
 
 
@@ -362,7 +438,6 @@ int main( int argc, char** argv) {
 
     unsigned int num_elements 					= 1024;
     unsigned int iterations  					= 1;
-    bool keys_only;
 
     //
 	// Check command line arguments
@@ -375,58 +450,10 @@ int main( int argc, char** argv) {
 
     cutGetCmdLineArgumenti( argc, (const char**) argv, "i", (int*)&iterations);
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
-    keys_only = cutCheckCmdLineFlag( argc, (const char**) argv, "keys-only");
 	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 
-/*	
-	// Execute test(s)
-	TestSort<float, float>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<double, double>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<char, char>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned char, unsigned char>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<short, short>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned short, unsigned short>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<int, int>(
-			iterations,
-			num_elements, 
-			keys_only);
-*/			
-	TestSort<unsigned int, unsigned int>(
-			iterations,
-			num_elements, 
-			keys_only);
-/*	
-	TestSort<long long, long long>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned long long, unsigned long long>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<float, Fribbitz>(
-			iterations,
-			num_elements, 
-			keys_only);
-*/			
+	TestSort(iterations, num_elements, true);	// custom 
+	TestSort(iterations, num_elements, false); 	// default
 }
 
 

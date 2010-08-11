@@ -66,6 +66,22 @@ struct NopFunctor<char>{
 };
 
 
+//
+// Do-nothing functors that indicate a mandatory pass
+//
+
+template <typename T>
+struct MandatoryPassNopFunctor{
+	__device__ __host__ __forceinline__ void operator()(T &converted_key) {}
+	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+};
+
+template <>
+struct MandatoryPassNopFunctor<char>{
+	__device__ __host__ __forceinline__ void operator()(signed char &converted_key) {}		// Funny....
+	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+};
+
 
 //
 // Conversion for generic unsigned types

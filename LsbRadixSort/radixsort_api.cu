@@ -193,6 +193,7 @@ protected:
 	unsigned int 		_grid_size;
 	CtaDecomposition 	_work_decomposition;
 	unsigned int 		_passes;
+	bool 				_swizzle_pointers_for_odd_passes;
 
 	// Information about our target device
 	cudaDeviceProp 		_device_props;
@@ -207,7 +208,7 @@ protected:
 	/**
 	 * Constructor.
 	 */
-	BaseRadixSortingEnactor(unsigned int passes, unsigned int radix_bits, unsigned int num_elements, int max_grid_size); 
+	BaseRadixSortingEnactor(unsigned int passes, unsigned int radix_bits, unsigned int num_elements, int max_grid_size, bool swizzle_pointers_for_odd_passes = true); 
 	
 	/**
 	 * Heuristic for determining the number of CTAs to launch.
@@ -292,7 +293,8 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	unsigned int passes, 
 	unsigned int max_radix_bits, 
 	unsigned int num_elements, 
-	int max_grid_size) 
+	int max_grid_size,
+	bool swizzle_pointers_for_odd_passes) 
 {
 	//
 	// Get current device properties 
@@ -320,6 +322,7 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	_keys_only 							= IsKeysOnly<V>();
 	_cycle_elements 					= RADIXSORT_CYCLE_ELEMENTS(_kernel_sm_version , ConvertedKeyType, V);
 	_grid_size 							= GridSize(max_grid_size);
+	_swizzle_pointers_for_odd_passes	= swizzle_pointers_for_odd_passes;
 	
 	unsigned int total_cycles 			= _num_elements / _cycle_elements;
 	unsigned int cycles_per_block 		= total_cycles / _grid_size;						
@@ -559,16 +562,19 @@ EnactSort(RadixSortStorage<K, V> &problem_storage)
 	// Swizzle pointers if we left our sorted output in temp storage 
 	//
 	
-	cudaMemcpy(
-		&problem_storage.using_alternate_storage, 
-		&problem_storage.d_from_alt_storage[_passes & 0x1], 
-		sizeof(bool), 
-		cudaMemcpyDeviceToHost);
-
-	if (problem_storage.using_alternate_storage) {
-		Swap<K*>(problem_storage.d_keys, problem_storage.d_alt_keys);
-		if (!_keys_only) {
-			Swap<V*>(problem_storage.d_values, problem_storage.d_alt_values);
+	if (_swizzle_pointers_for_odd_passes) {
+	
+		cudaMemcpy(
+			&problem_storage.using_alternate_storage, 
+			&problem_storage.d_from_alt_storage[_passes & 0x1], 
+			sizeof(bool), 
+			cudaMemcpyDeviceToHost);
+	
+		if (problem_storage.using_alternate_storage) {
+			Swap<K*>(problem_storage.d_keys, problem_storage.d_alt_keys);
+			if (!_keys_only) {
+				Swap<V*>(problem_storage.d_values, problem_storage.d_alt_values);
+			}
 		}
 	}
 	
@@ -774,49 +780,6 @@ public:
 
 
 
-
-
-
-
-
-
-/**
- * Example custom sorting enactor that is specialized for for 17-effective-bit uint32 key types 
- */
-template <typename V = KeysOnlyType>
-class AmberRadixSortingEnactor : public BaseRadixSortingEnactor<unsigned int, V>
-{
-protected:
-
-	typedef BaseRadixSortingEnactor<unsigned int, V> Base; 
-	typedef typename Base::ConvertedKeyType ConvertedKeyType;
-
-	cudaError_t EnactDigitPlacePasses(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
-	{
-		Base::template DigitPlacePass<0, 4, 0,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(converted_storage);
-		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(converted_storage); 
-		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(converted_storage); 
-		Base::template DigitPlacePass<3, 3, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(converted_storage); 
-		Base::template DigitPlacePass<4, 2, 15, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(converted_storage); 
-
-		return cudaSuccess;
-	}
-
-public:
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param[in] 		num_elements 
-	 * 		Length (in elements) of the input to a sorting operation
-	 * 
-	 * @param[in] 		max_grid_size  
-	 * 		Maximum allowable number of CTAs to launch.  The default value of -1 indicates 
-	 * 		that the dispatch logic should select an appropriate value for the target device.
-	 */	
-	AmberRadixSortingEnactor(unsigned int num_elements, int max_grid_size = -1) : Base::BaseRadixSortingEnactor(5, 4, num_elements, max_grid_size) {}
-
-};
 
 
 } // namespace b40c
