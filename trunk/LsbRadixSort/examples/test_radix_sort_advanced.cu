@@ -384,7 +384,7 @@ void TestSort(
 {
 	switch (value_bytes) {
 	case 0:		// keys only
-		TestSort<K, KeysOnlyType, true>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+		TestSort<K, KeysOnlyType<> , true>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 4:		// 32-bit values
 		TestSort<K, unsigned int, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);

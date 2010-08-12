@@ -130,19 +130,18 @@ namespace b40c {
  */
 struct KeysOnlyType {};
 
-
 /**
  * Returns whether or not the templated type indicates keys-only sorting
  */
 template <typename V>
-__host__ __device__ bool IsKeysOnly() {return false;}
+inline __host__ __device__ bool IsKeysOnly() {return false;}
 
 
 /**
  * Returns whether or not the templated type indicates keys-only sorting
  */
 template <>
-__host__ __device__ bool IsKeysOnly<KeysOnlyType>() {return true;}
+inline __host__ __device__ bool IsKeysOnly<KeysOnlyType>() {return true;}
 
 
 /**
