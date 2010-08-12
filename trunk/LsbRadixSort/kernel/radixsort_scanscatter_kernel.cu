@@ -1086,7 +1086,8 @@ void ScanScatterDigits(
 				
 			} else {
 				
-				// Non-first CTA
+				// Non-first CTA : use digit-carry from last block
+				my_digit_carry = d_spine[(gridDim.x * threadIdx.x) + gridDim.x - 1];
 				unsigned int predicate = ((my_digit_carry > 0) && (my_digit_carry < work_decomposition.num_elements));
 				non_trivial_digit_pass = (TallyWarpVote(RADIX_DIGITS, predicate, scan_lanes) > 1);
 			}
