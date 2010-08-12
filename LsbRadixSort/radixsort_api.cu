@@ -309,7 +309,7 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	//
 	// Get SM version of compiled kernel assembly
 	//
-	cudaFuncGetAttributes(&_spine_scan_kernel_attrs, SrtsScanSpine);
+	cudaFuncGetAttributes(&_spine_scan_kernel_attrs, SrtsScanSpine<void>);
 	_kernel_sm_version = _spine_scan_kernel_attrs.binaryVersion * 10;
 	
 
@@ -467,7 +467,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
 	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) 
-			FlushKernel<<<_grid_size, RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+			FlushKernel<void><<<_grid_size, RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 
 	// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
 	dynamic_smem = (_kernel_sm_version >= 130) ? scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 0;
@@ -487,7 +487,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
 	dynamic_smem = (_kernel_sm_version >= 130) ? scan_scatter_attrs.sharedSizeBytes - _spine_scan_kernel_attrs.sharedSizeBytes : 0;
 	
-	SrtsScanSpine<<<_grid_size, RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
+	SrtsScanSpine<void><<<_grid_size, RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
 		converted_storage.d_spine,
 		converted_storage.d_spine,
 		_spine_elements);
@@ -499,7 +499,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
 	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) 
-			FlushKernel<<<_grid_size, RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+			FlushKernel<void><<<_grid_size, RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 
 	ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<_grid_size, threads, 0>>>(
 		converted_storage.d_from_alt_storage,

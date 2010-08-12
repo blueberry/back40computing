@@ -275,7 +275,8 @@ void SerialScan(unsigned int segment[], unsigned int seed0) {
 // Empty Kernels
 //------------------------------------------------------------------------------
 
-__global__ void FlushKernel()
+template <typename T>
+__global__ void FlushKernel(void)
 {
 }
 

@@ -112,6 +112,7 @@ __device__ __forceinline__ void SrtsScanCycle(
  * Spine/histogram Scan Kernel Entry Point
  ******************************************************************************/
 
+template <typename T>
 __global__ void SrtsScanSpine(
 	unsigned int *d_ispine,
 	unsigned int *d_ospine,
