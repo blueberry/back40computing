@@ -71,17 +71,17 @@ __device__ __forceinline__ unsigned short DefaultextraValue<unsigned short>() {
 
 template <> 
 __device__ __forceinline__ unsigned int DefaultextraValue<unsigned int>() {
-	return (unsigned int) -1;
+	return (unsigned int) -1u;
 }
 
 template <> 
 __device__ __forceinline__ unsigned long DefaultextraValue<unsigned long>() {
-	return (unsigned long) -1;
+	return (unsigned long) -1ul;
 }
 
 template <> 
 __device__ __forceinline__ unsigned long long DefaultextraValue<unsigned long long>() {
-	return (unsigned long long) -1;
+	return (unsigned long long) -1ull;
 }
 
 
@@ -367,16 +367,10 @@ __device__ __forceinline__ void CorrectForOverflows(
 	int extra[1])				
 {
 	if (!UNGUARDED_IO) {
-		
-		unsigned int *linear_counts = (unsigned int *) counts;
-		
-		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
-		// telling me "Advisory: Loop was not unrolled, unexpected call OPs"
 
-		if (SETS_PER_CYCLE > 0) CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[0], extra);
-		if (SETS_PER_CYCLE > 1) if (extra[0] < 1 * 256) CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[1], extra);
-		if (SETS_PER_CYCLE > 2) if (extra[0] < 2 * 256) CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[2], extra);
-		if (SETS_PER_CYCLE > 3) if (extra[0] < 3 * 256) CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[3], extra);
+		// Correct any overflow in the partially-filled last lane
+		unsigned int *linear_counts = (unsigned int *) counts;
+		CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[SETS_PER_CYCLE - 1], extra);
 	}
 
 	CorrectUnguardedCycleOverflow<RADIX_DIGITS, PASSES_PER_CYCLE, SETS_PER_PASS>(digits, counts);
