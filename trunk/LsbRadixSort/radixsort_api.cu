@@ -96,7 +96,7 @@ namespace b40c {
  * Debugging options
  ******************************************************************************/
 
-bool RADIXSORT_DEBUG = false;
+static bool RADIXSORT_DEBUG = false;
 
 
 
