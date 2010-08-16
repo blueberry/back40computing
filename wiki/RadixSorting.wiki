@@ -17,7 +17,7 @@ http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 
 For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
 
-The current version is: *[#Building_and_Adapting 1.0.207]* (SVN revision 207, 08/13/2010)
+The current version is: *[#Building_and_Adapting 1.0.209]* (SVN revision 209, 08/13/2010)
 
 
 <BR>
@@ -141,7 +141,7 @@ Unless otherwise noted, the following tables present average saturated sorting r
 
 =Building and Adapting=
 
-The current stable version is: *1.0.207* (SVN revision 207, 08/13/2010)
+The current stable version is: *1.0.209* (SVN revision 209, 08/16/2010)
 
 You can obtain the sources from either:
  * [http://code.google.com/p/back40computing/downloads/list Downloads]
