@@ -90,7 +90,7 @@ DEFINES =
 ifeq ($(fermi-ecc), 1)
 	# Define if you're planning on using Fermi with ECC. (This enables logic 
 	# designed for SM1.0 in order to programmatically coalesce unaligned 
-	# scatters becuase they are so painfully expensive with ECC) 
+	# scatters becuase they are so prohibitively expensive with ECC) 
 	DEFINES += -DFERMI_ECC		
 endif
 
