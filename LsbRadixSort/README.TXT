@@ -41,10 +41,10 @@ BUILD NOTES:
 	
 	3) ECC on Fermi (e.g., Tesla C2050).  Unaligned or partial writes are 
 	   prohibitively expensive when ECC is enabled on SM2.0 (e.g., the default 
-	   SM2.0 code will experience up to a 50% slowdown).  See the example 
-	   Makefile for that enables logic designed for SM1.0 in order to 
-	   programmatically coalesce unaligned scatters on SM2.0 (i.e., -DFERMI_ECC
-	   flag). 
+	   SM2.0 code will experience up to a 50% slowdown).  For a workaround, see 
+	   the example Makefile for a compiler-define that enables logic that 
+	   programmatically coalesces unaligned scatters on SM2.0 (i.e., -DFERMI_ECC
+	   flag).  This is non-ideal, but only results in a ~35% slowdown.
 	   
 	
 	The accompanying sorting examples should build under most Linux 
