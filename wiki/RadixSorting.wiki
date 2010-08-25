@@ -15,9 +15,9 @@ http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 
 =News=
 
-For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
+* For discussion, see our [http://forums.nvidia.com/index.php?showtopic=175238 CUDA Forum thread]
 
-The current version is: *[#Building_and_Adapting 1.0.215]* (SVN revision 215, 08/25/2010).   If you are experiencing correctness issues, please update to the latest version.
+* The current version is: *[#Building_and_Adapting 1.0.215]* (SVN revision 215, 08/25/2010).   If you are experiencing correctness issues, please update to the latest version.
 
 
 <BR>
