@@ -49,6 +49,7 @@
 #include <string.h> 
 #include <math.h> 
 #include <float.h>
+#include <algorithm>
 
 #include <radixsort_api.cu>			// Sorting includes
 #include <test_utils.cu>			// Utilities and correctness-checking
@@ -312,13 +313,16 @@ void TestSort(
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
 	K *h_keys = NULL;
+	K *h_reference_keys = NULL;
 	V *h_values = NULL;
 	h_keys = (K*) malloc(num_elements * sizeof(K));
+	h_reference_keys = (K*) malloc(num_elements * sizeof(K));
 	if (!keys_only) h_values = (V*) malloc(num_elements * sizeof(V));
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
 		RandomBits<K>(h_keys[i], 0);
+		h_reference_keys[i] = h_keys[i];
 	}
 
     // Run the timing test 
@@ -339,7 +343,8 @@ void TestSort(
 	}	
 	
     // Verify solution
-	VerifySort<K>(h_keys, num_elements, true);
+	std::sort(h_reference_keys, h_reference_keys + num_elements);	
+	VerifySort<K>(h_keys, h_reference_keys, num_elements, true);
 	printf("\n");
 	fflush(stdout);
 

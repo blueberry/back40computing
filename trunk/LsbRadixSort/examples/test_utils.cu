@@ -150,6 +150,40 @@ void RandomBits(K &key, int entropy_reduction)
  * Verifies the "less than" property for sorted lists 
  */
 template <typename T>
+int VerifySort(T* sorted_keys, T* reference_keys, const unsigned int len, bool verbose) 
+{
+	for (int i = 0; i < len; i++) {
+
+		if (sorted_keys[i] != reference_keys[i]) {
+			printf("Incorrect: [%d]: ", i);
+			PrintValue<T>(sorted_keys[i]);
+			printf(" != ");
+			PrintValue<T>(reference_keys[i]);
+
+			if (verbose) {	
+				printf("\n\n[...");
+				for (int j = -4; j <= 4; j++) {
+					if ((i + j >= 0) && (i + j < len)) {
+						PrintValue<T>(sorted_keys[i + j]);
+						printf(", ");
+					}
+				}
+				printf("...]");
+			}
+
+			return 1;
+		}
+	}
+
+	printf("Correct");
+	return 0;
+}
+
+
+/**
+ * Verifies the "less than" property for sorted lists 
+ */
+template <typename T>
 int VerifySort(T* sorted_keys, const unsigned int len, bool verbose) 
 {
 	
