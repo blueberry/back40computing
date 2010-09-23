@@ -50,7 +50,7 @@ We implement these distribution sorting passes using a very efficient implementa
 
 ====<FONT color=#006666>Authors' Request</FONT>====
 
-If you use/reference/benchmark this code, please cite our [http://www.cs.virginia.edu/~dgm4d/papers/RadixSortTR.pdf Technical Report]:
+If you use/reference/benchmark this code, please cite our [http://back40computing.googlecode.com/svn/wiki/documents/RadixSortTR.pdf Technical Report]:
 
  _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
 
