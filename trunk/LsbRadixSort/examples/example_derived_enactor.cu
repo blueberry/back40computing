@@ -127,9 +127,9 @@ protected:
 		
 		Base::template DigitPlacePass<0, 4, 0,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(converted_storage);		// d_keys (orig) -> d_alt_keys (orig, inner)
 		Base::template DigitPlacePass<1, 4, 4,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_alt_keys (orig, inner) -> d_keys (inner)
-		Base::template DigitPlacePass<2, 4, 8,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_keys (inner) -> d_alt_keys  (orig, inner)
-		Base::template DigitPlacePass<3, 3, 12, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_alt_keys (orig, inner) -> d_keys (inner)
-		Base::template DigitPlacePass<4, 2, 15, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(final_pass_storage); 	// d_keys (inner) -> d_keys (orig)
+		Base::template DigitPlacePass<2, 3, 8,  MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_keys (inner) -> d_alt_keys  (orig, inner)
+		Base::template DigitPlacePass<3, 3, 11, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(inner_pass_storage); 	// d_alt_keys (orig, inner) -> d_keys (inner)
+		Base::template DigitPlacePass<4, 3, 14, MandatoryPassNopFunctor<ConvertedKeyType>, MandatoryPassNopFunctor<ConvertedKeyType> >(final_pass_storage); 	// d_keys (inner) -> d_keys (orig)
 
 		return cudaSuccess;
 	}
@@ -205,13 +205,14 @@ void CustomTimedSort(
 	printf("Custom enactor on 17-bit-effective keys, %d iterations, %d elements", iterations, num_elements);
 	
 	//
-	// Allocate device storage and create sorting enactor  
+	// Allocate device storage and create sorting enactor (with uints as values) 
 	//
 
-	RadixSortStorage<unsigned int> device_storage;	
+	RadixSortStorage<unsigned int, unsigned int> device_storage;	
 	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(unsigned int) * num_elements) );
+	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_values, sizeof(unsigned int) * num_elements) );
 
-	AmberRadixSortingEnactor<> sorting_enactor(num_elements);
+	AmberRadixSortingEnactor<unsigned int> sorting_enactor(num_elements);
 
 
 	
@@ -270,7 +271,8 @@ void CustomTimedSort(
     device_storage.CleanupTempStorage();						// clean up resort-allocated storage 
 
     CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(unsigned int) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );		// clean up keys
+	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );			// clean up keys
+	CUDA_SAFE_CALL( cudaFree(device_storage.d_values) );		// clean up values
 
     // Clean up events
 	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
@@ -301,10 +303,11 @@ void DefaultTimedSort(
 	// Allocate device storage and create sorting enactor  
 	//
 
-	RadixSortStorage<unsigned int> device_storage;	
+	RadixSortStorage<unsigned int, unsigned int> device_storage;	
 	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(unsigned int) * num_elements) );
+	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_values, sizeof(unsigned int) * num_elements) );
 
-	RadixSortingEnactor<unsigned int> sorting_enactor(num_elements);
+	RadixSortingEnactor<unsigned int, unsigned int> sorting_enactor(num_elements);
 
 
 	
@@ -328,6 +331,8 @@ void DefaultTimedSort(
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		RADIXSORT_DEBUG = (i == 0);
 
 		// Move a fresh copy of the problem into device storage
 		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(unsigned int) * num_elements, cudaMemcpyHostToDevice) );	// copy keys
@@ -363,6 +368,7 @@ void DefaultTimedSort(
 
     CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(unsigned int) * num_elements, cudaMemcpyDeviceToHost) );
 	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );		// clean up keys
+	CUDA_SAFE_CALL( cudaFree(device_storage.d_values) );		// clean up values
 
     // Clean up events
 	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
@@ -452,8 +458,8 @@ int main( int argc, char** argv) {
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
 	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 
-	TestSort(iterations, num_elements, true);	// custom 
-	TestSort(iterations, num_elements, false); 	// default
+	TestSort(iterations, num_elements, true);	// custom enactor (explicit passes)
+	TestSort(iterations, num_elements, false); 	// default (dynamic pass detection)
 }
 
 
