@@ -157,7 +157,7 @@ __device__ __forceinline__ unsigned int WarpScan(
 	unsigned int partial_reduction,
 	unsigned int copy_section) {
 	
-	unsigned int warpscan_idx;
+	int warpscan_idx;
 	if (MULTI_SCAN) {
 		warpscan_idx = threadIdx.x & (NUM_ELEMENTS - 1);
 	} else {
