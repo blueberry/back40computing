@@ -123,7 +123,7 @@ struct RadixSortStorage {
 	V* d_alt_values;
 
 	// Temporary device storage needed for radix sorting histograms
-	unsigned int *d_spine;
+	int *d_spine;
 	
 	// Flip-flopping temporary device storage denoting which digit place 
 	// pass should read from which input source (i.e., false if reading from 
@@ -188,19 +188,19 @@ protected:
 	
 	bool				_keys_only;
 	unsigned int 		_num_elements;
-	unsigned int 		_cycle_elements;
-	unsigned int 		_spine_elements;
-	unsigned int 		_grid_size;
+	int 				_cycle_elements;
+	int 				_spine_elements;
+	int 				_grid_size;
 	CtaDecomposition 	_work_decomposition;
-	unsigned int 		_passes;
+	int 				_passes;
 	bool 				_swizzle_pointers_for_odd_passes;
 
 	// Information about our target device
 	cudaDeviceProp 		_device_props;
-	unsigned int 		_device_sm_version;
+	int 				_device_sm_version;
 	
 	// Information about our kernel assembly
-	unsigned int 		_kernel_ptx_version;
+	int 				_kernel_ptx_version;
 	cudaFuncAttributes 	_spine_scan_kernel_attrs;
 	
 protected:
@@ -208,7 +208,7 @@ protected:
 	/**
 	 * Constructor.
 	 */
-	BaseRadixSortingEnactor(unsigned int passes, unsigned int radix_bits, unsigned int num_elements, unsigned int max_grid_size, bool swizzle_pointers_for_odd_passes = true); 
+	BaseRadixSortingEnactor(int passes, int radix_bits, unsigned int num_elements, int max_grid_size, bool swizzle_pointers_for_odd_passes = true); 
 	
 	/**
 	 * Heuristic for determining the number of CTAs to launch.
@@ -219,12 +219,12 @@ protected:
 	 * 
 	 * @return The actual number of CTAs that should be launched
 	 */
-	unsigned int GridSize(unsigned int max_grid_size);
+	int GridSize(int max_grid_size);
 
 	/**
 	 * Performs a distribution sorting pass over a single digit place
 	 */
-	template <unsigned int PASS, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
+	template <int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
 	cudaError_t DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage); 
 	
 	/**
@@ -241,7 +241,7 @@ public:
 	 * your own device storage (as opposed to letting EnactSort() allocate it
 	 * for you).
 	 */
-	unsigned int SpineElements() { return _spine_elements; }
+	int SpineElements() { return _spine_elements; }
 
 	/**
 	 * Returns whether or not the problem will fit on the device.
@@ -294,10 +294,10 @@ public:
 
 template <typename K, typename V>
 BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
-	unsigned int passes, 
-	unsigned int max_radix_bits, 
+	int passes, 
+	int max_radix_bits, 
 	unsigned int num_elements, 
-	unsigned int max_grid_size,
+	int max_grid_size,
 	bool swizzle_pointers_for_odd_passes) 
 {
 	//
@@ -328,9 +328,9 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	_grid_size 							= GridSize(max_grid_size);
 	_swizzle_pointers_for_odd_passes	= swizzle_pointers_for_odd_passes;
 	
-	unsigned int total_cycles 			= _num_elements / _cycle_elements;
-	unsigned int cycles_per_block 		= total_cycles / _grid_size;						
-	unsigned int extra_cycles 			= total_cycles - (cycles_per_block * _grid_size);
+	int total_cycles 			= _num_elements / _cycle_elements;
+	int cycles_per_block 		= total_cycles / _grid_size;						
+	int extra_cycles 			= total_cycles - (cycles_per_block * _grid_size);
 
 	CtaDecomposition work_decomposition = {
 		extra_cycles,										// num_big_blocks
@@ -341,16 +341,16 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	
 	_work_decomposition = work_decomposition;
 	
-	unsigned int spine_cycles = ((_grid_size * (1 << max_radix_bits)) + B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS - 1) / B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
+	int spine_cycles = ((_grid_size * (1 << max_radix_bits)) + B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS - 1) / B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
 	_spine_elements = spine_cycles * B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
 }
 
 
 
 template <typename K, typename V>
-unsigned int BaseRadixSortingEnactor<K, V>::GridSize(unsigned int max_grid_size)
+int BaseRadixSortingEnactor<K, V>::GridSize(int max_grid_size)
 {
-	const unsigned int SINGLE_CTA_CUTOFF = 0;		// right now zero; we have no single-cta sorting
+	const int SINGLE_CTA_CUTOFF = 0;		// right now zero; we have no single-cta sorting
 
 	// find maximum number of threadblocks if "use-default"
 	if (max_grid_size == 0) {
@@ -371,7 +371,7 @@ unsigned int BaseRadixSortingEnactor<K, V>::GridSize(unsigned int max_grid_size)
 			} else if (_device_sm_version < 200) {
 				
 				// GT200 (has some kind of TLB or icache drama)
-				unsigned int orig_max_grid_size = _device_props.multiProcessorCount * B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(_kernel_ptx_version);
+				int orig_max_grid_size = _device_props.multiProcessorCount * B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(_kernel_ptx_version);
 				if (_keys_only) { 
 					orig_max_grid_size *= (_num_elements + (1024 * 1024 * 96) - 1) / (1024 * 1024 * 96);
 				} else {
@@ -387,7 +387,7 @@ unsigned int BaseRadixSortingEnactor<K, V>::GridSize(unsigned int max_grid_size)
 					double delta1 = 0.068;
 					double delta2 = 0.127;	
 	
-					unsigned int dividend = (_num_elements + _cycle_elements - 1) / _cycle_elements;
+					int dividend = (_num_elements + _cycle_elements - 1) / _cycle_elements;
 	
 					while(true) {
 	
@@ -424,7 +424,7 @@ unsigned int BaseRadixSortingEnactor<K, V>::GridSize(unsigned int max_grid_size)
 	// of work, but then clamp it by the "max" restriction derived above
 	// in order to accomodate the "single-sp" and "saturated" cases.
 
-	unsigned int grid_size = _num_elements / _cycle_elements;
+	int grid_size = _num_elements / _cycle_elements;
 	if (grid_size == 0) {
 		grid_size = 1;
 	}
@@ -441,7 +441,7 @@ template <typename K, typename V>
 bool BaseRadixSortingEnactor<K, V>::
 CanFit() 
 {
-	long long bytes = (_num_elements * sizeof(K) * 2) + (_spine_elements * sizeof(unsigned int));
+	long long bytes = (_num_elements * sizeof(K) * 2) + (_spine_elements * sizeof(int));
 	if (!_keys_only) bytes += _num_elements * sizeof(V) * 2;
 
 	if (_device_props.totalGlobalMem < 1024 * 1024 * 513) {
@@ -454,12 +454,12 @@ CanFit()
 
 
 template <typename K, typename V>
-template <unsigned int PASS, unsigned int RADIX_BITS, unsigned int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
+template <int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
 cudaError_t BaseRadixSortingEnactor<K, V>::
 DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 {
-	unsigned int threads = B40C_RADIXSORT_THREADS;
-	unsigned int dynamic_smem;
+	int threads = B40C_RADIXSORT_THREADS;
+	int dynamic_smem;
 
 	cudaFuncAttributes reduce_kernel_attrs, scan_scatter_attrs;
 	cudaFuncGetAttributes(&reduce_kernel_attrs, RakingReduction<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor>);
@@ -534,7 +534,7 @@ EnactSort(RadixSortStorage<K, V> &problem_storage)
 		cudaMalloc((void**) &problem_storage.d_alt_values, _num_elements * sizeof(V));
 	}
 	if (problem_storage.d_spine == NULL) {
-		cudaMalloc((void**) &problem_storage.d_spine, _spine_elements * sizeof(unsigned int));
+		cudaMalloc((void**) &problem_storage.d_spine, _spine_elements * sizeof(int));
 	}
 	if (problem_storage.d_from_alt_storage == NULL) {
 		cudaMalloc((void**) &problem_storage.d_from_alt_storage, 2 * sizeof(bool));
@@ -647,7 +647,7 @@ public:
 	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
 	 * 		that the dispatch logic should select an appropriate value for the target device.
 	 */	
-	RadixSortingEnactor(unsigned int num_elements, unsigned int max_grid_size = 0) : Base::BaseRadixSortingEnactor(2, 4, num_elements, max_grid_size) {}
+	RadixSortingEnactor(unsigned int num_elements, int max_grid_size = 0) : Base::BaseRadixSortingEnactor(2, 4, num_elements, max_grid_size) {}
 
 };
 
@@ -686,7 +686,7 @@ public:
 	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
 	 * 		that the dispatch logic should select an appropriate value for the target device.
 	 */	
-	RadixSortingEnactor(unsigned int num_elements, unsigned int max_grid_size = 0) : Base::BaseRadixSortingEnactor(4, 4, num_elements, max_grid_size) {}
+	RadixSortingEnactor(unsigned int num_elements, int max_grid_size = 0) : Base::BaseRadixSortingEnactor(4, 4, num_elements, max_grid_size) {}
 
 };
 
@@ -728,7 +728,7 @@ public:
 	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
 	 * 		that the dispatch logic should select an appropriate value for the target device.
 	 */	
-	RadixSortingEnactor(unsigned int num_elements, unsigned int max_grid_size = 0) : Base::BaseRadixSortingEnactor(8, 4, num_elements, max_grid_size) {}
+	RadixSortingEnactor(unsigned int num_elements, int max_grid_size = 0) : Base::BaseRadixSortingEnactor(8, 4, num_elements, max_grid_size) {}
 
 };
 
@@ -779,7 +779,7 @@ public:
 	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
 	 * 		that the dispatch logic should select an appropriate value for the target device.
 	 */	
-	RadixSortingEnactor(unsigned int num_elements, unsigned int max_grid_size = 0) : Base::BaseRadixSortingEnactor(16, 4, num_elements, max_grid_size) {}
+	RadixSortingEnactor(unsigned int num_elements, int max_grid_size = 0) : Base::BaseRadixSortingEnactor(16, 4, num_elements, max_grid_size) {}
 
 };
 

@@ -56,20 +56,20 @@ namespace b40c {
  ******************************************************************************/
 
 template<
-	unsigned int SMEM_ROWS,
-	unsigned int RAKING_THREADS,
-	unsigned int PARTIALS_PER_ROW,
-	unsigned int PARTIALS_PER_SEG>
+	int SMEM_ROWS,
+	int RAKING_THREADS,
+	int PARTIALS_PER_ROW,
+	int PARTIALS_PER_SEG>
 __device__ __forceinline__ void SrtsScanCycle(
-	unsigned int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1],
-	unsigned int *smem_offset,
-	unsigned int *smem_segment,
-	unsigned int warpscan[2][B40C_WARP_THREADS],
-	uint4 *in, 
-	uint4 *out,
-	unsigned int &carry)
+	int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1],
+	int *smem_offset,
+	int *smem_segment,
+	int warpscan[2][B40C_WARP_THREADS],
+	int4 *in, 
+	int4 *out,
+	int &carry)
 {
-	uint4 datum; 
+	int4 datum; 
 
 	// read input data
 	datum = in[threadIdx.x];
@@ -80,9 +80,9 @@ __device__ __forceinline__ void SrtsScanCycle(
 
 	if (threadIdx.x < B40C_WARP_THREADS) {
 
-		unsigned int partial_reduction = SerialReduce<PARTIALS_PER_SEG>(smem_segment);
+		int partial_reduction = SerialReduce<PARTIALS_PER_SEG>(smem_segment);
 
-		unsigned int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
+		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
 		seed += carry;		
 		carry += warpscan[1][B40C_WARP_THREADS - 1];	
 		
@@ -91,8 +91,8 @@ __device__ __forceinline__ void SrtsScanCycle(
 
 	__syncthreads();
 
-	unsigned int part0 = smem_offset[0];
-	unsigned int part1;
+	int part0 = smem_offset[0];
+	int part1;
 
 	part1 = datum.x + part0;
 	datum.x = part0;
@@ -114,36 +114,36 @@ __device__ __forceinline__ void SrtsScanCycle(
 
 template <typename T>
 __global__ void SrtsScanSpine(
-	unsigned int *d_ispine,
-	unsigned int *d_ospine,
-	unsigned int normal_block_elements)
+	int *d_ispine,
+	int *d_ospine,
+	int normal_block_elements)
 {
-	const unsigned int LOG_RAKING_THREADS 		= B40C_LOG_WARP_THREADS;				
-	const unsigned int RAKING_THREADS 			= 1 << LOG_RAKING_THREADS;		
+	const int LOG_RAKING_THREADS 		= B40C_LOG_WARP_THREADS;				
+	const int RAKING_THREADS 			= 1 << LOG_RAKING_THREADS;		
 	
-	const unsigned int LOG_PARTIALS				= B40C_RADIXSORT_LOG_THREADS;				
-	const unsigned int PARTIALS			 		= 1 << LOG_PARTIALS;
+	const int LOG_PARTIALS				= B40C_RADIXSORT_LOG_THREADS;				
+	const int PARTIALS			 		= 1 << LOG_PARTIALS;
 	
-	const unsigned int LOG_PARTIALS_PER_SEG 	= LOG_PARTIALS - LOG_RAKING_THREADS;	
-	const unsigned int PARTIALS_PER_SEG 		= 1 << LOG_PARTIALS_PER_SEG;
+	const int LOG_PARTIALS_PER_SEG 	= LOG_PARTIALS - LOG_RAKING_THREADS;	
+	const int PARTIALS_PER_SEG 		= 1 << LOG_PARTIALS_PER_SEG;
 
-	const unsigned int LOG_PARTIALS_PER_ROW		= (LOG_PARTIALS_PER_SEG < B40C_LOG_MEM_BANKS(__CUDA_ARCH__)) ? B40C_LOG_MEM_BANKS(__CUDA_ARCH__) : LOG_PARTIALS_PER_SEG;		// floor of 32 elts per row
-	const unsigned int PARTIALS_PER_ROW			= 1 << LOG_PARTIALS_PER_ROW;
+	const int LOG_PARTIALS_PER_ROW		= (LOG_PARTIALS_PER_SEG < B40C_LOG_MEM_BANKS(__CUDA_ARCH__)) ? B40C_LOG_MEM_BANKS(__CUDA_ARCH__) : LOG_PARTIALS_PER_SEG;		// floor of 32 elts per row
+	const int PARTIALS_PER_ROW			= 1 << LOG_PARTIALS_PER_ROW;
 	
-	const unsigned int LOG_SEGS_PER_ROW 		= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
-	const unsigned int SEGS_PER_ROW				= 1 << LOG_SEGS_PER_ROW;
+	const int LOG_SEGS_PER_ROW 		= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
+	const int SEGS_PER_ROW				= 1 << LOG_SEGS_PER_ROW;
 
-	const unsigned int SMEM_ROWS 				= PARTIALS / PARTIALS_PER_ROW;
+	const int SMEM_ROWS 				= PARTIALS / PARTIALS_PER_ROW;
 	
-	__shared__ unsigned int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1];
-	__shared__ unsigned int warpscan[2][B40C_WARP_THREADS];
+	__shared__ int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1];
+	__shared__ int warpscan[2][B40C_WARP_THREADS];
 
-	unsigned int *smem_segment = 0;
-	unsigned int carry = 0;
+	int *smem_segment = 0;
+	int carry = 0;
 
-	unsigned int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
-	unsigned int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
-	unsigned int *smem_offset = &smem[row][col];
+	int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
+	int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
+	int *smem_offset = &smem[row][col];
 
 	if (blockIdx.x > 0) {
 		return;
@@ -163,13 +163,13 @@ __global__ void SrtsScanSpine(
 	}
 
 	// scan the spine in blocks of cycle_elements
-	unsigned int block_offset = 0;
+	int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
 		SrtsScanCycle<SMEM_ROWS, RAKING_THREADS, PARTIALS_PER_ROW, PARTIALS_PER_SEG>(	
 			smem, smem_offset, smem_segment, warpscan,
-			(uint4 *) (void *) &d_ispine[block_offset], 
-			(uint4 *) (void *) &d_ospine[block_offset], 
+			reinterpret_cast<int4 *>(&d_ispine[block_offset]), 
+			reinterpret_cast<int4 *>(&d_ospine[block_offset]), 
 			carry);
 
 		block_offset += B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
