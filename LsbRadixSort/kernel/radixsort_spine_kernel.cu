@@ -55,13 +55,8 @@ namespace b40c {
  * Scans a cycle of RADIXSORT_CYCLE_ELEMENTS elements 
  ******************************************************************************/
 
-template<
-	int SMEM_ROWS,
-	int RAKING_THREADS,
-	int PARTIALS_PER_ROW,
-	int PARTIALS_PER_SEG>
+template<int PARTIALS_PER_SEG>
 __device__ __forceinline__ void SrtsScanCycle(
-	int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1],
 	int *smem_offset,
 	int *smem_segment,
 	int warpscan[2][B40C_WARP_THREADS],
@@ -119,19 +114,16 @@ __global__ void SrtsScanSpine(
 	int *d_ospine,
 	int normal_block_elements)
 {
-	const int LOG_RAKING_THREADS 		= B40C_LOG_WARP_THREADS;				
-	const int RAKING_THREADS 			= 1 << LOG_RAKING_THREADS;		
-	
 	const int LOG_PARTIALS				= B40C_RADIXSORT_LOG_THREADS;				
 	const int PARTIALS			 		= 1 << LOG_PARTIALS;
 	
-	const int LOG_PARTIALS_PER_SEG 	= LOG_PARTIALS - LOG_RAKING_THREADS;	
-	const int PARTIALS_PER_SEG 		= 1 << LOG_PARTIALS_PER_SEG;
+	const int LOG_PARTIALS_PER_SEG 		= LOG_PARTIALS - B40C_LOG_WARP_THREADS;	
+	const int PARTIALS_PER_SEG 			= 1 << LOG_PARTIALS_PER_SEG;
 
 	const int LOG_PARTIALS_PER_ROW		= (LOG_PARTIALS_PER_SEG < B40C_LOG_MEM_BANKS(__CUDA_ARCH__)) ? B40C_LOG_MEM_BANKS(__CUDA_ARCH__) : LOG_PARTIALS_PER_SEG;		// floor of 32 elts per row
 	const int PARTIALS_PER_ROW			= 1 << LOG_PARTIALS_PER_ROW;
 	
-	const int LOG_SEGS_PER_ROW 		= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
+	const int LOG_SEGS_PER_ROW 			= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
 	const int SEGS_PER_ROW				= 1 << LOG_SEGS_PER_ROW;
 
 	const int SMEM_ROWS 				= PARTIALS / PARTIALS_PER_ROW;
@@ -150,7 +142,7 @@ __global__ void SrtsScanSpine(
 		return;
 	}
 	
-	if (threadIdx.x < RAKING_THREADS) {
+	if (threadIdx.x < B40C_WARP_THREADS) {
 		
 		// two segs per row, odd segs are offset by 8
 		row = threadIdx.x >> LOG_SEGS_PER_ROW;
@@ -167,8 +159,10 @@ __global__ void SrtsScanSpine(
 	int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
-		SrtsScanCycle<SMEM_ROWS, RAKING_THREADS, PARTIALS_PER_ROW, PARTIALS_PER_SEG>(	
-			smem, smem_offset, smem_segment, warpscan,
+		SrtsScanCycle<PARTIALS_PER_SEG>(	
+			smem_offset, 
+			smem_segment, 
+			warpscan,
 			reinterpret_cast<int4 *>(&d_ispine[block_offset]), 
 			reinterpret_cast<int4 *>(&d_ospine[block_offset]), 
 			carry);
