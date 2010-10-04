@@ -85,6 +85,7 @@
 #include <math.h> 
 #include <float.h>
 
+#include "b40c_error_synchronize.cu"
 #include "kernel/radixsort_reduction_kernel.cu"
 #include "kernel/radixsort_spine_kernel.cu"
 #include "kernel/radixsort_scanscatter_kernel.cu"
@@ -470,8 +471,10 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	//
 
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) 
-			FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) { 
+		FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+		synchronize_if_enabled("FlushKernel");
+	}
 
 	// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
 	dynamic_smem = (_kernel_ptx_version >= 130) ? scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 0;
@@ -482,6 +485,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 		converted_storage.d_keys,
 		converted_storage.d_alt_keys,
 		_work_decomposition);
+    synchronize_if_enabled("RakingReduction");
 
 	
 	//
@@ -495,6 +499,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 		converted_storage.d_spine,
 		converted_storage.d_spine,
 		_spine_elements);
+    synchronize_if_enabled("SrtsScanSpine");
 
 	
 	//
@@ -502,8 +507,10 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	//
 	
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) 
-			FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) { 
+		FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
+		synchronize_if_enabled("FlushKernel");
+	}
 
 	ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<_grid_size, threads, 0>>>(
 		converted_storage.d_from_alt_storage,
@@ -513,6 +520,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 		converted_storage.d_values,
 		converted_storage.d_alt_values,
 		_work_decomposition);
+    synchronize_if_enabled("ScanScatterDigits");
 
 	return cudaSuccess;
 }
