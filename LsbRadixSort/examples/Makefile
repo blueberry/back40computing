@@ -109,9 +109,9 @@ endif
 
 NVCCFLAGS = -Xptxas -v
 
-ifneq (,$(findstring 3.1, $(NVCC_VERSION)))
+ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
-	# Disable the ABI by default for 3.1
+	# Disable the ABI by default for 3.1+
 	NVCCFLAGS += -Xptxas -abi=no
 endif
 endif
@@ -173,7 +173,7 @@ bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX) : example_derived_ena
 
 clean :
 	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp
+	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 
 
