@@ -84,9 +84,10 @@ __device__ __forceinline__ void SrtsScanCycle(
 
 		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
 		seed += carry;		
-		carry += warpscan[1][B40C_WARP_THREADS - 1];	
 		
 		SerialScan<PARTIALS_PER_SEG>(smem_segment, seed);
+
+		carry += warpscan[1][B40C_WARP_THREADS - 1];	
 	}
 
 	__syncthreads();
