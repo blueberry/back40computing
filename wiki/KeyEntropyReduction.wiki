@@ -1,5 +1,3 @@
-#summary Sorting performance as a function of effective key bits.
-
 == Sorting performance as a function of effective key bits ==
 
 ===<FONT color=#006666>The importance of write-coalescing in sorting passes</FONT>===
