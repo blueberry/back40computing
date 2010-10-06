@@ -1,0 +1,41 @@
+#summary Sorting performance as a function of effective key bits.
+
+== Sorting performance as a function of effective key bits ==
+
+===<FONT color=#006666>The importance of write-coalescing in sorting passes</FONT>===
+
+Achieving good write-locality is important for minimizing the number of memory transactions, or _coalesced writes_.  NVIDIA GPUs obtain maximum bandwidth when they are able to coalesce concurrent memory accesses: for a SIMD instruction that accesses global memory, the individual accesses for each thread within the warp can be combined/bundled together by the memory subsystem into a single memory transaction if every reference falls within the same contiguous global memory segment.
+
+For each sorting pass, the appropriate digit from each key is extracted and used to identify the corresponding bin (of the radix-_r_ bins) that key is to be scattered into.  The write-offsets into those bins are computed via prefix scans. Once it has these write-offsets, each scattering thread could use this information to write its keys directly into the the output bins.  However, doing so would result in poor write coherence: a random distribution of key-bits would have threads within the same warp writing keys to many different bins (i.e., poor write-locality).  
+
+Instead we use the local prefix sums to scatter them to local shared memory where consecutive threads can pick up consecutive keys and then scatter them to global device memory with a minimal number of memory transactions. We want most warps to be writing consecutive keys to only one or two distinct bins (i.e., good write-locality).  
+
+===<FONT color=#006666>The impact of key-entropy on sorting performance</FONT>===
+
+The distribution of key-bits can have an impact on the overall sorting performance. Memory bandwidth is wasted when a warp's threads scatter keys to more than one bin: the memory subsystem pushes a full-sized transaction through to DRAM (e.g., 32B / 64B / 128B), even though only a portion of it contains actual data.  
+
+We expect that 
+
+We also adopt the technique of Thearling and Smith [20]
+for generating key sequences with different entropy levels by
+computing keys from the bitwise AND of multiple random
+samples. As they did, we show performance—in Figure 6—
+using 1–5 samples per key, effectively producing 32, 25.95,
+17.41, 10.78, and 6.42 unique bits per key, respectively. We
+also show the performance for 0 unique bits, corresponding
+to AND’ing infinitely many samples together, thus making all
+keys zero.
+
+
+{{{
+  [1] K. Thearling and S. Smith, “An improved supercomputer sorting benchmark,” in Proc. ACM/IEEE Conference on Supercomputing, 1992, pp. 14–19.
+}}}
+
+
+For our distribution-sorting passes, the key-scattering writes for uniformly-random key distributions incur a ~70% I/O overhead that increases in proportion with _r_, the number of digit partitions.  
+
+The scatter inefficiencies decrease for less-random key distributions.  With zero effective random bits (uniformly identical keys), our 4-bit implementation averages a saturated sorting rate of 550 x106 pairs/second.  These compute-bound kernels do not benefit from this lower memory workload: this speedup is instead gained from the elimination of warp-serialization hazards that stem from bank conflicts incurred during key exchange. 
+
+===<FONT color=#006666>Key-value sorting rates for varied reduced-entropy key-distributions</FONT>===
+
+  http://back40computing.googlecode.com/svn/wiki/images/sorting/entropyreduction.PNG 
