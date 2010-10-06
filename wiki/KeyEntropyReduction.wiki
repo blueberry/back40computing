@@ -1,5 +1,5 @@
 == Sorting performance as a function of effective key bits ==
-_(and why real-world sorting rates may be higher than what we report for uniformly-random key distributions)_
+_(and why real-world sorting rates may be higher than reported here)_
 
 <wiki:toc max_depth="4" />
 
