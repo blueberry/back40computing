@@ -56,7 +56,7 @@
 #include <math.h> 
 #include <float.h>
 
-#include <radixsort_api.cu>			// Sorting includes
+#include <radixsort_early_exit.cu>	// Sorting includes
 #include "test_utils.cu"			// Utilities and correctness-checking
 #include <cutil.h>					// Utilities for commandline parsing
 
@@ -141,9 +141,9 @@ void Usage()
  */
 void ReadList(
 	int* &list, 
-	unsigned int &len, 
+	int &len, 
 	char* filename, 
-	unsigned int default_val) 
+	int default_val) 
 {
 	if (filename == NULL) {
 		len = 1;
@@ -152,7 +152,7 @@ void ReadList(
 		return;
 	}
 
-	unsigned int data;
+	int data;
 	FILE* fin = fopen(filename, "r");
 	if (fin == NULL) {
 		fprintf(stderr, "Could not open file.  Exiting.\n");
@@ -186,16 +186,14 @@ void ReadList(
  */
 template <typename K, typename V, bool KEYS_ONLY>
 void TimedSort(
-	unsigned int num_elements, 
-	unsigned int max_grid_size,
+	int num_elements, 
+	int max_grid_size,
 	K *h_keys,
 	K *h_keys_result,
-	RadixSortStorage<K, V>	&device_storage,
-	unsigned int iterations) 
+	EarlyExitRadixSortStorage<K, V>	&device_storage,
+	EarlyExitRadixSortingEnactor<K, V> &sorting_enactor,
+	int iterations) 
 {
-	// Create and initialize sorting enactor
-	RadixSortingEnactor<K, V> sorting_enactor(num_elements, max_grid_size);
-
 	CUT_CHECK_ERROR("Kernel execution failed (errors before launch)");
 
 	// Create timing records
@@ -211,7 +209,7 @@ void TimedSort(
 		RADIXSORT_DEBUG = (g_verbose && (i == 0));
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, num_elements * sizeof(K), cudaMemcpyHostToDevice) );
+		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys[0], h_keys, num_elements * sizeof(K), cudaMemcpyHostToDevice) );
 
 		// Start cuda timing record
 		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
@@ -226,12 +224,13 @@ void TimedSort(
 		elapsed += (double) duration;
 		
 		if (i == 0) {
-			printf("%d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size", 
+			printf("%d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction", 
 				sizeof(K), 
 				(KEYS_ONLY) ? 0 : sizeof(V),
 				iterations, 
 				num_elements,
-				max_grid_size);
+				max_grid_size,
+				g_entropy_reduction);
 			fflush(stdout);
 		}
 	}
@@ -250,7 +249,11 @@ void TimedSort(
 	// Copy out sorted keys and check
     if (g_verify || g_verbose) {
 
-    	CUDA_SAFE_CALL( cudaMemcpy(h_keys_result, device_storage.d_keys, num_elements * sizeof(K), cudaMemcpyDeviceToHost) );
+    	CUDA_SAFE_CALL( cudaMemcpy(
+    		h_keys_result, 
+    		device_storage.d_keys[device_storage.selector], 
+    		num_elements * sizeof(K), 
+    		cudaMemcpyDeviceToHost) );
 
 		// Display sorted key data
 		if (g_verbose2) {
@@ -280,120 +283,118 @@ void TimedSort(
  */
 template<typename K, typename V, bool KEYS_ONLY>
 void TestSort(
-	unsigned int iterations,
+	int iterations,
 	int* num_elements_list,
-	unsigned int num_elements_list_size,
+	int num_elements_list_size,
 	int* max_grid_sizes,
-	unsigned int num_max_grid_sizes) 
+	int num_max_grid_sizes) 
 {
-	
+	// Host input and output keys
 	K *h_keys, *h_keys_result;
 	
-	// Find largest maximum grid size in list of maximum grid sizes
-	int max_grid_size = -1;
-	for (int i = 0; i < num_max_grid_sizes; i++) {
-		if (max_grid_sizes[i] > max_grid_size) {
-			max_grid_size = max_grid_sizes[i];
-		}
-	}
-
-	// find maximum problem size in the list of problem sizes
-	unsigned int max_num_elements = 0;
-	unsigned int max_num_spine_elements = 0; 
+	// Find maximum problem size in the list of problem sizes
+	int max_num_elements = 0;
+	CudaProperties cuda_properties;
 	for (int i = 0; i < num_elements_list_size; i++) {
-
-		RadixSortingEnactor<K, V> sorting_enactor(num_elements_list[i], max_grid_size);
-		
-		if (sorting_enactor.CanFit()) {
-			if (num_elements_list[i] > max_num_elements) {
-				max_num_elements = num_elements_list[i];
-			}
-			unsigned int num_spine_elements = sorting_enactor.SpineElements();
-			if (num_spine_elements > max_num_spine_elements) {
-				max_num_spine_elements = num_spine_elements;
-			}
+		if ((num_elements_list[i] > max_num_elements) && 
+			(num_elements_list[i] < BaseEarlyExitEnactor<K, V>::MaxProblemSize(cuda_properties)))  		
+		{
+			max_num_elements = num_elements_list[i];
 		}
 	}
 	
-	// Allocate host memory
+	// Allocate enough host memory for the biggest problem 
 	h_keys = (K*) malloc(max_num_elements * sizeof(K));
 	h_keys_result = (K*) malloc(max_num_elements * sizeof(K));
 
-	// Randomly initialize the keyset on the host
-	for (unsigned int j = 0; j < max_num_elements; j++) {
-		RandomBits<K>(h_keys[j], g_entropy_reduction);
+	// Generate random keys 
+	for (int k = 0; k < max_num_elements; k++) {
+		RandomBits<K>(h_keys[k], g_entropy_reduction);
 	}
-
-	// Allocate device memory
-	RadixSortStorage<K, V> device_storage;
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys, max_num_elements * sizeof(K)) );
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_alt_keys, max_num_elements * sizeof(K)));
+	
+	// Allocate enough device memory for the biggest problem
+	EarlyExitRadixSortStorage<K, V> device_storage(max_num_elements);
+	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[0], max_num_elements * sizeof(K)) );
+	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[1], max_num_elements * sizeof(K)));
 	if (!KEYS_ONLY) {
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values, max_num_elements * sizeof(V)));
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_alt_values, max_num_elements * sizeof(V)));
+		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[0], max_num_elements * sizeof(V)));
+		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[1], max_num_elements * sizeof(V)));
 	}
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_spine, max_num_spine_elements * sizeof(unsigned int)) );
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_from_alt_storage, 2 * sizeof(bool)) );
 
 	// Run combinations of specified problem-sizes & max-grid-sizes
-	for (int i = 0; i < num_elements_list_size; i++) {
-
-		if (num_elements_list[i] > max_num_elements) {
-			printf("Problem size %d too large\n", num_elements_list[i]);
-			continue;
-		}
-
-		// Regenerate random keys if specified
-		if ((i > 0) && g_regen) {
-			for (unsigned int j = 0; j < num_elements_list[i]; j++) {
-				RandomBits<K>(h_keys[j], g_entropy_reduction);
-			}
-		}
+	for (int j = 0; j < num_max_grid_sizes; j++) {
+	
+		// Allocate sorting enactor for this grid size
+		EarlyExitRadixSortingEnactor<K, V> sorting_enactor(max_grid_sizes[j]);
 		
-		for (int j = 0; j < num_max_grid_sizes; j++) {
-
+		for (int i = 0; i < num_elements_list_size; i++) {
+	
+			// Skip if won't fit
+			if (num_elements_list[i] > BaseEarlyExitEnactor<K, V>::MaxProblemSize(cuda_properties)) {
+				printf("Problem size %d too large\n", num_elements_list[i]);
+				continue;
+			}
+	
+			// Set the problem size in the storage to the number we actually
+			// want to sort
+			device_storage.num_elements = num_elements_list[i];
+			
+			// Regenerate random keys if specified for subsequent problem sizes 
+			if ((i > 0) || g_regen) {
+				for (int k = 0; k < num_elements_list[i]; k++) {
+					RandomBits<K>(h_keys[k], g_entropy_reduction);
+				}
+			}
+			
 			// Run a dummy kernel to demarcate the start of this set of iterations in the counter logs
 			DummyKernel<<<1,1,0>>>();
 
 			// Run the timing test 
-			TimedSort<K, V, KEYS_ONLY>(num_elements_list[i], max_grid_sizes[j], h_keys, h_keys_result, device_storage, iterations);
+			TimedSort<K, V, KEYS_ONLY>(
+				num_elements_list[i], 
+				max_grid_sizes[j], 
+				h_keys, 
+				h_keys_result, 
+				device_storage,
+				sorting_enactor,
+				iterations);
 		}
 	}
 	
     // cleanup memory
 	free(h_keys);
-	CUDA_SAFE_CALL(cudaFree(device_storage.d_keys));
-	CUDA_SAFE_CALL(cudaFree(device_storage.d_alt_keys));
-	CUDA_SAFE_CALL(cudaFree(device_storage.d_spine));
-	CUDA_SAFE_CALL(cudaFree(device_storage.d_from_alt_storage));
+	free(h_keys_result);
+	
+	if (device_storage.d_keys[0]) CUDA_SAFE_CALL(cudaFree(device_storage.d_keys[0]));
+	if (device_storage.d_keys[1]) CUDA_SAFE_CALL(cudaFree(device_storage.d_keys[1]));
 	if (!KEYS_ONLY) {
-		CUDA_SAFE_CALL(cudaFree(device_storage.d_values));
-		CUDA_SAFE_CALL(cudaFree(device_storage.d_alt_values));
-	}	
+		if (device_storage.d_values[0]) CUDA_SAFE_CALL(cudaFree(device_storage.d_values[0]));
+		if (device_storage.d_values[1]) CUDA_SAFE_CALL(cudaFree(device_storage.d_values[1]));
+	}
 }
 
 
 template<typename K>
 void TestSort(
 	int value_bytes,
-	unsigned int iterations,
+	int iterations,
 	int* num_elements_list,
-	unsigned int num_elements_list_size,
+	int num_elements_list_size,
 	int* max_grid_sizes,
-	unsigned int num_max_grid_sizes)
+	int num_max_grid_sizes)
 {
 	switch (value_bytes) {
 	case 0:		// keys only
-		TestSort<K, KeysOnlyType<> , true>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+		TestSort<K, KeysOnlyType , true>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 4:		// 32-bit values
 		TestSort<K, unsigned int, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 8:		// 64-bit values
-		TestSort<K, unsigned long long, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+//		TestSort<K, unsigned long long, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 16:	// 128-bit values
-		TestSort<K, uint4, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+//		TestSort<K, uint4, false>(iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	default: 
 		fprintf(stderr, "Invalid payload size.  Exiting.\n");
@@ -414,17 +415,17 @@ int main( int argc, char** argv) {
 	// srand(time(NULL));	
 	srand(0);				
 
-	unsigned int num_elements 				= 512;
-    int max_grid_size 						= -1;	// let API determine best grid size
-	unsigned int iterations  				= 1;
+	int num_elements 						= 512;
+    int max_grid_size 						= 0;	// let API determine best grid size
+	int iterations  						= 1;
 	char *num_elements_list_filename 		= NULL;
 	char *max_grid_sizes_filename 			= NULL;
 	int key_bytes							= 4;
 	int value_bytes							= 0;
 	int* num_elements_list 					= NULL;
 	int* max_grid_sizes 					= NULL;
-	unsigned int num_elements_list_size;
-	unsigned int num_max_grid_sizes;
+	int num_elements_list_size;
+	int num_max_grid_sizes;
 
     //
 	// Check command line arguments
@@ -469,16 +470,16 @@ int main( int argc, char** argv) {
 
 	switch (key_bytes) {
 	case 1:		// 8-bit keys
-		TestSort<unsigned char>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+//		TestSort<unsigned char>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 2:		// 16-bit keys
-		TestSort<unsigned short>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+//		TestSort<unsigned short>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 4:		// 32-bit keys
 		TestSort<unsigned int>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	case 8:		// 64-bit keys
-		TestSort<unsigned long long>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+//		TestSort<unsigned long long>(value_bytes, iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
 		break;
 	default: 
 		fprintf(stderr, "Invalid key size.  Exiting.\n");

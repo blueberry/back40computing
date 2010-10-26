@@ -51,9 +51,9 @@
 #include <float.h>
 #include <algorithm>
 
-#include <radixsort_api.cu>			// Sorting includes
-#include <test_utils.cu>			// Utilities and correctness-checking
-#include <cutil.h>					// Utilities for commandline parsing
+#include <radixsort_early_exit.cu>		// Sorting includes
+#include <test_utils.cu>				// Utilities and correctness-checking
+#include <cutil.h>						// Utilities for commandline parsing
 
 using namespace b40c;
 
@@ -121,76 +121,74 @@ void TimedSort(
 {
 	printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 	
-	//
-	// Allocate device storage and create sorting enactor  
-	//
+	// Allocate device storage   
+	EarlyExitRadixSortStorage<K> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
 
-	RadixSortStorage<K> device_storage;	
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(K) * num_elements) );
+	// Create sorting enactor
+	EarlyExitRadixSortingEnactor<K> sorting_enactor;
 
-	RadixSortingEnactor<K> sorting_enactor(num_elements);
-
-
-	
-	//
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-	//
-	
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );		// copy keys
+	cudaMemcpy(
+		device_storage.d_keys[0], 
+		h_keys, 
+		sizeof(K) * num_elements, 
+		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 	
-	
-	//
 	// Perform the timed number of sorting iterations
-	//
-	
-	// Create timing records
+
 	cudaEvent_t start_event, stop_event;
-	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
-	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
+	cudaEventCreate(&start_event);
+	cudaEventCreate(&stop_event);
 
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
+		RADIXSORT_DEBUG = (i == 0);
+		
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );	// copy keys
+		cudaMemcpy(
+			device_storage.d_keys[0], 
+			h_keys, 
+			sizeof(K) * num_elements, 
+			cudaMemcpyHostToDevice);		// copy keys
 
 		// Start cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
+		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
 		sorting_enactor.EnactSort(device_storage);
 
 		// End cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
-		CUDA_SAFE_CALL( cudaEventSynchronize(stop_event) );
-		CUDA_SAFE_CALL( cudaEventElapsedTime(&duration, start_event, stop_event));
+		cudaEventRecord(stop_event, 0);
+		cudaEventSynchronize(stop_event);
+		cudaEventElapsedTime(&duration, start_event, stop_event);
 		elapsed += (double) duration;		
 	}
 
-	//
 	// Display timing information
-	//
-	
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
     printf(", %f GPU ms, %f x10^9 elts/sec\n", 
 		avg_runtime,
 		throughput);
 	
-    // 
-    // Copy out data & free allocated memory
-    //
+    // Copy out data 
+    cudaMemcpy(
+    	h_keys, 
+    	device_storage.d_keys[device_storage.selector], 
+    	sizeof(K) * num_elements, 
+    	cudaMemcpyDeviceToHost);
     
-    device_storage.CleanupTempStorage();						// clean up sort-allocated storage 
-
-    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(K) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );		// clean up keys
+    // Free allocated memory
+    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
+    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
 
     // Clean up events
-	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
-	CUDA_SAFE_CALL( cudaEventDestroy(stop_event) );
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
 }
 
 
@@ -217,80 +215,75 @@ void TimedSort(
 {
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
-	//
-	// Allocate device storage and create sorting enactor  
-	//
+	// Allocate device storage   
+	EarlyExitRadixSortStorage<K, V> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
+	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
 
-	RadixSortStorage<K, V> device_storage;	
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_keys, sizeof(K) * num_elements) );
-	CUDA_SAFE_CALL( cudaMalloc((void**) &device_storage.d_values, sizeof(V) * num_elements) );
+	// Create sorting enactor
+	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
 
-	RadixSortingEnactor<K, V> sorting_enactor(num_elements);
-
-	
-	//
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-	//
-	
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );			// copy keys
-	CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_values, h_values, sizeof(V) * num_elements, cudaMemcpyHostToDevice) );		// copy values
+	cudaMemcpy(
+		device_storage.d_keys[0], 
+		h_keys, 
+		sizeof(K) * num_elements, 
+		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 	
-	
-	//
 	// Perform the timed number of sorting iterations
-	//
-	
-	// Create timing records
+
 	cudaEvent_t start_event, stop_event;
-	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
-	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
+	cudaEventCreate(&start_event);
+	cudaEventCreate(&stop_event);
 
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys, h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice) );			// copy keys
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_values, h_values, sizeof(V) * num_elements, cudaMemcpyHostToDevice) );		// copy values
+		cudaMemcpy(
+			device_storage.d_keys[0], 
+			h_keys, 
+			sizeof(K) * num_elements, 
+			cudaMemcpyHostToDevice);		// copy keys
 
 		// Start cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
+		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
 		sorting_enactor.EnactSort(device_storage);
 
 		// End cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
-		CUDA_SAFE_CALL( cudaEventSynchronize(stop_event) );
-		CUDA_SAFE_CALL( cudaEventElapsedTime(&duration, start_event, stop_event));
+		cudaEventRecord(stop_event, 0);
+		cudaEventSynchronize(stop_event);
+		cudaEventElapsedTime(&duration, start_event, stop_event);
 		elapsed += (double) duration;		
 	}
 
-	//
 	// Display timing information
-	//
-	
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
     printf(", %f GPU ms, %f x10^9 elts/sec\n", 
 		avg_runtime,
 		throughput);
 	
-    // 
-    // Copy out data & free allocated memory
-    //
+    // Copy out data 
+    cudaMemcpy(
+    	h_keys, 
+    	device_storage.d_keys[device_storage.selector], 
+    	sizeof(K) * num_elements, 
+    	cudaMemcpyDeviceToHost);
     
-    device_storage.CleanupTempStorage();						// clean up sort-allocated storage 
-
-    CUDA_SAFE_CALL( cudaMemcpy(h_keys, device_storage.d_keys, sizeof(K) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaMemcpy(h_values, device_storage.d_values, sizeof(V) * num_elements, cudaMemcpyDeviceToHost) );
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_keys) );			// clean up keys
-	CUDA_SAFE_CALL( cudaFree(device_storage.d_values) );		// clean up values
+    // Free allocated memory
+    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
+    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
+    if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
+    if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 
     // Clean up events
-	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
-	CUDA_SAFE_CALL( cudaEventDestroy(stop_event) );
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
 }
 
 

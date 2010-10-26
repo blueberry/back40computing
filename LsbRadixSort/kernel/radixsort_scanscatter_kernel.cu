@@ -383,7 +383,7 @@ template <
 	int RADIX_DIGITS,
 	int SCAN_LANES_PER_SET,
 	int SETS_PER_PASS,
-	int RAKING_THREADS_PER_PASS,
+	int RAKING_THREADS,
 	int SCAN_LANES_PER_PASS,
 	int LOG_RAKING_THREADS_PER_LANE,
 	int RAKING_THREADS_PER_LANE,
@@ -419,7 +419,7 @@ __device__ __forceinline__ void ScanPass(
 	__syncthreads();
 	
 	// Intra-group prefix scans for first pass
-	if (threadIdx.x < RAKING_THREADS_PER_PASS) {
+	if (threadIdx.x < RAKING_THREADS) {
 	
 		PrefixScanOverLanes<SCAN_LANES_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG>(		// first pass is offset right by one
 			raking_partial,
@@ -742,33 +742,18 @@ template <
 	int BIT, 
 	bool UNGUARDED_IO,
 	int RADIX_DIGITS,
-	int LOG_SCAN_LANES_PER_SET,
 	int SCAN_LANES_PER_SET,
 	int SETS_PER_PASS,
 	int PASSES_PER_CYCLE,
-	int LOG_SCAN_LANES_PER_PASS,
 	int SCAN_LANES_PER_PASS,
-	int LOG_PARTIALS_PER_LANE,
-	int LOG_PARTIALS_PER_PASS,
-	int LOG_RAKING_THREADS_PER_PASS,
-	int RAKING_THREADS_PER_PASS,
+	int RAKING_THREADS,
 	int LOG_RAKING_THREADS_PER_LANE,
 	int RAKING_THREADS_PER_LANE,
-	int LOG_PARTIALS_PER_SEG,
 	int PARTIALS_PER_SEG,
-	int LOG_PARTIALS_PER_ROW,
 	int PARTIALS_PER_ROW,
-	int LOG_SEGS_PER_ROW,	
-	int SEGS_PER_ROW,
-	int LOG_ROWS_PER_SET,
-	int LOG_ROWS_PER_LANE,
 	int ROWS_PER_LANE,
-	int LOG_ROWS_PER_PASS,
-	int ROWS_PER_PASS,
-	int MAX_EXCHANGE_BYTES,
 	typename PreprocessFunctor,
 	typename PostprocessFunctor>
-
 __device__ __forceinline__ void SrtsScanDigitCycle(
 	typename VecType<K, 2>::Type *d_in_keys, 
 	typename VecType<V, 2>::Type *d_in_values, 
@@ -818,7 +803,7 @@ __device__ __forceinline__ void SrtsScanDigitCycle(
 	for (int PASS = 0; PASS < (int) PASSES_PER_CYCLE; PASS++) {
 	
 		// First Pass
-		ScanPass<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, RAKING_THREADS_PER_PASS, SCAN_LANES_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, PASSES_PER_CYCLE>(
+		ScanPass<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, RAKING_THREADS, SCAN_LANES_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, PASSES_PER_CYCLE>(
 			base_partial,
 			raking_partial,
 			warpscan,
@@ -950,7 +935,7 @@ template <
 __launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
 void ScanScatterDigits(
-	bool *d_from_alt_storage,
+	int *d_selectors,
 	int* d_spine,
 	K* d_in_keys,
 	K* d_out_keys,
@@ -977,10 +962,10 @@ void ScanScatterDigits(
 	
 	const int LOG_PARTIALS_PER_PASS		= LOG_SCAN_LANES_PER_PASS + LOG_PARTIALS_PER_LANE;
 
-	const int LOG_RAKING_THREADS_PER_PASS 		= B40C_RADIXSORT_LOG_RAKING_THREADS_PER_PASS(__CUDA_ARCH__);
-	const int RAKING_THREADS_PER_PASS			= 1 << LOG_RAKING_THREADS_PER_PASS;
+	const int LOG_RAKING_THREADS 		= B40C_RADIXSORT_LOG_RAKING_THREADS(__CUDA_ARCH__);
+	const int RAKING_THREADS			= 1 << LOG_RAKING_THREADS;
 
-	const int LOG_RAKING_THREADS_PER_LANE 		= LOG_RAKING_THREADS_PER_PASS - LOG_SCAN_LANES_PER_PASS;
+	const int LOG_RAKING_THREADS_PER_LANE 		= LOG_RAKING_THREADS - LOG_SCAN_LANES_PER_PASS;
 	const int RAKING_THREADS_PER_LANE 			= 1 << LOG_RAKING_THREADS_PER_LANE;
 
 	const int LOG_PARTIALS_PER_SEG 		= LOG_PARTIALS_PER_LANE - LOG_RAKING_THREADS_PER_LANE;
@@ -1023,7 +1008,7 @@ void ScanScatterDigits(
 	__shared__ int 		digit_scan[2][RADIX_DIGITS];						 
 	__shared__ int 		digit_counts[PASSES_PER_CYCLE][SETS_PER_PASS][RADIX_DIGITS];
 	__shared__ bool 	non_trivial_digit_pass;
-	__shared__ bool		from_alt_storage;
+	__shared__ int 		selector;
 	
 	_B40C_REG_MISER_QUALIFIER_ int extra[1];
 	_B40C_REG_MISER_QUALIFIER_ int oob[1];
@@ -1050,7 +1035,7 @@ void ScanScatterDigits(
 	// location for raking across all sets within a pass
 	int *raking_partial = 0;										
 
-	if (threadIdx.x < RAKING_THREADS_PER_PASS) {
+	if (threadIdx.x < RAKING_THREADS) {
 
 		// initalize lane warpscans
 		if (threadIdx.x < RAKING_THREADS_PER_LANE) {
@@ -1069,7 +1054,7 @@ void ScanScatterDigits(
 			digit_scan[1][threadIdx.x] = 0;
 
 			// Determine where to read our input
-			from_alt_storage = (PASS == 0) ? false : d_from_alt_storage[PASS & 0x1];
+			selector = (PASS == 0) ? 0 : d_selectors[PASS & 0x1];
 
 			// Read carry in parallel 
 			int spine_digit_offset = FastMul(gridDim.x, threadIdx.x);
@@ -1080,8 +1065,7 @@ void ScanScatterDigits(
 			// accordingly.  Everybody but the first threadblock can determine this 
 			// from the number of non-zero-and-non-oob digit carries.  First block 
 			// needs someone else's because he always writes the zero offset.
-			
-			int predicate;
+
 			if (PreprocessFunctor::MustApply() || PostprocessFunctor::MustApply()) {
 
 				non_trivial_digit_pass = true;
@@ -1093,12 +1077,14 @@ void ScanScatterDigits(
 					my_digit_carry = d_spine[spine_digit_offset];
 				}
 				
-				predicate = ((my_digit_carry > 0) && (my_digit_carry < work_decomposition.num_elements));
+				int predicate = ((my_digit_carry > 0) && (my_digit_carry < work_decomposition.num_elements));
 				non_trivial_digit_pass = (TallyWarpVote(RADIX_DIGITS, predicate, reinterpret_cast<int *>(scan_lanes)) > 0);
 			}
 
 			// Let the next round know which set of buffers to use
-			if (blockIdx.x == 0) d_from_alt_storage[(PASS + 1) & 0x1] = from_alt_storage ^ non_trivial_digit_pass;
+			if (blockIdx.x == 0) {
+				d_selectors[(PASS + 1) & 0x1] = selector ^ non_trivial_digit_pass;
+			}
 		}
 
 		// initialize raking segment
@@ -1113,12 +1099,12 @@ void ScanScatterDigits(
 	// Short-circuit this entire pass
 	if (!non_trivial_digit_pass) return; 
 
-	if (!from_alt_storage) {
+	if (!selector) {
 	
 		// Scan in tiles of cycle_elements
 		while (block_offset < oob[0]) {
 	
-			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, SCAN_LANES_PER_PASS, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 				reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
 				reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
 				d_out_keys, 
@@ -1137,7 +1123,7 @@ void ScanScatterDigits(
 	
 		if (extra[0]) {
 			
-			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, SCAN_LANES_PER_PASS, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 				reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
 				reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
 				d_out_keys, 
@@ -1157,7 +1143,7 @@ void ScanScatterDigits(
 		// Scan in tiles of cycle_elements
 		while (block_offset < oob[0]) {
 
-			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+			SrtsScanDigitCycle<K, V, BIT, true, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, SCAN_LANES_PER_PASS, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 				reinterpret_cast<typename VecType<K, 2>::Type *>(&d_out_keys[block_offset]), 
 				reinterpret_cast<typename VecType<V, 2>::Type *>(&d_out_values[block_offset]), 
 				d_in_keys, 
@@ -1176,7 +1162,7 @@ void ScanScatterDigits(
 
 		if (extra[0]) {
 			
-			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, LOG_SCAN_LANES_PER_SET, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, LOG_SCAN_LANES_PER_PASS, SCAN_LANES_PER_PASS, LOG_PARTIALS_PER_LANE, LOG_PARTIALS_PER_PASS, LOG_RAKING_THREADS_PER_PASS, RAKING_THREADS_PER_PASS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, LOG_PARTIALS_PER_SEG, PARTIALS_PER_SEG, LOG_PARTIALS_PER_ROW, PARTIALS_PER_ROW, LOG_SEGS_PER_ROW, SEGS_PER_ROW, LOG_ROWS_PER_SET, LOG_ROWS_PER_LANE, ROWS_PER_LANE, LOG_ROWS_PER_PASS, ROWS_PER_PASS, MAX_EXCHANGE_BYTES, PreprocessFunctor, PostprocessFunctor>(	
+			SrtsScanDigitCycle<K, V, BIT, false, RADIX_DIGITS, SCAN_LANES_PER_SET, SETS_PER_PASS, PASSES_PER_CYCLE, SCAN_LANES_PER_PASS, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 				reinterpret_cast<typename VecType<K, 2>::Type *>(&d_out_keys[block_offset]), 
 				reinterpret_cast<typename VecType<V, 2>::Type *>(&d_out_values[block_offset]), 
 				d_in_keys, 
