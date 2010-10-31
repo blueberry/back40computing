@@ -52,11 +52,11 @@ namespace b40c {
 
 
 /******************************************************************************
- * Scans a cycle of RADIXSORT_CYCLE_ELEMENTS elements 
+ * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements 
  ******************************************************************************/
 
 template<int PARTIALS_PER_SEG>
-__device__ __forceinline__ void SrtsScanCycle(
+__device__ __forceinline__ void SrtsScanTile(
 	int *smem_offset,
 	int *smem_segment,
 	int warpscan[2][B40C_WARP_THREADS],
@@ -150,7 +150,6 @@ __global__ void SrtsScanSpine(
 		smem_segment = &smem[row][col];
 	
 		if (threadIdx.x < B40C_WARP_THREADS) {
-			carry = 0;
 			warpscan[0][threadIdx.x] = 0;
 		}
 	}
@@ -159,7 +158,7 @@ __global__ void SrtsScanSpine(
 	int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
-		SrtsScanCycle<PARTIALS_PER_SEG>(	
+		SrtsScanTile<PARTIALS_PER_SEG>(	
 			smem_offset, 
 			smem_segment, 
 			warpscan,
@@ -167,7 +166,7 @@ __global__ void SrtsScanSpine(
 			reinterpret_cast<int4 *>(&d_ospine[block_offset]), 
 			carry);
 
-		block_offset += B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
+		block_offset += B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 	}
 } 
 

@@ -63,77 +63,15 @@ namespace b40c {
 
 
 /**
- * Storage management structure for device vectors.
- * 
- * The 0th elements of d_keys and d_values are used to point to the sorting
- * input.  (However, they may not necessarily point to the sorted output after 
- * sorting.)  The remaining pointers are for temporary storage arrays needed
- * to stream data between sorting passes.  These arrays can be allocated
- * lazily upon first sorting by the sorting enactor, or a-priori by the 
- * caller.  (If user-allocated, they should be large enough to accomodate 
- * num_elements.)    
- * 
- * It is the caller's responsibility to free any non-NULL storage arrays when
- * no longer needed.  This storage can be re-used for subsequent sorting 
- * operations of the same size.
- * 
- * NOTE: After a sorting operation has completed, the selecter member will
- * index the key (and value) pointers that contain the final sorted results.
- * (E.g., an odd number of sorting passes may leave the results in d_keys[1].)
- */
-template <typename K, typename V = KeysOnlyType> 
-struct EarlyExitRadixSortStorage
-{
-	// Pair of device vector pointers for keys
-	K* d_keys[2];
-	
-	// Pair of device vector pointers for values
-	V* d_values[2];
-
-	// Number of elements for sorting in the above vectors 
-	int num_elements;
-	
-	// Selector into the pair of device vector pointers indicating valid 
-	// sorting elements (i.e., where the results are)
-	int selector;
-
-	// Constructor
-	EarlyExitRadixSortStorage(int num_elements) :
-		num_elements(num_elements), 
-		selector(0) 
-	{
-		d_keys[0] = NULL;
-		d_keys[1] = NULL;
-		d_values[0] = NULL;
-		d_values[1] = NULL;
-	}
-
-	// Constructor
-	EarlyExitRadixSortStorage(int num_elements, K* keys, V* values = NULL) :
-		num_elements(num_elements), 
-		selector(0) 
-	{
-		d_keys[0] = keys;
-		d_keys[1] = NULL;
-		d_values[0] = values;
-		d_values[1] = NULL;
-	}
-};
-
-
-
-
-
-/**
  * Base class for early-exit, multi-CTA radix sorting enactors.
  */
 template <typename K, typename V>
-class BaseEarlyExitEnactor : public MultiCtaRadixSortingEnactor<K, V, EarlyExitRadixSortStorage<K, V> >
+class BaseEarlyExitEnactor : public MultiCtaRadixSortingEnactor<K, V>
 {
 private:
 	
 	// Typedef for base class
-	typedef MultiCtaRadixSortingEnactor<K, V, EarlyExitRadixSortStorage<K, V> > Base; 
+	typedef MultiCtaRadixSortingEnactor<K, V> Base; 
 
 
 protected:
@@ -221,7 +159,7 @@ protected:
 		const CudaProperties &props = CudaProperties()) :
 			Base::MultiCtaRadixSortingEnactor(
 				MaxGridSize(props, max_grid_size),
-				B40C_RADIXSORT_CYCLE_ELEMENTS(props.kernel_ptx_version , ConvertedKeyType, V),
+				B40C_RADIXSORT_TILE_ELEMENTS(props.kernel_ptx_version , ConvertedKeyType, V),
 				max_radix_bits,
 				props), 
 			d_selectors(NULL),
@@ -306,35 +244,22 @@ protected:
 	
 
     /**
-     * 
+     * Post-sorting logic.
      */
-    virtual cudaError_t PreSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
-    {
-    	// Allocate device memory for temporary storage (if necessary)
-    	if (problem_storage.d_keys[1] == NULL) {
-    		cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(K));
-    	}
-    	if (!Base::KeysOnly() && (problem_storage.d_values[1] == NULL)) {
-    		cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(V));
-    	}
-
-    	return cudaSuccess;
-    }
-    
-    
-    /**
-     * 
-     */
-    virtual cudaError_t PostSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
+    virtual cudaError_t PostSort(MultiCtaRadixSortStorage<K, V> &problem_storage, int passes) 
     {
     	// Copy out the selector from the last pass
+    	int old_selector = problem_storage.selector;
+    	
 		cudaMemcpy(
 			&problem_storage.selector, 
 			&d_selectors[this->passes & 0x1], 
 			sizeof(int), 
 			cudaMemcpyDeviceToHost);
-
-		return cudaSuccess;
+		
+		problem_storage.selector ^= old_selector;
+		
+		return Base::PostSort(problem_storage, passes);
     }
 
     
@@ -344,19 +269,19 @@ protected:
 	template <int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
 	cudaError_t DigitPlacePass(
 		const int grid_size,
-		const EarlyExitRadixSortStorage<K, V> &problem_storage, 
+		const MultiCtaRadixSortStorage<K, V> &problem_storage, 
 		const CtaDecomposition &work_decomposition)
 	{
 		// Compute number of spine elements to scan during this pass
 		int spine_elements = grid_size * (1 << RADIX_BITS);
-		int spine_cycles = (spine_elements + B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS - 1) / 
-				B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
-		spine_elements = spine_cycles * B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
+		int spine_tiles = (spine_elements + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / 
+				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 		
 		if (RADIXSORT_DEBUG && (PASS == 0)) {
     		
     		printf("\ndevice_sm_version: %d, kernel_ptx_version: %d\n", this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version);
-    		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
+    		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\ttile_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
     			grid_size, B40C_RADIXSORT_THREADS, this->tile_elements, work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
     		printf("Top-level spine scan:\n\tgrid_size: %d, \n\tthreads: %d, \n\tspine_block_elements: %d\n\n", 
     			grid_size, B40C_RADIXSORT_SPINE_THREADS, spine_elements);
@@ -394,8 +319,8 @@ protected:
 		RakingReduction<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, dynamic_smem>>>(
 			d_selectors,
 			this->d_spine,
-			(ConvertedKeyType *) problem_storage.d_keys[0],
-			(ConvertedKeyType *) problem_storage.d_keys[1],
+			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
+			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
 			work_decomposition);
 	    synchronize_if_enabled("RakingReduction");
 
@@ -430,10 +355,10 @@ protected:
 		ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_selectors,
 			this->d_spine,
-			(ConvertedKeyType *) problem_storage.d_keys[0],
-			(ConvertedKeyType *) problem_storage.d_keys[1],
-			problem_storage.d_values[0],
-			problem_storage.d_values[1],
+			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
+			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
+			problem_storage.d_values[problem_storage.selector],
+			problem_storage.d_values[problem_storage.selector ^ 1],
 			work_decomposition);
 	    synchronize_if_enabled("ScanScatterDigits");
 
@@ -513,7 +438,7 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
+	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
 		// Compute work distribution
 		CtaDecomposition work_decomposition;
@@ -561,21 +486,21 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
+	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
 		// Compute work distribution
 		CtaDecomposition work_decomposition;
 		int grid_size = GridSize(problem_storage.num_elements);
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 
-		PreSort(problem_storage);
+		PreSort(problem_storage, 4);
 		
 		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
 		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<3, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 
-		PostSort(problem_storage);
+		PostSort(problem_storage, 4);
 
 		return cudaSuccess;
 	}
@@ -611,14 +536,14 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
+	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
 		// Compute work distribution
 		CtaDecomposition work_decomposition;
 		int grid_size = GridSize(problem_storage.num_elements);
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 
-		PreSort(problem_storage);
+		PreSort(problem_storage, 8);
 		
 		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
 		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
@@ -629,7 +554,7 @@ public:
 		Base::template DigitPlacePass<6, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<7, 4, 28, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >    (grid_size, problem_storage, work_decomposition); 
 
-		PostSort(problem_storage);
+		PostSort(problem_storage, 8);
 
 		return cudaSuccess;
 	}
@@ -665,14 +590,14 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(EarlyExitRadixSortStorage<K, V> &problem_storage) 
+	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
 		// Compute work distribution
 		CtaDecomposition work_decomposition;
 		int grid_size = GridSize(problem_storage.num_elements);
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 
-		PreSort(problem_storage);
+		PreSort(problem_storage, 16);
 		
 		Base::template DigitPlacePass<0,  4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
 		Base::template DigitPlacePass<1,  4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
@@ -691,7 +616,7 @@ public:
 		Base::template DigitPlacePass<14, 4, 56, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<15, 4, 60, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >    (grid_size, problem_storage, work_decomposition); 
 
-		PostSort(problem_storage);
+		PostSort(problem_storage, 16);
 
 		return cudaSuccess;
 	}

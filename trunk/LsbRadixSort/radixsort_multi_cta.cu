@@ -50,10 +50,72 @@ namespace b40c {
 
 
 /**
+ * Storage management structure for device vectors.
+ * 
+ * Multi-CTA sorting is performed out-of-core, meaning that sorting passes
+ * must have separate input and output data streams.  As such, this structure 
+ * maintains a pair of device vectors for keys (and values), and a "selector"
+ * member to index which vector contains valid data (i.e., the data 
+ * to-be-sorted, or the valid-sorted data after a sorting operation). 
+ * 
+ * The non-selected array(s) can be allocated lazily upon first sorting by the 
+ * sorting enactor, or a-priori by the caller.  (If user-allocated, they should 
+ * be large enough to accomodate num_elements.)    
+ * 
+ * It is the caller's responsibility to free any non-NULL storage arrays when
+ * no longer needed.  This allows for the storage to be re-used for subsequent 
+ * sorting operations of the same size.
+ * 
+ * NOTE: After a sorting operation has completed, the selecter member will
+ * index the key (and value) pointers that contain the final sorted results.
+ * (E.g., an odd number of sorting passes may leave the results in d_keys[1].)
+ */
+template <typename K, typename V = KeysOnlyType> 
+struct MultiCtaRadixSortStorage
+{
+	// Pair of device vector pointers for keys
+	K* d_keys[2];
+	
+	// Pair of device vector pointers for values
+	V* d_values[2];
+
+	// Number of elements for sorting in the above vectors 
+	int num_elements;
+	
+	// Selector into the pair of device vector pointers indicating valid 
+	// sorting elements (i.e., where the results are)
+	int selector;
+
+	// Constructor
+	MultiCtaRadixSortStorage(int num_elements) :
+		num_elements(num_elements), 
+		selector(0) 
+	{
+		d_keys[0] = NULL;
+		d_keys[1] = NULL;
+		d_values[0] = NULL;
+		d_values[1] = NULL;
+	}
+
+	// Constructor
+	MultiCtaRadixSortStorage(int num_elements, K* keys, V* values = NULL) :
+		num_elements(num_elements), 
+		selector(0) 
+	{
+		d_keys[0] = keys;
+		d_keys[1] = NULL;
+		d_values[0] = values;
+		d_values[1] = NULL;
+	}
+};
+
+
+/**
  * Base class for multi-CTA sorting enactors
  */
-template <typename K, typename V, typename Storage>
-class MultiCtaRadixSortingEnactor : public BaseRadixSortingEnactor<K, V, Storage >
+template <typename K, typename V, typename Storage = MultiCtaRadixSortStorage<K, V> >
+class MultiCtaRadixSortingEnactor : 
+	public BaseRadixSortingEnactor<K, V, Storage>
 {
 private:
 	
@@ -88,9 +150,9 @@ protected:
 	{
 		// Allocate the spine
 		int spine_elements = max_grid_size * (1 << max_radix_bits);
-		int spine_cycles = (spine_elements + B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS - 1) / 
-				B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
-		spine_elements = spine_cycles * B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
+		int spine_tiles = (spine_elements + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / 
+				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 		cudaMalloc((void**) &d_spine, spine_elements * sizeof(int));
 	}
 
@@ -115,7 +177,41 @@ protected:
 		work_decomposition.num_elements 				= num_elements;
 	}
 	
+	
+    /**
+     * Pre-sorting logic.
+     */
+    virtual cudaError_t PreSort(Storage &problem_storage, int passes) 
+    {
+    	// Allocate device memory for temporary storage (if necessary)
+    	if (problem_storage.d_keys[0] == NULL) {
+    		cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(K));
+    	}
+    	if (problem_storage.d_keys[1] == NULL) {
+    		cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(K));
+    	}
+    	if (!Base::KeysOnly()) {
+    		if (problem_storage.d_values[0] == NULL) {
+    			cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(V));
+    		}
+    		if (problem_storage.d_values[1] == NULL) {
+    			cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(V));
+    		}
+    	}
 
+    	return cudaSuccess;
+    }
+    
+    
+    /**
+     * Post-sorting logic.
+     */
+    virtual cudaError_t PostSort(MultiCtaRadixSortStorage<K, V> &problem_storage, int passes) 
+    {
+    	return cudaSuccess;
+    }	
+
+    
 public:
 
     /**

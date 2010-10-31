@@ -272,13 +272,29 @@ void SerialScan(int segment[], int seed0) {
 
 
 //------------------------------------------------------------------------------
-// Empty Kernels
+// Simple Kernels
 //------------------------------------------------------------------------------
 
+/**
+ * Empty Kernel
+ */
 template <typename T>
 __global__ void FlushKernel(void)
 {
 }
+
+
+/**
+ * Initialization kernel for synchronization counters
+ */
+template <typename T>
+__global__ void InitSync(int *d_sync)
+{
+	if (threadIdx.x == 0) {
+		d_sync[blockIdx.x] = 0;
+	}
+}
+
 
 } // namespace b40c
 
