@@ -81,53 +81,100 @@ B40C_DEFINE_VECTOR_TYPE(double,             double)
 #undef B40C_DEFINE_VECTOR_TYPE
 
 
-__device__ __forceinline__ int LoadCop(int* d_ptr) 
+//------------------------------------------------------------------------------
+// Utilities for moving types through global memory with cache modifiers
+//------------------------------------------------------------------------------
+
+enum CacheModifier {
+	NONE,
+	CG,
+	CS
+};
+
+
+__device__ __forceinline__ int LoadCG(int* d_ptr) 
 {
 	int retval;
 	asm("ld.global.cg.s32 %0, [%1];" : "=r"(retval) : _B40C_ASM_PTR_(d_ptr));
 	return retval;
 }
 
+//-----------------------------------------------------------------------------
+// Global Load
+//-----------------------------------------------------------------------------
 
-//
-// uint
-//
+template <typename T, CacheModifier CACHE_MODIFIER> struct GlobalLoad;
 
+// Generic NONE
 
-__device__ __forceinline__ void LoadCop(uint &dest, uint* d_ptr) 
+template <typename T> struct GlobalLoad<T, NONE> 
 {
-	asm("ld.global.cg.u32 %0, [%1];" : "=r"(dest) : _B40C_ASM_PTR_(d_ptr));
-}
-
-__device__ __forceinline__ void LoadCop(uint2 &dest, uint2* d_ptr) 
-{
-	asm("ld.global.cg.v2.u32 {%0, %1}, [%2];" : "=r"(dest.x), "=r"(dest.y) : _B40C_ASM_PTR_(d_ptr));
-}
-
-__device__ __forceinline__ void LoadCop(uint4 &dest, uint4* d_ptr) 
-{
-	asm("ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];" : "=r"(dest.x), "=r"(dest.y), "=r"(dest.z), "=r"(dest.w) : _B40C_ASM_PTR_(d_ptr));
-}
+	__device__ __forceinline__ static void Ld(T &dest, T* d_ptr, volatile int offset) {
+		dest = d_ptr[offset]; 
+	}
+};
 
 
-//
-// int
-//
 
-__device__ __forceinline__ void LoadCop(int &dest, int* d_ptr) 
-{
-	asm("ld.global.cg.s32 %0, [%1];" : "=r"(dest) : _B40C_ASM_PTR_(d_ptr));
-}
+#define B40C_DEFINE_GLOBAL_LOAD(base_type, short_type, ptx_type, reg_mod)																												\
+	template <> struct GlobalLoad<base_type, CG> {																												\
+		__device__ __forceinline__ static void Ld(base_type &dest, base_type* d_ptr, volatile int offset) {														\
+			asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));																	\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<base_type, CS> {																												\
+		__device__ __forceinline__ static void Ld(base_type &dest, base_type* d_ptr, volatile int offset) {														\
+			asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));																	\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##1, CG> {																												\
+		__device__ __forceinline__ static void Ld(short_type##1 &dest, short_type##1* d_ptr, volatile int offset) {														\
+			asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));																	\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##1, CS> {																												\
+		__device__ __forceinline__ static void Ld(short_type##1 &dest, short_type##1* d_ptr, volatile int offset) {														\
+			asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));																	\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##2, CG> {																												\
+		__device__ __forceinline__ static void Ld(short_type##2 &dest, short_type##2* d_ptr, volatile int offset) {													\
+			asm("ld.global.cg.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(dest.x), "="#reg_mod(dest.y) : _B40C_ASM_PTR_(d_ptr + offset));										\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##2, CS> {																												\
+		__device__ __forceinline__ static void Ld(short_type##2 &dest, short_type##2* d_ptr, volatile int offset) {													\
+			asm("ld.global.cs.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(dest.x), "="#reg_mod(dest.y) : _B40C_ASM_PTR_(d_ptr + offset));										\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##4, CG> {																												\
+		__device__ __forceinline__ static void Ld(short_type##4 &dest, short_type##4* d_ptr, volatile int offset) {													\
+			asm("ld.global.cg.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(dest.x), "="#reg_mod(dest.y), "="#reg_mod(dest.z), "="#reg_mod(dest.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+		}																																							\
+	};																																								\
+	template <> struct GlobalLoad<short_type##4, CS> {																												\
+		__device__ __forceinline__ static void Ld(short_type##4 &dest, short_type##4* d_ptr, volatile int offset) {													\
+			asm("ld.global.cs.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(dest.x), "="#reg_mod(dest.y), "="#reg_mod(dest.z), "="#reg_mod(dest.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+		}																																							\
+	};
 
-__device__ __forceinline__ void LoadCop(int2 &dest, int2* d_ptr) 
-{
-	asm("ld.global.cg.v2.s32 {%0, %1}, [%2];" : "=r"(dest.x), "=r"(dest.y) : _B40C_ASM_PTR_(d_ptr));
-}
 
-__device__ __forceinline__ void LoadCop(int4 &dest, int4* d_ptr) 
-{
-	asm("ld.global.cg.v4.s32 {%0, %1, %2, %3}, [%4];" : "=r"(dest.x), "=r"(dest.y), "=r"(dest.z), "=r"(dest.w) : _B40C_ASM_PTR_(d_ptr));
-}
+B40C_DEFINE_GLOBAL_LOAD(char, char, s8, r)
+B40C_DEFINE_GLOBAL_LOAD(short, short, s16, r)
+B40C_DEFINE_GLOBAL_LOAD(int, int, s32, r)
+B40C_DEFINE_GLOBAL_LOAD(long, long, s64, l)
+B40C_DEFINE_GLOBAL_LOAD(long long, longlong, s64, l)
+B40C_DEFINE_GLOBAL_LOAD(unsigned char, uchar, u8, r)
+B40C_DEFINE_GLOBAL_LOAD(unsigned short, ushort, u16, r)
+B40C_DEFINE_GLOBAL_LOAD(unsigned int, uint, u32, r)
+B40C_DEFINE_GLOBAL_LOAD(unsigned long, ulong, u64, l)
+B40C_DEFINE_GLOBAL_LOAD(unsigned long long, ulonglong, u64, l)
+B40C_DEFINE_GLOBAL_LOAD(float, float, f32, r)
+B40C_DEFINE_GLOBAL_LOAD(double, double, f64, l)
+
+#undef B40C_DEFINE_GLOBAL_LOAD
+	
+
 
 
 } // namespace b40c

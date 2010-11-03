@@ -115,7 +115,7 @@ __device__ __forceinline__ void GlobalBarrier(int *d_sync)
 		
 		// Wait for everyone else to report in
 		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
-			while (LoadCop(d_sync + peer_block) == 0) {
+			while (LoadCG(d_sync + peer_block) == 0) {
 				__threadfence_block();
 			}
 		}
@@ -134,7 +134,7 @@ __device__ __forceinline__ void GlobalBarrier(int *d_sync)
 			d_sync[blockIdx.x] = 1; 
 
 			// Wait for acknowledgement
-			while (LoadCop(d_sync + blockIdx.x) == 1) {
+			while (LoadCG(d_sync + blockIdx.x) == 1) {
 				__threadfence_block();
 			}
 		}
@@ -176,7 +176,6 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	int reduction_loads,
 	const int &oob,
 	const int &extra_elements,
 	int spine_elements,
@@ -198,14 +197,13 @@ __device__ __forceinline__ void DistributionSortingPass(
 	// Reduction
 	//-------------------------------------------------------------------------
 
-	ReductionPass<K, V, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, TILE_ELEMENTS, PreprocessFunctor>(
+	ReductionPass<K, CG, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, TILE_ELEMENTS, PreprocessFunctor>(
 		d_in_keys,
 		d_spine,
 		block_offset,
-		reduction_loads,
 		encoded_reduction_col,
 		smem_pool,
-		extra_elements & (B40C_RADIXSORT_THREADS - 1));
+		oob + extra_elements);
 
 	
 	//-------------------------------------------------------------------------
@@ -226,7 +224,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 
 		// Wait for everyone else to report in
 		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
-			while (LoadCop(d_sync + peer_block) == 0) {
+			while (LoadCG(d_sync + peer_block) == 0) {
 				__threadfence_block();
 			}
 		}
@@ -238,7 +236,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 		int spine_offset = 0;
 		while (spine_offset < spine_elements) {
 			
-			SrtsScanTile<SPINE_PARTIALS_PER_SEG>(	
+			SrtsScanTile<CG, SPINE_PARTIALS_PER_SEG>(	
 				base_partial, 
 				spine_raking_partial, 
 				spine_scan,
@@ -266,7 +264,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 			d_sync[blockIdx.x] = 1; 
 
 			// Wait for acknowledgement
-			while (LoadCop(d_sync + blockIdx.x) == 1) {
+			while (LoadCG(d_sync + blockIdx.x) == 1) {
 				__threadfence_block();
 			}
 		}
@@ -279,7 +277,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 	// Scan/Scatter
 	//-------------------------------------------------------------------------
 
-	ScanScatterDigitPass<K, V, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+	ScanScatterDigitPass<K, V, CG, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 		d_spine,
 		d_in_keys, 
 		d_in_values, 
@@ -338,7 +336,6 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	int reduction_loads,
 	const int &oob,
 	const int &extra_elements,
 	int spine_elements,
@@ -370,7 +367,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys1, d_keys0, d_values1, d_values0,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -384,7 +381,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -426,7 +423,6 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	int reduction_loads,
 	const int &oob,
 	const int &extra_elements,
 	int spine_elements,
@@ -454,7 +450,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, d_keys1, d_keys0, d_values1, d_values0,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -470,7 +466,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -486,7 +482,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -502,7 +498,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -629,16 +625,14 @@ void LsbRadixSortSmall(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	int extra_elements, reduction_loads;
+	int extra_elements;
 	if (blockIdx.x == gridDim.x - 1) {
 		extra_elements = work_decomposition.extra_elements_last_block;
 		if (extra_elements) {
 			block_elements -= TILE_ELEMENTS;
 		}
-		reduction_loads = (block_elements + work_decomposition.extra_elements_last_block) >> B40C_RADIXSORT_LOG_THREADS;
 	} else {
 		extra_elements = 0;
-		reduction_loads = block_elements >> B40C_RADIXSORT_LOG_THREADS;
 	}
 	int oob = block_offset + block_elements;						
 	
@@ -698,7 +692,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -712,7 +706,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -726,7 +720,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -740,7 +734,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -754,7 +748,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -768,7 +762,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -782,7 +776,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -796,7 +790,7 @@ void LsbRadixSortSmall(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, reduction_loads, oob, extra_elements,
+			block_offset, block_elements, oob, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
