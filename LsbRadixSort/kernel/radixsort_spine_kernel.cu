@@ -55,7 +55,7 @@ namespace b40c {
  * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements 
  ******************************************************************************/
 
-template<int PARTIALS_PER_SEG>
+template<CacheModifier CACHE_MODIFIER, int PARTIALS_PER_SEG>
 __device__ __forceinline__ void SrtsScanTile(
 	int *smem_offset,
 	int *smem_segment,
@@ -67,7 +67,7 @@ __device__ __forceinline__ void SrtsScanTile(
 	int4 datum; 
 
 	// read input data
-	LoadCop(datum, &in[threadIdx.x]);
+	GlobalLoad<int4, CACHE_MODIFIER>::Ld(datum, in, threadIdx.x);
 
 	smem_offset[0] = datum.x + datum.y + datum.z + datum.w;
 
@@ -158,7 +158,7 @@ __global__ void SrtsScanSpine(
 	int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
-		SrtsScanTile<PARTIALS_PER_SEG>(	
+		SrtsScanTile<NONE, PARTIALS_PER_SEG>(	
 			smem_offset, 
 			smem_segment, 
 			warpscan,
