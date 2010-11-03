@@ -118,7 +118,31 @@ protected:
 	
 protected:
 	
-    /**
+	/**
+	 * Determines the actual number of CTAs to launch for the given problem size
+	 * 
+	 * @return The actual number of CTAs that should be launched
+	 */
+	int GridSize(int num_elements)
+	{
+		// Initially assume that each threadblock will do only one 
+		// tile worth of work (and that the last one will do any remainder), 
+		// but then clamp it by the "max" restriction  
+
+		int grid_size = (num_elements + this->tile_elements - 1) / this->tile_elements;
+		
+		if (grid_size == 0) {
+			// Always at least one block to process the remainder
+			grid_size = 1;
+		} else if (grid_size > this->max_grid_size) {
+			grid_size = this->max_grid_size;
+		}
+		
+		return grid_size;
+	}
+
+	
+	/**
      * Post-sorting logic.
      */
     virtual cudaError_t PostSort(MultiCtaRadixSortStorage<K, V> &problem_storage, int passes) 
@@ -169,7 +193,7 @@ public:
 
 		// Compute work distribution
 		CtaDecomposition work_decomposition;
-		int grid_size = this->max_grid_size;
+		int grid_size = GridSize(problem_storage.num_elements);	
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 		
 		// Compute number of spine elements to scan during this pass
@@ -202,9 +226,6 @@ public:
 			spine_elements);
 	    synchronize_if_enabled("ScanScatterDigits");
 	    
-	    // mooch
-	    cudaThreadSynchronize();	    
-	    
 		// Perform any post-mortem
 		PostSort(problem_storage, PASSES);
 
@@ -219,7 +240,8 @@ public:
 	 */
 	cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
-		return EnactSort<sizeof(K) * 8>(problem_storage);
+		return cudaSuccess;
+//		return EnactSort<sizeof(K) * 8>(problem_storage);	// mooch
 	}
 	
 };

@@ -129,6 +129,9 @@ protected:
 	// Fixed "tile size" of keys by which threadblocks iterate over 
 	int tile_elements;
 	
+// mooch
+public:
+	
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
 	int *d_spine;
@@ -166,14 +169,14 @@ protected:
 		int grid_size,
 		CtaDecomposition &work_decomposition) 
 	{
-		int total_tiles 		= num_elements / tile_elements;
+		int total_tiles 		= (num_elements + tile_elements - 1) / tile_elements;
 		int tiles_per_block 	= total_tiles / grid_size;						
 		int extra_tiles 		= total_tiles - (tiles_per_block * grid_size);
 
 		work_decomposition.num_big_blocks 				= extra_tiles;
 		work_decomposition.big_block_elements 			= (tiles_per_block + 1) * tile_elements;
 		work_decomposition.normal_block_elements 		= tiles_per_block * tile_elements;
-		work_decomposition.extra_elements_last_block 	= num_elements - (total_tiles * tile_elements);
+		work_decomposition.extra_elements_last_block 	= num_elements - (num_elements / tile_elements * tile_elements);
 		work_decomposition.num_elements 				= num_elements;
 	}
 	

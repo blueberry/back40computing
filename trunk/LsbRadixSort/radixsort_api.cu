@@ -189,7 +189,7 @@ protected:
 	
 	bool				_keys_only;
 	unsigned int 		_num_elements;
-	int 				_cycle_elements;
+	int 				_tile_elements;
 	int 				_spine_elements;
 	int 				_grid_size;
 	CtaDecomposition 	_work_decomposition;
@@ -319,31 +319,31 @@ BaseRadixSortingEnactor<K, V>::BaseRadixSortingEnactor(
 	
 
 	//
-	// Determine number of CTAs to launch, shared memory, cycle elements, etc.
+	// Determine number of CTAs to launch, shared memory, tile elements, etc.
 	//
 
 	_passes								= passes;
 	_num_elements 						= num_elements;
 	_keys_only 							= IsKeysOnly<V>();
-	_cycle_elements 					= B40C_RADIXSORT_CYCLE_ELEMENTS(_kernel_ptx_version , ConvertedKeyType, V);
+	_tile_elements 					= B40C_RADIXSORT_TILE_ELEMENTS(_kernel_ptx_version , ConvertedKeyType, V);
 	_grid_size 							= GridSize(max_grid_size);
 	_swizzle_pointers_for_odd_passes	= swizzle_pointers_for_odd_passes;
 	
-	int total_cycles 			= _num_elements / _cycle_elements;
-	int cycles_per_block 		= total_cycles / _grid_size;						
-	int extra_cycles 			= total_cycles - (cycles_per_block * _grid_size);
+	int total_tiles 			= _num_elements / _tile_elements;
+	int tiles_per_block 		= total_tiles / _grid_size;						
+	int extra_tiles 			= total_tiles - (tiles_per_block * _grid_size);
 
 	CtaDecomposition work_decomposition = {
-		extra_cycles,										// num_big_blocks
-		(cycles_per_block + 1) * _cycle_elements,			// big_block_elements
-		cycles_per_block * _cycle_elements,					// normal_block_elements
-		_num_elements - (total_cycles * _cycle_elements),	// extra_elements_last_block
+		extra_tiles,										// num_big_blocks
+		(tiles_per_block + 1) * _tile_elements,			// big_block_elements
+		tiles_per_block * _tile_elements,					// normal_block_elements
+		_num_elements - (total_tiles * _tile_elements),	// extra_elements_last_block
 		_num_elements};										// num_elements
 	
 	_work_decomposition = work_decomposition;
 	
-	int spine_cycles = ((_grid_size * (1 << max_radix_bits)) + B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS - 1) / B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
-	_spine_elements = spine_cycles * B40C_RADIXSORT_SPINE_CYCLE_ELEMENTS;
+	int spine_tiles = ((_grid_size * (1 << max_radix_bits)) + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+	_spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 }
 
 
@@ -380,7 +380,7 @@ int BaseRadixSortingEnactor<K, V>::GridSize(int max_grid_size)
 				}
 				max_grid_size = orig_max_grid_size;
 
-				if (_num_elements / _cycle_elements > max_grid_size) {
+				if (_num_elements / _tile_elements > max_grid_size) {
 	
 					double multiplier1 = 4.0;
 					double multiplier2 = 16.0;
@@ -388,7 +388,7 @@ int BaseRadixSortingEnactor<K, V>::GridSize(int max_grid_size)
 					double delta1 = 0.068;
 					double delta2 = 0.127;	
 	
-					int dividend = (_num_elements + _cycle_elements - 1) / _cycle_elements;
+					int dividend = (_num_elements + _tile_elements - 1) / _tile_elements;
 	
 					while(true) {
 	
@@ -421,11 +421,11 @@ int BaseRadixSortingEnactor<K, V>::GridSize(int max_grid_size)
 	}
 
 	// Calculate the actual number of threadblocks to launch.  Initially
-	// assume that each threadblock will do only one cycle_elements worth 
+	// assume that each threadblock will do only one tile_elements worth 
 	// of work, but then clamp it by the "max" restriction derived above
 	// in order to accomodate the "single-sp" and "saturated" cases.
 
-	int grid_size = _num_elements / _cycle_elements;
+	int grid_size = _num_elements / _tile_elements;
 	if (grid_size == 0) {
 		grid_size = 1;
 	}
@@ -471,7 +471,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	//
 
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) { 
+	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _tile_elements * 2)) { 
 		FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 		synchronize_if_enabled("FlushKernel");
 	}
@@ -480,7 +480,7 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	dynamic_smem = (_kernel_ptx_version >= 130) ? scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 0;
 
 	RakingReduction<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<_grid_size, threads, dynamic_smem>>>(
-		converted_storage.d_from_alt_storage,
+		(int *) converted_storage.d_from_alt_storage,
 		converted_storage.d_spine,
 		converted_storage.d_keys,
 		converted_storage.d_alt_keys,
@@ -507,13 +507,13 @@ DigitPlacePass(const RadixSortStorage<ConvertedKeyType, V> &converted_storage)
 	//
 	
 	// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _cycle_elements * 2)) { 
+	if ((_device_sm_version == 130) && (_work_decomposition.num_elements > _device_props.multiProcessorCount * _tile_elements * 2)) { 
 		FlushKernel<void><<<_grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 		synchronize_if_enabled("FlushKernel");
 	}
 
 	ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<_grid_size, threads, 0>>>(
-		converted_storage.d_from_alt_storage,
+		(int *) converted_storage.d_from_alt_storage,
 		converted_storage.d_spine,
 		converted_storage.d_keys,
 		converted_storage.d_alt_keys,
@@ -562,8 +562,8 @@ EnactSort(RadixSortStorage<K, V> &problem_storage)
 	if (RADIXSORT_DEBUG) {
 		
 		printf("_device_sm_version: %d, _kernel_ptx_version: %d\n", _device_sm_version, _kernel_ptx_version);
-		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\tcycle_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
-			_grid_size, B40C_RADIXSORT_THREADS, _cycle_elements, _work_decomposition.num_big_blocks, _work_decomposition.big_block_elements, _work_decomposition.normal_block_elements, _work_decomposition.extra_elements_last_block);
+		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\ttile_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
+			_grid_size, B40C_RADIXSORT_THREADS, _tile_elements, _work_decomposition.num_big_blocks, _work_decomposition.big_block_elements, _work_decomposition.normal_block_elements, _work_decomposition.extra_elements_last_block);
 		printf("Top-level spine scan:\n\tgrid_size: %d, \n\tthreads: %d, \n\tspine_block_elements: %d\n\n", 
 			_grid_size, B40C_RADIXSORT_SPINE_THREADS, _spine_elements);
 	}	

@@ -90,10 +90,22 @@ __device__ __forceinline__ unsigned long long DefaultextraValue<unsigned long lo
  ******************************************************************************/
 
 template <typename K, long long RADIX_DIGITS, int BIT>
-__device__ __forceinline__ int DecodeDigit(K key) 
+__device__ __forceinline__ int DecodeDigitBak(K key) 
 {
 	const K DIGIT_MASK = RADIX_DIGITS - 1;
 	return (key >> BIT) & DIGIT_MASK;
+}
+
+
+template <typename K, long long RADIX_DIGITS, int BIT>
+__device__ __forceinline__ int DecodeDigit(K key) 
+{
+	const int RADIX_BITS = 4;
+	SuppressUnusedConstantWarning(RADIX_BITS);
+
+	int retval;
+	ExtractBits<K, BIT, RADIX_BITS>(retval, key);
+	return retval;
 }
 
 
@@ -102,17 +114,17 @@ __device__ __forceinline__ void DecodeDigit(
 	K key, 
 	int &digit, 
 	int &flag_offset,		// in bytes
-	const int LOAD_OFFLOAD)
+	const int LOAD_OFFSET)
 {
 	const int PADDED_BYTES_PER_LANE 	= PADDED_PARTIALS_PER_LANE * 4;
-	const int LOAD_OFFLOAD_BYTES 		= LOAD_OFFLOAD * 4;
+	const int LOAD_OFFSET_BYTES 		= LOAD_OFFSET * 4;
 	const K QUAD_MASK 							= (RADIX_DIGITS < 4) ? 0x1 : 0x3;
 	
 	digit = DecodeDigit<K, RADIX_DIGITS, BIT>(key);
 	int lane = digit >> 2;
 	int quad_byte = digit & QUAD_MASK;
 
-	flag_offset = LOAD_OFFLOAD_BYTES + FastMul(lane, PADDED_BYTES_PER_LANE) + quad_byte;
+	flag_offset = LOAD_OFFSET_BYTES + FastMul(lane, PADDED_BYTES_PER_LANE) + quad_byte;
 }
 
 
@@ -122,17 +134,21 @@ __device__ __forceinline__ void DecodeDigits(
 	int2 digits[LOADS_PER_CYCLE],
 	int2 flag_offsets[LOADS_PER_CYCLE])		// in bytes 
 {
-
-	#pragma unroll
-	for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-		
-		const int LOAD_OFFLOAD = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
-
+	if (LOADS_PER_CYCLE > 0) {
+		const int LOAD = 0;
+		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
 		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
-				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFLOAD);
-		
+				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
 		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
-				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFLOAD);
+				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
+	}
+	if (LOADS_PER_CYCLE > 1) {
+		const int LOAD = 1;
+		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
+		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
+		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
 	}
 }
 
@@ -146,14 +162,14 @@ __device__ __forceinline__ void GuardedLoad(
 	PreprocessFunctor preprocess = PreprocessFunctor())				
 {
 	if (offset - extra_elements < 0) {
-		pair.x = in[offset];
+		LoadCop(pair.x, &in[offset]);
 		preprocess(pair.x);
 	} else {
 		pair.x = DefaultextraValue<T>();
 	}
 	
 	if (offset + 1 - extra_elements < 0) {
-		pair.y = in[offset + 1];
+		LoadCop(pair.y, &in[offset + 1]);
 		preprocess(pair.y);
 	} else {
 		pair.y = DefaultextraValue<T>();
@@ -172,10 +188,10 @@ __device__ __forceinline__ void ReadCycle(
 	if (UNGUARDED_IO) {
 
 		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower
-		if (LOADS_PER_CYCLE > 0) pairs[0] = d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0)];
-		if (LOADS_PER_CYCLE > 1) pairs[1] = d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1)];
-		if (LOADS_PER_CYCLE > 2) pairs[2] = d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 2)];
-		if (LOADS_PER_CYCLE > 3) pairs[3] = d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 3)];
+		if (LOADS_PER_CYCLE > 0) LoadCop(pairs[0], &d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0)]);
+		if (LOADS_PER_CYCLE > 1) LoadCop(pairs[1], &d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1)]);
+		if (LOADS_PER_CYCLE > 2) LoadCop(pairs[2], &d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 2)]);
+		if (LOADS_PER_CYCLE > 3) LoadCop(pairs[3], &d_in[threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 3)]);
 
 		#pragma unroll 
 		for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
@@ -185,15 +201,13 @@ __device__ __forceinline__ void ReadCycle(
 		
 	} else {
 
-		T* in = (T*) d_in;
-		
 		// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
 		// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
 		
-		if (LOADS_PER_CYCLE > 0) GuardedLoad<T, PreprocessFunctor>(in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 0), extra_elements);
-		if (LOADS_PER_CYCLE > 1) GuardedLoad<T, PreprocessFunctor>(in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 1), extra_elements);
-		if (LOADS_PER_CYCLE > 2) GuardedLoad<T, PreprocessFunctor>(in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 2), extra_elements);
-		if (LOADS_PER_CYCLE > 3) GuardedLoad<T, PreprocessFunctor>(in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 3), extra_elements);
+		if (LOADS_PER_CYCLE > 0) GuardedLoad<T, PreprocessFunctor>((T*) d_in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 0), extra_elements);
+		if (LOADS_PER_CYCLE > 1) GuardedLoad<T, PreprocessFunctor>((T*) d_in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 1), extra_elements);
+		if (LOADS_PER_CYCLE > 2) GuardedLoad<T, PreprocessFunctor>((T*) d_in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 2), extra_elements);
+		if (LOADS_PER_CYCLE > 3) GuardedLoad<T, PreprocessFunctor>((T*) d_in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 3), extra_elements);
 	}
 }
 
@@ -557,7 +571,40 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 	// Swap keys according to ranks
 	ExchangePairs<K, CYCLES_PER_TILE, LOADS_PER_CYCLE>((K*) exchange, keypairs, ranks);				
 	
-	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits) 
+	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits)
+	if (CYCLES_PER_TILE > 0) {
+		const int CYCLE = 0;
+		if (LOADS_PER_CYCLE > 0) {
+			const int LOAD = 0;
+			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+		}
+		if (LOADS_PER_CYCLE > 1) {
+			const int LOAD = 1;
+			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+		}
+	}
+	if (CYCLES_PER_TILE > 1) {
+		const int CYCLE = 1;
+		if (LOADS_PER_CYCLE > 0) {
+			const int LOAD = 0;
+			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+		}
+		if (LOADS_PER_CYCLE > 1) {
+			const int LOAD = 1;
+			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+		}
+	}
+	
+	
+/*
 	#pragma unroll 
 	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
 		
@@ -568,6 +615,7 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 	}
+*/	
 	
 	// Scatter keys
 	#pragma unroll 
@@ -799,6 +847,32 @@ __device__ __forceinline__ void ScanDigitTile(
 	// Lane-scanning Cycles
 	//-------------------------------------------------------------------------
 
+	if (CYCLES_PER_TILE > 0) {
+		const int CYCLE = 0;
+		ScanCycle<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+			base_partial,
+			raking_partial,
+			warpscan,
+			keypairs[CYCLE],
+			digits[CYCLE],
+			flag_offsets[CYCLE],
+			ranks[CYCLE],
+			CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
+	}
+	if (CYCLES_PER_TILE > 1) {
+		const int CYCLE = 1;
+		ScanCycle<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+			base_partial,
+			raking_partial,
+			warpscan,
+			keypairs[CYCLE],
+			digits[CYCLE],
+			flag_offsets[CYCLE],
+			ranks[CYCLE],
+			CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
+	}
+	
+/*	
 	#pragma unroll
 	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
 	
@@ -810,8 +884,9 @@ __device__ __forceinline__ void ScanDigitTile(
 			digits[CYCLE],
 			flag_offsets[CYCLE],
 			ranks[CYCLE],
-			CYCLES_PER_TILE - CYCLE - 1);		// lower cyclees get copied right
+			CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
 	}
+*/
 	
 	//-------------------------------------------------------------------------
 	// Digit-scanning 
@@ -822,14 +897,14 @@ __device__ __forceinline__ void ScanDigitTile(
 
 		int counts[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
-		// Recover digit-counts
+		// Recover digit-counts from warpscan padding
 
 		#pragma unroll
 		for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
 			RecoverDigitCounts<SCAN_LANES_PER_CYCLE, RAKING_THREADS_PER_LANE, LOADS_PER_CYCLE, SCAN_LANES_PER_LOAD>(		// first cycle, offset by 1			
 				warpscan, 
 				counts[CYCLE],
-				CYCLES_PER_TILE - CYCLE - 1);		// lower cyclees get copied right
+				CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
 		}
 		
 		// Check for overflows
@@ -959,13 +1034,9 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 
 		// Read digit_carry in parallel 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-		int my_digit_carry = d_spine[spine_digit_offset];
+		int my_digit_carry;
+		LoadCop(my_digit_carry, &d_spine[spine_digit_offset]);
 		digit_carry[threadIdx.x] = my_digit_carry;
-/*
-		if ((blockIdx.x == 0) && (BIT == 8)) {
-			printf("Block %d, digit %d spined %d keys\n", blockIdx.x, threadIdx.x, my_digit_carry);
-		}
-*/		
 	}
 
 	// Scan in tiles of tile_elements
