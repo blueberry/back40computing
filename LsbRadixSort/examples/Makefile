@@ -66,7 +66,8 @@ KERNELS =
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
-SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
+#SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
+SM_TARGETS = $(GEN_SM20) 
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -128,7 +129,21 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-SORTING_DEPS = ../radixsort_api.cu ../kernel/radixsort_kernel_common.cu ../kernel/radixsort_reduction_kernel.cu ../kernel/radixsort_scanscatter_kernel.cu ../kernel/radixsort_spine_kernel.cu ../kernel/radixsort_key_conversion.cu 
+SORTING_DEPS = 	../radixsort_base.cu \
+				../radixsort_early_exit.cu \
+				../radixsort_multi_cta.cu \
+				../radixsort_single_cta.cu \
+				../radixsort_single_grid.cu \
+				../kernel/radixsort_kernel_common.cu \
+				../kernel/radixsort_key_conversion.cu \
+				../kernel/radixsort_reduction_kernel.cu \
+				../kernel/radixsort_scanscatter_kernel.cu \
+				../kernel/radixsort_spine_kernel.cu \
+				../kernel/radixsort_singlegrid_kernel.cu \
+				../../KernelCommon/b40c_error_synchronize.cu \
+				../../KernelCommon/b40c_kernel_utils.cu \
+				../../KernelCommon/b40c_vector_types.cu 
+				 
 
 
 #-------------------------------------------------------------------------------

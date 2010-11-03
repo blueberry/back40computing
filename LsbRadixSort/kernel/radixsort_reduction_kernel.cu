@@ -61,13 +61,12 @@ const int BYTE_ENCODE_SHIFT = 0x3;
  * Cycle-processing Routines
  ******************************************************************************/
 
-__device__ __forceinline__ int DecodeInt(int encoded, int quad_byte){
-	return (encoded >> quad_byte) & 0xff;		// shift right 8 bits per digit and return rightmost 8 bits
-}
-
-
-__device__ __forceinline__ int EncodeInt(int count, int quad_byte) {
-	return count << quad_byte;					// shift left 8 bits per digit
+template <int BYTE>
+__device__ __forceinline__ int DecodeInt(int encoded){
+	
+	int retval;
+	ExtractBits<int, BYTE * 8, 8>(retval, encoded);
+	return retval;
 }
 
 
@@ -75,8 +74,9 @@ template <typename K, long long RADIX_DIGITS, int BIT>
 __device__ __forceinline__ void DecodeDigit(
 	K key, 
 	int &lane, 
-	int &quad_shift) 
+	int &quad_byte) 
 {
+/*	
 	const K DIGIT_MASK = RADIX_DIGITS - 1;
 	lane = (key & (DIGIT_MASK << BIT)) >> (BIT + 2);
 	
@@ -89,6 +89,57 @@ __device__ __forceinline__ void DecodeDigit(
 	} else {
 		quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
 	}
+*/	
+
+	const int RADIX_BITS = 4;
+
+	ExtractBits<K, BIT + 2, RADIX_BITS - 2>(lane, key);
+	if (RADIX_BITS < 2) { 
+		ExtractBits<K, BIT, 1>(quad_byte, key);
+	} else {
+		ExtractBits<K, BIT, 2>(quad_byte, key);
+	}
+}
+
+//-----------------------------------------------------------------------------
+
+template <int PARTIAL>
+__device__ __forceinline__  void ReduceLanePartial(
+	int local_counts[4], 
+	int *scan_lanes, 
+	int lane_offset) 
+{
+	unsigned char* encoded = (unsigned char *) &scan_lanes[lane_offset + (PARTIAL * B40C_WARP_THREADS)];
+	local_counts[0] += encoded[0];
+	local_counts[1] += encoded[1];
+	local_counts[2] += encoded[2];
+	local_counts[3] += encoded[3];
+/*	
+	int encoded = scan_lanes[lane_offset + (PARTIAL * B40C_WARP_THREADS)];		
+	local_counts[0] += DecodeInt<0>(encoded);
+	local_counts[1] += DecodeInt<1>(encoded);
+	local_counts[2] += DecodeInt<2>(encoded);
+	local_counts[3] += DecodeInt<3>(encoded);
+*/	
+}
+
+template <int LANE, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int REDUCTION_PARTIALS_PER_LANE, int LANE_PARTIALS_PER_THREAD>
+__device__ __forceinline__  void ReduceLanePartials(
+	int local_counts[REDUCTION_LANES_PER_WARP][4],
+	int *scan_lanes, 
+	int lane_offset) 
+{		
+	lane_offset += (LANE * REDUCTION_PARTIALS_PER_LANE * B40C_RADIXSORT_WARPS);
+	if (lane_offset < REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE) {
+		if (LANE_PARTIALS_PER_THREAD > 0) ReduceLanePartial<0>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 1) ReduceLanePartial<1>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 2) ReduceLanePartial<2>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 3) ReduceLanePartial<3>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 4) ReduceLanePartial<4>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 5) ReduceLanePartial<5>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 6) ReduceLanePartial<6>(local_counts[LANE], scan_lanes, lane_offset);
+		if (LANE_PARTIALS_PER_THREAD > 7) ReduceLanePartial<7>(local_counts[LANE], scan_lanes, lane_offset);
+	}
 }
 
 
@@ -96,49 +147,22 @@ template <
 	int REDUCTION_LANES, 
 	int REDUCTION_LANES_PER_WARP, 
 	int LOG_REDUCTION_PARTIALS_PER_LANE,
-	int REDUCTION_PARTIALS_PER_LANE, 
-	bool FINAL_REDUCE>
+	int REDUCTION_PARTIALS_PER_LANE> 
 __device__ __forceinline__ void ReduceEncodedCounts(
 	int local_counts[REDUCTION_LANES_PER_WARP][4],
-	int *scan_lanes) 
+	int *scan_lanes,
+	int warp_id,
+	int warp_idx)
 {
-	const int LANE_PARTIALS_PER_THREAD 	= REDUCTION_PARTIALS_PER_LANE / B40C_WARP_THREADS;
+	const int LANE_PARTIALS_PER_THREAD = REDUCTION_PARTIALS_PER_LANE / B40C_WARP_THREADS;
+	SuppressUnusedConstantWarning(LANE_PARTIALS_PER_THREAD);
 	
-	int idx = threadIdx.x & (B40C_WARP_THREADS - 1);
-	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
-	int lane_base = warp_id << LOG_REDUCTION_PARTIALS_PER_LANE;	// my warp's (first) reduction lane
+	int lane_offset = (warp_id << LOG_REDUCTION_PARTIALS_PER_LANE) + warp_idx;	// my warp's (first-lane) reduction offset
 
-	__syncthreads();
-	
-	#pragma unroll
-	for (int j = 0; j < (int) REDUCTION_LANES_PER_WARP; j++) {
-		
-		if (lane_base < REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE) {
-
-			// rest of my elements
-			#pragma unroll
-			for (int i = 0; i < (int) LANE_PARTIALS_PER_THREAD; i++) {
-				int encoded = scan_lanes[lane_base + idx + (i * B40C_WARP_THREADS)];		
-				local_counts[j][0] += DecodeInt(encoded, 0u << BYTE_ENCODE_SHIFT);
-				local_counts[j][1] += DecodeInt(encoded, 1u << BYTE_ENCODE_SHIFT);
-				local_counts[j][2] += DecodeInt(encoded, 2u << BYTE_ENCODE_SHIFT);
-				local_counts[j][3] += DecodeInt(encoded, 3u << BYTE_ENCODE_SHIFT);
-			}
-			
-			if (FINAL_REDUCE) {
-				// reduce all four packed fields, leaving them in the first four elements of our row
-				WarpReduce<B40C_WARP_THREADS>(idx, &scan_lanes[lane_base + 0], local_counts[j][0]);
-				WarpReduce<B40C_WARP_THREADS>(idx, &scan_lanes[lane_base + 1], local_counts[j][1]);
-				WarpReduce<B40C_WARP_THREADS>(idx, &scan_lanes[lane_base + 2], local_counts[j][2]);
-				WarpReduce<B40C_WARP_THREADS>(idx, &scan_lanes[lane_base + 3], local_counts[j][3]);
-			}
-			
-			lane_base += REDUCTION_PARTIALS_PER_LANE * B40C_RADIXSORT_WARPS;
-		}
-	}	
-
-	__syncthreads();
-	
+	if (REDUCTION_LANES_PER_WARP > 0) ReduceLanePartials<0, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
+	if (REDUCTION_LANES_PER_WARP > 1) ReduceLanePartials<1, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
+	if (REDUCTION_LANES_PER_WARP > 2) ReduceLanePartials<2, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
+	if (REDUCTION_LANES_PER_WARP > 3) ReduceLanePartials<3, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
 }
 	
 
@@ -148,10 +172,12 @@ __device__ __forceinline__ void Bucket(
 	int *encoded_reduction_col,
 	PreprocessFunctor preprocess = PreprocessFunctor()) 
 {
-	int lane, quad_shift;
+	int lane, quad_byte;
 	preprocess(input);
-	DecodeDigit<K, RADIX_DIGITS, BIT>(input, lane, quad_shift);
-	encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)] += EncodeInt(1, quad_shift);
+	DecodeDigit<K, RADIX_DIGITS, BIT>(input, lane, quad_byte);
+	
+	unsigned char *encoded_col = (unsigned char *) &encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)];
+	encoded_col[quad_byte]++;
 }
 
 
@@ -163,7 +189,8 @@ struct LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunct
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		K key = d_in_keys[block_offset + threadIdx.x];
+		K key;
+		LoadCop(key, &d_in_keys[block_offset]);
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(key, encoded_reduction_col);
 	}
 };
@@ -193,28 +220,34 @@ struct LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunct
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-			K keys[8];
-				
-			keys[0] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 0) + threadIdx.x];
-			keys[1] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 1) + threadIdx.x];
-			keys[2] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 2) + threadIdx.x];
-			keys[3] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 3) + threadIdx.x];
+		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		if (B40C_FERMI(__CUDA_ARCH__)) __syncthreads();
+		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 4), encoded_reduction_col);
+		
+/*		
+		K keys[8];
+			
+		keys[0] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 0) + threadIdx.x];
+		keys[1] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 1) + threadIdx.x];
+		keys[2] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 2) + threadIdx.x];
+		keys[3] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 3) + threadIdx.x];
 
-			if (B40C_FERMI(__CUDA_ARCH__)) __syncthreads();
-			
-			keys[4] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 4) + threadIdx.x];
-			keys[5] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 5) + threadIdx.x];
-			keys[6] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 6) + threadIdx.x];
-			keys[7] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 7) + threadIdx.x];
-			
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[2], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[3], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[4], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
-			Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
+		if (B40C_FERMI(__CUDA_ARCH__)) __syncthreads();
+		
+		keys[4] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 4) + threadIdx.x];
+		keys[5] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 5) + threadIdx.x];
+		keys[6] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 6) + threadIdx.x];
+		keys[7] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 7) + threadIdx.x];
+		
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[2], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[3], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[4], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
+		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
+*/		
 	}
 };
 
@@ -258,19 +291,6 @@ struct LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunct
 	}
 };
 
-template <typename K, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 252> {
-
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 128), encoded_reduction_col);
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 192), encoded_reduction_col);
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 224), encoded_reduction_col);
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 240), encoded_reduction_col);
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 248), encoded_reduction_col);
-	}
-};
 
 
 template <int REDUCTION_LANES>
@@ -293,69 +313,43 @@ template <
 	int REDUCTION_PARTIALS_PER_LANE, 
 	int BIT, 
 	typename PreprocessFunctor>
-__device__ __forceinline__ int ProcessLoads(
+__device__ __forceinline__ void ProcessLoads(
 	K *d_in_keys,
 	int loads,
 	int &block_offset,
 	int *encoded_reduction_col,
 	int *scan_lanes,
-	int local_counts[REDUCTION_LANES_PER_WARP][4])
+	int local_counts[REDUCTION_LANES_PER_WARP][4],
+	int warp_id,
+	int warp_idx)
 {
 	// Unroll batches of loads with occasional reduction to avoid overflow
-	while (loads >= 128) {
+	while (loads >= 16) {
 	
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 128;
-		loads -= 128;
+		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+		block_offset += B40C_RADIXSORT_THREADS * 16;
+		loads -= 16;
+
+		__syncthreads();
 
 		// Reduce int local count registers to prevent overflow
-		ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, false>(
+		ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
 				local_counts, 
-				scan_lanes);
+				scan_lanes,
+				warp_id,
+				warp_idx);
+
+		__syncthreads();
 		
 		// Reset encoded counters
 		ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
 	} 
-	
-	int retval = loads;
-	
-	// Wind down loads in decreasing batch sizes
-	if (loads >= 64) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 64;
-		loads -= 64;
-	}
-	if (loads >= 32) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 32;
-		loads -= 32;
-	}
-	if (loads >= 16) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 16;
-		loads -= 16;
-	}
-	if (loads >= 8) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 8;
-		loads -= 8;
-	}
-	if (loads >= 4) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 4;
-		loads -= 4;
-	}
-	if (loads >= 2) {
-		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 2;
-		loads -= 2;
-	}
-	if (loads) {
+	while (loads) {
 		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
 		block_offset += B40C_RADIXSORT_THREADS * 1;
+		loads--;
 	}
 	
-	return retval;
 }
 
 
@@ -378,8 +372,14 @@ __device__ __forceinline__ void ReductionPass(
 	int*		scan_lanes,
 	const int&	extra_elements)
 {
-	const int REDUCTION_LOADS_PER_CYCLE 		= TILE_ELEMENTS / B40C_RADIXSORT_THREADS;
 	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
+	const int PARTIALS_PER_ROW = B40C_WARP_THREADS;
+	const int PADDED_PARTIALS_PER_ROW = PARTIALS_PER_ROW + 1;
+
+	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
+	int warp_idx = threadIdx.x & (B40C_WARP_THREADS - 1);
+	
+	block_offset += threadIdx.x;
 	
 	// Each thread is responsible for aggregating an unencoded segment of a fours-group
 	int local_counts[REDUCTION_LANES_PER_WARP][4];								
@@ -397,61 +397,59 @@ __device__ __forceinline__ void ReductionPass(
 	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
 	
 	// Process loads
-	int unreduced_loads = ProcessLoads<K, RADIX_DIGITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(
+	ProcessLoads<K, RADIX_DIGITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(
 		d_in_keys,
 		reduction_loads,
 		block_offset,
 		encoded_reduction_col,
 		scan_lanes,
-		local_counts);
+		local_counts, 
+		warp_id,
+		warp_idx);
 
 	// Cleanup if we're the last block  
-	if ((blockIdx.x == gridDim.x - 1) && extra_elements) {
-
-		// If extra guarded loads may cause overflow, reduce now and reset counters
-		if (unreduced_loads + REDUCTION_LOADS_PER_CYCLE > 255) {
-		
-			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, false>(
-					local_counts, 
-					scan_lanes);
-			
-			ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
-		}
-
-		// perform up to REDUCTION_LOADS_PER_CYCLE extra guarded loads
-		#pragma unroll
-		for (int EXTRA_LOAD = 0; EXTRA_LOAD < (int) REDUCTION_LOADS_PER_CYCLE; EXTRA_LOAD++) {
-
-			const int LOAD_BASE = B40C_RADIXSORT_THREADS * EXTRA_LOAD;
-			
-			if (LOAD_BASE + threadIdx.x < extra_elements) {
-
-				K key = d_in_keys[block_offset + LOAD_BASE + threadIdx.x];
-				Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(key, encoded_reduction_col);
-				
-			}
-		}
+	if (threadIdx.x < extra_elements) {
+		LoadOp<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
 	}
 
+	__syncthreads();
+
 	// Aggregate 
-	ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, true>(
+	ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
 		local_counts, 
-		scan_lanes);
+		scan_lanes,
+		warp_id,
+		warp_idx);
+	
+	__syncthreads();
+		
+	// reduce all four packed fields, leaving them in the first four elements of our row
+	
+	int lane_base = FastMul(warp_id, PADDED_PARTIALS_PER_ROW * B40C_RADIXSORT_WARPS);	// my warp's (first) reduction lane
+	
+	#pragma unroll
+	for (int i = 0; i < (int) REDUCTION_LANES_PER_WARP; i++) {
+
+		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 0)] = local_counts[i][0];
+		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 1)] = local_counts[i][1];
+		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 2)] = local_counts[i][2];
+		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 3)] = local_counts[i][3];
+		
+		lane_base += PADDED_PARTIALS_PER_ROW * B40C_RADIXSORT_WARPS;
+	}
+
+	__syncthreads();
 
 	// Write carry in parallel (carries per row are in the first four bytes of each row) 
 	if (threadIdx.x < RADIX_DIGITS) {
-		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-		int row = threadIdx.x >> 2;		
-		int col = threadIdx.x & 3;			 
 
-		d_spine[spine_digit_offset] = scan_lanes[(row * B40C_RADIXSORT_THREADS) + col];
-/*		
-		if ((blockIdx.x == 0) && (BIT == 8)) {
-			printf("Block %d, digit %d reduced %d keys\n", blockIdx.x, threadIdx.x, scan_lanes[(row * B40C_RADIXSORT_THREADS) + col]);
-		}
-*/	
+		int lane_base = FastMul(threadIdx.x, PADDED_PARTIALS_PER_ROW);
+		int digit_count = SerialReduce<PARTIALS_PER_ROW>(scan_lanes + lane_base);
+
+		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
+		d_spine[spine_digit_offset] = digit_count;
 	}
-	
+
 }
 
 
@@ -497,8 +495,14 @@ void RakingReduction(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	int reduction_loads = block_elements >> B40C_RADIXSORT_LOG_THREADS;
-
+	int extra_elements, reduction_loads;
+	if (blockIdx.x == gridDim.x - 1) {
+		reduction_loads = (block_elements + work_decomposition.extra_elements_last_block) >> B40C_RADIXSORT_LOG_THREADS;
+		extra_elements = work_decomposition.extra_elements_last_block & (B40C_RADIXSORT_THREADS - 1);
+	} else {
+		reduction_loads = block_elements >> B40C_RADIXSORT_LOG_THREADS;
+		extra_elements = 0;
+	}
 	
 	// Perform reduction pass
 	ReductionPass<K, V, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, TILE_ELEMENTS, PreprocessFunctor>(
@@ -508,7 +512,7 @@ void RakingReduction(
 		reduction_loads,
 		encoded_reduction_col,
 		scan_lanes,
-		work_decomposition.extra_elements_last_block);
+		extra_elements);
 } 
 
  

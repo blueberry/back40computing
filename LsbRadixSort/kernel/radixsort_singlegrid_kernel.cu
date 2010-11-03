@@ -58,7 +58,7 @@ namespace b40c {
 	
 
 // Target threadblock occupancy for bulk scan/scatter kernel
-#define B40C_SM20_SG_OCCUPANCY()								(8)			// 8 threadblocks on GF100
+#define B40C_SM20_SG_OCCUPANCY()								(6)			// 8 threadblocks on GF100
 #define B40C_SM12_SG_OCCUPANCY()								(8)			// 8 threadblocks on GT200
 #define B40C_SM10_SG_OCCUPANCY()								(8)			// 8 threadblocks on G80
 #define B40C_RADIXSORT_SG_OCCUPANCY(version)					((version >= 200) ? B40C_SM20_SG_OCCUPANCY() : 	\
@@ -66,7 +66,7 @@ namespace b40c {
 																					B40C_SM10_SG_OCCUPANCY())		
 
 // Number of 256-element loads to rake per raking cycle
-#define B40C_SM20_SG_LOG_LOADS_PER_CYCLE()						(0)			// 1 load on GF100
+#define B40C_SM20_SG_LOG_LOADS_PER_CYCLE()						(1)			// 1 load on GF100
 #define B40C_SM12_SG_LOG_LOADS_PER_CYCLE()						(0)			// 1 load on GT200
 #define B40C_SM10_SG_LOG_LOADS_PER_CYCLE()						(0)			// 1 load on G80
 #define B40C_RADIXSORT_SG_LOG_LOADS_PER_CYCLE(version)			((version >= 200) ? B40C_SM20_SG_LOG_LOADS_PER_CYCLE() : 	\
@@ -82,7 +82,7 @@ namespace b40c {
 																					B40C_SM10_SG_LOG_CYCLES_PER_TILE(K, V))		
 
 // Number of raking threads per raking cycle
-#define B40C_SM20_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 1)		// 2 raking warps on GF100
+#define B40C_SM20_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 2 raking warps on GF100
 #define B40C_SM12_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS)			// 1 raking warp on GT200
 #define B40C_SM10_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 4 raking warps on G80
 #define B40C_RADIXSORT_SG_LOG_RAKING_THREADS(version)			((version >= 200) ? B40C_SM20_SG_LOG_RAKING_THREADS() : 	\
@@ -97,35 +97,46 @@ namespace b40c {
 
 
 
-__device__ __forceinline__ void GlobalBarrier(
-	volatile int *d_sync) 
+__device__ __forceinline__ void GlobalBarrier(int *d_sync) 
 {
-
-	// Threadfence and syncthreads to make sure global writes are visible
+	// Threadfence and syncthreads to make sure global writes are visible before 
+	// thread-0 reports in with its sync counter
 	__threadfence();
 	__syncthreads();
 	
 	if (blockIdx.x == 0) {
 
+		// Report in ourselves
 		if (threadIdx.x == 0) {
 			d_sync[blockIdx.x] = 1; 
-		}
-
-		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
-			while (d_sync[peer_block] == 0);
 		}
 
 		__syncthreads();
 		
+		// Wait for everyone else to report in
+		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
+			while (LoadCop(d_sync + peer_block) == 0) {
+				__threadfence_block();
+			}
+		}
+
+		__syncthreads();
+		
+		// Let everyone know it's safe to read their prefix sums
 		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
 			d_sync[peer_block] = 0;
 		}
-		
+
 	} else {
 		
 		if (threadIdx.x == 0) {
+			// Report in 
 			d_sync[blockIdx.x] = 1; 
-			while(d_sync[blockIdx.x] == 1); 
+
+			// Wait for acknowledgement
+			while (LoadCop(d_sync + blockIdx.x) == 1) {
+				__threadfence_block();
+			}
 		}
 		
 		__syncthreads();
@@ -156,7 +167,7 @@ template <
 	int PARTIALS_PER_ROW,
 	int ROWS_PER_LANE>
 __device__ __forceinline__ void DistributionSortingPass(
-	volatile int *d_sync,
+	int* d_sync,
 	int* d_spine,
 	K* d_in_keys,
 	K* d_out_keys,
@@ -183,7 +194,6 @@ __device__ __forceinline__ void DistributionSortingPass(
 	int	digit_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE][RADIX_DIGITS],
 	int spine_scan[2][B40C_WARP_THREADS])
 {
-
 	//-------------------------------------------------------------------------
 	// Reduction
 	//-------------------------------------------------------------------------
@@ -195,7 +205,8 @@ __device__ __forceinline__ void DistributionSortingPass(
 		reduction_loads,
 		encoded_reduction_col,
 		smem_pool,
-		extra_elements);
+		extra_elements & (B40C_RADIXSORT_THREADS - 1));
+
 	
 	//-------------------------------------------------------------------------
 	// Global Barrier + Scan spine
@@ -215,7 +226,9 @@ __device__ __forceinline__ void DistributionSortingPass(
 
 		// Wait for everyone else to report in
 		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
-			while (d_sync[peer_block] == 0);
+			while (LoadCop(d_sync + peer_block) == 0) {
+				__threadfence_block();
+			}
 		}
 
 		__syncthreads();
@@ -245,25 +258,27 @@ __device__ __forceinline__ void DistributionSortingPass(
 		for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += B40C_RADIXSORT_THREADS) {
 			d_sync[peer_block] = 0;
 		}
-		
+
 	} else {
 		
 		if (threadIdx.x == 0) {
-
 			// Report in 
 			d_sync[blockIdx.x] = 1; 
-			
+
 			// Wait for acknowledgement
-			while(d_sync[blockIdx.x] == 1); 
+			while (LoadCop(d_sync + blockIdx.x) == 1) {
+				__threadfence_block();
+			}
 		}
 		
 		__syncthreads();
 	}
+
 	
 	//-------------------------------------------------------------------------
 	// Scan/Scatter
 	//-------------------------------------------------------------------------
-	
+
 	ScanScatterDigitPass<K, V, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 		d_spine,
 		d_in_keys, 
@@ -280,7 +295,6 @@ __device__ __forceinline__ void DistributionSortingPass(
 		block_offset,
 		oob,
 		extra_elements);
-	
 	
 	//-------------------------------------------------------------------------
 	// Global barrier
@@ -315,7 +329,7 @@ template <
 	int PARTIALS_PER_ROW,
 	int ROWS_PER_LANE>
 __device__ __forceinline__ void DistributionSortingPass(
-	volatile int *d_sync,
+	int* d_sync,
 	int* d_spine,
 	K* d_keys0,
 	K* d_keys1,
@@ -403,7 +417,7 @@ template <
 	int PARTIALS_PER_ROW,
 	int ROWS_PER_LANE>
 __device__ __forceinline__ void DistributionSortingPass(
-	volatile int *d_sync,
+	int* d_sync,
 	int* d_spine,
 	K* d_keys0,
 	K* d_keys1,
@@ -508,7 +522,7 @@ template <
 __launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_SG_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
 void LsbRadixSortSmall(
-	volatile int *d_sync,
+	int* d_sync,
 	int* d_spine,
 	K* d_keys0,
 	K* d_keys1,
@@ -564,13 +578,14 @@ void LsbRadixSortSmall(
 	const int LOG_REDUCTION_PARTIALS_PER_LANE	= B40C_RADIXSORT_LOG_THREADS;
 	const int REDUCTION_PARTIALS_PER_LANE 		= 1 << LOG_PARTIALS_PER_LANE;
 	
+	const int PADDED_REDUCTION_PARTIALS 	= B40C_WARP_THREADS + 1;
+	
 	const int SCAN_LANE_BYTES				= ROWS_PER_CYCLE * PADDED_PARTIALS_PER_ROW * sizeof(int);
 	const int REDUCTION_LANE_BYTES			= REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE * sizeof(int);
-	const int MAX_EXCHANGE_BYTES			= (sizeof(K) > sizeof(V)) ? 
-													TILE_ELEMENTS * sizeof(K) : 
-													TILE_ELEMENTS * sizeof(V);
+	const int REDUCTION_RAKING_BYTES		= RADIX_DIGITS * PADDED_REDUCTION_PARTIALS;
+	const int MAX_EXCHANGE_BYTES			= B40C_MAX(TILE_ELEMENTS * sizeof(K), TILE_ELEMENTS * sizeof(V));
 
-	const int SHARED_BYTES 					= B40C_MAX(SCAN_LANE_BYTES, B40C_MAX(REDUCTION_LANE_BYTES, MAX_EXCHANGE_BYTES));
+	const int SHARED_BYTES 					= B40C_MAX(REDUCTION_RAKING_BYTES, B40C_MAX(SCAN_LANE_BYTES, B40C_MAX(REDUCTION_LANE_BYTES, MAX_EXCHANGE_BYTES)));
 	const int SHARED_INT4S					= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
 
 	const int LOG_SPINE_RAKING_THREADS 		= B40C_LOG_WARP_THREADS;
@@ -614,9 +629,18 @@ void LsbRadixSortSmall(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
+	int extra_elements, reduction_loads;
+	if (blockIdx.x == gridDim.x - 1) {
+		extra_elements = work_decomposition.extra_elements_last_block;
+		if (extra_elements) {
+			block_elements -= TILE_ELEMENTS;
+		}
+		reduction_loads = (block_elements + work_decomposition.extra_elements_last_block) >> B40C_RADIXSORT_LOG_THREADS;
+	} else {
+		extra_elements = 0;
+		reduction_loads = block_elements >> B40C_RADIXSORT_LOG_THREADS;
+	}
 	int oob = block_offset + block_elements;						
-	int reduction_loads = block_elements >> B40C_RADIXSORT_LOG_THREADS;
-	int extra_elements = (blockIdx.x == gridDim.x - 1) ? work_decomposition.extra_elements_last_block : 0;
 	
 	// Column for encoding reduction counts 
 	int *encoded_reduction_col = reinterpret_cast<int *>(smem_pool) + threadIdx.x;	// first element of column

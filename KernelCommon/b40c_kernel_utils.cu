@@ -67,8 +67,10 @@ namespace b40c {
 
 #ifdef __LP64__
 	#define _B40C_LP64_ true
+	#define _B40C_ASM_PTR_ "l"
 #else
 	#define _B40C_LP64_ false
+	#define _B40C_ASM_PTR_ "r"
 #endif
 
 #define _B40C_REG_MISER_QUALIFIER_ __shared__
@@ -145,6 +147,16 @@ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
 //------------------------------------------------------------------------------
 // Common device routines
 //------------------------------------------------------------------------------
+
+/**
+ * Extracts a bit field from source and places the zero or sign-extended result 
+ * in extract
+ */
+template <typename T, int BIT_START, int NUM_BITS> 
+__device__ __forceinline__ void ExtractBits(int &extract, const T &source) {
+	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(extract) : "r"(source), "n"(BIT_START), "n"(NUM_BITS));
+}
+
 
 
 /**

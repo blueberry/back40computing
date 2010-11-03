@@ -161,10 +161,18 @@ int VerifySort(T* sorted_keys, T* reference_keys, const unsigned int len, bool v
 			PrintValue<T>(reference_keys[i]);
 
 			if (verbose) {	
-				printf("\n\n[...");
+				printf("\n\nsorted[...");
 				for (int j = -4; j <= 4; j++) {
 					if ((i + j >= 0) && (i + j < len)) {
 						PrintValue<T>(sorted_keys[i + j]);
+						printf(", ");
+					}
+				}
+				printf("...]");
+				printf("\nreference[...");
+				for (int j = -4; j <= 4; j++) {
+					if ((i + j >= 0) && (i + j < len)) {
+						PrintValue<T>(reference_keys[i + j]);
 						printf(", ");
 					}
 				}

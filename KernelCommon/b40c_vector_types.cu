@@ -80,5 +80,55 @@ B40C_DEFINE_VECTOR_TYPE(double,             double)
 
 #undef B40C_DEFINE_VECTOR_TYPE
 
+
+__device__ __forceinline__ int LoadCop(int* d_ptr) 
+{
+	int retval;
+	asm("ld.global.cg.s32 %0, [%1];" : "=r"(retval) : _B40C_ASM_PTR_(d_ptr));
+	return retval;
+}
+
+
+//
+// uint
+//
+
+
+__device__ __forceinline__ void LoadCop(uint &dest, uint* d_ptr) 
+{
+	asm("ld.global.cg.u32 %0, [%1];" : "=r"(dest) : _B40C_ASM_PTR_(d_ptr));
+}
+
+__device__ __forceinline__ void LoadCop(uint2 &dest, uint2* d_ptr) 
+{
+	asm("ld.global.cg.v2.u32 {%0, %1}, [%2];" : "=r"(dest.x), "=r"(dest.y) : _B40C_ASM_PTR_(d_ptr));
+}
+
+__device__ __forceinline__ void LoadCop(uint4 &dest, uint4* d_ptr) 
+{
+	asm("ld.global.cg.v4.u32 {%0, %1, %2, %3}, [%4];" : "=r"(dest.x), "=r"(dest.y), "=r"(dest.z), "=r"(dest.w) : _B40C_ASM_PTR_(d_ptr));
+}
+
+
+//
+// int
+//
+
+__device__ __forceinline__ void LoadCop(int &dest, int* d_ptr) 
+{
+	asm("ld.global.cg.s32 %0, [%1];" : "=r"(dest) : _B40C_ASM_PTR_(d_ptr));
+}
+
+__device__ __forceinline__ void LoadCop(int2 &dest, int2* d_ptr) 
+{
+	asm("ld.global.cg.v2.s32 {%0, %1}, [%2];" : "=r"(dest.x), "=r"(dest.y) : _B40C_ASM_PTR_(d_ptr));
+}
+
+__device__ __forceinline__ void LoadCop(int4 &dest, int4* d_ptr) 
+{
+	asm("ld.global.cg.v4.s32 {%0, %1, %2, %3}, [%4];" : "=r"(dest.x), "=r"(dest.y), "=r"(dest.z), "=r"(dest.w) : _B40C_ASM_PTR_(d_ptr));
+}
+
+
 } // namespace b40c
 

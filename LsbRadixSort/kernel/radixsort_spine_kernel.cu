@@ -67,7 +67,7 @@ __device__ __forceinline__ void SrtsScanTile(
 	int4 datum; 
 
 	// read input data
-	datum = in[threadIdx.x];
+	LoadCop(datum, &in[threadIdx.x]);
 
 	smem_offset[0] = datum.x + datum.y + datum.z + datum.w;
 
