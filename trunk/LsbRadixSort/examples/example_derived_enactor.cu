@@ -50,10 +50,11 @@
 #include <math.h> 
 #include <float.h>
 
+// Sorting includes
 #include <radixsort_single_grid.cu>
-#include <radixsort_early_exit.cu>		// Sorting includes
-#include <test_utils.cu>			// Utilities and correctness-checking
-#include <cutil.h>					// Utilities for commandline parsing
+#include <radixsort_early_exit.cu>		
+#include <test_utils.cu>				// Utilities and correctness-checking
+#include <cutil.h>						// Utilities for commandline parsing
 
 using namespace b40c;
 
@@ -63,9 +64,6 @@ using namespace b40c;
  ******************************************************************************/
 
 bool g_verbose;
-
-
-
 
 
 
@@ -103,28 +101,28 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-void CustomTimedSort(
+void SingleKernelTimedSort(
 	unsigned int num_elements, 
 	unsigned int *h_keys,
 	unsigned int iterations)
 {
-	printf("Custom key-value sort, %d iterations, %d elements", iterations, num_elements);
+	printf("Custom single-kernel key-value sort, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
-	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
-	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
+	MultiCtaRadixSortStorage<unsigned int, unsigned int> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(unsigned int) * num_elements);
+	cudaMalloc((void**) &device_storage.d_values[0], sizeof(unsigned int) * num_elements);
 
 	// Create sorting enactor
-	SingleGridRadixSortingEnactor<K, V> sorting_enactor;
+	SingleGridRadixSortingEnactor<unsigned int, unsigned int> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
-		sizeof(K) * num_elements, 
+		sizeof(unsigned int) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.template EnactSort<17>(device_storage);
+	sorting_enactor.EnactSort<17>(device_storage);
 
 	// Perform the timed number of sorting iterations
 
@@ -142,14 +140,14 @@ void CustomTimedSort(
 		cudaMemcpy(
 			device_storage.d_keys[0], 
 			h_keys, 
-			sizeof(K) * num_elements, 
+			sizeof(unsigned int) * num_elements, 
 			cudaMemcpyHostToDevice);		// copy keys
 
 		// Start cuda timing record
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.template EnactSort<17>(device_storage);
+		sorting_enactor.EnactSort<17>(device_storage);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -169,7 +167,7 @@ void CustomTimedSort(
     cudaMemcpy(
     	h_keys, 
     	device_storage.d_keys[device_storage.selector], 
-    	sizeof(K) * num_elements, 
+    	sizeof(unsigned int) * num_elements, 
     	cudaMemcpyDeviceToHost);
     
     // Free allocated memory
@@ -204,18 +202,18 @@ void DefaultTimedSort(
 	printf("Default key-value sort, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
-	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
-	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
+	MultiCtaRadixSortStorage<unsigned int, unsigned int> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(unsigned int) * num_elements);
+	cudaMalloc((void**) &device_storage.d_values[0], sizeof(unsigned int) * num_elements);
 
 	// Create sorting enactor
-	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
+	EarlyExitRadixSortingEnactor<unsigned int, unsigned int> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
-		sizeof(K) * num_elements, 
+		sizeof(unsigned int) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 
@@ -235,7 +233,7 @@ void DefaultTimedSort(
 		cudaMemcpy(
 			device_storage.d_keys[0], 
 			h_keys, 
-			sizeof(K) * num_elements, 
+			sizeof(unsigned int) * num_elements, 
 			cudaMemcpyHostToDevice);		// copy keys
 
 		// Start cuda timing record
@@ -262,7 +260,7 @@ void DefaultTimedSort(
     cudaMemcpy(
     	h_keys, 
     	device_storage.d_keys[device_storage.selector], 
-    	sizeof(K) * num_elements, 
+    	sizeof(unsigned int) * num_elements, 
     	cudaMemcpyDeviceToHost);
     
     // Free allocated memory
@@ -277,10 +275,9 @@ void DefaultTimedSort(
 }
 
 
-
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
- * number of unsigned int elements, values of V elements, and then dispatches the problem 
+ * number of unsigned int elements, values of unsigned int elements, and then dispatches the problem 
  * to the GPU for the given number of iterations, displaying runtime information.
  *
  * @param[in] 		iterations  
@@ -307,10 +304,11 @@ void TestSort(
 	}
 
     // Run the timing test
-	if (custom) 
-		CustomTimedSort(num_elements, h_keys, iterations);
-	else 
+	if (custom) {
+		SingleKernelTimedSort(num_elements, h_keys, iterations);
+	} else { 
 		DefaultTimedSort(num_elements, h_keys, iterations);
+	}
     
 	// Display sorted key data
 	if (g_verbose) {
@@ -359,8 +357,10 @@ int main( int argc, char** argv) {
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
 	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 
-	TestSort(iterations, num_elements, true);	// custom enactor (explicit passes)
-//	TestSort(iterations, num_elements, false); 	// default (dynamic pass detection)
+	TestSort(iterations, num_elements, true);	// single-grid enactor (explicit passes)
+	TestSort(iterations, num_elements, false); 	// default (dynamic pass detection)
+	
+	cudaThreadSynchronize();
 }
 
 

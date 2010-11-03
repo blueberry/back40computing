@@ -120,7 +120,6 @@ void TimedSort(
 	K *h_keys,
 	unsigned int iterations)
 {
-/*
 	printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage  
@@ -128,8 +127,7 @@ void TimedSort(
 	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
 
 	// Create sorting enactor
-	SingleGridRadixSortingEnactor<K> sorting_enactor;
-//	EarlyExitRadixSortingEnactor<K> sorting_enactor;			// mooch
+	EarlyExitRadixSortingEnactor<K> sorting_enactor;			
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -137,7 +135,7 @@ void TimedSort(
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.template EnactSort<17>(device_storage);
+	sorting_enactor.EnactSort(device_storage);
 	
 	// Perform the timed number of sorting iterations
 
@@ -162,7 +160,7 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.template EnactSort<17>(device_storage);
+		sorting_enactor.EnactSort(device_storage);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -192,7 +190,6 @@ void TimedSort(
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
-*/	
 }
 
 
@@ -217,7 +214,6 @@ void TimedSort(
 	V *h_values, 
 	unsigned int iterations) 
 {
-
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
@@ -226,18 +222,16 @@ void TimedSort(
 	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
 
 	// Create sorting enactor
-//	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
-	SingleGridRadixSortingEnactor<K, V> sorting_enactor;
+	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-/*
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.template EnactSort<17>(device_storage);
-*/	
+	sorting_enactor.EnactSort(device_storage);
+
 	// Perform the timed number of sorting iterations
 
 	cudaEvent_t start_event, stop_event;
@@ -261,7 +255,7 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.template EnactSort<17>(device_storage);
+		sorting_enactor.EnactSort(device_storage);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -324,14 +318,12 @@ void TestSort(
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
 		RandomBits<K>(h_keys[i], 0);
-//		h_keys[i] = i % 16;
-		h_keys[i] &= (1 << 17) - 1;
 		h_reference_keys[i] = h_keys[i];
 	}
 
     // Run the timing test 
 	if (keys_only) {
-//		TimedSort<K>(num_elements, h_keys, iterations);
+		TimedSort<K>(num_elements, h_keys, iterations);
 	} else {
 		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
 	}
@@ -436,6 +428,8 @@ int main( int argc, char** argv) {
 			num_elements, 
 			keys_only);
 */			
+	
+	cudaThreadSynchronize();
 }
 
 

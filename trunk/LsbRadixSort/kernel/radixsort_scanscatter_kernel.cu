@@ -55,32 +55,32 @@ namespace b40c {
  ******************************************************************************/
 
 template <typename T> 
-__device__ __forceinline__ T DefaultextraValue() {
+__device__ __forceinline__ T DefaultExtraValue() {
 	return T();
 }
 
 template <> 
-__device__ __forceinline__ unsigned char DefaultextraValue<unsigned char>() {
+__device__ __forceinline__ unsigned char DefaultExtraValue<unsigned char>() {
 	return (unsigned char) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned short DefaultextraValue<unsigned short>() {
+__device__ __forceinline__ unsigned short DefaultExtraValue<unsigned short>() {
 	return (unsigned short) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned int DefaultextraValue<unsigned int>() {
+__device__ __forceinline__ unsigned int DefaultExtraValue<unsigned int>() {
 	return (unsigned int) -1u;
 }
 
 template <> 
-__device__ __forceinline__ unsigned long DefaultextraValue<unsigned long>() {
+__device__ __forceinline__ unsigned long DefaultExtraValue<unsigned long>() {
 	return (unsigned long) -1ul;
 }
 
 template <> 
-__device__ __forceinline__ unsigned long long DefaultextraValue<unsigned long long>() {
+__device__ __forceinline__ unsigned long long DefaultExtraValue<unsigned long long>() {
 	return (unsigned long long) -1ull;
 }
 
@@ -166,14 +166,14 @@ __device__ __forceinline__ void GuardedLoad(
 		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.x, in, offset);
 		preprocess(pair.x);
 	} else {
-		pair.x = DefaultextraValue<T>();
+		pair.x = DefaultExtraValue<T>();
 	}
 	
 	if (offset + 1 - extra_elements < 0) {
 		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.y, in, offset + 1);
 		preprocess(pair.y);
 	} else {
-		pair.y = DefaultextraValue<T>();
+		pair.y = DefaultExtraValue<T>();
 	}
 }
 
@@ -605,20 +605,6 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		}
 	}
 	
-	
-/*
-	#pragma unroll 
-	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-		
-		#pragma unroll 
-		for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
-		}
-	}
-*/	
-	
 	// Scatter keys
 	#pragma unroll 
 	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
@@ -876,21 +862,6 @@ __device__ __forceinline__ void ScanDigitTile(
 			CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
 	}
 	
-/*	
-	#pragma unroll
-	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-	
-		ScanCycle<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
-			base_partial,
-			raking_partial,
-			warpscan,
-			keypairs[CYCLE],
-			digits[CYCLE],
-			flag_offsets[CYCLE],
-			ranks[CYCLE],
-			CYCLES_PER_TILE - CYCLE - 1);		// lower cycles get copied right
-	}
-*/
 	
 	//-------------------------------------------------------------------------
 	// Digit-scanning 
@@ -1188,6 +1159,15 @@ void ScanScatterDigits(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
+	extra_elements[0] = 0;
+	if (blockIdx.x == gridDim.x - 1) {
+		extra_elements[0] = work_decomposition.extra_elements_last_block;
+		if (extra_elements[0]) {
+			block_elements -= TILE_ELEMENTS;
+		}
+	}
+	oob[0] = block_offset + block_elements;	
+	
 	
 	// location for placing 2-element partial reductions in the first lane of a cycle	
 	int row = threadIdx.x >> LOG_PARTIALS_PER_ROW; 
@@ -1210,10 +1190,6 @@ void ScanScatterDigits(
 
 		// initialize digit warpscans
 		if (threadIdx.x < RADIX_DIGITS) {
-
-			// Initialize some (shared) terminating conditions
-			extra_elements[0] = (blockIdx.x == gridDim.x - 1) ? work_decomposition.extra_elements_last_block : 0;
-			oob[0] = block_offset + block_elements;			// out-of-bounds
 
 			// Initialize digit_scan
 			digit_scan[0][threadIdx.x] = 0;

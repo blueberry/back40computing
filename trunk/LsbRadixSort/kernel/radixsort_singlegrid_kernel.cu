@@ -625,14 +625,12 @@ void LsbRadixSortSmall(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	int extra_elements;
+	int extra_elements = 0;
 	if (blockIdx.x == gridDim.x - 1) {
 		extra_elements = work_decomposition.extra_elements_last_block;
 		if (extra_elements) {
 			block_elements -= TILE_ELEMENTS;
 		}
-	} else {
-		extra_elements = 0;
 	}
 	int oob = block_offset + block_elements;						
 	
