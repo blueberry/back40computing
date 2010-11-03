@@ -133,12 +133,24 @@ struct KeysOnlyType {};
 template <typename V>
 __forceinline__ __host__ __device__ bool IsKeysOnly() {return false;}
 
-
 /**
  * Returns whether or not the templated type indicates keys-only sorting
  */
 template <>
 __forceinline__ __host__ __device__ bool IsKeysOnly<KeysOnlyType>() {return true;}
+
+/**
+ * Global cache-modified reads for keys-only type (nop)
+ */
+template <> struct GlobalLoad<KeysOnlyType, NONE> {
+	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
+};
+template <> struct GlobalLoad<KeysOnlyType, CG> {
+	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
+};
+template <> struct GlobalLoad<KeysOnlyType, CS> {
+	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
+};
 
 
 /**

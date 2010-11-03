@@ -303,14 +303,14 @@ protected:
 		//
 		// Counting Reduction
 		//
-
+/*
 		// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
 		if ((this->cuda_props.device_sm_version == 130) && 
 				(work_decomposition.num_elements > this->cuda_props.device_props.multiProcessorCount * this->tile_elements * 2)) { 
 			FlushKernel<void><<<grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 			synchronize_if_enabled("FlushKernel");
 		}
-
+*/
 		// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
 		int dynamic_smem = (this->cuda_props.kernel_ptx_version >= 130) ? 
 			scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 
@@ -344,14 +344,14 @@ protected:
 		//
 		// Scanning Scatter
 		//
-		
+/*		
 		// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
 		if ((this->cuda_props.device_sm_version == 130) && 
 				(work_decomposition.num_elements > this->cuda_props.device_props.multiProcessorCount * this->tile_elements * 2)) { 
 			FlushKernel<void><<<grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
 			synchronize_if_enabled("FlushKernel");
 		}
-
+*/
 		ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_selectors,
 			this->d_spine,

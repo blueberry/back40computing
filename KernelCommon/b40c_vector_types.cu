@@ -105,15 +105,14 @@ __device__ __forceinline__ int LoadCG(int* d_ptr)
 
 template <typename T, CacheModifier CACHE_MODIFIER> struct GlobalLoad;
 
-// Generic NONE
+// Generic NONE modifier
 
 template <typename T> struct GlobalLoad<T, NONE> 
 {
-	__device__ __forceinline__ static void Ld(T &dest, T* d_ptr, volatile int offset) {
+	__device__ __forceinline__ static void Ld(T &dest, T* d_ptr, int offset) {
 		dest = d_ptr[offset]; 
 	}
 };
-
 
 
 #define B40C_DEFINE_GLOBAL_LOAD(base_type, short_type, ptx_type, reg_mod)																												\

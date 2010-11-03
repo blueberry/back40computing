@@ -220,24 +220,19 @@ struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT,
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		if (B40C_FERMI(__CUDA_ARCH__)) __syncthreads();
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 4), encoded_reduction_col);
-		
-/*		
 		K keys[8];
 			
-		keys[0] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 0) + threadIdx.x];
-		keys[1] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 1) + threadIdx.x];
-		keys[2] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 2) + threadIdx.x];
-		keys[3] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 3) + threadIdx.x];
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[0], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[1], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 1));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[2], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 2));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[3], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 3));
 
 		if (B40C_FERMI(__CUDA_ARCH__)) __syncthreads();
 		
-		keys[4] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 4) + threadIdx.x];
-		keys[5] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 5) + threadIdx.x];
-		keys[6] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 6) + threadIdx.x];
-		keys[7] = d_in_keys[block_offset + (B40C_RADIXSORT_THREADS * 7) + threadIdx.x];
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[4], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 4));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[5], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 5));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[6], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 6));
+		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[7], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 7));
 		
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
@@ -247,7 +242,6 @@ struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT,
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
 		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
-*/		
 	}
 };
 
@@ -347,10 +341,10 @@ __device__ __forceinline__ void ReductionPass(
 	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
 
 	// Unroll batches of loads with occasional reduction to avoid overflow
-	while (block_offset < oob - (B40C_RADIXSORT_THREADS * 16)) {
+	while (block_offset < oob - (B40C_RADIXSORT_THREADS * 32)) {
 	
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 16;
+		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+		block_offset += B40C_RADIXSORT_THREADS * 32;
 
 		__syncthreads();
 
