@@ -89,27 +89,26 @@ __device__ __forceinline__ unsigned long long DefaultExtraValue<unsigned long lo
  * Tile-processing Routines
  ******************************************************************************/
 
-template <typename K, long long RADIX_DIGITS, int BIT>
+template <typename K, int RADIX_BITS, int BIT>
 __device__ __forceinline__ int DecodeDigitBak(K key) 
 {
+	const long long RADIX_DIGITS = 1 << RADIX_BITS;
 	const K DIGIT_MASK = RADIX_DIGITS - 1;
+
 	return (key >> BIT) & DIGIT_MASK;
 }
 
 
-template <typename K, long long RADIX_DIGITS, int BIT>
+template <typename K, int RADIX_BITS, int BIT>
 __device__ __forceinline__ int DecodeDigit(K key) 
 {
-	const int RADIX_BITS = 4;
-	SuppressUnusedConstantWarning(RADIX_BITS);
-
 	int retval;
 	ExtractBits<K, BIT, RADIX_BITS>(retval, key);
 	return retval;
 }
 
 
-template <typename K, long long RADIX_DIGITS, int BIT, int PADDED_PARTIALS_PER_LANE>
+template <typename K, int RADIX_BITS, int BIT, int PADDED_PARTIALS_PER_LANE>
 __device__ __forceinline__ void DecodeDigit(
 	K key, 
 	int &digit, 
@@ -118,9 +117,9 @@ __device__ __forceinline__ void DecodeDigit(
 {
 	const int PADDED_BYTES_PER_LANE 	= PADDED_PARTIALS_PER_LANE * 4;
 	const int LOAD_OFFSET_BYTES 		= LOAD_OFFSET * 4;
-	const K QUAD_MASK 							= (RADIX_DIGITS < 4) ? 0x1 : 0x3;
+	const K QUAD_MASK 					= (RADIX_BITS < 2) ? 0x1 : 0x3;
 	
-	digit = DecodeDigit<K, RADIX_DIGITS, BIT>(key);
+	digit = DecodeDigit<K, RADIX_BITS, BIT>(key);
 	int lane = digit >> 2;
 	int quad_byte = digit & QUAD_MASK;
 
@@ -128,7 +127,7 @@ __device__ __forceinline__ void DecodeDigit(
 }
 
 
-template <typename K, long long RADIX_DIGITS, int BIT, int LOADS_PER_CYCLE, int SCAN_LANES_PER_LOAD, int PADDED_PARTIALS_PER_LANE>
+template <typename K, int RADIX_BITS, int BIT, int LOADS_PER_CYCLE, int SCAN_LANES_PER_LOAD, int PADDED_PARTIALS_PER_LANE>
 __device__ __forceinline__ void DecodeDigits(
 	typename VecType<K, 2>::Type keypairs[LOADS_PER_CYCLE],
 	int2 digits[LOADS_PER_CYCLE],
@@ -137,17 +136,17 @@ __device__ __forceinline__ void DecodeDigits(
 	if (LOADS_PER_CYCLE > 0) {
 		const int LOAD = 0;
 		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
-		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
-		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
 	}
 	if (LOADS_PER_CYCLE > 1) {
 		const int LOAD = 1;
 		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
-		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
-		DecodeDigit<K, RADIX_DIGITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
 	}
 }
@@ -179,38 +178,63 @@ __device__ __forceinline__ void GuardedLoad(
 
 
 template <typename T, CacheModifier CACHE_MODIFIER, bool UNGUARDED_IO, int LOADS_PER_CYCLE, typename PreprocessFunctor>
-__device__ __forceinline__ void ReadCycle(
-	typename VecType<T, 2>::Type *d_in, 
-	typename VecType<T, 2>::Type pairs[LOADS_PER_CYCLE],
-	const int BASE2,
-	const int &extra_elements,
-	PreprocessFunctor preprocess = PreprocessFunctor())				
+struct ReadCycle
 {
-	if (UNGUARDED_IO) {
+	__device__ __forceinline__ static void Read(
+		typename VecType<T, 2>::Type *d_in, 
+		typename VecType<T, 2>::Type pairs[LOADS_PER_CYCLE],
+		const int BASE2,
+		const int &extra_elements,
+		PreprocessFunctor preprocess = PreprocessFunctor())				
+	{
+		if (UNGUARDED_IO) {
 
-		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower
-		if (LOADS_PER_CYCLE > 0) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(pairs[0], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0));
-		if (LOADS_PER_CYCLE > 1) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(pairs[1], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1));
-		if (LOADS_PER_CYCLE > 2) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(pairs[2], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 2));
-		if (LOADS_PER_CYCLE > 3) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(pairs[3], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 3));
+			// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower
+			if (LOADS_PER_CYCLE > 0) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+					pairs[0], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0));
+			if (LOADS_PER_CYCLE > 1) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+					pairs[1], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1));
+			if (LOADS_PER_CYCLE > 2) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+					pairs[2], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 2));
+			if (LOADS_PER_CYCLE > 3) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+					pairs[3], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 3));
 
-		#pragma unroll 
-		for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-			preprocess(pairs[LOAD].x);
-			preprocess(pairs[LOAD].y);
+			#pragma unroll 
+			for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
+				preprocess(pairs[LOAD].x);
+				preprocess(pairs[LOAD].y);
+			}
+			
+		} else {
+
+			// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
+			// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
+			if (LOADS_PER_CYCLE > 0) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
+					(T*) d_in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 0), extra_elements);
+			if (LOADS_PER_CYCLE > 1) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
+					(T*) d_in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 1), extra_elements);
+			if (LOADS_PER_CYCLE > 2) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
+					(T*) d_in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 2), extra_elements);
+			if (LOADS_PER_CYCLE > 3) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
+					(T*) d_in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 3), extra_elements);
 		}
-		
-	} else {
-
-		// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
-		// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
-		
-		if (LOADS_PER_CYCLE > 0) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>((T*) d_in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 0), extra_elements);
-		if (LOADS_PER_CYCLE > 1) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>((T*) d_in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 1), extra_elements);
-		if (LOADS_PER_CYCLE > 2) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>((T*) d_in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 2), extra_elements);
-		if (LOADS_PER_CYCLE > 3) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>((T*) d_in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 3), extra_elements);
 	}
-}
+};
+
+
+template <CacheModifier CACHE_MODIFIER, bool UNGUARDED_IO, int LOADS_PER_CYCLE, typename PreprocessFunctor>
+struct ReadCycle<KeysOnlyType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>
+{
+	__device__ __forceinline__ static void Read(
+		typename VecType<KeysOnlyType, 2>::Type *d_in, 
+		typename VecType<KeysOnlyType, 2>::Type pairs[LOADS_PER_CYCLE],
+		const int BASE2,
+		const int &extra_elements,
+		PreprocessFunctor preprocess = PreprocessFunctor())				
+	{
+		// Do nothing for KeysOnlyType
+	}
+};
 
 
 template <int LOADS_PER_CYCLE>
@@ -395,6 +419,7 @@ __device__ __forceinline__ void CorrectForOverflows(
 template <
 	typename K,
 	int BIT, 
+	int RADIX_BITS,
 	int RADIX_DIGITS,
 	int SCAN_LANES_PER_LOAD,
 	int LOADS_PER_CYCLE,
@@ -422,7 +447,7 @@ __device__ __forceinline__ void ScanCycle(
 	}
 	
 	// Decode digits for first cycle
-	DecodeDigits<K, RADIX_DIGITS, BIT, LOADS_PER_CYCLE, SCAN_LANES_PER_LOAD, PADDED_PARTIALS_PER_LANE>(
+	DecodeDigits<K, RADIX_BITS, BIT, LOADS_PER_CYCLE, SCAN_LANES_PER_LOAD, PADDED_PARTIALS_PER_LANE>(
 		keypairs, digits, flag_offsets);
 	
 	// Encode counts into smem for first cycle
@@ -552,6 +577,7 @@ template <
 	typename K,
 	typename V,	
 	CacheModifier CACHE_MODIFIER,
+	int RADIX_BITS,
 	int RADIX_DIGITS, 
 	int BIT, 
 	int CYCLES_PER_TILE,
@@ -579,14 +605,14 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		if (LOADS_PER_CYCLE > 0) {
 			const int LOAD = 0;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 		if (LOADS_PER_CYCLE > 1) {
 			const int LOAD = 1;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 	}
 	if (CYCLES_PER_TILE > 1) {
@@ -594,14 +620,14 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		if (LOADS_PER_CYCLE > 0) {
 			const int LOAD = 0;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 		if (LOADS_PER_CYCLE > 1) {
 			const int LOAD = 1;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_DIGITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 	}
 	
@@ -622,8 +648,8 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
 		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
 
-		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
-		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
+		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
+		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
 		
 		// Swap data according to ranks
 		ExchangePairs<V, CYCLES_PER_TILE, LOADS_PER_CYCLE>((V*) exchange, datapairs, ranks);
@@ -759,8 +785,8 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 
 		// Read input data
 		typename VecType<V, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
-		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
+		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
+		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
 
 		// Swap and scatter data
 		SwapAndScatterPairs<V, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, NopFunctor<V> >(
@@ -779,6 +805,7 @@ template <
 	CacheModifier CACHE_MODIFIER,
 	int BIT, 
 	bool UNGUARDED_IO,
+	int RADIX_BITS,
 	int RADIX_DIGITS,
 	int SCAN_LANES_PER_LOAD,
 	int LOADS_PER_CYCLE,
@@ -830,8 +857,8 @@ __device__ __forceinline__ void ScanDigitTile(
 	// telling me "Advisory: Loop was not unrolled, unexpected control flow construct"
 	
 	// Read Keys
-	if (CYCLES_PER_TILE > 0) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>(d_in_keys, keypairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);		 
-	if (CYCLES_PER_TILE > 1) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>(d_in_keys, keypairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements); 	
+	if (CYCLES_PER_TILE > 0) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);		 
+	if (CYCLES_PER_TILE > 1) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements); 	
 	
 	//-------------------------------------------------------------------------
 	// Lane-scanning Cycles
@@ -839,7 +866,7 @@ __device__ __forceinline__ void ScanDigitTile(
 
 	if (CYCLES_PER_TILE > 0) {
 		const int CYCLE = 0;
-		ScanCycle<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+		ScanCycle<K, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
 			base_partial,
 			raking_partial,
 			warpscan,
@@ -851,7 +878,7 @@ __device__ __forceinline__ void ScanDigitTile(
 	}
 	if (CYCLES_PER_TILE > 1) {
 		const int CYCLE = 1;
-		ScanCycle<K, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+		ScanCycle<K, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
 			base_partial,
 			raking_partial,
 			warpscan,
@@ -951,7 +978,7 @@ __device__ __forceinline__ void ScanDigitTile(
 	
 #else 
 
-	SwapAndScatterSm13<K, V, CACHE_MODIFIER, RADIX_DIGITS, BIT, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
+	SwapAndScatterSm13<K, V, CACHE_MODIFIER, RADIX_BITS, RADIX_DIGITS, BIT, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
 		ranks,
 		exchange,
@@ -972,6 +999,7 @@ template <
 	typename V,	
 	CacheModifier CACHE_MODIFIER,
 	int BIT, 
+	int RADIX_BITS,
 	int RADIX_DIGITS,
 	int SCAN_LANES_PER_LOAD,
 	int LOADS_PER_CYCLE,
@@ -1018,7 +1046,7 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 	// Scan in tiles of tile_elements
 	while (block_offset < oob) {
 	
-		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, true, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
+		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, true, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 			reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
 			reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
 			d_out_keys, 
@@ -1039,7 +1067,7 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 		
 		// Clean up with guarded-io
 		
-		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, false, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
+		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, false, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 			reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
 			reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
 			d_out_keys, 
@@ -1233,7 +1261,7 @@ void ScanScatterDigits(
 	if (!selector) {
 	
 		// d_keys0 -> d_keys1 
-		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 			d_spine,
 			d_keys0, 
 			d_values0, 
@@ -1253,7 +1281,7 @@ void ScanScatterDigits(
 	} else {
 		
 		// d_keys1 -> d_keys0
-		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 			d_spine,
 			d_keys1, 
 			d_values1, 

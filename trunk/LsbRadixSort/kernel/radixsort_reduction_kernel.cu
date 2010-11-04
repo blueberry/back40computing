@@ -70,13 +70,16 @@ __device__ __forceinline__ int DecodeInt(int encoded){
 }
 
 
-template <typename K, long long RADIX_DIGITS, int BIT>
+template <typename K, int RADIX_BITS, int BIT>
 __device__ __forceinline__ void DecodeDigit(
 	K key, 
 	int &lane, 
 	int &quad_byte) 
 {
+	
 /*	
+	long long RADIX_DIGITS = 1 << RADIX_BITS; 
+
 	const K DIGIT_MASK = RADIX_DIGITS - 1;
 	lane = (key & (DIGIT_MASK << BIT)) >> (BIT + 2);
 	
@@ -90,9 +93,6 @@ __device__ __forceinline__ void DecodeDigit(
 		quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
 	}
 */	
-
-	const int RADIX_BITS = 4;
-
 	ExtractBits<K, BIT + 2, RADIX_BITS - 2>(lane, key);
 	if (RADIX_BITS < 2) { 
 		ExtractBits<K, BIT, 1>(quad_byte, key);
@@ -166,7 +166,7 @@ __device__ __forceinline__ void ReduceEncodedCounts(
 }
 	
 
-template <typename K, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+template <typename K, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
 __device__ __forceinline__ void Bucket(
 	K input, 
 	int *encoded_reduction_col,
@@ -174,49 +174,49 @@ __device__ __forceinline__ void Bucket(
 {
 	int lane, quad_byte;
 	preprocess(input);
-	DecodeDigit<K, RADIX_DIGITS, BIT>(input, lane, quad_byte);
+	DecodeDigit<K, RADIX_BITS, BIT>(input, lane, quad_byte);
 	
 	unsigned char *encoded_col = (unsigned char *) &encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)];
 	encoded_col[quad_byte]++;
 }
 
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor, int CYCLES>
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor, int CYCLES>
 struct LoadOp;
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1> 
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1> 
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
 		K key;
 		GlobalLoad<K, CACHE_MODIFIER >::Ld(key, d_in_keys, block_offset);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(key, encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(key, encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2> 
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2> 
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 1), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 1), encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4> 
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4> 
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 2), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 2), encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8> 
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8> 
 {
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
@@ -234,54 +234,54 @@ struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT,
 		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[6], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 6));
 		GlobalLoad<K, CACHE_MODIFIER >::Ld(keys[7], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 7));
 		
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[2], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[3], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[4], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
-		Bucket<K, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[2], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[3], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[4], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
+		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16> {
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16> {
 
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 8), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 8), encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32> {
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32> {
 
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 16), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 16), encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64> {
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64> {
 
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 32), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 32), encoded_reduction_col);
 	}
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_DIGITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128> {
+template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128> {
 
 	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
 	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 64), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 64), encoded_reduction_col);
 	}
 };
 
@@ -301,11 +301,12 @@ __device__ __forceinline__ void ResetEncodedCarry(
 template <
 	typename K, 
 	CacheModifier CACHE_MODIFIER,
+	int BIT, 
+	int RADIX_BITS,
 	int RADIX_DIGITS, 
 	int REDUCTION_LANES, 
 	int LOG_REDUCTION_PARTIALS_PER_LANE,
 	int REDUCTION_PARTIALS_PER_LANE, 
-	int BIT, 
 	int TILE_ELEMENTS,
 	typename PreprocessFunctor>
 __device__ __forceinline__ void ReductionPass(
@@ -343,7 +344,7 @@ __device__ __forceinline__ void ReductionPass(
 	// Unroll batches of loads with occasional reduction to avoid overflow
 	while (block_offset < oob - (B40C_RADIXSORT_THREADS * 32)) {
 	
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
 		block_offset += B40C_RADIXSORT_THREADS * 32;
 
 		__syncthreads();
@@ -362,7 +363,7 @@ __device__ __forceinline__ void ReductionPass(
 	} 
 	
 	while (block_offset < oob) {
-		LoadOp<K, CACHE_MODIFIER, RADIX_DIGITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
 		block_offset += B40C_RADIXSORT_THREADS * 1;
 	}
 	
@@ -457,7 +458,7 @@ void RakingReduction(
 	}
 	
 	// Perform reduction pass
-	ReductionPass<K, NONE, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, TILE_ELEMENTS, PreprocessFunctor>(
+	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor>(
 		d_in_keys,
 		d_spine,
 		block_offset,

@@ -140,20 +140,6 @@ template <>
 __forceinline__ __host__ __device__ bool IsKeysOnly<KeysOnlyType>() {return true;}
 
 /**
- * Global cache-modified reads for keys-only type (nop)
- */
-template <> struct GlobalLoad<KeysOnlyType, NONE> {
-	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
-};
-template <> struct GlobalLoad<KeysOnlyType, CG> {
-	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
-};
-template <> struct GlobalLoad<KeysOnlyType, CS> {
-	__device__ __forceinline__ static void Ld(KeysOnlyType &dest, KeysOnlyType* d_ptr, int offset) {}
-};
-
-
-/**
  * A given threadblock may receive one of three different amounts of 
  * work: "big", "normal", and "last".  The big workloads are one
  * tile_elements greater than the normal, and the last workload 

@@ -148,6 +148,7 @@ template <
 	typename K, 
 	typename V,
 	int BIT, 
+	int RADIX_BITS,
 	int RADIX_DIGITS,
 	int TILE_ELEMENTS,
 	typename PreprocessFunctor, 
@@ -197,7 +198,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 	// Reduction
 	//-------------------------------------------------------------------------
 
-	ReductionPass<K, CG, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, BIT, TILE_ELEMENTS, PreprocessFunctor>(
+	ReductionPass<K, CG, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor>(
 		d_in_keys,
 		d_spine,
 		block_offset,
@@ -277,7 +278,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 	// Scan/Scatter
 	//-------------------------------------------------------------------------
 
-	ScanScatterDigitPass<K, V, CG, BIT, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+	ScanScatterDigitPass<K, V, CG, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 		d_spine,
 		d_in_keys, 
 		d_in_values, 
@@ -360,7 +361,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 	if (PASS & 0x1) {
 		// Odd pass (flip keys0/keys1)
 		DistributionSortingPass<
-				K, V, BIT, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
+				K, V, BIT, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
 				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
 				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
 				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
@@ -374,7 +375,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 	} else {
 		// Even pass
 		DistributionSortingPass<
-				K, V, BIT, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
+				K, V, BIT, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
 				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
 				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
 				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
