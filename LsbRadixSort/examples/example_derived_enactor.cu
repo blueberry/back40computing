@@ -293,7 +293,9 @@ void TestSort(
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
 	unsigned int *h_keys = NULL;
+	unsigned int *h_reference_keys = NULL;
 	h_keys = (unsigned int*) malloc(num_elements * sizeof(unsigned int));
+	h_reference_keys = (unsigned int*) malloc(num_elements * sizeof(unsigned int));
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
@@ -301,6 +303,7 @@ void TestSort(
 		
 		// only use 17 effective bits of key data
 		h_keys[i] &= (1 << 17) - 1;
+		h_reference_keys[i] = h_keys[i];
 	}
 
     // Run the timing test
@@ -321,12 +324,14 @@ void TestSort(
 	}	
 	
     // Verify solution
-	VerifySort<unsigned int>(h_keys, num_elements, true);
+	std::stable_sort(h_reference_keys, h_reference_keys + num_elements);	
+	VerifySort<unsigned int>(h_keys, h_reference_keys, num_elements, true);
 	printf("\n");
 	fflush(stdout);
 
 	// Free our allocated host memory 
 	if (h_keys != NULL) free(h_keys);
+	if (h_reference_keys != NULL) free(h_reference_keys);
 }
 
 

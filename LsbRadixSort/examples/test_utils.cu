@@ -134,15 +134,19 @@ void RandomBits(K &key, int entropy_reduction)
 	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
 	unsigned short key_bits[NUM_USHORTS];
 	
-	for (int j = 0; j < NUM_USHORTS; j++) {
-		unsigned short halfword = 0xffff; 
-		for (int i = 0; i <= entropy_reduction; i++) {
-			halfword &= (rand() >> 8);
+	do {
+	
+		for (int j = 0; j < NUM_USHORTS; j++) {
+			unsigned short halfword = 0xffff; 
+			for (int i = 0; i <= entropy_reduction; i++) {
+				halfword &= (rand() >> 8);
+			}
+			key_bits[j] = halfword;
 		}
-		key_bits[j] = halfword;
-	}
+			
+		memcpy(&key, key_bits, sizeof(K));
 		
-	memcpy(&key, key_bits, sizeof(K));
+	} while (key != key);		// avoids NaNs when generating random floating point numbers 
 }
 
 
