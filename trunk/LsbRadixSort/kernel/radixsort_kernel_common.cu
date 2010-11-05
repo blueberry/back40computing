@@ -181,12 +181,8 @@ struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS>
 {
 	__device__ __forceinline__ static void Extract(int &bits, const unsigned long long &source) 
 	{
-#if __CUDA_ARCH__ >= 200
-		asm("bfe.u64 %0, %1, %2, %3;" : "=r"(bits) : "l"(source), "n"(BIT_START), "n"(NUM_BITS));
-#else 
 		const unsigned long long MASK = (1 << NUM_BITS) - 1;
 		bits = (source >> BIT_START) & MASK;
-#endif
 	}
 };
 	
