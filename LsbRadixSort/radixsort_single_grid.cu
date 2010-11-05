@@ -215,7 +215,7 @@ public:
     	}	
 		
 		// Uber kernel
-		LsbRadixSortSmall<K, V, RADIX_BITS, PASSES, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+		LsbRadixSortSmall<ConvertedKeyType, V, RADIX_BITS, PASSES, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_sync,
 			this->d_spine,
 			(ConvertedKeyType *) problem_storage.d_keys[0],
@@ -240,8 +240,7 @@ public:
 	 */
 	cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
 	{
-		return cudaSuccess;
-//		return EnactSort<sizeof(K) * 8>(problem_storage);	// mooch
+		return EnactSort<sizeof(K) * 8>(problem_storage);	// mooch
 	}
 	
 };
