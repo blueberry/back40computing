@@ -40,7 +40,7 @@
 
 
 /******************************************************************************
-// Bottom-level digit scanning/scattering kernel
+ * Scan-scatter kernel.  The third kernel in a radix-sorting digit-place pass.
  ******************************************************************************/
 
 #pragma once
@@ -49,9 +49,19 @@
 
 namespace b40c {
 
+/**
+ * Register-saving variable qualifier. Can be used when declaring 
+ * variables that would otherwise have the same value for all threads in the CTA. 
+ */
+#if __CUDA_ARCH__ >= 200
+	#define _B40C_SCANSCATTER_REG_MISER_ __shared__
+#else
+	#define _B40C_SCANSCATTER_REG_MISER_ 
+#endif
 
 /******************************************************************************
- * Appropriate substitutes to use for out-of-bounds key (and value) offsets 
+ * Appropriate key-substitutes for use by threads that would otherwise index 
+ * past the end of valid global data  
  ******************************************************************************/
 
 template <typename T> 
@@ -89,21 +99,12 @@ __device__ __forceinline__ unsigned long long DefaultExtraValue<unsigned long lo
  * Tile-processing Routines
  ******************************************************************************/
 
-template <typename K, int RADIX_BITS, int BIT>
-__device__ __forceinline__ int DecodeDigitBak(K key) 
-{
-	const long long RADIX_DIGITS = 1 << RADIX_BITS;
-	const K DIGIT_MASK = RADIX_DIGITS - 1;
-
-	return (key >> BIT) & DIGIT_MASK;
-}
-
 
 template <typename K, int RADIX_BITS, int BIT>
 __device__ __forceinline__ int DecodeDigit(K key) 
 {
 	int retval;
-	ExtractBits<K, BIT, RADIX_BITS>(retval, key);
+	ExtractKeyBits<K, BIT, RADIX_BITS>::Extract(retval, key);
 	return retval;
 }
 
@@ -272,26 +273,11 @@ __device__ __forceinline__ void UpdateRanks(
 	int2 ranks[LOADS_PER_CYCLE],
 	int digit_counts[LOADS_PER_CYCLE][RADIX_DIGITS])
 {
-	// N.B.: I wish we could pragma unroll here, but doing so currently 
-	// results in the 3.1 compilier on 64-bit platforms generating bad
-	// code for SM1.3, resulting in incorrect sorting (e.g., problem size 16)
-	
-	if (LOADS_PER_CYCLE > 0) {
-		ranks[0].x += digit_counts[0][digits[0].x];
-		ranks[0].y += digit_counts[0][digits[0].y]; 
-	}	
-	if (LOADS_PER_CYCLE > 1) {
-		ranks[1].x += digit_counts[1][digits[1].x];
-		ranks[1].y += digit_counts[1][digits[1].y]; 
-	}	
-	if (LOADS_PER_CYCLE > 2) {
-		ranks[2].x += digit_counts[2][digits[2].x];
-		ranks[2].y += digit_counts[2][digits[2].y]; 
-	}	
-	if (LOADS_PER_CYCLE > 3) {
-		ranks[3].x += digit_counts[3][digits[3].x];
-		ranks[3].y += digit_counts[3][digits[3].y]; 
-	}	
+	#pragma unroll
+	for (int LOAD = 0; LOAD < LOADS_PER_CYCLE; LOAD++) {
+		ranks[LOAD].x += digit_counts[LOAD][digits[LOAD].x];
+		ranks[LOAD].y += digit_counts[LOAD][digits[LOAD].y]; 
+	}
 }
 
 template <int RADIX_DIGITS, int CYCLES_PER_TILE, int LOADS_PER_CYCLE>
@@ -300,16 +286,11 @@ __device__ __forceinline__ void UpdateRanks(
 	int2 ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE],
 	int digit_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE][RADIX_DIGITS])
 {
-	// N.B.: I wish we could pragma unroll here, but doing so currently 
-	// results in the 3.1 compilier on 64-bit platforms generating bad
-	// code for SM1.3, resulting in incorrect sorting (e.g., problem size 16)
-	
-	if (CYCLES_PER_TILE > 0) UpdateRanks<RADIX_DIGITS, LOADS_PER_CYCLE>(digits[0], ranks[0], digit_counts[0]);
-	if (CYCLES_PER_TILE > 1) UpdateRanks<RADIX_DIGITS, LOADS_PER_CYCLE>(digits[1], ranks[1], digit_counts[1]);
-	if (CYCLES_PER_TILE > 2) UpdateRanks<RADIX_DIGITS, LOADS_PER_CYCLE>(digits[2], ranks[2], digit_counts[2]);
-	if (CYCLES_PER_TILE > 3) UpdateRanks<RADIX_DIGITS, LOADS_PER_CYCLE>(digits[3], ranks[3], digit_counts[3]);
+	#pragma unroll
+	for (int CYCLE = 0; CYCLE < CYCLES_PER_TILE; CYCLE++) {
+		UpdateRanks<RADIX_DIGITS, LOADS_PER_CYCLE>(digits[CYCLE], ranks[CYCLE], digit_counts[CYCLE]);
+	}
 }
-
 
 
 template <int SCAN_LANES_PER_CYCLE, int LOG_RAKING_THREADS_PER_LANE, int RAKING_THREADS_PER_LANE, int PARTIALS_PER_SEG>
@@ -330,7 +311,6 @@ __device__ __forceinline__ void PrefixScanOverLanes(
 
 	// Downsweep rake
 	SerialScan<PARTIALS_PER_SEG>(raking_segment, group_prefix);
-	
 }
 
 
@@ -406,7 +386,6 @@ __device__ __forceinline__ void CorrectForOverflows(
 	const int &extra_elements)				
 {
 	if (!UNGUARDED_IO) {
-
 		// Correct any overflow in the partially-filled last lane
 		int *linear_counts = (int *) counts;
 		CorrectLastLaneOverflow<RADIX_DIGITS>(linear_counts[LOADS_PER_TILE - 1], extra_elements);
@@ -498,36 +477,11 @@ __device__ __forceinline__ void ScatterLoads(
 	for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
 		postprocess(pairs[LOAD].x);
 		postprocess(pairs[LOAD].y);
-	}
 
-	// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower 
-		
-	if (LOADS_PER_CYCLE > 0) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 0) < extra_elements)) 
-			d_out[offsets[0].x] = pairs[0].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 1) < extra_elements)) 
-			d_out[offsets[0].y] = pairs[0].y;
-	}
-
-	if (LOADS_PER_CYCLE > 1) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 2) < extra_elements)) 
-			d_out[offsets[1].x] = pairs[1].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 3) < extra_elements)) 
-			d_out[offsets[1].y] = pairs[1].y;
-	}
-
-	if (LOADS_PER_CYCLE > 2) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 4) < extra_elements)) 
-			d_out[offsets[2].x] = pairs[2].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 5) < extra_elements)) 
-			d_out[offsets[2].y] = pairs[2].y;
-	}
-
-	if (LOADS_PER_CYCLE > 3) { 
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 6) < extra_elements)) 
-			d_out[offsets[3].x] = pairs[3].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * 7) < extra_elements)) 
-			d_out[offsets[3].y] = pairs[3].y;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * (LOAD * 2 + 0)) < extra_elements)) 
+			d_out[offsets[LOAD].x] = pairs[LOAD].x;
+		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * (LOAD * 2 + 1)) < extra_elements)) 
+			d_out[offsets[LOAD].y] = pairs[LOAD].y;
 	}
 }
 
@@ -1028,7 +982,7 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 	int	*base_partial,
 	int	*raking_partial,		
 	int block_offset,
-	const int &oob,
+	const int &out_of_bounds,
 	const int &extra_elements)
 {
 	if (threadIdx.x < RADIX_DIGITS) {
@@ -1044,7 +998,7 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 	}
 
 	// Scan in tiles of tile_elements
-	while (block_offset < oob) {
+	while (block_offset < out_of_bounds) {
 	
 		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, true, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
 			reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
@@ -1174,8 +1128,8 @@ void ScanScatterDigits(
 	__shared__ bool 	non_trivial_digit_pass;
 	__shared__ int 		selector;
 	
-	_B40C_REG_MISER_QUALIFIER_ int extra_elements[1];
-	_B40C_REG_MISER_QUALIFIER_ int oob[1];
+	_B40C_SCANSCATTER_REG_MISER_ int extra_elements;
+	_B40C_SCANSCATTER_REG_MISER_ int out_of_bounds;
 
 
 	// calculate our threadblock's range
@@ -1187,14 +1141,14 @@ void ScanScatterDigits(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	extra_elements[0] = 0;
+	extra_elements = 0;
 	if (blockIdx.x == gridDim.x - 1) {
-		extra_elements[0] = work_decomposition.extra_elements_last_block;
-		if (extra_elements[0]) {
+		extra_elements = work_decomposition.extra_elements_last_block;
+		if (extra_elements) {
 			block_elements -= TILE_ELEMENTS;
 		}
 	}
-	oob[0] = block_offset + block_elements;	
+	out_of_bounds = block_offset + block_elements;	
 	
 	
 	// location for placing 2-element partial reductions in the first lane of a cycle	
@@ -1252,7 +1206,7 @@ void ScanScatterDigits(
 		raking_partial = reinterpret_cast<int *>(scan_lanes) + (row * PADDED_PARTIALS_PER_ROW) + col; 
 	}
 
-	// Sync to acquire non_trivial_digit_pass and selector, extra_elements, and oob
+	// Sync to acquire non_trivial_digit_pass and selector
 	__syncthreads();
 	
 	// Short-circuit this entire cycle
@@ -1275,8 +1229,8 @@ void ScanScatterDigits(
 			base_partial,
 			raking_partial,
 			block_offset,
-			oob[0],
-			extra_elements[0]);		
+			out_of_bounds,
+			extra_elements);		
 	
 	} else {
 		
@@ -1295,8 +1249,8 @@ void ScanScatterDigits(
 			base_partial,
 			raking_partial,
 			block_offset,
-			oob[0],
-			extra_elements[0]);		
+			out_of_bounds,
+			extra_elements);		
 	}
 }
 

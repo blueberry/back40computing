@@ -327,6 +327,8 @@ void TestSort(
 	} else {
 		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
 	}
+
+	cudaThreadSynchronize();
     
 	// Display sorted key data
 	if (g_verbose) {
@@ -428,8 +430,6 @@ int main( int argc, char** argv) {
 			num_elements, 
 			keys_only);
 */			
-	
-	cudaThreadSynchronize();
 }
 
 

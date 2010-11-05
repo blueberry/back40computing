@@ -40,7 +40,7 @@
 # Build script for project
 #
 # IMPORTANT NOTES: 
-#	We compile the kernels with the following options:
+#	For our evaluation purposes, we compile the kernels with the following options:
 #
 # 		- 32-bit device pointers, regardless of whether we're on a 64-bit 
 # 		  machine or not.  64-bit device pointers incur ~10-15% slowdown 
@@ -66,8 +66,9 @@ KERNELS =
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
-#SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20) 
+SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
+#SMALL_PROBLEM_SM_TARGETS = $(GEN_SM13) $(GEN_SM20)
+SMALL_PROBLEM_SM_TARGETS = $(GEN_SM20)
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -170,24 +171,22 @@ bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_ad
 
 
 #-------------------------------------------------------------------------------
-# (make enactor) Illustrates a custom sorting enactor that explicitly only sorts 
-# 17-bits.  It uses a third storage array to perform in-place sorting in the 
-# face of odd-passes without having to resort to (a) re-aliasing device input 
-# pointers, or (b) an extra memcpy back to the original input array.
+# (make smallproblem) Illustrates the small-problem sorting enactor that explicitly 
+# only sorts 17-bits, and does so using a single kernel launch.  
 #-------------------------------------------------------------------------------
 
-enactor: bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+smallproblem: bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX) : example_derived_enactor.cu test_utils.cu $(SORTING_DEPS)
+bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX) example_derived_enactor.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SMALL_PROBLEM_SM_TARGETS) -o bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 #
 # Clean
 #
 
 clean :
-	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/example_derived_enactor_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX)
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 
