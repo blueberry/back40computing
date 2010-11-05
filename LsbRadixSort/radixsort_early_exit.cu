@@ -189,20 +189,19 @@ protected:
 			// Always at least one block to process the remainder
 			grid_size = 1;
 
-		} else if (grid_size > this->max_grid_size) {
-		
-			int clamped_grid_size = this->max_grid_size;
+		} else {
 		
 			if (this->cuda_props.device_sm_version == 130) {
-	
-				clamped_grid_size = this->cuda_props.device_props.multiProcessorCount * 
+
+				// GT200 Fine-tune sm130_clamped_grid_size to avoid CTA camping 
+
+				int sm130_clamped_grid_size = this->cuda_props.device_props.multiProcessorCount * 
 						B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(this->cuda_props.kernel_ptx_version); 
 
 				// Increase by default every 64 million key-values
 				int step = 1024 * 1024 * 64;		 
-				clamped_grid_size *= (num_elements + step - 1) / step;
+				sm130_clamped_grid_size *= (num_elements + step - 1) / step;
 
-				// GT200 Fine-tune clamped_grid_size to avoid CTA camping 
 				double multiplier1 = 4.0;
 				double multiplier2 = 16.0;
 
@@ -211,14 +210,15 @@ protected:
 
 				int dividend = (num_elements + this->tile_elements - 1) / this->tile_elements;
 
+				int bumps = 0;
 				while(true) {
 
-					double quotient = ((double) dividend) / (multiplier1 * clamped_grid_size);
+					double quotient = ((double) dividend) / (multiplier1 * sm130_clamped_grid_size);
 					quotient -= (int) quotient;
 
 					if ((quotient > delta1) && (quotient < 1 - delta1)) {
 
-						quotient = ((double) dividend) / (multiplier2 * clamped_grid_size / 3.0);
+						quotient = ((double) dividend) / (multiplier2 * sm130_clamped_grid_size / 3.0);
 						quotient -= (int) quotient;
 
 						if ((quotient > delta2) && (quotient < 1 - delta2)) {
@@ -226,19 +226,28 @@ protected:
 						}
 					}
 
-					if (clamped_grid_size == this->max_grid_size - 2) {
-						// Bump it down by 30
-						clamped_grid_size = this->max_grid_size - 30;
+					if (bumps == 3) {
+						// Bump it down by 27
+						sm130_clamped_grid_size -= 27;
+						bumps = 0;
 					} else {
 						// Bump it down by 1
-						clamped_grid_size -= 1;
+						sm130_clamped_grid_size--;
+						bumps--;
 					}
+				}
+				// Clamp to suggested grid size
+				if (grid_size > sm130_clamped_grid_size) {
+					grid_size = sm130_clamped_grid_size;
 				}
 			}
 			
-			grid_size = clamped_grid_size;
+			// Clamp to mandated grid size
+			if (grid_size > this->max_grid_size) {
+				grid_size = this->max_grid_size;
+			}
 		}
-		
+
 		return grid_size;
 	}
 	
@@ -299,18 +308,10 @@ protected:
 			&scan_scatter_attrs, 
 			ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor>);
 
-
 		//
 		// Counting Reduction
 		//
-/*
-		// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-		if ((this->cuda_props.device_sm_version == 130) && 
-				(work_decomposition.num_elements > this->cuda_props.device_props.multiProcessorCount * this->tile_elements * 2)) { 
-			FlushKernel<void><<<grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
-			synchronize_if_enabled("FlushKernel");
-		}
-*/
+
 		// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
 		int dynamic_smem = (this->cuda_props.kernel_ptx_version >= 130) ? 
 			scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 
@@ -344,15 +345,8 @@ protected:
 		//
 		// Scanning Scatter
 		//
-/*		
-		// Run tesla flush kernel if we have two or more threadblocks for each of the SMs
-		if ((this->cuda_props.device_sm_version == 130) && 
-				(work_decomposition.num_elements > this->cuda_props.device_props.multiProcessorCount * this->tile_elements * 2)) { 
-			FlushKernel<void><<<grid_size, B40C_RADIXSORT_THREADS, scan_scatter_attrs.sharedSizeBytes>>>();
-			synchronize_if_enabled("FlushKernel");
-		}
-*/
-		ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+
+	    ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_selectors,
 			this->d_spine,
 			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
@@ -544,7 +538,7 @@ public:
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 
 		PreSort(problem_storage, 8);
-		
+
 		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
 		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 

@@ -84,9 +84,9 @@ namespace b40c {
 				    														B40C_SM10_LOG_LOADS_PER_CYCLE())		
 
 // Number of raking cycles per tile
-#define B40C_SM20_LOG_CYCLES_PER_TILE(K, V)					(((B40C_MAX(sizeof(K), sizeof(V)) > 4) || _B40C_LP64_) ? 0 : 1)	// 2 cyclees on GF100 (only one for large keys/values, or for 64-bit device pointers)
-#define B40C_SM12_LOG_CYCLES_PER_TILE(K, V)					(B40C_MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)					// 2 cyclees on GT200 (only for large keys/values)
-#define B40C_SM10_LOG_CYCLES_PER_TILE(K, V)					(0)																// 1 cycle on G80
+#define B40C_SM20_LOG_CYCLES_PER_TILE(K, V)					(B40C_MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)	// 2 cycles on GF100 (only one for large keys/values)
+#define B40C_SM12_LOG_CYCLES_PER_TILE(K, V)					(B40C_MAX(sizeof(K), sizeof(V)) > 4 ? 0 : 1)	// 2 cycles on GT200 (only one for large keys/values)
+#define B40C_SM10_LOG_CYCLES_PER_TILE(K, V)					(0)												// 1 cycle on G80
 #define B40C_RADIXSORT_LOG_CYCLES_PER_TILE(version, K, V)	((version >= 200) ? B40C_SM20_LOG_CYCLES_PER_TILE(K, V) : 	\
 				    										 (version >= 120) ? B40C_SM12_LOG_CYCLES_PER_TILE(K, V) : 	\
 					    														B40C_SM10_LOG_CYCLES_PER_TILE(K, V))		
@@ -152,6 +152,44 @@ struct CtaDecomposition {
 	int extra_elements_last_block;
 	int num_elements;
 };
+
+
+/**
+ * Extracts a bit field from source and places the zero or sign-extended result 
+ * in extract
+ */
+template <typename T, int BIT_START, int NUM_BITS> 
+struct ExtractKeyBits 
+{
+	__device__ __forceinline__ static void Extract(int &bits, const T &source) 
+	{
+#if __CUDA_ARCH__ >= 200
+		asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "n"(BIT_START), "n"(NUM_BITS));
+#else 
+		const T MASK = (1 << NUM_BITS) - 1;
+		bits = (source >> BIT_START) & MASK;
+#endif
+	}
+};
+	
+/**
+ * Extracts a bit field from source and places the zero or sign-extended result 
+ * in extract
+ */
+template <int BIT_START, int NUM_BITS> 
+struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS> 
+{
+	__device__ __forceinline__ static void Extract(int &bits, const unsigned long long &source) 
+	{
+#if __CUDA_ARCH__ >= 200
+		asm("bfe.u64 %0, %1, %2, %3;" : "=r"(bits) : "l"(source), "n"(BIT_START), "n"(NUM_BITS));
+#else 
+		const unsigned long long MASK = (1 << NUM_BITS) - 1;
+		bits = (source >> BIT_START) & MASK;
+#endif
+	}
+};
+	
 
 
 

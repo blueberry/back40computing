@@ -50,11 +50,6 @@
 namespace b40c {
 
 
-/******************************************************************************
- * Defines
- ******************************************************************************/
-
-const int BYTE_ENCODE_SHIFT = 0x3;
 
 
 /******************************************************************************
@@ -65,41 +60,10 @@ template <int BYTE>
 __device__ __forceinline__ int DecodeInt(int encoded){
 	
 	int retval;
-	ExtractBits<int, BYTE * 8, 8>(retval, encoded);
+	ExtractKeyBits<int, BYTE * 8, 8>::Extract(retval, encoded);
 	return retval;
 }
 
-
-template <typename K, int RADIX_BITS, int BIT>
-__device__ __forceinline__ void DecodeDigit(
-	K key, 
-	int &lane, 
-	int &quad_byte) 
-{
-	
-/*	
-	long long RADIX_DIGITS = 1 << RADIX_BITS; 
-
-	const K DIGIT_MASK = RADIX_DIGITS - 1;
-	lane = (key & (DIGIT_MASK << BIT)) >> (BIT + 2);
-	
-	const K QUAD_MASK = (RADIX_DIGITS < 4) ? 0x1 : 0x3;
-	if (BIT == 32) {
-		// N.B.: This takes one more instruction than the code below it, but 
-		// otherwise the compiler goes nuts and shoves hundreds of bytes 
-		// to lmem when bit = 32 on 64-bit keys.		
-		quad_shift = ((key >> BIT) & QUAD_MASK) << BYTE_ENCODE_SHIFT;	
-	} else {
-		quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
-	}
-*/	
-	ExtractBits<K, BIT + 2, RADIX_BITS - 2>(lane, key);
-	if (RADIX_BITS < 2) { 
-		ExtractBits<K, BIT, 1>(quad_byte, key);
-	} else {
-		ExtractBits<K, BIT, 2>(quad_byte, key);
-	}
-}
 
 //-----------------------------------------------------------------------------
 
@@ -114,13 +78,6 @@ __device__ __forceinline__  void ReduceLanePartial(
 	local_counts[1] += encoded[1];
 	local_counts[2] += encoded[2];
 	local_counts[3] += encoded[3];
-/*	
-	int encoded = scan_lanes[lane_offset + (PARTIAL * B40C_WARP_THREADS)];		
-	local_counts[0] += DecodeInt<0>(encoded);
-	local_counts[1] += DecodeInt<1>(encoded);
-	local_counts[2] += DecodeInt<2>(encoded);
-	local_counts[3] += DecodeInt<3>(encoded);
-*/	
 }
 
 template <int LANE, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int REDUCTION_PARTIALS_PER_LANE, int LANE_PARTIALS_PER_THREAD>
@@ -168,16 +125,36 @@ __device__ __forceinline__ void ReduceEncodedCounts(
 
 template <typename K, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
 __device__ __forceinline__ void Bucket(
-	K input, 
+	K key, 
 	int *encoded_reduction_col,
 	PreprocessFunctor preprocess = PreprocessFunctor()) 
 {
-	int lane, quad_byte;
-	preprocess(input);
-	DecodeDigit<K, RADIX_BITS, BIT>(input, lane, quad_byte);
+	preprocess(key);
+
+	int lane;
+	ExtractKeyBits<K, BIT + 2, RADIX_BITS - 2>::Extract(lane, key);
+
+	if (B40C_FERMI(__CUDA_ARCH__)) {	
 	
-	unsigned char *encoded_col = (unsigned char *) &encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)];
-	encoded_col[quad_byte]++;
+		// GF100+ has special bit-extraction instructions (instead of shift+mask)
+		int quad_byte;
+		if (RADIX_BITS < 2) { 
+			ExtractKeyBits<K, BIT, 1>::Extract(quad_byte, key);
+		} else {
+			ExtractKeyBits<K, BIT, 2>::Extract(quad_byte, key);
+		}
+		unsigned char *encoded_col = (unsigned char *) &encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)];
+		encoded_col[quad_byte]++;
+
+	} else {
+
+		// GT200 can save an instruction because it can source an operand 
+		// directly from smem
+		const int BYTE_ENCODE_SHIFT 		= 0x3;
+		const K QUAD_MASK 					= (RADIX_BITS < 2) ? 0x1 : 0x3;
+		int quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
+		encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)] += (1 << quad_shift);
+	}
 }
 
 
@@ -308,14 +285,15 @@ template <
 	int LOG_REDUCTION_PARTIALS_PER_LANE,
 	int REDUCTION_PARTIALS_PER_LANE, 
 	int TILE_ELEMENTS,
-	typename PreprocessFunctor>
+	typename PreprocessFunctor,
+	bool UNROLL>
 __device__ __forceinline__ void ReductionPass(
 	K*			d_in_keys,
 	int* 		d_spine,
 	int 		block_offset,
 	int* 		encoded_reduction_col,
 	int*		scan_lanes,
-	const int&	oob)
+	const int&	out_of_bounds)
 {
 	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
 	const int PARTIALS_PER_ROW = B40C_WARP_THREADS;
@@ -340,29 +318,57 @@ __device__ __forceinline__ void ReductionPass(
 	
 	// Reset encoded counters
 	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
+/*	
+	if (UNROLL) {
 
-	// Unroll batches of loads with occasional reduction to avoid overflow
-	while (block_offset < oob - (B40C_RADIXSORT_THREADS * 32)) {
-	
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 32;
-
-		__syncthreads();
-
-		// Reduce int local count registers to prevent overflow
-		ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
-				local_counts, 
-				scan_lanes,
-				warp_id,
-				warp_idx);
-
-		__syncthreads();
+		// Unroll batches of loads with occasional reduction to avoid overflow
+		while (block_offset + (B40C_RADIXSORT_THREADS * 128) < out_of_bounds) {
 		
-		// Reset encoded counters
-		ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
-	} 
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 128;
 	
-	while (block_offset < oob) {
+			__syncthreads();
+	
+			// Reduce int local count registers to prevent overflow
+			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
+					local_counts, 
+					scan_lanes,
+					warp_id,
+					warp_idx);
+	
+			__syncthreads();
+			
+			// Reset encoded counters
+			ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
+		} 
+		
+		if (block_offset + (B40C_RADIXSORT_THREADS * 64) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 64;
+		}
+		if (block_offset + (B40C_RADIXSORT_THREADS * 32) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 32;
+		}
+		if (block_offset + (B40C_RADIXSORT_THREADS * 16) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 16;
+		}
+		if (block_offset + (B40C_RADIXSORT_THREADS * 8) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 8;
+		}
+		if (block_offset + (B40C_RADIXSORT_THREADS * 4) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 4;
+		}
+		if (block_offset + (B40C_RADIXSORT_THREADS * 2) < out_of_bounds) {
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 2;
+		}
+	}
+*/	
+	while (block_offset < out_of_bounds) {
 		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
 		block_offset += B40C_RADIXSORT_THREADS * 1;
 	}
@@ -449,22 +455,22 @@ void RakingReduction(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	int oob = block_offset + block_elements; 
+	int out_of_bounds = block_offset + block_elements; 
 	if (blockIdx.x == gridDim.x - 1) {
 		if (work_decomposition.extra_elements_last_block > 0) {
-			oob -= TILE_ELEMENTS;
+			out_of_bounds -= TILE_ELEMENTS;
 		}
-		oob += work_decomposition.extra_elements_last_block;
+		out_of_bounds += work_decomposition.extra_elements_last_block;
 	}
 	
 	// Perform reduction pass
-	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor>(
+	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, true>(
 		d_in_keys,
 		d_spine,
 		block_offset,
 		encoded_reduction_col,
 		scan_lanes,
-		oob);
+		out_of_bounds);
 } 
 
  

@@ -76,7 +76,7 @@ bool g_verbose;
  */
 void Usage() 
 {
-	printf("\nderived_enactor [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
+	printf("\ntest_small_problem_sorting [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
 	printf("\n");
 	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");
@@ -91,8 +91,9 @@ void Usage()
 
 
 /**
- * Keys-only sorting.  Uses the GPU to sort the specified vector of elements for the given 
- * number of iterations, displaying runtime information.
+ * Uses the small-problem-sorter (single-grid enactor) sort the specified 17-bit sorting
+ * problem whose keys is a vector of the specified number of unsigned int elements, 
+ * values of unsigned int elements.
  *
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
@@ -101,7 +102,7 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-void SingleKernelTimedSort(
+void SmallProblemTimedSort(
 	unsigned int num_elements, 
 	unsigned int *h_keys,
 	unsigned int iterations)
@@ -184,8 +185,9 @@ void SingleKernelTimedSort(
 
 
 /**
- * Keys-only sorting.  Uses the GPU to sort the specified vector of elements for the given 
- * number of iterations, displaying runtime information.
+ * Uses the large-problem-sorter (early-exit enactor) sort the specified sorting
+ * problem whose keys is a vector of the specified number of unsigned int elements, 
+ * values of unsigned int elements.
  *
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
@@ -194,7 +196,7 @@ void SingleKernelTimedSort(
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-void DefaultTimedSort(
+void LargeProblemTimedSort(
 	unsigned int num_elements, 
 	unsigned int *h_keys,
 	unsigned int iterations)
@@ -277,18 +279,20 @@ void DefaultTimedSort(
 
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
- * number of unsigned int elements, values of unsigned int elements, and then dispatches the problem 
- * to the GPU for the given number of iterations, displaying runtime information.
+ * number of 17-bit unsigned int elements, values of unsigned int elements, and then 
+ * dispatches the problem to the GPU for the given number of iterations, 
+ * displaying runtime information.
  *
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
+ * @param[in]		use_small_problem_enactor
  */
 void TestSort(
 	unsigned int iterations,
 	int num_elements, 
-	bool custom)
+	bool use_small_problem_enactor)
 {
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
@@ -307,10 +311,10 @@ void TestSort(
 	}
 
     // Run the timing test
-	if (custom) {
-		SingleKernelTimedSort(num_elements, h_keys, iterations);
+	if (use_small_problem_enactor) {
+		SmallProblemTimedSort(num_elements, h_keys, iterations);
 	} else { 
-		DefaultTimedSort(num_elements, h_keys, iterations);
+		LargeProblemTimedSort(num_elements, h_keys, iterations);
 	}
     
 	// Display sorted key data
@@ -363,7 +367,7 @@ int main( int argc, char** argv) {
 	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 
 	TestSort(iterations, num_elements, true);	// single-grid enactor (explicit passes)
-	TestSort(iterations, num_elements, false); 	// default (dynamic pass detection)
+	TestSort(iterations, num_elements, false); 	// early-exit enactor (dynamic pass detection)
 	
 	cudaThreadSynchronize();
 }

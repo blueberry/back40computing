@@ -59,16 +59,16 @@ namespace b40c {
 
 // Target threadblock occupancy for bulk scan/scatter kernel
 #define B40C_SM20_SG_OCCUPANCY()								(6)			// 8 threadblocks on GF100
-#define B40C_SM12_SG_OCCUPANCY()								(8)			// 8 threadblocks on GT200
-#define B40C_SM10_SG_OCCUPANCY()								(8)			// 8 threadblocks on G80
+#define B40C_SM12_SG_OCCUPANCY()								(1)			// 8 threadblocks on GT200
+#define B40C_SM10_SG_OCCUPANCY()								(1)			// 8 threadblocks on G80
 #define B40C_RADIXSORT_SG_OCCUPANCY(version)					((version >= 200) ? B40C_SM20_SG_OCCUPANCY() : 	\
 																 (version >= 120) ? B40C_SM12_SG_OCCUPANCY() : 	\
 																					B40C_SM10_SG_OCCUPANCY())		
 
 // Number of 256-element loads to rake per raking cycle
 #define B40C_SM20_SG_LOG_LOADS_PER_CYCLE()						(1)			// 1 load on GF100
-#define B40C_SM12_SG_LOG_LOADS_PER_CYCLE()						(0)			// 1 load on GT200
-#define B40C_SM10_SG_LOG_LOADS_PER_CYCLE()						(0)			// 1 load on G80
+#define B40C_SM12_SG_LOG_LOADS_PER_CYCLE()						(1)			// 1 load on GT200
+#define B40C_SM10_SG_LOG_LOADS_PER_CYCLE()						(1)			// 1 load on G80
 #define B40C_RADIXSORT_SG_LOG_LOADS_PER_CYCLE(version)			((version >= 200) ? B40C_SM20_SG_LOG_LOADS_PER_CYCLE() : 	\
 																 (version >= 120) ? B40C_SM12_SG_LOG_LOADS_PER_CYCLE() : 	\
 																					B40C_SM10_SG_LOG_LOADS_PER_CYCLE())		
@@ -83,7 +83,7 @@ namespace b40c {
 
 // Number of raking threads per raking cycle
 #define B40C_SM20_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 2 raking warps on GF100
-#define B40C_SM12_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS)			// 1 raking warp on GT200
+#define B40C_SM12_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 1 raking warp on GT200
 #define B40C_SM10_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 4 raking warps on G80
 #define B40C_RADIXSORT_SG_LOG_RAKING_THREADS(version)			((version >= 200) ? B40C_SM20_SG_LOG_RAKING_THREADS() : 	\
 																 (version >= 120) ? B40C_SM12_SG_LOG_RAKING_THREADS() : 	\
@@ -95,9 +95,15 @@ namespace b40c {
 
 
 
+__device__ __forceinline__ int LoadCG(int* d_ptr) 
+{
+	int retval;
+	GlobalLoad<int, CG>::Ld(retval, d_ptr, 0);
+	return retval;
+}
 
 
-__device__ __forceinline__ void GlobalBarrier(int *d_sync) 
+__device__ __forceinline__ void GlobalBarrier(int* d_sync) 
 {
 	// Threadfence and syncthreads to make sure global writes are visible before 
 	// thread-0 reports in with its sync counter
@@ -177,7 +183,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	const int &oob,
+	const int &out_of_bounds,
 	const int &extra_elements,
 	int spine_elements,
 	
@@ -198,13 +204,13 @@ __device__ __forceinline__ void DistributionSortingPass(
 	// Reduction
 	//-------------------------------------------------------------------------
 
-	ReductionPass<K, CG, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor>(
+	ReductionPass<K, CG, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, false>(
 		d_in_keys,
 		d_spine,
 		block_offset,
 		encoded_reduction_col,
 		smem_pool,
-		oob + extra_elements);
+		out_of_bounds + extra_elements);
 
 	
 	//-------------------------------------------------------------------------
@@ -292,7 +298,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 		base_partial,
 		raking_partial,
 		block_offset,
-		oob,
+		out_of_bounds,
 		extra_elements);
 	
 	//-------------------------------------------------------------------------
@@ -337,7 +343,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	const int &oob,
+	const int &out_of_bounds,
 	const int &extra_elements,
 	int spine_elements,
 	
@@ -368,7 +374,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys1, d_keys0, d_values1, d_values0,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -382,7 +388,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -424,7 +430,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 		
 	int block_offset,
 	int block_elements,
-	const int &oob,
+	const int &out_of_bounds,
 	const int &extra_elements,
 	int spine_elements,
 	
@@ -451,7 +457,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, d_keys1, d_keys0, d_values1, d_values0,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -467,7 +473,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -483,7 +489,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -499,7 +505,7 @@ __device__ __forceinline__ void DistributionSortingPass(
 				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
 			d_sync, d_spine, 
 			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
+			block_offset, block_elements, out_of_bounds, extra_elements,
 			spine_elements, base_partial, raking_partial, spine_raking_partial,
 			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
 			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
@@ -617,6 +623,9 @@ void LsbRadixSortSmall(
 	__shared__ int 		digit_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE][RADIX_DIGITS];
 	__shared__ int 		spine_scan[2][B40C_WARP_THREADS];
 	                  
+	__shared__ int extra_elements;
+	__shared__ int out_of_bounds;
+
 	// calculate our threadblock's range
 	int block_elements, block_offset;
 	if (blockIdx.x < work_decomposition.num_big_blocks) {
@@ -626,14 +635,14 @@ void LsbRadixSortSmall(
 		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
 		block_elements = work_decomposition.normal_block_elements;
 	}
-	int extra_elements = 0;
+	extra_elements = 0;
 	if (blockIdx.x == gridDim.x - 1) {
 		extra_elements = work_decomposition.extra_elements_last_block;
 		if (extra_elements) {
 			block_elements -= TILE_ELEMENTS;
 		}
 	}
-	int oob = block_offset + block_elements;						
+	out_of_bounds = block_offset + block_elements;						
 	
 	// Column for encoding reduction counts 
 	int *encoded_reduction_col = reinterpret_cast<int *>(smem_pool) + threadIdx.x;	// first element of column
@@ -683,117 +692,71 @@ void LsbRadixSortSmall(
 	//
 	
 	if (PASSES > 0) {
-		DistributionSortingPass<
-				PASSES, 0, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 0, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 1) {
-		DistributionSortingPass<
-				PASSES, 1, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 1, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 2) {
-		DistributionSortingPass<
-				PASSES, 2, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 2, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 3) {
-		DistributionSortingPass<
-				PASSES, 3, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 3, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 4) {
-		DistributionSortingPass<
-				PASSES, 4, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 4, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 5) {
-		DistributionSortingPass<
-				PASSES, 5, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 5, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 6) {
-		DistributionSortingPass<
-				PASSES, 6, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 6, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
 	if (PASSES > 7) {
-		DistributionSortingPass<
-				PASSES, 7, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, 
-				LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, 
-				SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE,
-				RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, 
-				PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>( 
-			d_sync, d_spine, 
-			d_keys0, d_keys1, d_values0, d_values1,
-			block_offset, block_elements, oob, extra_elements,
-			spine_elements, base_partial, raking_partial, spine_raking_partial,
-			encoded_reduction_col, reinterpret_cast<int *>(smem_pool),
-			warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+		DistributionSortingPass<PASSES, 7, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
 	}
+/*	
+	if (PASSES > 8) {
+		DistributionSortingPass<PASSES, 8, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 9) {
+		DistributionSortingPass<PASSES, 9, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 10) {
+		DistributionSortingPass<PASSES, 10, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 11) {
+		DistributionSortingPass<PASSES, 11, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 12) {
+		DistributionSortingPass<PASSES, 12, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 13) {
+		DistributionSortingPass<PASSES, 13, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 14) {
+		DistributionSortingPass<PASSES, 14, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+	if (PASSES > 15) {
+		DistributionSortingPass<PASSES, 15, K, V, RADIX_BITS, RADIX_DIGITS, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, SPINE_PARTIALS_PER_SEG, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE>(  
+			d_sync, d_spine, d_keys0, d_keys1, d_values0, d_values1, block_offset, block_elements, out_of_bounds, extra_elements, spine_elements, base_partial, raking_partial, spine_raking_partial, encoded_reduction_col, reinterpret_cast<int *>(smem_pool), warpscan, digit_carry, digit_scan, digit_counts, spine_scan);
+	}
+*/	
 }
 
 
