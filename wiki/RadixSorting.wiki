@@ -41,6 +41,8 @@ In addition, one of our design goals for this project is flexibility.  We've des
 
  * Early-exit digit-passes.  When the sorting operation detects that all keys have the same digit at the same digit-place, the pass for that digit-place is short-circuited, reducing the cost of that pass by 80%.  This makes our implementation suitable for even low-degree binning problems where sorting would normally be overkill. (We note that the random keys used to produce our performance results do not trigger this feature.)
 
+ * Explicit passes for small problems.  Our small-problem, single-grid sorting enactor allows the caller to specify the lower-order bits over which the keys should be sorted (e.g., the lower 17 bits out of 32-bit keys).  This reduces the number of overall sorting passes (4-bits per pass) for scenarios in which the keyspace can be restricted in this manner.
+
 [#Building_and_Adapting Download] and play around with the implementation yourself!
 
 
