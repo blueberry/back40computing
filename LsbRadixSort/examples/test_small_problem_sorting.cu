@@ -38,10 +38,11 @@
 
 
 /******************************************************************************
- * Simple test driver program for SRTS Radix Sorting.
+ * Simple test driver program for *small-problem* radix sorting (with an 
+ * optionally-reduced number of valid key-bits).
  *
- * Useful for demonstrating how to integrate SRTS Radix Sorting into your 
- * application
+ * Useful for demonstrating how to integrate LsbSingleGrid radix sorting into 
+ * your application 
  ******************************************************************************/
 
 #include <stdlib.h> 
@@ -102,28 +103,30 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
+template <typename K, typename V, int LOWER_KEY_BITS> 
 void SmallProblemTimedSort(
 	unsigned int num_elements, 
-	unsigned int *h_keys,
+	K *h_keys,
+	K *h_reference_keys,
 	unsigned int iterations)
 {
-	printf("Custom single-kernel key-value sort, %d iterations, %d elements", iterations, num_elements);
+	printf("Single-kernel, small-problem key-value sort, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
-	MultiCtaRadixSortStorage<unsigned int, unsigned int> device_storage(num_elements);	
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(unsigned int) * num_elements);
-	cudaMalloc((void**) &device_storage.d_values[0], sizeof(unsigned int) * num_elements);
+	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
+	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
 
 	// Create sorting enactor
-	SingleGridRadixSortingEnactor<unsigned int, unsigned int> sorting_enactor;
+	SingleGridRadixSortingEnactor<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
-		sizeof(unsigned int) * num_elements, 
-		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.EnactSort<17>(device_storage);
+		sizeof(K) * num_elements, 
+		cudaMemcpyHostToDevice);											// copy keys
+	sorting_enactor.template EnactSort<LOWER_KEY_BITS>(device_storage);		// sort
 
 	// Perform the timed number of sorting iterations
 
@@ -141,14 +144,14 @@ void SmallProblemTimedSort(
 		cudaMemcpy(
 			device_storage.d_keys[0], 
 			h_keys, 
-			sizeof(unsigned int) * num_elements, 
-			cudaMemcpyHostToDevice);		// copy keys
+			sizeof(K) * num_elements, 
+			cudaMemcpyHostToDevice);										// copy keys
 
 		// Start cuda timing record
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.EnactSort<17>(device_storage);
+		sorting_enactor.template EnactSort<LOWER_KEY_BITS>(device_storage);	// sort
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -164,11 +167,11 @@ void SmallProblemTimedSort(
 		avg_runtime,
 		throughput);
 	
-    // Copy out data 
+    // Copy out keys 
     cudaMemcpy(
     	h_keys, 
     	device_storage.d_keys[device_storage.selector], 
-    	sizeof(unsigned int) * num_elements, 
+    	sizeof(K) * num_elements, 
     	cudaMemcpyDeviceToHost);
     
     // Free allocated memory
@@ -180,14 +183,29 @@ void SmallProblemTimedSort(
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
+	
+	// Display sorted key data
+	if (g_verbose) {
+		printf("\n\nKeys:\n");
+		for (int i = 0; i < num_elements; i++) {	
+			PrintValue<K>(h_keys[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+	}	
+	
+    // Verify solution
+	VerifySort<K>(h_keys, h_reference_keys, num_elements, true);
+	printf("\n");
+	fflush(stdout);
 }
 
 
 
 /**
  * Uses the large-problem-sorter (early-exit enactor) sort the specified sorting
- * problem whose keys is a vector of the specified number of unsigned int elements, 
- * values of unsigned int elements.
+ * problem whose keys is a vector of the specified number of K elements, 
+ * values of V elements.
  *
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
@@ -196,26 +214,28 @@ void SmallProblemTimedSort(
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
+template <typename K, typename V, int LOWER_KEY_BITS> 
 void LargeProblemTimedSort(
 	unsigned int num_elements, 
-	unsigned int *h_keys,
+	K *h_keys,
+	K *h_reference_keys,
 	unsigned int iterations)
 {
-	printf("Default key-value sort, %d iterations, %d elements", iterations, num_elements);
+	printf("Early-exit key-value sort, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
-	MultiCtaRadixSortStorage<unsigned int, unsigned int> device_storage(num_elements);	
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(unsigned int) * num_elements);
-	cudaMalloc((void**) &device_storage.d_values[0], sizeof(unsigned int) * num_elements);
+	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
+	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
+	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
 
 	// Create sorting enactor
-	EarlyExitRadixSortingEnactor<unsigned int, unsigned int> sorting_enactor;
+	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
-		sizeof(unsigned int) * num_elements, 
+		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
 
@@ -235,7 +255,7 @@ void LargeProblemTimedSort(
 		cudaMemcpy(
 			device_storage.d_keys[0], 
 			h_keys, 
-			sizeof(unsigned int) * num_elements, 
+			sizeof(K) * num_elements, 
 			cudaMemcpyHostToDevice);		// copy keys
 
 		// Start cuda timing record
@@ -258,11 +278,11 @@ void LargeProblemTimedSort(
 		avg_runtime,
 		throughput);
 	
-    // Copy out data 
+    // Copy out keys 
     cudaMemcpy(
     	h_keys, 
     	device_storage.d_keys[device_storage.selector], 
-    	sizeof(unsigned int) * num_elements, 
+    	sizeof(K) * num_elements, 
     	cudaMemcpyDeviceToHost);
     
     // Free allocated memory
@@ -274,12 +294,27 @@ void LargeProblemTimedSort(
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
+	
+	// Display sorted key data
+	if (g_verbose) {
+		printf("\n\nKeys:\n");
+		for (int i = 0; i < num_elements; i++) {	
+			PrintValue<K>(h_keys[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+	}	
+	
+    // Verify solution
+	VerifySort<K>(h_keys, h_reference_keys, num_elements, true);
+	printf("\n");
+	fflush(stdout);
 }
 
 
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
- * number of 17-bit unsigned int elements, values of unsigned int elements, and then 
+ * number of elements having the specfied number of valid bits, and then 
  * dispatches the problem to the GPU for the given number of iterations, 
  * displaying runtime information.
  *
@@ -289,49 +324,38 @@ void LargeProblemTimedSort(
  * 		Size in elements of the vector to sort
  * @param[in]		use_small_problem_enactor
  */
+template <typename K, typename V, int LOWER_KEY_BITS> 
 void TestSort(
 	unsigned int iterations,
-	int num_elements, 
-	bool use_small_problem_enactor)
+	int num_elements) 
 {
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
-	unsigned int *h_keys = NULL;
-	unsigned int *h_reference_keys = NULL;
-	h_keys = (unsigned int*) malloc(num_elements * sizeof(unsigned int));
-	h_reference_keys = (unsigned int*) malloc(num_elements * sizeof(unsigned int));
+	K *h_keys = NULL;
+	K *h_reference_keys = NULL;
+	h_keys = (K*) malloc(num_elements * sizeof(K));
+	h_reference_keys = (K*) malloc(num_elements * sizeof(K));
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-		RandomBits<unsigned int>(h_keys[i], 0);
-		
-		// only use 17 effective bits of key data
-		h_keys[i] &= (1 << 17) - 1;
+		RandomBits<K>(h_keys[i], 0, LOWER_KEY_BITS);
 		h_reference_keys[i] = h_keys[i];
 	}
 
-    // Run the timing test
-	if (use_small_problem_enactor) {
-		SmallProblemTimedSort(num_elements, h_keys, iterations);
-	} else { 
-		LargeProblemTimedSort(num_elements, h_keys, iterations);
-	}
-    
-	// Display sorted key data
-	if (g_verbose) {
-		printf("\n\nKeys:\n");
-		for (int i = 0; i < num_elements; i++) {	
-			PrintValue<unsigned int>(h_keys[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}	
+	// Sort the reference keys
+	std::sort(h_reference_keys, h_reference_keys + num_elements);	
+
+	//
+    // Run the timing tests
+	//
 	
-    // Verify solution
-	std::stable_sort(h_reference_keys, h_reference_keys + num_elements);	
-	VerifySort<unsigned int>(h_keys, h_reference_keys, num_elements, true);
-	printf("\n");
-	fflush(stdout);
+	// Single-grid enactor (explicit passes)
+	SmallProblemTimedSort<K, V, LOWER_KEY_BITS>(
+		num_elements, h_keys, h_reference_keys, iterations);
+
+	// Early-exit enactor (dynamic pass detection)
+	LargeProblemTimedSort<K, V, LOWER_KEY_BITS>(
+		num_elements, h_keys, h_reference_keys, iterations);
 
 	// Free our allocated host memory 
 	if (h_keys != NULL) free(h_keys);
@@ -353,21 +377,30 @@ int main( int argc, char** argv) {
     unsigned int num_elements 					= 1024;
     unsigned int iterations  					= 1;
 
-    //
 	// Check command line arguments
-    //
-
     if (cutCheckCmdLineFlag( argc, (const char**) argv, "help")) {
 		Usage();
 		return 0;
 	}
-
     cutGetCmdLineArgumenti( argc, (const char**) argv, "i", (int*)&iterations);
     cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
 	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 
-	TestSort(iterations, num_elements, true);	// single-grid enactor (explicit passes)
-	TestSort(iterations, num_elements, false); 	// early-exit enactor (dynamic pass detection)
+	// Run sorting examples
+	
+	TestSort<unsigned int, unsigned int, 17>(			// only sort lower 17 bits 
+		iterations, num_elements);
+
+/*	
+	TestSort<float, float, sizeof(float) * 8>(
+		iterations, num_elements);	
+	TestSort<long long, long long, sizeof(long long) * 8>(
+		iterations, num_elements);
+	TestSort<char, char, sizeof(char) * 8>(
+		iterations, num_elements);
+	TestSort<double, double, sizeof(double) * 8>(
+		iterations, num_elements);
+*/		
 	
 	cudaThreadSynchronize();
 }

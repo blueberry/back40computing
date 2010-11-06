@@ -109,7 +109,7 @@ __device__ __forceinline__ void SrtsScanTile(
  ******************************************************************************/
 
 template <typename T>
-__global__ void SrtsScanSpine(
+__global__ void LsbSpineScanKernel(
 	int *d_ispine,
 	int *d_ospine,
 	int normal_block_elements)

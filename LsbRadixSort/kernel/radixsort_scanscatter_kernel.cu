@@ -190,15 +190,11 @@ struct ReadCycle
 	{
 		if (UNGUARDED_IO) {
 
-			// N.B. -- I wish we could do some pragma unrolling here too, but the compiler makes it 1% slower
+			// N.B. -- I wish we could do some pragma unrolling here too, but we can't with asm statements inside
 			if (LOADS_PER_CYCLE > 0) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
 					pairs[0], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0));
 			if (LOADS_PER_CYCLE > 1) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
 					pairs[1], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1));
-			if (LOADS_PER_CYCLE > 2) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
-					pairs[2], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 2));
-			if (LOADS_PER_CYCLE > 3) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
-					pairs[3], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 3));
 
 			#pragma unroll 
 			for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
@@ -208,16 +204,11 @@ struct ReadCycle
 			
 		} else {
 
-			// N.B. --  I wish we could do some pragma unrolling here, but the compiler won't let 
-			// us with user-defined value types (e.g., Fribbitz): "Advisory: Loop was not unrolled, cannot deduce loop trip count"
+			// N.B. -- I wish we could do some pragma unrolling here too, but we can't with asm statements inside
 			if (LOADS_PER_CYCLE > 0) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
 					(T*) d_in, pairs[0], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 0), extra_elements);
 			if (LOADS_PER_CYCLE > 1) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
 					(T*) d_in, pairs[1], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 1), extra_elements);
-			if (LOADS_PER_CYCLE > 2) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
-					(T*) d_in, pairs[2], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 2), extra_elements);
-			if (LOADS_PER_CYCLE > 3) GuardedLoad<T, CACHE_MODIFIER, PreprocessFunctor>(
-					(T*) d_in, pairs[3], (threadIdx.x << 1) + (BASE2 << 1) + (B40C_RADIXSORT_THREADS * 2 * 3), extra_elements);
 		}
 	}
 };
@@ -351,8 +342,6 @@ __device__ __forceinline__ void CorrectCycleOverflow(
 
 	if (LOADS_PER_CYCLE > 0) CorrectLoadOverflow<RADIX_DIGITS>(cycle_digits[0], cycle_counts[0]);
 	if (LOADS_PER_CYCLE > 1) CorrectLoadOverflow<RADIX_DIGITS>(cycle_digits[1], cycle_counts[1]);
-	if (LOADS_PER_CYCLE > 2) CorrectLoadOverflow<RADIX_DIGITS>(cycle_digits[2], cycle_counts[2]);
-	if (LOADS_PER_CYCLE > 3) CorrectLoadOverflow<RADIX_DIGITS>(cycle_digits[3], cycle_counts[3]);
 }
 
 
@@ -1051,7 +1040,7 @@ template <
 	typename PostprocessFunctor>
 __launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
-void ScanScatterDigits(
+void LsbScanScatterKernel(
 	int *d_selectors,
 	int* d_spine,
 	K* d_keys0,

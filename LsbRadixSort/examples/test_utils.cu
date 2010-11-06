@@ -129,7 +129,7 @@ void PrintValue<unsigned long long>(unsigned long long val) {
  * 
  */
 template <typename K>
-void RandomBits(K &key, int entropy_reduction) 
+void RandomBits(K &key, int entropy_reduction, int lower_key_bits = sizeof(K) * 8) 
 {
 	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
 	unsigned short key_bits[NUM_USHORTS];
@@ -143,7 +143,14 @@ void RandomBits(K &key, int entropy_reduction)
 			}
 			key_bits[j] = halfword;
 		}
-			
+		
+		if (lower_key_bits < sizeof(K) * 8) {
+			unsigned long long base = 0;
+			memcpy(&base, key_bits, sizeof(K));
+			base &= (1 << lower_key_bits) - 1;
+			memcpy(key_bits, &base, sizeof(K));
+		}
+		
 		memcpy(&key, key_bits, sizeof(K));
 		
 	} while (key != key);		// avoids NaNs when generating random floating point numbers 

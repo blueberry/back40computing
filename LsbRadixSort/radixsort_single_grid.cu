@@ -57,11 +57,96 @@
 
 namespace b40c {
 
-
 /**
- * Base class for early-exit, multi-CTA radix sorting enactors.
+ * Single-grid sorting enactor class.  
+ * 
+ * This sorting implementation is specifically designed for small problems 
+ * that are not large enough to saturate the GPU (e.g., problems < 1M elements.)
+ * It performs multiple digit-place passes over the input problem all within
+ * a single kernel launch.  It does so by implementing software global-barriers
+ * across threadblocks.  Therefore this enactor CAN NOT be used
+ * to sort:
+ * 		- Problems on SM1.0 devices. Those architectures do not support 
+ * 			threadfence operations.
+ * 		- Problems having structured value-types (i.e., keys that are paired with 
+ * 			satellite values that are structs or classes).  This is because
+ * 			the compiler cannot be told how to copy structures from global 
+ * 			memory using volatile or cache-global load modifiers. 
+ * 
+ * It also allows the caller to specify the lower-order bits over which the 
+ * keys should be sorted (e.g., the lower 17 bits out of 32-bit keys).  This
+ * reduces the number of overall sorting passes (4-bits per pass) for 
+ * scenarios in which the keyspace can be restricted in this manner.  
+ * 
+ * To use, simply create a specialized instance of this class with your 
+ * key-type K (and optionally value-type V if sorting with satellite 
+ * values).  E.g., for sorting signed ints:
+ * 
+ * 		SingleGridRadixSortingEnactor<int> sorting_enactor;
+ * 
+ * or for sorting floats paired with unsigned ints:
+ * 			
+ * 		SingleGridRadixSortingEnactor<float, unsigned int> sorting_enactor;
+ * 
+ * The enactor itself manages a small amount of device state for use when 
+ * performing sorting operations.  To minimize GPU allocation overhead, 
+ * enactors can be re-used over multiple sorting operations.  
+ * 
+ * The problem-storage for a sorting operation is independent of the sorting
+ * enactor.  A single enactor can be reused to sort multiple instances of the
+ * same type of problem storage.  The MultiCtaRadixSortStorage structure
+ * is used to manage the input/output/temporary buffers needed to sort 
+ * a problem of a given size.  This enactor will lazily allocate any NULL
+ * buffers contained within a problem-storage structure.  
+ *
+ * Sorting is invoked upon a problem-storage as follows:
+ * 
+ * 		sorting_enactor.EnactSort(device_storage);
+ * 
+ * or
+ * 
+ * 		sorting_enactor.EnactSort<17>(device_storage);
+ * 
+ * in the case where the caller knows that only the lower 17 bits
+ * are used to differentiate keys.  N.B.: for use within templated
+ * functions, the proper syntax is:
+ *  
+ * 		sorting_enactor.template EnactSort<17>(device_storage);
+ * 
+ * This enactor will update the selector within the problem storage
+ * to indicate which buffer contains the sorted output. E.g., 
+ * 
+ * 		device_storage.d_keys[device_storage.selector];
+ * 
+ * Please see the overview of MultiCtaRadixSortStorage for more details.
+ * 
+ * 
+ * @template-param K
+ * 		Type of keys to be sorted
+ * @template-param V
+ * 		Type of values to be sorted.
+ * @template-param ConvertedKeyType
+ * 		Leave as default to effect necessary enactor specialization for 
+ * 		signed and floating-point types
  */
 template <typename K, typename V = KeysOnlyType>
+class SingleGridRadixSortingEnactor;
+
+
+
+/**
+ * Template-specialized structure for invoking the single-grid kernel a 
+ * specific number of times.  We extract this so as to avoid unnecessary
+ * kernel generation.
+ */
+template<int INVOCATIONS, typename K, typename V, int RADIX_BITS, int PASSES> 
+struct SingleGridKernelInvoker;
+
+
+/**
+ * Single-grid sorting enactor class.  
+ */
+template <typename K, typename V>
 class SingleGridRadixSortingEnactor : public MultiCtaRadixSortingEnactor<K, V>
 {
 private:
@@ -115,6 +200,7 @@ protected:
 		} 
 		return max_grid_size;
 	}
+	
 	
 protected:
 	
@@ -214,19 +300,16 @@ public:
     			grid_size, B40C_RADIXSORT_SPINE_THREADS, spine_elements);
     	}	
 		
-		// Uber kernel
-		LsbRadixSortSmall<ConvertedKeyType, V, RADIX_BITS, PASSES, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
-			d_sync,
-			this->d_spine,
-			(ConvertedKeyType *) problem_storage.d_keys[0],
-			(ConvertedKeyType *) problem_storage.d_keys[1],
-			problem_storage.d_values[0],
-			problem_storage.d_values[1],
-			work_decomposition,
+		// Invoke kernel
+		SingleGridKernelInvoker<(PASSES + 8 - 1) / 8, K, V, RADIX_BITS, PASSES>::Invoke(
+			grid_size,	
+			this->d_sync,
+			this->d_spine, 
+			problem_storage, 
+			work_decomposition, 
 			spine_elements);
-	    synchronize_if_enabled("ScanScatterDigits");
-	    
-		// Perform any post-mortem
+
+	    // Perform any post-mortem
 		PostSort(problem_storage, PASSES);
 
 		return cudaSuccess;
@@ -247,6 +330,77 @@ public:
 
 
 
+/**
+ * Template specialization for one invocation of the sorting kernel (which 
+ * performs up to 8 passes).
+ */
+template<typename K, typename V, int RADIX_BITS, int PASSES> 
+struct SingleGridKernelInvoker <1, K, V, RADIX_BITS, PASSES>
+{
+	typedef typename KeyConversion<K>::UnsignedBits ConvertedKeyType;
+
+	static void Invoke(
+		int grid_size,	
+		int *d_sync,
+		int *d_spine, 
+		MultiCtaRadixSortStorage<K, V> &problem_storage, 
+		CtaDecomposition &work_decomposition, 
+		int spine_elements)
+	{
+		LsbSingleGridSortingKernel<ConvertedKeyType, V, RADIX_BITS, PASSES, 0, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+			d_sync,
+			d_spine,
+			(ConvertedKeyType *) problem_storage.d_keys[0],
+			(ConvertedKeyType *) problem_storage.d_keys[1],
+			problem_storage.d_values[0],
+			problem_storage.d_values[1],
+			work_decomposition,
+			spine_elements);
+	    synchronize_if_enabled("ScanScatterDigits");
+	}
+};
+
+
+/**
+ * Template specialization for two invocations of the sorting kernel (which 
+ * performs up to 8 passes).
+ */
+template<typename K, typename V, int RADIX_BITS, int PASSES> 
+struct SingleGridKernelInvoker <2, K, V, RADIX_BITS, PASSES>
+{
+	typedef typename KeyConversion<K>::UnsignedBits ConvertedKeyType;
+
+	static void Invoke(
+		int grid_size,	
+		int *d_sync,
+		int *d_spine, 
+		MultiCtaRadixSortStorage<K, V> &problem_storage, 
+		CtaDecomposition &work_decomposition, 
+		int spine_elements)
+	{
+		LsbSingleGridSortingKernel<ConvertedKeyType, V, RADIX_BITS, PASSES, 0, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+			d_sync,
+			d_spine,
+			(ConvertedKeyType *) problem_storage.d_keys[0],
+			(ConvertedKeyType *) problem_storage.d_keys[1],
+			problem_storage.d_values[0],
+			problem_storage.d_values[1],
+			work_decomposition,
+			spine_elements);
+	    synchronize_if_enabled("ScanScatterDigits");
+
+	    LsbSingleGridSortingKernel<ConvertedKeyType, V, RADIX_BITS, PASSES, 8, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+			d_sync,
+			d_spine,
+			(ConvertedKeyType *) problem_storage.d_keys[0],
+			(ConvertedKeyType *) problem_storage.d_keys[1],
+			problem_storage.d_values[0],
+			problem_storage.d_values[1],
+			work_decomposition,
+			spine_elements);
+	    synchronize_if_enabled("ScanScatterDigits");
+	}
+};
 
 
 

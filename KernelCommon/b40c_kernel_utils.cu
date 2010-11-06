@@ -65,7 +65,7 @@ namespace b40c {
 	#define TallyWarpVote(active_threads, predicate, storage) (TallyWarpVoteSm10<active_threads>(predicate, storage))
 #endif
 
-#ifdef __LP64__
+#if defined(_WIN64) || defined(__LP64__)
 	#define _B40C_LP64_ true
 	#define _B40C_ASM_PTR_ "l"
 #else
