@@ -65,35 +65,37 @@ namespace b40c {
  ******************************************************************************/
 
 template <typename T> 
-__device__ __forceinline__ T DefaultExtraValue() {
-	return T();
+__device__ __forceinline__ void DefaultExtraValue(T &val) {
+}
+
+// Accomodate bizarre introduction of "signed" for char loads
+__device__ __forceinline__ void DefaultExtraValue(char &val) {
 }
 
 template <> 
-__device__ __forceinline__ unsigned char DefaultExtraValue<unsigned char>() {
-	return (unsigned char) -1;
+__device__ __forceinline__ void DefaultExtraValue<unsigned char>(unsigned char &val) {
+	val = (unsigned char) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned short DefaultExtraValue<unsigned short>() {
-	return (unsigned short) -1;
+__device__ __forceinline__ void DefaultExtraValue<unsigned short>(unsigned short &val) {
+	val = (unsigned short) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned int DefaultExtraValue<unsigned int>() {
-	return (unsigned int) -1u;
+__device__ __forceinline__ void DefaultExtraValue<unsigned int>(unsigned int &val) {
+	val = (unsigned int) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned long DefaultExtraValue<unsigned long>() {
-	return (unsigned long) -1ul;
+__device__ __forceinline__ void DefaultExtraValue<unsigned long>(unsigned long &val) {
+	val = (unsigned long) -1;
 }
 
 template <> 
-__device__ __forceinline__ unsigned long long DefaultExtraValue<unsigned long long>() {
-	return (unsigned long long) -1ull;
+__device__ __forceinline__ void DefaultExtraValue<unsigned long long>(unsigned long long &val) {
+	val = (unsigned long long) -1;
 }
-
 
 /******************************************************************************
  * Tile-processing Routines
@@ -166,14 +168,14 @@ __device__ __forceinline__ void GuardedLoad(
 		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.x, in, offset);
 		preprocess(pair.x);
 	} else {
-		pair.x = DefaultExtraValue<T>();
+		DefaultExtraValue(pair.x);
 	}
 	
 	if (offset + 1 - extra_elements < 0) {
 		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.y, in, offset + 1);
 		preprocess(pair.y);
 	} else {
-		pair.y = DefaultExtraValue<T>();
+		DefaultExtraValue(pair.y);
 	}
 }
 
