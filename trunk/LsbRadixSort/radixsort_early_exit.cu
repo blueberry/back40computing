@@ -61,6 +61,63 @@
 namespace b40c {
 
 
+/**
+ * Early-exit sorting enactor class.  
+ * 
+ * This sorting implementation is specifically designed for problems that are 
+ * large enough to saturate the GPU (e.g., problems > 1M elements.)  
+ * 
+ * It also features "early-exit" digit-passes: when the sorting operation 
+ * detects that all keys have the same digit at the same digit-place, the pass 
+ * for that digit-place is short-circuited, reducing the cost of that pass 
+ * by 80%.  This makes our implementation suitable for even low-degree binning 
+ * problems where sorting would normally be overkill.  
+ * 
+ * To use, simply create a specialized instance of this class with your 
+ * key-type K (and optionally value-type V if sorting with satellite 
+ * values).  E.g., for sorting signed ints:
+ * 
+ * 		EarlyExitRadixSortingEnactor<int> sorting_enactor;
+ * 
+ * or for sorting floats paired with unsigned ints:
+ * 			
+ * 		EarlyExitRadixSortingEnactor<float, unsigned int> sorting_enactor;
+ * 
+ * The enactor itself manages a small amount of device state for use when 
+ * performing sorting operations.  To minimize GPU allocation overhead, 
+ * enactors can be re-used over multiple sorting operations.  
+ * 
+ * The problem-storage for a sorting operation is independent of the sorting
+ * enactor.  A single enactor can be reused to sort multiple instances of the
+ * same type of problem storage.  The MultiCtaRadixSortStorage structure
+ * is used to manage the input/output/temporary buffers needed to sort 
+ * a problem of a given size.  This enactor will lazily allocate any NULL
+ * buffers contained within a problem-storage structure.  
+ *
+ * Sorting is invoked upon a problem-storage as follows:
+ * 
+ * 		sorting_enactor.EnactSort(device_storage);
+ * 
+ * This enactor will update the selector within the problem storage
+ * to indicate which buffer contains the sorted output. E.g., 
+ * 
+ * 		device_storage.d_keys[device_storage.selector];
+ * 
+ * Please see the overview of MultiCtaRadixSortStorage for more details.
+ * 
+ * 
+ * @template-param K
+ * 		Type of keys to be sorted
+ * @template-param V
+ * 		Type of values to be sorted.
+ * @template-param ConvertedKeyType
+ * 		Leave as default to effect necessary enactor specialization for 
+ * 		signed and floating-point types
+ */
+template <typename K, typename V = KeysOnlyType, typename ConvertedKeyType = typename KeyConversion<K>::UnsignedBits>
+class EarlyExitRadixSortingEnactor;
+
+
 
 /**
  * Base class for early-exit, multi-CTA radix sorting enactors.
@@ -300,13 +357,13 @@ protected:
 		cudaFuncAttributes reduce_kernel_attrs, spine_scan_kernel_attrs, scan_scatter_attrs;
 		cudaFuncGetAttributes(
 			&reduce_kernel_attrs, 
-			RakingReduction<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor>);
+			LsbRakingReductionKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor>);
 		cudaFuncGetAttributes(
 			&spine_scan_kernel_attrs, 
-			SrtsScanSpine<void>);
+			LsbSpineScanKernel<void>);
 		cudaFuncGetAttributes(
 			&scan_scatter_attrs, 
-			ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor>);
+			LsbScanScatterKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor>);
 
 		//
 		// Counting Reduction
@@ -317,7 +374,7 @@ protected:
 			scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 
 			0;
 
-		RakingReduction<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, dynamic_smem>>>(
+		LsbRakingReductionKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, dynamic_smem>>>(
 			d_selectors,
 			this->d_spine,
 			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
@@ -335,7 +392,7 @@ protected:
 			scan_scatter_attrs.sharedSizeBytes - spine_scan_kernel_attrs.sharedSizeBytes : 
 			0;
 		
-		SrtsScanSpine<void><<<grid_size, B40C_RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
+		LsbSpineScanKernel<void><<<grid_size, B40C_RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
 			this->d_spine,
 			this->d_spine,
 			spine_elements);
@@ -346,7 +403,7 @@ protected:
 		// Scanning Scatter
 		//
 
-	    ScanScatterDigits<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
+	    LsbScanScatterKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_selectors,
 			this->d_spine,
 			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
@@ -358,7 +415,6 @@ protected:
 
 		return cudaSuccess;
 	}
-	
 	
 	
 public:
@@ -378,30 +434,8 @@ public:
 
 
 /******************************************************************************
- * Sorting enactor classes
+ * Sorting enactor specializations
  ******************************************************************************/
-
-/**
- * Generic sorting enactor class.  Simply create an instance of this class
- * with your key-type K (and optionally value-type V if sorting with satellite 
- * values).
- * 
- * Template specialization provides the appropriate enactor instance to handle 
- * the specified data types. 
- * 
- * @template-param K
- * 		Type of keys to be sorted
- *
- * @template-param V
- * 		Type of values to be sorted.
- *
- * @template-param ConvertedKeyType
- * 		Leave as default to effect necessary enactor specialization.
- */
-template <typename K, typename V = KeysOnlyType, typename ConvertedKeyType = typename KeyConversion<K>::UnsignedBits>
-class EarlyExitRadixSortingEnactor;
-
-
 
 /**
  * Sorting enactor that is specialized for for 8-bit key types
@@ -439,12 +473,12 @@ public:
 		int grid_size = GridSize(problem_storage.num_elements);
 		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
 
-		PreSort(problem_storage);
+		PreSort(problem_storage, 2);
 		
 		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
+		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >(grid_size, problem_storage, work_decomposition); 
 
-		PostSort(problem_storage);
+		PostSort(problem_storage, 2);
 
 		return cudaSuccess;
 	}
@@ -492,7 +526,7 @@ public:
 		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
 		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
 		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<3, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
+		Base::template DigitPlacePass<3, 4, 12, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >(grid_size, problem_storage, work_decomposition); 
 
 		PostSort(problem_storage, 4);
 

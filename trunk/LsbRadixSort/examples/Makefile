@@ -67,8 +67,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-#SMALL_PROBLEM_SM_TARGETS = $(GEN_SM13) $(GEN_SM20)
-SMALL_PROBLEM_SM_TARGETS = $(GEN_SM20)
+SMALL_PROBLEM_SM_TARGETS = $(GEN_SM13) $(GEN_SM20)
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -133,7 +132,6 @@ endif
 SORTING_DEPS = 	../radixsort_base.cu \
 				../radixsort_early_exit.cu \
 				../radixsort_multi_cta.cu \
-				../radixsort_single_cta.cu \
 				../radixsort_single_grid.cu \
 				../kernel/radixsort_kernel_common.cu \
 				../kernel/radixsort_key_conversion.cu \
@@ -148,15 +146,26 @@ SORTING_DEPS = 	../radixsort_base.cu \
 
 
 #-------------------------------------------------------------------------------
-# (make simple) Simple test driver 
+# (make large) Simple test driver for large-problem sorting
 #-------------------------------------------------------------------------------
 
-simple: bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+large: bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_simple.cu test_utils.cu $(SORTING_DEPS)
+bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_simple.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_large_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB32) -lcudart 
 	
+
+#-------------------------------------------------------------------------------
+# (make small) Illustrates the small-problem sorting enactor that explicitly 
+# only sorts 17-bits, and does so using a single kernel launch.  
+#-------------------------------------------------------------------------------
+
+small: bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SMALL_PROBLEM_SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 #-------------------------------------------------------------------------------
 # (make advanced) Advanced test driver (this can take quite some time to compile as it generates
@@ -170,23 +179,13 @@ bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_ad
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 
-#-------------------------------------------------------------------------------
-# (make smallproblem) Illustrates the small-problem sorting enactor that explicitly 
-# only sorts 17-bits, and does so using a single kernel launch.  
-#-------------------------------------------------------------------------------
-
-smallproblem: bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SMALL_PROBLEM_SM_TARGETS) -o bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 #
 # Clean
 #
 
 clean :
-	rm -f bin/test_radix_sort_simple_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_small_problem_radix_sort$(NVCC_VERSION)_$(ARCH_SUFFIX)
+	rm -f bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

@@ -38,10 +38,10 @@
 
 
 /******************************************************************************
- * Simple test driver program for SRTS Radix Sorting.
+ * Simple test driver program for *large-problem* radix sorting.
  *
- * Useful for demonstrating how to integrate SRTS Radix Sorting into your 
- * application
+ * Useful for demonstrating how to integrate LsbEarlyExit radix sorting into 
+ * your application 
  ******************************************************************************/
 
 #include <stdlib.h> 
@@ -87,7 +87,7 @@ struct Fribbitz {
  */
 void Usage() 
 {
-	printf("\nsrts_radix_sort [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
+	printf("\ntest_large_problem_sorting [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
 	printf("\n");
 	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");

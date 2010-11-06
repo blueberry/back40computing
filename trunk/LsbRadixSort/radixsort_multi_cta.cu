@@ -50,17 +50,23 @@ namespace b40c {
 
 
 /**
- * Storage management structure for device vectors.
+ * Storage management structure for multi-CTA-sorting device vectors.
  * 
  * Multi-CTA sorting is performed out-of-core, meaning that sorting passes
- * must have separate input and output data streams.  As such, this structure 
- * maintains a pair of device vectors for keys (and values), and a "selector"
- * member to index which vector contains valid data (i.e., the data 
- * to-be-sorted, or the valid-sorted data after a sorting operation). 
+ * must have two equally sized arrays: one for reading in from, the other for 
+ * writing out to.  As such, this structure maintains a pair of device vectors 
+ * for keys (and for values), and a "selector" member to index which vector 
+ * contains valid data (i.e., the data to-be-sorted, or the valid-sorted data 
+ * after a sorting operation). 
+ * 
+ * E.g., consider a MultiCtaRadixSortStorage "device_storage".  The valid data 
+ * should always be accessible by: 
+ * 
+ * 		device_storage.d_keys[device_storage.selector];
  * 
  * The non-selected array(s) can be allocated lazily upon first sorting by the 
- * sorting enactor, or a-priori by the caller.  (If user-allocated, they should 
- * be large enough to accomodate num_elements.)    
+ * sorting enactor if left NULL, or a-priori by the caller.  (If user-allocated, 
+ * they should be large enough to accomodate num_elements.)    
  * 
  * It is the caller's responsibility to free any non-NULL storage arrays when
  * no longer needed.  This allows for the storage to be re-used for subsequent 
@@ -68,7 +74,9 @@ namespace b40c {
  * 
  * NOTE: After a sorting operation has completed, the selecter member will
  * index the key (and value) pointers that contain the final sorted results.
- * (E.g., an odd number of sorting passes may leave the results in d_keys[1].)
+ * (E.g., an odd number of sorting passes may leave the results in d_keys[1] if 
+ * the input started in d_keys[0].)
+ * 
  */
 template <typename K, typename V = KeysOnlyType> 
 struct MultiCtaRadixSortStorage
@@ -128,9 +136,6 @@ protected:
 
 	// Fixed "tile size" of keys by which threadblocks iterate over 
 	int tile_elements;
-	
-// mooch
-public:
 	
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs

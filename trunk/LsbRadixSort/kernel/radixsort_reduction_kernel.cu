@@ -87,7 +87,7 @@ __device__ __forceinline__  void ReduceLanePartials(
 	int lane_offset) 
 {		
 	lane_offset += (LANE * REDUCTION_PARTIALS_PER_LANE * B40C_RADIXSORT_WARPS);
-	if (lane_offset < REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE) {
+	if ((B40C_RADIXSORT_WARPS < REDUCTION_LANES) || (lane_offset < REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE)) {
 		if (LANE_PARTIALS_PER_THREAD > 0) ReduceLanePartial<0>(local_counts[LANE], scan_lanes, lane_offset);
 		if (LANE_PARTIALS_PER_THREAD > 1) ReduceLanePartial<1>(local_counts[LANE], scan_lanes, lane_offset);
 		if (LANE_PARTIALS_PER_THREAD > 2) ReduceLanePartial<2>(local_counts[LANE], scan_lanes, lane_offset);
@@ -275,52 +275,60 @@ __device__ __forceinline__ void ResetEncodedCarry(
 }
 
 
-template <
-	typename K, 
-	CacheModifier CACHE_MODIFIER,
-	int BIT, 
-	int RADIX_BITS,
-	int RADIX_DIGITS, 
-	int REDUCTION_LANES, 
-	int LOG_REDUCTION_PARTIALS_PER_LANE,
-	int REDUCTION_PARTIALS_PER_LANE, 
-	int TILE_ELEMENTS,
-	typename PreprocessFunctor,
-	bool UNROLL>
-__device__ __forceinline__ void ReductionPass(
-	K*			d_in_keys,
-	int* 		d_spine,
-	int 		block_offset,
-	int* 		encoded_reduction_col,
-	int*		scan_lanes,
-	const int&	out_of_bounds)
+template <bool UNROLL, typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
+struct UnrolledLoads;
+
+// Minimal unrolling
+template <typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
+struct UnrolledLoads <false, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>
 {
-	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
-	const int PARTIALS_PER_ROW = B40C_WARP_THREADS;
-	const int PADDED_PARTIALS_PER_ROW = PARTIALS_PER_ROW + 1;
-
-	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
-	int warp_idx = threadIdx.x & (B40C_WARP_THREADS - 1);
+	__device__ __forceinline__ static void Unroll(
+		K*			d_in_keys,
+		int 		&block_offset,
+		int* 		encoded_reduction_col,
+		int*		scan_lanes,
+		const int&	out_of_bounds,
+		int local_counts[REDUCTION_LANES_PER_WARP][4],
+		int warp_id,
+		int warp_idx) 
+	{
+		// Unroll batches of loads with occasional reduction to avoid overflow
+		while (block_offset + (B40C_RADIXSORT_THREADS * 32) < out_of_bounds) {
+		
+			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
+			block_offset += B40C_RADIXSORT_THREADS * 32;
 	
-	block_offset += threadIdx.x;
+			__syncthreads();
 	
-	// Each thread is responsible for aggregating an unencoded segment of a fours-group
-	int local_counts[REDUCTION_LANES_PER_WARP][4];								
+			// Aggregate back into local_count registers to prevent overflow
+			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
+					local_counts, 
+					scan_lanes,
+					warp_id,
+					warp_idx);
 	
-	// Initialize local counts
-	#pragma unroll 
-	for (int LANE = 0; LANE < (int) REDUCTION_LANES_PER_WARP; LANE++) {
-		local_counts[LANE][0] = 0;
-		local_counts[LANE][1] = 0;
-		local_counts[LANE][2] = 0;
-		local_counts[LANE][3] = 0;
+			__syncthreads();
+			
+			// Reset encoded counters
+			ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
+		} 
 	}
-	
-	// Reset encoded counters
-	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
-/*	
-	if (UNROLL) {
+};
 
+// Unrolled
+template <typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
+struct UnrolledLoads <true, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>
+{
+	__device__ __forceinline__ static void Unroll(
+		K*			d_in_keys,
+		int 		&block_offset,
+		int* 		encoded_reduction_col,
+		int*		scan_lanes,
+		const int&	out_of_bounds,
+		int local_counts[REDUCTION_LANES_PER_WARP][4],
+		int warp_id,
+		int warp_idx) 
+	{
 		// Unroll batches of loads with occasional reduction to avoid overflow
 		while (block_offset + (B40C_RADIXSORT_THREADS * 128) < out_of_bounds) {
 		
@@ -329,7 +337,7 @@ __device__ __forceinline__ void ReductionPass(
 	
 			__syncthreads();
 	
-			// Reduce int local count registers to prevent overflow
+			// Aggregate back into local_count registers to prevent overflow
 			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
 					local_counts, 
 					scan_lanes,
@@ -367,15 +375,72 @@ __device__ __forceinline__ void ReductionPass(
 			block_offset += B40C_RADIXSORT_THREADS * 2;
 		}
 	}
-*/	
+};
+
+
+template <
+	typename K, 
+	CacheModifier CACHE_MODIFIER,
+	int BIT, 
+	int RADIX_BITS,
+	int RADIX_DIGITS, 
+	int REDUCTION_LANES, 
+	int LOG_REDUCTION_PARTIALS_PER_LANE,
+	int REDUCTION_PARTIALS_PER_LANE, 
+	typename PreprocessFunctor,
+	bool UNROLL>
+__device__ __forceinline__ void ReductionPass(
+	K*			d_in_keys,
+	int* 		d_spine,
+	int 		block_offset,
+	int* 		encoded_reduction_col,
+	int*		scan_lanes,
+	const int&	out_of_bounds)
+{
+	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
+	const int PARTIALS_PER_ROW = B40C_WARP_THREADS;
+	const int PADDED_PARTIALS_PER_ROW = PARTIALS_PER_ROW + 1;
+
+	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
+	int warp_idx = threadIdx.x & (B40C_WARP_THREADS - 1);
+	
+	block_offset += threadIdx.x;
+	
+	// Each thread is responsible for aggregating an unencoded segment of a fours-group
+	int local_counts[REDUCTION_LANES_PER_WARP][4];								
+	
+	// Initialize local counts
+	#pragma unroll 
+	for (int LANE = 0; LANE < (int) REDUCTION_LANES_PER_WARP; LANE++) {
+		local_counts[LANE][0] = 0;
+		local_counts[LANE][1] = 0;
+		local_counts[LANE][2] = 0;
+		local_counts[LANE][3] = 0;
+	}
+	
+	// Reset encoded counters
+	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
+
+	// Process loads in bulk (if applicable)
+	UnrolledLoads<UNROLL, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>::Unroll(
+		d_in_keys,
+		block_offset,
+		encoded_reduction_col,
+		scan_lanes,
+		out_of_bounds,
+		local_counts, 
+		warp_id,
+		warp_idx); 
+	
+	// Process (potentially-partial) loads singly
 	while (block_offset < out_of_bounds) {
 		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS * 1;
+		block_offset += B40C_RADIXSORT_THREADS;
 	}
 	
 	__syncthreads();
 
-	// Aggregate 
+	// Aggregate back into local_count registers 
 	ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
 		local_counts, 
 		scan_lanes,
@@ -384,8 +449,11 @@ __device__ __forceinline__ void ReductionPass(
 	
 	__syncthreads();
 		
-	// reduce all four packed fields, leaving them in the first four elements of our row
+	//
+	// Reduce the local_counts within each reduction lane within each warp  
+	//
 	
+	// Place into smem
 	int lane_base = FastMul(warp_id, PADDED_PARTIALS_PER_ROW * B40C_RADIXSORT_WARPS);	// my warp's (first) reduction lane
 	
 	#pragma unroll
@@ -401,7 +469,7 @@ __device__ __forceinline__ void ReductionPass(
 
 	__syncthreads();
 
-	// Write carry in parallel (carries per row are in the first four bytes of each row) 
+	// Rake-reduce and write out the digit_count reductions 
 	if (threadIdx.x < RADIX_DIGITS) {
 
 		int lane_base = FastMul(threadIdx.x, PADDED_PARTIALS_PER_ROW);
@@ -418,7 +486,7 @@ __device__ __forceinline__ void ReductionPass(
 template <typename K, typename V, int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor>
 __launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_REDUCE_CTA_OCCUPANCY(__CUDA_ARCH__))
 __global__ 
-void RakingReduction(
+void LsbRakingReductionKernel(
 	int *d_selectors,
 	int *d_spine,
 	K *d_in_keys,
@@ -464,7 +532,7 @@ void RakingReduction(
 	}
 	
 	// Perform reduction pass
-	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, true>(
+	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor, true>(
 		d_in_keys,
 		d_spine,
 		block_offset,
