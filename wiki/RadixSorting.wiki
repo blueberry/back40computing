@@ -15,7 +15,7 @@ http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 
 =News=
 
-  * We are now also distributing an alternative sorting enactor designed specifically for small problem sizes (problems < 1.2M elements) that are not large enough to saturate the GPU (e.g., problems < 1M elements.). It performs multiple digit-place passes over the input problem all within a single kernel launch. It performs up to 3x faster than our original, high-bandwidth sorting implementation for such problems. 
+  * We are now also distributing an alternative sorting enactor designed specifically for small problem sizes that are not large enough to saturate the GPU (e.g., problems < 1.2M elements.). It performs multiple digit-place passes over the input problem all within a single kernel launch. It performs up to 3x faster than our original, high-bandwidth sorting implementation for such problems. 
 
   * Our sorting algorithms have been incorporated into the [http://code.google.com/p/thrust/ Thrust Library of Parallel Primitives], v.1.3.0.
 
