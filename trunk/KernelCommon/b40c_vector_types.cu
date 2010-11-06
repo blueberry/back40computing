@@ -223,6 +223,14 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct GlobalLoad;
 		}
 	};
 	
+	// Accomodate bizarre introduction of "signed" for char loads
+	template <CacheModifier CACHE_MODIFIER> struct GlobalLoad<char, CACHE_MODIFIER>
+	{
+		__device__ __forceinline__ static void Ld(signed char &dest, char* d_ptr, int offset) {
+			dest = d_ptr[offset]; 
+		}
+	};
+
 #endif
 
 
