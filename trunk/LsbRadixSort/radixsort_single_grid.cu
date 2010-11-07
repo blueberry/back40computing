@@ -64,10 +64,9 @@ namespace b40c {
  * that are not large enough to saturate the GPU (e.g., problems < 1M elements.)
  * It performs multiple digit-place passes over the input problem all within
  * a single kernel launch.  It does so by implementing software global-barriers
- * across threadblocks.  Therefore this enactor CAN NOT be used
- * to sort:
- * 		- Problems on SM1.0 devices. Those architectures do not support 
- * 			threadfence operations.
+ * across threadblocks.  
+ * 
+ * NOTE: This enactor can NOT be used to sort:
  * 		- Problems having structured value-types (i.e., keys that are paired with 
  * 			satellite values that are structs or classes).  This is because
  * 			the compiler cannot be told how to copy structures from global 

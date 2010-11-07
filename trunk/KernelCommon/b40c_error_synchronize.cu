@@ -27,15 +27,15 @@ void synchronize(const char *message)
 {
 	cudaError_t error = cudaThreadSynchronize();
 	if(error) {
-		fprintf(stderr, "%s\n", message);
-		exit(1);
+		fprintf(stderr, "%s caused %d (%s)\n", message, error, cudaGetErrorString(error));
+//		exit(1);
 	}
 } 
 
 void synchronize_if_enabled(const char *message)
 {
 	// XXX this could potentially be a runtime decision
-#if __ERROR_SYNCHRONOUS
+#if defined(__ERROR_SYNCHRONOUS)
 	synchronize(message);
 #endif
 } 

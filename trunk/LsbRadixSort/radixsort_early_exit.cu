@@ -154,9 +154,9 @@ public:
 	{
 		long long element_size = (Base::KeysOnly()) ? sizeof(K) : sizeof(K) + sizeof(V);
 
-		// Begin with device memory, subtract 128MB for video/spine/etc.  Factor in 
+		// Begin with device memory, subtract 192MB for video/spine/etc.  Factor in 
 		// two vectors for keys (and values, if present)
-		long long available_bytes = props.device_props.totalGlobalMem - 128;
+		long long available_bytes = props.device_props.totalGlobalMem - (192 * 1024 * 1024);
 		return available_bytes / (element_size * 2);
 	}
 

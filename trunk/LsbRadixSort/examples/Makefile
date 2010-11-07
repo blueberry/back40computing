@@ -67,7 +67,6 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SMALL_PROBLEM_SM_TARGETS = $(GEN_SM13) $(GEN_SM20)
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -165,7 +164,7 @@ small: bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SMALL_PROBLEM_SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
 
 #-------------------------------------------------------------------------------
 # (make advanced) Advanced test driver (this can take quite some time to compile as it generates
