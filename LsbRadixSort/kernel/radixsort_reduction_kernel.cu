@@ -427,7 +427,7 @@ __device__ __forceinline__ void ReductionPass(
 		block_offset,
 		encoded_reduction_col,
 		scan_lanes,
-		out_of_bounds,
+		out_of_bounds + threadIdx.x,
 		local_counts, 
 		warp_id,
 		warp_idx); 

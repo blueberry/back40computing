@@ -56,7 +56,10 @@
 #include <math.h> 
 #include <float.h>
 
-#include <radixsort_early_exit.cu>	// Sorting includes
+// Sorting includes
+#include <radixsort_early_exit.cu>	
+#include <radixsort_single_grid.cu>
+
 #include "test_utils.cu"			// Utilities and correctness-checking
 #include <cutil.h>					// Utilities for commandline parsing
 
@@ -72,6 +75,7 @@ bool g_verbose2;
 bool g_verify;
 int  g_entropy_reduction = 0;
 bool g_regen;
+bool g_small_sorting_enactor;
 
 
 /******************************************************************************
@@ -132,6 +136,8 @@ void Usage()
 	printf("\n");
 	printf("\t--noverify\tSpecifies that results should not be copied back and checked for correctness\n");
 	printf("\n");
+	printf("\t--small\tSpecifies that the small-sorting enactor should be used\n");
+	printf("\n");
 }
 
 
@@ -184,14 +190,14 @@ void ReadList(
  * Uses the GPU to sort the specified vector of elements for the given 
  * number of iterations, displaying runtime information.
  */
-template <typename K, typename V, bool KEYS_ONLY>
+template <typename K, typename V, bool KEYS_ONLY, typename Enactor>
 void TimedSort(
 	int num_elements, 
 	int max_grid_size,
 	K *h_keys,
 	K *h_keys_result,
-	EarlyExitRadixSortStorage<K, V>	&device_storage,
-	EarlyExitRadixSortingEnactor<K, V> &sorting_enactor,
+	MultiCtaRadixSortStorage<K, V> &device_storage,
+	Enactor &sorting_enactor,
 	int iterations) 
 {
 	CUT_CHECK_ERROR("Kernel execution failed (errors before launch)");
@@ -200,6 +206,16 @@ void TimedSort(
 	cudaEvent_t start_event, stop_event;
 	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
 	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
+
+	printf("%s, %d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction: ", 
+		(g_small_sorting_enactor) ? "Small-problem enactor" : "Large-problem enactor",
+		sizeof(K), 
+		(KEYS_ONLY) ? 0 : sizeof(V),
+		iterations, 
+		num_elements,
+		max_grid_size,
+		g_entropy_reduction);
+	fflush(stdout);
 
 	// Perform the timed number of sorting iterations
 	double elapsed = 0;
@@ -222,23 +238,12 @@ void TimedSort(
 		CUDA_SAFE_CALL( cudaEventSynchronize(stop_event) );
 		CUDA_SAFE_CALL( cudaEventElapsedTime(&duration, start_event, stop_event));
 		elapsed += (double) duration;
-		
-		if (i == 0) {
-			printf("%d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction", 
-				sizeof(K), 
-				(KEYS_ONLY) ? 0 : sizeof(V),
-				iterations, 
-				num_elements,
-				max_grid_size,
-				g_entropy_reduction);
-			fflush(stdout);
-		}
 	}
 
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
-    printf(", %f GPU ms, %f x10^9 elts/sec\n", 
+    printf("%f GPU ms, %f x10^9 elts/sec\n", 
 		avg_runtime,
 		throughput);
 
@@ -272,7 +277,6 @@ void TimedSort(
 			fflush(stdout);
 		}
     }
-	
 }
 
 
@@ -281,7 +285,7 @@ void TimedSort(
  * number of K elements, values of V elements, and then dispatches the problem 
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename K, typename V, bool KEYS_ONLY>
+template<typename K, typename V, bool KEYS_ONLY, typename Enactor>
 void TestSort(
 	int iterations,
 	int* num_elements_list,
@@ -293,11 +297,13 @@ void TestSort(
 	K *h_keys, *h_keys_result;
 	
 	// Find maximum problem size in the list of problem sizes
-	int max_num_elements = 0;
 	CudaProperties cuda_properties;
+	int max_device_problem_size = BaseEarlyExitEnactor<K, V>::MaxProblemSize(cuda_properties);
+
+	int max_num_elements = 0;
 	for (int i = 0; i < num_elements_list_size; i++) {
 		if ((num_elements_list[i] > max_num_elements) && 
-			(num_elements_list[i] < BaseEarlyExitEnactor<K, V>::MaxProblemSize(cuda_properties)))  		
+			(num_elements_list[i] < max_device_problem_size))  		
 		{
 			max_num_elements = num_elements_list[i];
 		}
@@ -313,24 +319,27 @@ void TestSort(
 	}
 	
 	// Allocate enough device memory for the biggest problem
-	EarlyExitRadixSortStorage<K, V> device_storage(max_num_elements);
+	MultiCtaRadixSortStorage<K, V> device_storage(max_num_elements);
+	printf("Allocating for %d keys\n", max_num_elements); fflush(stdout);
 	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[0], max_num_elements * sizeof(K)) );
 	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[1], max_num_elements * sizeof(K)));
 	if (!KEYS_ONLY) {
+		printf("Allocating for %d values\n", max_num_elements); fflush(stdout);
 		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[0], max_num_elements * sizeof(V)));
 		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[1], max_num_elements * sizeof(V)));
 	}
 
-	// Run combinations of specified problem-sizes & max-grid-sizes
+	// Run combinations of specified max-grid-sizes
 	for (int j = 0; j < num_max_grid_sizes; j++) {
 	
 		// Allocate sorting enactor for this grid size
-		EarlyExitRadixSortingEnactor<K, V> sorting_enactor(max_grid_sizes[j]);
+		Enactor sorting_enactor(max_grid_sizes[j]);
 		
+		// Run combinations of specified problem-sizes 
 		for (int i = 0; i < num_elements_list_size; i++) {
 	
 			// Skip if won't fit
-			if (num_elements_list[i] > BaseEarlyExitEnactor<K, V>::MaxProblemSize(cuda_properties)) {
+			if (num_elements_list[i] > max_device_problem_size) {
 				printf("Problem size %d too large\n", num_elements_list[i]);
 				continue;
 			}
@@ -350,7 +359,7 @@ void TestSort(
 			DummyKernel<<<1,1,0>>>();
 
 			// Run the timing test 
-			TimedSort<K, V, KEYS_ONLY>(
+			TimedSort<K, V, KEYS_ONLY, Enactor>(
 				num_elements_list[i], 
 				max_grid_sizes[j], 
 				h_keys, 
@@ -373,6 +382,22 @@ void TestSort(
 	}
 }
 
+template<typename K, typename V, bool KEYS_ONLY>
+void TestSort(
+	int iterations,
+	int* num_elements_list,
+	int num_elements_list_size,
+	int* max_grid_sizes,
+	int num_max_grid_sizes)
+{
+	if (g_small_sorting_enactor) { 
+		TestSort<K, V, KEYS_ONLY, SingleGridRadixSortingEnactor<K, V> >(
+			iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+	} else {
+		TestSort<K, V, KEYS_ONLY, EarlyExitRadixSortingEnactor<K, V> >(
+			iterations, num_elements_list, num_elements_list_size, max_grid_sizes, num_max_grid_sizes);
+	}
+}
 
 template<typename K>
 void TestSort(
@@ -451,6 +476,7 @@ int main( int argc, char** argv) {
 	}
 	g_verify = !cutCheckCmdLineFlag( argc, (const char**) argv, "noverify");
 	g_regen = cutCheckCmdLineFlag( argc, (const char**) argv, "regen");
+	g_small_sorting_enactor = cutCheckCmdLineFlag( argc, (const char**) argv, "small");
 	
 	// Attempt to read list of problem sizes to run
 	ReadList(
