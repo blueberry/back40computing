@@ -45,17 +45,13 @@
 
 #pragma once
 
-#include <stdlib.h> 
 #include <stdio.h> 
-#include <string.h> 
-#include <math.h> 
-#include <float.h>
 
 #include "b40c_error_synchronize.cu"
-#include "kernel/radixsort_reduction_kernel.cu"
-#include "kernel/radixsort_spine_kernel.cu"
-#include "kernel/radixsort_scanscatter_kernel.cu"
 
+#include "radixsort_reduction_kernel.cu"
+#include "radixsort_spine_kernel.cu"
+#include "radixsort_scanscatter_kernel.cu"
 #include "radixsort_multi_cta.cu"
 
 namespace b40c {

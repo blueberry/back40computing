@@ -1,4 +1,4 @@
-/**
+/******************************************************************************
  * Copyright 2010 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,30 +17,8 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
- */
+ ******************************************************************************/
 
 #pragma once
 
-#include <stdio.h> 
-
-namespace b40c {
-
-void synchronize(const char *message)
-{
-	cudaError_t error = cudaThreadSynchronize();
-	if(error) {
-		fprintf(stderr, "%s caused %d (%s)\n", message, error, cudaGetErrorString(error));
-	}
-} 
-
-void synchronize_if_enabled(const char *message)
-{
-#if defined(__ERROR_SYNCHRONOUS)
-	synchronize(message);
-#endif
-} 
-
-
-
-} // namespace b40c
 

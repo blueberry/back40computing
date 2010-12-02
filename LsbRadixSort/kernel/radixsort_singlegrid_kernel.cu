@@ -58,9 +58,9 @@ namespace b40c {
 	
 
 // Target threadblock occupancy for bulk scan/scatter kernel
-#define B40C_SM20_SG_OCCUPANCY()								(6)			// 8 threadblocks on GF100
-#define B40C_SM12_SG_OCCUPANCY()								(1)			// 8 threadblocks on GT200
-#define B40C_SM10_SG_OCCUPANCY()								(1)			// 8 threadblocks on G80
+#define B40C_SM20_SG_OCCUPANCY()								(6)			// 6 threadblocks on GF100
+#define B40C_SM12_SG_OCCUPANCY()								(1)			// 1 threadblocks on GT200
+#define B40C_SM10_SG_OCCUPANCY()								(1)			// 1 threadblocks on G80
 #define B40C_RADIXSORT_SG_OCCUPANCY(version)					((version >= 200) ? B40C_SM20_SG_OCCUPANCY() : 	\
 																 (version >= 120) ? B40C_SM12_SG_OCCUPANCY() : 	\
 																					B40C_SM10_SG_OCCUPANCY())		
@@ -82,8 +82,8 @@ namespace b40c {
 																					B40C_SM10_SG_LOG_CYCLES_PER_TILE(K, V))		
 
 // Number of raking threads per raking cycle
-#define B40C_SM20_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 2 raking warps on GF100
-#define B40C_SM12_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 1 raking warp on GT200
+#define B40C_SM20_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 4 raking warps on GF100
+#define B40C_SM12_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 4 raking warps on GT200
 #define B40C_SM10_SG_LOG_RAKING_THREADS()						(B40C_LOG_WARP_THREADS + 2)		// 4 raking warps on G80
 #define B40C_RADIXSORT_SG_LOG_RAKING_THREADS(version)			((version >= 200) ? B40C_SM20_SG_LOG_RAKING_THREADS() : 	\
 																 (version >= 120) ? B40C_SM12_SG_LOG_RAKING_THREADS() : 	\

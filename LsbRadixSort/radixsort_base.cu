@@ -45,7 +45,8 @@
 #pragma once
 
 #include "b40c_kernel_utils.cu"
-#include "kernel/radixsort_kernel_common.cu"
+
+#include "radixsort_kernel_common.cu"
 
 
 namespace b40c {
