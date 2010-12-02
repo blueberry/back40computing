@@ -72,14 +72,14 @@ SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
 # Libs
 #-------------------------------------------------------------------------------
 
-CUDA_LIB32 = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib -L$(shell dirname $(NVCC))/../lib64
+CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib -L$(shell dirname $(NVCC))/../lib64
 
 #-------------------------------------------------------------------------------
 # Includes
 #-------------------------------------------------------------------------------
 
 CUDA_INC = $(shell dirname $(NVCC))/../include
-INC = -I. -I$(CUDA_INC) -I.. -I../../KernelCommon -I./inc
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../KernelCommon -I../../ExamplesInclude 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -152,7 +152,7 @@ large: bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_large_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_large_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB) -lcudart 
 	
 
 #-------------------------------------------------------------------------------
@@ -164,7 +164,7 @@ small: bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB) -lcudart 
 
 #-------------------------------------------------------------------------------
 # (make advanced) Advanced test driver (this can take quite some time to compile as it generates
@@ -175,7 +175,7 @@ advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu test_utils.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB32) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 $(CUDA_LIB) -lcudart 
 
 
 

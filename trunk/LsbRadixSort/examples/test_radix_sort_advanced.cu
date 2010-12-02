@@ -60,8 +60,9 @@
 #include <radixsort_early_exit.cu>	
 #include <radixsort_single_grid.cu>
 
-#include "test_utils.cu"			// Utilities and correctness-checking
-#include <cutil.h>					// Utilities for commandline parsing
+#include <test_utils.cu>				// Utilities and correctness-checking
+#include <cutil.h>						// Utilities for commandline parsing
+#include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 
 using namespace b40c;
 

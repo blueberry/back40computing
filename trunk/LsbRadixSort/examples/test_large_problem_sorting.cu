@@ -44,6 +44,9 @@
  * your application 
  ******************************************************************************/
 
+#include <radixsort_single_grid.cu>
+#include <radixsort_early_exit.cu>		// Sorting includes
+
 #include <stdlib.h> 
 #include <stdio.h> 
 #include <string.h> 
@@ -51,10 +54,9 @@
 #include <float.h>
 #include <algorithm>
 
-#include <radixsort_single_grid.cu>
-#include <radixsort_early_exit.cu>		// Sorting includes
 #include <test_utils.cu>				// Utilities and correctness-checking
 #include <cutil.h>						// Utilities for commandline parsing
+#include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 
 using namespace b40c;
 
@@ -342,7 +344,7 @@ void TestSort(
 	
     // Verify solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);	
-	VerifySort<K>(h_keys, h_reference_keys, num_elements, true);
+	CompareResults<K>(h_keys, h_reference_keys, num_elements, true);
 	printf("\n");
 	fflush(stdout);
 
