@@ -50,7 +50,7 @@
 #include "b40c_error_synchronize.cu"
 
 #include "radixsort_multi_cta.cu"
-#include "radixsort_singlegrid_kernel.cu"
+#include "radixsort_single_grid_kernel.cu"
 
 namespace b40c {
 
@@ -154,7 +154,6 @@ protected:
 	
 	// Array of global synchronization counters, one for each threadblock
 	int *d_sync;
-
 	
 public: 
 	
@@ -248,9 +247,10 @@ public:
 				props), 
 			d_sync(NULL)
 	{
-		// Allocate and initialize synchronization counters
+		// Allocate and initialize synchronization counters to zero
 		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
-		InitSync<void><<<this->max_grid_size, 32, 0>>>(d_sync);
+		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(
+			d_sync, 0, this->max_grid_size);
 	}
 
 	

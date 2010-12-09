@@ -105,7 +105,7 @@ void Usage()
 	printf("[--i=<num-iterations>] [--entropy-reduction=<level>] [--regen]\n");
 	printf("[--key-bytes=<1|2|4|8>] [--value-bytes=<0|4|8|16>]\n");
 	printf("[--n=<num-elements> | --n-input=<num-elements listfile>]\n");
-	printf("[--max-blocks=<max-thread-blocks> | --max-blocks-input=<max-thread-blocks listfile>]\n");
+	printf("[--max-ctas=<max-thread-blocks> | --max-ctas-input=<max-thread-blocks listfile>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays kernel launch config info.\n");
 	printf("\n");
@@ -119,10 +119,10 @@ void Usage()
 	printf("\n");
 	printf("\t--n-input\tA file of problem sizes, one per line.\n");
 	printf("\n");
-	printf("\t--max-blocks\tThe maximum number of threadblocks to launch.\n");
+	printf("\t--max-ctas\tThe maximum number of threadblocks to launch.\n");
 	printf("\t\t\tDefault = -1 (i.e., the API will select an appropriate value)\n");
 	printf("\n");
-	printf("\t--max-blocks-input\tA file of maximum threadblocks, one per line.\n");
+	printf("\t--max-ctas-input\tA file of maximum threadblocks, one per line.\n");
 	printf("\n");
 	printf("\t--key-bytes\tThe number of key bytes to use.  Default=4\n");
 	printf("\n");
@@ -467,8 +467,8 @@ int main( int argc, char** argv) {
     cutGetCmdLineArgumenti( argc, (const char**) argv, "key-bytes", (int*)&key_bytes);
     cutGetCmdLineArgumenti( argc, (const char**) argv, "value-bytes", (int*)&value_bytes);
 	cutGetCmdLineArgumentstr( argc, (const char**) argv, "n-input", &num_elements_list_filename);
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-blocks", (int*)&max_grid_size);
-	cutGetCmdLineArgumentstr( argc, (const char**) argv, "max-blocks-input", &max_grid_sizes_filename);
+	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-ctas", (int*)&max_grid_size);
+	cutGetCmdLineArgumentstr( argc, (const char**) argv, "max-ctas-input", &max_grid_sizes_filename);
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "entropy-reduction", (int*)&g_entropy_reduction);
 	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
 		g_verbose = true;

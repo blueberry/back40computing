@@ -165,14 +165,14 @@ __device__ __forceinline__ void GuardedLoad(
 {
 	
 	if (offset - extra_elements < 0) {
-		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.x, in, offset);
+		ModifiedLoad<T, CACHE_MODIFIER>::Ld(pair.x, in, offset);
 		preprocess(pair.x);
 	} else {
 		DefaultExtraValue(pair.x);
 	}
 	
 	if (offset + 1 - extra_elements < 0) {
-		GlobalLoad<T, CACHE_MODIFIER>::Ld(pair.y, in, offset + 1);
+		ModifiedLoad<T, CACHE_MODIFIER>::Ld(pair.y, in, offset + 1);
 		preprocess(pair.y);
 	} else {
 		DefaultExtraValue(pair.y);
@@ -193,9 +193,9 @@ struct ReadCycle
 		if (UNGUARDED_IO) {
 
 			// N.B. -- I wish we could do some pragma unrolling here too, but we can't with asm statements inside
-			if (LOADS_PER_CYCLE > 0) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+			if (LOADS_PER_CYCLE > 0) ModifiedLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
 					pairs[0], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 0));
-			if (LOADS_PER_CYCLE > 1) GlobalLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
+			if (LOADS_PER_CYCLE > 1) ModifiedLoad<typename VecType<T, 2>::Type, CACHE_MODIFIER>::Ld(
 					pairs[1], d_in, threadIdx.x + BASE2 + (B40C_RADIXSORT_THREADS * 1));
 
 			#pragma unroll 
@@ -293,7 +293,7 @@ __device__ __forceinline__ void PrefixScanOverLanes(
 	int 	copy_section)
 {
 	// Upsweep rake
-	int partial_reduction = SerialReduce<PARTIALS_PER_SEG>(raking_segment);
+	int partial_reduction = SerialReduce<int, PARTIALS_PER_SEG>(raking_segment);
 
 	// Warpscan reduction in digit warpscan_lane
 	int warpscan_lane = threadIdx.x >> LOG_RAKING_THREADS_PER_LANE;
@@ -303,7 +303,7 @@ __device__ __forceinline__ void PrefixScanOverLanes(
 		copy_section);
 
 	// Downsweep rake
-	SerialScan<PARTIALS_PER_SEG>(raking_segment, group_prefix);
+	SerialScan<int, PARTIALS_PER_SEG>(raking_segment, group_prefix);
 }
 
 
@@ -984,7 +984,7 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 		// Read digit_carry in parallel 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
 		int my_digit_carry;
-		GlobalLoad<int, CACHE_MODIFIER>::Ld(my_digit_carry, d_spine, spine_digit_offset);
+		ModifiedLoad<int, CACHE_MODIFIER>::Ld(my_digit_carry, d_spine, spine_digit_offset);
 		digit_carry[threadIdx.x] = my_digit_carry;
 	}
 

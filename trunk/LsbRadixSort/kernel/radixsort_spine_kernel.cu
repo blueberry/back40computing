@@ -67,7 +67,7 @@ __device__ __forceinline__ void SrtsScanTile(
 	int4 datum; 
 
 	// read input data
-	GlobalLoad<int4, CACHE_MODIFIER>::Ld(datum, in, threadIdx.x);
+	ModifiedLoad<int4, CACHE_MODIFIER>::Ld(datum, in, threadIdx.x);
 
 	smem_offset[0] = datum.x + datum.y + datum.z + datum.w;
 
@@ -75,12 +75,12 @@ __device__ __forceinline__ void SrtsScanTile(
 
 	if (threadIdx.x < B40C_WARP_THREADS) {
 
-		int partial_reduction = SerialReduce<PARTIALS_PER_SEG>(smem_segment);
+		int partial_reduction = SerialReduce<int, PARTIALS_PER_SEG>(smem_segment);
 
 		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
 		seed += carry;		
 		
-		SerialScan<PARTIALS_PER_SEG>(smem_segment, seed);
+		SerialScan<int, PARTIALS_PER_SEG>(smem_segment, seed);
 
 		carry += warpscan[1][B40C_WARP_THREADS - 1];	
 	}
