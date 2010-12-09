@@ -100,6 +100,8 @@ public:
     //! Get the original / raw argv program argument
     static inline char**& getRArgv();
 
+    static inline int getParsedArgc();
+
 public:
 
     //! Destructor
@@ -486,6 +488,17 @@ CmdArgReader::getRArgc()
     }
 
     return rargc;
+}
+
+/*static*/ inline int
+CmdArgReader::getParsedArgc()
+{
+    if( ! self)
+    {
+        RUNTIME_EXCEPTION("CmdArgReader::getRArgc(): CmdArgReader not initialized.");
+    }
+
+    return self->unprocessed.size();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

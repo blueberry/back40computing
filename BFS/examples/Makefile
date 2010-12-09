@@ -48,7 +48,7 @@ CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib
 #-------------------------------------------------------------------------------
 
 CUDA_INC = $(shell dirname $(NVCC))/../include
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../KernelCommon -I../../ExamplesInclude
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -91,13 +91,15 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-BFS_DEPS = 		../../KernelCommon/b40c_error_synchronize.cu \
-				../../KernelCommon/b40c_kernel_utils.cu \
-				../../KernelCommon/b40c_vector_types.cu \
-				../bfs_ce_sg.cu \
-				../bfs_ec_sg.cu \
-				../kernel/bfs_ce_sg_kernel.cu \
-				../kernel/bfs_ec_sg_kernel.cu 
+BFS_DEPS = 		../../Common/b40c_cuda_properties.cu \
+				../../Common/b40c_error_synchronize.cu \
+				../../Common/b40c_kernel_data_movement.cu \
+				../../Common/b40c_kernel_utils.cu \
+				../../Common/b40c_vector_types.cu \
+				../kernel/bfs_kernel_common.cu \
+				../kernel/bfs_single_grid_kernel.cu \
+				../bfs_base.cu \
+				../bfs_single_grid.cu
 				 
 
 
@@ -107,9 +109,9 @@ BFS_DEPS = 		../../KernelCommon/b40c_error_synchronize.cu \
 
 bfs: bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu test_utils.cu $(SORTING_DEPS)
+bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu test_utils.cu $(BFS_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_bfs.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  $(CUDA_LIB) -lcudart 
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_bfs.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 	
 
 

@@ -113,7 +113,7 @@ void PrintValue<unsigned long long>(unsigned long long val) {
  * 
  */
 template <typename K>
-void RandomBits(K &key, int entropy_reduction, int lower_key_bits = sizeof(K) * 8) 
+void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K) * 8)
 {
 	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
 	unsigned short key_bits[NUM_USHORTS];
@@ -156,7 +156,7 @@ int CompareResults(T* computed, T* reference, const unsigned int len, bool verbo
 			PrintValue<T>(reference[i]);
 
 			if (verbose) {
-				printf("\n\nsorted[...");
+				printf("\nresult[...");
 				for (int j = -4; j <= 4; j++) {
 					if ((i + j >= 0) && (i + j < len)) {
 						PrintValue<T>(computed[i + j]);

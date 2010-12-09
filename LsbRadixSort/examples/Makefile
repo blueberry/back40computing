@@ -79,7 +79,7 @@ CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib
 #-------------------------------------------------------------------------------
 
 CUDA_INC = $(shell dirname $(NVCC))/../include
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../KernelCommon -I../../ExamplesInclude 
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -137,10 +137,12 @@ SORTING_DEPS = 	../radixsort_base.cu \
 				../kernel/radixsort_reduction_kernel.cu \
 				../kernel/radixsort_scanscatter_kernel.cu \
 				../kernel/radixsort_spine_kernel.cu \
-				../kernel/radixsort_singlegrid_kernel.cu \
-				../../KernelCommon/b40c_error_synchronize.cu \
-				../../KernelCommon/b40c_kernel_utils.cu \
-				../../KernelCommon/b40c_vector_types.cu 
+				../kernel/radixsort_single_grid_kernel.cu \
+				../../Common/b40c_cuda_properties.cu \
+				../../Common/b40c_error_synchronize.cu \
+				../../Common/b40c_kernel_data_movement.cu \
+				../../Common/b40c_kernel_utils.cu \
+				../../Common/b40c_vector_types.cu 
 				 
 
 

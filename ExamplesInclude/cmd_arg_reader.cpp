@@ -136,7 +136,7 @@ CmdArgReader::createArgsMaps( const int argc, const char** argv) {
         // check if valid command line argument: all arguments begin with - or --
         if (arg[0] != '-') 
         {
-            RUNTIME_EXCEPTION("Invalid command line argument.");
+            continue;
         }
 
         int numDashes = (arg[1] == '-' ? 2 : 1);
