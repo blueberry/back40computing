@@ -45,6 +45,7 @@ namespace b40c {
 																 (sm_version >= 120) ? B40C_BFS_SG_SM12_SG_OCCUPANCY() : 	\
 																					   B40C_BFS_SG_SM10_SG_OCCUPANCY())		
 
+
 // Vector size of load. Params: SM sm_version, algorithm				
 // (N.B.: currently supported up to vec-4)  
 #define B40C_BFS_SG_SM20_SG_LOG_LOAD_VEC_SIZE(strategy)			(0)			// vec-1 loads on GF100 
@@ -54,14 +55,6 @@ namespace b40c {
 																 (sm_version >= 120) ? B40C_BFS_SG_SM12_SG_LOG_LOAD_VEC_SIZE(strategy) : 	\
 																					   B40C_BFS_SG_SM10_SG_LOG_LOAD_VEC_SIZE(strategy))		
 
-// Number of vector loads per tile.  Params: SM sm_version, algorithm	
-// (N.B.: currently supported up to 1)
-#define B40C_BFS_SG_SM20_SG_LOG_LOADS_PER_TILE(strategy)		(0)			// 1 loads on GF100 
-#define B40C_BFS_SG_SM12_SG_LOG_LOADS_PER_TILE(strategy)		(0)			// 1 loads on GT200
-#define B40C_BFS_SG_SM10_SG_LOG_LOADS_PER_TILE(strategy)		(0)			// 1 loads on G80
-#define B40C_BFS_SG_LOG_LOADS_PER_TILE(sm_version, strategy)	((sm_version >= 200) ? B40C_BFS_SG_SM20_SG_LOG_LOADS_PER_TILE(strategy) : 	\
-																 (sm_version >= 120) ? B40C_BFS_SG_SM12_SG_LOG_LOADS_PER_TILE(strategy) : 	\
-																					   B40C_BFS_SG_SM10_SG_LOG_LOADS_PER_TILE(strategy))		
 
 // Number of raking threads.  Params: SM sm_version, strategy			
 // (N.B: currently supported up to 1)
@@ -73,17 +66,15 @@ namespace b40c {
 																					   B40C_BFS_SG_SM10_SG_LOG_RAKING_THREADS())		
 
 // Size of sractch space (in IndexType elements).  Params: SM sm_version, strategy
-#define B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy)			(B40C_BFS_SG_THREADS * 10)			// 256 nodes on GF100 
-#define B40C_BFS_SG_SM12_SCRATCH_SPACE(strategy)			(B40C_BFS_SG_THREADS * 10)			// 256 nodes on GT200
-#define B40C_BFS_SG_SM10_SCRATCH_SPACE(strategy)			(B40C_BFS_SG_THREADS * 10)			// 256 nodes on G80
+#define B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy)			((strategy == CONTRACT_EXPAND) ? B40C_BFS_SG_THREADS * 11 : B40C_BFS_SG_THREADS * 3)			// 256 nodes on GF100 
+#define B40C_BFS_SG_SM12_SCRATCH_SPACE(strategy)			((strategy == CONTRACT_EXPAND) ? B40C_BFS_SG_THREADS * 11 : B40C_BFS_SG_THREADS * 3)			// 256 nodes on GT200
+#define B40C_BFS_SG_SM10_SCRATCH_SPACE(strategy)			((strategy == CONTRACT_EXPAND) ? B40C_BFS_SG_THREADS * 11 : B40C_BFS_SG_THREADS * 3)			// 256 nodes on G80
 #define B40C_BFS_SG_SCRATCH_SPACE(sm_version, strategy)		((sm_version >= 200) ? B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy) : 	\
 																 (sm_version >= 120) ? B40C_BFS_SG_SM12_SCRATCH_SPACE(strategy) : 	\
 																					   B40C_BFS_SG_SM10_SCRATCH_SPACE(strategy))		
 
 // Number of elements per tile.  Params: SM sm_version, strategy
-#define B40C_BFS_SG_LOG_TILE_ELEMENTS(sm_version, strategy)		(B40C_BFS_SG_LOG_LOADS_PER_TILE(sm_version, strategy) + \
-																 B40C_BFS_SG_LOG_THREADS + \
-																 B40C_BFS_SG_LOG_LOAD_VEC_SIZE(sm_version, strategy))
+#define B40C_BFS_SG_LOG_TILE_ELEMENTS(sm_version, strategy)		(B40C_BFS_SG_LOG_THREADS + B40C_BFS_SG_LOG_LOAD_VEC_SIZE(sm_version, strategy))
 
 // Number of elements per subtile.  Params: strategy  
 #define B40C_BFS_SG_LOG_SUBTILE_ELEMENTS(strategy)			((strategy == CONTRACT_EXPAND) ? 6 : 5)		// 64 for CONTRACT_EXPAND, 32 for EXPAND_CONTRACT
@@ -117,7 +108,8 @@ namespace b40c {
  */
 template <
 	typename IndexType, 
-	int STRATEGY> 						// Should be of type "BfsStrategy": NVBUGS 768132 
+	int STRATEGY,			// Should be of type "BfsStrategy": NVBUGS 768132
+	bool INSTRUMENTED> 						 
 __launch_bounds__ (B40C_BFS_SG_THREADS, B40C_BFS_SG_OCCUPANCY(__CUDA_ARCH__))
 __global__ void BfsSingleGridKernel(
 	IndexType src,										// Source node for the first iteration
@@ -127,7 +119,8 @@ __global__ void BfsSingleGridKernel(
 	IndexType *d_row_offsets,							// CSR row offsets 
 	IndexType *d_source_dist,							// Distance from the source node (initialized to -1) (per-node)
 	int *d_queue_lengths,								// Rotating 4-element array of atomic counters indicating sizes of the incoming and outgoing frontier queues
-	int *d_sync)
+	int *d_sync,										// Array of global synchronization counters, one for each threadblock
+	unsigned long long *d_barrier_time)					// Time (in clocks) spent by each threadblock in software global barrier
 {
 	const int TILE_ELEMENTS 			= 1 << B40C_BFS_SG_LOG_TILE_ELEMENTS(__CUDA_ARCH__, STRATEGY);
 
@@ -190,6 +183,8 @@ __global__ void BfsSingleGridKernel(
 	__shared__ int s_cta_extra_elements;	// Number of elements in a last, partially-full tile (needing guarded loads)   
 	__shared__ int s_cta_out_of_bounds;		// The offset in the incoming frontier for this CTA to stop raking full tiles
 
+	unsigned long long barrier_time = 0;
+	unsigned int total_queued;
 	IndexType iteration = 0;				// Current BFS iteration
 
 	
@@ -224,30 +219,30 @@ __global__ void BfsSingleGridKernel(
 		// Calculate our CTA's work range for this BFS iteration
 		if (threadIdx.x == 0) {
 
-	
-			int num_incoming_nodes;
-			int incoming_queue_length_idx 		= (iteration + 0) & 0x3;	// Index of incoming queue length
-			int future_queue_length_idx 		= (iteration + 2) & 0x3; 	// Index of the future outgoing queue length (must reset for the next iteration) 
-
 			// First CTA resets global atomic counter for future outgoing counter
 			if (blockIdx.x == 0) {
+				int future_queue_length_idx = (iteration + 2) & 0x3; 	// Index of the future outgoing queue length (must reset for the next iteration) 
 				d_queue_lengths[future_queue_length_idx] = 0;
 			}
 
 			if (iteration == 0) {
 
 				// First iteration: process the source node specified in the formal parameters
+				total_queued = 0;
 				s_num_incoming_nodes = 1;
 				s_cta_offset = 0;
 				s_cta_out_of_bounds = 0;
 				
 				if (blockIdx.x == 0) { 
 					// Only the first CTA does any work (so enqueue it, and reset outgoing queue length) 
-					s_cta_extra_elements = (blockIdx.x == 0) ? 1 : 0;
+					s_cta_extra_elements = 1;
 					d_in_queue[0] = src;
-
-					int outgoing_queue_length_idx = (iteration + 1) & 0x3;
-					d_queue_lengths[outgoing_queue_length_idx] 	= 0;
+					d_queue_lengths[1] = 0;
+					
+					// Expand-contract algorithm requires setting source to already-discovered
+					if (STRATEGY == EXPAND_CONTRACT) {
+						d_source_dist[src] = 0;
+					}
 				
 				} else {
 					// No work for all other CTAs
@@ -258,7 +253,10 @@ __global__ void BfsSingleGridKernel(
 
 				// Subsequent iterations: dequeue from the queue
 				// Load the size of the incoming frontier queue
+				int num_incoming_nodes;
+				int incoming_queue_length_idx = (iteration + 0) & 0x3;	// Index of incoming queue length
 				ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths, incoming_queue_length_idx);
+				total_queued += num_incoming_nodes;
 		
 				//
 				// Although work is done in "tile"-sized blocks, work is assigned 
@@ -297,25 +295,14 @@ __global__ void BfsSingleGridKernel(
 				
 				if (cta_out_of_bounds > num_incoming_nodes) {
 					// The last CTA rounded its last subtile past the end of the queue
-					cta_extra_elements = num_incoming_nodes & (SUBTILE_ELEMENTS - 1);
 					cta_out_of_bounds -= SUBTILE_ELEMENTS;
 					cta_elements -= SUBTILE_ELEMENTS;
-				} else {
-					cta_extra_elements = 0;
-				}
-				cta_extra_elements += cta_elements & (TILE_ELEMENTS - 1);
-				
-/*
-				if (cta_out_of_bounds > num_incoming_nodes) {
-					// The last CTA rounded its last subtile past the end of the queue
-					cta_out_of_bounds -= SUBTILE_ELEMENTS;
-					cta_elements -= SUBTILE_ELEMENTS;
-					cta_extra_elements = num_incoming_nodes & (SUBTILE_ELEMENTS - 1) +		// The delta from the previous SUBTILE alignment and the end of the queue 
-						cta_elements & (TILE_ELEMENTS - 1);									// The delta from the previous TILE alignment 
+					cta_extra_elements = (num_incoming_nodes & (SUBTILE_ELEMENTS - 1)) +		// The delta from the previous SUBTILE alignment and the end of the queue 
+						(cta_elements & (TILE_ELEMENTS - 1));									// The delta from the previous TILE alignment 
 				} else {
 					cta_extra_elements = cta_elements & (TILE_ELEMENTS - 1);				// The delta from the previous TILE alignment
 				}
-*/				
+
 				// Store results for the rest of the CTA
 				s_num_incoming_nodes = num_incoming_nodes;
 				s_cta_offset = cta_offset;
@@ -350,15 +337,51 @@ __global__ void BfsSingleGridKernel(
 				d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 		}
+	
+		clock_t start;
+		if (INSTRUMENTED) {
+			// Instrumented timer for global barrier
+			if (threadIdx.x == 0) {
+				start = clock();
+			}
+		}
 		
 		// Global software barrier to make queues coherent between BFS iterations
 		GlobalBarrier(d_sync);
+
+		if (INSTRUMENTED) {
+			// Instrumented timer for global barrier
+			if (threadIdx.x == 0) {
+				clock_t stop = clock();
+				if (stop >= start) {
+					barrier_time += stop - start;
+				} else {
+					barrier_time += stop + (((clock_t) -1) - start);
+				}
+			}
+		}		
 		
 		iteration++;
 	
 	} while (s_num_incoming_nodes > 0);
 	
 	// All done
+	
+	if (INSTRUMENTED) {
+		// Report statistics
+		if (threadIdx.x == 0) {
+			
+			// Stash the barrier time for our block
+			d_barrier_time[blockIdx.x] = barrier_time; 
+	
+			if (blockIdx.x == 0) {
+				
+				// Stash the total number of queued items and iterations
+				d_queue_lengths[4] = total_queued;
+				d_queue_lengths[5] = iteration;
+			}
+		}
+	}
 } 
 
 
