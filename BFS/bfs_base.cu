@@ -76,6 +76,9 @@ struct BfsCsrProblem
 		cudaMalloc((void**) &d_column_indices, edges * sizeof(IndexType));
 		cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(IndexType));
 		cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType));
+
+		// Mooch
+		synchronize("BfsCsrProblem: post-malloc");
 		
 		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(IndexType), cudaMemcpyHostToDevice);
 		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(IndexType), cudaMemcpyHostToDevice);
@@ -113,15 +116,18 @@ struct BfsCsrProblem
 template <typename IndexType, typename ProblemStorage>
 class BaseBfsEnactor 
 {
-//protected:		// mooch
-public:
+protected:	
 
 	//Device properties
 	const CudaProperties cuda_props;
 	
+	// Max grid size we will ever launch
 	int max_grid_size;
 
+	// Elements to allocate for a frontier queue
 	int max_queue_size;
+	
+	// Frontier queues
 	IndexType *d_in_queue;
 	IndexType *d_out_queue;
 	
@@ -138,6 +144,9 @@ protected:
 	{
 		cudaMalloc((void**) &d_in_queue, max_queue_size * sizeof(IndexType));
 		cudaMalloc((void**) &d_out_queue, max_queue_size * sizeof(IndexType));
+		
+		// Mooch
+		synchronize("BaseBfsEnactor: post-malloc");
 	}
 
 public:

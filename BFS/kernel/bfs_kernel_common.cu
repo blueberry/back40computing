@@ -122,6 +122,50 @@ enum BfsStrategy {
 /**
  * Perform a local prefix sum to rank the specified partial_reductions
  * vector, storing the results in the corresponding local_ranks vector.
+ * 
+ * Needs a subsequent syncthreads for safety of further scratch_pool usage
+ * 
+ * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
+ * Currently only supports LOADS_PER_TILE = 1.
+ */
+template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
+__device__ __forceinline__ 
+int LocalScan(
+	int *base_partial,
+	int *raking_segment,
+	int warpscan[2][B40C_WARP_THREADS],
+	int partial_reductions[LOAD_VEC_SIZE],
+	int local_ranks[LOAD_VEC_SIZE])
+{
+	// Reduce in registers, placing the result into our smem cell for raking
+	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>(partial_reductions);
+
+	__syncthreads();
+
+	// Rake-reduce, warpscan, and rake-scan.
+	if (threadIdx.x < B40C_WARP_THREADS) {
+
+		// Serial reduce (rake) in smem
+		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>(raking_segment);
+
+		// Warpscan
+		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, raked_reduction);
+		
+		// Serial scan (rake) in smem
+		SerialScan<int, PARTIALS_PER_SEG>(raking_segment, seed);
+	}
+
+	__syncthreads();
+
+	SerialScan<int, LOAD_VEC_SIZE>(partial_reductions, local_ranks, base_partial[0]);
+	
+	return warpscan[1][B40C_WARP_THREADS - 1];
+}
+
+
+/**
+ * Perform a local prefix sum to rank the specified partial_reductions
+ * vector, storing the results in the corresponding local_ranks vector.
  * Also performs an atomic-increment at the d_queue_length address with the 
  * aggregate, storing the previous value in s_enqueue_offset.  Returns the 
  * aggregate.  
@@ -131,7 +175,7 @@ enum BfsStrategy {
  * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
  * Currently only supports LOADS_PER_TILE = 1.
  */
-template <int LOAD_VEC_SIZE, int ELEMENTS_PER_SEGMENT>
+template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
 __device__ __forceinline__ 
 int LocalScanWithAtomicReservation(
 	int *base_partial,
@@ -151,7 +195,7 @@ int LocalScanWithAtomicReservation(
 	if (threadIdx.x < B40C_WARP_THREADS) {
 
 		// Serial reduce (rake) in smem
-		int raked_reduction = SerialReduce<int, ELEMENTS_PER_SEGMENT>(raking_segment);
+		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>(raking_segment);
 
 		// Warpscan
 		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, raked_reduction);
@@ -162,7 +206,7 @@ int LocalScanWithAtomicReservation(
 		}
 		
 		// Serial scan (rake) in smem
-		SerialScan<int, ELEMENTS_PER_SEGMENT>(raking_segment, seed);
+		SerialScan<int, PARTIALS_PER_SEG>(raking_segment, seed);
 	}
 
 	__syncthreads();
@@ -179,10 +223,9 @@ int LocalScanWithAtomicReservation(
  */
 template <typename IndexType, int SCRATCH_SPACE, CacheModifier LIST_MODIFIER>
 __device__ __forceinline__
-void GuardedSingletonLoad(
+void GuardedLoadAndHash(
 	IndexType &node_id,			
 	int &hash,
-	IndexType *scratch_pool,
 	IndexType *node_id_list,
 	int load_offset,
 	int out_of_bounds)							 
@@ -190,7 +233,6 @@ void GuardedSingletonLoad(
 	if (load_offset < out_of_bounds) {
 		ModifiedLoad<IndexType, LIST_MODIFIER>::Ld(node_id, node_id_list, load_offset);
 		hash = node_id % SCRATCH_SPACE;
-		scratch_pool[hash] = node_id;
 	} else {
 		node_id = -1;
 		hash = SCRATCH_SPACE - 1;
@@ -200,13 +242,8 @@ void GuardedSingletonLoad(
 
 /**
  * Uses vector-loads to read a tile of node-IDs from the node_id_list 
- * reference, optionally conditional on bounds-checking.  Performs a 
- * conservative culling of duplicate node-IDs based upon a linear hashing of 
- * the node-IDs.  The corresponding duplicate flag is set to true for a given 
- * node-ID if it can be verified that some other thread will set its own 
- * duplicate flag false for the same node-ID, false otherwise. 
- * 
- * Needs a subsequent syncthreads for safety of further scratch_pool usage
+ * reference, optionally conditional on bounds-checking.  Also computes
+ * a hash-id for each. 
  */
 template <
 	typename IndexType, 
@@ -215,22 +252,12 @@ template <
 	CacheModifier LIST_MODIFIER,
 	bool UNGUARDED_IO>
 __device__ __forceinline__
-void LoadAndCullDuplicates(
+void LoadAndHash(
 	IndexType node_id[LOAD_VEC_SIZE],		// out param
-	bool duplicate[LOAD_VEC_SIZE],			// out param
+	int hash[LOAD_VEC_SIZE],				// out param
 	IndexType *node_id_list,
-	int out_of_bounds,							 
-	IndexType *scratch_pool)						 
+	int out_of_bounds)						 
 {
-	// Hash offset for each node-ID
-	int hash[LOAD_VEC_SIZE];		
-
-	// Initially label everything as a duplicate
-	#pragma unroll
-	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
-		duplicate[COMPONENT] = true;				
-	}
-
 	// Load node-IDs
 	if (UNGUARDED_IO) {
 		
@@ -241,11 +268,10 @@ void LoadAndCullDuplicates(
 		BuiltinVec *built_in_alias = (BuiltinVec *) node_id;
 		ModifiedLoad<BuiltinVec, LIST_MODIFIER>::Ld(*built_in_alias, node_id_list_vec, threadIdx.x);
 
-		// Hash the node-IDs into smem scratch
+		// Compute hash-IDs
 		#pragma unroll
 		for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 			hash[COMPONENT] = node_id[COMPONENT] % SCRATCH_SPACE;
-			scratch_pool[hash[COMPONENT]] = node_id[COMPONENT];
 		}
 		
 	} else {
@@ -254,20 +280,44 @@ void LoadAndCullDuplicates(
 		// in a pragma-unroll.
 
 		if (LOAD_VEC_SIZE > 0) {
-			GuardedSingletonLoad<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[0], hash[0], scratch_pool, node_id_list, (B40C_BFS_SG_THREADS * 0) + threadIdx.x, out_of_bounds);
+			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+				node_id[0], hash[0], node_id_list, (B40C_BFS_SG_THREADS * 0) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 1) {
-			GuardedSingletonLoad<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[1], hash[1], scratch_pool, node_id_list, (B40C_BFS_SG_THREADS * 1) + threadIdx.x, out_of_bounds);
+			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+				node_id[1], hash[1], node_id_list, (B40C_BFS_SG_THREADS * 1) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 2) {
-			GuardedSingletonLoad<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[2], hash[2], scratch_pool, node_id_list, (B40C_BFS_SG_THREADS * 2) + threadIdx.x, out_of_bounds);
+			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+				node_id[2], hash[2], node_id_list, (B40C_BFS_SG_THREADS * 2) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 3) {
-			GuardedSingletonLoad<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[3], hash[3], scratch_pool, node_id_list, (B40C_BFS_SG_THREADS * 3) + threadIdx.x, out_of_bounds);
+			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+				node_id[3], hash[3], node_id_list, (B40C_BFS_SG_THREADS * 3) + threadIdx.x, out_of_bounds);
+		}
+	}
+}	
+
+
+/**
+ * Performs a conservative culling of duplicate node-IDs based upon a linear 
+ * hashing of the node-IDs.  The corresponding duplicate flag is set to true 
+ * for a given node-ID if it can be verified that some other thread will set 
+ * its own duplicate flag false for the same node-ID, false otherwise. 
+ */
+template <typename IndexType, int LOAD_VEC_SIZE>
+__device__ __forceinline__
+void CullDuplicates(
+	IndexType node_id[LOAD_VEC_SIZE],
+	int hash[LOAD_VEC_SIZE],
+	bool duplicate[LOAD_VEC_SIZE],			// out param
+	IndexType *scratch_pool)						 
+{
+	// Hash the node-IDs into smem scratch
+	#pragma unroll
+	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
+		if (node_id[COMPONENT] != -1) {
+			scratch_pool[hash[COMPONENT]] = node_id[COMPONENT];
 		}
 	}
 	
@@ -279,13 +329,10 @@ void LoadAndCullDuplicates(
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 
+		// If a different node beat us to this hash cell; we must assume 
+		// that we may not be a duplicate
 		hashed_node_id[COMPONENT] = scratch_pool[hash[COMPONENT]];
-		if (hashed_node_id[COMPONENT] != node_id[COMPONENT]) {
-
-			// A different node beat us to this hash cell; we must assume 
-			// that we may not be a duplicate
-			duplicate[COMPONENT] = false;
-		}
+		duplicate[COMPONENT] = (hashed_node_id[COMPONENT] == node_id[COMPONENT]);
 	}
 	
 	__syncthreads();
@@ -304,11 +351,8 @@ void LoadAndCullDuplicates(
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 		if (hashed_node_id[COMPONENT] == node_id[COMPONENT]) {
-			if (scratch_pool[hash[COMPONENT]] == threadIdx.x) {
-
-				// We are an authoritative (non-duplicate) thread for this node-ID
-				duplicate[COMPONENT] = false;
-			}
+			// If not equal to our tid, we are not an authoritative (non-duplicate) thread for this node-ID
+			duplicate[COMPONENT] = (scratch_pool[hash[COMPONENT]] != threadIdx.x);
 		}
 	}
 }
@@ -360,197 +404,375 @@ void InspectAndUpdate(
 	}
 }
 
+/**
+ * Attempt to make more progress expanding the list of 
+ * neighbor-gather-offsets into the scratch pool  
+ */
+template <typename IndexType, int SCRATCH_SPACE>
+__device__ __forceinline__
+void ExpandNeighborGatherOffsets(
+	int local_rank,
+	int &row_progress,
+	int row_offset,
+	int row_length,
+	int cta_progress,
+	IndexType *scratch_pool)
+{
+	// Attempt to make futher progress on neighbor list
+	int scratch_offset = local_rank + row_progress - cta_progress;
+	while ((row_progress < row_length) && (scratch_offset < SCRATCH_SPACE)) {
+		
+		// Put a gather offset into the scratch space
+		scratch_pool[scratch_offset] = row_offset + row_progress;
+		row_progress++;
+		scratch_offset++;
+	}
+	
+}
+
 
 /**
  * Process a single tile of work from the current incoming frontier queue
  */
-template <
-	typename IndexType,
-	int PARTIALS_PER_SEG, 
-	int SCRATCH_SPACE, 
-	int LOAD_VEC_SIZE,
-	CacheModifier QUEUE_MODIFIER,
-	CacheModifier COLUMN_INDICES_MODIFIER,
-	CacheModifier SOURCE_DIST_MODIFIER,
-	CacheModifier ROW_OFFSETS_MODIFIER,
-	CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
-	bool UNGUARDED_IO>
-__device__ __forceinline__ 
-void BfsTile(
-	IndexType iteration,
-	IndexType *scratch_pool,
-	int *base_partial,
-	int *raking_segment,
-	int warpscan[2][B40C_WARP_THREADS],
-	IndexType *d_in_queue, 
-	IndexType *d_out_queue,
-	IndexType *d_column_indices,
-	IndexType *d_row_offsets,
-	IndexType *d_source_dist,
-	int *d_queue_length,
-	int &s_enqueue_offset,
-	int cta_out_of_bounds)
+template <BfsStrategy STRATEGY> struct BfsTile;
+
+
+/**
+ * Uses the contract-expand strategy for processing a single tile of work from 
+ * the current incoming frontier queue
+ */
+template <> struct BfsTile<CONTRACT_EXPAND> 
 {
-	IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
-	bool duplicate[LOAD_VEC_SIZE];				// Whether or not the node-ID is a guaranteed duplicate
-	IndexType row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
-	IndexType row_length[LOAD_VEC_SIZE];		// Number of adjacent neighbors
-	int local_rank[LOAD_VEC_SIZE];				// Prefix sum of row-lengths, i.e., local rank for where to plop down neighbor list into scratch 
-	int row_progress[LOAD_VEC_SIZE];			// Iterator for the neighbor list
-	int cta_progress = 0;						// Progress of the CTA as a whole towards writing out all neighbors to the outgoing queue
+	template <
+		typename IndexType,
+		int PARTIALS_PER_SEG, 
+		int SCRATCH_SPACE, 
+		int LOAD_VEC_SIZE,
+		CacheModifier QUEUE_MODIFIER,
+		CacheModifier COLUMN_INDICES_MODIFIER,
+		CacheModifier SOURCE_DIST_MODIFIER,
+		CacheModifier ROW_OFFSETS_MODIFIER,
+		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
+		bool UNGUARDED_IO>
+	__device__ __forceinline__ 
+	static void ProcessTile(
+		IndexType iteration,
+		IndexType *scratch_pool,
+		int *base_partial,
+		int *raking_segment,
+		int warpscan[2][B40C_WARP_THREADS],
+		IndexType *d_in_queue, 
+		IndexType *d_out_queue,
+		IndexType *d_column_indices,
+		IndexType *d_row_offsets,
+		IndexType *d_source_dist,
+		int *d_queue_length,
+		int &s_enqueue_offset,
+		int cta_out_of_bounds)
+	{
+		IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
+		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID		
+		bool duplicate[LOAD_VEC_SIZE];				// Whether or not the node-ID is a guaranteed duplicate
+		IndexType row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
+		IndexType row_length[LOAD_VEC_SIZE];		// Number of adjacent neighbors
+		int local_rank[LOAD_VEC_SIZE];				// Prefix sum of row-lengths, i.e., local rank for where to plop down neighbor list into scratch 
+		int row_progress[LOAD_VEC_SIZE];			// Iterator for the neighbor list
+		int cta_progress = 0;						// Progress of the CTA as a whole towards writing out all neighbors to the outgoing queue
 
-	// Initialize neighbor-row-length (and progress through that row) to zero.
-	#pragma unroll
-	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
-		row_length[COMPONENT] = 0;
-		row_progress[COMPONENT] = 0;
-	}
-	
-	//
-	// Dequeue a tile of incident node-IDs to explore and use a heuristic for 
-	// culling duplicates
-	//
-
-	LoadAndCullDuplicates<IndexType, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
-		dequeued_node_id,			// out param
-		duplicate,					// out param
-		d_in_queue,
-		cta_out_of_bounds,							 
-		scratch_pool);	
-	
-	__syncthreads();
-
-	//
-	// Inspect visitation status of incident node-IDs, acquiring row offsets 
-	// and lengths for previously-undiscovered node-IDs
-	//
-	// N.B.: Wish we could unroll here, but can't use inlined ASM instructions
-	// in a pragma-unroll.
-	//
-
-	if (LOAD_VEC_SIZE > 0) {
-		if ((!duplicate[0]) && (UNGUARDED_IO || (dequeued_node_id[0] != -1))) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				dequeued_node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
+		// Initialize neighbor-row-length (and progress through that row) to zero.
+		#pragma unroll
+		for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
+			row_length[COMPONENT] = 0;
+			row_progress[COMPONENT] = 0;
 		}
-	}
-	if (LOAD_VEC_SIZE > 1) {
-		if ((!duplicate[1]) && (UNGUARDED_IO || (dequeued_node_id[1] != -1))) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				dequeued_node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
-		}
-	}
-	if (LOAD_VEC_SIZE > 2) {
-		if ((!duplicate[2]) && (UNGUARDED_IO || (dequeued_node_id[2] != -1))) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				dequeued_node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
-		}
-	}
-	if (LOAD_VEC_SIZE > 3) {
-		if ((!duplicate[3]) && (UNGUARDED_IO || (dequeued_node_id[3] != -1))) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				dequeued_node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
-		}
-	}
-	
-
-	//
-	// Perform local scan of neighbor-counts and reserve a spot for them in 
-	// the outgoing queue at s_enqueue_offset
-	//
-
-	int enqueue_count = LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
-		base_partial, raking_segment, warpscan, row_length, local_rank, d_queue_length, s_enqueue_offset);
-
-	__syncthreads();
-
-	
-	//
-	// Enqueue the adjacency lists of unvisited node-IDs by repeatedly 
-	// constructing a set of gather-offsets in the scratch space, and then 
-	// having the entire CTA use them to copy adjacency lists from 
-	// column_indices to the outgoing frontier queue.
-	//
-
-	while (cta_progress < enqueue_count) {
-	
+		
 		//
-		// Fill the scratch space with gather-offsets for neighbor-lists.  Wish we could 
-		// pragma unroll here, but we can't do that with inner loops
-		// 
+		// Dequeue a tile of incident node-IDs to explore and use a heuristic for 
+		// culling duplicates
+		//
+
+		LoadAndHash<IndexType, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
+			dequeued_node_id,			// out param
+			hash,						// out param
+			d_in_queue,
+			cta_out_of_bounds);	
+		
+		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+			dequeued_node_id,
+			hash,					
+			duplicate,					// out param
+			scratch_pool);	
+
+		__syncthreads();
+
+		//
+		// Inspect visitation status of incident node-IDs, acquiring row offsets 
+		// and lengths for previously-undiscovered node-IDs
+		//
+		// N.B.: Wish we could unroll here, but can't use inlined ASM instructions
+		// in a pragma-unroll.
+		//
 
 		if (LOAD_VEC_SIZE > 0) {
-			const int COMPONENT = 0;
-			// Attempt to make futher progress on neighbor list
-			int scratch_offset = local_rank[COMPONENT] + row_progress[COMPONENT] - cta_progress;
-			while ((row_progress[COMPONENT] < row_length[COMPONENT]) && (scratch_offset < SCRATCH_SPACE)) {
-				
-				// Put a gather offset into the scratch space
-				scratch_pool[scratch_offset] = row_offset[COMPONENT] + row_progress[COMPONENT];
-				row_progress[COMPONENT]++;
-				scratch_offset++;
+			if ((!duplicate[0]) && (UNGUARDED_IO || (dequeued_node_id[0] != -1))) {
+				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+					dequeued_node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
 			}
 		}
 		if (LOAD_VEC_SIZE > 1) {
-			const int COMPONENT = 1;
-			// Attempt to make futher progress on neighbor list
-			int scratch_offset = local_rank[COMPONENT] + row_progress[COMPONENT] - cta_progress;
-			while ((row_progress[COMPONENT] < row_length[COMPONENT]) && (scratch_offset < SCRATCH_SPACE)) {
-				
-				// Put a gather offset into the scratch space
-				scratch_pool[scratch_offset] = row_offset[COMPONENT] + row_progress[COMPONENT];
-				row_progress[COMPONENT]++;
-				scratch_offset++;
+			if ((!duplicate[1]) && (UNGUARDED_IO || (dequeued_node_id[1] != -1))) {
+				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+					dequeued_node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
 			}
 		}
 		if (LOAD_VEC_SIZE > 2) {
-			const int COMPONENT = 2;
-			// Attempt to make futher progress on neighbor list
-			int scratch_offset = local_rank[COMPONENT] + row_progress[COMPONENT] - cta_progress;
-			while ((row_progress[COMPONENT] < row_length[COMPONENT]) && (scratch_offset < SCRATCH_SPACE)) {
-				
-				// Put a gather offset into the scratch space
-				scratch_pool[scratch_offset] = row_offset[COMPONENT] + row_progress[COMPONENT];
-				row_progress[COMPONENT]++;
-				scratch_offset++;
+			if ((!duplicate[2]) && (UNGUARDED_IO || (dequeued_node_id[2] != -1))) {
+				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+					dequeued_node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
 			}
 		}
 		if (LOAD_VEC_SIZE > 3) {
-			const int COMPONENT = 3;
-			// Attempt to make futher progress on neighbor list
-			int scratch_offset = local_rank[COMPONENT] + row_progress[COMPONENT] - cta_progress;
-			while ((row_progress[COMPONENT] < row_length[COMPONENT]) && (scratch_offset < SCRATCH_SPACE)) {
-				
-				// Put a gather offset into the scratch space
-				scratch_pool[scratch_offset] = row_offset[COMPONENT] + row_progress[COMPONENT];
-				row_progress[COMPONENT]++;
-				scratch_offset++;
+			if ((!duplicate[3]) && (UNGUARDED_IO || (dequeued_node_id[3] != -1))) {
+				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+					dequeued_node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
 			}
 		}
 		
+
+		//
+		// Perform local scan of neighbor-counts and reserve a spot for them in 
+		// the outgoing queue at s_enqueue_offset
+		//
+
+		int enqueue_count = LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
+			base_partial, raking_segment, warpscan, row_length, local_rank, d_queue_length, s_enqueue_offset);
+
 		__syncthreads();
+
 		
 		//
-		// Copy adjacency lists from column-indices to outgoing queue
+		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly 
+		// constructing a set of gather-offsets in the scratch space, and then 
+		// having the entire CTA use them to copy adjacency lists from 
+		// column_indices to the outgoing frontier queue.
 		//
 
-		int remainder = B40C_MIN(SCRATCH_SPACE, enqueue_count - cta_progress);
-		for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += B40C_BFS_SG_THREADS) {
+		while (cta_progress < enqueue_count) {
+		
+			//
+			// Fill the scratch space with gather-offsets for neighbor-lists.  Wish we could 
+			// pragma unroll here, but we can't do that with inner loops
+			// 
 
-			// Gather
-			int node_id;
-			ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
-				node_id, d_column_indices, scratch_pool[scratch_offset]);
+			if (LOAD_VEC_SIZE > 0) {
+				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+					local_rank[0], row_progress[0], row_offset[0], row_length[0], cta_progress, scratch_pool);
+			}
+			if (LOAD_VEC_SIZE > 1) {
+				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+					local_rank[1], row_progress[1], row_offset[1], row_length[1], cta_progress, scratch_pool);
+			}
+			if (LOAD_VEC_SIZE > 2) {
+				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+					local_rank[2], row_progress[2], row_offset[2], row_length[2], cta_progress, scratch_pool);
+			}
+			if (LOAD_VEC_SIZE > 3) {
+				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+					local_rank[3], row_progress[3], row_offset[3], row_length[3], cta_progress, scratch_pool);
+			}
 			
-			// Scatter
-			d_out_queue[s_enqueue_offset + cta_progress + scratch_offset] = node_id;
-		}
+			__syncthreads();
+			
+			//
+			// Copy adjacency lists from column-indices to outgoing queue
+			//
 
-		cta_progress += SCRATCH_SPACE;
+			int remainder = B40C_MIN(SCRATCH_SPACE, enqueue_count - cta_progress);
+			for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += B40C_BFS_SG_THREADS) {
+
+				// Gather
+				int node_id;
+				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+					node_id, d_column_indices, scratch_pool[scratch_offset]);
+				
+				// Scatter
+				d_out_queue[s_enqueue_offset + cta_progress + scratch_offset] = node_id;
+			}
+
+			cta_progress += SCRATCH_SPACE;
+			
+			__syncthreads();
+		}
+	}
+};
+
+
+/**
+ * Uses the expand-contract strategy for processing a single tile of work from 
+ * the current incoming frontier queue
+ */
+template <> struct BfsTile<EXPAND_CONTRACT> 
+{
+	template <
+		typename IndexType,
+		int PARTIALS_PER_SEG, 
+		int SCRATCH_SPACE, 
+		int LOAD_VEC_SIZE,
+		CacheModifier QUEUE_MODIFIER,
+		CacheModifier COLUMN_INDICES_MODIFIER,
+		CacheModifier SOURCE_DIST_MODIFIER,
+		CacheModifier ROW_OFFSETS_MODIFIER,
+		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
+		bool UNGUARDED_IO>
+	__device__ __forceinline__ 
+	static void ProcessTile(
+		IndexType iteration,
+		IndexType *scratch_pool,
+		int *base_partial,
+		int *raking_segment,
+		int warpscan[2][B40C_WARP_THREADS],
+		IndexType *d_in_queue, 
+		IndexType *d_out_queue,
+		IndexType *d_column_indices,
+		IndexType *d_row_offsets,
+		IndexType *d_source_dist,
+		int *d_queue_length,
+		int &s_enqueue_offset,
+		int cta_out_of_bounds)
+	{
+		const int CACHE_ELEMENTS = 128;
+		
+		int row_offset;
+		int row_length;  
+		int local_rank;					 
+		int row_progress = 0;
+		int cta_progress = 0;
+
+		// Dequeue a node-id and obtain corresponding row range
+		if ((UNGUARDED_IO) || (threadIdx.x < cta_out_of_bounds)) {
+			int node_id;				// incoming nodes to process for this tile
+			ModifiedLoad<int, CG>::Ld(node_id, d_in_queue, threadIdx.x);
+
+			int2 row_range;
+			if (node_id & 1) {
+				// Misaligned
+				ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
+				ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
+			} else {
+				// Aligned
+				int2* d_row_offsets_v2 = reinterpret_cast<int2*>(d_row_offsets + node_id);
+				ModifiedLoad<int2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
+			}
+			// Compute row offset and length
+			row_offset = row_range.x;
+			row_length = row_range.y - row_range.x;
+
+		} else { 
+			row_length = 0;
+		}
+		
+		// Scan row lengths to allocate space in local buffer of neighbor gather-offsets
+		int queue_count = LocalScan<1, PARTIALS_PER_SEG>(
+			base_partial, raking_segment, warpscan, &row_length, &local_rank);
 		
 		__syncthreads();
+
+		//
+		// Expand neighbor list into local buffer, remove visited nodes, 
+		// and enqueue unvisted nodes
+		//
+		
+		while (queue_count - cta_progress > 0) {
+		
+			// Attempt to make more progress expanding the list of 
+			// neighbor-gather-offsets into the scratch pool  
+			int scratch_offset = local_rank + row_progress - cta_progress;
+			while ((row_progress < row_length) && (scratch_offset < CACHE_ELEMENTS)) {
+				
+				// put it into local queue
+				scratch_pool[scratch_offset] = row_offset + row_progress;
+				row_progress++;
+				scratch_offset++;
+			}
+			
+			__syncthreads();
+			
+			// The local gather-offsets buffer is full (or as full as it gets)
+			int remainder = queue_count - cta_progress;
+			if (remainder > CACHE_ELEMENTS) remainder = CACHE_ELEMENTS;
+			
+			// Read neighbor node-Ids using gather offsets
+			int hash;
+			int neighbor_node;
+			if (threadIdx.x < remainder) {
+				ModifiedLoad<int, CG>::Ld(neighbor_node, d_column_indices, scratch_pool[threadIdx.x]);
+				hash = neighbor_node % SCRATCH_SPACE;
+			} else { 
+				neighbor_node = -1;
+				hash = SCRATCH_SPACE - 1;
+			}
+
+			__syncthreads();
+
+			// Cull duplicate neighbor node-Ids
+			bool duplicate;
+			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+				&neighbor_node,
+				&hash,					
+				&duplicate,					// out param
+				scratch_pool);	
+
+			__syncthreads();
+			
+			// Cull previously-visited neighbor node-Ids
+			int unvisited = 0;
+			if ((!duplicate) && (neighbor_node != -1)) {
+				int source_dist;
+				ModifiedLoad<int, CG>::Ld(source_dist, d_source_dist, neighbor_node);
+				if (source_dist == -1) {
+					d_source_dist[neighbor_node] = iteration + 1;
+					unvisited = 1;
+				}
+			}
+			
+			// Perform local scan of neighbor-counts and reserve a spot for them in 
+			// the outgoing queue at s_enqueue_offset
+			int neighbor_local_rank;
+			int enqueue_count = LocalScanWithAtomicReservation<1, PARTIALS_PER_SEG>(
+				base_partial, raking_segment, warpscan, &unvisited, &neighbor_local_rank, d_queue_length, s_enqueue_offset);
+
+			if (unvisited) {
+				d_out_queue[s_enqueue_offset + neighbor_local_rank] = neighbor_node;
+			}
+			
+/*		
+			// Compact neighbor node-IDs in smem
+	
+			int compacted_count = warpscan[1][WARP_SIZE - 1];
+
+			__syncthreads();
+			
+			// Place into compaction buffer
+			if (unvisited) {
+				scratch_pool[neighbor_local_rank] = neighbor_node;
+			}
+
+			__syncthreads();
+
+			// Extract neighbors from compacted buffer and scatter to global queue
+			if (threadIdx.x < compacted_count) {
+				int enqueue_node =  scratch_pool[threadIdx.x];
+				d_out_queue[cycle_offset + threadIdx.x] = enqueue_node;
+			}
+*/		
+
+			__syncthreads();
+			
+			cta_progress += CACHE_ELEMENTS;
+		}
 	}
-}
+};
+
 
 
 /**
@@ -589,7 +811,7 @@ void BfsIteration(
 	// Process all of our full-sized tiles (unguarded loads)
 	while (cta_offset <= cta_out_of_bounds - TILE_ELEMENTS) {
 
-		BfsTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
+		BfsTile<STRATEGY>::template ProcessTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, true>( 
 			iteration,
@@ -611,8 +833,8 @@ void BfsIteration(
 
 	// Cleanup any remainder elements (guarded_loads)
 	if (cta_extra_elements) {
-		
-		BfsTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
+
+		BfsTile<STRATEGY>::template ProcessTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, false>( 
 			iteration,

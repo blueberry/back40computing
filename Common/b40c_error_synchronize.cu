@@ -38,9 +38,10 @@ namespace b40c {
  */
 void synchronize(const char *message)
 {
-	cudaError_t error = cudaThreadSynchronize();
-	if(error) {
+	cudaError_t error = cudaPeekAtLastError();
+	if (error) {
 		fprintf(stderr, "%s caused %d (%s)\n", message, error, cudaGetErrorString(error));
+		exit(1);
 	}
 } 
 

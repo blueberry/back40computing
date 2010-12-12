@@ -28,17 +28,18 @@
  ******************************************************************************/
 
 #include <stdio.h> 
+#include <math.h>
 
 #include <iostream>
 #include <fstream>
 #include <string>
 
-// Sorting includes
-#include <bfs_single_grid.cu>
-
 #include <test_utils.cu>				// Utilities and correctness-checking
 #include <cutil.h>						// Utilities for commandline parsing
 #include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
+
+// BFS includes
+#include <bfs_single_grid.cu>
 
 using namespace b40c;
 
@@ -60,10 +61,11 @@ bool g_verbose2;
  */
 void Usage() 
 {
-	printf("\ntest_bfs <graph-type> <graph-type-args> [--device=<device index>] "
-			"[--v] [--method=<cesg | ecsg>] [--i=<num-iterations>] [--src=< <source idx> | randomize >]\n"
+	printf("\ntest_bfs <graph type> <graph type args> [--device=<device index>] "
+			"[--v] [--method=<cesg | ecsg>] [--i=<num-iterations>] "
+			"[--src=< <source idx> | randomize >] [--queue-size=<queue size>\n"
 			"\n"
-			"graph-types and args:\n"
+			"graph types and args:\n"
 			"\tgrid2d <width>\n"
 			"\t\t2D square grid lattice with width <width>.  Interior vertices \n"
 			"\t\thave 4 neighbors.  Default source vertex is the grid-center.\n"
@@ -93,6 +95,9 @@ void Usage()
 			"--src\tBegins BFS from the vertex <source idx>. Default is specific to \n"
 			"\t\tgraph-type.  If alternatively specified as \"randomize\", each \n"
 			"\t\ttest-iteration will begin with a newly-chosen random source vertex.\n"
+			"\n"
+			"--queue-size\tAllocates a frontier queue of <queue size> elements.  Default\n"
+			"\t\tis the size of the edge list.\n"
 			"\n");
 }
 
@@ -113,21 +118,59 @@ void DisplaySolution(IndexType* source_dist, IndexType nodes)
 }
 
 
+struct Statistic 
+{
+	double mean;
+	double m2;
+	int count;
+	
+	Statistic() : mean(0.0), m2(0.0), count(0) {}
+	
+	/**
+	 * Updates running statistic, returning bias-corrected sample variance.
+	 * Online method as per Knuth.
+	 */
+	double Update(double sample) {
+		count++;
+		double delta = sample - mean;
+		mean = mean + (delta / count);
+		m2 = m2 + (delta * (sample - mean));
+		return m2 / (count - 1);					// bias-corrected 
+	}
+	
+};
+
+struct Stats {
+	char *name;
+	Statistic rate;
+	Statistic max_dist;
+	Statistic extra_work;
+	Statistic barrier_wait;
+	
+	Stats() : name(NULL), rate(), max_dist(), extra_work(), barrier_wait() {}
+	Stats(char *name) : name(name), rate(), max_dist(), extra_work(), barrier_wait() {}
+};
+
+
 /**
  * Displays timing and correctness statistics 
  */
 template <typename IndexType, typename ValueType>
 void DisplayStats(
-	char *name,
+	bool queues_nodes,
+	Stats &stats,
 	IndexType src,
-	float elapsed,										// time taken to compute solution
 	IndexType *h_source_dist,							// computed answer
 	IndexType *reference_source_dist,					// reference answer
-	const CsrGraph<IndexType, ValueType> &csr_graph)	// reference host graph
+	const CsrGraph<IndexType, ValueType> &csr_graph,	// reference host graph
+	double elapsed, 
+	int max_dist,
+	int total_queued,
+	unsigned long long avg_barrier_wait)
 {
 	// Compute nodes and edges visited
-	IndexType edges_visited = 0;
-	IndexType nodes_visited = 0;
+	int edges_visited = 0;
+	int nodes_visited = 0;
 	for (IndexType i = 0; i < csr_graph.nodes; i++) {
 		if (h_source_dist[i] > -1) {
 			nodes_visited++;
@@ -135,21 +178,52 @@ void DisplayStats(
 		}
 	}
 	
-	// Display time
-	printf("[%s]: ", name);
+	double extra_work = 0.0;
+	if (total_queued > 0)  {
+		extra_work = (queues_nodes) ? 
+			((double) total_queued - nodes_visited) / nodes_visited : 
+			((double) total_queued - edges_visited) / edges_visited;
+	}
+	extra_work *= 100;
 
-	// Verify
+	// Display name (and correctness)
+	printf("[%s]: ", stats.name);
 	if (reference_source_dist != NULL) {
 		CompareResults(h_source_dist, reference_source_dist, csr_graph.nodes, true);
 	}
-	printf("\n\tsrc: ");
-	PrintValue(src);
-	printf(", nodes visited: ");
-	PrintValue(nodes_visited);
-	printf(", edges visited: ");
-	PrintValue(edges_visited);
-	printf("\n\t%6.3f ms, \tMiEdges/s: %6.3f\n", elapsed, (float) edges_visited / (elapsed * 1000.0));
+	printf("\n");
+
+	// Display the specific sample statistics
+	double m_teps = (double) edges_visited / (elapsed * 1000.0); 
+	printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s, avg barrier wait %llu\n", 
+		elapsed, m_teps, avg_barrier_wait); 
+	printf("\tsrc: %d, max dist: %d, nodes visited: %d, edges visited: %d, extra work: %.2f%%\n", 
+		src, max_dist, nodes_visited, edges_visited, extra_work);
+
+	// Display the aggregate sample statistics
+	if (nodes_visited >= 100) {
+		
+		printf("\t%d test iterations, bias-corrected stats:\n", stats.rate.count + 1); 
+
+		double max_dist_stddev = sqrt(stats.max_dist.Update((double) max_dist));
+		printf("\t\t[Max dist]:         u: %.1f, s: %.1f, cv: %.4f\n", 
+			stats.max_dist.mean, max_dist_stddev, max_dist_stddev / stats.max_dist.mean);
+
+		double extra_work_stddev = sqrt(stats.extra_work.Update(extra_work));
+		printf("\t\t[Extra work %]:     u: %.2f, s: %.2f, cv: %.4f\n", 
+			stats.extra_work.mean, extra_work_stddev, extra_work_stddev / stats.extra_work.mean);
+
+		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update((double) avg_barrier_wait));
+		printf("\t\t[Avg barrier wait]: u: %.1f, s: %.1f, cv: %.4f\n", 
+			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
+
+		double rate_stddev = sqrt(stats.rate.Update(m_teps));
+		printf("\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
+			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);
+	}
 	
+	fflush(stdout);
+
 }
 		
 
@@ -273,8 +347,9 @@ int main( int argc, char** argv)
 	char* bfs_method_str	= NULL;
 	char* src_str			= NULL;
 	bool randomized_src 	= false;
-	int iterations 			= 1;
+	int test_iterations 	= 1;
 	int max_grid_size 		= 0;				// Default: leave it up the enactor
+	int queue_size			= -1;				// Default: the size of the edge list
 
 	CUT_DEVICE_INIT(argc, argv);
 	srand(0);									// Presently deterministic
@@ -299,8 +374,9 @@ int main( int argc, char** argv)
 			src = atoi(src_str);
 		}
 	}
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "i", &iterations);
+	cutGetCmdLineArgumenti( argc, (const char**) argv, "i", &test_iterations);
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-ctas", &max_grid_size);
+	cutGetCmdLineArgumenti( argc, (const char**) argv, "queue-size", &queue_size);
 	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
 		g_verbose = true;
 	} else {
@@ -386,46 +462,64 @@ int main( int argc, char** argv)
 	IndexType* reference_source_dist 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 	IndexType* h_source_dist 			= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 
-	// Allocate a BFS enactor (with maximum frontier-queue size of 4/5 the size of the edge-list)
-	SingleGridBfsEnactor<IndexType> bfs_sg_enactor(csr_graph.edges / 5 * 4, max_grid_size);
+	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
+	SingleGridBfsEnactor<IndexType, false> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges, 
+		max_grid_size);
 
 	// Allocate problem on GPU
 	BfsCsrProblem<IndexType> problem_storage(
 		csr_graph.nodes, csr_graph.edges, csr_graph.column_indices, csr_graph.row_offsets);
 
 	
+	Stats stats[3];
+	stats[0] = Stats("Simple CPU BFS");
+	stats[1] = Stats("Single-grid, expand-contract GPU BF");
+	stats[2] = Stats("Single-grid, contract-expand GPU BFS"); 
+	
 	//
 	// Perform the specified number of test iterations
 	//
 
-	for (int iteration = 0; iteration < iterations; iteration++) {
+	while (stats[0].rate.count < test_iterations) {
 	
-		printf("\n");
-		
 		// If randomized-src was specified, re-roll the src
 		if (randomized_src) src = RandomNode(csr_graph.nodes);
 		
-		// Compute reference CPU BFS solution
-		float elapsed = SimpleReferenceBfs(csr_graph, reference_source_dist, src);
-		DisplayStats<IndexType, ValueType>("Simple CPU BFS", src, elapsed, h_source_dist, NULL, csr_graph);
+		double elapsed = 0.0;
+		int total_queued = 0;
+		int max_dist = 0;
+		unsigned long long avg_barrier_wait = 0; 
 
-		// Perform contract-expand GPU BFS search
-		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
-		DisplayStats<IndexType, ValueType>("Single-grid, contract-expand GPU BFS", 
-			src, elapsed, h_source_dist, reference_source_dist, csr_graph);
-		
-/*		
+		printf("---------------------------------------------------------------\n");
+
+		// Compute reference CPU BFS solution
+		elapsed = SimpleReferenceBfs(csr_graph, reference_source_dist, src);
+		DisplayStats<IndexType, ValueType>(
+			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
+			elapsed, max_dist, total_queued, avg_barrier_wait);
+		printf("\n");
+
 		// Perform expand-contract GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
-		DisplayStats<IndexType, ValueType>("Single-grid, expand-contract GPU BFS", 
-			src, elapsed, h_source_dist, reference_source_dist, csr_graph);
-*/
+		bfs_sg_enactor.GetStatistics(total_queued, max_dist, avg_barrier_wait);	
+		DisplayStats<IndexType, ValueType>(
+			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
+			elapsed, max_dist, total_queued, avg_barrier_wait);
+		printf("\n");
+		
+		// Perform contract-expand GPU BFS search
+		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
+		bfs_sg_enactor.GetStatistics(total_queued, max_dist, avg_barrier_wait);		
+		DisplayStats<IndexType, ValueType>(
+			false, stats[2], src, h_source_dist, reference_source_dist, csr_graph,
+			elapsed, max_dist, total_queued, avg_barrier_wait);
+		printf("\n");
 
 		if (g_verbose2) {
 			DisplaySolution(reference_source_dist, csr_graph.nodes);
 			printf("\n");
 		}
-		
 	}
 	
 	

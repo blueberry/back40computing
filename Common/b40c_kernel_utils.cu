@@ -291,6 +291,14 @@ __device__ __forceinline__ void GlobalBarrier(int* d_sync)
  ******************************************************************************/
 
 /**
+ * Terminates the calling thread
+ */
+__device__ __forceinline__ static void ThreadExit() {				
+	asm("exit;");
+}	
+
+
+/**
  * The best way to multiply integers (24 effective bits or less)
  */
 #if __CUDA_ARCH__ >= 200
