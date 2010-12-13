@@ -129,22 +129,21 @@ public:
     }
     
     /**
-     * Retrieves the total number of elements placed into frontier queues
-     * during the last search enacted 
+     * Obtain statistics about the last BFS search enacted 
      */
     void GetStatistics(
     	int &total_queued, 
-    	int &max_dist, 
-    	unsigned long long &avg_barrier_wait)
+    	int &passes, 
+    	unsigned long long &avg_barrier_wait)		// in cycles
     {
     	total_queued = 0;
-    	max_dist = 0;
+    	passes = 0;
     	avg_barrier_wait = 0;
     	
     	if (INSTRUMENTED) {
     	
 			cudaMemcpy(&total_queued, d_queue_lengths + 4, 1 * sizeof(int), cudaMemcpyDeviceToHost);
-			cudaMemcpy(&max_dist, d_queue_lengths + 5, 1 * sizeof(int), cudaMemcpyDeviceToHost);
+			cudaMemcpy(&passes, d_queue_lengths + 5, 1 * sizeof(int), cudaMemcpyDeviceToHost);
 	
 			unsigned long long *h_barrier_time = 
 				(unsigned long long *) malloc(this->max_grid_size * sizeof(unsigned long long));
@@ -152,7 +151,7 @@ public:
 			cudaMemcpy(h_barrier_time, d_barrier_time, this->max_grid_size * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
 			unsigned long long total_barrier_time = 0;
 			for (int i = 0; i < this->max_grid_size; i++) {
-				total_barrier_time += h_barrier_time[i] / max_dist;
+				total_barrier_time += h_barrier_time[i] / passes;
 			}
 			
 			avg_barrier_wait = total_barrier_time / this->max_grid_size;
@@ -171,17 +170,21 @@ public:
 		IndexType src, 
 		BfsStrategy strategy) 
 	{
+		int cta_threads = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
+		
 		switch (strategy) {
 
 		case CONTRACT_EXPAND:
-			
+
+			// Contract-expand strategy
 			if (BFS_DEBUG) {
 				printf("\n[BFS contract-expand config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
-					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, this->max_grid_size, B40C_BFS_SG_THREADS, this->max_queue_size);
+					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
+					this->max_grid_size, cta_threads, this->max_queue_size);
 				fflush(stdout);
 			}
 
-    		BfsSingleGridKernel<IndexType, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, B40C_BFS_SG_THREADS>>>(
+    		BfsSingleGridKernel<IndexType, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
 				this->d_in_queue,								
 				this->d_out_queue,								
@@ -196,13 +199,15 @@ public:
     		
 		case EXPAND_CONTRACT:
 			
+			// Expand-contract strategy
 			if (BFS_DEBUG) {
 				printf("\n[BFS expand-contract config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
-					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, this->max_grid_size, B40C_BFS_SG_THREADS, this->max_queue_size);
+					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
+					this->max_grid_size, cta_threads, this->max_queue_size);
 				fflush(stdout);
 			}
 			
-			BfsSingleGridKernel<IndexType, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, B40C_BFS_SG_THREADS>>>(
+			BfsSingleGridKernel<IndexType, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
 				this->d_in_queue,								
 				this->d_out_queue,								

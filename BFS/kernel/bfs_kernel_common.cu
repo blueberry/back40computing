@@ -38,12 +38,6 @@ namespace b40c {
  ******************************************************************************/
 
 /**
- * CTA size in threads
- */
-#define B40C_BFS_SG_LOG_THREADS								(7)			// 128 threads								
-#define B40C_BFS_SG_THREADS									(1 << B40C_BFS_SG_LOG_THREADS)	
-
-/**
  * Enumeration of parallel BFS algorithm strategies
  */
 enum BfsStrategy {
@@ -126,7 +120,6 @@ enum BfsStrategy {
  * Needs a subsequent syncthreads for safety of further scratch_pool usage
  * 
  * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
- * Currently only supports LOADS_PER_TILE = 1.
  */
 template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
 __device__ __forceinline__ 
@@ -173,7 +166,6 @@ int LocalScan(
  * Needs a subsequent syncthreads for safety of further scratch_pool usage
  * 
  * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
- * Currently only supports LOADS_PER_TILE = 1.
  */
 template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
 __device__ __forceinline__ 
@@ -246,7 +238,8 @@ void GuardedLoadAndHash(
  * a hash-id for each. 
  */
 template <
-	typename IndexType, 
+	typename IndexType,
+	int CTA_THREADS,
 	int SCRATCH_SPACE, 
 	int LOAD_VEC_SIZE, 
 	CacheModifier LIST_MODIFIER,
@@ -281,19 +274,19 @@ void LoadAndHash(
 
 		if (LOAD_VEC_SIZE > 0) {
 			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[0], hash[0], node_id_list, (B40C_BFS_SG_THREADS * 0) + threadIdx.x, out_of_bounds);
+				node_id[0], hash[0], node_id_list, (CTA_THREADS * 0) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 1) {
 			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[1], hash[1], node_id_list, (B40C_BFS_SG_THREADS * 1) + threadIdx.x, out_of_bounds);
+				node_id[1], hash[1], node_id_list, (CTA_THREADS * 1) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 2) {
 			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[2], hash[2], node_id_list, (B40C_BFS_SG_THREADS * 2) + threadIdx.x, out_of_bounds);
+				node_id[2], hash[2], node_id_list, (CTA_THREADS * 2) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 3) {
 			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
-				node_id[3], hash[3], node_id_list, (B40C_BFS_SG_THREADS * 3) + threadIdx.x, out_of_bounds);
+				node_id[3], hash[3], node_id_list, (CTA_THREADS * 3) + threadIdx.x, out_of_bounds);
 		}
 	}
 }	
@@ -405,6 +398,60 @@ void InspectAndUpdate(
 }
 
 /**
+ * Inspects an incident node-ID to see if it's been visited already.  If not,
+ * we mark its discovery in d_source_dist at this iteration, returning 
+ * the length and offset of its neighbor row.  If not, we return zero as the 
+ * length of its neighbor row.
+ */
+template <
+	typename IndexType, 
+	int LOAD_VEC_SIZE,
+	int SCRATCH_SPACE, 
+	CacheModifier SOURCE_DIST_MODIFIER,
+	CacheModifier ROW_OFFSETS_MODIFIER,
+	CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER, 
+	bool UNGUARDED_IO>
+__device__ __forceinline__
+void InspectAndUpdate(
+	IndexType node_id[LOAD_VEC_SIZE],
+	bool duplicate[LOAD_VEC_SIZE],
+	int row_offset[LOAD_VEC_SIZE],				// out param
+	int row_length[LOAD_VEC_SIZE],				// out param
+	IndexType *d_source_dist,
+	IndexType *d_row_offsets,
+	IndexType iteration)
+{
+	// N.B.: Wish we could unroll here, but can't use inlined ASM instructions
+	// in a pragma-unroll.
+
+	if (LOAD_VEC_SIZE > 0) {
+		if ((!duplicate[0]) && (UNGUARDED_IO || (node_id[0] != -1))) {
+			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+				node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
+		}
+	}
+	if (LOAD_VEC_SIZE > 1) {
+		if ((!duplicate[1]) && (UNGUARDED_IO || (node_id[1] != -1))) {
+			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+				node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
+		}
+	}
+	if (LOAD_VEC_SIZE > 2) {
+		if ((!duplicate[2]) && (UNGUARDED_IO || (node_id[2] != -1))) {
+			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+				node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
+		}
+	}
+	if (LOAD_VEC_SIZE > 3) {
+		if ((!duplicate[3]) && (UNGUARDED_IO || (node_id[3] != -1))) {
+			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+				node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
+		}
+	}
+}
+
+
+/**
  * Attempt to make more progress expanding the list of 
  * neighbor-gather-offsets into the scratch pool  
  */
@@ -412,7 +459,7 @@ template <typename IndexType, int SCRATCH_SPACE>
 __device__ __forceinline__
 void ExpandNeighborGatherOffsets(
 	int local_rank,
-	int &row_progress,
+	int &row_progress,				// out param
 	int row_offset,
 	int row_length,
 	int cta_progress,
@@ -427,7 +474,40 @@ void ExpandNeighborGatherOffsets(
 		row_progress++;
 		scratch_offset++;
 	}
-	
+}
+
+
+/**
+ * Attempt to make more progress expanding the list of 
+ * neighbor-gather-offsets into the scratch pool  
+ */
+template <typename IndexType, int LOAD_VEC_SIZE, int SCRATCH_SPACE>
+__device__ __forceinline__
+void ExpandNeighborGatherOffsets(
+	int local_rank[LOAD_VEC_SIZE],
+	int row_progress[LOAD_VEC_SIZE],	// out param 
+	int row_offset[LOAD_VEC_SIZE],
+	int row_length[LOAD_VEC_SIZE],
+	int cta_progress,
+	IndexType *scratch_pool)
+{
+	// Wish we could pragma unroll here, but we can't do that with inner loops
+	if (LOAD_VEC_SIZE > 0) {
+		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+			local_rank[0], row_progress[0], row_offset[0], row_length[0], cta_progress, scratch_pool);
+	}
+	if (LOAD_VEC_SIZE > 1) {
+		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+			local_rank[1], row_progress[1], row_offset[1], row_length[1], cta_progress, scratch_pool);
+	}
+	if (LOAD_VEC_SIZE > 2) {
+		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+			local_rank[2], row_progress[2], row_offset[2], row_length[2], cta_progress, scratch_pool);
+	}
+	if (LOAD_VEC_SIZE > 3) {
+		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+			local_rank[3], row_progress[3], row_offset[3], row_length[3], cta_progress, scratch_pool);
+	}
 }
 
 
@@ -445,6 +525,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 {
 	template <
 		typename IndexType,
+		int CTA_THREADS,
 		int PARTIALS_PER_SEG, 
 		int SCRATCH_SPACE, 
 		int LOAD_VEC_SIZE,
@@ -491,7 +572,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		// culling duplicates
 		//
 
-		LoadAndHash<IndexType, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
+		LoadAndHash<IndexType, CTA_THREADS, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
 			dequeued_node_id,			// out param
 			hash,						// out param
 			d_in_queue,
@@ -500,7 +581,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
 			dequeued_node_id,
 			hash,					
-			duplicate,					// out param
+			duplicate,			// out param
 			scratch_pool);	
 
 		__syncthreads();
@@ -509,35 +590,16 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		// Inspect visitation status of incident node-IDs, acquiring row offsets 
 		// and lengths for previously-undiscovered node-IDs
 		//
-		// N.B.: Wish we could unroll here, but can't use inlined ASM instructions
-		// in a pragma-unroll.
-		//
 
-		if (LOAD_VEC_SIZE > 0) {
-			if ((!duplicate[0]) && (UNGUARDED_IO || (dequeued_node_id[0] != -1))) {
-				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-					dequeued_node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
-			}
-		}
-		if (LOAD_VEC_SIZE > 1) {
-			if ((!duplicate[1]) && (UNGUARDED_IO || (dequeued_node_id[1] != -1))) {
-				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-					dequeued_node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
-			}
-		}
-		if (LOAD_VEC_SIZE > 2) {
-			if ((!duplicate[2]) && (UNGUARDED_IO || (dequeued_node_id[2] != -1))) {
-				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-					dequeued_node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
-			}
-		}
-		if (LOAD_VEC_SIZE > 3) {
-			if ((!duplicate[3]) && (UNGUARDED_IO || (dequeued_node_id[3] != -1))) {
-				InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-					dequeued_node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
-			}
-		}
-		
+		InspectAndUpdate<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, UNGUARDED_IO>(
+			dequeued_node_id, 
+			duplicate, 
+			row_offset,			// out param 
+			row_length, 		// out param
+			d_source_dist, 
+			d_row_offsets, 
+			iteration);
+
 
 		//
 		// Perform local scan of neighbor-counts and reserve a spot for them in 
@@ -560,35 +622,21 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		while (cta_progress < enqueue_count) {
 		
 			//
-			// Fill the scratch space with gather-offsets for neighbor-lists.  Wish we could 
-			// pragma unroll here, but we can't do that with inner loops
-			// 
+			// Fill the scratch space with gather-offsets for neighbor-lists.  
+			//
 
-			if (LOAD_VEC_SIZE > 0) {
-				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
-					local_rank[0], row_progress[0], row_offset[0], row_length[0], cta_progress, scratch_pool);
-			}
-			if (LOAD_VEC_SIZE > 1) {
-				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
-					local_rank[1], row_progress[1], row_offset[1], row_length[1], cta_progress, scratch_pool);
-			}
-			if (LOAD_VEC_SIZE > 2) {
-				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
-					local_rank[2], row_progress[2], row_offset[2], row_length[2], cta_progress, scratch_pool);
-			}
-			if (LOAD_VEC_SIZE > 3) {
-				ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
-					local_rank[3], row_progress[3], row_offset[3], row_length[3], cta_progress, scratch_pool);
-			}
-			
+			ExpandNeighborGatherOffsets<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE>(
+				local_rank, row_progress, row_offset, row_length, cta_progress, scratch_pool);
+
 			__syncthreads();
 			
 			//
-			// Copy adjacency lists from column-indices to outgoing queue
+			// Copy adjacency lists from column-indices to outgoing queue using the  
+			// gather-offsets in scratch
 			//
 
 			int remainder = B40C_MIN(SCRATCH_SPACE, enqueue_count - cta_progress);
-			for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += B40C_BFS_SG_THREADS) {
+			for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += CTA_THREADS) {
 
 				// Gather
 				int node_id;
@@ -615,6 +663,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 {
 	template <
 		typename IndexType,
+		int CTA_THREADS,
 		int PARTIALS_PER_SEG, 
 		int SCRATCH_SPACE, 
 		int LOAD_VEC_SIZE,
@@ -640,7 +689,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
-		const int CACHE_ELEMENTS = 128;
+		const int CACHE_ELEMENTS = CTA_THREADS;
 		
 		int row_offset;
 		int row_length;  
@@ -716,7 +765,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 
 			// Cull duplicate neighbor node-Ids
 			bool duplicate;
-			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+			CullDuplicates<IndexType, 1>(
 				&neighbor_node,
 				&hash,					
 				&duplicate,					// out param
@@ -781,6 +830,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 template <
 	BfsStrategy STRATEGY,
 	typename IndexType,
+	int CTA_THREADS,
 	int TILE_ELEMENTS,
 	int PARTIALS_PER_SEG, 
 	int SCRATCH_SPACE, 
@@ -811,7 +861,8 @@ void BfsIteration(
 	// Process all of our full-sized tiles (unguarded loads)
 	while (cta_offset <= cta_out_of_bounds - TILE_ELEMENTS) {
 
-		BfsTile<STRATEGY>::template ProcessTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
+		BfsTile<STRATEGY>::template ProcessTile<
+				IndexType, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, true>( 
 			iteration,
@@ -834,7 +885,8 @@ void BfsIteration(
 	// Cleanup any remainder elements (guarded_loads)
 	if (cta_extra_elements) {
 
-		BfsTile<STRATEGY>::template ProcessTile<IndexType, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
+		BfsTile<STRATEGY>::template ProcessTile<
+				IndexType, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, false>( 
 			iteration,
