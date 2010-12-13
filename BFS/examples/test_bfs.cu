@@ -170,7 +170,7 @@ void DisplayStats(
 	double elapsed, 
 	int passes,
 	int total_queued,
-	unsigned long long avg_barrier_wait)
+	double avg_barrier_wait)
 {
 	// Compute nodes and edges visited
 	int edges_visited = 0;
@@ -206,29 +206,30 @@ void DisplayStats(
 		// Display the specific sample statistics
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
-		if (avg_barrier_wait != 0) printf(", avg barrier wait %llu", avg_barrier_wait);
+		if (passes != 0) printf(", passes: %d", passes);
+		if (avg_barrier_wait != 0) printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms", 
+			avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / passes);
 		printf("\n\tsrc: %d, nodes visited: %d, edges visited: %d", src, nodes_visited, edges_visited);
 		if (extra_work != 0) printf(", extra work: %.2f%%", extra_work);
-		if (passes != 0) printf(", passes: %d", passes);
 		printf("\n");
 
 		// Display the aggregate sample statistics
 		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
 
 		double passes_stddev = sqrt(stats.passes.Update((double) passes));
-		if (passes != 0) printf("\t\t[Passes]:         u: %.1f, s: %.1f, cv: %.4f\n", 
+		if (passes != 0) printf(			"\t\t[Passes]:         u: %.1f, s: %.1f, cv: %.4f\n", 
 			stats.passes.mean, passes_stddev, passes_stddev / stats.passes.mean);
 
 		double extra_work_stddev = sqrt(stats.extra_work.Update(extra_work));
-		if (extra_work != 0) printf("\t\t[Extra work %]:     u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (extra_work != 0) printf(		"\t\t[Extra work %]:   u: %.2f, s: %.2f, cv: %.4f\n", 
 			stats.extra_work.mean, extra_work_stddev, extra_work_stddev / stats.extra_work.mean);
 
-		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update((double) avg_barrier_wait));
-		if (avg_barrier_wait != 0) printf("\t\t[Avg barrier wait]: u: %.1f, s: %.1f, cv: %.4f\n", 
+		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update(avg_barrier_wait / elapsed * 100));
+		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %]:      u: %.2f, s: %.2f, cv: %.4f\n", 
 			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
-		printf("\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
+		printf(								"\t\t[Rate MiEdges/s]: u: %.3f, s: %.3f, cv: %.4f\n", 
 			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);
 	}
 	
@@ -371,7 +372,7 @@ void RunTests(
 	
 	Stats stats[3];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("Single-grid, expand-contract GPU BF");
+	stats[1] = Stats("Single-grid, expand-contract GPU BFS");
 	stats[2] = Stats("Single-grid, contract-expand GPU BFS"); 
 	
 	printf("Running %s tests...\n\n", (INSTRUMENT) ? "instrumented" : "non-instrumented");
@@ -385,7 +386,7 @@ void RunTests(
 		double elapsed = 0.0;
 		int total_queued = 0;
 		int passes = 0;
-		unsigned long long avg_barrier_wait = 0; 
+		double avg_barrier_wait = 0.0; 
 
 		printf("---------------------------------------------------------------\n");
 

@@ -134,7 +134,7 @@ public:
     void GetStatistics(
     	int &total_queued, 
     	int &passes, 
-    	unsigned long long &avg_barrier_wait)		// in cycles
+    	double &avg_barrier_wait)		// total time spent waiting in barriers in ms (threadblock average)
     {
     	total_queued = 0;
     	passes = 0;
@@ -151,10 +151,14 @@ public:
 			cudaMemcpy(h_barrier_time, d_barrier_time, this->max_grid_size * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
 			unsigned long long total_barrier_time = 0;
 			for (int i = 0; i < this->max_grid_size; i++) {
-				total_barrier_time += h_barrier_time[i] / passes;
+				total_barrier_time += h_barrier_time[i];
 			}
 			
+			// Average barrier wait in clocks
 			avg_barrier_wait = total_barrier_time / this->max_grid_size;
+			
+			// Scale to milliseconds
+			avg_barrier_wait /= (this->cuda_props.device_props.clockRate);
 			
 			free(h_barrier_time);
     	}
