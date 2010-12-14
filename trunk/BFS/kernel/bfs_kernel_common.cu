@@ -255,11 +255,11 @@ void LoadAndHash(
 	if (UNGUARDED_IO) {
 		
 		// Use a built-in, vector-typed alias to load straight into node_id array
-		typedef typename VecType<IndexType, LOAD_VEC_SIZE>::Type BuiltinVec; 		
+		typedef typename VecType<IndexType, LOAD_VEC_SIZE>::Type VectorType; 		
 
-		BuiltinVec *node_id_list_vec = (BuiltinVec *) node_id_list;
-		BuiltinVec *built_in_alias = (BuiltinVec *) node_id;
-		ModifiedLoad<BuiltinVec, LIST_MODIFIER>::Ld(*built_in_alias, node_id_list_vec, threadIdx.x);
+		VectorType *node_id_list_vec = (VectorType *) node_id_list;
+		VectorType *vector_alias = (VectorType *) node_id;
+		ModifiedLoad<VectorType, LIST_MODIFIER>::Ld(*vector_alias, node_id_list_vec, threadIdx.x);
 
 		// Compute hash-IDs
 		#pragma unroll
@@ -366,27 +366,29 @@ template <
 __device__ __forceinline__
 void InspectAndUpdate(
 	IndexType node_id,		
-	int &row_offset,				// out param
-	int &row_length,				// out param
+	IndexType &row_offset,				// out param
+	int &row_length,					// out param
 	IndexType *d_source_dist,
 	IndexType *d_row_offsets,
 	IndexType iteration)
 {
+	typedef typename VecType<IndexType, 2>::Type IndexTypeVec2; 		
+
 	// Load source distance of node
-	int source_dist;
-	ModifiedLoad<int, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist, node_id);
+	IndexType source_dist;
+	ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist, node_id);
 
 	if (source_dist == -1) {
 		// Node is previously unvisited.  Load neighbor row range from d_row_offsets
-		int2 row_range;
+		IndexTypeVec2 row_range;
 		if (node_id & 1) {
 			// Misaligned
-			ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
-			ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
+			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
+			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
 		} else {
 			// Aligned
-			int2* d_row_offsets_v2 = reinterpret_cast<int2*>(d_row_offsets + node_id);
-			ModifiedLoad<int2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
+			IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
+			ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
 		}
 		// Compute row offset and length
 		row_offset = row_range.x;
@@ -415,8 +417,8 @@ __device__ __forceinline__
 void InspectAndUpdate(
 	IndexType node_id[LOAD_VEC_SIZE],
 	bool duplicate[LOAD_VEC_SIZE],
-	int row_offset[LOAD_VEC_SIZE],				// out param
-	int row_length[LOAD_VEC_SIZE],				// out param
+	IndexType row_offset[LOAD_VEC_SIZE],				// out param
+	int row_length[LOAD_VEC_SIZE],					// out param
 	IndexType *d_source_dist,
 	IndexType *d_row_offsets,
 	IndexType iteration)
@@ -460,7 +462,7 @@ __device__ __forceinline__
 void ExpandNeighborGatherOffsets(
 	int local_rank,
 	int &row_progress,				// out param
-	int row_offset,
+	IndexType row_offset,
 	int row_length,
 	int cta_progress,
 	IndexType *scratch_pool)
@@ -486,7 +488,7 @@ __device__ __forceinline__
 void ExpandNeighborGatherOffsets(
 	int local_rank[LOAD_VEC_SIZE],
 	int row_progress[LOAD_VEC_SIZE],	// out param 
-	int row_offset[LOAD_VEC_SIZE],
+	IndexType row_offset[LOAD_VEC_SIZE],
 	int row_length[LOAD_VEC_SIZE],
 	int cta_progress,
 	IndexType *scratch_pool)
@@ -555,7 +557,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID		
 		bool duplicate[LOAD_VEC_SIZE];				// Whether or not the node-ID is a guaranteed duplicate
 		IndexType row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
-		IndexType row_length[LOAD_VEC_SIZE];		// Number of adjacent neighbors
+		int row_length[LOAD_VEC_SIZE];				// Number of adjacent neighbors
 		int local_rank[LOAD_VEC_SIZE];				// Prefix sum of row-lengths, i.e., local rank for where to plop down neighbor list into scratch 
 		int row_progress[LOAD_VEC_SIZE];			// Iterator for the neighbor list
 		int cta_progress = 0;						// Progress of the CTA as a whole towards writing out all neighbors to the outgoing queue
@@ -607,7 +609,13 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		//
 
 		int enqueue_count = LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
-			base_partial, raking_segment, warpscan, row_length, local_rank, d_queue_length, s_enqueue_offset);
+			base_partial, 
+			raking_segment, 
+			warpscan, 
+			row_length, 
+			local_rank, 
+			d_queue_length, 
+			s_enqueue_offset);
 
 		__syncthreads();
 
@@ -639,7 +647,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += CTA_THREADS) {
 
 				// Gather
-				int node_id;
+				IndexType node_id;
 				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
 					node_id, d_column_indices, scratch_pool[scratch_offset]);
 				
@@ -691,26 +699,29 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 	{
 		const int CACHE_ELEMENTS = CTA_THREADS;
 		
-		int row_offset;
+		IndexType row_offset;
 		int row_length;  
 		int local_rank;					 
 		int row_progress = 0;
 		int cta_progress = 0;
 
+		typedef typename VecType<IndexType, 2>::Type IndexTypeVec2; 		
+
 		// Dequeue a node-id and obtain corresponding row range
 		if ((UNGUARDED_IO) || (threadIdx.x < cta_out_of_bounds)) {
-			int node_id;				// incoming nodes to process for this tile
-			ModifiedLoad<int, CG>::Ld(node_id, d_in_queue, threadIdx.x);
 
-			int2 row_range;
+			IndexType node_id;		// incoming node to process for this tile
+			ModifiedLoad<IndexType, QUEUE_MODIFIER>::Ld(node_id, d_in_queue, threadIdx.x);
+
+			IndexTypeVec2 row_range;
 			if (node_id & 1) {
 				// Misaligned
-				ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
-				ModifiedLoad<int, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
 			} else {
 				// Aligned
-				int2* d_row_offsets_v2 = reinterpret_cast<int2*>(d_row_offsets + node_id);
-				ModifiedLoad<int2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
+				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
+				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
 			}
 			// Compute row offset and length
 			row_offset = row_range.x;
@@ -752,9 +763,10 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			
 			// Read neighbor node-Ids using gather offsets
 			int hash;
-			int neighbor_node;
+			IndexType neighbor_node;
 			if (threadIdx.x < remainder) {
-				ModifiedLoad<int, CG>::Ld(neighbor_node, d_column_indices, scratch_pool[threadIdx.x]);
+				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+					neighbor_node, d_column_indices, scratch_pool[threadIdx.x]);
 				hash = neighbor_node % SCRATCH_SPACE;
 			} else { 
 				neighbor_node = -1;
@@ -776,8 +788,8 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			// Cull previously-visited neighbor node-Ids
 			int unvisited = 0;
 			if ((!duplicate) && (neighbor_node != -1)) {
-				int source_dist;
-				ModifiedLoad<int, CG>::Ld(source_dist, d_source_dist, neighbor_node);
+				IndexType source_dist;
+				ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist, neighbor_node);
 				if (source_dist == -1) {
 					d_source_dist[neighbor_node] = iteration + 1;
 					unvisited = 1;
