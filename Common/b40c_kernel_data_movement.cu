@@ -92,17 +92,17 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CG> {																											\
 			__device__ __forceinline__ static void Ld(short_type##1 &dest, short_type##1* d_ptr, int offset) {														\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(dest.x) : _B40C_ASM_PTR_(d_ptr + offset));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CS> {																											\
 			__device__ __forceinline__ static void Ld(short_type##1 &dest, short_type##1* d_ptr, int offset) {														\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(dest.x) : _B40C_ASM_PTR_(d_ptr + offset));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CA> {																											\
 			__device__ __forceinline__ static void Ld(short_type##1 &dest, short_type##1* d_ptr, int offset) {														\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(dest) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(dest.x) : _B40C_ASM_PTR_(d_ptr + offset));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##2, CG> {																											\

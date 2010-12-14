@@ -92,7 +92,7 @@ struct BfsCsrProblem
 	void ResetSourceDist() 
 	{
 		int max_grid_size = B40C_MIN(1024 * 32, (nodes + 128 - 1) / 128);
-		MemsetKernel<int><<<max_grid_size, 128>>>(d_source_dist, -1, nodes);
+		MemsetKernel<IndexType><<<max_grid_size, 128>>>(d_source_dist, -1, nodes);
 	}
 	
 	void Free() 
