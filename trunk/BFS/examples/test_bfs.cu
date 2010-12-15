@@ -89,7 +89,7 @@ void Usage()
 			"\n"
 			"--v2\tSame as --v, but also displays the input graph to the console.\n"
 			"\n"
-			"--instrumented\tKernels keep track of queue-passes, extra work (i.e., the \n"
+			"--instrumented\tKernels keep track of queue-passes, redundant work (i.e., the \n"
 			"\t\toverhead of duplicates in the frontier), and average barrier wait (a \n"
 			"\t\trelative indicator of load imbalance.\n"
 			"\n"
@@ -148,11 +148,11 @@ struct Stats {
 	char *name;
 	Statistic rate;
 	Statistic passes;
-	Statistic extra_work;
+	Statistic redundant_work;
 	Statistic barrier_wait;
 	
-	Stats() : name(NULL), rate(), passes(), extra_work(), barrier_wait() {}
-	Stats(char *name) : name(name), rate(), passes(), extra_work(), barrier_wait() {}
+	Stats() : name(NULL), rate(), passes(), redundant_work(), barrier_wait() {}
+	Stats(char *name) : name(name), rate(), passes(), redundant_work(), barrier_wait() {}
 };
 
 
@@ -182,13 +182,13 @@ void DisplayStats(
 		}
 	}
 	
-	double extra_work = 0.0;
+	double redundant_work = 0.0;
 	if (total_queued > 0)  {
-		extra_work = (queues_nodes) ? 
+		redundant_work = (queues_nodes) ? 
 			((double) total_queued - nodes_visited) / nodes_visited : 
 			((double) total_queued - edges_visited) / edges_visited;
 	}
-	extra_work *= 100;
+	redundant_work *= 100;
 
 	// Display name (and correctness)
 	printf("[%s]: ", stats.name);
@@ -210,26 +210,26 @@ void DisplayStats(
 		if (avg_barrier_wait != 0) printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms", 
 			avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / passes);
 		printf("\n\tsrc: %d, nodes visited: %d, edges visited: %d", src, nodes_visited, edges_visited);
-		if (extra_work != 0) printf(", extra work: %.2f%%", extra_work);
+		if (redundant_work != 0) printf(", redundant work: %.2f%%", redundant_work);
 		printf("\n");
 
 		// Display the aggregate sample statistics
 		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
 
 		double passes_stddev = sqrt(stats.passes.Update((double) passes));
-		if (passes != 0) printf(			"\t\t[Passes]:         u: %.1f, s: %.1f, cv: %.4f\n", 
+		if (passes != 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n", 
 			stats.passes.mean, passes_stddev, passes_stddev / stats.passes.mean);
 
-		double extra_work_stddev = sqrt(stats.extra_work.Update(extra_work));
-		if (extra_work != 0) printf(		"\t\t[Extra work %]:   u: %.2f, s: %.2f, cv: %.4f\n", 
-			stats.extra_work.mean, extra_work_stddev, extra_work_stddev / stats.extra_work.mean);
+		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
+		if (redundant_work != 0) printf(	"\t\t[redundant work %]: u: %.2f, s: %.2f, cv: %.4f\n", 
+			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
 		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update(avg_barrier_wait / elapsed * 100));
-		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %]:      u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %]:        u: %.2f, s: %.2f, cv: %.4f\n", 
 			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
-		printf(								"\t\t[Rate MiEdges/s]: u: %.3f, s: %.3f, cv: %.4f\n", 
+		printf(								"\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
 			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);
 	}
 	
@@ -378,7 +378,8 @@ void RunTests(
 	printf("Running %s tests...\n\n", (INSTRUMENT) ? "instrumented" : "non-instrumented");
 	
 	// Perform the specified number of test iterations
-	while (stats[0].rate.count < test_iterations) {
+	int test_iteration = 0;
+	while (test_iteration < test_iterations) {
 	
 		// If randomized-src was specified, re-roll the src
 		if (randomized_src) src = RandomNode(csr_graph.nodes);
@@ -416,6 +417,12 @@ void RunTests(
 		if (g_verbose2) {
 			DisplaySolution(reference_source_dist, csr_graph.nodes);
 			printf("\n");
+		}
+		
+		if (randomized_src) {
+			test_iteration = stats[0].rate.count;
+		} else {
+			test_iteration++;
 		}
 	}
 	
