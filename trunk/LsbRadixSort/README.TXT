@@ -1,6 +1,11 @@
 
 BUILD NOTES:
 	
+	To integrate B40C radix sorting, just #include the sorting API (e.g., 
+	radixsort_early_exit.cu, or radixsort_single_grid.cu) in your source.  
+	There are no separate libraries to build: B40C operates like the STL or 
+	Thrust. 
+
 	Important notes when building or integrating this code:
 
 	1) Device specialization and kernel bloat.  For performance, it is 
@@ -44,7 +49,8 @@ BUILD NOTES:
 	   SM2.0 code will experience up to a 50% slowdown).  For a workaround, see 
 	   the example Makefile for a compiler-define that enables logic that 
 	   programmatically coalesces unaligned scatters on SM2.0 (i.e., -DFERMI_ECC
-	   flag).  This is non-ideal, but only results in a ~35% slowdown.
+	   flag).  This is non-ideal, but only results in a ~35% slowdown for 
+	   very large problems.  May be worse, however, for small problems.
 	   
 	
 	The accompanying sorting examples should build under most Linux 
