@@ -65,6 +65,8 @@ using namespace b40c;
  * Defines, constants, globals 
  ******************************************************************************/
 
+//#define __B40C_ERROR_CHECKING__		 
+
 bool g_verbose;
 
 
@@ -127,6 +129,7 @@ void TimedSort(
 	// Allocate device storage  
 	MultiCtaRadixSortStorage<K> device_storage(num_elements);		
 	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
+    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
 	EarlyExitRadixSortingEnactor<K> sorting_enactor;			
@@ -149,7 +152,7 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		RADIXSORT_DEBUG = (i == 0);
+		sorting_enactor.RADIXSORT_DEBUG = (i == 0);
 		
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(
@@ -221,7 +224,9 @@ void TimedSort(
 	// Allocate device storage   
 	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
 	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
+    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
+    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
 	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
@@ -244,7 +249,7 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		RADIXSORT_DEBUG = (i == 0);
+		sorting_enactor.RADIXSORT_DEBUG = (i == 0);
 
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(

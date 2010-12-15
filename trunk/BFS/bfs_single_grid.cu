@@ -102,9 +102,6 @@ public:
 		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
 		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
 		cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size);
-
-		// Mooch
-		synchronize("SingleGridBfsEnactor: post-malloc");
 		
 		// Initialize 
 		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(			// to zero
@@ -181,7 +178,7 @@ public:
 		case CONTRACT_EXPAND:
 
 			// Contract-expand strategy
-			if (BFS_DEBUG) {
+			if (this->BFS_DEBUG) {
 				printf("\n[BFS contract-expand config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
 					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
 					this->max_grid_size, cta_threads, this->max_queue_size);
@@ -199,12 +196,14 @@ public:
 				this->d_sync,
 				this->d_barrier_time);
 				
+			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
+
 			break;
     		
 		case EXPAND_CONTRACT:
 			
 			// Expand-contract strategy
-			if (BFS_DEBUG) {
+			if (this->BFS_DEBUG) {
 				printf("\n[BFS expand-contract config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
 					this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
 					this->max_grid_size, cta_threads, this->max_queue_size);
@@ -221,6 +220,8 @@ public:
 				this->d_queue_lengths,							
 				this->d_sync,
 				this->d_barrier_time);
+
+			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
 			
 			break;
 

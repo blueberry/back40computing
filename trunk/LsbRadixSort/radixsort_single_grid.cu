@@ -249,8 +249,12 @@ public:
 	{
 		// Allocate and initialize synchronization counters to zero
 		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
+	    dbg_perror_exit("SingleGridRadixSortingEnactor:: cudaMalloc d_sync failed: ", __FILE__, __LINE__);
+		
 		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(
 			d_sync, 0, this->max_grid_size);
+	    dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: MemsetKernel failed: ", __FILE__, __LINE__);
+		
 	}
 
 	
@@ -287,7 +291,7 @@ public:
 		// Perform any lazy allocation
 		PreSort(problem_storage, PASSES);
 		
-		if (RADIXSORT_DEBUG) {
+		if (this->RADIXSORT_DEBUG) {
     		printf("\ndevice_sm_version: %d, kernel_ptx_version: %d\n", 
     			this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version);
     		printf("%d-bit bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\ttile_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
@@ -352,7 +356,7 @@ struct SingleGridKernelInvoker <1, K, V, RADIX_BITS, PASSES>
 			problem_storage.d_values[1],
 			work_decomposition,
 			spine_elements);
-	    synchronize_if_enabled("ScanScatterDigits");
+	    dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: LsbSingleGridSortingKernel failed: ", __FILE__, __LINE__);
 	}
 };
 
@@ -383,7 +387,7 @@ struct SingleGridKernelInvoker <2, K, V, RADIX_BITS, PASSES>
 			problem_storage.d_values[1],
 			work_decomposition,
 			spine_elements);
-	    synchronize_if_enabled("ScanScatterDigits");
+	    dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: LsbSingleGridSortingKernel failed: ", __FILE__, __LINE__);
 
 	    LsbSingleGridSortingKernel<ConvertedKeyType, V, RADIX_BITS, PASSES, 8, PreprocessKeyFunctor<K>, PostprocessKeyFunctor<K> ><<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
 			d_sync,
@@ -394,7 +398,7 @@ struct SingleGridKernelInvoker <2, K, V, RADIX_BITS, PASSES>
 			problem_storage.d_values[1],
 			work_decomposition,
 			spine_elements);
-	    synchronize_if_enabled("ScanScatterDigits");
+	    dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: LsbSingleGridSortingKernel failed: ", __FILE__, __LINE__);
 	}
 };
 

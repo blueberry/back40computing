@@ -32,29 +32,55 @@
 
 namespace b40c {
 
+
 /**
  * Block on the previous stream action (e.g., kernel launch), report error-status
  * and kernel-stdout if present 
  */
-void synchronize(const char *message)
+void perror_exit(const char *message, const char *filename, int line)
 {
 	cudaError_t error = cudaPeekAtLastError();
 	if (error) {
-		fprintf(stderr, "%s caused %d (%s)\n", message, error, cudaGetErrorString(error));
+		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
 		exit(1);
 	}
 } 
 
+
 /**
  * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
  */
-void synchronize_if_enabled(const char *message)
+void dbg_perror_exit(const char *message, const char *filename, int line)
 {
-#if defined(__ERROR_SYNCHRONOUS)
-	synchronize(message);
+#if defined(__B40C_ERROR_CHECKING__)
+	perror_exit(message, filename, line);
 #endif
 } 
 
+
+/**
+ * Block on the previous stream action (e.g., kernel launch), report error-status
+ * and kernel-stdout if present 
+ */
+void sync_perror_exit(const char *message, const char *filename, int line)
+{
+	cudaError_t error = cudaThreadSynchronize();
+	if (error) {
+		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+		exit(1);
+	}
+} 
+
+
+/**
+ * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
+ */
+void dbg_sync_perror_exit(const char *message, const char *filename, int line)
+{
+#if defined(__B40C_ERROR_CHECKING__)
+	sync_perror_exit(message, filename, line);
+#endif
+} 
 
 
 } // namespace b40c

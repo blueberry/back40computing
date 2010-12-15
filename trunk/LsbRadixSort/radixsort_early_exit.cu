@@ -220,6 +220,7 @@ protected:
 	{
 		// Allocate pair of ints denoting input and output vectors for even and odd passes
 		cudaMalloc((void**) &d_selectors, 2 * sizeof(int));
+	    dbg_perror_exit("BaseEarlyExitEnactor:: cudaMalloc d_selectors failed: ", __FILE__, __LINE__);
 	}
 
 	
@@ -340,7 +341,7 @@ protected:
 				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 		
-		if (RADIXSORT_DEBUG && (PASS == 0)) {
+		if (this->RADIXSORT_DEBUG && (PASS == 0)) {
     		
     		printf("\ndevice_sm_version: %d, kernel_ptx_version: %d\n", this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version);
     		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\ttile_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
@@ -376,7 +377,7 @@ protected:
 			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
 			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
 			work_decomposition);
-	    synchronize_if_enabled("RakingReduction");
+	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
 
 		
 		//
@@ -392,7 +393,7 @@ protected:
 			this->d_spine,
 			this->d_spine,
 			spine_elements);
-	    synchronize_if_enabled("SrtsScanSpine");
+	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbSpineScanKernel failed: ", __FILE__, __LINE__);
 
 		
 		//
@@ -407,7 +408,7 @@ protected:
 			problem_storage.d_values[problem_storage.selector],
 			problem_storage.d_values[problem_storage.selector ^ 1],
 			work_decomposition);
-	    synchronize_if_enabled("ScanScatterDigits");
+	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
 
 		return cudaSuccess;
 	}
