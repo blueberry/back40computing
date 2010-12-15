@@ -71,6 +71,8 @@ using namespace b40c;
  * Defines, constants, globals 
  ******************************************************************************/
 
+//#define __B40C_ERROR_CHECKING__		 
+
 bool g_verbose;
 bool g_verbose2;
 bool g_verify;
@@ -205,8 +207,8 @@ void TimedSort(
 
 	// Create timing records
 	cudaEvent_t start_event, stop_event;
-	CUDA_SAFE_CALL( cudaEventCreate(&start_event) );
-	CUDA_SAFE_CALL( cudaEventCreate(&stop_event) );
+	cudaEventCreate(&start_event);
+	cudaEventCreate(&stop_event);
 
 	printf("%s, %d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction: ", 
 		(g_small_sorting_enactor) ? "Small-problem enactor" : "Large-problem enactor",
@@ -223,21 +225,21 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		RADIXSORT_DEBUG = (g_verbose && (i == 0));
+		sorting_enactor.RADIXSORT_DEBUG = (g_verbose && (i == 0));
 
 		// Move a fresh copy of the problem into device storage
-		CUDA_SAFE_CALL( cudaMemcpy(device_storage.d_keys[0], h_keys, num_elements * sizeof(K), cudaMemcpyHostToDevice) );
+		cudaMemcpy(device_storage.d_keys[0], h_keys, num_elements * sizeof(K), cudaMemcpyHostToDevice);
 
 		// Start cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(start_event, 0) );
+		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
 		cudaError_t retval = sorting_enactor.EnactSort(device_storage);
 
 		// End cuda timing record
-		CUDA_SAFE_CALL( cudaEventRecord(stop_event, 0) );
-		CUDA_SAFE_CALL( cudaEventSynchronize(stop_event) );
-		CUDA_SAFE_CALL( cudaEventElapsedTime(&duration, start_event, stop_event));
+		cudaEventRecord(stop_event, 0);
+		cudaEventSynchronize(stop_event);
+		cudaEventElapsedTime(&duration, start_event, stop_event);
 		elapsed += (double) duration;
 	}
 
@@ -249,17 +251,17 @@ void TimedSort(
 		throughput);
 
     // Clean up events
-	CUDA_SAFE_CALL( cudaEventDestroy(start_event) );
-	CUDA_SAFE_CALL( cudaEventDestroy(stop_event) );
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
 	
 	// Copy out sorted keys and check
     if (g_verify || g_verbose) {
 
-    	CUDA_SAFE_CALL( cudaMemcpy(
+    	cudaMemcpy(
     		h_keys_result, 
     		device_storage.d_keys[device_storage.selector], 
     		num_elements * sizeof(K), 
-    		cudaMemcpyDeviceToHost) );
+    		cudaMemcpyDeviceToHost);
 
 		// Display sorted key data
 		if (g_verbose2) {
@@ -321,13 +323,19 @@ void TestSort(
 	
 	// Allocate enough device memory for the biggest problem
 	MultiCtaRadixSortStorage<K, V> device_storage(max_num_elements);
+	
 	printf("Allocating for %d keys\n", max_num_elements); fflush(stdout);
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[0], max_num_elements * sizeof(K)) );
-	CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_keys[1], max_num_elements * sizeof(K)));
-	if (!KEYS_ONLY) {
+	cudaMalloc( (void**) &device_storage.d_keys[0], max_num_elements * sizeof(K));
+    dbg_perror_exit("TestSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
+	cudaMalloc( (void**) &device_storage.d_keys[1], max_num_elements * sizeof(K));
+    dbg_perror_exit("TestSort:: cudaMalloc device_storage.d_keys[1] failed: ", __FILE__, __LINE__);
+
+    if (!KEYS_ONLY) {
 		printf("Allocating for %d values\n", max_num_elements); fflush(stdout);
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[0], max_num_elements * sizeof(V)));
-		CUDA_SAFE_CALL( cudaMalloc( (void**) &device_storage.d_values[1], max_num_elements * sizeof(V)));
+		cudaMalloc( (void**) &device_storage.d_values[0], max_num_elements * sizeof(V));
+	    dbg_perror_exit("TestSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
+		cudaMalloc( (void**) &device_storage.d_values[1], max_num_elements * sizeof(V));
+	    dbg_perror_exit("TestSort:: cudaMalloc device_storage.d_values[1] failed: ", __FILE__, __LINE__);
 	}
 
 	// Run combinations of specified max-grid-sizes
@@ -375,11 +383,11 @@ void TestSort(
 	free(h_keys);
 	free(h_keys_result);
 	
-	if (device_storage.d_keys[0]) CUDA_SAFE_CALL(cudaFree(device_storage.d_keys[0]));
-	if (device_storage.d_keys[1]) CUDA_SAFE_CALL(cudaFree(device_storage.d_keys[1]));
+	if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
+	if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
 	if (!KEYS_ONLY) {
-		if (device_storage.d_values[0]) CUDA_SAFE_CALL(cudaFree(device_storage.d_values[0]));
-		if (device_storage.d_values[1]) CUDA_SAFE_CALL(cudaFree(device_storage.d_values[1]));
+		if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
+		if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 	}
 }
 

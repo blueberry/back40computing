@@ -52,6 +52,14 @@ namespace b40c {
 /**
  * Storage management structure for multi-CTA-sorting device vectors.
  * 
+ * Everything is public in this structure.  It’s just a simple transparent 
+ * structure for encapsulating a specific sorting problem for delivery to  
+ * a sorting enactor. It is the caller's responsibility to free any non-NULL storage 
+ * arrays when no longer needed.  They are free to alias the storage as they see fit
+ * and to change the num_elements field for arbitrary extents. This provides 
+ * maximum flexibility for re-using device allocations for subsequent sorting 
+ * operations.
+ * 
  * Multi-CTA sorting is performed out-of-core, meaning that sorting passes
  * must have two equally sized arrays: one for reading in from, the other for 
  * writing out to.  As such, this structure maintains a pair of device vectors 
@@ -67,10 +75,6 @@ namespace b40c {
  * The non-selected array(s) can be allocated lazily upon first sorting by the 
  * sorting enactor if left NULL, or a-priori by the caller.  (If user-allocated, 
  * they should be large enough to accomodate num_elements.)    
- * 
- * It is the caller's responsibility to free any non-NULL storage arrays when
- * no longer needed.  This allows for the storage to be re-used for subsequent 
- * sorting operations of the same size.
  * 
  * NOTE: After a sorting operation has completed, the selecter member will
  * index the key (and value) pointers that contain the final sorted results.
@@ -94,6 +98,15 @@ struct MultiCtaRadixSortStorage
 	// sorting elements (i.e., where the results are)
 	int selector;
 
+	// Constructor
+	MultiCtaRadixSortStorage() : num_elements(0), selector(0)
+	{
+		d_keys[0] = NULL;
+		d_keys[1] = NULL;
+		d_values[0] = NULL;
+		d_values[1] = NULL;
+	}
+	
 	// Constructor
 	MultiCtaRadixSortStorage(int num_elements) :
 		num_elements(num_elements), 
@@ -161,7 +174,9 @@ protected:
 		int spine_tiles = (spine_elements + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / 
 				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+
 		cudaMalloc((void**) &d_spine, spine_elements * sizeof(int));
+	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc d_spine failed: ", __FILE__, __LINE__);
 	}
 
 
@@ -194,16 +209,20 @@ protected:
     	// Allocate device memory for temporary storage (if necessary)
     	if (problem_storage.d_keys[0] == NULL) {
     		cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(K));
+    	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_keys[0] failed: ", __FILE__, __LINE__);
     	}
     	if (problem_storage.d_keys[1] == NULL) {
     		cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(K));
+    	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_keys[1] failed: ", __FILE__, __LINE__);
     	}
     	if (!Base::KeysOnly()) {
     		if (problem_storage.d_values[0] == NULL) {
     			cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(V));
+    		    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_values[0] failed: ", __FILE__, __LINE__);
     		}
     		if (problem_storage.d_values[1] == NULL) {
     			cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(V));
+    		    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_values[1] failed: ", __FILE__, __LINE__);
     		}
     	}
 

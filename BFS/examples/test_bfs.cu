@@ -48,6 +48,8 @@ using namespace b40c;
  * Defines, constants, globals 
  ******************************************************************************/
 
+//#define __B40C_ERROR_CHECKING__		 
+
 bool g_verbose;
 bool g_verbose2;
 
@@ -259,8 +261,6 @@ float TestGpuBfs(
 	// (Re)initialize distances
 	problem_storage.ResetSourceDist();
 
-	synchronize("Pre-launch check");
-	
 	// Perform BFS
 	cudaEventRecord(start_event, 0);
 	enactor.EnactSearch(problem_storage, src, strategy);
@@ -364,6 +364,7 @@ void RunTests(
 	SingleGridBfsEnactor<IndexType, INSTRUMENT> bfs_sg_enactor(
 		(queue_size > 0) ? queue_size : csr_graph.edges, 
 		max_grid_size);
+	bfs_sg_enactor.BFS_DEBUG = g_verbose;
 
 	// Allocate problem on GPU
 	BfsCsrProblem<IndexType> problem_storage(
@@ -486,7 +487,6 @@ int main( int argc, char** argv)
 	} else {
 		g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
 	}
-	BFS_DEBUG = g_verbose;
 	int flags = CmdArgReader::getParsedArgc();
 	int graph_args = argc - flags - 1;
 	

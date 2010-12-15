@@ -31,10 +31,6 @@
 namespace b40c {
 
 
-// Debugging options
-static bool BFS_DEBUG = false;
-
-
 /******************************************************************************
  * ProblemStorage management structures for BFS problem data 
  ******************************************************************************/
@@ -74,12 +70,12 @@ struct BfsCsrProblem
 		IndexType *h_row_offsets): nodes(nodes)
 	{
 		cudaMalloc((void**) &d_column_indices, edges * sizeof(IndexType));
+	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_column_indices failed: ", __FILE__, __LINE__);
 		cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(IndexType));
+	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_row_offsets failed: ", __FILE__, __LINE__);
 		cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType));
+	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_source_dist failed: ", __FILE__, __LINE__);
 
-		// Mooch
-		synchronize("BfsCsrProblem: post-malloc");
-		
 		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(IndexType), cudaMemcpyHostToDevice);
 		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(IndexType), cudaMemcpyHostToDevice);
 		
@@ -131,6 +127,11 @@ protected:
 	IndexType *d_in_queue;
 	IndexType *d_out_queue;
 	
+public:
+
+	// Allows display to stdout of search details
+	bool BFS_DEBUG;
+
 protected: 	
 	
 	/**
@@ -140,13 +141,12 @@ protected:
 		int max_queue_size,
 		int max_grid_size,
 		const CudaProperties &props = CudaProperties()) : 
-			max_queue_size(max_queue_size), max_grid_size(max_grid_size), cuda_props(props) 
+			max_queue_size(max_queue_size), max_grid_size(max_grid_size), cuda_props(props), BFS_DEBUG(false)
 	{
 		cudaMalloc((void**) &d_in_queue, max_queue_size * sizeof(IndexType));
+	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_in_queue failed: ", __FILE__, __LINE__);
 		cudaMalloc((void**) &d_out_queue, max_queue_size * sizeof(IndexType));
-		
-		// Mooch
-		synchronize("BaseBfsEnactor: post-malloc");
+	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_out_queue failed: ", __FILE__, __LINE__);
 	}
 
 public:

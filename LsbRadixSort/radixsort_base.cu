@@ -51,11 +51,6 @@
 
 namespace b40c {
 
-
-// Debugging options
-static bool RADIXSORT_DEBUG = false;
-
-
 /**
  * Base class for SRTS radix sorting enactors.
  */
@@ -78,13 +73,18 @@ protected:
 	//Device properties
 	const CudaProperties cuda_props;
 	
+public: 
+	
+	// Allows display to stdout of sort details
+	bool RADIXSORT_DEBUG;
+	
 protected: 	
 	
 	/**
 	 * Constructor.
 	 */
 	BaseRadixSortingEnactor(const CudaProperties &props = CudaProperties()) : 
-		cuda_props(props) {}
+		cuda_props(props), RADIXSORT_DEBUG(false) {}
 
 
 public:
