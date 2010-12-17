@@ -54,11 +54,11 @@ namespace b40c {
  * 
  * Everything is public in this structure.  It’s just a simple transparent 
  * structure for encapsulating a specific sorting problem for delivery to  
- * a sorting enactor. It is the caller's responsibility to free any non-NULL storage 
- * arrays when no longer needed.  They are free to alias the storage as they see fit
- * and to change the num_elements field for arbitrary extents. This provides 
- * maximum flexibility for re-using device allocations for subsequent sorting 
- * operations.
+ * a sorting enactor. The caller is free to assign and alias the storage as 
+ * they see fit and to change the num_elements field for arbitrary extents. This 
+ * provides maximum flexibility for re-using device allocations for subsequent 
+ * sorting operations.  As such, it is the caller's responsibility to free any 
+ * non-NULL storage arrays when no longer needed.
  * 
  * Multi-CTA sorting is performed out-of-core, meaning that sorting passes
  * must have two equally sized arrays: one for reading in from, the other for 
