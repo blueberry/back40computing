@@ -28,43 +28,35 @@
 #include <b40c_error_synchronize.cu>
 
 #include <bfs_base.cu>
-#include <bfs_single_grid_kernel.cu>
+#include <bfs_level_grid_kernel.cu>
+
+#include <radixsort_early_exit.cu>		// Sorting includes
 
 namespace b40c {
 
 /**
- * Single-grid breadth-first-search enactor.
+ * Level-grid breadth-first-search enactor.
  *  
- * All iterations are performed by a single kernel-launch.  This is 
- * made possible by software global-barriers across threadblocks.  
- * breadth-first-search enactors.
+ * Each iterations is performed by its own kernel-launch.  
  */
-template <typename IndexType, bool INSTRUMENTED>
-class SingleGridBfsEnactor : public BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> >
+template <typename IndexType>
+class LevelGridBfsEnactor : public BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> >
 {
 private:
 	
 	typedef BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> > Base; 
+	
+	// Sorting enactor
+	EarlyExitRadixSortingEnactor<IndexType> sorting_enactor;
 
 protected:	
 
-	/**
-	 * Array of global synchronization counters, one for each threadblock
-	 */
-	int *d_sync;
-	
 	/**
 	 * Rotating 4-element array of atomic counters indicating sizes of the 
 	 * incoming and outgoing frontier queues, where 
 	 * incoming = iteration % 4, and outgoing = (iteration + 1) % 4
 	 */
 	int *d_queue_lengths;
-	
-	/**
-	 * Time (in clocks) spent by each threadblock in software global barrier.
-	 * Can be used to measure load imbalance.
-	 */
-	unsigned long long *d_barrier_time;
 	
 protected:
 	
@@ -89,29 +81,25 @@ public:
 	 * Constructor.  Requires specification of the maximum number of elements
 	 * that can be queued into the frontier-queue for a given BFS iteration.
 	 */
-	SingleGridBfsEnactor(
+	LevelGridBfsEnactor(
 		int max_queue_size,
 		int max_grid_size = 0,
 		const CudaProperties &props = CudaProperties()) :
 			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props)
 	{
 		// Size of 4-element rotating vector of queue lengths (and statistics)   
-		const int QUEUE_LENGTHS_SIZE = 4 + 2;
+		const int QUEUE_LENGTHS_SIZE = 4;
 		
 		// Allocate 
-		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
 		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
-		cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size);
 		
 		// Initialize 
-		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(			// to zero
-			d_sync, 0, this->max_grid_size);
 		MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
 			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
 		
 		// Setup cache config for kernels
-//		cudaFuncSetCacheConfig(BfsSingleGridKernel<IndexType, CONTRACT_EXPAND>, cudaFuncCachePreferL1);
-//		cudaFuncSetCacheConfig(BfsSingleGridKernel<IndexType, EXPAND_CONTRACT>, cudaFuncCachePreferL1);
+//		cudaFuncSetCacheConfig(BfsLevelKernel<IndexType, CONTRACT_EXPAND>, cudaFuncCachePreferL1);
+//		cudaFuncSetCacheConfig(BfsLevelKernel<IndexType, EXPAND_CONTRACT>, cudaFuncCachePreferL1);
 	}
 
 public:
@@ -119,9 +107,8 @@ public:
 	/**
      * Destructor
      */
-    virtual ~SingleGridBfsEnactor() 
+    virtual ~LevelGridBfsEnactor() 
     {
-		if (d_sync) cudaFree(d_sync);
 		if (d_queue_lengths) cudaFree(d_queue_lengths);
     }
     
@@ -136,29 +123,6 @@ public:
     	total_queued = 0;
     	passes = 0;
     	avg_barrier_wait = 0;
-    	
-    	if (INSTRUMENTED) {
-    	
-			cudaMemcpy(&total_queued, d_queue_lengths + 4, 1 * sizeof(int), cudaMemcpyDeviceToHost);
-			cudaMemcpy(&passes, d_queue_lengths + 5, 1 * sizeof(int), cudaMemcpyDeviceToHost);
-	
-			unsigned long long *h_barrier_time = 
-				(unsigned long long *) malloc(this->max_grid_size * sizeof(unsigned long long));
-			
-			cudaMemcpy(h_barrier_time, d_barrier_time, this->max_grid_size * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-			unsigned long long total_barrier_time = 0;
-			for (int i = 0; i < this->max_grid_size; i++) {
-				total_barrier_time += h_barrier_time[i];
-			}
-			
-			// Average barrier wait in clocks
-			avg_barrier_wait = total_barrier_time / this->max_grid_size;
-			
-			// Scale to milliseconds
-			avg_barrier_wait /= (this->cuda_props.device_props.clockRate);
-			
-			free(h_barrier_time);
-    	}
     }
     
 	/**
@@ -174,51 +138,80 @@ public:
 		int cta_threads = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
 		
 		if (this->BFS_DEBUG) {
-			printf("\n[BFS single-grid, %s config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
+			printf("\n[BFS level-sync, %s config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
 				(strategy == CONTRACT_EXPAND) ? "contract-expand" : "expand-contract", 
 				this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
 				this->max_grid_size, cta_threads, this->max_queue_size);
 			fflush(stdout);
 		}
 
-		switch (strategy) {
 
-		case CONTRACT_EXPAND:
-
-			// Contract-expand strategy
-    		BfsSingleGridKernel<IndexType, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
-				src,
-				this->d_queue[0],								
-				this->d_queue[1],								
-				problem_storage.d_column_indices,				
-				problem_storage.d_row_offsets,					 
-				problem_storage.d_source_dist,					
-				this->d_queue_lengths,							
-				this->d_sync,
-				this->d_barrier_time);
+		// Create 
+		MultiCtaRadixSortStorage<IndexType> sorting_problem;
+		sorting_problem.d_keys[0] = this->d_queue[0];
+		sorting_problem.d_keys[1] = this->d_queue[1];
+		sorting_problem.selector = 0;
+		
+		int iteration = 0;
+		while (true) {
+		
+			switch (strategy) {
+	
+			case CONTRACT_EXPAND:
+	
+				// Contract-expand strategy
+				BfsLevelGridKernel<IndexType, CONTRACT_EXPAND><<<this->max_grid_size, cta_threads>>>(
+					src,
+					this->d_queue[sorting_problem.selector],								
+					this->d_queue[sorting_problem.selector ^ 1],								
+					problem_storage.d_column_indices,				
+					problem_storage.d_row_offsets,					 
+					problem_storage.d_source_dist,					
+					this->d_queue_lengths,							
+					iteration);
+				dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
+	
+				break;
 				
-			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
-
-			break;
-    		
-		case EXPAND_CONTRACT:
+			case EXPAND_CONTRACT:
+				
+				// Expand-contract strategy
+				BfsLevelGridKernel<IndexType, EXPAND_CONTRACT><<<this->max_grid_size, cta_threads>>>(
+					src,
+					this->d_queue[sorting_problem.selector],								
+					this->d_queue[sorting_problem.selector ^ 1],								
+					problem_storage.d_column_indices,				
+					problem_storage.d_row_offsets,					 
+					problem_storage.d_source_dist,					
+					this->d_queue_lengths,
+					iteration);
+				dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
+				
+				break;
+	
+			}
 			
-			// Expand-contract strategy
-			BfsSingleGridKernel<IndexType, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
-				src,
-				this->d_queue[0],								
-				this->d_queue[1],								
-				problem_storage.d_column_indices,				
-				problem_storage.d_row_offsets,					 
-				problem_storage.d_source_dist,					
-				this->d_queue_lengths,							
-				this->d_sync,
-				this->d_barrier_time);
-
-			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
+			// Retrieve out-queue length
+			int outgoing_queue_length;
+			int outgoing_queue_length_idx = (iteration + 1) & 0x3; 				
+			cudaMemcpy(&outgoing_queue_length, d_queue_lengths + outgoing_queue_length_idx, 
+				1 * sizeof(int), cudaMemcpyDeviceToHost);
 			
-			break;
+			if (outgoing_queue_length == 0) {
+				// No more work, all done.
+				break;
+			}
 
+			printf("Iteration %d queued %d nodes\n", iteration, outgoing_queue_length);
+
+			// Update incoming-queue selector
+			sorting_problem.selector ^= 1;
+			
+			// Sort outgoing queue
+			sorting_problem.num_elements = outgoing_queue_length;
+			sorting_enactor.EnactSort(sorting_problem);
+			
+			iteration++;
 		}
 		
 		return cudaSuccess;

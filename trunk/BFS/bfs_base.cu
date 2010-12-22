@@ -124,8 +124,7 @@ protected:
 	int max_queue_size;
 	
 	// Frontier queues
-	IndexType *d_in_queue;
-	IndexType *d_out_queue;
+	IndexType *d_queue[2];
 	
 public:
 
@@ -143,10 +142,10 @@ protected:
 		const CudaProperties &props = CudaProperties()) : 
 			max_queue_size(max_queue_size), max_grid_size(max_grid_size), cuda_props(props), BFS_DEBUG(false)
 	{
-		cudaMalloc((void**) &d_in_queue, max_queue_size * sizeof(IndexType));
-	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_in_queue failed: ", __FILE__, __LINE__);
-		cudaMalloc((void**) &d_out_queue, max_queue_size * sizeof(IndexType));
-	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_out_queue failed: ", __FILE__, __LINE__);
+		cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(IndexType));
+	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_queue[0] failed: ", __FILE__, __LINE__);
+		cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(IndexType));
+	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_queue[1] failed: ", __FILE__, __LINE__);
 	}
 
 public:
@@ -156,8 +155,8 @@ public:
      */
     virtual ~BaseBfsEnactor() 
     {
-		if (d_in_queue) cudaFree(d_in_queue);
-		if (d_out_queue) cudaFree(d_out_queue);
+		if (d_queue[0]) cudaFree(d_queue[0]);
+		if (d_queue[1]) cudaFree(d_queue[1]);
     }
     
 	/**
