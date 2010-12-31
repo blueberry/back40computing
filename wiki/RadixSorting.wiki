@@ -86,7 +86,7 @@ Please note that the following measurements were made using the Cuda 3.0 compile
 We invite the reader to compare our results with the current state-of-the-art for GPUs and CPUs (and for experimental architectures), e.g.:
  * GPU sorting implementations (e.g., [http://ieeexplore.ieee.org/xpls/abs_all.jsp?arnumber=5161005 CUDPP])  
  * CPU implementations (e.g., 240M 32-bit keys/sec for the [http://doi.acm.org/10.1145/1807167.1807207 for the Intel quad-core Core i7])
- * Experimental many-core implementations (e.g., 386M - 560M 32-bit keys/sec for [http://doi.acm.org/10.1145/1454159.1454171 for the Intel Larrabee] and [http://techresearch.intel.com/userfiles/en-us/FASTsort_CPUsGPUs_IntelMICarchitectures.pdf for the Intel MIC/Knight's Ferry])
+ * Experimental many-core implementations (e.g., 386M - 560M 32-bit keys/sec for [http://doi.acm.org/10.1145/1454159.1454171 for the Intel Larrabee] and [http://techresearch.intel.com/spaw2/uploads/files/FASTsort_CPUsGPUs_IntelMICarchitectures.pdf for the Intel MIC/Knight's Ferry])
 
 
 ===<FONT color=#006666>Selected Performance Plots</FONT>===
