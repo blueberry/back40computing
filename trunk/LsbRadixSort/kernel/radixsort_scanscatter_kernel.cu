@@ -858,22 +858,10 @@ __device__ __forceinline__ void ScanDigitTile(
 		CorrectForOverflows<RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, LOADS_PER_TILE, UNGUARDED_IO>(
 			digits, counts, extra_elements);
 
-		// Scan across my digit counts for each load 
-		int exclusive_total = 0;
-		int inclusive_total = 0;
-		
-		#pragma unroll
-		for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-		
-			#pragma unroll
-			for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-				inclusive_total += counts[CYCLE][LOAD];
-				counts[CYCLE][LOAD] = exclusive_total;
-				exclusive_total = inclusive_total;
-			}
-		}
+		// Scan across my digit counts for each load
+		int inclusive_total = SerialScan<int, CYCLES_PER_TILE * LOADS_PER_CYCLE>((int*) counts, 0);
 
-		// second half of digit_carry update
+		// Second half of digit_carry update
 		int my_carry = digit_carry[threadIdx.x] + digit_scan[1][threadIdx.x];
 
 		// Perform overflow-free SIMD Kogge-Stone across digits

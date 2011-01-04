@@ -185,23 +185,29 @@ T SerialReduce(T partials[]) {
 
 
 /**
- * Have each thread concurrently perform a serial scan over its specified segment (in place)
+ * Have each thread concurrently perform a serial scan over its 
+ * specified segment (in place).  Returns the inclusive total.
  */
 template <typename T, int LENGTH>
 __device__ __forceinline__
-void SerialScan(T partials[], T seed0) {
-	
-	T seed1;
-
+T SerialScan(T partials[], T seed) 
+{
+	// Unroll to avoid copy
 	#pragma unroll	
-	for (int i = 0; i < LENGTH; i += 2) {
-		seed1 = partials[i] + seed0;
-		partials[i] = seed0;
-		if (i + 1 < LENGTH) {
-			seed0 = seed1 + partials[i + 1];
-			partials[i + 1] = seed1;
-		}
+	for (int i = 0; i <= LENGTH - 2; i += 2) {
+		T tmp = partials[i] + seed;
+		partials[i] = seed;
+		seed = tmp + partials[i + 1];
+		partials[i + 1] = tmp;
 	}
+	
+	if (LENGTH & 1) {
+		T tmp = partials[LENGTH - 1] + seed;
+		partials[LENGTH - 1] = seed;
+		seed = tmp;
+	}
+	
+	return seed;
 }
 
 
