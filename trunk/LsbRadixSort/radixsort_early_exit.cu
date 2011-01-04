@@ -366,11 +366,10 @@ protected:
 		// Counting Reduction
 		//
 
-		// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
-		int dynamic_smem = (this->cuda_props.kernel_ptx_version >= 130) ? 
+		// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
+		int dynamic_smem = (this->cuda_props.kernel_ptx_version == 130) ? 
 			scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 
 			0;
-
 		LsbRakingReductionKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, dynamic_smem>>>(
 			d_selectors,
 			this->d_spine,
@@ -384,11 +383,10 @@ protected:
 		// Spine
 		//
 		
-		// GF100 and GT200 get the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
-		dynamic_smem = (this->cuda_props.kernel_ptx_version >= 130) ? 
+		// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
+	    dynamic_smem = (this->cuda_props.kernel_ptx_version == 130) ? 
 			scan_scatter_attrs.sharedSizeBytes - spine_scan_kernel_attrs.sharedSizeBytes : 
 			0;
-		
 		LsbSpineScanKernel<void><<<grid_size, B40C_RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
 			this->d_spine,
 			this->d_spine,
