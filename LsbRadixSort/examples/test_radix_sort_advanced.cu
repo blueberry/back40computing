@@ -79,6 +79,7 @@ bool g_verify;
 int  g_entropy_reduction = 0;
 bool g_regen;
 bool g_small_sorting_enactor;
+int  g_banded_bits = -1;
 
 
 /******************************************************************************
@@ -133,6 +134,9 @@ void Usage()
 	printf("\n");
 	printf("[\t--entropy-reduction=<level>\tSpecifies the number of bitwise-AND'ing\n");
 	printf("\t\t\titerations for random key data.  Default = 0, Identical keys = -1\n");
+	printf("\n");
+	printf("[\t--banded-bits=<level>\tSpecifies the number of non-zero, lower-order bits\n");
+	printf("\t\t\tDefault = -1 (all non-zero)\n");
 	printf("\n");
 	printf("[\t--regen\tGenerates new random numbers for every problem size \n");
 	printf("\t\t\tin <num-elements-listfile>\n");
@@ -210,14 +214,15 @@ void TimedSort(
 	cudaEventCreate(&start_event);
 	cudaEventCreate(&stop_event);
 
-	printf("%s, %d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction: ", 
+	printf("%s, %d-byte keys, %d-byte values, %d iterations, %d elements, %d max grid size, %d entropy-reduction, %d banded-bits: ", 
 		(g_small_sorting_enactor) ? "Small-problem enactor" : "Large-problem enactor",
 		sizeof(K), 
 		(KEYS_ONLY) ? 0 : sizeof(V),
 		iterations, 
 		num_elements,
 		max_grid_size,
-		g_entropy_reduction);
+		g_entropy_reduction,
+		g_banded_bits);
 	fflush(stdout);
 
 	// Perform the timed number of sorting iterations
@@ -316,9 +321,11 @@ void TestSort(
 	h_keys = (K*) malloc(max_num_elements * sizeof(K));
 	h_keys_result = (K*) malloc(max_num_elements * sizeof(K));
 
-	// Generate random keys 
+	// Generate random keys
+	long long banded_mask = (1ll << g_banded_bits) - 1;
 	for (int k = 0; k < max_num_elements; k++) {
 		RandomBits<K>(h_keys[k], g_entropy_reduction);
+		h_keys[k] &= (long long) banded_mask;
 	}
 	
 	// Allocate enough device memory for the biggest problem
@@ -478,6 +485,7 @@ int main( int argc, char** argv) {
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-ctas", (int*)&max_grid_size);
 	cutGetCmdLineArgumentstr( argc, (const char**) argv, "max-ctas-input", &max_grid_sizes_filename);
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "entropy-reduction", (int*)&g_entropy_reduction);
+	cutGetCmdLineArgumenti( argc, (const char**) argv, "banded-bits", (int*)&g_banded_bits);
 	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
 		g_verbose = true;
 	} else {
