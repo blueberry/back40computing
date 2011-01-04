@@ -357,8 +357,8 @@ void TestSort(
 			// want to sort
 			device_storage.num_elements = num_elements_list[i];
 			
-			// Regenerate random keys if specified for subsequent problem sizes 
-			if ((i > 0) || g_regen) {
+			// If specified, regenerate random keys for subsequent problem sizes 
+			if ((i == 0) && g_regen) {
 				for (int k = 0; k < num_elements_list[i]; k++) {
 					RandomBits<K>(h_keys[k], g_entropy_reduction);
 				}
