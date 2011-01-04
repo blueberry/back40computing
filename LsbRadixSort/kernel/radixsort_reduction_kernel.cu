@@ -390,8 +390,8 @@ __device__ __forceinline__ void ReductionPass(
 	const int&	out_of_bounds)
 {
 	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
-	const int PARTIALS_PER_ROW = B40C_WARP_THREADS;
-	const int PADDED_PARTIALS_PER_ROW = PARTIALS_PER_ROW + 1;
+	const int PARTIALS_PER_ROW 					= B40C_WARP_THREADS;
+	const int PADDED_PARTIALS_PER_ROW 			= PARTIALS_PER_ROW + 1;
 
 	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
 	int warp_idx = threadIdx.x & (B40C_WARP_THREADS - 1);
@@ -493,12 +493,13 @@ void LsbRakingReductionKernel(
 
 	const int LOG_REDUCTION_LANES 				= (RADIX_BITS >= 2) ? RADIX_BITS - 2 : 0;	// Always at least one fours group
 	const int REDUCTION_LANES 					= 1 << LOG_REDUCTION_LANES;
+	const int PADDING 							= RADIX_DIGITS;								// We need one cell of padding for each raking thread
 
 	SuppressUnusedConstantWarning(RADIX_DIGITS);
 	
 	
 	// Each thread gets its own column of fours-groups (for conflict-free updates)
-	__shared__ int scan_lanes[REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE];	
+	__shared__ int scan_lanes[(REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE) + PADDING];	
 	
 	int *encoded_reduction_col = &scan_lanes[threadIdx.x];	// first element of column
 
