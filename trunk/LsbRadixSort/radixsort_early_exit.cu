@@ -260,7 +260,7 @@ protected:
 				double multiplier2 = 16.0;
 
 				double delta1 = 0.068;
-				double delta2 = 0.127;	
+				double delta2 = 0.1285;	
 
 				int dividend = (num_elements + this->tile_elements - 1) / this->tile_elements;
 
@@ -287,7 +287,7 @@ protected:
 					} else {
 						// Bump it down by 1
 						sm130_clamped_grid_size--;
-						bumps--;
+						bumps++;
 					}
 				}
 				// Clamp to suggested grid size
