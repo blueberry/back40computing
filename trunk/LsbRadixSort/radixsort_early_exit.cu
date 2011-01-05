@@ -267,6 +267,10 @@ protected:
 				int bumps = 0;
 				while(true) {
 
+					if (sm130_clamped_grid_size <= this->cuda_props.device_props.multiProcessorCount) {
+						break;
+					}
+					
 					double quotient = ((double) dividend) / (multiplier1 * sm130_clamped_grid_size);
 					quotient -= (int) quotient;
 
