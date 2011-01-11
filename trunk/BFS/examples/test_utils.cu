@@ -365,13 +365,15 @@ int BuildGrid3dGraph(
 template<typename IndexType, typename ValueType>
 int ReadDimacsStream(
 	std::istream& in,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	CsrGraph<IndexType, ValueType> &csr_graph,
+	bool undirected)
 {
 	typedef CooEdgeTuple<IndexType, ValueType> EdgeTupleType;
 	
 	IndexType nread = 0;
 	IndexType nodes = 0;
 	IndexType edges = 0;
+	IndexType directed_edges = 0;
 	EdgeTupleType *coo = NULL;		// read in COO format
 	
 	time_t mark0 = time(NULL);
@@ -395,11 +397,14 @@ int ReadDimacsStream(
 			
 			// Problem description (nodes is nodes, edges is edges)
 			in >> problem_type >> nodes >> edges;
-			printf(" (%llu nodes, %llu edges)... ", (unsigned long long) nodes, (unsigned long long) edges);
+			directed_edges = (undirected) ? edges * 2 : edges;
+			printf(" (%llu nodes, %llu %s edges)... ", 
+				(unsigned long long) nodes, (unsigned long long) edges,
+				(undirected) ? "undirected" : "directed");
 			fflush(stdout);
 			
 			// Allocate coo graph
-			coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * edges);
+			coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
 
 			break;
 
@@ -420,6 +425,13 @@ int ReadDimacsStream(
 			coo[nread].row -= 1;	// zero-based array
 			coo[nread].col -= 1;	// zero-based array
 			
+			if (undirected) {
+				// Reverse edge
+				coo[edges + nread].row = coo[nread].col;
+				coo[edges + nread].col = coo[nread].row;
+				coo[edges + nread].val = coo[nread].val;
+			}
+			
 			nread++;
 			break;
 		
@@ -428,6 +440,12 @@ int ReadDimacsStream(
 			std::getline(in, line);
 			break;
 		}
+	}
+	
+	if (nread != edges) {
+		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d edges read\n", nread, edges);
+		if (coo) free(coo);
+		return -1;
 	}
 	
 	if (coo == NULL) {
@@ -440,14 +458,14 @@ int ReadDimacsStream(
 	fflush(stdout);
 	
 	// Sort COO by row, then by col
-	std::sort(coo, coo + edges, DimacsTupleCompare<IndexType, ValueType>);
+	std::sort(coo, coo + directed_edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
 	printf("Done sorting (%ds).\n  Converting to CSR format... ", mark2 - mark1);
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
-	csr_graph.FromCoo(coo, nodes, edges);
+	csr_graph.FromCoo(coo, nodes, directed_edges);
 	free(coo);
 
 	time_t mark3 = time(NULL);
@@ -470,13 +488,14 @@ template<typename IndexType, typename ValueType>
 int BuildDimacsGraph(
 	char *dimacs_filename, 
 	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	CsrGraph<IndexType, ValueType> &csr_graph,
+	bool undirected)
 { 
 	if (dimacs_filename == NULL) {
 	
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadDimacsStream(std::cin, csr_graph) != 0) {
+		if (ReadDimacsStream(std::cin, csr_graph, undirected) != 0) {
 			return -1;
 		}
 		
@@ -486,7 +505,7 @@ int BuildDimacsGraph(
 		std::ifstream dimacs_file(dimacs_filename);
 		if (dimacs_file.is_open()) {
 			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadDimacsStream(dimacs_file, csr_graph) != 0) {
+			if (ReadDimacsStream(dimacs_file, csr_graph, undirected) != 0) {
 				dimacs_file.close();
 				return -1;
 			}
@@ -530,7 +549,8 @@ int BuildRandomGraph(
 	IndexType nodes,
 	IndexType edges,
 	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	CsrGraph<IndexType, ValueType> &csr_graph,
+	bool undirected)
 { 
 	typedef CooEdgeTuple<IndexType, ValueType> EdgeTupleType;
 
@@ -540,15 +560,23 @@ int BuildRandomGraph(
 	}
 
 	time_t mark0 = time(NULL);
-	printf("  Selecting random edges in COO format... ");
+	printf("  Selecting %llu %s random edges in COO format... ", 
+		(unsigned long long) edges, (undirected) ? "undirected" : "directed");
 	fflush(stdout);
 
 	// Construct COO graph
-	EdgeTupleType *coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * edges);
+	IndexType directed_edges = (undirected) ? edges * 2 : edges;
+	EdgeTupleType *coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
 	for (int i = 0; i < edges; i++) {
 		coo[i].row = RandomNode(nodes);
 		coo[i].col = RandomNode(nodes);
 		coo[i].val = 1;
+		if (undirected) {
+			// Reverse edge
+			coo[edges + i].row = coo[i].col;
+			coo[edges + i].col = coo[i].row;
+			coo[edges + i].val = 1;
+		}
 	}
 
 	time_t mark1 = time(NULL);
@@ -556,14 +584,14 @@ int BuildRandomGraph(
 	fflush(stdout);
 	
 	// Sort COO by row, then by col
-	std::sort(coo, coo + edges, DimacsTupleCompare<IndexType, ValueType>);
+	std::sort(coo, coo + directed_edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
 	printf("Done sorting (%ds).\n  Converting to CSR format... ", mark2 - mark1);
 	fflush(stdout);
 
 	// Convert sorted COO to CSR
-	csr_graph.FromCoo(coo, nodes, edges);
+	csr_graph.FromCoo(coo, nodes, directed_edges);
 	free(coo);
 
 	time_t mark3 = time(NULL);
