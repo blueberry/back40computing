@@ -52,6 +52,7 @@ using namespace b40c;
 
 bool g_verbose;
 bool g_verbose2;
+bool g_undirected;
 
 
 /******************************************************************************
@@ -64,7 +65,7 @@ bool g_verbose2;
 void Usage() 
 {
 	printf("\ntest_bfs <graph type> <graph type args> [--device=<device index>] "
-			"[--v] [--instrumented] [--i=<num-iterations>] "
+			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
 			"[--src=< <source idx> | randomize >] [--queue-size=<queue size>\n"
 			"\n"
 			"graph types and args:\n"
@@ -75,8 +76,8 @@ void Usage()
 			"\t\t3D square grid lattice with width <width>.  Interior vertices \n"
 			"\t\thave 6 neighbors.  Default source vertex is the grid-center.\n"
 			"\tdimacs [<file>]\n"
-			"\t\tReads a DIMACS-formatted graph from stdin (or from the optionally-\n "
-			"\t\tspecified file).  Default source vertex is random.\n" 
+			"\t\tReads a DIMACS-formatted graph of directed edges from stdin (or \n"
+			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
 			"\trandom <n> <m>\n"			
 			"\t\tA random graph generator that adds <m> edges to <n> nodes by randomly \n"
 			"\t\tchoosing a pair of nodes for each edge.  There are possibilities of \n"
@@ -93,7 +94,7 @@ void Usage()
 			"\n"
 			"--instrumented\tKernels keep track of queue-passes, redundant work (i.e., the \n"
 			"\t\toverhead of duplicates in the frontier), and average barrier wait (a \n"
-			"\t\trelative indicator of load imbalance.\n"
+			"\t\trelative indicator of load imbalance.)\n"
 			"\n"
 			"--i\tPerforms <num-iterations> test-iterations of BFS traversals.\n"
 			"\t\tDefault = 1\n"
@@ -104,6 +105,11 @@ void Usage()
 			"\n"
 			"--queue-size\tAllocates a frontier queue of <queue size> elements.  Default\n"
 			"\t\tis the size of the edge list.\n"
+			"\n"
+			"--undirected\tEdges are undirected.  Reverse edges are added to DIMACS and\n"
+			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
+			"\t\tGrid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
+			"\t\tgraphs are directed regardless of this flag.\n"
 			"\n");
 }
 
@@ -479,6 +485,7 @@ int main( int argc, char** argv)
 			src = atoi(src_str);
 		}
 	}
+	g_undirected = cutCheckCmdLineFlag( argc, (const char**) argv, "undirected");
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "i", &test_iterations);
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-ctas", &max_grid_size);
 	cutGetCmdLineArgumenti( argc, (const char**) argv, "queue-size", &queue_size);
@@ -522,7 +529,7 @@ int main( int argc, char** argv)
 		// DIMACS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildDimacsGraph(dimacs_filename, src, csr_graph) != 0) {
+		if (BuildDimacsGraph(dimacs_filename, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 		
@@ -531,7 +538,7 @@ int main( int argc, char** argv)
 		if (graph_args < 3) { Usage(); return 1; }
 		IndexType nodes = atol(argv[2]);
 		IndexType edges = atol(argv[3]);
-		if (BuildRandomGraph(nodes, edges, src, csr_graph) != 0) {
+		if (BuildRandomGraph(nodes, edges, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 
