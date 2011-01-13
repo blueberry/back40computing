@@ -323,8 +323,8 @@ float SimpleReferenceBfs(
 		
 		// Dequeue node from frontier
 		IndexType dequeued_node = frontier.front();  
-		IndexType dist = source_dist[dequeued_node];
 		frontier.pop_front();
+		IndexType dist = source_dist[dequeued_node];
 
 		// Locate adjacency list
 		int edges_begin = csr_graph.row_offsets[dequeued_node];
