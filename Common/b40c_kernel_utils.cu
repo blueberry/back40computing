@@ -106,8 +106,80 @@ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
 
 
 /******************************************************************************
+ * Work Management Datastructures 
+ ******************************************************************************/
+
+/**
+ * A given threadblock may receive one of three different amounts of 
+ * work: "big", "normal", and "last".  The big workloads are one
+ * subtile greater than the normal, and the last workload 
+ * does the extra work.
+ */
+struct CtaDecomposition {
+
+	int num_elements;
+	int total_subtiles;
+	int subtiles_per_cta;
+	int extra_subtiles;
+	
+	/**
+	 * Constructor
+	 */
+	CtaDecomposition(int num_elements, int subtile_elements, int grid_size) :
+		num_elements(num_elements),
+		total_subtiles((num_elements + subtile_elements - 1) / subtile_elements),	// round up
+		subtiles_per_cta(total_subtiles / grid_size),								// round down for the ks
+		extra_subtiles(total_subtiles - (subtiles_per_cta * grid_size)) 			// the +1 subtilers
+	{
+	}
+		
+	/**
+	 * Computes work limits for the current CTA
+	 */	
+	template <int LOG_TILE_ELEMENTS, int LOG_SUBTILE_ELEMENTS>
+	__device__ __forceinline__ void GetCtaWorkLimits(
+		int &cta_offset,			// Out param: Offset at which this CTA begins processing
+		int &cta_elements,			// Out param: Total number of elements for this CTA to process
+		int &guarded_offset, 		// Out param: Offset of final, partially-full tile (requires guarded loads)
+		int &cta_guarded_elements)	// Out param: Number of elements in partially-full tile 
+	{
+		const int TILE_ELEMENTS 		= 1 << LOG_TILE_ELEMENTS;
+		const int SUBTILE_ELEMENTS 		= 1 << LOG_SUBTILE_ELEMENTS;
+		
+		// Compute number of elements and offset at which to start tile processing
+		if (blockIdx.x < extra_subtiles) {
+			// These CTAs get subtiles_per_cta+1 subtiles
+			cta_elements = (subtiles_per_cta + 1) << LOG_SUBTILE_ELEMENTS;
+			cta_offset = cta_elements * blockIdx.x;
+		} else if (blockIdx.x < total_subtiles) {
+			// These CTAs get subtiles_per_cta subtiles
+			cta_elements = subtiles_per_cta << LOG_SUBTILE_ELEMENTS;
+			cta_offset = (cta_elements * blockIdx.x) + (extra_subtiles << LOG_SUBTILE_ELEMENTS);
+		} else {
+			// These CTAs get no work (problem small enough that some CTAs don't even a single subtile)
+			cta_elements = 0;
+			cta_offset = 0;
+		}
+		
+		// Compute (i) TILE aligned limit for tile-processing (oob), 
+		// and (ii) how many extra guarded-load elements to process 
+		// afterward (always less than a full tile) 
+		if (cta_offset + cta_elements > num_elements) {
+			// The last CTA having work will have rounded its last subtile up past the end 
+			cta_elements = cta_elements - SUBTILE_ELEMENTS + 					// subtract subtile
+				(num_elements & (SUBTILE_ELEMENTS - 1));		// add delta to end of input
+		}
+		cta_guarded_elements = cta_elements & (TILE_ELEMENTS - 1);				// The delta from the previous TILE alignment
+		guarded_offset = cta_elements - cta_guarded_elements;
+	}
+};
+
+
+
+/******************************************************************************
  * Common device routines (scans, reductions, etc.) 
  ******************************************************************************/
+
 
 /**
  * Perform a warp-synchrounous prefix scan.  Allows for diverting a warp's
@@ -342,7 +414,7 @@ __device__ __forceinline__ int TallyWarpVoteSm10(int predicate, int storage[]) {
 /**
  * Shared-memory reduction array for pre-Fermi voting 
  */
-__shared__ int vote_reduction[B40C_WARP_THREADS];
+__shared__ int vote_reduction[B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 
 /**

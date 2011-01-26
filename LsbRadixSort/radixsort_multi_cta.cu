@@ -1,5 +1,6 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * 
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -34,20 +32,29 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
+ * 
  ******************************************************************************/
 
 
-
 /******************************************************************************
- * Radix Sorting API
+ * Multi-CTA LSB Sorting Base Class & Storage API 
  ******************************************************************************/
 
 #pragma once
 
 #include "radixsort_base.cu"
+#include "radixsort_reduction_kernel.cu"
+#include "radixsort_spine_kernel.cu"
+#include "radixsort_scanscatter_kernel.cu"
 
 namespace b40c {
 
+using namespace lsb_radix_sort;
+
+
+/******************************************************************************
+ *  Multi-CTA LSB Sorting Storage API 
+ ******************************************************************************/
 
 /**
  * Storage management structure for multi-CTA-sorting device vectors.
@@ -67,7 +74,7 @@ namespace b40c {
  * contains valid data (i.e., the data to-be-sorted, or the valid-sorted data 
  * after a sorting operation). 
  * 
- * E.g., consider a MultiCtaRadixSortStorage "device_storage".  The valid data 
+ * E.g., consider a MultiCtaSortStorage "device_storage".  The valid data 
  * should always be accessible by: 
  * 
  * 		device_storage.d_keys[device_storage.selector];
@@ -82,14 +89,14 @@ namespace b40c {
  * the input started in d_keys[0].)
  * 
  */
-template <typename K, typename V = KeysOnlyType> 
-struct MultiCtaRadixSortStorage
+template <typename KeyType, typename ValueType = KeysOnly> 
+struct MultiCtaSortStorage
 {
 	// Pair of device vector pointers for keys
-	K* d_keys[2];
+	KeyType* d_keys[2];
 	
 	// Pair of device vector pointers for values
-	V* d_values[2];
+	ValueType* d_values[2];
 
 	// Number of elements for sorting in the above vectors 
 	int num_elements;
@@ -99,7 +106,7 @@ struct MultiCtaRadixSortStorage
 	int selector;
 
 	// Constructor
-	MultiCtaRadixSortStorage() : num_elements(0), selector(0)
+	MultiCtaSortStorage() : num_elements(0), selector(0)
 	{
 		d_keys[0] = NULL;
 		d_keys[1] = NULL;
@@ -108,7 +115,7 @@ struct MultiCtaRadixSortStorage
 	}
 	
 	// Constructor
-	MultiCtaRadixSortStorage(int num_elements) :
+	MultiCtaSortStorage(int num_elements) :
 		num_elements(num_elements), 
 		selector(0) 
 	{
@@ -119,7 +126,7 @@ struct MultiCtaRadixSortStorage
 	}
 
 	// Constructor
-	MultiCtaRadixSortStorage(int num_elements, K* keys, V* values = NULL) :
+	MultiCtaSortStorage(int num_elements, KeyType* keys, ValueType* values = NULL) :
 		num_elements(num_elements), 
 		selector(0) 
 	{
@@ -131,99 +138,210 @@ struct MultiCtaRadixSortStorage
 };
 
 
+/******************************************************************************
+ * Multi-CTA Sorting Enactor Base Class
+ ******************************************************************************/
+
 /**
  * Base class for multi-CTA sorting enactors
  */
-template <typename K, typename V, typename Storage = MultiCtaRadixSortStorage<K, V> >
-class MultiCtaRadixSortingEnactor : 
-	public BaseRadixSortingEnactor<K, V, Storage>
+template <
+	typename KeyType,
+	typename ConvertedKeyType,
+	typename ValueType>
+
+class MultiCtaLsbSortEnactor : 
+	public BaseLsbSortEnactor<KeyType, ValueType, MultiCtaSortStorage<KeyType, ValueType> >
 {
-private:
-	
-	typedef BaseRadixSortingEnactor<K, V, Storage> Base; 
-	
+public:
+		
+	//---------------------------------------------------------------------
+	// Granularity Parameterization
+	//---------------------------------------------------------------------
+		
+	/**
+	 * Config configuration that is common across all three kernels in a 
+	 * sorting pass (upsweep, spinescan, and downsweep).  This C++ type encapsulates 
+	 * all three sets of kernel-tuning parameters (they are reflected via the static 
+	 * fields). By deriving from the three granularity types, we assure operational 
+	 * consistency over an entire sorting pass. 
+	 */
+	template <
+		// Common
+		typename SpineType,
+		int RADIX_BITS,
+		int LOG_SUBTILE_ELEMENTS,
+		
+		// Upsweep
+		int UPSWEEP_CTA_OCCUPANCY,
+		int UPSWEEP_LOG_THREADS,
+		int UPSWEEP_LOG_LOAD_VEC_SIZE,
+		int UPSWEEP_LOG_LOADS_PER_TILE,
+		
+		// Spine-scan
+		int SPINE_CTA_OCCUPANCY,
+		int SPINE_LOG_THREADS,
+		int SPINE_LOG_LOAD_VEC_SIZE,
+		int SPINE_LOG_LOADS_PER_TILE,
+
+		// Downsweep
+		int DOWNSWEEP_CTA_OCCUPANCY,
+		int DOWNSWEEP_LOG_THREADS,
+		int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		int DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+		int DOWNSWEEP_LOG_CYCLES_PER_TILE,
+		int DOWNSWEEP_LOG_RAKING_THREADS>
+
+	struct MultiCtaConfig
+	{
+		typedef UpsweepConfig<
+			ConvertedKeyType, 
+			SpineType,
+			RADIX_BITS, 
+			LOG_SUBTILE_ELEMENTS,
+			UPSWEEP_CTA_OCCUPANCY,  
+			UPSWEEP_LOG_THREADS,
+			UPSWEEP_LOG_LOAD_VEC_SIZE,  	
+			UPSWEEP_LOG_LOADS_PER_TILE> Upsweep;
+		
+		typedef SpineScanConfig<
+			SpineType,
+			SPINE_CTA_OCCUPANCY,
+			SPINE_LOG_THREADS,
+			SPINE_LOG_LOAD_VEC_SIZE,
+			SPINE_LOG_LOADS_PER_TILE> SpineScan;
+		
+		typedef DownsweepConfig<
+			ConvertedKeyType,
+			ValueType,
+			SpineType,
+			RADIX_BITS,
+			LOG_SUBTILE_ELEMENTS,
+			DOWNSWEEP_CTA_OCCUPANCY,
+			DOWNSWEEP_LOG_THREADS,
+			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+			DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+			DOWNSWEEP_LOG_CYCLES_PER_TILE,
+			DOWNSWEEP_LOG_RAKING_THREADS> Downsweep;
+	};
+		
 protected:
 	
-	// Maximum number of threadblocks this enactor will launch
-	int max_grid_size;
+	//---------------------------------------------------------------------
+	// Utility Types
+	//---------------------------------------------------------------------
 
-	// Fixed "tile size" of keys by which threadblocks iterate over 
-	int tile_elements;
+	// Typedef for base class
+	typedef BaseLsbSortEnactor<KeyType, ValueType, MultiCtaSortStorage<KeyType, ValueType> > Base; 
+
+	// Typedef for problem storage class
+	typedef MultiCtaSortStorage<KeyType, ValueType> StorageType;
+	
+	// Wrapper for managing state for a specific sorting operation 
+	struct SortingCtaDecomposition : CtaDecomposition
+	{
+		int sweep_grid_size;
+		int spine_elements;
+		StorageType problem_storage;
+		
+		SortingCtaDecomposition(
+			const StorageType &problem_storage,
+			int subtile_elements,
+			int sweep_grid_size,
+			int spine_elements) :
+				CtaDecomposition(problem_storage.num_elements, subtile_elements, sweep_grid_size),
+				sweep_grid_size(sweep_grid_size),
+				spine_elements(spine_elements),
+				problem_storage(problem_storage) {};
+	};
+	
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+	
+	// Default size (in bytes) of spine storage.  (600 CTAs x 16 digits each (4 radix bits) x 4-byte-digits)
+	static const int DEFAULT_SPINE_BYTES = 600 * (1 << 4) * sizeof(int);	
 	
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
-	int *d_spine;
+	void *d_spine;
 	
-protected:
+	// Number of bytes backed by d_spine 
+	int spine_bytes;
+	
+
+	//-----------------------------------------------------------------------------
+	// Utility Routines
+	//-----------------------------------------------------------------------------
+	
+	/**
+	 * Utility function: Determines the number of spine elements needed 
+	 * for a given grid size, rounded up to the nearest spine tile
+	 */
+	static int SpineElements(int sweep_grid_size, int radix_bits, int spine_tile_elements) 
+	{
+		int spine_elements = sweep_grid_size * (1 << radix_bits);
+		int spine_tiles = (spine_elements + spine_tile_elements - 1) / spine_tile_elements;
+		return spine_tiles * spine_tile_elements;
+	}
+
+	
+	//-----------------------------------------------------------------------------
+	// Construction
+	//-----------------------------------------------------------------------------
 	
 	/**
 	 * Constructor.
 	 */
-	MultiCtaRadixSortingEnactor(
-		int max_grid_size,
-		int tile_elements,
-		int max_radix_bits,
-		const CudaProperties &props = CudaProperties()) : 
-			Base::BaseRadixSortingEnactor(props),  
-			max_grid_size(max_grid_size), 
-			tile_elements(tile_elements),
-			d_spine(NULL)
+	MultiCtaLsbSortEnactor(const CudaProperties &props = CudaProperties()) : 
+		Base::BaseLsbSortEnactor(props),  
+		d_spine(NULL),
+		spine_bytes(DEFAULT_SPINE_BYTES)
 	{
-		// Allocate the spine
-		int spine_elements = max_grid_size * (1 << max_radix_bits);
-		int spine_tiles = (spine_elements + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / 
-				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
-		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
-
-		cudaMalloc((void**) &d_spine, spine_elements * sizeof(int));
-	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc d_spine failed: ", __FILE__, __LINE__);
+		// Allocate the spine for the maximum number of spine elements we might have
+		cudaMalloc((void**) &d_spine, spine_bytes);
+	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc d_spine failed: ", __FILE__, __LINE__);
 	}
 
 
-	/**
-	 * Computes the work-decomposition amongst CTAs for the give problem size 
-	 * and grid size
-	 */
-	void GetWorkDecomposition(
-		int num_elements, 
-		int grid_size,
-		CtaDecomposition &work_decomposition) 
-	{
-		int total_tiles 		= (num_elements + tile_elements - 1) / tile_elements;
-		int tiles_per_block 	= total_tiles / grid_size;						
-		int extra_tiles 		= total_tiles - (tiles_per_block * grid_size);
-
-		work_decomposition.num_big_blocks 				= extra_tiles;
-		work_decomposition.big_block_elements 			= (tiles_per_block + 1) * tile_elements;
-		work_decomposition.normal_block_elements 		= tiles_per_block * tile_elements;
-		work_decomposition.extra_elements_last_block 	= num_elements - (num_elements / tile_elements * tile_elements);
-		work_decomposition.num_elements 				= num_elements;
-	}
-	
+	//-----------------------------------------------------------------------------
+	// Sorting Pass
+	//-----------------------------------------------------------------------------
 	
     /**
      * Pre-sorting logic.
      */
-    virtual cudaError_t PreSort(Storage &problem_storage, int passes) 
+    virtual cudaError_t PreSort(StorageType &problem_storage, int problem_spine_bytes) 
     {
     	// Allocate device memory for temporary storage (if necessary)
     	if (problem_storage.d_keys[0] == NULL) {
-    		cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(K));
-    	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_keys[0] failed: ", __FILE__, __LINE__);
+    		cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType));
+    	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc problem_storage.d_keys[0] failed: ", __FILE__, __LINE__);
     	}
     	if (problem_storage.d_keys[1] == NULL) {
-    		cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(K));
-    	    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_keys[1] failed: ", __FILE__, __LINE__);
+    		cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(KeyType));
+    	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc problem_storage.d_keys[1] failed: ", __FILE__, __LINE__);
     	}
     	if (!Base::KeysOnly()) {
     		if (problem_storage.d_values[0] == NULL) {
-    			cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(V));
-    		    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_values[0] failed: ", __FILE__, __LINE__);
+    			cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(ValueType));
+    		    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc problem_storage.d_values[0] failed: ", __FILE__, __LINE__);
     		}
     		if (problem_storage.d_values[1] == NULL) {
-    			cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(V));
-    		    dbg_perror_exit("MultiCtaRadixSortingEnactor:: cudaMalloc problem_storage.d_values[1] failed: ", __FILE__, __LINE__);
+    			cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType));
+    		    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc problem_storage.d_values[1] failed: ", __FILE__, __LINE__);
     		}
+    	}
+    	
+    	// Make sure our spine is big enough
+    	if (problem_spine_bytes > spine_bytes) {
+   			cudaFree(d_spine);
+    	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaFree d_spine failed: ", __FILE__, __LINE__);
+    	    
+    	    spine_bytes = problem_spine_bytes;
+    	    
+    		cudaMalloc((void**) &d_spine, spine_bytes);
+    	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaMalloc d_spine failed: ", __FILE__, __LINE__);
     	}
 
     	return cudaSuccess;
@@ -233,27 +351,29 @@ protected:
     /**
      * Post-sorting logic.
      */
-    virtual cudaError_t PostSort(MultiCtaRadixSortStorage<K, V> &problem_storage, int passes) 
+    virtual cudaError_t PostSort(StorageType &problem_storage, int passes) 
     {
     	return cudaSuccess;
     }	
-
     
 public:
 
+	//-----------------------------------------------------------------------------
+	// Construction
+	//-----------------------------------------------------------------------------
+    
     /**
      * Destructor
      */
-    virtual ~MultiCtaRadixSortingEnactor() 
+    virtual ~MultiCtaLsbSortEnactor() 
     {
-   		if (d_spine) cudaFree(d_spine);
+   		if (d_spine) {
+   			cudaFree(d_spine);
+    	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaFree d_spine failed: ", __FILE__, __LINE__);
+   		}
     }
     
 };
-
-
-
-
 
 
 }// namespace b40c

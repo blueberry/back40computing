@@ -1,5 +1,6 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * 
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -34,21 +32,20 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
+ * 
  ******************************************************************************/
 
 
-
 /******************************************************************************
- * Radix Sorting API
- *
+ * Early-exit Radix Sorting Enactor 
  ******************************************************************************/
 
 #pragma once
 
-#include <stdio.h> 
+#include <stdio.h>
+#include <limits.h>
 
 #include "b40c_error_synchronize.cu"
-
 #include "radixsort_reduction_kernel.cu"
 #include "radixsort_spine_kernel.cu"
 #include "radixsort_scanscatter_kernel.cu"
@@ -56,28 +53,28 @@
 
 namespace b40c {
 
+using namespace lsb_radix_sort;
+
+
 
 /**
- * Early-exit sorting enactor class.  
+ * Early-exit radix sorting enactor class.  
  * 
- * This sorting implementation is specifically designed for problems that are 
- * large enough to saturate the GPU (e.g., problems > 1M elements.)  
- * 
- * It also features "early-exit" digit-passes: when the sorting operation 
+ * It features "early-exit digit-passes": when the sorting operation 
  * detects that all keys have the same digit at the same digit-place, the pass 
  * for that digit-place is short-circuited, reducing the cost of that pass 
  * by 80%.  This makes our implementation suitable for even low-degree binning 
  * problems where sorting would normally be overkill.  
  * 
  * To use, simply create a specialized instance of this class with your 
- * key-type K (and optionally value-type V if sorting with satellite 
+ * key-type KeyType (and optionally value-type ValueType if sorting with satellite 
  * values).  E.g., for sorting signed ints:
  * 
- * 		EarlyExitRadixSortingEnactor<int> sorting_enactor;
+ * 		EarlyExitLsbSortEnactor<int> sorting_enactor;
  * 
  * or for sorting floats paired with unsigned ints:
  * 			
- * 		EarlyExitRadixSortingEnactor<float, unsigned int> sorting_enactor;
+ * 		EarlyExitLsbSortEnactor<float, unsigned int> sorting_enactor;
  * 
  * The enactor itself manages a small amount of device state for use when 
  * performing sorting operations.  To minimize GPU allocation overhead, 
@@ -85,7 +82,7 @@ namespace b40c {
  * 
  * The problem-storage for a sorting operation is independent of the sorting
  * enactor.  A single enactor can be reused to sort multiple instances of the
- * same type of problem storage.  The MultiCtaRadixSortStorage structure
+ * same type of problem storage.  The MultiCtaSortStorage structure
  * is used to manage the input/output/temporary buffers needed to sort 
  * a problem of a given size.  This enactor will lazily allocate any NULL
  * buffers contained within a problem-storage structure.  
@@ -99,555 +96,720 @@ namespace b40c {
  * 
  * 		device_storage.d_keys[device_storage.selector];
  * 
- * Please see the overview of MultiCtaRadixSortStorage for more details.
+ * Please see the overview of MultiCtaSortStorage for more details.
  * 
  * 
- * @template-param K
+ * @template-param KeyType
  * 		Type of keys to be sorted
- * @template-param V
+ * @template-param ValueType
  * 		Type of values to be sorted.
- * @template-param ConvertedKeyType
- * 		Leave as default to effect necessary enactor specialization for 
- * 		signed and floating-point types
  */
-template <typename K, typename V = KeysOnlyType, typename ConvertedKeyType = typename KeyConversion<K>::UnsignedBits>
-class EarlyExitRadixSortingEnactor;
-
-
-
-/**
- * Base class for early-exit, multi-CTA radix sorting enactors.
- */
-template <typename K, typename V>
-class BaseEarlyExitEnactor : public MultiCtaRadixSortingEnactor<K, V>
+template <typename KeyType, typename ValueType = KeysOnly> 
+class EarlyExitLsbSortEnactor : 
+	public MultiCtaLsbSortEnactor<
+		KeyType, 
+		typename KeyConversion<KeyType>::UnsignedBits, 
+		ValueType>
 {
-private:
+protected:
+
+	//---------------------------------------------------------------------
+	// Utility Types
+	//---------------------------------------------------------------------
+
+	// Unsigned integer type to cast keys as in order to make them suitable 
+	// for radix sorting 
+	typedef typename KeyConversion<KeyType>::UnsignedBits ConvertedKeyType;
 	
 	// Typedef for base class
-	typedef MultiCtaRadixSortingEnactor<K, V> Base; 
+	typedef MultiCtaLsbSortEnactor<KeyType, ConvertedKeyType, ValueType> Base;
+	
+	// Introduce SortingCtaDecomposition type into this class
+    using typename Base::SortingCtaDecomposition;
 
+	// Introduce StorageType type into this class
+    using typename Base::StorageType;
+    
+	
+	//---------------------------------------------------------------------
+	// Default Granularity Parameterization
+	//---------------------------------------------------------------------
 
-protected:
+	// Default granularity parameterization type (tuned per SM-architecture, 
+	// per problem type)
+	template <int SM_ARCH, typename SpineType>
+	struct DefaultSortingConfig : Base::template MultiCtaConfig<
+
+		//---------------------------------------------------------------------
+		// Common
+		//---------------------------------------------------------------------
+
+		// SpineType
+		SpineType,
+		
+		// RADIX_BITS
+		(SM_ARCH >= 200) ? 					4 :		// 4-bit radix digits on GF100+ 
+		(SM_ARCH >= 120) ? 					4 :		// 4-bit radix digits on GT200 
+											4,		// 4-bit radix digits on G80/90
+							  
+		// LOG_SUBTILE_ELEMENTS
+		(SM_ARCH >= 200) ? 					5 :		// 32 elements on GF100+ 
+		(SM_ARCH >= 120) ? 					5 :		// 32 elements on GT200 
+											5,		// 32 elements on G80/90
+		
+		//---------------------------------------------------------------------
+		// Upsweep Kernel
+		//---------------------------------------------------------------------
+
+		// UPSWEEP_CTA_OCCUPANCY
+		(SM_ARCH >= 200) ? 					8 :		// 8 CTAs/SM on GF100+ 
+		(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200 
+											3,		// 3 CTAs/SM on G80/90
+										
+		// UPSWEEP_LOG_THREADS
+		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
+		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
+											7,		// 128 threads/CTA on G80/90
+
+		// UPSWEEP_LOG_LOAD_VEC_SIZE
+		(SM_ARCH >= 200) ? 					0 :		// vec-1 loads on GF100+ 
+		(SM_ARCH >= 120) ? 					0 :		// vec-1 loads on GT200 
+											0,		// vec-1 loads on G80/90
+											
+		// UPSWEEP_LOG_LOADS_PER_TILE
+		(SM_ARCH >= 200) ? 					2 :		// 4 loads/tile on GF100+ 
+		(SM_ARCH >= 120) ? 					0 :		// 1 load/tile on GT200 
+											0,		// 1 load/tile on G80/90
+		
+		//---------------------------------------------------------------------
+		// Spine-scan Kernel
+		//---------------------------------------------------------------------
+											
+		// SPINE_CTA_OCCUPANCY
+		1,											// 1 CTA/SM on all architectures 
+											
+		// SPINE_LOG_THREADS
+		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
+		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
+											7,		// 128 threads/CTA on G80/90
+											
+		// SPINE_LOG_LOAD_VEC_SIZE
+		(SM_ARCH >= 200) ? 					2 :		// vec-4 loads on GF100+ 
+		(SM_ARCH >= 120) ? 					2 :		// vec-4 loads on GT200 
+											2,		// vec-4 loads on G80/90
+											
+		// SPINE_LOG_LOADS_PER_TILE
+		(SM_ARCH >= 200) ? 					0 :		// 1 loads/tile on GF100+ 
+		(SM_ARCH >= 120) ? 					0 :		// 1 loads/tile on GT200 
+											0,		// 1 loads/tile on G80/90
+											
+
+		//---------------------------------------------------------------------
+		// Downsweep Kernel
+		//---------------------------------------------------------------------
+											
+		// DOWNSWEEP_CTA_OCCUPANCY
+		(SM_ARCH >= 200) ? 					7 :		// 7 CTAs/SM on GF100+ 
+		(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200 
+											2,		// 2 CTAs/SM on G80/90
+											
+		// DOWNSWEEP_LOG_THREADS
+		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
+		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
+											7,		// 128 threads/CTA on G80/90
+											
+		// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		(SM_ARCH >= 200) ? 					1 :		// vec-2 loads on GF100+ 
+		(SM_ARCH >= 120) ? 					1 :		// vec-2 loads on GT200 
+											1,		// vec-2 loads on G80/90
+											
+		// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		(SM_ARCH >= 200) ? 					1 :		// 2 loads/cycle on GF100+ 
+		(SM_ARCH >= 120) ? 					0 :		// 1 load/cycle on GT200 
+											1,		// 2 loads/cycle on G80/90
+											
+		// DOWNSWEEP_LOG_CYCLES_PER_TILE
+		(SM_ARCH >= 200) ? 		
+			(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 
+											0 : 	// 1 cycle/tile on GF100+ for large (64bit+) keys|values
+											1) :	// 2 cycles/tile on GF100+ 
+		(SM_ARCH >= 120) ? 		
+			(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 
+											0 : 	// 1 cycle/tile on GT200 for large (64bit+) keys|values
+											1) :	// 2 cycles/tile on GT200 
+											1,		// 2 cycles/tile on G80/90
+										
+		// DOWNSWEEP_LOG_RAKING_THREADS>
+		(SM_ARCH >= 200) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 1 :	// 2 warps on GF100+ 
+		(SM_ARCH >= 120) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GT200 
+											B40C_LOG_WARP_THREADS(SM_ARCH) + 2		// 4 warps on G80/90
+	>{};										
+
+	
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+		
+	// Override for maximum grid size to launch for sweep kernels 
+	// (0 == no override)
+	int sweep_grid_size_override;
 
 	// Pair of "selector" device integers.  The first selects the incoming device 
 	// vector for even passes, the second selects the odd.
 	int *d_selectors;
 	
-	// Number of digit-place passes
-	int passes;
 
-public: 
-	
-	// Unsigned integer type suitable for radix sorting of keys
-	typedef typename KeyConversion<K>::UnsignedBits ConvertedKeyType;
-
+	//-----------------------------------------------------------------------------
+	// Utility Routines
+	//-----------------------------------------------------------------------------
 	
 	/**
-	 * Utility function: Returns the maximum problem size this enactor can sort on the device
-	 * it was initialized for.
+	 * Returns the number of threadblocks that the specified device should 
+	 * launch for [up|down]sweep grids for the given problem size
 	 */
-	static long long MaxProblemSize(const CudaProperties &props) 
+	template <typename SortingConfig>
+	int SweepGridSize(int num_elements) 
 	{
-		long long element_size = (Base::KeysOnly()) ? sizeof(K) : sizeof(K) + sizeof(V);
+		const int SUBTILE_ELEMENTS = 1 << SortingConfig::Upsweep::LOG_SUBTILE_ELEMENTS;
 
-		// Begin with device memory, subtract 192MB for video/spine/etc.  Factor in 
-		// two vectors for keys (and values, if present)
-		long long available_bytes = props.device_props.totalGlobalMem - (192 * 1024 * 1024);
-		return available_bytes / (element_size * 2);
-	}
-
-
-protected:
-	
-	// Radix bits per pass
-	static const int RADIX_BITS = 4;
-	
-	
-	/**
-	 * Utility function: Returns the default maximum number of threadblocks 
-	 * this enactor class can launch.
-	 */
-	static int MaxGridSize(const CudaProperties &props, int max_grid_size = 0) 
-	{
-		if (max_grid_size == 0) {
-
-			// No override: figure it out
+		int default_sweep_grid_size;
+		if (this->cuda_props.device_sm_version < 120) {
 			
-			if (props.device_sm_version < 120) {
+			// G80/G90: Four times the SM-count
+			default_sweep_grid_size = this->cuda_props.device_props.multiProcessorCount * 4;
+			
+		} else if (this->cuda_props.device_sm_version < 200) {
+			
+			// GT200: Special sauce
+			
+			// Start with with full downsweep occupancy of all SMs 
+			default_sweep_grid_size = 
+				this->cuda_props.device_props.multiProcessorCount * 
+				SortingConfig::Downsweep::CTA_OCCUPANCY; 
+
+			// Increase by default every 64 million key-values
+			int step = 1024 * 1024 * 64;		 
+			default_sweep_grid_size *= (num_elements + step - 1) / step;
+
+			double multiplier1 = 4.0;
+			double multiplier2 = 16.0;
+
+			double delta1 = 0.068;
+			double delta2 = 0.1285;
+			
+			int dividend = (num_elements + 512 - 1) / 512;
+
+			int bumps = 0;
+			while(true) {
+
+				if (default_sweep_grid_size <= this->cuda_props.device_props.multiProcessorCount) {
+					break;
+				}
 				
-				// G80/G90
-				max_grid_size = props.device_props.multiProcessorCount * 4;
-				
-			} else if (props.device_sm_version < 200) {
-				
-				// GT200 
-				max_grid_size = props.device_props.multiProcessorCount * 
-						B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(props.kernel_ptx_version); 
+				double quotient = ((double) dividend) / (multiplier1 * default_sweep_grid_size);
+				quotient -= (int) quotient;
 
-				// Increase by default every 64 million key-values
-				int step = 1024 * 1024 * 64;		 
-				max_grid_size *= (MaxProblemSize(props) + step - 1) / step;
-				
-			} else {
+				if ((quotient > delta1) && (quotient < 1 - delta1)) {
 
-				// GF100
-				max_grid_size = 418;
-			}
-		} 
-		
-		return max_grid_size;
-	}
-	
-	
-protected:
-
-	
-	/**
-	 * Constructor.
-	 */
-	BaseEarlyExitEnactor(
-		int passes,
-		int max_radix_bits,
-		int max_grid_size = 0,
-		const CudaProperties &props = CudaProperties()) :
-			Base::MultiCtaRadixSortingEnactor(
-				MaxGridSize(props, max_grid_size),
-				B40C_RADIXSORT_TILE_ELEMENTS(props.kernel_ptx_version , ConvertedKeyType, V),
-				max_radix_bits,
-				props), 
-			d_selectors(NULL),
-			passes(passes)
-	{
-		// Allocate pair of ints denoting input and output vectors for even and odd passes
-		cudaMalloc((void**) &d_selectors, 2 * sizeof(int));
-	    dbg_perror_exit("BaseEarlyExitEnactor:: cudaMalloc d_selectors failed: ", __FILE__, __LINE__);
-	}
-
-	
-	
-	/**
-	 * Determines the actual number of CTAs to launch for the given problem size
-	 * 
-	 * @return The actual number of CTAs that should be launched
-	 */
-	int GridSize(int num_elements)
-	{
-		// Initially assume that each threadblock will do only one 
-		// tile worth of work (and that the last one will do any remainder), 
-		// but then clamp it by the "max" restriction  
-
-		int grid_size = num_elements / this->tile_elements;
-		
-		if (grid_size == 0) {
-
-			// Always at least one block to process the remainder
-			grid_size = 1;
-
-		} else {
-		
-			if (this->cuda_props.device_sm_version == 130) {
-
-				// GT200 Fine-tune sm130_clamped_grid_size to avoid CTA camping 
-
-				int sm130_clamped_grid_size = this->cuda_props.device_props.multiProcessorCount * 
-						B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(this->cuda_props.kernel_ptx_version); 
-
-				// Increase by default every 64 million key-values
-				int step = 1024 * 1024 * 64;		 
-				sm130_clamped_grid_size *= (num_elements + step - 1) / step;
-
-				double multiplier1 = 4.0;
-				double multiplier2 = 16.0;
-
-				double delta1 = 0.068;
-				double delta2 = 0.1285;	
-
-				int dividend = (num_elements + this->tile_elements - 1) / this->tile_elements;
-
-				int bumps = 0;
-				while(true) {
-
-					if (sm130_clamped_grid_size <= this->cuda_props.device_props.multiProcessorCount) {
-						break;
-					}
-					
-					double quotient = ((double) dividend) / (multiplier1 * sm130_clamped_grid_size);
+					quotient = ((double) dividend) / (multiplier2 * default_sweep_grid_size / 3.0);
 					quotient -= (int) quotient;
 
-					if ((quotient > delta1) && (quotient < 1 - delta1)) {
-
-						quotient = ((double) dividend) / (multiplier2 * sm130_clamped_grid_size / 3.0);
-						quotient -= (int) quotient;
-
-						if ((quotient > delta2) && (quotient < 1 - delta2)) {
-							break;
-						}
-					}
-
-					if (bumps == 3) {
-						// Bump it down by 27
-						sm130_clamped_grid_size -= 27;
-						bumps = 0;
-					} else {
-						// Bump it down by 1
-						sm130_clamped_grid_size--;
-						bumps++;
+					if ((quotient > delta2) && (quotient < 1 - delta2)) {
+						break;
 					}
 				}
-				// Clamp to suggested grid size
-				if (grid_size > sm130_clamped_grid_size) {
-					grid_size = sm130_clamped_grid_size;
+
+				if (bumps == 3) {
+					// Bump it down by 27
+					default_sweep_grid_size -= 27;
+					bumps = 0;
+				} else {
+					// Bump it down by 1
+					default_sweep_grid_size--;
+					bumps++;
 				}
 			}
 			
-			// Clamp to mandated grid size
-			if (grid_size > this->max_grid_size) {
-				grid_size = this->max_grid_size;
-			}
+		} else {
+
+			// GF100: Hard-coded
+			default_sweep_grid_size = 418;
+		}
+		
+		// Reduce by override, if specified
+		if (sweep_grid_size_override && (default_sweep_grid_size > sweep_grid_size_override)) {
+			default_sweep_grid_size = sweep_grid_size_override;
 		}
 
-		return grid_size;
-	}
-	
+		// Reduce if we have less work than we can divide up among this 
+		// many CTAs
+		
+		int subtiles = (num_elements + SUBTILE_ELEMENTS - 1) / SUBTILE_ELEMENTS;
+		if (default_sweep_grid_size > subtiles) {
+			default_sweep_grid_size = subtiles;
+		}
+		
+		return default_sweep_grid_size;
+	}	
 
+
+	//-----------------------------------------------------------------------------
+	// Sorting Pass 
+	//-----------------------------------------------------------------------------
+	
     /**
      * Post-sorting logic.
      */
-    virtual cudaError_t PostSort(MultiCtaRadixSortStorage<K, V> &problem_storage, int passes) 
+    virtual cudaError_t PostSort(StorageType &problem_storage, int passes) 
     {
-    	// Copy out the selector from the last pass
+    	// Save old selector
     	int old_selector = problem_storage.selector;
     	
+    	// Copy out the selector from the last pass
 		cudaMemcpy(
 			&problem_storage.selector, 
-			&d_selectors[this->passes & 0x1], 
+			&d_selectors[passes & 0x1], 
 			sizeof(int), 
 			cudaMemcpyDeviceToHost);
 		
+		// Correct new selector if the original indicated that we started off from the alternate 
 		problem_storage.selector ^= old_selector;
 		
 		return Base::PostSort(problem_storage, passes);
     }
 
-    
     /**
 	 * Performs a distribution sorting pass over a single digit place
 	 */
-	template <int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor, typename PostprocessFunctor>
-	cudaError_t DigitPlacePass(
-		const int grid_size,
-		const MultiCtaRadixSortStorage<K, V> &problem_storage, 
-		const CtaDecomposition &work_decomposition)
+	template <
+		typename SortingConfig,
+		int CURRENT_PASS, 
+		int CURRENT_BIT, 
+		typename PreprocessFunctor, 
+		typename PostprocessFunctor>
+	
+	cudaError_t DigitPlacePass(SortingCtaDecomposition &work)
 	{
-		// Compute number of spine elements to scan during this pass
-		int spine_elements = grid_size * (1 << RADIX_BITS);
-		int spine_tiles = (spine_elements + B40C_RADIXSORT_SPINE_TILE_ELEMENTS - 1) / 
-				B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
-		spine_elements = spine_tiles * B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+		//---------------------------------------------------------------------
+		// Upsweep
+		//---------------------------------------------------------------------
 		
-		if (this->RADIXSORT_DEBUG && (PASS == 0)) {
-    		
-    		printf("\ndevice_sm_version: %d, kernel_ptx_version: %d\n", this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version);
-    		printf("Bottom-level reduction & scan kernels:\n\tgrid_size: %d, \n\tthreads: %d, \n\ttile_elements: %d, \n\tnum_big_blocks: %d, \n\tbig_block_elements: %d, \n\tnormal_block_elements: %d\n\textra_elements_last_block: %d\n\n",
-    			grid_size, B40C_RADIXSORT_THREADS, this->tile_elements, work_decomposition.num_big_blocks, work_decomposition.big_block_elements, work_decomposition.normal_block_elements, work_decomposition.extra_elements_last_block);
-    		printf("Top-level spine scan:\n\tgrid_size: %d, \n\tthreads: %d, \n\tspine_block_elements: %d\n\n", 
-    			grid_size, B40C_RADIXSORT_SPINE_THREADS, spine_elements);
-    	}	
-
+		// Detailed upsweep kernel granularity parameterization type
+		typedef UpsweepKernelConfig <
+			typename SortingConfig::Upsweep,
+			PreprocessFunctor,
+			CURRENT_PASS,
+			CURRENT_BIT,
+			NONE> UpsweepKernelConfigType;
+		
+		// Get kernel attributes
+/*		
+		cudaFuncAttributes upsweep_kernel_attrs;
+		cudaFuncGetAttributes(
+			&upsweep_kernel_attrs, 
+			LsbRakingReductionKernel<UpsweepKernelConfigType, ConvertedKeyType, UpsweepKernelConfigType::SpineType>);
+*/		
+		int dynamic_smem = 0;
+		LsbRakingReductionKernel<
+				UpsweepKernelConfigType, 
+				typename UpsweepKernelConfigType::KeyType,
+				typename UpsweepKernelConfigType::SpineType>
+			<<<work.sweep_grid_size, UpsweepKernelConfigType::THREADS, dynamic_smem>>>(
+				d_selectors,
+				(typename UpsweepKernelConfigType::SpineType *) this->d_spine,
+				(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector],
+				(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector ^ 1],
+				work);
+	    dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
+		
+		
+		//---------------------------------------------------------------------
+		// Spine
+		//---------------------------------------------------------------------
+/*		
+		// Detailed spine-scan kernel granularity parameterization type
+		typedef SpineScanKernelConfig <
+			typename SortingConfig::SpineScan, 
+			NONE> SpineScanKernelConfigType;
+*/
+		
+		//---------------------------------------------------------------------
+		// Downsweep
+		//---------------------------------------------------------------------
+		
+/*		
+		// Detailed downsweep kernel granularity parameterization type
+		typedef DownsweepKernelConfig <
+			typename SortingConfig::Downsweep,
+			PreprocessFunctor, 
+			PostprocessFunctor, 
+			CURRENT_PASS,
+			CURRENT_BIT
+			NONE> DownsweepKernelConfigType;
+*/
+		 		
+		
+/*		
     	// Get kernel attributes
 		cudaFuncAttributes reduce_kernel_attrs, spine_scan_kernel_attrs, scan_scatter_attrs;
-		cudaFuncGetAttributes(
-			&reduce_kernel_attrs, 
-			LsbRakingReductionKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor>);
 		cudaFuncGetAttributes(
 			&spine_scan_kernel_attrs, 
 			LsbSpineScanKernel<void>);
 		cudaFuncGetAttributes(
 			&scan_scatter_attrs, 
 			LsbScanScatterKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor>);
-
-		//
-		// Counting Reduction
-		//
-
-		// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
-		int dynamic_smem = (this->cuda_props.kernel_ptx_version == 130) ? 
-			scan_scatter_attrs.sharedSizeBytes - reduce_kernel_attrs.sharedSizeBytes : 
-			0;
-		LsbRakingReductionKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, dynamic_smem>>>(
-			d_selectors,
-			this->d_spine,
-			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
-			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
-			work_decomposition);
-	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
-
+*/		
 		
-		//
-		// Spine
-		//
 		
-		// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels)
-	    dynamic_smem = (this->cuda_props.kernel_ptx_version == 130) ? 
-			scan_scatter_attrs.sharedSizeBytes - spine_scan_kernel_attrs.sharedSizeBytes : 
-			0;
-		LsbSpineScanKernel<void><<<grid_size, B40C_RADIXSORT_SPINE_THREADS, dynamic_smem>>>(
-			this->d_spine,
-			this->d_spine,
-			spine_elements);
-	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbSpineScanKernel failed: ", __FILE__, __LINE__);
-
-		
-		//
-		// Scanning Scatter
-		//
-
-	    LsbScanScatterKernel<ConvertedKeyType, V, PASS, RADIX_BITS, BIT, PreprocessFunctor, PostprocessFunctor> <<<grid_size, B40C_RADIXSORT_THREADS, 0>>>(
-			d_selectors,
-			this->d_spine,
-			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector],
-			(ConvertedKeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
-			problem_storage.d_values[problem_storage.selector],
-			problem_storage.d_values[problem_storage.selector ^ 1],
-			work_decomposition);
-	    dbg_sync_perror_exit("BaseEarlyExitEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
-
 		return cudaSuccess;
 	}
+
+	
+	//-----------------------------------------------------------------------------
+	// Pass Unrolling 
+	//-----------------------------------------------------------------------------
+
+	/**
+	 * Middle sorting passes (i.e., neither first, nor last pass).  Does not apply
+	 * any pre/post bit-twiddling functors. 
+	 */
+	template <
+		typename SortingConfig, 
+		int CURRENT_PASS, 
+		int LAST_PASS, 
+		int CURRENT_BIT, 
+		int RADIX_BITS>
+	struct UnrolledPasses 
+	{
+		template <typename EnactorType>
+		static void Invoke(EnactorType *enactor, SortingCtaDecomposition &work) {
+			// Invoke
+			enactor->DigitPlacePass<
+				SortingConfig, 
+				CURRENT_PASS, 
+				CURRENT_BIT,
+				NopFunctor<ConvertedKeyType>,
+				NopFunctor<ConvertedKeyType> >(work);
+			
+			// Next
+			UnrolledPasses<
+				SortingConfig, 
+				CURRENT_PASS + 1, 
+				LAST_PASS, 
+				CURRENT_BIT + RADIX_BITS, 
+				RADIX_BITS>::Invoke(enactor, work);
+		}
+	};
+	
+	/**
+	 * First sorting pass (unless there's only one pass).  Applies the 
+	 * appropriate pre-process bit-twiddling functor. 
+	 */
+	template <
+		typename SortingConfig, 
+		int LAST_PASS, 
+		int CURRENT_BIT, 
+		int RADIX_BITS>
+	struct UnrolledPasses <SortingConfig, 0, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	{
+		template <typename EnactorType>
+		static void Invoke(EnactorType *enactor, SortingCtaDecomposition &work) {
+			// Invoke
+			enactor->DigitPlacePass<
+				SortingConfig, 
+				0, 
+				CURRENT_BIT,
+				PreprocessKeyFunctor<KeyType>,
+				NopFunctor<ConvertedKeyType> >(work);
+			
+			// Next
+			UnrolledPasses<
+				SortingConfig, 
+				1, 
+				LAST_PASS, 
+				CURRENT_BIT + RADIX_BITS, 
+				RADIX_BITS>::Invoke(enactor, work);
+		}
+	};
+
+	/**
+	 * Last sorting pass (unless there's only one pass).  Applies the 
+	 * appropriate post-process bit-twiddling functor. 
+	 */
+	template <
+		typename SortingConfig,
+		int LAST_PASS, 
+		int CURRENT_BIT, 
+		int RADIX_BITS>
+	struct UnrolledPasses <SortingConfig, LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	{
+		template <typename EnactorType>
+		static void Invoke(EnactorType *enactor, SortingCtaDecomposition &work) {
+			// Invoke
+			enactor->DigitPlacePass<
+				SortingConfig, 
+				LAST_PASS, 
+				CURRENT_BIT,
+				NopFunctor<ConvertedKeyType>,
+				PostprocessKeyFunctor<KeyType> >(work);
+		}
+	};
+
+	/**
+	 * Singular sorting pass (when there's only one pass).  Applies both 
+	 * pre- and post-process bit-twiddling functors. 
+	 */
+	template <
+		typename SortingConfig,
+		int CURRENT_BIT, 
+		int RADIX_BITS>
+	struct UnrolledPasses <SortingConfig, 0, 0, CURRENT_BIT, RADIX_BITS> 
+	{
+		template <typename EnactorType>
+		static void Invoke(EnactorType *enactor, SortingCtaDecomposition &work) {
+			// Invoke
+			enactor->DigitPlacePass<
+				SortingConfig, 
+				0, 
+				CURRENT_BIT,
+				PreprocessKeyFunctor<KeyType>,
+				PostprocessKeyFunctor<KeyType> >(work);
+		}
+	};
+	
+	
+	//-----------------------------------------------------------------------------
+	// Architecture specialization 
+	//-----------------------------------------------------------------------------
+
+	// Sorting pass call-sites specialized per SM architecture 
+	template <int SM_ARCH, int START_BIT, int NUM_BITS, typename SpineType>
+	struct Architecture
+	{
+		template<typename EnactorType>
+		static void EnactSort(EnactorType &enactor, StorageType &problem_storage) 
+		{
+			typedef DefaultSortingConfig<SM_ARCH, SpineType> SortingConfig;
+			enactor.EnactSort<SortingConfig, START_BIT, NUM_BITS>(problem_storage);
+		}
+	};
+	
+	// Host-side dispatch to specialized sorting pass call-sites 
+	template <int START_BIT, int NUM_BITS, typename SpineType>
+	struct Architecture<0, START_BIT, NUM_BITS, SpineType> 
+	{
+		template<typename EnactorType>
+		static void EnactSort(EnactorType &enactor, StorageType &problem_storage) 
+		{
+			// Determine the arch version of the we actually have a compiled kernel for
+			int ptx_version = enactor.cuda_props.kernel_ptx_version;
+			
+			// Dispatch 
+			if (ptx_version >= 200) {
+				// SM2.0
+				Architecture<200, START_BIT, NUM_BITS, SpineType>::EnactSort(enactor, problem_storage);
+			
+			} else if (ptx_version >= 120) {
+				// SM1.2
+				Architecture<120, START_BIT, NUM_BITS, SpineType>::EnactSort(enactor, problem_storage);
+			
+			} else {
+				// SM1.0
+				Architecture<100, START_BIT, NUM_BITS, SpineType>::EnactSort(enactor, problem_storage);
+			}
+		}
+	};
 	
 	
 public:
 
+	//-----------------------------------------------------------------------------
+	// Utility
+	//-----------------------------------------------------------------------------
+
+	/**
+	 * Utility function: Returns the maximum problem size this enactor can sort on the device
+	 * it was initialized for.
+	 */
+	long long MaxProblemSize() 
+	{
+		// Begin with device memory, subtract 192MB for video/spine/etc.  Factor in 
+		// two vectors for keys (and values, if present)
+
+		long long element_size = (Base::KeysOnly()) ? sizeof(KeyType) : sizeof(KeyType) + sizeof(ValueType);
+		long long available_bytes = this->cuda_props.device_props.totalGlobalMem - (192 * 1024 * 1024);
+		long long elements = available_bytes / (element_size * 2);
+		
+		return elements;
+	}
+
 	
-    /**
+	//-----------------------------------------------------------------------------
+	// Construction 
+	//-----------------------------------------------------------------------------
+
+	/**
+	 * Constructor.
+	 */
+	EarlyExitLsbSortEnactor(int sweep_grid_size_override = 0) :
+		Base::MultiCtaLsbSortEnactor(),
+		sweep_grid_size_override(sweep_grid_size_override),
+		d_selectors(NULL)
+	{
+		// Allocate pair of ints denoting input and output vectors for even and odd passes
+		cudaMalloc((void**) &d_selectors, 2 * sizeof(int));
+	    dbg_perror_exit("EarlyExitLsbSortEnactor:: cudaMalloc d_selectors failed: ", __FILE__, __LINE__);
+	}
+
+	
+	/**
      * Destructor
      */
-    virtual ~BaseEarlyExitEnactor() 
+    virtual ~EarlyExitLsbSortEnactor() 
     {
-   		if (d_selectors) cudaFree(d_selectors);
+   		if (d_selectors) {
+   			cudaFree(d_selectors);
+   		    dbg_perror_exit("EarlyExitLsbSortEnactor:: cudaFree d_selectors failed: ", __FILE__, __LINE__);
+   		}
     }
     
-};
-
-
-
-
-/******************************************************************************
- * Sorting enactor specializations
- ******************************************************************************/
-
-/**
- * Sorting enactor that is specialized for for 8-bit key types
- */
-template <typename K, typename V>
-class EarlyExitRadixSortingEnactor<K, V, unsigned char> : public BaseEarlyExitEnactor<K, V>
-{
-protected:
-
-	typedef BaseEarlyExitEnactor<K, V> Base; 
-	typedef typename Base::ConvertedKeyType ConvertedKeyType;
-
-public:
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param[in] 		max_grid_size  
-	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
-	 * 		that the dispatch logic should select an appropriate value for the target device.
-	 */	
-	EarlyExitRadixSortingEnactor(int max_grid_size = 0) : 
-		Base::BaseEarlyExitEnactor(2, 4, max_grid_size) {}
-
-
+    
+	//-----------------------------------------------------------------------------
+	// Utility Sorting Interface 
+    //
+    // For generating sorting kernels having computational granularities in accordance 
+    // with user-supplied granularity-specialization types.  (Useful for auto-tuning.) 
+	//-----------------------------------------------------------------------------
+    
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
+	template <typename SortingConfig, int START_BIT, int NUM_BITS> 
+	cudaError_t EnactSort(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
 	{
-		// Compute work distribution
-		CtaDecomposition work_decomposition;
-		int grid_size = GridSize(problem_storage.num_elements);
-		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
+		const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
+		const int NUM_PASSES 			= (NUM_BITS + RADIX_BITS - 1) / RADIX_BITS;
+		const int SUBTILE_ELEMENTS 		= 1 << SortingConfig::Upsweep::LOG_SUBTILE_ELEMENTS;
+		const int SPINE_TILE_ELEMENTS 	= 1 << 
+				(SortingConfig::SpineScan::LOG_THREADS + 
+				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
+				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
 
-		PreSort(problem_storage, 2);
+		int sweep_grid_size = SweepGridSize<SortingConfig>(problem_storage.num_elements);
+		int spine_elements = Base::SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
+
+		SortingCtaDecomposition work(
+			problem_storage,
+			SUBTILE_ELEMENTS,
+			sweep_grid_size,
+			spine_elements);
+			
+		if (this->DEBUG) {
+			printf("\n\n");
+			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
+				this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version);
+			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d]\n", 
+				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES);
+			printf("Upsweep: \t[grid_size: %d, threads %d]\n",
+				sweep_grid_size, 1 << SortingConfig::Upsweep::LOG_THREADS);
+			printf("SpineScan: \t[grid_size: %d, threads %d]\n",
+				1, 1 << SortingConfig::SpineScan::LOG_THREADS);
+			printf("Downsweep: \t[grid_size: %d, threads %d]\n",
+				sweep_grid_size, 1 << SortingConfig::Downsweep::LOG_THREADS);
+			printf("Work: \t\t[num_elements: %d, total_subtiles: %d, subtiles_per_cta: %d, extra_subtiles: %d]\n",
+				work.num_elements, work.total_subtiles, work.subtiles_per_cta, work.extra_subtiles);
+			printf("\n\n");
+		}
 		
-		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >(grid_size, problem_storage, work_decomposition); 
-
-		PostSort(problem_storage, 2);
-
-		return cudaSuccess;
-	}
-};
-
-
-/**
- * Sorting enactor that is specialized for for 16-bit key types
- */
-template <typename K, typename V>
-class EarlyExitRadixSortingEnactor<K, V, unsigned short> : public BaseEarlyExitEnactor<K, V>
-{
-protected:
-
-	typedef BaseEarlyExitEnactor<K, V> Base; 
-	typedef typename Base::ConvertedKeyType ConvertedKeyType;
-
-public:
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param[in] 		max_grid_size  
-	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
-	 * 		that the dispatch logic should select an appropriate value for the target device.
-	 */	
-	EarlyExitRadixSortingEnactor(int max_grid_size = 0) : 
-		Base::BaseEarlyExitEnactor(4, 4, max_grid_size) {}
-
-
-	/**
-	 * Enacts a radix sorting operation on the specified device data.
-	 *
-	 * @return cudaSuccess on success, error enumeration otherwise
-	 */
-	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
-	{
-		// Compute work distribution
-		CtaDecomposition work_decomposition;
-		int grid_size = GridSize(problem_storage.num_elements);
-		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
-
-		PreSort(problem_storage, 4);
+		UnrolledPasses<
+			SortingConfig, 
+			0, 
+			NUM_PASSES - 1, 
+			START_BIT, 
+			RADIX_BITS>::Invoke(this, work);
 		
-		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<3, 4, 12, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >(grid_size, problem_storage, work_decomposition); 
-
-		PostSort(problem_storage, 4);
-
 		return cudaSuccess;
 	}
-};
-
-
-/**
- * Sorting enactor that is specialized for for 32-bit key types
- */
-template <typename K, typename V>
-class EarlyExitRadixSortingEnactor<K, V, unsigned int> : public BaseEarlyExitEnactor<K, V>
-{
-protected:
-
-	typedef BaseEarlyExitEnactor<K, V> Base; 
-	typedef typename Base::ConvertedKeyType ConvertedKeyType;
-
-public:
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param[in] 		max_grid_size  
-	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
-	 * 		that the dispatch logic should select an appropriate value for the target device.
-	 */	
-	EarlyExitRadixSortingEnactor(int max_grid_size = 0) : 
-		Base::BaseEarlyExitEnactor(8, 4, max_grid_size) {}
-
 
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
+	template <typename SortingConfig> 
+	cudaError_t EnactSort(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
 	{
-		// Compute work distribution
-		CtaDecomposition work_decomposition;
-		int grid_size = GridSize(problem_storage.num_elements);
-		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
-
-		PreSort(problem_storage, 8);
-
-		Base::template DigitPlacePass<0, 4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<1, 4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<2, 4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<3, 4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<4, 4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<5, 4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<6, 4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<7, 4, 28, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >    (grid_size, problem_storage, work_decomposition); 
-
-		PostSort(problem_storage, 8);
-
+		EnactSort<SortingConfig, 0, sizeof(KeyType) * 8>(problem_storage);
 		return cudaSuccess;
 	}
-};
 
-
-/**
- * Sorting enactor that is specialized for for 64-bit key types
- */
-template <typename K, typename V>
-class EarlyExitRadixSortingEnactor<K, V, unsigned long long> : public BaseEarlyExitEnactor<K, V>
-{
-protected:
-
-	typedef BaseEarlyExitEnactor<K, V> Base; 
-	typedef typename Base::ConvertedKeyType ConvertedKeyType;
-
-public:
+	
+	//-----------------------------------------------------------------------------
+	// Primary Sorting Interface 
+	//-----------------------------------------------------------------------------
 	
 	/**
-	 * Constructor.
-	 * 
-	 * @param[in] 		max_grid_size  
-	 * 		Maximum allowable number of CTAs to launch.  The default value of 0 indicates 
-	 * 		that the dispatch logic should select an appropriate value for the target device.
-	 */	
-	EarlyExitRadixSortingEnactor(int max_grid_size = 0) : 
-		Base::BaseEarlyExitEnactor(16, 4, max_grid_size) {}
-
+	 * Enacts a radix sorting operation on the specified device data.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <int START_BIT, int NUM_BITS>
+	cudaError_t EnactSort(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
+	{
+		Architecture<__B40C_CUDA_ARCH__, START_BIT, NUM_BITS, int>::EnactSort(
+			*this, problem_storage);
+		return cudaSuccess;
+	}
 
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(MultiCtaRadixSortStorage<K, V> &problem_storage) 
+	cudaError_t EnactSort(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
 	{
-		// Compute work distribution
-		CtaDecomposition work_decomposition;
-		int grid_size = GridSize(problem_storage.num_elements);
-		GetWorkDecomposition(problem_storage.num_elements, grid_size, work_decomposition);
-
-		PreSort(problem_storage, 16);
-		
-		Base::template DigitPlacePass<0,  4, 0,  PreprocessKeyFunctor<K>,      NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<1,  4, 4,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<2,  4, 8,  NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<3,  4, 12, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<4,  4, 16, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<5,  4, 20, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<6,  4, 24, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<7,  4, 28, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<8,  4, 32, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition);
-		Base::template DigitPlacePass<9,  4, 36, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<10, 4, 40, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<11, 4, 44, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<12, 4, 48, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<13, 4, 52, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<14, 4, 56, NopFunctor<ConvertedKeyType>, NopFunctor<ConvertedKeyType> >(grid_size, problem_storage, work_decomposition); 
-		Base::template DigitPlacePass<15, 4, 60, NopFunctor<ConvertedKeyType>, PostprocessKeyFunctor<K> >    (grid_size, problem_storage, work_decomposition); 
-
-		PostSort(problem_storage, 16);
-
+		EnactSort<0, sizeof(KeyType) * 8>(problem_storage);
 		return cudaSuccess;
 	}
+	
+	
+	//-----------------------------------------------------------------------------
+	// Extended Sorting Interface 
+	//
+	// For sorting input having more than 2^31 items. 
+	//-----------------------------------------------------------------------------
+    
+	/**
+	 * Enacts a radix sorting operation on the specified device data.  For 
+	 * sorting input having more than 2^31 items. 
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <int START_BIT, int NUM_BITS>
+	cudaError_t EnactSort64(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
+	{
+		Architecture<__B40C_CUDA_ARCH__, START_BIT, NUM_BITS, long long>::EnactSort(
+			*this, problem_storage);
+		return cudaSuccess;
+	}
+
+	/**
+	 * Enacts a radix sorting operation on the specified device data.  For 
+	 * sorting input having more than 2^31 items. 
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	cudaError_t EnactSort64(MultiCtaSortStorage<KeyType, ValueType> &problem_storage) 
+	{
+		EnactSort64<0, sizeof(KeyType) * 8>(problem_storage);
+		return cudaSuccess;
+	}
+	
+
 };
+
 
 
 }// namespace b40c

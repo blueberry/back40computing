@@ -1,5 +1,6 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * 
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -12,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -34,28 +32,30 @@
  * http://code.google.com/p/back40computing/
  * 
  * Thanks!
+ * 
  ******************************************************************************/
 
 
-
 /******************************************************************************
- * Radix Sorting API
+ * LSB Sorting Base Class
  ******************************************************************************/
 
 #pragma once
 
 #include "b40c_kernel_utils.cu"
-
 #include "radixsort_kernel_common.cu"
-
 
 namespace b40c {
 
+using namespace lsb_radix_sort;
+
+
+
 /**
- * Base class for SRTS radix sorting enactors.
+ * Base class for LSB radix sorting enactors.
  */
-template <typename K, typename V, typename Storage>
-class BaseRadixSortingEnactor 
+template <typename KeyType, typename ValueType, typename StorageType>
+class BaseLsbSortEnactor 
 {
 	
 protected:
@@ -65,26 +65,26 @@ protected:
 	 */
 	static bool KeysOnly() 
 	{
-		return IsKeysOnly<V>();
+		return IsKeysOnly<ValueType>();
 	}
 
 protected:
 
-	//Device properties
+	// Device properties
 	const CudaProperties cuda_props;
 	
 public: 
 	
-	// Allows display to stdout of sort details
-	bool RADIXSORT_DEBUG;
+	// Prints sorting debug detail to stdout
+	bool DEBUG;
 	
 protected: 	
 	
 	/**
 	 * Constructor.
 	 */
-	BaseRadixSortingEnactor(const CudaProperties &props = CudaProperties()) : 
-		cuda_props(props), RADIXSORT_DEBUG(false) {}
+	BaseLsbSortEnactor(const CudaProperties &props = CudaProperties()) : 
+		cuda_props(props), DEBUG(false) {}
 
 
 public:
@@ -93,7 +93,7 @@ public:
 	/**
      * Destructor
      */
-    virtual ~BaseRadixSortingEnactor() {}
+    virtual ~BaseLsbSortEnactor() {}
 
     
 	/**
@@ -101,13 +101,10 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSort(Storage &problem_storage) = 0;	
+	virtual cudaError_t EnactSort(StorageType &problem_storage) = 0;	
     
 };
 
 
-
-
-
-}// namespace b40c
+} // namespace b40c
 

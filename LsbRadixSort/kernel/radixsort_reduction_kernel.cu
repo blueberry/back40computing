@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -40,7 +37,8 @@
 
 
 /******************************************************************************
- * Bottom-level digit-reduction/counting kernel
+ * Radix sorting upsweep digit-reduction/counting kernel.  The first kernel in 
+ * a radix-sorting digit-place pass.
  ******************************************************************************/
 
 #pragma once
@@ -49,6 +47,124 @@
 
 namespace b40c {
 
+namespace lsb_radix_sort {
+
+
+/******************************************************************************
+ * Granularity Configuration
+ ******************************************************************************/
+
+/**
+ * Upsweep granularity configuration.  This C++ type encapsulates our 
+ * kernel-tuning parameters (they are reflected via the static fields).
+ *  
+ * The kernels are specialized for problem-type, SM-version, etc. by declaring 
+ * them with different performance-tuned parameterizations of this type.  By 
+ * incorporating this type into the kernel code itself, we guide the compiler in 
+ * expanding/unrolling the kernel code for specific architectures and problem 
+ * types.    
+ */
+template <
+	typename _KeyType,
+	typename _SpineType,
+	int _RADIX_BITS,
+	int _LOG_SUBTILE_ELEMENTS,
+	int _CTA_OCCUPANCY,
+	int _LOG_THREADS,
+	int _LOG_LOAD_VEC_SIZE,
+	int _LOG_LOADS_PER_TILE>
+
+struct UpsweepConfig
+{
+	typedef _KeyType						KeyType;
+	typedef _SpineType						SpineType;
+	static const int RADIX_BITS				= _RADIX_BITS;
+	static const int LOG_SUBTILE_ELEMENTS	= _LOG_SUBTILE_ELEMENTS;
+	static const int CTA_OCCUPANCY  		= _CTA_OCCUPANCY;
+	static const int LOG_THREADS 			= _LOG_THREADS;
+	static const int LOG_LOAD_VEC_SIZE  	= _LOG_LOAD_VEC_SIZE;
+	static const int LOG_LOADS_PER_TILE 	= _LOG_LOADS_PER_TILE;
+};
+
+
+
+/******************************************************************************
+ * Kernel Configuration  
+ ******************************************************************************/
+
+/**
+ * A detailed upsweep configuration type that specializes kernel code for a specific 
+ * sorting pass.  It encapsulates granularity details derived from the inherited 
+ * UpsweepConfigType 
+ */
+template <
+	typename 		UpsweepConfigType,
+	typename 		PreprocessFunctorType,
+	int 			_CURRENT_PASS,
+	int 			_CURRENT_BIT,
+	CacheModifier 	_CACHE_MODIFIER>
+
+struct UpsweepKernelConfig : UpsweepConfigType
+{
+	typedef PreprocessFunctorType					PreprocessFunctor;
+	
+	static const int RADIX_DIGITS 					= 1 << UpsweepConfigType::RADIX_BITS;
+	static const int CURRENT_PASS					= _CURRENT_PASS;
+	static const int CURRENT_BIT					= _CURRENT_BIT;
+
+	static const CacheModifier CACHE_MODIFIER 		= _CACHE_MODIFIER;
+	
+	static const int THREADS						= 1 << UpsweepConfigType::LOG_THREADS;
+	
+	static const int LOG_WARPS						= UpsweepConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__LOG_B40C_CUDA_ARCH__);
+	static const int WARPS							= 1 << LOG_WARPS;	
+	
+	static const int LOAD_VEC_SIZE					= 1 << UpsweepConfigType::LOG_LOAD_VEC_SIZE;
+	static const int LOADS_PER_TILE					= 1 << UpsweepConfigType::LOG_LOADS_PER_TILE;
+	
+	static const int LOG_TILE_ELEMENTS_PER_THREAD	= UpsweepConfigType::LOG_LOAD_VEC_SIZE + UpsweepConfigType::LOG_LOADS_PER_TILE; 
+	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
+
+	static const int LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + UpsweepConfigType::LOG_THREADS;
+	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
+	
+	// A lane is a row of 32-bit words, one words per thread, each words a 
+	// composite of four 8-bit digit counters, i.e., we need one lane for every 
+	// four radix digits.
+	
+	static const int LOG_COMPOSITE_LANES 			= (UpsweepConfigType::RADIX_BITS >= 2) ? 
+															UpsweepConfigType::RADIX_BITS - 2 : 
+															0;	// Always at least one lane 
+	static const int COMPOSITE_LANES 				= 1 << LOG_COMPOSITE_LANES;
+
+	static const int LOG_COMPOSITES_PER_LANE		= UpsweepConfigType::LOG_THREADS;				// Every thread contributes one partial for each lane
+	static const int COMPOSITES_PER_LANE 			= 1 << LOG_COMPOSITES_PER_LANE;
+
+	// To prevent digit-counter overflow, we must partially-aggregate the 
+	// 8-bit composite counters back into 32-bit registers periodically.  The lanes 
+	// are divided up amongst the warps for aggregation.  Each lane is 
+	// therefore equivalent to four rows of 32-bit digit-counts, each the width of a warp. 
+
+	static const int LANES_PER_WARP 					= (COMPOSITE_LANES > WARPS) ? 
+															COMPOSITE_LANES / WARPS : 
+															1;	// Always at least one fours group per warp
+	static const int COMPOSITES_PER_LANE_PER_THREAD 	= COMPOSITES_PER_LANE / B40C_WARP_THREADS(__B40C_CUDA_ARCH__);					// Number of partials per thread to aggregate
+
+	static const int AGGREGATED_ROWS						= RADIX_DIGITS;
+	static const int AGGREGATED_PARTIALS_PER_ROW 			= B40C_WARP_THREADS(__B40C_CUDA_ARCH__);
+	static const int PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1;
+	
+	// Required size of the re-purposable shared memory region
+	
+	static const int SHARED_BYTES					= 4 * B40C_MAX((COMPOSITE_LANES * COMPOSITES_PER_LANE), (AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW));
+	static const int SHARED_INT4S					= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
+};
+
+
+
+/******************************************************************************
+ * Reduction kernel subroutines
+ ******************************************************************************/
 
 template <int BYTE>
 __device__ __forceinline__ int DecodeInt(int encoded){
@@ -59,83 +175,103 @@ __device__ __forceinline__ int DecodeInt(int encoded){
 }
 
 
-template <int PARTIAL>
-__device__ __forceinline__  void ReduceLanePartial(
-	int local_counts[4], 
-	int *scan_lanes, 
-	int lane_offset) 
+// Reset 8-bit composite counters back to zero
+template <typename Config>
+__device__ __forceinline__ void ResetCompositeLanes(
+	int *composite_column)
 {
-	unsigned char* encoded = (unsigned char *) &scan_lanes[lane_offset + (PARTIAL * B40C_WARP_THREADS)];
-	local_counts[0] += encoded[0];
-	local_counts[1] += encoded[1];
-	local_counts[2] += encoded[2];
-	local_counts[3] += encoded[3];
-}
-
-template <int LANE, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int REDUCTION_PARTIALS_PER_LANE, int LANE_PARTIALS_PER_THREAD>
-__device__ __forceinline__  void ReduceLanePartials(
-	int local_counts[REDUCTION_LANES_PER_WARP][4],
-	int *scan_lanes, 
-	int lane_offset) 
-{		
-	lane_offset += (LANE * REDUCTION_PARTIALS_PER_LANE * B40C_RADIXSORT_WARPS);
-	if ((B40C_RADIXSORT_WARPS < REDUCTION_LANES) || (lane_offset < REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE)) {
-		if (LANE_PARTIALS_PER_THREAD > 0) ReduceLanePartial<0>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 1) ReduceLanePartial<1>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 2) ReduceLanePartial<2>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 3) ReduceLanePartial<3>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 4) ReduceLanePartial<4>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 5) ReduceLanePartial<5>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 6) ReduceLanePartial<6>(local_counts[LANE], scan_lanes, lane_offset);
-		if (LANE_PARTIALS_PER_THREAD > 7) ReduceLanePartial<7>(local_counts[LANE], scan_lanes, lane_offset);
+	#pragma unroll
+	for (int LANE = 0; LANE < Config::COMPOSITE_LANES; LANE++) {
+		composite_column[LANE * Config::COMPOSITES_PER_LANE] = 0;
 	}
 }
 
 
-template <
-	int REDUCTION_LANES, 
-	int REDUCTION_LANES_PER_WARP, 
-	int LOG_REDUCTION_PARTIALS_PER_LANE,
-	int REDUCTION_PARTIALS_PER_LANE> 
-__device__ __forceinline__ void ReduceEncodedCounts(
-	int local_counts[REDUCTION_LANES_PER_WARP][4],
-	int *scan_lanes,
-	int warp_id,
-	int warp_idx)
+// Partially-reduce 8-bit composite counters back into full 32-bit registers
+template <typename Config> 
+struct ReduceCompositeLanes
 {
-	const int LANE_PARTIALS_PER_THREAD = REDUCTION_PARTIALS_PER_LANE / B40C_WARP_THREADS;
-	SuppressUnusedConstantWarning(LANE_PARTIALS_PER_THREAD);
-	
-	int lane_offset = (warp_id << LOG_REDUCTION_PARTIALS_PER_LANE) + warp_idx;	// my warp's (first-lane) reduction offset
+	// Iterate over composite counters
+	template <int LANE, int COMPOSITE>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			int local_counts[Config::LANES_PER_WARP][4],
+			int *composite_lanes,
+			int warp_id,
+			int warp_idx)
+		{
+			int composite_offset = 
+				(warp_id << Config::LOG_COMPOSITES_PER_LANE) + 				// base lane offset
+				(LANE * Config::COMPOSITES_PER_LANE * Config::WARPS) + 		// stride to current lane
+				warp_idx + 													// base composite offset 
+				(COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__)); 		// stride to current composite
+			
+			unsigned char* composite_counters = (unsigned char *) &composite_lanes[composite_offset];
+			local_counts[LANE][0] += composite_counters[0];
+			local_counts[LANE][1] += composite_counters[1];
+			local_counts[LANE][2] += composite_counters[2];
+			local_counts[LANE][3] += composite_counters[3];
 
-	if (REDUCTION_LANES_PER_WARP > 0) ReduceLanePartials<0, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
-	if (REDUCTION_LANES_PER_WARP > 1) ReduceLanePartials<1, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
-	if (REDUCTION_LANES_PER_WARP > 2) ReduceLanePartials<2, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
-	if (REDUCTION_LANES_PER_WARP > 3) ReduceLanePartials<3, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, REDUCTION_PARTIALS_PER_LANE, LANE_PARTIALS_PER_THREAD>(local_counts, scan_lanes, lane_offset);
-}
-	
+			Iterate<LANE, COMPOSITE + 1>::Invoke(local_counts, composite_lanes, warp_id, warp_idx);
+		}
+	};
 
-template <typename K, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
+	// Iterate over lanes
+	template <int LANE>
+	struct Iterate<LANE, Config::COMPOSITES_PER_LANE_PER_THREAD> {
+		static __device__ __forceinline__ void Invoke(
+			int local_counts[Config::LANES_PER_WARP][4],
+			int *composite_lanes,
+			int warp_id,
+			int warp_idx)
+		{
+			Iterate<LANE + 1, 0>::Invoke(local_counts, composite_lanes, warp_id, warp_idx);
+		}
+	};
+	
+	// Terminate
+	template <int COMPOSITE>
+	struct Iterate<Config::LANES_PER_WARP, COMPOSITE> {
+		static __device__ __forceinline__ void Invoke(
+			int local_counts[Config::LANES_PER_WARP][4],
+			int *composite_lanes,
+			int warp_id,
+			int warp_idx) {}
+	};
+};
+
+
+// Bucket a key
+template <typename Config>
 __device__ __forceinline__ void Bucket(
-	K key, 
-	int *encoded_reduction_col,
-	PreprocessFunctor preprocess = PreprocessFunctor()) 
+	typename Config::KeyType key, 
+	int *composite_column)
 {
+	typedef typename Config::KeyType KeyType;
+
+	// Pre-process key with bit-twiddling functor if necessary
+	typename Config::PreprocessFunctor preprocess;
 	preprocess(key);
 
+	// Extract lane containing corresponding composite counter 
 	int lane;
-	ExtractKeyBits<K, BIT + 2, RADIX_BITS - 2>::Extract(lane, key);
+	ExtractKeyBits<
+		KeyType, 
+		Config::CURRENT_BIT + 2, 
+		Config::RADIX_BITS - 2>::Extract(lane, key);
 
-	if (__CUDA_ARCH__ >= 200) {	
+	if (__B40C_CUDA_ARCH__ >= 200) {	
 	
 		// GF100+ has special bit-extraction instructions (instead of shift+mask)
 		int quad_byte;
-		if (RADIX_BITS < 2) { 
-			ExtractKeyBits<K, BIT, 1>::Extract(quad_byte, key);
+		if (Config::RADIX_BITS < 2) { 
+			ExtractKeyBits<KeyType, Config::CURRENT_BIT, 1>::Extract(quad_byte, key);
 		} else {
-			ExtractKeyBits<K, BIT, 2>::Extract(quad_byte, key);
+			ExtractKeyBits<KeyType, Config::CURRENT_BIT, 2>::Extract(quad_byte, key);
 		}
-		unsigned char *encoded_col = (unsigned char *) &encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)];
+		
+		// Increment sub-field in composite counter 
+		unsigned char *encoded_col = (unsigned char *) &composite_column[FastMul(lane, Config::COMPOSITES_PER_LANE)];
 		encoded_col[quad_byte]++;
 
 	} else {
@@ -143,267 +279,264 @@ __device__ __forceinline__ void Bucket(
 		// GT200 can save an instruction because it can source an operand 
 		// directly from smem
 		const int BYTE_ENCODE_SHIFT 		= 0x3;
-		const K QUAD_MASK 					= (RADIX_BITS < 2) ? 0x1 : 0x3;
-		int quad_shift = MagnitudeShift<K, BYTE_ENCODE_SHIFT - BIT>(key & (QUAD_MASK << BIT));
-		encoded_reduction_col[FastMul(lane, REDUCTION_PARTIALS_PER_LANE)] += (1 << quad_shift);
+		const KeyType QUAD_MASK 			= (Config::RADIX_BITS < 2) ? 0x1 : 0x3;
+
+		int quad_shift = MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - Config::CURRENT_BIT>(
+			key & (QUAD_MASK << Config::CURRENT_BIT));
+		
+		// Increment sub-field in composite counter 
+		composite_column[FastMul(lane, Config::COMPOSITES_PER_LANE)] += (1 << quad_shift);
 	}
 }
 
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor, int CYCLES>
-struct LoadOp;
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1> 
+// Bucket a tile of keys
+template <typename Config> 
+struct BucketTileKeys
 {
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		K key;
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(key, d_in_keys, block_offset);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(key, encoded_reduction_col);
-	}
+	typedef typename Config::KeyType KeyType;
+	
+	// Iterate over vec-elements
+	template <int LOAD, int VEC>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			int *composite_column) 
+		{
+			Bucket<Config>(keys[LOAD][VEC], composite_column);
+			Iterate<LOAD, VEC + 1>::Invoke(keys, composite_column);
+		}
+	};
+
+	// Iterate over loads
+	template <int LOAD>
+	struct Iterate<LOAD, Config::LOAD_VEC_SIZE> {
+		static __device__ __forceinline__ void Invoke(
+			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			int *composite_column) 
+		{
+			Iterate<LOAD + 1, 0>::Invoke(keys, composite_column);
+		}
+	};
+	
+	// Terminate
+	template <int VEC>
+	struct Iterate<Config::LOADS_PER_TILE, VEC> {
+		static __device__ __forceinline__ void Invoke(
+			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			int *composite_column) {} 
+	};
 };
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2> 
-{
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 1), encoded_reduction_col);
-	}
-};
 
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4> 
+// Load a tile of keys
+template <typename Config> 
+struct LoadTileKeys
 {
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 2), encoded_reduction_col);
-	}
-};
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8> 
-{
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		K keys[8];
+	typedef typename Config::KeyType KeyType;
+	typedef typename VecType<KeyType, Config::LOAD_VEC_SIZE>::Type KeyVectorType; 		
+	
+	// Iterate over loads
+	template <int LOAD, int __dummy = 0>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			KeyVectorType key_vectors[Config::LOADS_PER_TILE], 
+			KeyVectorType *d_in_key_vectors) 
+		{
+			ModifiedLoad<KeyVectorType, Config::CACHE_MODIFIER>::Ld(
+				key_vectors[0], d_in_key_vectors, threadIdx.x + (Config::THREADS * LOAD));
 			
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[0], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[1], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 1));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[2], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 2));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[3], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 3));
+			Iterate<LOAD + 1>::Invoke(key_vectors, d_in_key_vectors);
+		}
+	};
 
-		if (__CUDA_ARCH__ >= 200) __syncthreads();
-		
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[4], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 4));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[5], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 5));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[6], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 6));
-		ModifiedLoad<K, CACHE_MODIFIER >::Ld(keys[7], d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 7));
-		
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[0], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[1], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[2], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[3], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[4], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[5], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[6], encoded_reduction_col);
-		Bucket<K, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor>(keys[7], encoded_reduction_col);
-	}
-};
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16> {
-
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 8), encoded_reduction_col);
-	}
-};
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32> {
-
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 16), encoded_reduction_col);
-	}
-};
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64> {
-
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 32), encoded_reduction_col);
-	}
-};
-
-template <typename K, CacheModifier CACHE_MODIFIER, int RADIX_BITS, int REDUCTION_PARTIALS_PER_LANE, int BIT, typename PreprocessFunctor>
-struct LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128> {
-
-	static __device__ __forceinline__  void BlockOfLoads(K *d_in_keys, int block_offset, int *encoded_reduction_col)
-	{
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 0), encoded_reduction_col);
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset + (B40C_RADIXSORT_THREADS * 64), encoded_reduction_col);
-	}
+	// Terminate
+	template <int __dummy>
+	struct Iterate<Config::LOAD_VEC_SIZE, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			KeyVectorType key_vectors[Config::LOADS_PER_TILE], 
+			KeyVectorType *d_in_key_vectors) {} 
+	};
 };
 
 
-
-template <int REDUCTION_LANES>
-__device__ __forceinline__ void ResetEncodedCarry(
-	int *encoded_reduction_col)
+// Process one tile of keys
+template <typename Config>
+__device__ __forceinline__ void ProcessTile(
+	typename Config::KeyType *d_in_keys, 
+	int cta_offset, 
+	int *composite_column) 
 {
-	#pragma unroll
-	for (int SCAN_LANE = 0; SCAN_LANE < (int) REDUCTION_LANES; SCAN_LANE++) {
-		encoded_reduction_col[SCAN_LANE * B40C_RADIXSORT_THREADS] = 0;
-	}
+	typedef typename Config::KeyType KeyType;
+	typedef typename VecType<KeyType, Config::LOAD_VEC_SIZE>::Type KeyVectorType; 		
+
+	// Keys to be loaded for this tile
+	KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+
+	// Use an aliased pointer to keys array to perform built-in vector loads
+	KeyVectorType *d_in_key_vectors = (KeyVectorType *) (d_in_keys + cta_offset);
+	KeyVectorType *key_vectors = (KeyVectorType *) keys;
+	
+	// Load tile of keys
+	LoadTileKeys<Config>::template Iterate<0>::template Invoke(key_vectors, d_in_key_vectors);
+
+//	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();
+	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
+
+	// Bucket tile of keys
+	BucketTileKeys<Config>::template Iterate<0, 0>::template Invoke(keys, composite_column);
 }
 
 
-template <bool UNROLL, typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
-struct UnrolledLoads;
-
-// Minimal unrolling
-template <typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
-struct UnrolledLoads <false, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>
+// Unroll tiles
+template <typename Config, int UNROLL_COUNT> 
+struct UnrollTiles
 {
-	__device__ __forceinline__ static void Unroll(
-		K*			d_in_keys,
-		int 		&block_offset,
-		int* 		encoded_reduction_col,
-		int*		scan_lanes,
-		const int&	out_of_bounds,
-		int local_counts[REDUCTION_LANES_PER_WARP][4],
-		int warp_id,
-		int warp_idx) 
-	{
-		// Unroll batches of loads with occasional reduction to avoid overflow
-		while (block_offset + (B40C_RADIXSORT_THREADS * 32) < out_of_bounds) {
-		
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 32;
+	typedef typename Config::KeyType KeyType;
 	
+	// Iterate over counts
+	template <int COUNT, int __dummy = 0>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			KeyType *d_in_keys, 
+			int cta_offset, 
+			int *composite_column)
+		{
+			ProcessTile<Config>(d_in_keys, cta_offset, composite_column);
+			Iterate<COUNT + 1>::Invoke(d_in_keys, cta_offset + Config::TILE_ELEMENTS, composite_column);
+		}
+	};
+
+	// Terminate
+	template <int __dummy>
+	struct Iterate<UNROLL_COUNT, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			KeyType *d_in_keys, 
+			int cta_offset, 
+			int *composite_column) {}
+	};
+};
+
+
+// Unroll key processing in batches of UNROLL_COUNT tiles, optionally with 
+// occasional partial-reduction to avoid overflow.
+template <typename Config, int UNROLL_COUNT, bool REDUCE_AFTERWARD>
+__device__ __forceinline__ void UnrollTileBatches(
+	typename Config::KeyType *d_in_keys,
+	int 	&cta_offset,
+	int* 	composite_column,
+	int*	composite_lanes,
+	int		out_of_bounds,
+	int 	local_counts[Config::LANES_PER_WARP][4],
+	int 	warp_id,
+	int 	warp_idx) 
+{
+	const int UNROLLED_ELEMENTS = UNROLL_COUNT * Config::TILE_ELEMENTS;
+	
+	while (cta_offset + UNROLLED_ELEMENTS < out_of_bounds) {
+	
+		UnrollTiles<Config, UNROLL_COUNT>::template Iterate<0>::template Invoke(
+			d_in_keys, cta_offset, composite_column);
+
+		cta_offset += UNROLLED_ELEMENTS;
+
+		// Optionally aggregate back into local_count registers to prevent overflow
+		if (REDUCE_AFTERWARD) {
+			
 			__syncthreads();
 	
-			// Aggregate back into local_count registers to prevent overflow
-			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
-					local_counts, 
-					scan_lanes,
-					warp_id,
-					warp_idx);
+			ReduceCompositeLanes<Config>::template Iterate<0, 0>::template Invoke(
+				local_counts, composite_lanes, warp_id, warp_idx);
 	
 			__syncthreads();
 			
-			// Reset encoded counters
-			ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
-		} 
+			// Reset composite counters
+			ResetCompositeLanes<Config>(composite_column);
+		}
+	} 
+}
+
+
+// Reduces all full-tiles (unguarded loads)
+template <typename Config, bool AGGRESSIVELY_UNROLL> struct FullTiles;
+
+
+// Reduces all full-tiles with modest unrolling (for lower static instruction count)
+template <typename Config>
+struct FullTiles<Config, false>
+{
+	__device__ __forceinline__ static void Reduce(
+		typename Config::KeyType *d_in_keys,
+		int 	&cta_offset,
+		int* 	composite_column,
+		int* 	composite_lanes,
+		int  	out_of_bounds,
+		int  	local_counts[Config::LANES_PER_WARP][4],
+		int  	warp_id,
+		int  	warp_idx) 
+	{
+		// Loop over tile-batches of 32 keys per thread, aggregating after each batch
+		UnrollTileBatches<Config, 32 / Config::TILE_ELEMENTS_PER_THREAD, true>(
+			d_in_keys, cta_offset, composite_column, composite_lanes, out_of_bounds, local_counts, warp_id, warp_idx); 
+
+		// Loop over tiles one at a time
+		UnrollTileBatches<Config, 1, false>(
+			d_in_keys, cta_offset, composite_column, composite_lanes, out_of_bounds, local_counts, warp_id, warp_idx); 
 	}
 };
 
-// Unrolled
-template <typename K, CacheModifier CACHE_MODIFIER, int BIT, int RADIX_BITS, int REDUCTION_LANES, int REDUCTION_LANES_PER_WARP, int LOG_REDUCTION_PARTIALS_PER_LANE, int REDUCTION_PARTIALS_PER_LANE, typename PreprocessFunctor>
-struct UnrolledLoads <true, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>
+
+// Reduces all full-tiles with aggressive unrolling (for lower dynamic instruction count)
+template <typename Config>
+struct FullTiles<Config, true>
 {
-	__device__ __forceinline__ static void Unroll(
-		K*			d_in_keys,
-		int 		&block_offset,
-		int* 		encoded_reduction_col,
-		int*		scan_lanes,
-		const int&	out_of_bounds,
-		int local_counts[REDUCTION_LANES_PER_WARP][4],
-		int warp_id,
-		int warp_idx) 
+	__device__ __forceinline__ static void Reduce(
+		typename Config::KeyType *d_in_keys,
+		int &cta_offset,
+		int* composite_column,
+		int* composite_lanes,
+		int	 out_of_bounds,
+		int  local_counts[Config::LANES_PER_WARP][4],
+		int  warp_id,
+		int  warp_idx) 
 	{
-		// Unroll batches of loads with occasional reduction to avoid overflow
-		while (block_offset + (B40C_RADIXSORT_THREADS * 128) < out_of_bounds) {
+		// Loop over tile-batches of 128 keys per thread, aggregating after each batch
+		UnrollTileBatches<Config, 128 / Config::TILE_ELEMENTS_PER_THREAD, true>(
+			d_in_keys, cta_offset, composite_column, composite_lanes, out_of_bounds, local_counts, warp_id, warp_idx); 
+
+		// Loop over tile-batches of 8 keys per thread
+		UnrollTileBatches<Config, 8 / Config::TILE_ELEMENTS_PER_THREAD, false>(
+			d_in_keys, cta_offset, composite_column, composite_lanes, out_of_bounds, local_counts, warp_id, warp_idx); 
 		
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 128>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 128;
-	
-			__syncthreads();
-	
-			// Aggregate back into local_count registers to prevent overflow
-			ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
-					local_counts, 
-					scan_lanes,
-					warp_id,
-					warp_idx);
-	
-			__syncthreads();
-			
-			// Reset encoded counters
-			ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
-		} 
-		
-		if (block_offset + (B40C_RADIXSORT_THREADS * 64) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 64>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 64;
-		}
-		if (block_offset + (B40C_RADIXSORT_THREADS * 32) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 32>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 32;
-		}
-		if (block_offset + (B40C_RADIXSORT_THREADS * 16) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 16>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 16;
-		}
-		if (block_offset + (B40C_RADIXSORT_THREADS * 8) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 8>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 8;
-		}
-		if (block_offset + (B40C_RADIXSORT_THREADS * 4) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 4>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 4;
-		}
-		if (block_offset + (B40C_RADIXSORT_THREADS * 2) < out_of_bounds) {
-			LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 2>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-			block_offset += B40C_RADIXSORT_THREADS * 2;
-		}
+		// Loop over tiles one at a time
+		UnrollTileBatches<Config, 1, false>(
+			d_in_keys, cta_offset, composite_column, composite_lanes, out_of_bounds, local_counts, warp_id, warp_idx); 
 	}
 };
 
 
 template <
-	typename K, 
-	CacheModifier CACHE_MODIFIER,
-	int BIT, 
-	int RADIX_BITS,
-	int RADIX_DIGITS, 
-	int REDUCTION_LANES, 
-	int LOG_REDUCTION_PARTIALS_PER_LANE,
-	int REDUCTION_PARTIALS_PER_LANE, 
-	typename PreprocessFunctor,
-	bool UNROLL>
+	typename Config, 
+	bool AGGRESSIVE_UNROLLING>
 __device__ __forceinline__ void ReductionPass(
-	K*			d_in_keys,
-	int* 		d_spine,
-	int 		block_offset,
-	int* 		encoded_reduction_col,
-	int*		scan_lanes,
-	const int&	out_of_bounds)
+	typename Config::KeyType 	*d_in_keys,
+	typename Config::SpineType 	*d_spine,
+	int*	smem_pool,
+	int* 	composite_column,
+	int 	cta_offset,
+	int 	out_of_bounds)
 {
-	const int REDUCTION_LANES_PER_WARP 			= (REDUCTION_LANES > B40C_RADIXSORT_WARPS) ? REDUCTION_LANES / B40C_RADIXSORT_WARPS : 1;	// Always at least one fours group per warp
-	const int PARTIALS_PER_ROW 					= B40C_WARP_THREADS;
-	const int PADDED_PARTIALS_PER_ROW 			= PARTIALS_PER_ROW + 1;
-
-	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS;
-	int warp_idx = threadIdx.x & (B40C_WARP_THREADS - 1);
+	typedef typename Config::KeyType KeyType; 
 	
-	block_offset += threadIdx.x;
+	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
+	int warp_idx = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
 	
 	// Each thread is responsible for aggregating an unencoded segment of a fours-group
-	int local_counts[REDUCTION_LANES_PER_WARP][4];								
+	int local_counts[Config::LANES_PER_WARP][4];								
 	
 	// Initialize local counts
 	#pragma unroll 
-	for (int LANE = 0; LANE < (int) REDUCTION_LANES_PER_WARP; LANE++) {
+	for (int LANE = 0; LANE < Config::LANES_PER_WARP; LANE++) {
 		local_counts[LANE][0] = 0;
 		local_counts[LANE][1] = 0;
 		local_counts[LANE][2] = 0;
@@ -411,61 +544,65 @@ __device__ __forceinline__ void ReductionPass(
 	}
 	
 	// Reset encoded counters
-	ResetEncodedCarry<REDUCTION_LANES>(encoded_reduction_col);
+	ResetCompositeLanes<Config>(composite_column);
 
-	// Process loads in bulk (if applicable)
-	UnrolledLoads<UNROLL, K, CACHE_MODIFIER, BIT, RADIX_BITS, REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor>::Unroll(
+	// Process loads in bulk (if applicable), making sure to leave
+	// enough headroom for one more (partial) tile before rollover  
+	FullTiles<Config, AGGRESSIVE_UNROLLING>::Reduce(
 		d_in_keys,
-		block_offset,
-		encoded_reduction_col,
-		scan_lanes,
-		out_of_bounds + threadIdx.x,
+		cta_offset,
+		composite_column,
+		smem_pool,
+		out_of_bounds,
 		local_counts, 
 		warp_id,
 		warp_idx); 
-	
+
 	// Process (potentially-partial) loads singly
-	while (block_offset < out_of_bounds) {
-		LoadOp<K, CACHE_MODIFIER, RADIX_BITS, REDUCTION_PARTIALS_PER_LANE, BIT, PreprocessFunctor, 1>::BlockOfLoads(d_in_keys, block_offset, encoded_reduction_col);
-		block_offset += B40C_RADIXSORT_THREADS;
+	while (cta_offset < out_of_bounds - threadIdx.x) {
+		KeyType key;
+		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(
+			key, d_in_keys, cta_offset + threadIdx.x);
+		Bucket<Config>(key, composite_column);
+		cta_offset += Config::THREADS;
 	}
 	
 	__syncthreads();
 
 	// Aggregate back into local_count registers 
-	ReduceEncodedCounts<REDUCTION_LANES, REDUCTION_LANES_PER_WARP, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE>(
-		local_counts, 
-		scan_lanes,
-		warp_id,
-		warp_idx);
+	ReduceCompositeLanes<Config>::template Iterate<0, 0>::template Invoke(
+		local_counts, smem_pool, warp_id, warp_idx);
 	
 	__syncthreads();
 		
 	//
-	// Reduce the local_counts within each reduction lane within each warp  
+	// Final reduction of aggregated local_counts within each warp  
 	//
 	
-	// Place into smem
-	int lane_base = FastMul(warp_id, PADDED_PARTIALS_PER_ROW * B40C_RADIXSORT_WARPS);	// my warp's (first) reduction lane
 	
+	// My thread's (first) reduction counter placement offset
+	int base_row_offset = FastMul(warp_id, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * Config::WARPS) + warp_idx;	
+	
+	// Place counts into smem
 	#pragma unroll
-	for (int i = 0; i < (int) REDUCTION_LANES_PER_WARP; i++) {
+	for (int i = 0; i < Config::LANES_PER_WARP; i++) {
 
-		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 0)] = local_counts[i][0];
-		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 1)] = local_counts[i][1];
-		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 2)] = local_counts[i][2];
-		scan_lanes[lane_base + warp_idx + (PADDED_PARTIALS_PER_ROW * 3)] = local_counts[i][3];
+		// Four counts per composite lane
+		smem_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0)] = local_counts[i][0];
+		smem_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1)] = local_counts[i][1];
+		smem_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2)] = local_counts[i][2];
+		smem_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3)] = local_counts[i][3];
 		
-		lane_base += PADDED_PARTIALS_PER_ROW * B40C_RADIXSORT_WARPS;
+		base_row_offset += Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * Config::WARPS;
 	}
 
 	__syncthreads();
 
 	// Rake-reduce and write out the digit_count reductions 
-	if (threadIdx.x < RADIX_DIGITS) {
+	if (threadIdx.x < Config::RADIX_DIGITS) {
 
-		int lane_base = FastMul(threadIdx.x, PADDED_PARTIALS_PER_ROW);
-		int digit_count = SerialReduce<int, PARTIALS_PER_ROW>(scan_lanes + lane_base);
+		int base_row_offset = FastMul(threadIdx.x, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW);
+		int digit_count = SerialReduce<int, Config::AGGREGATED_PARTIALS_PER_ROW>(smem_pool + base_row_offset);
 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
 		d_spine[spine_digit_offset] = digit_count;
@@ -473,68 +610,67 @@ __device__ __forceinline__ void ReductionPass(
 }
 
 
+/**
+ * Host stub to calm the linker for arch-specializations that we didn't 
+ * end up compiling PTX for.
+ */
+template <typename KernelConfig, typename KeyType, typename SpineType> 
+__host__ void __wrapper__device_stub_LsbRakingReductionKernel(
+	int *&,
+	SpineType *&,
+	KeyType *&,
+	KeyType *&,
+	CtaDecomposition &) {}
 
 
-template <typename K, typename V, int PASS, int RADIX_BITS, int BIT, typename PreprocessFunctor>
-__launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_REDUCE_CTA_OCCUPANCY(__CUDA_ARCH__))
+/**
+ * Kernel entry point
+ */
+template <typename KernelConfig, typename KeyType, typename SpineType>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void LsbRakingReductionKernel(
 	int *d_selectors,
-	int *d_spine,
-	K *d_in_keys,
-	K *d_out_keys,
+	SpineType *d_spine,
+	KeyType *d_in_keys,
+	KeyType *d_out_keys,
 	CtaDecomposition work_decomposition)
 {
-	const int RADIX_DIGITS 						= 1 << RADIX_BITS;
-	const int TILE_ELEMENTS						= B40C_RADIXSORT_TILE_ELEMENTS(__CUDA_ARCH__, K, V);
-
-	const int LOG_REDUCTION_PARTIALS_PER_LANE	= B40C_RADIXSORT_LOG_THREADS;
-	const int REDUCTION_PARTIALS_PER_LANE 		= 1 << LOG_REDUCTION_PARTIALS_PER_LANE;
-
-	const int LOG_REDUCTION_LANES 				= (RADIX_BITS >= 2) ? RADIX_BITS - 2 : 0;	// Always at least one fours group
-	const int REDUCTION_LANES 					= 1 << LOG_REDUCTION_LANES;
-	const int PADDING 							= RADIX_DIGITS;								// We need one cell of padding for each raking thread
-
-	SuppressUnusedConstantWarning(RADIX_DIGITS);
+	// Shared memory pool
+	__shared__ int4 smem_pool[KernelConfig::SHARED_INT4S];
 	
-	
-	// Each thread gets its own column of fours-groups (for conflict-free updates)
-	__shared__ int scan_lanes[(REDUCTION_LANES * REDUCTION_PARTIALS_PER_LANE) + PADDING];	
-	
-	int *encoded_reduction_col = &scan_lanes[threadIdx.x];	// first element of column
+	// The smem column in composite lanes for each thread 
+	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
 
 	// Determine where to read our input
-	int selector = (PASS == 0) ? 0 : d_selectors[PASS & 0x1];
-	if (selector) d_in_keys = d_out_keys;
-	
-	// Calculate our threadblock's range
-	int block_offset, block_elements;
-	if (blockIdx.x < work_decomposition.num_big_blocks) {
-		block_offset = work_decomposition.big_block_elements * blockIdx.x;
-		block_elements = work_decomposition.big_block_elements;
-	} else {
-		block_offset = (work_decomposition.normal_block_elements * blockIdx.x) + (work_decomposition.num_big_blocks * TILE_ELEMENTS);
-		block_elements = work_decomposition.normal_block_elements;
-	}
-	int out_of_bounds = block_offset + block_elements; 
-	if (blockIdx.x == gridDim.x - 1) {
-		if (work_decomposition.extra_elements_last_block > 0) {
-			out_of_bounds -= TILE_ELEMENTS;
-		}
-		out_of_bounds += work_decomposition.extra_elements_last_block;
+	if ((KernelConfig::CURRENT_PASS != 0) && (d_selectors[KernelConfig::CURRENT_PASS & 0x1])) {
+		d_in_keys = d_out_keys;
 	}
 	
-	// Perform reduction pass
-	ReductionPass<K, NONE, BIT, RADIX_BITS, RADIX_DIGITS, REDUCTION_LANES, LOG_REDUCTION_PARTIALS_PER_LANE, REDUCTION_PARTIALS_PER_LANE, PreprocessFunctor, true>(
+	// Determine our threadblock's work range
+	
+	int cta_offset;				// Offset at which this CTA begins processing
+	int cta_elements;			// Total number of elements for this CTA to process
+	int guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	int guarded_elements;		// Number of elements in partially-full tile 
+
+	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
+		cta_offset, cta_elements, guarded_offset, guarded_elements);
+		
+	// Perform reduction pass over work range with agressive unrolling
+	ReductionPass<KernelConfig, true>(
 		d_in_keys,
 		d_spine,
-		block_offset,
-		encoded_reduction_col,
-		scan_lanes,
-		out_of_bounds);
+		composite_column,
+		reinterpret_cast<int*>(smem_pool),
+		cta_offset,
+		cta_offset + cta_elements);
 } 
-
  
+
+
+
+} // namespace lsb_radix_sort
 
 } // namespace b40c
 

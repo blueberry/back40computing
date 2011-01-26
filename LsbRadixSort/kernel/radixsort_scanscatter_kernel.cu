@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -40,7 +37,8 @@
 
 
 /******************************************************************************
- * Scan-scatter kernel.  The third kernel in a radix-sorting digit-place pass.
+ * Radix sorting downsweep scan-scatter kernel.  The third kernel in a radix-
+ * sorting digit-place pass.
  ******************************************************************************/
 
 #pragma once
@@ -48,6 +46,152 @@
 #include "radixsort_kernel_common.cu"
 
 namespace b40c {
+
+namespace lsb_radix_sort {
+
+
+/******************************************************************************
+ * Granularity Configuration
+ ******************************************************************************/
+
+/**
+ * Downsweep granularity configuration.  This C++ type encapsulates our 
+ * kernel-tuning parameters (they are reflected via the static fields).
+ *  
+ * The kernels are specialized for problem-type, SM-version, etc. by declaring 
+ * them with different performance-tuned parameterizations of this type.  By 
+ * incorporating this type into the kernel code itself, we guide the compiler in 
+ * expanding/unrolling the kernel code for specific architectures and problem 
+ * types.    
+ */
+template <
+	typename _KeyType,
+	typename _ValueType,
+	typename _SpineType,
+	int _RADIX_BITS,
+	int _LOG_SUBTILE_ELEMENTS,
+	int _CTA_OCCUPANCY,
+	int _LOG_THREADS,
+	int _LOG_LOAD_VEC_SIZE,
+	int _LOG_LOADS_PER_CYCLE,
+	int _LOG_CYCLES_PER_TILE,
+	int _LOG_RAKING_THREADS>
+
+struct DownsweepConfig
+{
+	typedef _KeyType						KeyType;
+	typedef _ValueType						ValueType;
+	typedef _SpineType						SpineType;
+	static const int RADIX_BITS				= _RADIX_BITS;
+	static const int LOG_SUBTILE_ELEMENTS	= _LOG_SUBTILE_ELEMENTS;
+	static const int CTA_OCCUPANCY  		= _CTA_OCCUPANCY;
+	static const int LOG_THREADS 			= _LOG_THREADS;
+	static const int LOG_LOAD_VEC_SIZE 		= _LOG_LOAD_VEC_SIZE;
+	static const int LOG_LOADS_PER_CYCLE	= _LOG_LOADS_PER_CYCLE;
+	static const int LOG_CYCLES_PER_TILE	= _LOG_CYCLES_PER_TILE;
+	static const int LOG_RAKING_THREADS		= _LOG_RAKING_THREADS;
+};
+
+
+
+/******************************************************************************
+ * Kernel Configuration  
+ ******************************************************************************/
+
+/**
+ * A detailed downsweep configuration type that specializes kernel code for a 
+ * specific sorting pass.  It encapsulates granularity details derived from the 
+ * inherited DownsweepConfigType
+ */
+template <
+	typename 		DownsweepConfigType,
+	typename 		PreprocessFunctorType, 
+	typename 		PostprocessFunctorType, 
+	int 			_CURRENT_PASS,
+	int 			_CURRENT_BIT,
+	CacheModifier 	_CACHE_MODIFIER>
+struct DownsweepKernelConfig : DownsweepConfigType
+{
+};
+	
+
+
+	
+/*	
+	
+template <int SM_VERSION, typename KeyType, typename ValueType>
+struct RadixSortingDownsweepConfig 
+{
+	static const int ARCH						= SM_VERSION;
+	typedef KeyType								KeyType;
+	typedef ValueType							ValueType;
+
+	static const int CTA_OCCUPANCY				= 7;		// 7 threadblocks per SM
+	static const int LOG_THREADS 				= 7;		// 128 threads
+	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
+	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
+	static const int LOG_CYCLES_PER_TILE		= (B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 0 : 1);	// 2 cycles per tile (only one for large keys/values)
+	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 1;		// 2 raking warps
+};
+
+template <typename KeyType, typename ValueType> 
+struct RadixSortDownsweepSmConfig<130, KeyType, ValueType>
+{
+	static const int ARCH						= SM_VERSION;
+	typedef KeyType								KeyType;
+	typedef ValueType							ValueType;
+
+	static const int CTA_OCCUPANCY				= 5;		// 7 threadblocks per SM
+	static const int LOG_THREADS 				= 7;		// 128 threads
+	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
+	static const int LOG_LOADS_PER_CYCLE		= 0;		// 1 load per raking cycle
+	static const int LOG_CYCLES_PER_TILE		= (B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 0 : 1);	// 2 cycles per tile (only one for large keys/values)
+	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS;			// 1 raking warp
+};
+
+template <typename KeyType, typename ValueType> 
+struct RadixSortDownsweepSmConfig<110, KeyType, ValueType>
+{
+	static const int ARCH						= SM_VERSION;
+	typedef KeyType								KeyType;
+	typedef ValueType							ValueType;
+
+	static const int CTA_OCCUPANCY				= 2;		// 7 threadblocks per SM
+	static const int LOG_THREADS 				= 7;		// 128 threads
+	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
+	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
+	static const int LOG_CYCLES_PER_TILE		= 0;		// 1 cycle per tile
+	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 2			// 4 raking warps
+};
+
+template <typename KeyType, typename ValueType> 
+struct RadixSortDownsweepSmConfig<100, KeyType, ValueType>
+{
+	static const int ARCH						= SM_VERSION;
+	typedef KeyType								KeyType;
+	typedef ValueType							ValueType;
+
+	static const int CTA_OCCUPANCY				= 2;		// 7 threadblocks per SM
+	static const int LOG_THREADS 				= 7;		// 128 threads
+	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
+	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
+	static const int LOG_CYCLES_PER_TILE		= 0;		// 1 cycle per tile
+	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 2			// 4 raking warps
+};
+
+*/
+
+
+
+
+
+
+
+/******************************************************************************
+ * Reduction kernel subroutines
+ ******************************************************************************/
+
+
 
 /**
  * Register-saving variable qualifier. Can be used when declaring 
@@ -101,28 +245,28 @@ __device__ __forceinline__ void DefaultExtraValue<unsigned long long>(unsigned l
  * Tile-processing Routines
  ******************************************************************************/
 
-
-template <typename K, int RADIX_BITS, int BIT>
-__device__ __forceinline__ int DecodeDigit(K key) 
+/*
+template <typename KeyType, int RADIX_BITS, int BIT>
+__device__ __forceinline__ int DecodeDigit(KeyType key) 
 {
 	int retval;
-	ExtractKeyBits<K, BIT, RADIX_BITS>::Extract(retval, key);
+	ExtractKeyBits<KeyType, BIT, RADIX_BITS>::Extract(retval, key);
 	return retval;
 }
 
 
-template <typename K, int RADIX_BITS, int BIT, int PADDED_PARTIALS_PER_LANE>
+template <typename KeyType, int RADIX_BITS, int BIT, int PADDED_PARTIALS_PER_LANE>
 __device__ __forceinline__ void DecodeDigit(
-	K key, 
+	KeyType key, 
 	int &digit, 
 	int &flag_offset,		// in bytes
 	const int LOAD_OFFSET)
 {
 	const int PADDED_BYTES_PER_LANE 	= PADDED_PARTIALS_PER_LANE * 4;
 	const int LOAD_OFFSET_BYTES 		= LOAD_OFFSET * 4;
-	const K QUAD_MASK 					= (RADIX_BITS < 2) ? 0x1 : 0x3;
+	const KeyType QUAD_MASK 					= (RADIX_BITS < 2) ? 0x1 : 0x3;
 	
-	digit = DecodeDigit<K, RADIX_BITS, BIT>(key);
+	digit = DecodeDigit<KeyType, RADIX_BITS, BIT>(key);
 	int lane = digit >> 2;
 	int quad_byte = digit & QUAD_MASK;
 
@@ -130,26 +274,26 @@ __device__ __forceinline__ void DecodeDigit(
 }
 
 
-template <typename K, int RADIX_BITS, int BIT, int LOADS_PER_CYCLE, int SCAN_LANES_PER_LOAD, int PADDED_PARTIALS_PER_LANE>
+template <typename KeyType, int RADIX_BITS, int BIT, int LOADS_PER_CYCLE, int SCAN_LANES_PER_LOAD, int PADDED_PARTIALS_PER_LANE>
 __device__ __forceinline__ void DecodeDigits(
-	typename VecType<K, 2>::Type keypairs[LOADS_PER_CYCLE],
+	typename VecType<KeyType, 2>::Type keypairs[LOADS_PER_CYCLE],
 	int2 digits[LOADS_PER_CYCLE],
 	int2 flag_offsets[LOADS_PER_CYCLE])		// in bytes 
 {
 	if (LOADS_PER_CYCLE > 0) {
 		const int LOAD = 0;
 		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
-		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<KeyType, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
-		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<KeyType, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
 	}
 	if (LOADS_PER_CYCLE > 1) {
 		const int LOAD = 1;
 		const int LOAD_OFFSET = LOAD * SCAN_LANES_PER_LOAD * PADDED_PARTIALS_PER_LANE;
-		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<KeyType, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].x, digits[LOAD].x, flag_offsets[LOAD].x, LOAD_OFFSET);
-		DecodeDigit<K, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
+		DecodeDigit<KeyType, RADIX_BITS, BIT, PADDED_PARTIALS_PER_LANE>(
 				keypairs[LOAD].y, digits[LOAD].y, flag_offsets[LOAD].y, LOAD_OFFSET);
 	}
 }
@@ -387,7 +531,7 @@ __device__ __forceinline__ void CorrectForOverflows(
 
 
 template <
-	typename K,
+	typename KeyType,
 	int BIT, 
 	int RADIX_BITS,
 	int RADIX_DIGITS,
@@ -404,7 +548,7 @@ __device__ __forceinline__ void ScanCycle(
 	int *base_partial,
 	int	*raking_partial,
 	int warpscan[SCAN_LANES_PER_CYCLE][3][RAKING_THREADS_PER_LANE],
-	typename VecType<K, 2>::Type keypairs[LOADS_PER_CYCLE],
+	typename VecType<KeyType, 2>::Type keypairs[LOADS_PER_CYCLE],
 	int2 digits[LOADS_PER_CYCLE],
 	int2 flag_offsets[LOADS_PER_CYCLE],
 	int2 ranks[LOADS_PER_CYCLE],
@@ -417,7 +561,7 @@ __device__ __forceinline__ void ScanCycle(
 	}
 	
 	// Decode digits for first cycle
-	DecodeDigits<K, RADIX_BITS, BIT, LOADS_PER_CYCLE, SCAN_LANES_PER_LOAD, PADDED_PARTIALS_PER_LANE>(
+	DecodeDigits<KeyType, RADIX_BITS, BIT, LOADS_PER_CYCLE, SCAN_LANES_PER_LOAD, PADDED_PARTIALS_PER_LANE>(
 		keypairs, digits, flag_offsets);
 	
 	// Encode counts into smem for first cycle
@@ -446,7 +590,7 @@ __device__ __forceinline__ void ScanCycle(
 		flag_offsets, 
 		ranks); 	
 }	
-	
+*/	
 
 /******************************************************************************
  * SM1.3 Local Exchange Routines
@@ -455,6 +599,7 @@ __device__ __forceinline__ void ScanCycle(
  * scattering) in order to to facilitate coalesced global scattering
  ******************************************************************************/
 
+/*
 template <typename T, bool UNGUARDED_IO, int CYCLES_PER_TILE, int LOADS_PER_CYCLE, typename PostprocessFunctor>
 __device__ __forceinline__ void ScatterLoads(
 	T *d_out, 
@@ -519,8 +664,8 @@ __device__ __forceinline__ void ExchangePairs(
 
 
 template <
-	typename K,
-	typename V,	
+	typename KeyType,
+	typename ValueType,	
 	CacheModifier CACHE_MODIFIER,
 	int RADIX_BITS,
 	int RADIX_DIGITS, 
@@ -530,19 +675,19 @@ template <
 	bool UNGUARDED_IO,
 	typename PostprocessFunctor>
 __device__ __forceinline__ void SwapAndScatterSm13(
-	typename VecType<K, 2>::Type keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE], 
+	typename VecType<KeyType, 2>::Type keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE], 
 	int2 ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE],
 	int *exchange,
-	typename VecType<V, 2>::Type *d_in_values, 
-	K *d_out_keys, 
-	V *d_out_values, 
+	typename VecType<ValueType, 2>::Type *d_in_values, 
+	KeyType *d_out_keys, 
+	ValueType *d_out_values, 
 	int digit_carry[RADIX_DIGITS], 
 	const int &extra_elements)				
 {
 	int2 offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 	
 	// Swap keys according to ranks
-	ExchangePairs<K, CYCLES_PER_TILE, LOADS_PER_CYCLE>((K*) exchange, keypairs, ranks);				
+	ExchangePairs<KeyType, CYCLES_PER_TILE, LOADS_PER_CYCLE>((KeyType*) exchange, keypairs, ranks);				
 	
 	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits)
 	if (CYCLES_PER_TILE > 0) {
@@ -550,14 +695,14 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		if (LOADS_PER_CYCLE > 0) {
 			const int LOAD = 0;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 		if (LOADS_PER_CYCLE > 1) {
 			const int LOAD = 1;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 	}
 	if (CYCLES_PER_TILE > 1) {
@@ -565,14 +710,14 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 		if (LOADS_PER_CYCLE > 0) {
 			const int LOAD = 0;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 		if (LOADS_PER_CYCLE > 1) {
 			const int LOAD = 1;
 			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<K, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
+			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
+			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
 		}
 	}
 	
@@ -580,34 +725,34 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 	#pragma unroll 
 	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
 		const int BLOCK = CYCLE * LOADS_PER_CYCLE * 2;
-		ScatterLoads<K, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, PostprocessFunctor>(d_out_keys, keypairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, extra_elements);
+		ScatterLoads<KeyType, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, PostprocessFunctor>(d_out_keys, keypairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, extra_elements);
 	}
 
-	if (!IsKeysOnly<V>()) {
+	if (!IsKeysOnly<ValueType>()) {
 	
 		__syncthreads();
 
 		// Read input data
-		typename VecType<V, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+		typename VecType<ValueType, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
 		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
 		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
 
-		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
-		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
+		if (CYCLES_PER_TILE > 0) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
+		if (CYCLES_PER_TILE > 1) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
 		
 		// Swap data according to ranks
-		ExchangePairs<V, CYCLES_PER_TILE, LOADS_PER_CYCLE>((V*) exchange, datapairs, ranks);
+		ExchangePairs<ValueType, CYCLES_PER_TILE, LOADS_PER_CYCLE>((ValueType*) exchange, datapairs, ranks);
 		
 		// Scatter data
 		#pragma unroll 
 		for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
 			const int BLOCK = CYCLE * LOADS_PER_CYCLE * 2;
-			ScatterLoads<V, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, NopFunctor<V> >(d_out_values, datapairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, extra_elements);
+			ScatterLoads<ValueType, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, NopFunctor<ValueType> >(d_out_values, datapairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, extra_elements);
 		}
 	}
 }
-
+*/
 
 /******************************************************************************
  * SM1.0 Local Exchange Routines
@@ -616,6 +761,7 @@ __device__ __forceinline__ void SwapAndScatterSm13(
  * scattering) in order to to facilitate coalesced global scattering
  ******************************************************************************/
 
+/*
 template <
 	typename T, 
 	int RADIX_DIGITS,
@@ -698,8 +844,8 @@ __device__ __forceinline__ void SwapAndScatterPairs(
 
 
 template <
-	typename K,
-	typename V,	
+	typename KeyType,
+	typename ValueType,	
 	CacheModifier CACHE_MODIFIER,
 	int RADIX_DIGITS, 
 	int CYCLES_PER_TILE,
@@ -707,21 +853,21 @@ template <
 	bool UNGUARDED_IO,
 	typename PostprocessFunctor>
 __device__ __forceinline__ void SwapAndScatterSm10(
-	typename VecType<K, 2>::Type keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE], 
+	typename VecType<KeyType, 2>::Type keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE], 
 	int2 ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE],
 	int *exchange,
-	typename VecType<V, 2>::Type *d_in_values, 
-	K *d_out_keys, 
-	V *d_out_values, 
+	typename VecType<ValueType, 2>::Type *d_in_values, 
+	KeyType *d_out_keys, 
+	ValueType *d_out_values, 
 	int digit_carry[RADIX_DIGITS], 
 	int digit_scan[2][RADIX_DIGITS], 
 	const int &extra_elements)				
 {
 	// Swap and scatter keys
-	SwapAndScatterPairs<K, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
-		keypairs, ranks, (K*) exchange, d_out_keys, digit_carry, digit_scan, extra_elements);				
+	SwapAndScatterPairs<KeyType, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
+		keypairs, ranks, (KeyType*) exchange, d_out_keys, digit_carry, digit_scan, extra_elements);				
 	
-	if (!IsKeysOnly<V>()) {
+	if (!IsKeysOnly<ValueType>()) {
 
 		__syncthreads();
 		
@@ -729,24 +875,25 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
 
 		// Read input data
-		typename VecType<V, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-		if (CYCLES_PER_TILE > 0) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
-		if (CYCLES_PER_TILE > 1) ReadCycle<V, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<V> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
+		typename VecType<ValueType, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+		if (CYCLES_PER_TILE > 0) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);
+		if (CYCLES_PER_TILE > 1) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements);
 
 		// Swap and scatter data
-		SwapAndScatterPairs<V, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, NopFunctor<V> >(
-			datapairs, ranks, (V*) exchange, d_out_values, digit_carry, digit_scan, extra_elements);				
+		SwapAndScatterPairs<ValueType, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, NopFunctor<ValueType> >(
+			datapairs, ranks, (ValueType*) exchange, d_out_values, digit_carry, digit_scan, extra_elements);				
 	}
 }
-
+*/
 
 /******************************************************************************
  * Tile of RADIXSORT_TILE_ELEMENTS keys (and values)
  ******************************************************************************/
 
+/*
 template <
-	typename K,
-	typename V,	
+	typename KeyType,
+	typename ValueType,	
 	CacheModifier CACHE_MODIFIER,
 	int BIT, 
 	bool UNGUARDED_IO,
@@ -765,10 +912,10 @@ template <
 	typename PreprocessFunctor,
 	typename PostprocessFunctor>
 __device__ __forceinline__ void ScanDigitTile(
-	typename VecType<K, 2>::Type *d_in_keys, 
-	typename VecType<V, 2>::Type *d_in_values, 
-	K *d_out_keys, 
-	V *d_out_values, 
+	typename VecType<KeyType, 2>::Type *d_in_keys, 
+	typename VecType<ValueType, 2>::Type *d_in_values, 
+	KeyType *d_out_keys, 
+	ValueType *d_out_values, 
 	int *exchange,								
 	int	warpscan[SCAN_LANES_PER_CYCLE][3][RAKING_THREADS_PER_LANE],
 	int	digit_carry[RADIX_DIGITS],
@@ -788,7 +935,7 @@ __device__ __forceinline__ void ScanDigitTile(
 	SuppressUnusedConstantWarning(PADDED_PARTIALS_PER_LANE);
 	SuppressUnusedConstantWarning(LOADS_PER_TILE);
 	
-	typename VecType<K, 2>::Type 	keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	typename VecType<KeyType, 2>::Type 	keypairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 	int2 							digits[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 	int2 							flag_offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE];		// a byte offset
 	int2 							ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE];
@@ -802,8 +949,8 @@ __device__ __forceinline__ void ScanDigitTile(
 	// telling me "Advisory: Loop was not unrolled, unexpected control flow construct"
 	
 	// Read Keys
-	if (CYCLES_PER_TILE > 0) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);		 
-	if (CYCLES_PER_TILE > 1) ReadCycle<K, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements); 	
+	if (CYCLES_PER_TILE > 0) ReadCycle<KeyType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, extra_elements);		 
+	if (CYCLES_PER_TILE > 1) ReadCycle<KeyType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, PreprocessFunctor>::Read(d_in_keys, keypairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, extra_elements); 	
 	
 	//-------------------------------------------------------------------------
 	// Lane-scanning Cycles
@@ -811,7 +958,7 @@ __device__ __forceinline__ void ScanDigitTile(
 
 	if (CYCLES_PER_TILE > 0) {
 		const int CYCLE = 0;
-		ScanCycle<K, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+		ScanCycle<KeyType, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
 			base_partial,
 			raking_partial,
 			warpscan,
@@ -823,7 +970,7 @@ __device__ __forceinline__ void ScanDigitTile(
 	}
 	if (CYCLES_PER_TILE > 1) {
 		const int CYCLE = 1;
-		ScanCycle<K, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
+		ScanCycle<KeyType, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, RAKING_THREADS, SCAN_LANES_PER_CYCLE, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PADDED_PARTIALS_PER_LANE, CYCLES_PER_TILE>(
 			base_partial,
 			raking_partial,
 			warpscan,
@@ -898,7 +1045,7 @@ __device__ __forceinline__ void ScanDigitTile(
 
 #if ((__CUDA_ARCH__ < 130) || FERMI_ECC)		
 
-	SwapAndScatterSm10<K, V, CACHE_MODIFIER, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
+	SwapAndScatterSm10<KeyType, ValueType, CACHE_MODIFIER, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
 		ranks,
 		exchange,
@@ -911,7 +1058,7 @@ __device__ __forceinline__ void ScanDigitTile(
 	
 #else 
 
-	SwapAndScatterSm13<K, V, CACHE_MODIFIER, RADIX_BITS, RADIX_DIGITS, BIT, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
+	SwapAndScatterSm13<KeyType, ValueType, CACHE_MODIFIER, RADIX_BITS, RADIX_DIGITS, BIT, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
 		keypairs, 
 		ranks,
 		exchange,
@@ -928,8 +1075,8 @@ __device__ __forceinline__ void ScanDigitTile(
 }
 
 template <
-	typename K,
-	typename V,	
+	typename KeyType,
+	typename ValueType,	
 	CacheModifier CACHE_MODIFIER,
 	int BIT, 
 	int RADIX_BITS,
@@ -949,10 +1096,10 @@ template <
 	typename PostprocessFunctor>
 __device__ __forceinline__ void ScanScatterDigitPass(
 	int *d_spine,
-	K *d_in_keys, 
-	V *d_in_values, 
-	K *d_out_keys, 
-	V *d_out_values, 
+	KeyType *d_in_keys, 
+	ValueType *d_in_values, 
+	KeyType *d_out_keys, 
+	ValueType *d_out_values, 
 	int *exchange,								
 	int	warpscan[SCAN_LANES_PER_CYCLE][3][RAKING_THREADS_PER_LANE],
 	int	digit_carry[RADIX_DIGITS],
@@ -979,9 +1126,9 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 	// Scan in tiles of tile_elements
 	while (block_offset < out_of_bounds) {
 	
-		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, true, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
-			reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
-			reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
+		ScanDigitTile<KeyType, ValueType, CACHE_MODIFIER, BIT, true, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
+			reinterpret_cast<typename VecType<KeyType, 2>::Type *>(&d_in_keys[block_offset]), 
+			reinterpret_cast<typename VecType<ValueType, 2>::Type *>(&d_in_values[block_offset]), 
 			d_out_keys, 
 			d_out_values, 
 			exchange,
@@ -1000,9 +1147,9 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 		
 		// Clean up with guarded-io
 		
-		ScanDigitTile<K, V, CACHE_MODIFIER, BIT, false, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
-			reinterpret_cast<typename VecType<K, 2>::Type *>(&d_in_keys[block_offset]), 
-			reinterpret_cast<typename VecType<V, 2>::Type *>(&d_in_values[block_offset]), 
+		ScanDigitTile<KeyType, ValueType, CACHE_MODIFIER, BIT, false, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, PreprocessFunctor, PostprocessFunctor>(	
+			reinterpret_cast<typename VecType<KeyType, 2>::Type *>(&d_in_keys[block_offset]), 
+			reinterpret_cast<typename VecType<ValueType, 2>::Type *>(&d_in_values[block_offset]), 
 			d_out_keys, 
 			d_out_values, 
 			exchange,
@@ -1021,8 +1168,8 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 
 
 template <
-	typename K, 
-	typename V, 
+	typename KeyType, 
+	typename ValueType, 
 	int PASS, 
 	int RADIX_BITS, 
 	int BIT, 
@@ -1033,15 +1180,15 @@ __global__
 void LsbScanScatterKernel(
 	int *d_selectors,
 	int* d_spine,
-	K* d_keys0,
-	K* d_keys1,
-	V* d_values0,
-	V* d_values1,
+	KeyType* d_keys0,
+	KeyType* d_keys1,
+	ValueType* d_values0,
+	ValueType* d_values1,
 	CtaDecomposition work_decomposition)
 {
 
 	const int RADIX_DIGITS 				= 1 << RADIX_BITS;
-	const int TILE_ELEMENTS				= B40C_RADIXSORT_TILE_ELEMENTS(__CUDA_ARCH__, K, V);
+	const int TILE_ELEMENTS				= B40C_RADIXSORT_TILE_ELEMENTS(__CUDA_ARCH__, KeyType, ValueType);
 	
 	const int LOG_SCAN_LANES_PER_LOAD	= (RADIX_BITS > 2) ? RADIX_BITS - 2 : 0;					// Always at one lane per load
 	const int SCAN_LANES_PER_LOAD		= 1 << LOG_SCAN_LANES_PER_LOAD;								
@@ -1049,7 +1196,7 @@ void LsbScanScatterKernel(
 	const int LOG_LOADS_PER_CYCLE		= B40C_RADIXSORT_LOG_LOADS_PER_CYCLE(__CUDA_ARCH__);			
 	const int LOADS_PER_CYCLE			= 1 << LOG_LOADS_PER_CYCLE;
 	
-	const int LOG_CYCLES_PER_TILE		= B40C_RADIXSORT_LOG_CYCLES_PER_TILE(__CUDA_ARCH__, K, V);			
+	const int LOG_CYCLES_PER_TILE		= B40C_RADIXSORT_LOG_CYCLES_PER_TILE(__CUDA_ARCH__, KeyType, ValueType);			
 	const int CYCLES_PER_TILE			= 1 << LOG_CYCLES_PER_TILE;
 
 	const int LOG_SCAN_LANES_PER_CYCLE	= LOG_LOADS_PER_CYCLE + LOG_SCAN_LANES_PER_LOAD;
@@ -1084,9 +1231,9 @@ void LsbScanScatterKernel(
 	const int ROWS_PER_CYCLE 			= 1 << LOG_ROWS_PER_CYCLE;
 	
 	const int SCAN_LANE_BYTES			= ROWS_PER_CYCLE * PADDED_PARTIALS_PER_ROW * sizeof(int);
-	const int MAX_EXCHANGE_BYTES		= (sizeof(K) > sizeof(V)) ? 
-													TILE_ELEMENTS * sizeof(K) : 
-													TILE_ELEMENTS * sizeof(V);
+	const int MAX_EXCHANGE_BYTES		= (sizeof(KeyType) > sizeof(ValueType)) ? 
+													TILE_ELEMENTS * sizeof(KeyType) : 
+													TILE_ELEMENTS * sizeof(ValueType);
 	const int SCAN_LANE_INT4S         = (B40C_MAX(MAX_EXCHANGE_BYTES, SCAN_LANE_BYTES) + sizeof(int4) - 1) / sizeof(int4);
 
 
@@ -1098,7 +1245,7 @@ void LsbScanScatterKernel(
 	SuppressUnusedConstantWarning(LOG_ROWS_PER_LOAD);
 	SuppressUnusedConstantWarning(ROWS_PER_LANE);
 
-    // scan_lanes is a int4[] to avoid alignment issues when casting to (K *) and/or (V *)
+    // scan_lanes is a int4[] to avoid alignment issues when casting to (KeyType *) and/or (ValueType *)
 	__shared__ int4		scan_lanes[SCAN_LANE_INT4S];
 	__shared__ int 		warpscan[SCAN_LANES_PER_CYCLE][3][RAKING_THREADS_PER_LANE];		// One warpscan per fours-group
 	__shared__ int 		digit_carry[RADIX_DIGITS];
@@ -1194,7 +1341,7 @@ void LsbScanScatterKernel(
 	if (!selector) {
 	
 		// d_keys0 -> d_keys1 
-		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+		ScanScatterDigitPass<KeyType, ValueType, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 			d_spine,
 			d_keys0, 
 			d_values0, 
@@ -1214,7 +1361,7 @@ void LsbScanScatterKernel(
 	} else {
 		
 		// d_keys1 -> d_keys0
-		ScanScatterDigitPass<K, V, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
+		ScanScatterDigitPass<KeyType, ValueType, NONE, BIT, RADIX_BITS, RADIX_DIGITS, SCAN_LANES_PER_LOAD, LOADS_PER_CYCLE, CYCLES_PER_TILE, SCAN_LANES_PER_CYCLE, RAKING_THREADS, LOG_RAKING_THREADS_PER_LANE, RAKING_THREADS_PER_LANE, PARTIALS_PER_SEG, PARTIALS_PER_ROW, ROWS_PER_LANE, TILE_ELEMENTS, PreprocessFunctor, PostprocessFunctor>(	
 			d_spine,
 			d_keys1, 
 			d_values1, 
@@ -1232,6 +1379,10 @@ void LsbScanScatterKernel(
 			extra_elements);		
 	}
 }
+*/
+
+
+} // namespace lsb_radix_sort
 
 
 } // namespace b40c

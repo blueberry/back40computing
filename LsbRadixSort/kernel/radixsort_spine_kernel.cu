@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * 
- * 
  * 
  * AUTHORS' REQUEST: 
  * 
@@ -40,7 +37,8 @@
 
 
 /******************************************************************************
- * Top-level histogram/spine scanning kernel
+ * Top-level histogram/spine scanning kernel. The second kernel in a 
+ * radix-sorting digit-place pass. 
  ******************************************************************************/
 
 #pragma once
@@ -49,12 +47,78 @@
 
 namespace b40c {
 
+namespace lsb_radix_sort {
 
 
 /******************************************************************************
- * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements 
+ * Granularity Configuration
  ******************************************************************************/
 
+/**
+ * Spine-scan granularity configuration.  This C++ type encapsulates our 
+ * kernel-tuning parameters (they are reflected via the static fields).
+ *  
+ * The kernels are specialized for problem-type, SM-version, etc. by declaring 
+ * them with different performance-tuned parameterizations of this type.  By 
+ * incorporating this type into the kernel code itself, we guide the compiler in 
+ * expanding/unrolling the kernel code for specific architectures and problem 
+ * types.    
+ */
+template <
+	typename _SpineType,
+	int _CTA_OCCUPANCY,
+	int _LOG_THREADS,
+	int _LOG_LOAD_VEC_SIZE,
+	int _LOG_LOADS_PER_TILE>
+
+struct SpineScanConfig
+{
+	typedef _SpineType						SpineType;
+	static const int CTA_OCCUPANCY  		= _CTA_OCCUPANCY;
+	static const int LOG_THREADS 			= _LOG_THREADS;
+	static const int LOG_LOAD_VEC_SIZE  	= _LOG_LOAD_VEC_SIZE;
+	static const int LOG_LOADS_PER_TILE 	= _LOG_LOADS_PER_TILE;
+};
+
+
+
+/******************************************************************************
+ * Kernel Configuration  
+ ******************************************************************************/
+
+/**
+ * A detailed upsweep configuration type that specializes kernel code for a specific 
+ * sorting pass.  It encapsulates granularity details derived from the inherited 
+ * UpsweepConfigType 
+ */
+template <
+	typename 		SpineScanConfigType,
+	CacheModifier 	_CACHE_MODIFIER>
+
+struct SpineScanKernelConfig : SpineScanConfigType
+{
+	static const int THREADS				= 1 << SpineScanConfigType::LOG_THREADS;
+	
+	static const int LOG_TILE_ELEMENTS		= SpineScanConfigType::LOG_THREADS + 
+												SpineScanConfigType::LOG_LOADS_PER_TILE +
+												SpineScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int TILE_ELEMENTS			= 1 << LOG_TILE_ELEMENTS;
+};
+	
+	
+	
+
+
+/******************************************************************************
+ * Reduction kernel subroutines
+ ******************************************************************************/
+
+
+
+/**
+ * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements
+ */
+/*
 template<CacheModifier CACHE_MODIFIER, int PARTIALS_PER_SEG>
 __device__ __forceinline__ void SrtsScanTile(
 	int *smem_offset,
@@ -102,12 +166,12 @@ __device__ __forceinline__ void SrtsScanTile(
 	
 	out[threadIdx.x] = datum;
 }
+*/
 
-
-/******************************************************************************
+/**
  * Spine/histogram Scan Kernel Entry Point
- ******************************************************************************/
-
+ */
+/*
 template <typename T>
 __global__ void LsbSpineScanKernel(
 	int *d_ispine,
@@ -169,7 +233,10 @@ __global__ void LsbSpineScanKernel(
 		block_offset += B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 	}
 } 
+*/
 
+
+} // namespace lsb_radix_sort
 
 } // namespace b40c
 
