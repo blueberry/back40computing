@@ -211,11 +211,11 @@ public class ParseCudaProf
 	public static String patterns[] = { 
 
 			// SRTS sorting
-			"Reduc", 
-			"SrtsScanSpine", 
-			"FlushKernel", 
-			"SrtsScanDigitBulk",
-			"SrtsSingleCtaSort",
+			"LsbRaking", 
+			"LsbSpine", 
+			"LsbScan", 
+			"Flush", 
+			"LsbSingle",
 		
 			// CUDPP sorting
 			"radixSortSingleWarp",
@@ -361,8 +361,8 @@ public class ParseCudaProf
 
 			// SRTS sorting
 			String[] kernels = { 
-					"Reduc",
-					"SrtsScanDigitBulk"};
+					"LsbRaking",
+					"LsbScan"};
 			specific_kernels = kernels;
 		}
 

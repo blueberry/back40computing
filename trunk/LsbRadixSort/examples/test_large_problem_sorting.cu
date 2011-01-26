@@ -44,7 +44,6 @@
  * your application 
  ******************************************************************************/
 
-#include <radixsort_single_grid.cu>
 #include <radixsort_early_exit.cu>		// Sorting includes
 
 #include <stdlib.h> 
@@ -127,12 +126,12 @@ void TimedSort(
 	printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage  
-	MultiCtaRadixSortStorage<K> device_storage(num_elements);		
+	MultiCtaSortStorage<K> device_storage(num_elements);		
 	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitRadixSortingEnactor<K> sorting_enactor;			
+	EarlyExitLsbSortEnactor<K> sorting_enactor;			
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -152,7 +151,7 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		sorting_enactor.RADIXSORT_DEBUG = (i == 0);
+		sorting_enactor.DEBUG = (i == 0);
 		
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(
@@ -222,14 +221,14 @@ void TimedSort(
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
-	MultiCtaRadixSortStorage<K, V> device_storage(num_elements);	
+	MultiCtaSortStorage<K, V> device_storage(num_elements);	
 	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitRadixSortingEnactor<K, V> sorting_enactor;
+	EarlyExitLsbSortEnactor<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -249,7 +248,7 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		sorting_enactor.RADIXSORT_DEBUG = (i == 0);
+		sorting_enactor.DEBUG = (i == 0);
 
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(

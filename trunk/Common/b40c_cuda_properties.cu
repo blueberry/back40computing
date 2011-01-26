@@ -31,15 +31,38 @@
 
 namespace b40c {
 
+// CUDA architecture currently being compiled for
 #ifndef __CUDA_ARCH__
-	#define __CUDA_ARCH__ 0
+	#define __B40C_CUDA_ARCH__ 0						// Host
+#else
+	#define __B40C_CUDA_ARCH__ __CUDA_ARCH__
 #endif
 
-#define B40C_LOG_WARP_THREADS							(5)									// 32 threads in a warp.  CUDA gives us warp-size, but not the log of it.
-#define B40C_WARP_THREADS								(1 << B40C_LOG_WARP_THREADS)
-#define B40C_LOG_MEM_BANKS(version) 					((version >= 200) ? 5 : 4)			// 32 banks on fermi, 16 on tesla
-#define B40C_MEM_BANKS(version)							(1 << B40C_LOG_MEM_BANKS(version))
+// Thread per warp. (The CUDA Toolkit gives us warp-size, but not the log of it, which is also useful)
+#define B40C_LOG_WARP_THREADS(arch)		(5)			// 32 threads in a warp 
+#define B40C_WARP_THREADS(arch)			(1 << B40C_LOG_WARP_THREADS(arch))
 
+// Memory banks per SM
+#define B40C_SM20_LOG_MEM_BANKS()		(5)			// 32 banks on SM2.0+
+#define B40C_SM10_LOG_MEM_BANKS()		(4)			// 16 banks on SM1.0-SM1.3
+#define B40C_LOG_MEM_BANKS(arch)		((arch >= 200) ? B40C_SM20_LOG_MEM_BANKS() : 	\
+															 B40C_SM10_LOG_MEM_BANKS())		
+
+// Physical shared memory per SM (bytes)
+#define B40C_SM20_SMEM_BYTES()			(49152)		// 48KB on SM2.0+
+#define B40C_SM10_SMEM_BYTES()			(16384)		// 32KB on SM1.0-SM1.3
+#define B40C_SMEM_BYTES(arch)			((arch >= 200) ? B40C_SM20_SMEM_BYTES() : 	\
+														 B40C_SM10_SMEM_BYTES())		
+
+// Physical threads per SM (bytes)
+#define B40C_SM20_SM_THREADS()			(1536)		// 1536 threads on SM2.0+
+#define B40C_SM12_SM_THREADS()			(1024)		// 1024 threads on SM1.2-SM1.3
+#define B40C_SM10_SM_THREADS()			(768)		// 768 threads on SM1.0-SM1.1
+#define B40C_SM_THREADS(arch)			((arch >= 200) ? B40C_SM20_SMEM_BYTES() : 	\
+										 (arch >= 200) ? B40C_SM12_SMEM_BYTES() : 	\
+														 B40C_SM10_SMEM_BYTES())		
+
+// Register modifier for pointer-types (for inlining PTX assembly)
 #if defined(_WIN64) || defined(__LP64__)
 	#define _B40C_LP64_ true			
 	// 64-bit register modifier for inlined asm
@@ -87,7 +110,6 @@ public:
 		cudaFuncGetAttributes(&flush_kernel_attrs, FlushKernel<void>);
 		kernel_ptx_version = flush_kernel_attrs.ptxVersion * 10;
 	}
-	
 };
 
 
