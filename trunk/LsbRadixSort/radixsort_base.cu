@@ -54,7 +54,7 @@ using namespace lsb_radix_sort;
 /**
  * Base class for LSB radix sorting enactors.
  */
-template <typename KeyType, typename ValueType, typename StorageType>
+template <typename KeyType, typename ValueType>
 class BaseLsbSortEnactor 
 {
 	
@@ -95,14 +95,6 @@ public:
      */
     virtual ~BaseLsbSortEnactor() {}
 
-    
-	/**
-	 * Enacts a radix sorting operation on the specified device data.
-	 *
-	 * @return cudaSuccess on success, error enumeration otherwise
-	 */
-	virtual cudaError_t EnactSort(StorageType &problem_storage) = 0;	
-    
 };
 
 

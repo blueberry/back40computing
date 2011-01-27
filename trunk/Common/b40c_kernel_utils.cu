@@ -61,6 +61,24 @@ void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
 
 
 /**
+ * Statically determine log2(sizeof(T)), e.g., 
+ * 		LogBytes<long long>::LOG_BYTES == 3
+ * 		LogBytes<char[3]>::LOG_BYTES == 2
+ */
+template <typename T, int BYTES = sizeof(T), int LOG_VAL = 0>
+struct LogBytes
+{
+	static const int LOG_BYTES = LogBytes<T, BYTES >> 1, LOG_VAL + 1>::LOG_BYTES;
+};
+
+template <typename T, int LOG_VAL>
+struct LogBytes<T, 0, LOG_VAL>
+{
+	static const int LOG_BYTES = (1 << (LOG_VAL - 1) < sizeof(T)) ? LOG_VAL : LOG_VAL - 1;
+};
+
+
+/**
  * MagnitudeShift().  Allows you to shift left for positive magnitude values, 
  * right for negative.   
  * 
@@ -115,17 +133,18 @@ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
  * subtile greater than the normal, and the last workload 
  * does the extra work.
  */
+template <typename OffsetType>
 struct CtaDecomposition {
 
-	int num_elements;
-	int total_subtiles;
-	int subtiles_per_cta;
-	int extra_subtiles;
+	OffsetType num_elements;
+	OffsetType total_subtiles;
+	OffsetType subtiles_per_cta;
+	OffsetType extra_subtiles;
 	
 	/**
 	 * Constructor
 	 */
-	CtaDecomposition(int num_elements, int subtile_elements, int grid_size) :
+	CtaDecomposition(OffsetType num_elements, int subtile_elements, int grid_size) :
 		num_elements(num_elements),
 		total_subtiles((num_elements + subtile_elements - 1) / subtile_elements),	// round up
 		subtiles_per_cta(total_subtiles / grid_size),								// round down for the ks
@@ -138,10 +157,10 @@ struct CtaDecomposition {
 	 */	
 	template <int LOG_TILE_ELEMENTS, int LOG_SUBTILE_ELEMENTS>
 	__device__ __forceinline__ void GetCtaWorkLimits(
-		int &cta_offset,			// Out param: Offset at which this CTA begins processing
-		int &cta_elements,			// Out param: Total number of elements for this CTA to process
-		int &guarded_offset, 		// Out param: Offset of final, partially-full tile (requires guarded loads)
-		int &cta_guarded_elements)	// Out param: Number of elements in partially-full tile 
+		OffsetType &cta_offset,			// Out param: Offset at which this CTA begins processing
+		OffsetType &cta_elements,			// Out param: Total number of elements for this CTA to process
+		OffsetType &guarded_offset, 		// Out param: Offset of final, partially-full tile (requires guarded loads)
+		OffsetType &cta_guarded_elements)	// Out param: Number of elements in partially-full tile 
 	{
 		const int TILE_ELEMENTS 		= 1 << LOG_TILE_ELEMENTS;
 		const int SUBTILE_ELEMENTS 		= 1 << LOG_SUBTILE_ELEMENTS;
