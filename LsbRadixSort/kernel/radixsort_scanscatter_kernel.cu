@@ -67,7 +67,7 @@ namespace lsb_radix_sort {
 template <
 	typename _KeyType,
 	typename _ValueType,
-	typename _SpineType,
+	typename _IndexType,
 	int _RADIX_BITS,
 	int _LOG_SUBTILE_ELEMENTS,
 	int _CTA_OCCUPANCY,
@@ -75,21 +75,23 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_CYCLE,
 	int _LOG_CYCLES_PER_TILE,
-	int _LOG_RAKING_THREADS>
+	int _LOG_RAKING_THREADS,
+	CacheModifier _CACHE_MODIFIER>
 
 struct DownsweepConfig
 {
-	typedef _KeyType						KeyType;
-	typedef _ValueType						ValueType;
-	typedef _SpineType						SpineType;
-	static const int RADIX_BITS				= _RADIX_BITS;
-	static const int LOG_SUBTILE_ELEMENTS	= _LOG_SUBTILE_ELEMENTS;
-	static const int CTA_OCCUPANCY  		= _CTA_OCCUPANCY;
-	static const int LOG_THREADS 			= _LOG_THREADS;
-	static const int LOG_LOAD_VEC_SIZE 		= _LOG_LOAD_VEC_SIZE;
-	static const int LOG_LOADS_PER_CYCLE	= _LOG_LOADS_PER_CYCLE;
-	static const int LOG_CYCLES_PER_TILE	= _LOG_CYCLES_PER_TILE;
-	static const int LOG_RAKING_THREADS		= _LOG_RAKING_THREADS;
+	typedef _KeyType							KeyType;
+	typedef _ValueType							ValueType;
+	typedef _IndexType							IndexType;
+	static const int RADIX_BITS					= _RADIX_BITS;
+	static const int LOG_SUBTILE_ELEMENTS		= _LOG_SUBTILE_ELEMENTS;
+	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
+	static const int LOG_THREADS 				= _LOG_THREADS;
+	static const int LOG_LOAD_VEC_SIZE 			= _LOG_LOAD_VEC_SIZE;
+	static const int LOG_LOADS_PER_CYCLE		= _LOG_LOADS_PER_CYCLE;
+	static const int LOG_CYCLES_PER_TILE		= _LOG_CYCLES_PER_TILE;
+	static const int LOG_RAKING_THREADS			= _LOG_RAKING_THREADS;
+	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
 };
 
 
@@ -108,89 +110,28 @@ template <
 	typename 		PreprocessFunctorType, 
 	typename 		PostprocessFunctorType, 
 	int 			_CURRENT_PASS,
-	int 			_CURRENT_BIT,
-	CacheModifier 	_CACHE_MODIFIER>
+	int 			_CURRENT_BIT>
 struct DownsweepKernelConfig : DownsweepConfigType
 {
+	typedef PreprocessFunctorType					PreprocessFunctor;
+	typedef PostprocessFunctorType					PostprocessFunctor;
+
+	static const int RADIX_DIGITS 					= 1 << DownsweepConfigType::RADIX_BITS;
+	static const int CURRENT_PASS					= _CURRENT_PASS;
+	static const int CURRENT_BIT					= _CURRENT_BIT;
+
+	static const int THREADS						= 1 << DownsweepConfigType::LOG_THREADS;
+	
+	static const int LOG_WARPS						= DownsweepConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
+	static const int WARPS							= 1 << LOG_WARPS;	
+	
 };
 	
-
-
-	
-/*	
-	
-template <int SM_VERSION, typename KeyType, typename ValueType>
-struct RadixSortingDownsweepConfig 
-{
-	static const int ARCH						= SM_VERSION;
-	typedef KeyType								KeyType;
-	typedef ValueType							ValueType;
-
-	static const int CTA_OCCUPANCY				= 7;		// 7 threadblocks per SM
-	static const int LOG_THREADS 				= 7;		// 128 threads
-	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
-	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
-	static const int LOG_CYCLES_PER_TILE		= (B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 0 : 1);	// 2 cycles per tile (only one for large keys/values)
-	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 1;		// 2 raking warps
-};
-
-template <typename KeyType, typename ValueType> 
-struct RadixSortDownsweepSmConfig<130, KeyType, ValueType>
-{
-	static const int ARCH						= SM_VERSION;
-	typedef KeyType								KeyType;
-	typedef ValueType							ValueType;
-
-	static const int CTA_OCCUPANCY				= 5;		// 7 threadblocks per SM
-	static const int LOG_THREADS 				= 7;		// 128 threads
-	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
-	static const int LOG_LOADS_PER_CYCLE		= 0;		// 1 load per raking cycle
-	static const int LOG_CYCLES_PER_TILE		= (B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 0 : 1);	// 2 cycles per tile (only one for large keys/values)
-	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS;			// 1 raking warp
-};
-
-template <typename KeyType, typename ValueType> 
-struct RadixSortDownsweepSmConfig<110, KeyType, ValueType>
-{
-	static const int ARCH						= SM_VERSION;
-	typedef KeyType								KeyType;
-	typedef ValueType							ValueType;
-
-	static const int CTA_OCCUPANCY				= 2;		// 7 threadblocks per SM
-	static const int LOG_THREADS 				= 7;		// 128 threads
-	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
-	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
-	static const int LOG_CYCLES_PER_TILE		= 0;		// 1 cycle per tile
-	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 2			// 4 raking warps
-};
-
-template <typename KeyType, typename ValueType> 
-struct RadixSortDownsweepSmConfig<100, KeyType, ValueType>
-{
-	static const int ARCH						= SM_VERSION;
-	typedef KeyType								KeyType;
-	typedef ValueType							ValueType;
-
-	static const int CTA_OCCUPANCY				= 2;		// 7 threadblocks per SM
-	static const int LOG_THREADS 				= 7;		// 128 threads
-	static const int LOG_LOAD_VEC_SIZE			= 1;		// vec-2 loads (hard-coded)
-	static const int LOG_LOADS_PER_CYCLE		= 1;		// 2 loads per raking cycle
-	static const int LOG_CYCLES_PER_TILE		= 0;		// 1 cycle per tile
-	static const int LOG_RAKING_THREADS			= B40C_LOG_WARP_THREADS + 2			// 4 raking warps
-};
-
-*/
-
-
-
-
-
 
 
 /******************************************************************************
- * Reduction kernel subroutines
+ * Spine-scan kernel subroutines
  ******************************************************************************/
-
 
 
 /**
@@ -1163,30 +1104,40 @@ __device__ __forceinline__ void ScanScatterDigitPass(
 	}
 }
 
+*/
 
 
+/**
+ * Host stub to calm the linker for arch-specializations that we didn't 
+ * end up compiling PTX for.
+ */
+template <typename KernelConfig> 
+__host__ void __wrapper__device_stub_LsbScanScatterKernel(
+	int 								*&,
+	typename KernelConfig::IndexType 	*&,
+	typename KernelConfig::KeyType 		*&,
+	typename KernelConfig::KeyType 		*&,
+	typename KernelConfig::ValueType 	*&,
+	typename KernelConfig::ValueType 	*&,
+	CtaDecomposition<typename KernelConfig::IndexType> &) {}
 
-
-template <
-	typename KeyType, 
-	typename ValueType, 
-	int PASS, 
-	int RADIX_BITS, 
-	int BIT, 
-	typename PreprocessFunctor, 
-	typename PostprocessFunctor>
-__launch_bounds__ (B40C_RADIXSORT_THREADS, B40C_RADIXSORT_SCAN_SCATTER_CTA_OCCUPANCY(__CUDA_ARCH__))
+		
+/**
+ * Downsweep scan-scatter kernel entry point
+ */
+template <typename KernelConfig>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void LsbScanScatterKernel(
-	int *d_selectors,
-	int* d_spine,
-	KeyType* d_keys0,
-	KeyType* d_keys1,
-	ValueType* d_values0,
-	ValueType* d_values1,
-	CtaDecomposition work_decomposition)
+	int 								*d_selectors,
+	typename KernelConfig::IndexType 	*d_spine,
+	typename KernelConfig::KeyType 		*d_keys0,
+	typename KernelConfig::KeyType 		*d_keys1,
+	typename KernelConfig::ValueType 	*d_values0,
+	typename KernelConfig::ValueType 	*d_values1,
+	CtaDecomposition<typename KernelConfig::IndexType> work_decomposition)
 {
-
+/*
 	const int RADIX_DIGITS 				= 1 << RADIX_BITS;
 	const int TILE_ELEMENTS				= B40C_RADIXSORT_TILE_ELEMENTS(__CUDA_ARCH__, KeyType, ValueType);
 	
@@ -1378,8 +1329,9 @@ void LsbScanScatterKernel(
 			out_of_bounds,
 			extra_elements);		
 	}
-}
 */
+	
+}
 
 
 } // namespace lsb_radix_sort

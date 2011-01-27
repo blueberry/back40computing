@@ -53,14 +53,14 @@ using namespace lsb_radix_sort;
 
 
 /******************************************************************************
- *  Multi-CTA LSB Sorting Storage API 
+ *  Storage-wrapper / Problem-descriptor API 
  ******************************************************************************/
 
 /**
- * Storage management structure for multi-CTA-sorting device vectors.
+ * Base storage management structure for multi-CTA-sorting device vectors.
  * 
- * Everything is public in this structure.  It’s just a simple transparent 
- * structure for encapsulating a specific sorting problem for delivery to  
+ * Everything is public in these structures.  It’s just a simple transparent 
+ * mechanism for encapsulating a specific sorting problem for delivery to  
  * a sorting enactor. The caller is free to assign and alias the storage as 
  * they see fit and to change the num_elements field for arbitrary extents. This 
  * provides maximum flexibility for re-using device allocations for subsequent 
@@ -89,9 +89,15 @@ using namespace lsb_radix_sort;
  * the input started in d_keys[0].)
  * 
  */
-template <typename KeyType, typename ValueType = KeysOnly> 
-struct MultiCtaSortStorage
+template <typename KeyType, typename ValueType, typename _IndexType> 
+class MultiCtaSortStorageBase
 {
+public:	
+	
+	// Integer type suitable for indexing storage elements 
+	// (e.g., int, long long, etc.)
+	typedef _IndexType IndexType;
+
 	// Pair of device vector pointers for keys
 	KeyType* d_keys[2];
 	
@@ -99,45 +105,99 @@ struct MultiCtaSortStorage
 	ValueType* d_values[2];
 
 	// Number of elements for sorting in the above vectors 
-	int num_elements;
+	IndexType num_elements;
 	
 	// Selector into the pair of device vector pointers indicating valid 
 	// sorting elements (i.e., where the results are)
 	int selector;
 
-	// Constructor
-	MultiCtaSortStorage() : num_elements(0), selector(0)
-	{
-		d_keys[0] = NULL;
-		d_keys[1] = NULL;
-		d_values[0] = NULL;
-		d_values[1] = NULL;
-	}
+protected:	
 	
 	// Constructor
-	MultiCtaSortStorage(int num_elements) :
-		num_elements(num_elements), 
-		selector(0) 
+	MultiCtaSortStorageBase() 
 	{
+		num_elements = 0;
+		selector = 0;
 		d_keys[0] = NULL;
 		d_keys[1] = NULL;
 		d_values[0] = NULL;
-		d_values[1] = NULL;
-	}
-
-	// Constructor
-	MultiCtaSortStorage(int num_elements, KeyType* keys, ValueType* values = NULL) :
-		num_elements(num_elements), 
-		selector(0) 
-	{
-		d_keys[0] = keys;
-		d_keys[1] = NULL;
-		d_values[0] = values;
 		d_values[1] = NULL;
 	}
 };
 
 
+/**
+ * Standard sorting storage wrapper and problem descriptor.  
+ *
+ * For use in sorting up to 2^31 elements.   
+ */
+template <typename KeyType, typename ValueType = KeysOnly> 
+struct MultiCtaSortStorage : 
+	public MultiCtaSortStorageBase<KeyType, ValueType, int>
+{
+public:
+	// Typedef for base class
+	typedef MultiCtaSortStorageBase<KeyType, ValueType, int> Base;
+		
+	// Constructor
+	MultiCtaSortStorage() : Base::MultiCtaSortStorageBase() {}
+	
+	// Constructor
+	MultiCtaSortStorage(int num_elements) : Base::MultiCtaSortStorageBase() 
+	{
+		this->num_elements = num_elements;
+	}
+
+	// Constructor
+	MultiCtaSortStorage(
+		int num_elements, 
+		KeyType* keys, 
+		ValueType* values = NULL) : Base::MultiCtaSortStorageBase()
+	{
+		this->num_elements = num_elements;
+		this->d_keys[0] = keys;
+		this->d_values[0] = values;
+	}
+};
+
+
+/**
+ * 64-bit sorting storage wrapper and problem descriptor.  
+ *
+ * For use in sorting up to 2^63 elements.  May exhibit lower performance
+ * than the (32-bit) MultiCtaSortStorage wrapper due to increased 
+ * register pressure and memory workloads.
+ */
+template <typename KeyType, typename ValueType = KeysOnly> 
+struct MultiCtaSortStorage64 : 
+	public MultiCtaSortStorageBase<KeyType, ValueType, long long>
+{
+public:
+	// Typedef for base class
+	typedef MultiCtaSortStorageBase<KeyType, ValueType, long long> Base;
+		
+	// Constructor
+	MultiCtaSortStorage64() : Base::MultiCtaSortStorageBase() {}
+	
+	// Constructor
+	MultiCtaSortStorage64(long long num_elements) : Base::MultiCtaSortStorageBase() 
+	{
+		this->num_elements = num_elements;
+	}
+
+	// Constructor
+	MultiCtaSortStorage64(
+		long long num_elements, 
+		KeyType* keys, 
+		ValueType* values = NULL) : Base::MultiCtaSortStorageBase()
+	{
+		this->num_elements = num_elements;
+		this->d_keys[0] = keys;
+		this->d_values[0] = values;
+	}
+};
+
+		
 /******************************************************************************
  * Multi-CTA Sorting Enactor Base Class
  ******************************************************************************/
@@ -151,8 +211,42 @@ template <
 	typename ValueType>
 
 class MultiCtaLsbSortEnactor : 
-	public BaseLsbSortEnactor<KeyType, ValueType, MultiCtaSortStorage<KeyType, ValueType> >
+	public BaseLsbSortEnactor<KeyType, ValueType>
 {
+protected:
+	
+	//---------------------------------------------------------------------
+	// Utility Types
+	//---------------------------------------------------------------------
+
+	// Typedef for base class
+	typedef BaseLsbSortEnactor<KeyType, ValueType> Base; 
+
+	// Wrapper for managing the state for a specific sorting operation 
+	template <typename Storage>
+	struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
+	{
+		int sweep_grid_size;
+		int spine_elements;
+		Storage problem_storage;
+		
+		// Constructor
+		SortingCtaDecomposition(
+			const Storage &problem_storage,
+			int subtile_elements,
+			int sweep_grid_size,
+			int spine_elements) :
+				
+				CtaDecomposition<typename Storage::IndexType>(
+					problem_storage.num_elements, 
+					subtile_elements, 
+					sweep_grid_size),
+				sweep_grid_size(sweep_grid_size),
+				spine_elements(spine_elements),
+				problem_storage(problem_storage) {};
+	};
+
+
 public:
 		
 	//---------------------------------------------------------------------
@@ -168,9 +262,10 @@ public:
 	 */
 	template <
 		// Common
-		typename SpineType,
+		typename StorageType,
 		int RADIX_BITS,
 		int LOG_SUBTILE_ELEMENTS,
+		CacheModifier CACHE_MODIFIER,
 		
 		// Upsweep
 		int UPSWEEP_CTA_OCCUPANCY,
@@ -183,6 +278,7 @@ public:
 		int SPINE_LOG_THREADS,
 		int SPINE_LOG_LOAD_VEC_SIZE,
 		int SPINE_LOG_LOADS_PER_TILE,
+		int SPINE_LOG_RAKING_THREADS,
 
 		// Downsweep
 		int DOWNSWEEP_CTA_OCCUPANCY,
@@ -194,27 +290,34 @@ public:
 
 	struct MultiCtaConfig
 	{
+		typedef StorageType 						Storage;
+		
+		typedef SortingCtaDecomposition<Storage>	Decomposition;
+		
 		typedef UpsweepConfig<
 			ConvertedKeyType, 
-			SpineType,
+			typename StorageType::IndexType,
 			RADIX_BITS, 
 			LOG_SUBTILE_ELEMENTS,
 			UPSWEEP_CTA_OCCUPANCY,  
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,  	
-			UPSWEEP_LOG_LOADS_PER_TILE> Upsweep;
+			UPSWEEP_LOG_LOADS_PER_TILE,
+			CACHE_MODIFIER> 						Upsweep;
 		
 		typedef SpineScanConfig<
-			SpineType,
+			typename StorageType::IndexType,
 			SPINE_CTA_OCCUPANCY,
 			SPINE_LOG_THREADS,
 			SPINE_LOG_LOAD_VEC_SIZE,
-			SPINE_LOG_LOADS_PER_TILE> SpineScan;
+			SPINE_LOG_LOADS_PER_TILE,
+			SPINE_LOG_RAKING_THREADS,
+			CACHE_MODIFIER> 						SpineScan;
 		
 		typedef DownsweepConfig<
 			ConvertedKeyType,
 			ValueType,
-			SpineType,
+			typename StorageType::IndexType,
 			RADIX_BITS,
 			LOG_SUBTILE_ELEMENTS,
 			DOWNSWEEP_CTA_OCCUPANCY,
@@ -222,38 +325,11 @@ public:
 			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 			DOWNSWEEP_LOG_LOADS_PER_CYCLE,
 			DOWNSWEEP_LOG_CYCLES_PER_TILE,
-			DOWNSWEEP_LOG_RAKING_THREADS> Downsweep;
+			DOWNSWEEP_LOG_RAKING_THREADS,
+			CACHE_MODIFIER> 						Downsweep;
 	};
 		
 protected:
-	
-	//---------------------------------------------------------------------
-	// Utility Types
-	//---------------------------------------------------------------------
-
-	// Typedef for base class
-	typedef BaseLsbSortEnactor<KeyType, ValueType, MultiCtaSortStorage<KeyType, ValueType> > Base; 
-
-	// Typedef for problem storage class
-	typedef MultiCtaSortStorage<KeyType, ValueType> StorageType;
-	
-	// Wrapper for managing state for a specific sorting operation 
-	struct SortingCtaDecomposition : CtaDecomposition
-	{
-		int sweep_grid_size;
-		int spine_elements;
-		StorageType problem_storage;
-		
-		SortingCtaDecomposition(
-			const StorageType &problem_storage,
-			int subtile_elements,
-			int sweep_grid_size,
-			int spine_elements) :
-				CtaDecomposition(problem_storage.num_elements, subtile_elements, sweep_grid_size),
-				sweep_grid_size(sweep_grid_size),
-				spine_elements(spine_elements),
-				problem_storage(problem_storage) {};
-	};
 	
 	//---------------------------------------------------------------------
 	// Members
@@ -305,13 +381,14 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
-	// Sorting Pass
+	// Sorting Operation 
 	//-----------------------------------------------------------------------------
 	
     /**
      * Pre-sorting logic.
      */
-    virtual cudaError_t PreSort(StorageType &problem_storage, int problem_spine_bytes) 
+	template <typename StorageType>
+    cudaError_t PreSort(StorageType &problem_storage, int problem_spine_elements) 
     {
     	// Allocate device memory for temporary storage (if necessary)
     	if (problem_storage.d_keys[0] == NULL) {
@@ -334,6 +411,8 @@ protected:
     	}
     	
     	// Make sure our spine is big enough
+    	int problem_spine_bytes = problem_spine_elements * sizeof(typename StorageType::IndexType);
+    	
     	if (problem_spine_bytes > spine_bytes) {
    			cudaFree(d_spine);
     	    dbg_perror_exit("MultiCtaLsbSortEnactor:: cudaFree d_spine failed: ", __FILE__, __LINE__);
@@ -347,14 +426,16 @@ protected:
     	return cudaSuccess;
     }
     
-    
+	
     /**
      * Post-sorting logic.
      */
-    virtual cudaError_t PostSort(StorageType &problem_storage, int passes) 
+	template <typename Storage> 
+    cudaError_t PostSort(Storage &problem_storage, int passes) 
     {
     	return cudaSuccess;
-    }	
+    }
+	
     
 public:
 

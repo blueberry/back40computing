@@ -69,15 +69,19 @@ template <
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
-	int _LOG_LOADS_PER_TILE>
+	int _LOG_LOADS_PER_TILE,
+	int _LOG_RAKING_THREADS,
+	CacheModifier _CACHE_MODIFIER>
 
 struct SpineScanConfig
 {
-	typedef _SpineType						SpineType;
-	static const int CTA_OCCUPANCY  		= _CTA_OCCUPANCY;
-	static const int LOG_THREADS 			= _LOG_THREADS;
-	static const int LOG_LOAD_VEC_SIZE  	= _LOG_LOAD_VEC_SIZE;
-	static const int LOG_LOADS_PER_TILE 	= _LOG_LOADS_PER_TILE;
+	typedef _SpineType							SpineType;
+	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
+	static const int LOG_THREADS 				= _LOG_THREADS;
+	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
+	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
+	static const int LOG_RAKING_THREADS			= _LOG_RAKING_THREADS;
+	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
 };
 
 
@@ -91,18 +95,45 @@ struct SpineScanConfig
  * sorting pass.  It encapsulates granularity details derived from the inherited 
  * UpsweepConfigType 
  */
-template <
-	typename 		SpineScanConfigType,
-	CacheModifier 	_CACHE_MODIFIER>
-
+template <typename SpineScanConfigType>
 struct SpineScanKernelConfig : SpineScanConfigType
 {
-	static const int THREADS				= 1 << SpineScanConfigType::LOG_THREADS;
+	static const int THREADS							= 1 << SpineScanConfigType::LOG_THREADS;
 	
-	static const int LOG_TILE_ELEMENTS		= SpineScanConfigType::LOG_THREADS + 
-												SpineScanConfigType::LOG_LOADS_PER_TILE +
-												SpineScanConfigType::LOG_LOAD_VEC_SIZE;
-	static const int TILE_ELEMENTS			= 1 << LOG_TILE_ELEMENTS;
+	static const int LOG_TILE_ELEMENTS					= SpineScanConfigType::LOG_THREADS + 
+															SpineScanConfigType::LOG_LOADS_PER_TILE +
+															SpineScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int TILE_ELEMENTS						= 1 << LOG_TILE_ELEMENTS;
+	
+	// We reduce/scan the elements of a loaded vector in registers, and then place that  
+	// partial reduction into smem rows for further reduction/scanning
+	
+	static const int LOG_SMEM_PARTIALS					= SpineScanConfigType::LOG_THREADS + SpineScanConfigType::LOG_LOADS_PER_TILE;				
+	static const int SMEM_PARTIALS			 			= 1 << LOG_SMEM_PARTIALS;
+	
+	static const int LOG_SMEM_PARTIALS_PER_SEG 			= LOG_SMEM_PARTIALS - SpineScanConfigType::LOG_RAKING_THREADS;	
+	static const int SMEM_PARTIALS_PER_SEG 				= 1 << LOG_SMEM_PARTIALS_PER_SEG;
+
+	static const int LOG_SMEM_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
+															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
+															LogBytes<typename SpineScanConfigType::SpineType>::LOG_BYTES;
+
+	static const int PADDING_PARTIALS					= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<typename SpineScanConfigType::SpineType>::LOG_BYTES); 
+
+	static const int LOG_SMEM_PARTIALS_PER_ROW			= B40C_MAX(LOG_SMEM_PARTIALS_PER_SEG, LOG_SMEM_PARTIALS_PER_BANK_ARRAY);
+	static const int SMEM_PARTIALS_PER_ROW				= 1 << LOG_SMEM_PARTIALS_PER_ROW;
+
+	static const int PADDED_SMEM_PARTIALS_PER_ROW		= SMEM_PARTIALS_PER_ROW + SMEM_PARTIALS_PER_ROW;
+	
+	static const int LOG_SEGS_PER_ROW 					= LOG_SMEM_PARTIALS_PER_ROW - LOG_SMEM_PARTIALS_PER_SEG;	
+	static const int SEGS_PER_ROW						= 1 << LOG_SEGS_PER_ROW;
+
+	static const int LOG_SMEM_ROWS						= LOG_SMEM_PARTIALS - LOG_SMEM_PARTIALS_PER_ROW;
+	static const int SMEM_ROWS 							= 1 << LOG_SMEM_ROWS;
+	
+	static const int SHARED_BYTES						= SMEM_ROWS * PADDED_SMEM_PARTIALS_PER_ROW * sizeof(typename SpineScanConfigType::SpineType);
+	static const int SHARED_INT4S						= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
+	
 };
 	
 	
@@ -110,7 +141,7 @@ struct SpineScanKernelConfig : SpineScanConfigType
 
 
 /******************************************************************************
- * Reduction kernel subroutines
+ * Spine-scan kernel subroutines
  ******************************************************************************/
 
 
@@ -119,7 +150,7 @@ struct SpineScanKernelConfig : SpineScanConfigType
  * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements
  */
 /*
-template<CacheModifier CACHE_MODIFIER, int PARTIALS_PER_SEG>
+template<CacheModifier CACHE_MODIFIER, int SMEM_PARTIALS_PER_SEG>
 __device__ __forceinline__ void SrtsScanTile(
 	int *smem_offset,
 	int *smem_segment,
@@ -139,12 +170,12 @@ __device__ __forceinline__ void SrtsScanTile(
 
 	if (threadIdx.x < B40C_WARP_THREADS) {
 
-		int partial_reduction = SerialReduce<int, PARTIALS_PER_SEG>(smem_segment);
+		int partial_reduction = SerialReduce<int, SMEM_PARTIALS_PER_SEG>(smem_segment);
 
 		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
 		seed += carry;		
 		
-		SerialScan<int, PARTIALS_PER_SEG>(smem_segment, seed);
+		SerialScan<int, SMEM_PARTIALS_PER_SEG>(smem_segment, seed);
 
 		carry += warpscan[1][B40C_WARP_THREADS - 1];	
 	}
@@ -168,38 +199,41 @@ __device__ __forceinline__ void SrtsScanTile(
 }
 */
 
+
 /**
- * Spine/histogram Scan Kernel Entry Point
+ * Host stub to calm the linker for arch-specializations that we didn't 
+ * end up compiling PTX for.
  */
-/*
-template <typename T>
+template <typename KernelConfig> 
+__host__ void __wrapper__device_stub_LsbSpineScanKernel(
+	typename KernelConfig::SpineType *&, 
+	int &) {}
+
+
+/**
+ * Kernel entry point
+ */
+template <typename KernelConfig>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ void LsbSpineScanKernel(
-	int *d_ispine,
-	int *d_ospine,
-	int normal_block_elements)
+	typename KernelConfig::SpineType *d_spine,
+	int spine_elements)
 {
-	const int LOG_PARTIALS				= B40C_RADIXSORT_LOG_THREADS;				
-	const int PARTIALS			 		= 1 << LOG_PARTIALS;
+	typedef typename KernelConfig::SpineType SpineType;
 	
-	const int LOG_PARTIALS_PER_SEG 		= LOG_PARTIALS - B40C_LOG_WARP_THREADS;	
-	const int PARTIALS_PER_SEG 			= 1 << LOG_PARTIALS_PER_SEG;
-
-	const int LOG_PARTIALS_PER_ROW		= (LOG_PARTIALS_PER_SEG < B40C_LOG_MEM_BANKS(__CUDA_ARCH__)) ? B40C_LOG_MEM_BANKS(__CUDA_ARCH__) : LOG_PARTIALS_PER_SEG;		// floor of 32 elts per row
-	const int PARTIALS_PER_ROW			= 1 << LOG_PARTIALS_PER_ROW;
+/*	
+	// Shared memory pool
+	__shared__ int4 smem_pool[KernelConfig::SHARED_INT4S];
 	
-	const int LOG_SEGS_PER_ROW 			= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
-	const int SEGS_PER_ROW				= 1 << LOG_SEGS_PER_ROW;
-
-	const int SMEM_ROWS 				= PARTIALS / PARTIALS_PER_ROW;
 	
-	__shared__ int smem[SMEM_ROWS][PARTIALS_PER_ROW + 1];
+	__shared__ int smem[SMEM_ROWS][SMEM_PARTIALS_PER_ROW + 1];
 	__shared__ int warpscan[2][B40C_WARP_THREADS];
 
 	int *smem_segment = 0;
 	int carry = 0;
 
-	int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
-	int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
+	int row = threadIdx.x >> LOG_SMEM_PARTIALS_PER_ROW;		
+	int col = threadIdx.x & (SMEM_PARTIALS_PER_ROW - 1);			
 	int *smem_offset = &smem[row][col];
 
 	if (blockIdx.x > 0) {
@@ -210,7 +244,7 @@ __global__ void LsbSpineScanKernel(
 		
 		// two segs per row, odd segs are offset by 8
 		row = threadIdx.x >> LOG_SEGS_PER_ROW;
-		col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
+		col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_SMEM_PARTIALS_PER_SEG;
 		smem_segment = &smem[row][col];
 	
 		if (threadIdx.x < B40C_WARP_THREADS) {
@@ -222,7 +256,7 @@ __global__ void LsbSpineScanKernel(
 	int block_offset = 0;
 	while (block_offset < normal_block_elements) {
 		
-		SrtsScanTile<NONE, PARTIALS_PER_SEG>(	
+		SrtsScanTile<NONE, SMEM_PARTIALS_PER_SEG>(	
 			smem_offset, 
 			smem_segment, 
 			warpscan,
@@ -232,8 +266,8 @@ __global__ void LsbSpineScanKernel(
 
 		block_offset += B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
 	}
+*/	
 } 
-*/
 
 
 } // namespace lsb_radix_sort
