@@ -68,7 +68,7 @@ void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
 template <typename T, int BYTES = sizeof(T), int LOG_VAL = 0>
 struct LogBytes
 {
-	static const int LOG_BYTES = LogBytes<T, BYTES >> 1, LOG_VAL + 1>::LOG_BYTES;
+	static const int LOG_BYTES = LogBytes<T, (BYTES >> 1), LOG_VAL + 1>::LOG_BYTES;
 };
 
 template <typename T, int LOG_VAL>
