@@ -200,15 +200,70 @@ struct CtaDecomposition {
  ******************************************************************************/
 
 
+template <typename T, int NUM_ELEMENTS>
+struct WarpScan
+{
+	// General iteration
+	template <int COUNT, int __dummy = 0>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(
+			T partial,
+			volatile T warpscan[][NUM_ELEMENTS], 
+			int warpscan_idx) 
+		{
+			
+			partial = partial + warpscan[1][warpscan_idx - COUNT];
+			warpscan[1][warpscan_idx] = partial;
+			Iterate<COUNT * 2>::template Invoke(partial, warpscan, warpscan_idx);
+		}
+	};
+	
+	// Termination
+	template <int __dummy>
+	struct Iterate<NUM_ELEMENTS, __dummy>
+	{
+		static __device__ __forceinline__ void Invoke(
+			T partial,
+			volatile T warpscan[][NUM_ELEMENTS], 
+			int warpscan_idx) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partial,
+		T &reduction,						// out param
+		volatile T warpscan[][NUM_ELEMENTS]) 
+	{
+		int warpscan_idx = threadIdx.x;
+		warpscan[1][warpscan_idx] = partial;
+		
+		Iterate<1>::template Invoke(partial, warpscan, warpscan_idx);
+
+		// Set aggregate reduction
+		reduction = warpscan[1][NUM_ELEMENTS - 1];
+		
+		// Return scan partial
+		return warpscan[1][warpscan_idx - 1];
+	}
+};
+
+
+
+
+
+
+
 /**
  * Perform a warp-synchrounous prefix scan.  Allows for diverting a warp's
  * threads into separate scan problems (multi-scan). 
  */
-template <int NUM_ELEMENTS, bool MULTI_SCAN> 
+/*
+template <typename T, int NUM_ELEMENTS, bool MULTI_SCAN> 
 __device__ __forceinline__ int WarpScan(
-	volatile int warpscan[][NUM_ELEMENTS],
-	int partial_reduction,
-	int copy_section = 0) {
+	volatile T warpscan[][NUM_ELEMENTS],
+	T partial_reduction,
+	T copy_section = 0) {
 	
 	int warpscan_idx;
 	if (MULTI_SCAN) {
@@ -236,16 +291,17 @@ __device__ __forceinline__ int WarpScan(
 	
 	return warpscan[1][warpscan_idx - 1];
 }
+*/
 
 
 /**
  * Perform a warp-synchronous reduction
  */
-template <int NUM_ELEMENTS>
+template <typename T, int NUM_ELEMENTS>
 __device__ __forceinline__ void WarpReduce(
 	int idx, 
-	volatile int *storage, 
-	int partial_reduction) 
+	volatile T *storage, 
+	T partial_reduction) 
 {
 	storage[idx] = partial_reduction;
 
@@ -286,7 +342,7 @@ T SerialScan(T partials[], T seed)
 	// Unroll to avoid copy
 	#pragma unroll	
 	for (int i = 0; i <= LENGTH - 2; i += 2) {
-		T tmp = partials[i] + seed;
+		T tmp = seed + partials[i];
 		partials[i] = seed;
 		seed = tmp + partials[i + 1];
 		partials[i + 1] = tmp;
@@ -425,7 +481,7 @@ __device__ __forceinline__ static void ThreadExit() {
  */
 template <int ACTIVE_THREADS>
 __device__ __forceinline__ int TallyWarpVoteSm10(int predicate, int storage[]) {
-	WarpReduce<ACTIVE_THREADS>(threadIdx.x, storage, predicate);
+	WarpReduce<int, ACTIVE_THREADS>(threadIdx.x, storage, predicate);
 	return storage[0];
 }
 

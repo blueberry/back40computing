@@ -46,8 +46,8 @@
 #include "radixsort_kernel_common.cu"
 
 namespace b40c {
-
 namespace lsb_radix_sort {
+namespace scan {
 
 
 /******************************************************************************
@@ -65,7 +65,8 @@ namespace lsb_radix_sort {
  * types.    
  */
 template <
-	typename _SpineType,
+	typename _ScanType,
+	typename _IndexType,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -73,9 +74,10 @@ template <
 	int _LOG_RAKING_THREADS,
 	CacheModifier _CACHE_MODIFIER>
 
-struct SpineScanConfig
+struct ScanConfig
 {
-	typedef _SpineType							SpineType;
+	typedef _ScanType							ScanType;
+	typedef _IndexType							IndexType;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
@@ -91,49 +93,124 @@ struct SpineScanConfig
  ******************************************************************************/
 
 /**
+ * Description of a (typically) conflict-free serial-reduce-then-scan (SRTS) 
+ * shared-memory grid 
+ */
+template <
+	typename _PartialType,
+	int LOG_ACTIVE_THREADS, 
+	int LOG_PARTIALS_PER_THREAD,
+	int LOG_RAKING_THREADS> 
+struct SrtsGrid
+{
+	typedef _PartialType							PartialType;
+	
+	static const int LOG_PARTIALS					= LOG_ACTIVE_THREADS + LOG_PARTIALS_PER_THREAD;
+	static const int PARTIALS			 			= 1 << LOG_PARTIALS;
+	
+	static const int RAKING_THREADS					= 1 << LOG_RAKING_THREADS;
+	
+	static const int LOG_PARTIALS_PER_SEG 			= LOG_PARTIALS - LOG_RAKING_THREADS;	
+	static const int PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG;
+
+	static const int LOG_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
+															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
+															LogBytes<PartialType>::LOG_BYTES;
+
+	static const int PADDING_PARTIALS				= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<PartialType>::LOG_BYTES); 
+
+	static const int LOG_PARTIALS_PER_ROW			= B40C_MAX(LOG_PARTIALS_PER_SEG, LOG_PARTIALS_PER_BANK_ARRAY);
+	static const int PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW;
+	
+	static const int PADDED_PARTIALS_PER_ROW		= PARTIALS_PER_ROW + PADDING_PARTIALS;
+	
+	static const int LOG_SEGS_PER_ROW 				= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
+	static const int SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW;
+
+	static const int LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW;
+	static const int ROWS 							= 1 << LOG_ROWS;
+
+	static const int PARTIAL_STRIDE_ROWS			= 1 << (LOG_ROWS - LOG_PARTIALS_PER_THREAD);
+	static const int PARTIAL_STRIDE					= PARTIAL_STRIDE_ROWS * PADDED_PARTIALS_PER_ROW;
+	
+	static const int SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType);
+	
+	
+	/**
+	 * Returns the location in smem where the calling thread can insert/extract
+	 * its partial for raking reduction/scan
+	 */
+	static __device__ __forceinline__ PartialType* BasePartial(PartialType *smem) 
+	{
+		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
+		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
+		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
+	}
+	
+	/**
+	 * Returns the location in smem where the calling thread can begin serial 
+	 * raking/scanning
+	 */
+	static __device__ __forceinline__ PartialType* RakingSegment(PartialType *smem) 
+	{
+		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
+		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
+		
+		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
+	}
+	
+
+};
+
+
+
+
+/**
  * A detailed upsweep configuration type that specializes kernel code for a specific 
  * sorting pass.  It encapsulates granularity details derived from the inherited 
  * UpsweepConfigType 
  */
-template <typename SpineScanConfigType>
-struct SpineScanKernelConfig : SpineScanConfigType
+template <typename ScanConfigType>
+struct ScanKernelConfig : ScanConfigType
 {
-	static const int THREADS							= 1 << SpineScanConfigType::LOG_THREADS;
+	static const int THREADS						= 1 << ScanConfigType::LOG_THREADS;
 	
-	static const int LOG_TILE_ELEMENTS					= SpineScanConfigType::LOG_THREADS + 
-															SpineScanConfigType::LOG_LOADS_PER_TILE +
-															SpineScanConfigType::LOG_LOAD_VEC_SIZE;
-	static const int TILE_ELEMENTS						= 1 << LOG_TILE_ELEMENTS;
+	static const int LOG_WARPS						= ScanConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
+	static const int WARPS							= 1 << LOG_WARPS;	
+	
+	static const int LOAD_VEC_SIZE					= 1 << ScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int LOADS_PER_TILE					= 1 << ScanConfigType::LOG_LOADS_PER_TILE;
+
+	static const int LOG_TILE_ELEMENTS				= ScanConfigType::LOG_THREADS + 
+															ScanConfigType::LOG_LOADS_PER_TILE +
+															ScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
 	
 	// We reduce/scan the elements of a loaded vector in registers, and then place that  
 	// partial reduction into smem rows for further reduction/scanning
 	
-	static const int LOG_SMEM_PARTIALS					= SpineScanConfigType::LOG_THREADS + SpineScanConfigType::LOG_LOADS_PER_TILE;				
-	static const int SMEM_PARTIALS			 			= 1 << LOG_SMEM_PARTIALS;
+	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we 
+	// back up the primary raking warps with a single warp of raking-threads.
+	static const bool TwoLevelGrid 					= (ScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
+
+	// Primary smem SRTS grid type
+	typedef SrtsGrid<
+		typename ScanConfigType::ScanType,
+		ScanConfigType::LOG_THREADS,
+		ScanConfigType::LOG_LOADS_PER_TILE, 
+		ScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;
 	
-	static const int LOG_SMEM_PARTIALS_PER_SEG 			= LOG_SMEM_PARTIALS - SpineScanConfigType::LOG_RAKING_THREADS;	
-	static const int SMEM_PARTIALS_PER_SEG 				= 1 << LOG_SMEM_PARTIALS_PER_SEG;
-
-	static const int LOG_SMEM_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
-															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
-															LogBytes<typename SpineScanConfigType::SpineType>::LOG_BYTES;
-
-	static const int PADDING_PARTIALS					= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<typename SpineScanConfigType::SpineType>::LOG_BYTES); 
-
-	static const int LOG_SMEM_PARTIALS_PER_ROW			= B40C_MAX(LOG_SMEM_PARTIALS_PER_SEG, LOG_SMEM_PARTIALS_PER_BANK_ARRAY);
-	static const int SMEM_PARTIALS_PER_ROW				= 1 << LOG_SMEM_PARTIALS_PER_ROW;
-
-	static const int PADDED_SMEM_PARTIALS_PER_ROW		= SMEM_PARTIALS_PER_ROW + SMEM_PARTIALS_PER_ROW;
+	// Secondary smem SRTS grid type
+	typedef SrtsGrid<
+		typename ScanConfigType::ScanType,
+		ScanConfigType::LOG_RAKING_THREADS,
+		0, 
+		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;
 	
-	static const int LOG_SEGS_PER_ROW 					= LOG_SMEM_PARTIALS_PER_ROW - LOG_SMEM_PARTIALS_PER_SEG;	
-	static const int SEGS_PER_ROW						= 1 << LOG_SEGS_PER_ROW;
-
-	static const int LOG_SMEM_ROWS						= LOG_SMEM_PARTIALS - LOG_SMEM_PARTIALS_PER_ROW;
-	static const int SMEM_ROWS 							= 1 << LOG_SMEM_ROWS;
-	
-	static const int SHARED_BYTES						= SMEM_ROWS * PADDED_SMEM_PARTIALS_PER_ROW * sizeof(typename SpineScanConfigType::SpineType);
-	static const int SHARED_INT4S						= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
-	
+		
+	static const int SMEM_BYTES						= (TwoLevelGrid) ? 
+															PrimaryGrid::SMEM_BYTES + SecondaryGrid::SMEM_BYTES :	// two-level smem SRTS 
+															PrimaryGrid::SMEM_BYTES;								// one-level smem SRTS
 };
 	
 	
@@ -145,59 +222,280 @@ struct SpineScanKernelConfig : SpineScanConfigType
  ******************************************************************************/
 
 
-
-/**
- * Scans a cycle of RADIXSORT_TILE_ELEMENTS elements
- */
-/*
-template<CacheModifier CACHE_MODIFIER, int SMEM_PARTIALS_PER_SEG>
-__device__ __forceinline__ void SrtsScanTile(
-	int *smem_offset,
-	int *smem_segment,
-	int warpscan[2][B40C_WARP_THREADS],
-	int4 *in, 
-	int4 *out,
-	int &carry)
+// Reduce each load in registers and place into smem
+template <typename Config> 
+struct ReduceVectors
 {
-	int4 datum; 
+	typedef typename Config::ScanType ScanType;
+	
+	// Iterate over vec-elements
+	template <int LOAD, int VEC, int __dummy = 0>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			ScanType partial,
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			partial += data[LOAD][VEC];
+			Iterate<LOAD, VEC + 1>::Invoke(partial, data, base_partial);
+		}
+	};
 
-	// read input data
-	ModifiedLoad<int4, CACHE_MODIFIER>::Ld(datum, in, threadIdx.x);
+	// First vector element: Identity
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, 0, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			Iterate<LOAD, 1>::Invoke(data[LOAD][0], data, base_partial);
+		}
+	};
 
-	smem_offset[0] = datum.x + datum.y + datum.z + datum.w;
+	// Last vector element + 1: Next load
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType partial,
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			// Store partial reduction into SRTS grid
+			base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE] = partial;
 
-	__syncthreads();
-
-	if (threadIdx.x < B40C_WARP_THREADS) {
-
-		int partial_reduction = SerialReduce<int, SMEM_PARTIALS_PER_SEG>(smem_segment);
-
-		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, partial_reduction, 0);
-		seed += carry;		
-		
-		SerialScan<int, SMEM_PARTIALS_PER_SEG>(smem_segment, seed);
-
-		carry += warpscan[1][B40C_WARP_THREADS - 1];	
+			// Next load
+			Iterate<LOAD + 1, 0>::Invoke(data, base_partial);
+		}
+	};
+	
+	// Last load + 1: Terminate
+	template <int __dummy>
+	struct Iterate<Config::LOADS_PER_TILE, 0, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) {} 
+	};
+	
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+		ScanType *base_partial)
+	{
+		Iterate<0, 0>::template Invoke(data, base_partial);
 	}
 
-	__syncthreads();
+};
 
-	int part0 = smem_offset[0];
-	int part1;
 
-	part1 = datum.x + part0;
-	datum.x = part0;
-	part0 = part1 + datum.y;
-	datum.y = part1;
-
-	part1 = datum.z + part0;
-	datum.z = part0;
-	part0 = part1 + datum.w;
-	datum.w = part1;
+// Scan each load in registers, seeding from smem partials
+template <typename Config> 
+struct ScanVectors
+{
+	typedef typename Config::ScanType ScanType;
 	
-	out[threadIdx.x] = datum;
+	// Iterate over vec-elements
+	template <int LOAD, int VEC, int __dummy = 0>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			ScanType exclusive_partial,
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			ScanType inclusive_partial = data[LOAD][VEC] + exclusive_partial;
+			data[LOAD][VEC] = exclusive_partial;
+			Iterate<LOAD, VEC + 1>::Invoke(inclusive_partial, data, base_partial);
+		}
+	};
+
+	// First vector element: Load exclusive partial reduction from SRTS grid
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, 0, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			ScanType exclusive_partial = base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE];
+			ScanType inclusive_partial = data[LOAD][0] + exclusive_partial;
+			data[LOAD][0] = exclusive_partial;
+			Iterate<LOAD, 1>::Invoke(inclusive_partial, data, base_partial);
+		}
+	};
+
+	// Last vector element + 1: Next load
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType exclusive_partial,
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) 
+		{
+			// Next load
+			Iterate<LOAD + 1, 0>::Invoke(data, base_partial);
+		}
+	};
+	
+	// Last load + 1: Terminate
+	template <int __dummy>
+	struct Iterate<Config::LOADS_PER_TILE, 0, __dummy> {
+		static __device__ __forceinline__ void Invoke(
+			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			ScanType *base_partial) {} 
+	};
+	
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+		ScanType *base_partial)
+	{
+		Iterate<0, 0>::template Invoke(data, base_partial);
+	}
+
+};
+
+
+
+/**
+ * Warp rake and scan. Must hold that the number of raking threads in the grid 
+ * config type is at most the size of a warp.  (May be less.)
+ */
+template <typename Grid> 
+__device__ __forceinline__ void WarpRakeAndScan(
+	typename Grid::PartialType 	*raking_seg,
+	typename Grid::PartialType 	warpscan[2][Grid::RAKING_THREADS],
+	typename Grid::PartialType 	&carry)
+{
+	typedef typename Grid::PartialType PartialType;
+	
+	if (threadIdx.x < Grid::RAKING_THREADS) {
+		
+		// Raking reduction  
+		PartialType partial = SerialReduce<PartialType, Grid::PARTIALS_PER_SEG>(raking_seg);
+		
+		// Warpscan
+		PartialType reduction;
+		partial = WarpScan<PartialType, Grid::RAKING_THREADS>::Invoke(partial, reduction, warpscan);
+		partial += carry;
+		carry += reduction;			// Increment the CTA's running total by the full tile reduction
+
+		// Raking scan 
+		SerialScan<PartialType, Grid::PARTIALS_PER_SEG>(raking_seg, partial);
+	}
 }
-*/
+
+
+/**
+ * Process a scan tile.
+ */
+template <typename Config, bool TwoLevelGrid> struct ProcessTile;
+
+
+/**
+ * Process a scan tile using only a one-level raking grid.  (One warp or smaller of raking threads.)
+ */
+template <typename Config> 
+struct ProcessTile <Config, false>
+{
+	typedef typename Config::ScanType ScanType;
+	typedef typename Config::IndexType IndexType;
+	
+	__device__ __forceinline__ static void Invoke(
+		ScanType 	*primary_base_partial,
+		ScanType 	*primary_raking_seg,
+		ScanType 	*secondary_base_partial,
+		ScanType 	*secondary_raking_seg,
+		ScanType 	warpscan[2][Config::PrimaryGrid::RAKING_THREADS],
+		ScanType 	*d_data,
+		IndexType 	cta_offset,
+		ScanType 	&carry)
+	{
+		// Tile of scan elements
+		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+		
+		// Load tile
+		LoadTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+			data, d_data, cta_offset);
+		
+		// Reduce in registers, place partials in smem
+		ReduceVectors<Config>::Invoke(data, primary_base_partial);
+		
+		__syncthreads();
+		
+		// Primary rake and scan (guaranteed one warp or fewer raking threads)
+		WarpRakeAndScan<Config::PrimaryGrid>(primary_raking_seg, warpscan, carry);
+		
+		__syncthreads();
+
+		// Extract partials from smem, scan in registers
+		ScanVectors<Config>::Invoke(data, primary_base_partial);
+		
+		// Store tile
+		StoreTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+			data, d_data, cta_offset);
+	}
+};
+
+
+/**
+ * Process a scan tile using a two-level raking grid.  (More than one warp of raking threads.)
+ */
+template <typename Config> 
+struct ProcessTile <Config, true>
+{
+	typedef typename Config::ScanType ScanType;
+	typedef typename Config::IndexType IndexType;
+	
+	__device__ __forceinline__ static void Invoke(
+		ScanType 	*primary_base_partial,
+		ScanType 	*primary_raking_seg,
+		ScanType 	*secondary_base_partial,
+		ScanType 	*secondary_raking_seg,
+		ScanType 	warpscan[2][Config::SecondaryGrid::RAKING_THREADS],
+		ScanType 	*d_data,
+		IndexType 	cta_offset,
+		ScanType 	&carry)
+	{
+		// Tile of scan elements
+		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+		
+		// Load tile
+		LoadTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+			data, d_data, cta_offset);
+		
+		// Reduce in registers, place partials in smem
+		ReduceVectors<Config>::Invoke(data, primary_base_partial);
+		
+		__syncthreads();
+		
+		// Raking reduction in primary grid, place result partial into secondary grid
+		if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
+			ScanType partial = SerialReduce<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>(primary_raking_seg);
+			*secondary_base_partial = partial;
+		}
+
+		__syncthreads();
+		
+		// Secondary rake and scan (guaranteed one warp or fewer raking threads)
+		WarpRakeAndScan<Config::SecondaryGrid>(secondary_raking_seg, warpscan, carry);
+		
+		__syncthreads();
+
+		// Raking scan in primary grid seeded by partial from secondary grid
+		if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
+			ScanType partial = *secondary_base_partial;
+			SerialScan<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>(primary_raking_seg, partial);
+		}
+
+		__syncthreads();
+
+		// Extract partials from smem, scan in registers
+		ScanVectors<Config>::Invoke(data, primary_base_partial);
+		
+		// Store tile
+		StoreTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+			data, d_data, cta_offset);
+		
+	}
+};
 
 
 /**
@@ -206,8 +504,8 @@ __device__ __forceinline__ void SrtsScanTile(
  */
 template <typename KernelConfig> 
 __host__ void __wrapper__device_stub_LsbSpineScanKernel(
-	typename KernelConfig::SpineType *&, 
-	int &) {}
+	typename KernelConfig::ScanType *&, 
+	typename KernelConfig::IndexType &) {}
 
 
 /**
@@ -216,61 +514,67 @@ __host__ void __wrapper__device_stub_LsbSpineScanKernel(
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ void LsbSpineScanKernel(
-	typename KernelConfig::SpineType *d_spine,
-	int spine_elements)
+	typename KernelConfig::ScanType *d_spine,
+	typename KernelConfig::IndexType spine_elements)
 {
-	typedef typename KernelConfig::SpineType SpineType;
-	
-/*	
+	typedef typename KernelConfig::ScanType ScanType;
+	typedef typename KernelConfig::IndexType IndexType;
+
 	// Shared memory pool
-	__shared__ int4 smem_pool[KernelConfig::SHARED_INT4S];
+	__shared__ unsigned char smem_pool[KernelConfig::SMEM_BYTES];
+	__shared__ int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 	
-	
-	__shared__ int smem[SMEM_ROWS][SMEM_PARTIALS_PER_ROW + 1];
-	__shared__ int warpscan[2][B40C_WARP_THREADS];
-
-	int *smem_segment = 0;
-	int carry = 0;
-
-	int row = threadIdx.x >> LOG_SMEM_PARTIALS_PER_ROW;		
-	int col = threadIdx.x & (SMEM_PARTIALS_PER_ROW - 1);			
-	int *smem_offset = &smem[row][col];
-
+	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) {
 		return;
 	}
 	
-	if (threadIdx.x < B40C_WARP_THREADS) {
-		
-		// two segs per row, odd segs are offset by 8
-		row = threadIdx.x >> LOG_SEGS_PER_ROW;
-		col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_SMEM_PARTIALS_PER_SEG;
-		smem_segment = &smem[row][col];
+	ScanType 	*primary_grid = reinterpret_cast<ScanType*>(smem_pool);
+	ScanType 	*primary_base_partial = KernelConfig::PrimaryGrid::BasePartial(primary_grid);
+	ScanType 	*primary_raking_seg = 0;
+
+	ScanType 	*secondary_base_partial = 0;
+	ScanType 	*secondary_raking_seg = 0;
 	
-		if (threadIdx.x < B40C_WARP_THREADS) {
+	ScanType carry = 0;
+	
+	// Initialize partial-placement and raking offset pointers
+	if (threadIdx.x < KernelConfig::PrimaryGrid::RAKING_THREADS) {
+
+		primary_raking_seg = KernelConfig::PrimaryGrid::RakingSegment(primary_grid);
+
+		ScanType *secondary_grid = reinterpret_cast<ScanType*>(smem_pool + KernelConfig::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
+		secondary_base_partial = KernelConfig::SecondaryGrid::BasePartial(secondary_grid);
+		if (KernelConfig::TwoLevelGrid && (threadIdx.x < KernelConfig::SecondaryGrid::RAKING_THREADS)) {
+			secondary_raking_seg = KernelConfig::SecondaryGrid::RakingSegment(secondary_grid);
+		}
+
+		// Initialize warpscan
+		if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 			warpscan[0][threadIdx.x] = 0;
 		}
 	}
 
-	// scan the spine in blocks of cycle_elements
-	int block_offset = 0;
-	while (block_offset < normal_block_elements) {
+	// Scan the spine in tiles
+	IndexType cta_offset = 0;
+	while (cta_offset < spine_elements) {
 		
-		SrtsScanTile<NONE, SMEM_PARTIALS_PER_SEG>(	
-			smem_offset, 
-			smem_segment, 
+		ProcessTile<KernelConfig, KernelConfig::TwoLevelGrid>::Invoke(	
+			primary_base_partial,
+			primary_raking_seg,
+			secondary_base_partial,
+			secondary_raking_seg,
 			warpscan,
-			reinterpret_cast<int4 *>(&d_ispine[block_offset]), 
-			reinterpret_cast<int4 *>(&d_ospine[block_offset]), 
+			d_spine,
+			cta_offset,
 			carry);
 
-		block_offset += B40C_RADIXSORT_SPINE_TILE_ELEMENTS;
+		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
-*/	
 } 
 
 
+} // namespace scan
 } // namespace lsb_radix_sort
-
 } // namespace b40c
 
