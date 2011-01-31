@@ -46,8 +46,8 @@
 #include "radixsort_kernel_common.cu"
 
 namespace b40c {
-
 namespace lsb_radix_sort {
+namespace downsweep {
 
 
 /******************************************************************************
@@ -1334,8 +1334,7 @@ void LsbScanScatterKernel(
 }
 
 
+} // namespace downsweep
 } // namespace lsb_radix_sort
-
-
 } // namespace b40c
 

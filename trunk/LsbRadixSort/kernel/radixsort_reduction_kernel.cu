@@ -46,8 +46,8 @@
 #include "radixsort_kernel_common.cu"
 
 namespace b40c {
-
 namespace lsb_radix_sort {
+namespace upsweep {
 
 
 /******************************************************************************
@@ -155,8 +155,7 @@ struct UpsweepKernelConfig : UpsweepConfigType
 	// Required size of the re-purposable shared memory region
 	static const int COMPOSITE_COUNTER_BYTES		= COMPOSITE_LANES * COMPOSITES_PER_LANE * sizeof(int);
 	static const int PARTIALS_BYTES					= AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW * sizeof(typename UpsweepConfigType::IndexType);
-	static const int SHARED_BYTES					= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES);
-	static const int SHARED_INT4S					= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
+	static const int SMEM_BYTES						= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES);
 };
 
 
@@ -333,35 +332,6 @@ struct BucketTileKeys
 };
 
 
-// Load a tile of keys
-template <typename Config> 
-struct LoadTileKeys
-{
-	typedef typename Config::KeyType KeyType;
-	typedef typename VecType<KeyType, Config::LOAD_VEC_SIZE>::Type KeyVectorType; 		
-	
-	// Iterate over loads
-	template <int LOAD, int __dummy = 0>
-	struct Iterate {
-		static __device__ __forceinline__ void Invoke(
-			KeyVectorType key_vectors[Config::LOADS_PER_TILE], 
-			KeyVectorType *d_in_key_vectors) 
-		{
-			ModifiedLoad<KeyVectorType, Config::CACHE_MODIFIER>::Ld(
-				key_vectors[0], d_in_key_vectors, threadIdx.x + (Config::THREADS * LOAD));
-			
-			Iterate<LOAD + 1>::Invoke(key_vectors, d_in_key_vectors);
-		}
-	};
-
-	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::LOAD_VEC_SIZE, __dummy> {
-		static __device__ __forceinline__ void Invoke(
-			KeyVectorType key_vectors[Config::LOADS_PER_TILE], 
-			KeyVectorType *d_in_key_vectors) {} 
-	};
-};
 
 
 // Process one tile of keys
@@ -372,17 +342,18 @@ __device__ __forceinline__ void ProcessTile(
 	int *composite_column) 
 {
 	typedef typename Config::KeyType KeyType;
-	typedef typename VecType<KeyType, Config::LOAD_VEC_SIZE>::Type KeyVectorType; 		
+	typedef typename Config::IndexType IndexType;
 
-	// Keys to be loaded for this tile
+	// Load tile of keys
 	KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 
-	// Use an aliased pointer to keys array to perform built-in vector loads
-	KeyVectorType *d_in_key_vectors = (KeyVectorType *) (d_in_keys + cta_offset);
-	KeyVectorType *key_vectors = (KeyVectorType *) keys;
-	
-	// Load tile of keys
-	LoadTileKeys<Config>::template Iterate<0>::template Invoke(key_vectors, d_in_key_vectors);
+	LoadTile<
+		KeyType, 
+		IndexType, 
+		Config::LOADS_PER_TILE, 
+		Config::LOAD_VEC_SIZE, 
+		Config::THREADS, 
+		Config::CACHE_MODIFIER>::Invoke(keys, d_in_keys, cta_offset);
 
 //	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();
 	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
@@ -571,10 +542,9 @@ __device__ __forceinline__ void ReductionPass(
 		warp_idx);
 
 	// Process (potentially-partial) loads singly
-	while (cta_offset < out_of_bounds - threadIdx.x) {
+	while (cta_offset + threadIdx.x < out_of_bounds) {
 		KeyType key;
-		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(
-			key, d_in_keys, cta_offset + threadIdx.x);
+		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys, cta_offset + threadIdx.x);
 		Bucket<Config>(key, composite_column);
 		cta_offset += Config::THREADS;
 	}
@@ -658,7 +628,7 @@ void LsbRakingReductionKernel(
 	typedef typename KernelConfig::IndexType IndexType;
 	
 	// Shared memory pool
-	__shared__ int4 smem_pool[KernelConfig::SHARED_INT4S];
+	__shared__ unsigned char smem_pool[KernelConfig::SMEM_BYTES];
 	
 	// The smem column in composite lanes for each thread 
 	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
@@ -690,7 +660,7 @@ void LsbRakingReductionKernel(
  
 
 
+} // namespace upsweep
 } // namespace lsb_radix_sort
-
 } // namespace b40c
 

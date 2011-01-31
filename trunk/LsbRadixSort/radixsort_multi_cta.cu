@@ -49,8 +49,6 @@
 
 namespace b40c {
 
-using namespace lsb_radix_sort;
-
 
 /******************************************************************************
  *  Storage-wrapper / Problem-descriptor API 
@@ -172,6 +170,7 @@ template <typename KeyType, typename ValueType = KeysOnly>
 struct MultiCtaSortStorage64 : 
 	public MultiCtaSortStorageBase<KeyType, ValueType, long long>
 {
+		
 public:
 	// Typedef for base class
 	typedef MultiCtaSortStorageBase<KeyType, ValueType, long long> Base;
@@ -294,7 +293,7 @@ public:
 		
 		typedef SortingCtaDecomposition<Storage>	Decomposition;
 		
-		typedef UpsweepConfig<
+		typedef lsb_radix_sort::upsweep::UpsweepConfig<
 			ConvertedKeyType, 
 			typename StorageType::IndexType,
 			RADIX_BITS, 
@@ -305,8 +304,9 @@ public:
 			UPSWEEP_LOG_LOADS_PER_TILE,
 			CACHE_MODIFIER> 						Upsweep;
 		
-		typedef SpineScanConfig<
-			typename StorageType::IndexType,
+		typedef lsb_radix_sort::scan::ScanConfig<
+			typename StorageType::IndexType,		// Type of scan problem
+			int,									// Type for indexing into scan problem
 			SPINE_CTA_OCCUPANCY,
 			SPINE_LOG_THREADS,
 			SPINE_LOG_LOAD_VEC_SIZE,
@@ -314,7 +314,7 @@ public:
 			SPINE_LOG_RAKING_THREADS,
 			CACHE_MODIFIER> 						SpineScan;
 		
-		typedef DownsweepConfig<
+		typedef lsb_radix_sort::downsweep::DownsweepConfig<
 			ConvertedKeyType,
 			ValueType,
 			typename StorageType::IndexType,

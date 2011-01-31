@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,8 +28,10 @@
 #pragma once
 
 #include <b40c_cuda_properties.cu>
+#include <b40c_vector_types.cu>
 
 namespace b40c {
+
 
 /**
  * Enumeration of data movement cache modifiers.
@@ -42,6 +44,10 @@ enum CacheModifier {
 	WB
 };
 
+
+/******************************************************************************
+ * Load Operations 
+ ******************************************************************************/
 
 /**
  * Routines for modified loads through cache.  We use structs specialized by value 
@@ -213,7 +219,64 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 #endif	// loads
 
 
+/**
+ * Load a tile of items
+ */
+template <
+	typename T,
+	typename IndexType,
+	int LOADS_PER_TILE, 
+	int LOAD_VEC_SIZE,
+	int ACTIVE_THREADS,
+	CacheModifier CACHE_MODIFIER>
+
+struct LoadTile
+{
+	// Aliased vector type
+	typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType; 		
+
+	// Iterate over loads
+	template <int LOAD, int __dummy = 0>
+	struct Iterate 
+	{
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[LOADS_PER_TILE], 
+			VectorType *d_in_vectors) 
+		{
+			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(
+				vectors[LOAD], d_in_vectors, threadIdx.x);
+			
+			Iterate<LOAD + 1>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+		}
+	};
+
+	// Terminate
+	template <int __dummy>
+	struct Iterate<LOADS_PER_TILE, __dummy> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[LOADS_PER_TILE], VectorType *d_in_vectors) {} 
+	};
 	
+	
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
+		T *d_in,
+		IndexType cta_offset)
+	{
+		// Use an aliased pointer to keys array to perform built-in vector loads
+		VectorType *vectors = (VectorType *) data;
+		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
+		
+		Iterate<0>::template Invoke(vectors, d_in_vectors);
+	}
+};
+	
+	
+/******************************************************************************
+ * Store Operations 
+ ******************************************************************************/
 	
 /**
  * Routines for modified stores through cache.  We use structs specialized by value 
@@ -387,7 +450,61 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 #endif	// stores
 	
 
+/**
+ * Store a tile of items
+ */
+template <
+	typename T,
+	typename IndexType,
+	int STORES_PER_TILE, 
+	int STORE_VEC_SIZE,
+	int ACTIVE_THREADS,
+	CacheModifier CACHE_MODIFIER>
 
+struct StoreTile
+{
+	// Aliased vector type
+	typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType; 		
 
+	// Iterate over loads
+	template <int STORE, int __dummy = 0>
+	struct Iterate 
+	{
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[STORES_PER_TILE], 
+			VectorType *d_in_vectors) 
+		{
+			ModifiedStore<VectorType, CACHE_MODIFIER>::St(
+				vectors[STORE], d_in_vectors, threadIdx.x);
+			
+			Iterate<STORE + 1>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+		}
+	};
+
+	// Terminate
+	template <int __dummy>
+	struct Iterate<STORES_PER_TILE, __dummy> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[STORES_PER_TILE], VectorType *d_in_vectors) {} 
+	};
+	
+	
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T data[STORES_PER_TILE][STORE_VEC_SIZE],
+		T *d_in,
+		IndexType cta_offset)
+	{
+		// Use an aliased pointer to keys array to perform built-in vector loads
+		VectorType *vectors = (VectorType *) data;
+		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
+		
+		Iterate<0>::template Invoke(vectors, d_in_vectors);
+	}
+};
+
+	
+	
 } // namespace b40c
 
