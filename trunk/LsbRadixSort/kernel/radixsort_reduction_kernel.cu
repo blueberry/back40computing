@@ -253,8 +253,7 @@ __device__ __forceinline__ void Bucket(
 	typedef typename Config::KeyType KeyType;
 
 	// Pre-process key with bit-twiddling functor if necessary
-	typename Config::PreprocessFunctor preprocess;
-	preprocess(key);
+	Config::PreprocessFunctor::Transform(key, true);
 
 	// Extract lane containing corresponding composite counter 
 	int lane;
@@ -329,6 +328,14 @@ struct BucketTileKeys
 			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			int *composite_column) {} 
 	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+		int *composite_column) 
+	{
+		Iterate<0, 0>::Invoke(keys, composite_column);
+	} 
 };
 
 
@@ -350,16 +357,17 @@ __device__ __forceinline__ void ProcessTile(
 	LoadTile<
 		KeyType, 
 		IndexType, 
-		Config::LOADS_PER_TILE, 
-		Config::LOAD_VEC_SIZE, 
+		Config::LOG_LOADS_PER_TILE, 
+		Config::LOG_LOAD_VEC_SIZE, 
 		Config::THREADS, 
-		Config::CACHE_MODIFIER>::Invoke(keys, d_in_keys, cta_offset);
+		Config::CACHE_MODIFIER, 
+		true>::Invoke(keys, d_in_keys, cta_offset);
 
 //	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();
 	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
 
 	// Bucket tile of keys
-	BucketTileKeys<Config>::template Iterate<0, 0>::template Invoke(keys, composite_column);
+	BucketTileKeys<Config>::Invoke(keys, composite_column);
 }
 
 
@@ -590,7 +598,7 @@ __device__ __forceinline__ void ReductionPass(
 
 		int base_row_offset = FastMul(threadIdx.x, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW);
 
-		IndexType digit_count = SerialReduce<IndexType, Config::AGGREGATED_PARTIALS_PER_ROW>(
+		IndexType digit_count = SerialReduce<IndexType, Config::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 			raking_pool + base_row_offset);
 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;

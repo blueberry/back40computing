@@ -93,79 +93,6 @@ struct ScanConfig
  ******************************************************************************/
 
 /**
- * Description of a (typically) conflict-free serial-reduce-then-scan (SRTS) 
- * shared-memory grid 
- */
-template <
-	typename _PartialType,
-	int LOG_ACTIVE_THREADS, 
-	int LOG_PARTIALS_PER_THREAD,
-	int LOG_RAKING_THREADS> 
-struct SrtsGrid
-{
-	typedef _PartialType							PartialType;
-	
-	static const int LOG_PARTIALS					= LOG_ACTIVE_THREADS + LOG_PARTIALS_PER_THREAD;
-	static const int PARTIALS			 			= 1 << LOG_PARTIALS;
-	
-	static const int RAKING_THREADS					= 1 << LOG_RAKING_THREADS;
-	
-	static const int LOG_PARTIALS_PER_SEG 			= LOG_PARTIALS - LOG_RAKING_THREADS;	
-	static const int PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG;
-
-	static const int LOG_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
-															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
-															LogBytes<PartialType>::LOG_BYTES;
-
-	static const int PADDING_PARTIALS				= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<PartialType>::LOG_BYTES); 
-
-	static const int LOG_PARTIALS_PER_ROW			= B40C_MAX(LOG_PARTIALS_PER_SEG, LOG_PARTIALS_PER_BANK_ARRAY);
-	static const int PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW;
-	
-	static const int PADDED_PARTIALS_PER_ROW		= PARTIALS_PER_ROW + PADDING_PARTIALS;
-	
-	static const int LOG_SEGS_PER_ROW 				= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
-	static const int SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW;
-
-	static const int LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW;
-	static const int ROWS 							= 1 << LOG_ROWS;
-
-	static const int PARTIAL_STRIDE_ROWS			= 1 << (LOG_ROWS - LOG_PARTIALS_PER_THREAD);
-	static const int PARTIAL_STRIDE					= PARTIAL_STRIDE_ROWS * PADDED_PARTIALS_PER_ROW;
-	
-	static const int SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType);
-	
-	
-	/**
-	 * Returns the location in smem where the calling thread can insert/extract
-	 * its partial for raking reduction/scan
-	 */
-	static __device__ __forceinline__ PartialType* BasePartial(PartialType *smem) 
-	{
-		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
-		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
-		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
-	}
-	
-	/**
-	 * Returns the location in smem where the calling thread can begin serial 
-	 * raking/scanning
-	 */
-	static __device__ __forceinline__ PartialType* RakingSegment(PartialType *smem) 
-	{
-		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
-		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
-		
-		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
-	}
-	
-
-};
-
-
-
-
-/**
  * A detailed upsweep configuration type that specializes kernel code for a specific 
  * sorting pass.  It encapsulates granularity details derived from the inherited 
  * UpsweepConfigType 
@@ -369,16 +296,16 @@ __device__ __forceinline__ void WarpRakeAndScan(
 	if (threadIdx.x < Grid::RAKING_THREADS) {
 		
 		// Raking reduction  
-		PartialType partial = SerialReduce<PartialType, Grid::PARTIALS_PER_SEG>(raking_seg);
+		PartialType partial = SerialReduce<PartialType, Grid::PARTIALS_PER_SEG>::Invoke(raking_seg);
 		
 		// Warpscan
-		PartialType reduction;
-		partial = WarpScan<PartialType, Grid::RAKING_THREADS>::Invoke(partial, reduction, warpscan);
+		PartialType warpscan_total;
+		partial = WarpScan<PartialType, Grid::RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
 		partial += carry;
-		carry += reduction;			// Increment the CTA's running total by the full tile reduction
+		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
 
 		// Raking scan 
-		SerialScan<PartialType, Grid::PARTIALS_PER_SEG>(raking_seg, partial);
+		SerialScan<PartialType, Grid::PARTIALS_PER_SEG>::Invoke(raking_seg, partial);
 	}
 }
 
@@ -412,7 +339,7 @@ struct ProcessTile <Config, false>
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset);
 		
 		// Reduce in registers, place partials in smem
@@ -429,7 +356,7 @@ struct ProcessTile <Config, false>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset);
 	}
 };
@@ -458,7 +385,7 @@ struct ProcessTile <Config, true>
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset);
 		
 		// Reduce in registers, place partials in smem
@@ -468,7 +395,7 @@ struct ProcessTile <Config, true>
 		
 		// Raking reduction in primary grid, place result partial into secondary grid
 		if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
-			ScanType partial = SerialReduce<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>(primary_raking_seg);
+			ScanType partial = SerialReduce<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>::Invoke(primary_raking_seg);
 			*secondary_base_partial = partial;
 		}
 
@@ -482,7 +409,7 @@ struct ProcessTile <Config, true>
 		// Raking scan in primary grid seeded by partial from secondary grid
 		if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
 			ScanType partial = *secondary_base_partial;
-			SerialScan<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>(primary_raking_seg, partial);
+			SerialScan<ScanType, Config::PrimaryGrid::PARTIALS_PER_SEG>::Invoke(primary_raking_seg, partial);
 		}
 
 		__syncthreads();
@@ -491,7 +418,7 @@ struct ProcessTile <Config, true>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, IndexType, Config::LOADS_PER_TILE, Config::LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER>::Invoke(
+		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset);
 		
 	}

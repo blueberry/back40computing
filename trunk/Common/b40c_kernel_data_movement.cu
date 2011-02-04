@@ -219,61 +219,194 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 #endif	// loads
 
 
+	
+	
+/**
+ * Empty default transform function (leaves non-in_bounds values as they were)
+ */
+template <typename T> 
+__device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) {} 
+	
+
 /**
  * Load a tile of items
  */
 template <
+	typename T,													// Type to load
+	typename IndexType,											// Integer type for indexing into global arrays 
+	int LOG_LOADS_PER_TILE, 									// Number of vector loads (log)
+	int LOG_LOAD_VEC_SIZE,										// Number of items per vector load (log)
+	int ACTIVE_THREADS,											// Active threads that will be loading
+	CacheModifier CACHE_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+	bool UNGUARDED_IO,											// Whether or not bounds-checking is to be done
+	void Transform(T&, bool) = NopLoadTransform<T> > 			// Assignment function to transform the loaded value (can be used assign default values for items deemed not in bounds)  
+		struct LoadTile;
+
+
+/**
+ * Load of a tile of items using unguarded loads 
+ */
+template <
 	typename T,
 	typename IndexType,
-	int LOADS_PER_TILE, 
-	int LOAD_VEC_SIZE,
+	int LOG_LOADS_PER_TILE, 
+	int LOG_LOAD_VEC_SIZE,
 	int ACTIVE_THREADS,
-	CacheModifier CACHE_MODIFIER>
+	CacheModifier CACHE_MODIFIER,
+	void Transform(T&, bool)>
 
-struct LoadTile
+struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true, Transform>
 {
+	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
+	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
+	
 	// Aliased vector type
 	typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType; 		
 
-	// Iterate over loads
-	template <int LOAD, int __dummy = 0>
+	// Next vec element
+	template <int LOAD, int VEC, int __dummy = 0>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[LOADS_PER_TILE], 
+			T data[][LOAD_VEC_SIZE],
+			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
-			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(
-				vectors[LOAD], d_in_vectors, threadIdx.x);
-			
-			Iterate<LOAD + 1>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+			Transform(data[LOAD][VEC], true);	// Apply transform function with in_bounds = true 
+			Iterate<LOAD, VEC + 1>::Invoke(data, vectors, d_in_vectors);
 		}
 	};
 
-	// Terminate
-	template <int __dummy>
-	struct Iterate<LOADS_PER_TILE, __dummy> 
+	// First vec element
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, 0, __dummy> 
 	{
 		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[LOADS_PER_TILE], VectorType *d_in_vectors) {} 
+			T data[][LOAD_VEC_SIZE],
+			VectorType vectors[], 
+			VectorType *d_in_vectors) 
+		{
+			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, threadIdx.x);
+			Transform(data[LOAD][0], true);		// Apply transform function with in_bounds = true 
+			Iterate<LOAD, 1>::Invoke(data, vectors, d_in_vectors);
+		}
+	};
+
+	// Next load
+	template <int LOAD, int __dummy>
+	struct Iterate<LOAD, LOAD_VEC_SIZE, __dummy> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			T data[][LOAD_VEC_SIZE],
+			VectorType vectors[], 
+			VectorType *d_in_vectors) 
+		{
+			Iterate<LOAD + 1, 0>::Invoke(data, vectors, d_in_vectors + ACTIVE_THREADS);
+		}
 	};
 	
-	
+	// Terminate
+	template <int __dummy>
+	struct Iterate<LOADS_PER_TILE, 0, __dummy> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			T data[][LOAD_VEC_SIZE],
+			VectorType vectors[], 
+			VectorType *d_in_vectors) {} 
+	};
+
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
+		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset)
+		IndexType cta_offset,
+		IndexType out_of_bounds = 0)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		VectorType *vectors = (VectorType *) data;
 		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
-		
-		Iterate<0>::template Invoke(vectors, d_in_vectors);
-	}
+		Iterate<0,0>::Invoke(data, vectors, d_in_vectors);
+	} 
 };
 	
+
+/**
+ * Load of a tile of items using guarded loads 
+ */
+template <
+	typename T,
+	typename IndexType,
+	int LOG_LOADS_PER_TILE, 
+	int LOG_LOAD_VEC_SIZE,
+	int ACTIVE_THREADS,
+	CacheModifier CACHE_MODIFIER,
+	void Transform(T&, bool)>
+
+struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false, Transform>
+{
+	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
+	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
+
+	// Iterate over vec-elements
+	template <int LOAD, int VEC>
+	struct Iterate 
+	{
+		static __device__ __forceinline__ void Invoke(
+			T data[][LOAD_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds)
+		{
+			if (thread_offset + VEC < out_of_bounds) {
+				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset + VEC);
+				Transform(data[LOAD][VEC], true);
+			} else {
+				Transform(data[LOAD][VEC], false);	// !in_bounds 
+			}
+			Iterate<LOAD, VEC + 1>::Invoke(data, d_in, thread_offset, out_of_bounds);
+		}
+	};
+
+	// Iterate over loads
+	template <int LOAD>
+	struct Iterate<LOAD, LOAD_VEC_SIZE> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			T data[][LOAD_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds)
+		{
+			Iterate<LOAD + 1, 0>::Invoke(
+				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE), out_of_bounds);
+		}
+	};
 	
+	// Terminate
+	template <int VEC>
+	struct Iterate<LOADS_PER_TILE, VEC> 
+	{
+		static __device__ __forceinline__ void Invoke(
+			T data[][LOAD_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T data[][LOAD_VEC_SIZE],
+		T *d_in,
+		IndexType cta_offset,
+		IndexType out_of_bounds)
+	{
+		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
+		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
+	} 
+};
+
+
+
 /******************************************************************************
  * Store Operations 
  ******************************************************************************/
@@ -456,22 +589,38 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 template <
 	typename T,
 	typename IndexType,
-	int STORES_PER_TILE, 
-	int STORE_VEC_SIZE,
+	int LOG_STORES_PER_TILE, 
+	int LOG_STORE_VEC_SIZE,
+	int ACTIVE_THREADS,
+	CacheModifier CACHE_MODIFIER,
+	bool UNGUARDED_IO> 
+		struct StoreTile;
+
+/**
+ * Store of a tile of items using unguarded stores 
+ */
+template <
+	typename T,
+	typename IndexType,
+	int LOG_STORES_PER_TILE, 
+	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER>
 
-struct StoreTile
+struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true>
 {
+	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
+	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
+	
 	// Aliased vector type
 	typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType; 		
 
-	// Iterate over loads
+	// Iterate over stores
 	template <int STORE, int __dummy = 0>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[STORES_PER_TILE], 
+			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
 			ModifiedStore<VectorType, CACHE_MODIFIER>::St(
@@ -486,22 +635,91 @@ struct StoreTile
 	struct Iterate<STORES_PER_TILE, __dummy> 
 	{
 		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[STORES_PER_TILE], VectorType *d_in_vectors) {} 
+			VectorType vectors[], VectorType *d_in_vectors) {} 
 	};
-	
 	
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		T data[STORES_PER_TILE][STORE_VEC_SIZE],
+		T data[][STORE_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset)
+		IndexType cta_offset,
+		IndexType out_of_bounds = 0)
 	{
-		// Use an aliased pointer to keys array to perform built-in vector loads
+		// Use an aliased pointer to keys array to perform built-in vector stores
 		VectorType *vectors = (VectorType *) data;
 		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
 		
-		Iterate<0>::template Invoke(vectors, d_in_vectors);
+		Iterate<0>::Invoke(vectors, d_in_vectors);
 	}
+};
+	
+
+/**
+ * Store of a tile of items using guarded stores 
+ */
+template <
+	typename T,
+	typename IndexType,
+	int LOG_STORES_PER_TILE, 
+	int LOG_STORE_VEC_SIZE,
+	int ACTIVE_THREADS,
+	CacheModifier CACHE_MODIFIER>
+
+struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false>
+{
+	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
+	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
+
+	// Iterate over vec-elements
+	template <int STORE, int VEC>
+	struct Iterate {
+		static __device__ __forceinline__ void Invoke(
+			T data[][STORE_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds)
+		{
+			if (thread_offset + VEC < out_of_bounds) {
+				ModifiedStore<T, CACHE_MODIFIER>::St(data[STORE][VEC], d_in, thread_offset + VEC);
+			}
+			Iterate<STORE, VEC + 1>::Invoke(data, d_in, thread_offset, out_of_bounds);
+		}
+	};
+
+	// Iterate over stores
+	template <int STORE>
+	struct Iterate<STORE, STORE_VEC_SIZE> {
+		static __device__ __forceinline__ void Invoke(
+			T data[][STORE_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds)
+		{
+			Iterate<STORE + 1, 0>::Invoke(
+				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
+		}
+	};
+	
+	// Terminate
+	template <int VEC>
+	struct Iterate<STORES_PER_TILE, VEC> {
+		static __device__ __forceinline__ void Invoke(
+			T data[][STORE_VEC_SIZE],
+			T *d_in,
+			IndexType thread_offset,
+			IndexType out_of_bounds) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T data[][STORE_VEC_SIZE],
+		T *d_in,
+		IndexType cta_offset,
+		IndexType out_of_bounds)
+	{
+		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE);
+		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
+	} 
 };
 
 	

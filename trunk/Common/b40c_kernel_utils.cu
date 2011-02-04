@@ -196,6 +196,88 @@ struct CtaDecomposition {
 
 
 /******************************************************************************
+ * Common configuration types 
+ ******************************************************************************/
+
+
+/**
+ * Description of a (typically) conflict-free serial-reduce-then-scan (SRTS) 
+ * shared-memory grid 
+ */
+template <
+	typename _PartialType,
+	int _LOG_ACTIVE_THREADS, 
+	int _LOG_PARTIALS_PER_THREAD,
+	int _LOG_RAKING_THREADS> 
+struct SrtsGrid
+{
+	typedef _PartialType							PartialType;
+	
+	static const int LOG_ACTIVE_THREADS				= _LOG_ACTIVE_THREADS;
+	static const int ACTIVE_THREADS					= 1 << LOG_ACTIVE_THREADS;
+	
+	static const int LOG_PARTIALS_PER_THREAD		= _LOG_PARTIALS_PER_THREAD;
+	static const int PARTIALS_PER_THREAD			= 1 <<LOG_PARTIALS_PER_THREAD;
+
+	static const int LOG_RAKING_THREADS				= _LOG_RAKING_THREADS;
+	static const int RAKING_THREADS					= 1 << LOG_RAKING_THREADS;
+
+	static const int LOG_PARTIALS					= LOG_ACTIVE_THREADS + LOG_PARTIALS_PER_THREAD;
+	static const int PARTIALS			 			= 1 << LOG_PARTIALS;
+	
+	static const int LOG_PARTIALS_PER_SEG 			= LOG_PARTIALS - LOG_RAKING_THREADS;	
+	static const int PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG;
+
+	static const int LOG_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
+															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
+															LogBytes<PartialType>::LOG_BYTES;
+
+	static const int PADDING_PARTIALS				= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<PartialType>::LOG_BYTES); 
+
+	static const int LOG_PARTIALS_PER_ROW			= B40C_MAX(LOG_PARTIALS_PER_SEG, LOG_PARTIALS_PER_BANK_ARRAY);
+	static const int PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW;
+	
+	static const int PADDED_PARTIALS_PER_ROW		= PARTIALS_PER_ROW + PADDING_PARTIALS;
+	
+	static const int LOG_SEGS_PER_ROW 				= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
+	static const int SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW;
+
+	static const int LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW;
+	static const int ROWS 							= 1 << LOG_ROWS;
+
+	static const int PARTIAL_STRIDE_ROWS			= 1 << (LOG_ROWS - LOG_PARTIALS_PER_THREAD);
+	static const int PARTIAL_STRIDE					= PARTIAL_STRIDE_ROWS * PADDED_PARTIALS_PER_ROW;
+	
+	static const int SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType);
+	
+	
+	/**
+	 * Returns the location in smem where the calling thread can insert/extract
+	 * its partial for raking reduction/scan
+	 */
+	static __device__ __forceinline__ PartialType* BasePartial(PartialType *smem) 
+	{
+		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
+		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
+		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
+	}
+	
+	/**
+	 * Returns the location in smem where the calling thread can begin serial 
+	 * raking/scanning
+	 */
+	static __device__ __forceinline__ PartialType* RakingSegment(PartialType *smem) 
+	{
+		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
+		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
+		
+		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
+	}
+};
+
+
+
+/******************************************************************************
  * Common device routines (scans, reductions, etc.) 
  ******************************************************************************/
 
@@ -204,18 +286,18 @@ template <typename T, int NUM_ELEMENTS>
 struct WarpScan
 {
 	// General iteration
-	template <int COUNT, int __dummy = 0>
+	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
 		static __device__ __forceinline__ void Invoke(
 			T partial,
 			volatile T warpscan[][NUM_ELEMENTS], 
-			int warpscan_idx) 
+			int warpscan_tid) 
 		{
 			
-			partial = partial + warpscan[1][warpscan_idx - COUNT];
-			warpscan[1][warpscan_idx] = partial;
-			Iterate<COUNT * 2>::template Invoke(partial, warpscan, warpscan_idx);
+			partial = partial + warpscan[1][warpscan_tid - OFFSET_LEFT];
+			warpscan[1][warpscan_tid] = partial;
+			Iterate<OFFSET_LEFT * 2>::template Invoke(partial, warpscan, warpscan_tid);
 		}
 	};
 	
@@ -226,72 +308,28 @@ struct WarpScan
 		static __device__ __forceinline__ void Invoke(
 			T partial,
 			volatile T warpscan[][NUM_ELEMENTS], 
-			int warpscan_idx) {}
+			int warpscan_tid) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,
-		T &reduction,						// out param
-		volatile T warpscan[][NUM_ELEMENTS]) 
+		T partial,								// Input partial
+		T &total,								// Total aggregate reduction (out param)
+		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning
+		int warpscan_tid = threadIdx.x)			// Thread's warpscan id 
 	{
-		int warpscan_idx = threadIdx.x;
-		warpscan[1][warpscan_idx] = partial;
+		warpscan[1][warpscan_tid] = partial;
 		
-		Iterate<1>::template Invoke(partial, warpscan, warpscan_idx);
+		Iterate<1>::template Invoke(partial, warpscan, warpscan_tid);
 
 		// Set aggregate reduction
-		reduction = warpscan[1][NUM_ELEMENTS - 1];
+		total = warpscan[1][NUM_ELEMENTS - 1];
 		
 		// Return scan partial
-		return warpscan[1][warpscan_idx - 1];
+		return warpscan[1][warpscan_tid - 1];
 	}
 };
 
-
-
-
-
-
-
-/**
- * Perform a warp-synchrounous prefix scan.  Allows for diverting a warp's
- * threads into separate scan problems (multi-scan). 
- */
-/*
-template <typename T, int NUM_ELEMENTS, bool MULTI_SCAN> 
-__device__ __forceinline__ int WarpScan(
-	volatile T warpscan[][NUM_ELEMENTS],
-	T partial_reduction,
-	T copy_section = 0) {
-	
-	int warpscan_idx;
-	if (MULTI_SCAN) {
-		warpscan_idx = threadIdx.x & (NUM_ELEMENTS - 1);
-	} else {
-		warpscan_idx = threadIdx.x;
-	}
-
-	warpscan[1][warpscan_idx] = partial_reduction;
-
-	if (NUM_ELEMENTS > 1) warpscan[1][warpscan_idx] = partial_reduction = 
-			partial_reduction + warpscan[1][warpscan_idx - 1];
-	if (NUM_ELEMENTS > 2) warpscan[1][warpscan_idx] = partial_reduction = 
-			partial_reduction + warpscan[1][warpscan_idx - 2];
-	if (NUM_ELEMENTS > 4) warpscan[1][warpscan_idx] = partial_reduction = 
-			partial_reduction + warpscan[1][warpscan_idx - 4];
-	if (NUM_ELEMENTS > 8) warpscan[1][warpscan_idx] = partial_reduction = 
-			partial_reduction + warpscan[1][warpscan_idx - 8];
-	if (NUM_ELEMENTS > 16) warpscan[1][warpscan_idx] = partial_reduction = 
-			partial_reduction + warpscan[1][warpscan_idx - 16];
-	
-	if (copy_section > 0) {
-		warpscan[1 + copy_section][warpscan_idx] = partial_reduction;
-	}
-	
-	return warpscan[1][warpscan_idx - 1];
-}
-*/
 
 
 /**
@@ -316,6 +354,37 @@ __device__ __forceinline__ void WarpReduce(
 /**
  * Have each thread concurrently perform a serial reduction over its specified segment 
  */
+template <typename T, int LENGTH> 
+struct SerialReduce
+{
+	// Iterate
+	template <int COUNT, int __dummy = 0>
+	struct Iterate 
+	{
+		static __device__ __forceinline__ T Invoke(T partials[]) 
+		{
+			return partials[COUNT] + Iterate<COUNT + 1>::Invoke(partials);
+		}
+	};
+	
+	// Terminate
+	template <int __dummy>
+	struct Iterate<LENGTH - 1, __dummy> 
+	{
+		static __device__ __forceinline__ T Invoke(T partials[]) 
+		{
+			return partials[LENGTH - 1];
+		}
+	};
+	
+	// Interface
+	static __device__ __forceinline__ T Invoke(T partials[])			
+	{
+		return Iterate<0>::template Invoke(partials);
+	}
+};
+
+/*
 template <typename T, int LENGTH>
 __device__ __forceinline__ 
 T SerialReduce(T partials[]) {
@@ -329,52 +398,57 @@ T SerialReduce(T partials[]) {
 	
 	return reduce;
 }
+*/
 
 
 /**
  * Have each thread concurrently perform a serial scan over its 
  * specified segment (in place).  Returns the inclusive total.
  */
-template <typename T, int LENGTH>
-__device__ __forceinline__
-T SerialScan(T partials[], T seed) 
+template <typename T, int LENGTH> 
+struct SerialScan
 {
-	// Unroll to avoid copy
-	#pragma unroll	
-	for (int i = 0; i <= LENGTH - 2; i += 2) {
-		T tmp = seed + partials[i];
-		partials[i] = seed;
-		seed = tmp + partials[i + 1];
-		partials[i + 1] = tmp;
+	// Iterate
+	template <int COUNT, int __dummy = 0>
+	struct Iterate 
+	{
+		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial) 
+		{
+			T inclusive_partial = partials[COUNT] + exclusive_partial;
+			results[COUNT] = exclusive_partial;
+			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
+		}
+	};
+	
+	// Terminate
+	template <int __dummy>
+	struct Iterate<LENGTH, __dummy> 
+	{
+		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial) 
+		{
+			return exclusive_partial;
+		}
+	};
+	
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partials[], 
+		T exclusive_partial)			// Exclusive partial to seed with
+	{
+		return Iterate<0>::template Invoke(partials, partials, exclusive_partial);
 	}
 	
-	if (LENGTH & 1) {
-		T tmp = partials[LENGTH - 1] + seed;
-		partials[LENGTH - 1] = seed;
-		seed = tmp;
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partials[],
+		T results[],
+		T exclusive_partial)			// Exclusive partial to seed with
+	{
+		return Iterate<0>::template Invoke(partials, results, exclusive_partial);
 	}
-	
-	return seed;
-}
+};
 
 
-/**
- * Have each thread concurrently perform a serial scan over its specified segment
- */
-template <typename T, int LENGTH>
-__device__ __forceinline__
-void SerialScan(
-	T partials[], 
-	T results[],
-	T seed) 
-{
-	results[0] = seed;
-	
-	#pragma unroll	
-	for (int i = 1; i < LENGTH; i++) {
-		results[i] = results[i - 1] + partials[i - 1];
-	}
-}
 
 
 /**
