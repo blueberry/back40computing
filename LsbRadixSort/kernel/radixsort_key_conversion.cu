@@ -54,21 +54,42 @@ namespace b40c {
 //
 
 template <typename T>
-struct NopFunctor{
+struct NopFunctor
+{
+    static const bool MustApply = false;
+
     template <typename ConvertedKeyType>
-	__device__ __host__ __forceinline__ void operator()(ConvertedKeyType &converted_key) {}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key, bool in_range) 
+    {
+    	if (!in_range) {
+    		converted_key = (ConvertedKeyType) -1;
+    	}
+    }
+
+    template <typename ConvertedKeyType>
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key) {} 
 };
+
 
 //
 // Do-nothing functors that indicate a mandatory pass
 //
 
 template <typename T>
-struct MandatoryPassNopFunctor{
-    template <typename ConvertedKeyType>
-	__device__ __host__ __forceinline__ void operator()(ConvertedKeyType &converted_key) {}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+struct MandatoryPassNopFunctor
+{
+	static const bool MustApply = true;
+
+	template <typename ConvertedKeyType>
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key, bool in_range) 
+    {
+    	if (!in_range) {
+    		converted_key = (ConvertedKeyType) -1;
+    	}
+    }
+	
+	template <typename ConvertedKeyType>
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key) {} 
 };
 
 
@@ -76,22 +97,32 @@ struct MandatoryPassNopFunctor{
 // Conversion for generic unsigned types
 //
 
-template <typename T> struct KeyConversion {
+template <typename T> struct KeyConversion 
+{
 	typedef T UnsignedBits;
 };
 
 template <typename T>
-struct PreprocessKeyFunctor{
+struct PreprocessKeyFunctor
+{
+    static const bool MustApply = false;
+
     template <typename ConvertedKeyType>
-	__device__ __host__ __forceinline__ void operator()(ConvertedKeyType &converted_key) {}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key, bool in_range) 
+    {
+    	if (!in_range) {
+    		converted_key = (ConvertedKeyType) -1;
+    	}
+    }
 };
 
 template <typename T>
-struct PostprocessKeyFunctor {
+struct PostprocessKeyFunctor 
+{
+    static const bool MustApply = false;
+
     template <typename ConvertedKeyType>
-	__device__ __host__ __forceinline__ void operator()(ConvertedKeyType &converted_key) {}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return false;}
+	__device__ __host__ __forceinline__ static void Transform(ConvertedKeyType &converted_key) {} 
 };
 
 
@@ -100,28 +131,37 @@ struct PostprocessKeyFunctor {
 // Conversion for floats
 //
 
-template <> struct KeyConversion<float> {
+template <> struct KeyConversion<float> 
+{
 	typedef unsigned int UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<float> {
-	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
+struct PreprocessKeyFunctor<float> 
+{
+	static const bool MustApply = true;
 
-		unsigned int mask = (converted_key & 0x80000000) ? 0xffffffff : 0x80000000; 
-		converted_key ^= mask;
+	__device__ __host__ __forceinline__ static void Transform(unsigned int &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			unsigned int mask = (converted_key & 0x80000000) ? 0xffffffff : 0x80000000; 
+			converted_key ^= mask;
+		} else {
+			converted_key = (unsigned int) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<float> {
-	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
+struct PostprocessKeyFunctor<float> 
+{
+	static const bool MustApply = true;
 
+	__device__ __host__ __forceinline__ static void Transform(unsigned int &converted_key) 
+	{
 		unsigned int mask = (converted_key & 0x80000000) ? 0x80000000 : 0xffffffff; 
 		converted_key ^= mask;
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -130,27 +170,36 @@ struct PostprocessKeyFunctor<float> {
 // Conversion for doubles
 //
 
-template <> struct KeyConversion<double> {
+template <> struct KeyConversion<double> 
+{
 	typedef unsigned long long UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<double> {
-	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key) {
+struct PreprocessKeyFunctor<double> 
+{
+	static const bool MustApply = true;
 
-		unsigned long long mask = (converted_key & 0x8000000000000000) ? 0xffffffffffffffff : 0x8000000000000000; 
-		converted_key ^= mask;
+	__device__ __host__ __forceinline__ static void Transform(unsigned long long &converted_key, bool in_range) {
+		if (in_range) {
+			unsigned long long mask = (converted_key & 0x8000000000000000) ? 0xffffffffffffffff : 0x8000000000000000; 
+			converted_key ^= mask;
+		} else {
+			converted_key = (unsigned long long) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<double> {
-	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key)  {
+struct PostprocessKeyFunctor<double> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned long long &converted_key)  
+	{
 		unsigned long long mask = (converted_key & 0x8000000000000000) ? 0x8000000000000000 : 0xffffffffffffffff; 
         converted_key ^= mask;
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -158,50 +207,73 @@ struct PostprocessKeyFunctor<double> {
 // Conversion for signed chars
 //
 
-template <> struct KeyConversion<char> {
+template <> struct KeyConversion<char> 
+{
 	typedef unsigned char UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<char> {
-	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key) {
-		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<char> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned char &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
+			converted_key ^= SIGN_MASK;
+		} else {
+			converted_key = (unsigned char) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<char> {
-	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key)  {
+struct PostprocessKeyFunctor<char> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned char &converted_key)  
+	{
 		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
 // TODO handle this more gracefully
-template <> struct KeyConversion<signed char> {
+template <> struct KeyConversion<signed char> 
+{
 	typedef unsigned char UnsignedBits;
 };
 
+
 template <>
-struct PreprocessKeyFunctor<signed char> {
-	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key) {
-		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<signed char> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned char &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
+			converted_key ^= SIGN_MASK;	
+		} else {
+			converted_key = (unsigned char) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<signed char> {
-	__device__ __host__ __forceinline__ void operator()(unsigned char &converted_key)  {
+struct PostprocessKeyFunctor<signed char> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned char &converted_key)  
+	{
 		const unsigned int SIGN_MASK = 1u << ((sizeof(char) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -209,26 +281,37 @@ struct PostprocessKeyFunctor<signed char> {
 // Conversion for signed shorts
 //
 
-template <> struct KeyConversion<short> {
+template <> struct KeyConversion<short> 
+{
 	typedef unsigned short UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<short> {
-	__device__ __host__ __forceinline__ void operator()(unsigned short &converted_key) {
-		const unsigned int SIGN_MASK = 1u << ((sizeof(short) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<short> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned short &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const unsigned int SIGN_MASK = 1u << ((sizeof(short) * 8) - 1);
+			converted_key ^= SIGN_MASK;
+		} else {
+			converted_key = (unsigned short) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<short> {
-	__device__ __host__ __forceinline__ void operator()(unsigned short &converted_key)  {
+struct PostprocessKeyFunctor<short> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned short &converted_key)  
+	{
 		const unsigned int SIGN_MASK = 1u << ((sizeof(short) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -237,26 +320,37 @@ struct PostprocessKeyFunctor<short> {
 // Conversion for signed ints
 //
 
-template <> struct KeyConversion<int> {
+template <> struct KeyConversion<int> 
+{
 	typedef unsigned int UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<int> {
-	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key) {
-		const unsigned int SIGN_MASK = 1u << ((sizeof(int) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<int> 
+{
+	__device__ __host__ __forceinline__ static void Transform(unsigned int &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const unsigned int SIGN_MASK = 1u << ((sizeof(int) * 8) - 1);
+			converted_key ^= SIGN_MASK;	
+		} else {
+			converted_key = (unsigned int) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
+	
+	static const bool MustApply = true;
 };
 
 template <>
-struct PostprocessKeyFunctor<int> {
-	__device__ __host__ __forceinline__ void operator()(unsigned int &converted_key)  {
+struct PostprocessKeyFunctor<int> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned int &converted_key)  
+	{
 		const unsigned int SIGN_MASK = 1u << ((sizeof(int) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -266,7 +360,8 @@ struct PostprocessKeyFunctor<int> {
 //
 
 // TODO rework this with metaprogramming
-template <> struct KeyConversion<unsigned long> {
+template <> struct KeyConversion<unsigned long> 
+{
 #if ULONG_MAX == UINT_MAX
     typedef unsigned int UnsignedBits;
 #else
@@ -275,7 +370,8 @@ template <> struct KeyConversion<unsigned long> {
 };
 
 // TODO rework this with metaprogramming
-template <> struct KeyConversion<long> {
+template <> struct KeyConversion<long> 
+{
 #if ULONG_MAX == UINT_MAX
     typedef unsigned int UnsignedBits;
 #else
@@ -284,21 +380,31 @@ template <> struct KeyConversion<long> {
 };
 
 template <>
-struct PreprocessKeyFunctor<long> {
-	__device__ __host__ __forceinline__ void operator()(typename KeyConversion<long>::UnsignedBits& converted_key) {
-		const typename KeyConversion<long>::UnsignedBits SIGN_MASK = 1ul << ((sizeof(long) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<long> 
+{
+	__device__ __host__ __forceinline__ static void Transform(typename KeyConversion<long>::UnsignedBits &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const typename KeyConversion<long>::UnsignedBits SIGN_MASK = 1ul << ((sizeof(long) * 8) - 1);
+			converted_key ^= SIGN_MASK;
+		} else {
+			converted_key = (typename KeyConversion<long>::UnsignedBits) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
+	
+	static const bool MustApply = true;
 };
 
 template <>
-struct PostprocessKeyFunctor<long> {
-	__device__ __host__ __forceinline__ void operator()(typename KeyConversion<long>::UnsignedBits& converted_key) {
+struct PostprocessKeyFunctor<long> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(typename KeyConversion<long>::UnsignedBits& converted_key) 
+	{
 		const typename KeyConversion<long>::UnsignedBits SIGN_MASK = 1ul << ((sizeof(long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 
@@ -307,26 +413,37 @@ struct PostprocessKeyFunctor<long> {
 // Conversion for signed long longs 
 //
 
-template <> struct KeyConversion<long long> {
+template <> struct KeyConversion<long long> 
+{
 	typedef unsigned long long UnsignedBits;
 };
 
 template <>
-struct PreprocessKeyFunctor<long long> {
-	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key) {
-		const unsigned long long SIGN_MASK = 1ull << ((sizeof(long long) * 8) - 1);
-		converted_key ^= SIGN_MASK;	
+struct PreprocessKeyFunctor<long long> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned long long &converted_key, bool in_range) 
+	{
+		if (in_range) {
+			const unsigned long long SIGN_MASK = 1ull << ((sizeof(long long) * 8) - 1);
+			converted_key ^= SIGN_MASK;
+		} else {
+			converted_key = (unsigned long long) -1;
+		}
 	}
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 template <>
-struct PostprocessKeyFunctor<long long> {
-	__device__ __host__ __forceinline__ void operator()(unsigned long long &converted_key)  {
+struct PostprocessKeyFunctor<long long> 
+{
+	static const bool MustApply = true;
+
+	__device__ __host__ __forceinline__ static void Transform(unsigned long long &converted_key)  
+	{
 		const unsigned long long SIGN_MASK = 1ull << ((sizeof(long long) * 8) - 1);
 		converted_key ^= SIGN_MASK;	
     }
-	__device__ __host__ __forceinline__ static bool MustApply(){ return true;}
 };
 
 

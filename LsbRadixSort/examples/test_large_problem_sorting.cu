@@ -64,7 +64,8 @@ using namespace b40c;
  * Defines, constants, globals 
  ******************************************************************************/
 
-//#define __B40C_ERROR_CHECKING__		 
+// mooch 
+#define __B40C_ERROR_CHECKING__		 
 
 bool g_verbose;
 
@@ -134,12 +135,14 @@ void TimedSort(
 	EarlyExitLsbSortEnactor<K> sorting_enactor;			
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
+/* mooch	
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
+*/	
 	
 	// Perform the timed number of sorting iterations
 
@@ -211,6 +214,7 @@ void TimedSort(
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
+/*
 template <typename K, typename V>
 void TimedSort(
 	unsigned int num_elements, 
@@ -294,7 +298,7 @@ void TimedSort(
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
 }
-
+*/
 
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
@@ -323,16 +327,21 @@ void TestSort(
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-		RandomBits<K>(h_keys[i], 0);
+
+		// mooch
+		h_keys[i] = i % 16;
+//		RandomBits<K>(h_keys[i], 0);
+		
 		h_reference_keys[i] = h_keys[i];
 	}
 
-    // Run the timing test 
-	if (keys_only) {
+    // Run the timing test
+// mooch
+//	if (keys_only) {
 		TimedSort<K>(num_elements, h_keys, iterations);
-	} else {
-		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
-	}
+//	} else {
+//		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
+//	}
 
 	cudaThreadSynchronize();
     
@@ -435,7 +444,10 @@ int main( int argc, char** argv) {
 			iterations,
 			num_elements, 
 			keys_only);
-*/			
+*/
+
+	// Flushes any stdio from the GPU 
+	cudaThreadSynchronize();
 }
 
 

@@ -425,7 +425,7 @@ protected:
 		
 		
 		// mooch
-		if (CURRENT_PASS ==  0) {
+		if (CURRENT_PASS == 0) {
 		
 			//
 			// Invoke upsweep reduction kernel
@@ -444,44 +444,43 @@ protected:
 					(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector ^ 1],
 					work);
 			dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
-		}	
 	
-		//
-		// Invoke spine scan kernel
-		//
-		
-		grid_size = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	1 :  						// SM2.0+ gets 1 CTA
-						(this->cuda_props.kernel_ptx_version >= 120) ? 	work.sweep_grid_size :		// GT200 gets the same grid size as the sweep kernels 
-																		work.sweep_grid_size;		// G80/90 gets the same grid size as the sweep kernels
-
-		dynamic_smem = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	0 :  		// SM2.0+
-						(this->cuda_props.kernel_ptx_version >= 120) ? 	downsweep_attrs.sharedSizeBytes - spine_scan_kernel_attrs.sharedSizeBytes :			// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels) 
-																		0;			// SM1.0-1.1
-		LsbSpineScanKernel<SpineScanKernelConfigType>
-			<<<grid_size, SpineScanKernelConfigType::THREADS, dynamic_smem>>>(
-				(IndexType *) this->d_spine,
-				work.spine_elements);
-		dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbSpineScanKernel failed: ", __FILE__, __LINE__);
-		
-/*	    
-	    //
-	    // Invoke downsweep scan/scatter kernel
-	    //
-	    
-		grid_size = work.sweep_grid_size;
-		dynamic_smem = 0;
-		
-		LsbScanScatterKernel<DownsweepKernelConfigType>
-			<<<grid_size, DownsweepKernelConfigType::THREADS, dynamic_smem>>>(
-				d_selectors,
-				(IndexType *) this->d_spine,
-				(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector],
-				(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector ^ 1],
-				work.problem_storage.d_values[work.problem_storage.selector],
-				work.problem_storage.d_values[work.problem_storage.selector ^ 1],
-				work);
-	    dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
-*/
+			//
+			// Invoke spine scan kernel
+			//
+			
+			grid_size = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	1 :  						// SM2.0+ gets 1 CTA
+							(this->cuda_props.kernel_ptx_version >= 120) ? 	work.sweep_grid_size :		// GT200 gets the same grid size as the sweep kernels 
+																			work.sweep_grid_size;		// G80/90 gets the same grid size as the sweep kernels
+	
+			dynamic_smem = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	0 :  		// SM2.0+
+							(this->cuda_props.kernel_ptx_version >= 120) ? 	downsweep_attrs.sharedSizeBytes - spine_scan_kernel_attrs.sharedSizeBytes :			// GT200 gets the same smem allocation for every kernel launch (pad the reduction/top-level-scan kernels) 
+																			0;			// SM1.0-1.1
+			LsbSpineScanKernel<SpineScanKernelConfigType>
+				<<<grid_size, SpineScanKernelConfigType::THREADS, dynamic_smem>>>(
+					(IndexType *) this->d_spine,
+					work.spine_elements);
+			dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbSpineScanKernel failed: ", __FILE__, __LINE__);
+			
+			//
+			// Invoke downsweep scan/scatter kernel
+			//
+			
+			grid_size = work.sweep_grid_size;
+			dynamic_smem = 0;
+			
+			LsbScanScatterKernel<DownsweepKernelConfigType>
+				<<<grid_size, DownsweepKernelConfigType::THREADS, dynamic_smem>>>(
+					d_selectors,
+					(IndexType *) this->d_spine,
+					(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector],
+					(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector ^ 1],
+					work.problem_storage.d_values[work.problem_storage.selector],
+					work.problem_storage.d_values[work.problem_storage.selector ^ 1],
+					work);
+			dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
+		}	
+			
 	    
 		return cudaSuccess;
 	}
