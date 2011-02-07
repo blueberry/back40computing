@@ -109,55 +109,58 @@ struct UpsweepKernelConfig : UpsweepConfigType
 {
 	typedef PreprocessFunctorType					PreprocessFunctor;
 	
-	static const int RADIX_DIGITS 					= 1 << UpsweepConfigType::RADIX_BITS;
-	static const int CURRENT_PASS					= _CURRENT_PASS;
-	static const int CURRENT_BIT					= _CURRENT_BIT;
+	enum {		// N.B.: We use an enum type here b/c of a NVCC-win compiler bug involving ternary expressions in static-const fields
 
-	static const int THREADS						= 1 << UpsweepConfigType::LOG_THREADS;
+		RADIX_DIGITS 						= 1 << UpsweepConfigType::RADIX_BITS,
+		CURRENT_PASS						= _CURRENT_PASS,
+		CURRENT_BIT							= _CURRENT_BIT,
+
+		THREADS								= 1 << UpsweepConfigType::LOG_THREADS,
+
+		LOG_WARPS							= UpsweepConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		WARPS								= 1 << LOG_WARPS,
+
+		LOAD_VEC_SIZE						= 1 << UpsweepConfigType::LOG_LOAD_VEC_SIZE,
+		LOADS_PER_TILE						= 1 << UpsweepConfigType::LOG_LOADS_PER_TILE,
+
+		LOG_TILE_ELEMENTS_PER_THREAD		= UpsweepConfigType::LOG_LOAD_VEC_SIZE + UpsweepConfigType::LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD			= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 					= LOG_TILE_ELEMENTS_PER_THREAD + UpsweepConfigType::LOG_THREADS,
+		TILE_ELEMENTS						= 1 << LOG_TILE_ELEMENTS,
+
+		// A lane is a row of 32-bit words, one words per thread, each words a
+		// composite of four 8-bit digit counters, i.e., we need one lane for every
+		// four radix digits.
+
+		LOG_COMPOSITE_LANES 				= (UpsweepConfigType::RADIX_BITS >= 2) ?
+												UpsweepConfigType::RADIX_BITS - 2 :
+												0,	// Always at least one lane
+		COMPOSITE_LANES 					= 1 << LOG_COMPOSITE_LANES,
 	
-	static const int LOG_WARPS						= UpsweepConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
-	static const int WARPS							= 1 << LOG_WARPS;	
+		LOG_COMPOSITES_PER_LANE				= UpsweepConfigType::LOG_THREADS,				// Every thread contributes one partial for each lane
+		COMPOSITES_PER_LANE 				= 1 << LOG_COMPOSITES_PER_LANE,
 	
-	static const int LOAD_VEC_SIZE					= 1 << UpsweepConfigType::LOG_LOAD_VEC_SIZE;
-	static const int LOADS_PER_TILE					= 1 << UpsweepConfigType::LOG_LOADS_PER_TILE;
+		// To prevent digit-counter overflow, we must partially-aggregate the
+		// 8-bit composite counters back into IndexType-bit registers periodically.  The lanes
+		// are divided up amongst the warps for aggregation.  Each lane is
+		// therefore equivalent to four rows of IndexType-bit digit-counts, each the width of a warp.
 	
-	static const int LOG_TILE_ELEMENTS_PER_THREAD	= UpsweepConfigType::LOG_LOAD_VEC_SIZE + UpsweepConfigType::LOG_LOADS_PER_TILE; 
-	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
-
-	static const int LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + UpsweepConfigType::LOG_THREADS;
-	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
+		LANES_PER_WARP 						= B40C_MAX(1, COMPOSITE_LANES / WARPS),
 	
-	// A lane is a row of 32-bit words, one words per thread, each words a 
-	// composite of four 8-bit digit counters, i.e., we need one lane for every 
-	// four radix digits.
+		COMPOSITES_PER_LANE_PER_THREAD 		= COMPOSITES_PER_LANE / B40C_WARP_THREADS(__B40C_CUDA_ARCH__),					// Number of partials per thread to aggregate
 	
-	static const int LOG_COMPOSITE_LANES 			= (UpsweepConfigType::RADIX_BITS >= 2) ? 
-															UpsweepConfigType::RADIX_BITS - 2 : 
-															0;	// Always at least one lane 
-	static const int COMPOSITE_LANES 				= 1 << LOG_COMPOSITE_LANES;
+		AGGREGATED_ROWS						= RADIX_DIGITS,
+		AGGREGATED_PARTIALS_PER_ROW 		= B40C_WARP_THREADS(__B40C_CUDA_ARCH__),
+		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
 
-	static const int LOG_COMPOSITES_PER_LANE		= UpsweepConfigType::LOG_THREADS;				// Every thread contributes one partial for each lane
-	static const int COMPOSITES_PER_LANE 			= 1 << LOG_COMPOSITES_PER_LANE;
-
-	// To prevent digit-counter overflow, we must partially-aggregate the 
-	// 8-bit composite counters back into IndexType-bit registers periodically.  The lanes 
-	// are divided up amongst the warps for aggregation.  Each lane is 
-	// therefore equivalent to four rows of IndexType-bit digit-counts, each the width of a warp. 
-
-	static const int LANES_PER_WARP 					= B40C_MAX(1, COMPOSITE_LANES / WARPS); 
-
-	static const int COMPOSITES_PER_LANE_PER_THREAD 	= COMPOSITES_PER_LANE / B40C_WARP_THREADS(__B40C_CUDA_ARCH__);					// Number of partials per thread to aggregate
-
-	static const int AGGREGATED_ROWS						= RADIX_DIGITS;
-	static const int AGGREGATED_PARTIALS_PER_ROW 			= B40C_WARP_THREADS(__B40C_CUDA_ARCH__);
-	static const int PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1;
+		// Required size of the re-purposable shared memory region
+		COMPOSITE_COUNTER_BYTES				= COMPOSITE_LANES * COMPOSITES_PER_LANE * sizeof(int),
+		PARTIALS_BYTES						= AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW * sizeof(typename UpsweepConfigType::IndexType),
 	
-	// Required size of the re-purposable shared memory region
-	static const int COMPOSITE_COUNTER_BYTES		= COMPOSITE_LANES * COMPOSITES_PER_LANE * sizeof(int);
-	static const int PARTIALS_BYTES					= AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW * sizeof(typename UpsweepConfigType::IndexType);
-	static const int SMEM_BYTES						= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES);
+		SMEM_BYTES 							= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES)
+	};
 };
-
 
 
 /******************************************************************************
@@ -181,8 +184,8 @@ struct ReduceCompositeLanes
 {
 	typedef typename Config::IndexType IndexType; 
 	
-	// Iterate over composite counters
-	template <int LANE, int COMPOSITE>
+	// Next composite counter
+	template <int LANE, int TOTAL_LANES, int COMPOSITE, int TOTAL_COMPOSITES>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			IndexType local_counts[Config::LANES_PER_WARP][4],
@@ -201,26 +204,26 @@ struct ReduceCompositeLanes
 			local_counts[LANE][2] += composite_counters[2];
 			local_counts[LANE][3] += composite_counters[3];
 
-			Iterate<LANE, COMPOSITE + 1>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
+			Iterate<LANE, TOTAL_LANES, COMPOSITE + 1, TOTAL_COMPOSITES>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
 		}
 	};
 
-	// Iterate over lanes
-	template <int LANE>
-	struct Iterate<LANE, Config::COMPOSITES_PER_LANE_PER_THREAD> {
+	// Next lane
+	template <int LANE, int TOTAL_LANES, int TOTAL_COMPOSITES>
+	struct Iterate<LANE, TOTAL_LANES, TOTAL_COMPOSITES, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
 			IndexType local_counts[Config::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx)
 		{
-			Iterate<LANE + 1, 0>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
+			Iterate<LANE + 1, TOTAL_LANES, 0, TOTAL_COMPOSITES>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
 		}
 	};
 	
 	// Terminate
-	template <int COMPOSITE>
-	struct Iterate<Config::LANES_PER_WARP, COMPOSITE> {
+	template <int TOTAL_LANES, int TOTAL_COMPOSITES>
+	struct Iterate<TOTAL_LANES, TOTAL_LANES, 0, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
 			IndexType local_counts[Config::LANES_PER_WARP][4],
 			int *smem_pool,
@@ -237,7 +240,7 @@ struct ReduceCompositeLanes
 	{
 		// Accomodate radices where we have more warps than lanes
 		if (warp_id < Config::COMPOSITE_LANES) {
-			ReduceCompositeLanes<Config>::template Iterate<0, 0>::template Invoke(
+			Iterate<0, Config::LANES_PER_WARP, 0, Config::COMPOSITES_PER_LANE_PER_THREAD>::Invoke(
 				local_counts, smem_pool, warp_id, warp_idx);
 		}
 	}
@@ -299,31 +302,31 @@ struct BucketTileKeys
 	typedef typename Config::KeyType KeyType;
 	
 	// Iterate over vec-elements
-	template <int LOAD, int VEC>
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			int *composite_column) 
 		{
-			Bucket<Config>(keys[LOAD][VEC], composite_column);
-			Iterate<LOAD, VEC + 1>::Invoke(keys, composite_column);
+			Bucket<Config>(keys[LOAD][VEC_ELEMENT], composite_column);
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(keys, composite_column);
 		}
 	};
 
 	// Iterate over loads
-	template <int LOAD>
-	struct Iterate<LOAD, Config::LOAD_VEC_SIZE> {
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			int *composite_column) 
 		{
-			Iterate<LOAD + 1, 0>::Invoke(keys, composite_column);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(keys, composite_column);
 		}
 	};
 	
 	// Terminate
-	template <int VEC>
-	struct Iterate<Config::LOADS_PER_TILE, VEC> {
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			int *composite_column) {} 
@@ -334,7 +337,7 @@ struct BucketTileKeys
 		KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 		int *composite_column) 
 	{
-		Iterate<0, 0>::Invoke(keys, composite_column);
+		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(keys, composite_column);
 	} 
 };
 
@@ -419,7 +422,7 @@ __device__ __forceinline__ void UnrollTileBatches(
 	
 	while (cta_offset + UNROLLED_ELEMENTS < out_of_bounds) {
 	
-		UnrollTiles<Config, UNROLL_COUNT>::template Iterate<0>::template Invoke(
+		UnrollTiles<Config, UNROLL_COUNT>::template Iterate<0>::Invoke(
 			d_in_keys, cta_offset, composite_column);
 
 		cta_offset += UNROLLED_ELEMENTS;
@@ -607,17 +610,7 @@ __device__ __forceinline__ void ReductionPass(
 }
 
 
-/**
- * Host stub to calm the linker for arch-specializations that we didn't 
- * end up compiling PTX for.
- */
-template <typename KernelConfig> 
-__host__ void __wrapper__device_stub_LsbRakingReductionKernel(
-	int 								*&,
-	typename KernelConfig::IndexType 	*&,
-	typename KernelConfig::KeyType 		*&,
-	typename KernelConfig::KeyType 		*&,
-	CtaDecomposition<typename KernelConfig::IndexType> &) {}
+
 
 
 /**
@@ -665,6 +658,20 @@ void LsbRakingReductionKernel(
 		cta_offset,
 		cta_offset + cta_elements);
 } 
+
+
+/**
+ * Host stub to calm the linker for arch-specializations that we didn't
+ * end up compiling PTX for.
+ */
+template <typename KernelConfig>
+__host__ void __wrapper__device_stub_LsbRakingReductionKernel(
+	int 								*&,
+	typename KernelConfig::IndexType 	*&,
+	typename KernelConfig::KeyType 		*&,
+	typename KernelConfig::KeyType 		*&,
+	CtaDecomposition<typename KernelConfig::IndexType> &)
+{}
  
 
 

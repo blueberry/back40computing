@@ -54,7 +54,7 @@
 #
 #-------------------------------------------------------------------------------
 
-NVCC = $(shell which nvcc)
+NVCC = "$(shell which nvcc)"
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
 
 KERNELS = 
@@ -78,7 +78,7 @@ SM_TARGETS = $(GEN_SM20)
 # Includes
 #-------------------------------------------------------------------------------
 
-CUDA_INC = $(shell dirname $(NVCC))/../include
+CUDA_INC = "$(shell dirname $(NVCC))/../include"
 INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
 
 #-------------------------------------------------------------------------------

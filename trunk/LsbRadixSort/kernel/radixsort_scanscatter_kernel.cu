@@ -220,14 +220,14 @@ struct SameDigitCount
 	typedef typename Config::KeyType KeyType;
 
 	// Inspect prev vec-element
-	template <int LOAD, int VEC>
+	template <int LOAD, int VEC_ELEMENT>
 	struct Iterate
 	{
 		static __device__ __forceinline__ int Invoke(
 			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int current_digit) 
 		{
-			return (current_digit == key_digits[LOAD][VEC - 1]) + Iterate<LOAD, VEC - 1>::Invoke(key_digits, current_digit);
+			return (current_digit == key_digits[LOAD][VEC_ELEMENT - 1]) + Iterate<LOAD, VEC_ELEMENT - 1>::Invoke(key_digits, current_digit);
 		}
 	};
 	
@@ -252,7 +252,7 @@ struct DecodeCycleKeys
 	typedef typename Config::KeyType KeyType;
 	
 	// Next vec-element
-	template <int LOAD, int VEC, int __dummy = 0>
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
@@ -265,28 +265,29 @@ struct DecodeCycleKeys
 			const int LOAD_OFFSET_BYTES 		= LOAD * Config::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
 			const KeyType COUNTER_BYTE_MASK 	= (Config::RADIX_BITS < 2) ? 0x1 : 0x3;
 			
-			key_digits[LOAD][VEC] = DecodeDigit<Config>(keys[LOAD][VEC]);			// extract digit
-			int lane = key_digits[LOAD][VEC] >> 2;									// extract composite counter lane
-			int counter_byte = key_digits[LOAD][VEC] & COUNTER_BYTE_MASK;			// extract 8-bit counter offset
+			key_digits[LOAD][VEC_ELEMENT] = DecodeDigit<Config>(keys[LOAD][VEC_ELEMENT]);			// extract digit
+			int lane = key_digits[LOAD][VEC_ELEMENT] >> 2;									// extract composite counter lane
+			int counter_byte = key_digits[LOAD][VEC_ELEMENT] & COUNTER_BYTE_MASK;			// extract 8-bit counter offset
 
 			// Compute partial (because we overwrite, we need to accommodate all previous vec-elements if they have the same digit)
-			int partial = 1 + SameDigitCount<Config>::template Iterate<LOAD, VEC>::Invoke(key_digits, key_digits[LOAD][VEC]);
+			int partial = 1 + SameDigitCount<Config>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
 
 			// Counter offset in bytes from this thread's "base_partial" location
-			counter_offsets[LOAD][VEC] = LOAD_OFFSET_BYTES + FastMul(lane, PADDED_BYTES_PER_LANE) + counter_byte;
+			counter_offsets[LOAD][VEC_ELEMENT] = LOAD_OFFSET_BYTES + FastMul(lane, PADDED_BYTES_PER_LANE) + counter_byte;
 
 			// Overwrite partial
 			unsigned char *base_partial_chars = reinterpret_cast<unsigned char *>(base_partial);
-			base_partial_chars[counter_offsets[LOAD][VEC]] = partial; 
+			base_partial_chars[counter_offsets[LOAD][VEC_ELEMENT]] = partial;
 			
 			// Next
-			Iterate<LOAD, VEC + 1>::Invoke(keys, key_digits, counter_offsets, base_partial);
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
+				keys, key_digits, counter_offsets, base_partial);
 		}
 	};
 
 	// Next Load
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> 
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
@@ -294,13 +295,14 @@ struct DecodeCycleKeys
 			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
-			Iterate<LOAD + 1, 0>::Invoke(keys, key_digits, counter_offsets, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
+				keys, key_digits, counter_offsets, base_partial);
 		}
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::LOADS_PER_CYCLE, 0, __dummy> 
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
@@ -316,7 +318,8 @@ struct DecodeCycleKeys
 		int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int *base_partial) 
 	{
-		Iterate<0, 0>::Invoke(keys, key_digits, counter_offsets, base_partial);
+		Iterate<0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+			keys, key_digits, counter_offsets, base_partial);
 	} 
 };
 
@@ -326,7 +329,7 @@ template <typename Config>
 struct ExtractCycleRanks
 {
 	// Next vec-element
-	template <int LOAD, int VEC, int __dummy = 0>
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
@@ -337,17 +340,18 @@ struct ExtractCycleRanks
 		{
 			unsigned char *base_partial_chars = reinterpret_cast<unsigned char *>(base_partial);
 
-			key_ranks[LOAD][VEC] = base_partial_chars[counter_offsets[LOAD][VEC]] + 
-				SameDigitCount<Config>::template Iterate<LOAD, VEC>::Invoke(key_digits, key_digits[LOAD][VEC]);
+			key_ranks[LOAD][VEC_ELEMENT] = base_partial_chars[counter_offsets[LOAD][VEC_ELEMENT]] +
+				SameDigitCount<Config>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
 			
 			// Next
-			Iterate<LOAD, VEC + 1>::Invoke(key_ranks, key_digits, counter_offsets, base_partial);
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
+				key_ranks, key_digits, counter_offsets, base_partial);
 		}
 	};
 
 	// Next Load
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> 
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
@@ -355,13 +359,13 @@ struct ExtractCycleRanks
 			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
-			Iterate<LOAD + 1, 0>::Invoke(key_ranks, key_digits, counter_offsets, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(key_ranks, key_digits, counter_offsets, base_partial);
 		}
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::LOADS_PER_CYCLE, 0, __dummy> 
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
@@ -377,7 +381,8 @@ struct ExtractCycleRanks
 		int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int *base_partial) 
 	{
-		Iterate<0, 0>::Invoke(key_ranks, key_digits, counter_offsets, base_partial);
+		Iterate<0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+			key_ranks, key_digits, counter_offsets, base_partial);
 	} 
 };
 
@@ -414,7 +419,7 @@ template <typename Config>
 struct UpdateTileRanks
 {
 	// Next vec-element
-	template <int CYCLE, int LOAD, int VEC, int __dummy = 0>
+	template <int CYCLE, int TOTAL_CYCLES, int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
@@ -422,40 +427,43 @@ struct UpdateTileRanks
 			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
 		{
-			key_ranks[CYCLE][LOAD][VEC] += digit_prefixes[CYCLE][LOAD][key_digits[CYCLE][LOAD][VEC]];
-			Iterate<CYCLE, LOAD, VEC + 1>::Invoke(key_ranks, key_digits, digit_prefixes);
+			key_ranks[CYCLE][LOAD][VEC_ELEMENT] += digit_prefixes[CYCLE][LOAD][key_digits[CYCLE][LOAD][VEC_ELEMENT]];
+			Iterate<CYCLE, TOTAL_CYCLES, LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
+				key_ranks, key_digits, digit_prefixes);
 		}
 	};
 
 	// Next Load
-	template <int CYCLE, int LOAD, int __dummy>
-	struct Iterate<CYCLE, LOAD, Config::LOAD_VEC_SIZE, __dummy> 
+	template <int CYCLE, int TOTAL_CYCLES, int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<CYCLE, TOTAL_CYCLES, LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
 			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
 		{
-			Iterate<CYCLE, LOAD + 1, 0>::Invoke(key_ranks, key_digits, digit_prefixes);
+			Iterate<CYCLE, TOTAL_CYCLES, LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
+				key_ranks, key_digits, digit_prefixes);
 		}
 	};
 
 	// Next Cycle
-	template <int CYCLE, int __dummy>
-	struct Iterate<CYCLE, Config::LOADS_PER_CYCLE, 0, __dummy> 
+	template <int CYCLE, int TOTAL_CYCLES, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<CYCLE, TOTAL_CYCLES, TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
 			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
 		{
-			Iterate<CYCLE + 1, 0, 0>::Invoke(key_ranks, key_digits, digit_prefixes);
+			Iterate<CYCLE + 1, TOTAL_CYCLES, 0, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
+				key_ranks, key_digits, digit_prefixes);
 		}
 	};
 
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::CYCLES_PER_TILE, 0, 0, __dummy> 
+	template <int TOTAL_CYCLES, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES, 0, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
@@ -469,66 +477,11 @@ struct UpdateTileRanks
 		int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
 	{
-		Iterate<0, 0, 0>::Invoke(key_ranks, key_digits, digit_prefixes);
+		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+			key_ranks, key_digits, digit_prefixes);
 	} 
 	
 };
-
-
-// Correct for lane overflow
-// Called by threads [0 .. radix-digits - 1]
-template <typename Config> 
-struct CorrectTileOverflows
-{
-	// Next load
-	template <int CYCLE, int LOAD, int __dummy = 0>
-	struct Iterate 
-	{
-		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE])
-		{
-			if (WarpVoteAll(Config::RADIX_DIGITS, digit_counts[CYCLE][LOAD] <= 1)) {
-				// We overflowed in this load: all keys for this load have same
-				// digit, i.e., whoever owns the digit matching one of their own 
-				// key's digit gets all 256 counts
-				digit_counts[CYCLE][LOAD] = (threadIdx.x == key_digits[CYCLE][LOAD][0]) ? 256 : 0;
-			}
-
-			Iterate<CYCLE, LOAD + 1>::Invoke(key_digits, digit_counts);
-		}
-	};
-
-	// Next cycle
-	template <int CYCLE, int __dummy>
-	struct Iterate<CYCLE, Config::LOADS_PER_CYCLE, __dummy> 
-	{
-		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE])
-		{
-			Iterate<CYCLE + 1, 0>::Invoke(key_digits, digit_counts);
-		}
-	};
-	
-	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::CYCLES_PER_TILE, 0, __dummy> 
-	{
-		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE]) {} 
-	};
-
-	// Interface
-	static __device__ __forceinline__ void Invoke(
-		int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],	// The decoded digits for my keys
-		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE])							// Counts of my digit in each load in each cycle 
-	{
-		Iterate<0, 0>::Invoke(key_digits, digit_counts);
-	} 
-};
-
 
 
 // Recover digit counts for each load from composite 8-bit counters recorded in lane_totals
@@ -537,10 +490,11 @@ template <typename Config>
 struct RecoverTileDigitCounts
 {
 	// Next load
-	template <int CYCLE, int LOAD, int __dummy = 0>
+	template <int CYCLE, int TOTAL_CYCLES, int LOAD, int TOTAL_LOADS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
+			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
 			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
 			int my_base_lane,
@@ -548,32 +502,44 @@ struct RecoverTileDigitCounts
 		{
 			unsigned char *composite_counter = reinterpret_cast<unsigned char *>(
 				&lane_totals[CYCLE][my_base_lane + (Config::SCAN_LANES_PER_LOAD * LOAD)]);
-			
+
 			digit_counts[CYCLE][LOAD] = composite_counter[my_quad_byte];
-			
-			Iterate<CYCLE, LOAD + 1>::Invoke(lane_totals, digit_counts, my_base_lane, my_quad_byte);
+
+			// Correct for possible overflow
+			if (WarpVoteAll(Config::RADIX_DIGITS, digit_counts[CYCLE][LOAD] <= 1)) {
+				// We overflowed in this load: all keys for this load have same
+				// digit, i.e., whoever owns the digit matching one of their own 
+				// key's digit gets all 256 counts
+				digit_counts[CYCLE][LOAD] = (threadIdx.x == key_digits[CYCLE][LOAD][0]) ? 256 : 0;
+			}
+
+			Iterate<CYCLE, TOTAL_CYCLES, LOAD + 1, TOTAL_LOADS>::Invoke(
+				key_digits, lane_totals, digit_counts, my_base_lane, my_quad_byte);
 		}
 	};
 
 	// Next cycle
-	template <int CYCLE, int __dummy>
-	struct Iterate<CYCLE, Config::LOADS_PER_CYCLE, __dummy> 
+	template <int CYCLE, int TOTAL_CYCLES, int TOTAL_LOADS>
+	struct Iterate<CYCLE, TOTAL_CYCLES, TOTAL_LOADS, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
+			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
 			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
 			int my_base_lane,
 			int my_quad_byte)
 		{
-			Iterate<CYCLE + 1, 0>::Invoke(lane_totals, digit_counts, my_base_lane, my_quad_byte);
+			Iterate<CYCLE + 1, TOTAL_CYCLES, 0, TOTAL_LOADS>::Invoke(
+				key_digits, lane_totals, digit_counts, my_base_lane, my_quad_byte);
 		}
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::CYCLES_PER_TILE, 0, __dummy> 
+	template <int TOTAL_CYCLES, int TOTAL_LOADS>
+	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES, 0, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
+			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
 			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
 			int my_base_lane,
@@ -582,14 +548,15 @@ struct RecoverTileDigitCounts
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
+		int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
 		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE])				// Counts of my digit in each load in each cycle 
 	{
 		int my_base_lane = threadIdx.x >> 2;
 		int my_quad_byte = threadIdx.x & 3;
 
-		// Correct 
-		Iterate<0, 0>::Invoke(lane_totals, digit_counts, my_base_lane, my_quad_byte);
+		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE>::Invoke(
+				key_digits, lane_totals, digit_counts, my_base_lane, my_quad_byte);
 	} 
 };
 
@@ -600,7 +567,7 @@ template <typename Config>
 struct UpdateDigitPrefixes
 {
 	// Next load
-	template <int CYCLE, int LOAD, int __dummy = 0>
+	template <int CYCLE, int TOTAL_CYCLES, int LOAD, int TOTAL_LOADS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
@@ -609,26 +576,28 @@ struct UpdateDigitPrefixes
 			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
 		{
 			digit_prefixes[CYCLE][LOAD][threadIdx.x] = digit_counts[CYCLE][LOAD] + digit_prefix;
-			Iterate<CYCLE, LOAD + 1>::Invoke(digit_prefix, digit_counts, digit_prefixes);
+			Iterate<CYCLE, TOTAL_CYCLES, LOAD + 1, TOTAL_LOADS>::Invoke(
+				digit_prefix, digit_counts, digit_prefixes);
 		}
 	};
 
 	// Next cycle
-	template <int CYCLE, int __dummy>
-	struct Iterate<CYCLE, Config::LOADS_PER_CYCLE, __dummy> 
+	template <int CYCLE, int TOTAL_CYCLES, int TOTAL_LOADS>
+	struct Iterate<CYCLE, TOTAL_CYCLES, TOTAL_LOADS, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int digit_prefix,																
 			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				
 			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
 		{
-			Iterate<CYCLE + 1, 0>::Invoke(digit_prefix, digit_counts, digit_prefixes);
+			Iterate<CYCLE + 1, TOTAL_CYCLES, 0, TOTAL_LOADS>::Invoke(
+				digit_prefix, digit_counts, digit_prefixes);
 		}
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::CYCLES_PER_TILE, 0, __dummy> 
+	template <int TOTAL_CYCLES, int TOTAL_LOADS>
+	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES, 0, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
 			int digit_prefix,																
@@ -642,7 +611,8 @@ struct UpdateDigitPrefixes
 		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				// Counts of my digit in each load in each cycle of this tile
 		int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
 	{
-		Iterate<0, 0>::Invoke(digit_prefix, digit_counts, digit_prefixes);
+		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE>::Invoke(
+			digit_prefix, digit_counts, digit_prefixes);
 	} 
 };
 
@@ -655,7 +625,7 @@ struct ScanTileCycles
 	typedef typename Config::IndexType IndexType;
 	
 	// Next cycle
-	template <int CYCLE, int __dummy = 0>
+	template <int CYCLE, int TOTAL_CYCLES>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
@@ -720,7 +690,7 @@ struct ScanTileCycles
 				base_partial); 
 
 			// Next cycle
-			Iterate<CYCLE + 1>::Invoke(
+			Iterate<CYCLE + 1, TOTAL_CYCLES>::Invoke(
 				d_in_keys, 
 				cta_offset, 
 				cta_out_of_bounds, 
@@ -735,8 +705,8 @@ struct ScanTileCycles
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<Config::CYCLES_PER_TILE, __dummy>
+	template <int TOTAL_CYCLES>
+	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES>
 	{
 		static __device__ __forceinline__ void Invoke(
 			KeyType		*d_in_keys,
@@ -764,7 +734,7 @@ struct ScanTileCycles
 		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int 		lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE]) 
 	{
-		Iterate<0>::Invoke(
+		Iterate<0, Config::CYCLES_PER_TILE>::Invoke(
 			d_in_keys, 
 			cta_offset, 
 			cta_out_of_bounds, 
@@ -1118,14 +1088,14 @@ __device__ __forceinline__ void ProcessTile(
 		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE];					// Counts of my digit in each load in each cycle
 		
 		// Recover digit-counts from lanes_warpscan padding
-		RecoverTileDigitCounts<Config>::Invoke(lane_totals, digit_counts);
-		
-		// Correct overflows, if any
-		CorrectTileOverflows<Config>::Invoke(key_digits, digit_counts); 
+		RecoverTileDigitCounts<Config>::Invoke(key_digits, lane_totals, digit_counts);
 		
 		// Scan across my digit counts for each load
 		int inclusive_total = SerialScan<int, Config::LOADS_PER_TILE>::Invoke(
 			reinterpret_cast<int*>(digit_counts), 0);
+
+		printf("Block %d digit %d has count %d\n", blockIdx.x, threadIdx.x, inclusive_total);
+
 
 		// Second half of digit_carry update
 		IndexType my_carry = digit_carry[threadIdx.x] + digit_warpscan[1][threadIdx.x];
@@ -1270,21 +1240,6 @@ __device__ __forceinline__ void DigitPass(
 
 
 /**
- * Host stub to calm the linker for arch-specializations that we didn't 
- * end up compiling PTX for.
- */
-template <typename KernelConfig> 
-__host__ void __wrapper__device_stub_LsbScanScatterKernel(
-	int 								*&,
-	typename KernelConfig::IndexType 	*&,
-	typename KernelConfig::KeyType 		*&,
-	typename KernelConfig::KeyType 		*&,
-	typename KernelConfig::ValueType 	*&,
-	typename KernelConfig::ValueType 	*&,
-	CtaDecomposition<typename KernelConfig::IndexType> &) {}
-
-		
-/**
  * Downsweep scan-scatter kernel entry point
  */
 template <typename KernelConfig>
@@ -1424,8 +1379,25 @@ void LsbScanScatterKernel(
 			cta_out_of_bounds);		
 	}
 */
-	
 }
+
+
+
+
+/**
+ * Host stub to calm the linker for arch-specializations that we didn't
+ * end up compiling PTX for.
+ */
+template <typename KernelConfig>
+__host__ void __wrapper__device_stub_LsbScanScatterKernel(
+	int 								*&,
+	typename KernelConfig::IndexType 	*&,
+	typename KernelConfig::KeyType 		*&,
+	typename KernelConfig::KeyType 		*&,
+	typename KernelConfig::ValueType 	*&,
+	typename KernelConfig::ValueType 	*&,
+	CtaDecomposition<typename KernelConfig::IndexType> &) {}
+
 
 
 } // namespace downsweep

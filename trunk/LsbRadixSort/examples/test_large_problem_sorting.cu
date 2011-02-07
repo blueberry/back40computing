@@ -54,7 +54,6 @@
 #include <algorithm>
 
 #include <test_utils.cu>				// Utilities and correctness-checking
-#include <cutil.h>						// Utilities for commandline parsing
 #include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 
 using namespace b40c;
@@ -120,9 +119,9 @@ void Usage()
  */
 template <typename K>
 void TimedSort(
-	unsigned int num_elements, 
+	int num_elements,
 	K *h_keys,
-	unsigned int iterations)
+	int iterations)
 {
 	printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 	
@@ -217,10 +216,10 @@ void TimedSort(
 /*
 template <typename K, typename V>
 void TimedSort(
-	unsigned int num_elements, 
+	int num_elements,
 	K *h_keys,
 	V *h_values, 
-	unsigned int iterations) 
+	int iterations)
 {
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
@@ -312,7 +311,7 @@ void TimedSort(
  */
 template<typename K, typename V>
 void TestSort(
-	unsigned int iterations,
+	int iterations,
 	int num_elements,
 	bool keys_only)
 {
@@ -371,30 +370,32 @@ void TestSort(
  * Main
  ******************************************************************************/
 
-int main( int argc, char** argv) {
+int main(int argc, char** argv)
+{
 
-	CUT_DEVICE_INIT(argc, argv);
+	CommandLineArgs args(argc, argv);
+	DeviceInit(args);
 
 	//srand(time(NULL));	
 	srand(0);				// presently deterministic
 
-    unsigned int num_elements 					= 1024;
-    unsigned int iterations  					= 1;
+    int num_elements 					= 1024;
+    int iterations  					= 1;
     bool keys_only;
 
     //
 	// Check command line arguments
     //
 
-    if (cutCheckCmdLineFlag( argc, (const char**) argv, "help")) {
+    if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
 
-    cutGetCmdLineArgumenti( argc, (const char**) argv, "i", (int*)&iterations);
-    cutGetCmdLineArgumenti( argc, (const char**) argv, "n", (int*)&num_elements);
-    keys_only = cutCheckCmdLineFlag( argc, (const char**) argv, "keys-only");
-	g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
+    args.GetCmdLineArgumenti("i", iterations);
+    args.GetCmdLineArgumenti("n", num_elements);
+    keys_only = args.CheckCmdLineFlag("keys-only");
+	g_verbose = args.CheckCmdLineFlag("v");
 
 /*	
 	// Execute test(s)
