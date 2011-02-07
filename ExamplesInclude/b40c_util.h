@@ -25,8 +25,130 @@
 #include <math.h>
 #include <float.h>
 
+#include <map>
+#include <string>
+#include <sstream>
+#include <iostream>
 
 namespace b40c {
+
+
+/******************************************************************************
+ * Command-line parsing
+ ******************************************************************************/
+
+class CommandLineArgs
+{
+protected:
+
+	std::map<std::string, std::string> pairs;
+
+public:
+
+	// Constructor
+	CommandLineArgs(int argc, char **argv)
+	{
+		using namespace std;
+
+	    for (int i = 1; i < argc; i++)
+	    {
+	        string arg = argv[i];
+
+	        if ((arg[0] != '-') || (arg[1] != '-')) {
+	        	continue;
+	        }
+
+        	string::size_type pos;
+		    string key, val;
+	        if ((pos = arg.find( '=')) == string::npos) {
+	        	key = string(arg, 2, arg.length() - 2);
+	        	val = "";
+	        } else {
+	        	key = string(arg, 2, pos - 2);
+	        	val = string(arg, pos + 1, arg.length() - 1);
+	        }
+        	pairs[key] = val;
+	    }
+	}
+
+	bool CheckCmdLineFlag(const char* arg_name)
+	{
+		using namespace std;
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+			return true;
+	    }
+		return false;
+	}
+
+	void GetCmdLineArgumenti(const char *arg_name, int &val)
+	{
+		using namespace std;
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+			istringstream strstream(itr->second);
+			strstream >> val;
+	    }
+	}
+
+	void GetCmdLineArgumentf(const char *arg_name, float &val)
+	{
+		using namespace std;
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+			istringstream strstream(itr->second);
+			strstream >> val;
+	    }
+	}
+
+	void GetCmdLineArgumentstr(const char* arg_name, char* &val)
+	{
+		using namespace std;
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+
+			string s = itr->second;
+			val = (char*) malloc(sizeof(char) * (s.length() + 1));
+			strcpy(val, s.c_str());
+
+		} else {
+
+	    	val = NULL;
+		}
+	}
+
+};
+
+/******************************************************************************
+ * Device initialization
+ ******************************************************************************/
+
+void DeviceInit(CommandLineArgs &args)
+{
+	int deviceCount;
+	cudaGetDeviceCount(&deviceCount);
+	if (deviceCount == 0) {
+		fprintf(stderr, "No devices supporting CUDA.\n");
+		exit(1);
+	}
+	int dev = 0;
+	args.GetCmdLineArgumenti("device", dev);
+	if (dev < 0) {
+		dev = 0;
+	}
+	if (dev > deviceCount - 1) {
+		dev = deviceCount - 1;
+	}
+	cudaDeviceProp deviceProp;
+	cudaGetDeviceProperties(&deviceProp, dev);
+	if (deviceProp.major < 1) {
+		fprintf(stderr, "Device does not support CUDA.\n");
+		exit(1);
+	}
+	cudaSetDevice(dev);
+}
+
+
 
 
 /******************************************************************************

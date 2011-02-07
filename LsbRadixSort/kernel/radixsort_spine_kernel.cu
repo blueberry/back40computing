@@ -101,22 +101,22 @@ template <typename ScanConfigType>
 struct ScanKernelConfig : ScanConfigType
 {
 	static const int THREADS						= 1 << ScanConfigType::LOG_THREADS;
-	
+
 	static const int LOG_WARPS						= ScanConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
-	static const int WARPS							= 1 << LOG_WARPS;	
-	
+	static const int WARPS							= 1 << LOG_WARPS;
+
 	static const int LOAD_VEC_SIZE					= 1 << ScanConfigType::LOG_LOAD_VEC_SIZE;
 	static const int LOADS_PER_TILE					= 1 << ScanConfigType::LOG_LOADS_PER_TILE;
 
-	static const int LOG_TILE_ELEMENTS				= ScanConfigType::LOG_THREADS + 
+	static const int LOG_TILE_ELEMENTS				= ScanConfigType::LOG_THREADS +
 															ScanConfigType::LOG_LOADS_PER_TILE +
 															ScanConfigType::LOG_LOAD_VEC_SIZE;
 	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
-	
-	// We reduce/scan the elements of a loaded vector in registers, and then place that  
+
+	// We reduce/scan the elements of a loaded vector in registers, and then place that
 	// partial reduction into smem rows for further reduction/scanning
-	
-	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we 
+
+	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we
 	// back up the primary raking warps with a single warp of raking-threads.
 	static const bool TwoLevelGrid 					= (ScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
 
@@ -124,19 +124,19 @@ struct ScanKernelConfig : ScanConfigType
 	typedef SrtsGrid<
 		typename ScanConfigType::ScanType,
 		ScanConfigType::LOG_THREADS,
-		ScanConfigType::LOG_LOADS_PER_TILE, 
+		ScanConfigType::LOG_LOADS_PER_TILE,
 		ScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;
-	
+
 	// Secondary smem SRTS grid type
 	typedef SrtsGrid<
 		typename ScanConfigType::ScanType,
 		ScanConfigType::LOG_RAKING_THREADS,
-		0, 
+		0,
 		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;
 	
-		
-	static const int SMEM_BYTES						= (TwoLevelGrid) ? 
-															PrimaryGrid::SMEM_BYTES + SecondaryGrid::SMEM_BYTES :	// two-level smem SRTS 
+
+	static const int SMEM_BYTES						= (TwoLevelGrid) ?
+															PrimaryGrid::SMEM_BYTES + SecondaryGrid::SMEM_BYTES :	// two-level smem SRTS
 															PrimaryGrid::SMEM_BYTES;								// one-level smem SRTS
 };
 	
@@ -156,32 +156,32 @@ struct ReduceVectors
 	typedef typename Config::ScanType ScanType;
 	
 	// Iterate over vec-elements
-	template <int LOAD, int VEC, int __dummy = 0>
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			ScanType partial,
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
-			partial += data[LOAD][VEC];
-			Iterate<LOAD, VEC + 1>::Invoke(partial, data, base_partial);
+			partial += data[LOAD][VEC_ELEMENT];
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(partial, data, base_partial);
 		}
 	};
 
 	// First vector element: Identity
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, 0, __dummy> {
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
-			Iterate<LOAD, 1>::Invoke(data[LOAD][0], data, base_partial);
+			Iterate<LOAD, TOTAL_LOADS, 1, TOTAL_VEC_ELEMENTS>::Invoke(data[LOAD][0], data, base_partial);
 		}
 	};
 
 	// Last vector element + 1: Next load
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> {
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType partial,
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
@@ -191,13 +191,13 @@ struct ReduceVectors
 			base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE] = partial;
 
 			// Next load
-			Iterate<LOAD + 1, 0>::Invoke(data, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(data, base_partial);
 		}
 	};
 	
 	// Last load + 1: Terminate
-	template <int __dummy>
-	struct Iterate<Config::LOADS_PER_TILE, 0, __dummy> {
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) {} 
@@ -208,7 +208,7 @@ struct ReduceVectors
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 		ScanType *base_partial)
 	{
-		Iterate<0, 0>::template Invoke(data, base_partial);
+		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(data, base_partial);
 	}
 
 };
@@ -221,22 +221,22 @@ struct ScanVectors
 	typedef typename Config::ScanType ScanType;
 	
 	// Iterate over vec-elements
-	template <int LOAD, int VEC, int __dummy = 0>
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			ScanType exclusive_partial,
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
-			ScanType inclusive_partial = data[LOAD][VEC] + exclusive_partial;
-			data[LOAD][VEC] = exclusive_partial;
-			Iterate<LOAD, VEC + 1>::Invoke(inclusive_partial, data, base_partial);
+			ScanType inclusive_partial = data[LOAD][VEC_ELEMENT] + exclusive_partial;
+			data[LOAD][VEC_ELEMENT] = exclusive_partial;
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(inclusive_partial, data, base_partial);
 		}
 	};
 
 	// First vector element: Load exclusive partial reduction from SRTS grid
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, 0, __dummy> {
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
@@ -244,26 +244,26 @@ struct ScanVectors
 			ScanType exclusive_partial = base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE];
 			ScanType inclusive_partial = data[LOAD][0] + exclusive_partial;
 			data[LOAD][0] = exclusive_partial;
-			Iterate<LOAD, 1>::Invoke(inclusive_partial, data, base_partial);
+			Iterate<LOAD, TOTAL_LOADS, 1, TOTAL_VEC_ELEMENTS>::Invoke(inclusive_partial, data, base_partial);
 		}
 	};
 
 	// Last vector element + 1: Next load
-	template <int LOAD, int __dummy>
-	struct Iterate<LOAD, Config::LOAD_VEC_SIZE, __dummy> {
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType exclusive_partial,
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
 			// Next load
-			Iterate<LOAD + 1, 0>::Invoke(data, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(data, base_partial);
 		}
 	};
 	
 	// Last load + 1: Terminate
-	template <int __dummy>
-	struct Iterate<Config::LOADS_PER_TILE, 0, __dummy> {
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) {} 
@@ -274,7 +274,7 @@ struct ScanVectors
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 		ScanType *base_partial)
 	{
-		Iterate<0, 0>::template Invoke(data, base_partial);
+		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(data, base_partial);
 	}
 
 };
@@ -425,15 +425,6 @@ struct ProcessTile <Config, true>
 };
 
 
-/**
- * Host stub to calm the linker for arch-specializations that we didn't 
- * end up compiling PTX for.
- */
-template <typename KernelConfig> 
-__host__ void __wrapper__device_stub_LsbSpineScanKernel(
-	typename KernelConfig::ScanType *&, 
-	typename KernelConfig::IndexType &) {}
-
 
 /**
  * Kernel entry point
@@ -486,7 +477,7 @@ __global__ void LsbSpineScanKernel(
 	IndexType cta_offset = 0;
 	while (cta_offset < spine_elements) {
 		
-		ProcessTile<KernelConfig, KernelConfig::TwoLevelGrid>::Invoke(	
+		ProcessTile<KernelConfig, KernelConfig::TwoLevelGrid>::Invoke(
 			primary_base_partial,
 			primary_raking_seg,
 			secondary_base_partial,
@@ -499,6 +490,18 @@ __global__ void LsbSpineScanKernel(
 		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 } 
+
+
+
+/**
+ * Host stub to calm the linker for arch-specializations that we didn't
+ * end up compiling PTX for.
+ */
+template <typename KernelConfig>
+__host__ void __wrapper__device_stub_LsbSpineScanKernel(
+	typename KernelConfig::ScanType *&,
+	typename KernelConfig::IndexType &) {}
+
 
 
 } // namespace scan

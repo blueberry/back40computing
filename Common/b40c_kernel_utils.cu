@@ -213,42 +213,46 @@ struct SrtsGrid
 {
 	typedef _PartialType							PartialType;
 	
-	static const int LOG_ACTIVE_THREADS				= _LOG_ACTIVE_THREADS;
-	static const int ACTIVE_THREADS					= 1 << LOG_ACTIVE_THREADS;
+	enum {		// N.B.: We use an enum type here b/c of a NVCC-win compiler bug involving ternary expressions in static-const fields
+
+		LOG_ACTIVE_THREADS				= _LOG_ACTIVE_THREADS,
+		ACTIVE_THREADS					= 1 << LOG_ACTIVE_THREADS,
+
+		LOG_PARTIALS_PER_THREAD			= _LOG_PARTIALS_PER_THREAD,
+		PARTIALS_PER_THREAD				= 1 <<LOG_PARTIALS_PER_THREAD,
+
+		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
+		LOG_PARTIALS					= LOG_ACTIVE_THREADS + LOG_PARTIALS_PER_THREAD,
+		PARTIALS			 			= 1 << LOG_PARTIALS,
+
+		LOG_PARTIALS_PER_SEG 			= LOG_PARTIALS - LOG_RAKING_THREADS,
+		PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG,
 	
-	static const int LOG_PARTIALS_PER_THREAD		= _LOG_PARTIALS_PER_THREAD;
-	static const int PARTIALS_PER_THREAD			= 1 <<LOG_PARTIALS_PER_THREAD;
-
-	static const int LOG_RAKING_THREADS				= _LOG_RAKING_THREADS;
-	static const int RAKING_THREADS					= 1 << LOG_RAKING_THREADS;
-
-	static const int LOG_PARTIALS					= LOG_ACTIVE_THREADS + LOG_PARTIALS_PER_THREAD;
-	static const int PARTIALS			 			= 1 << LOG_PARTIALS;
+		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) +
+											B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) -
+											LogBytes<PartialType>::LOG_BYTES,
 	
-	static const int LOG_PARTIALS_PER_SEG 			= LOG_PARTIALS - LOG_RAKING_THREADS;	
-	static const int PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG;
-
-	static const int LOG_PARTIALS_PER_BANK_ARRAY	= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) + 
-															B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - 
-															LogBytes<PartialType>::LOG_BYTES;
-
-	static const int PADDING_PARTIALS				= 1 << B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<PartialType>::LOG_BYTES); 
-
-	static const int LOG_PARTIALS_PER_ROW			= B40C_MAX(LOG_PARTIALS_PER_SEG, LOG_PARTIALS_PER_BANK_ARRAY);
-	static const int PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW;
+		LOG_PADDING_PARTIALS			= B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - LogBytes<PartialType>::LOG_BYTES),
+		PADDING_PARTIALS				= 1 << LOG_PADDING_PARTIALS,
 	
-	static const int PADDED_PARTIALS_PER_ROW		= PARTIALS_PER_ROW + PADDING_PARTIALS;
-	
-	static const int LOG_SEGS_PER_ROW 				= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG;	
-	static const int SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW;
+		LOG_PARTIALS_PER_ROW			= B40C_MAX(LOG_PARTIALS_PER_SEG, LOG_PARTIALS_PER_BANK_ARRAY),
+		PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW,
 
-	static const int LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW;
-	static const int ROWS 							= 1 << LOG_ROWS;
+		PADDED_PARTIALS_PER_ROW			= PARTIALS_PER_ROW + PADDING_PARTIALS,
 
-	static const int PARTIAL_STRIDE_ROWS			= 1 << (LOG_ROWS - LOG_PARTIALS_PER_THREAD);
-	static const int PARTIAL_STRIDE					= PARTIAL_STRIDE_ROWS * PADDED_PARTIALS_PER_ROW;
+		LOG_SEGS_PER_ROW 				= LOG_PARTIALS_PER_ROW - LOG_PARTIALS_PER_SEG,
+		SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW,
 	
-	static const int SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType);
+		LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW,
+		ROWS 							= 1 << LOG_ROWS,
+	
+		PARTIAL_STRIDE_ROWS				= 1 << (LOG_ROWS - LOG_PARTIALS_PER_THREAD),
+		PARTIAL_STRIDE					= PARTIAL_STRIDE_ROWS * PADDED_PARTIALS_PER_ROW,
+
+		SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)
+	};
 	
 	
 	/**
@@ -297,7 +301,7 @@ struct WarpScan
 			
 			partial = partial + warpscan[1][warpscan_tid - OFFSET_LEFT];
 			warpscan[1][warpscan_tid] = partial;
-			Iterate<OFFSET_LEFT * 2>::template Invoke(partial, warpscan, warpscan_tid);
+			Iterate<OFFSET_LEFT * 2>::Invoke(partial, warpscan, warpscan_tid);
 		}
 	};
 	
@@ -320,7 +324,7 @@ struct WarpScan
 	{
 		warpscan[1][warpscan_tid] = partial;
 		
-		Iterate<1>::template Invoke(partial, warpscan, warpscan_tid);
+		Iterate<1>::Invoke(partial, warpscan, warpscan_tid);
 
 		// Set aggregate reduction
 		total = warpscan[1][NUM_ELEMENTS - 1];
@@ -358,47 +362,32 @@ template <typename T, int LENGTH>
 struct SerialReduce
 {
 	// Iterate
-	template <int COUNT, int __dummy = 0>
+	template <int COUNT, int TOTAL_COUNT>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ T Invoke(T partials[]) 
 		{
-			return partials[COUNT] + Iterate<COUNT + 1>::Invoke(partials);
+			return partials[COUNT] + Iterate<COUNT + 1, TOTAL_COUNT>::Invoke(partials);
 		}
 	};
 	
 	// Terminate
-	template <int __dummy>
-	struct Iterate<LENGTH - 1, __dummy> 
+	template <int TOTAL_COUNT>
+	struct Iterate<TOTAL_COUNT, TOTAL_COUNT>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[]) 
 		{
-			return partials[LENGTH - 1];
+			return partials[TOTAL_COUNT];
 		}
 	};
 	
 	// Interface
 	static __device__ __forceinline__ T Invoke(T partials[])			
 	{
-		return Iterate<0>::template Invoke(partials);
+		return Iterate<0, LENGTH - 1>::Invoke(partials);
 	}
 };
 
-/*
-template <typename T, int LENGTH>
-__device__ __forceinline__ 
-T SerialReduce(T partials[]) {
-	
-	T reduce = partials[0];
-
-	#pragma unroll
-	for (int i = 1; i < LENGTH; i++) {
-		reduce += partials[i];
-	}
-	
-	return reduce;
-}
-*/
 
 
 /**
@@ -435,7 +424,7 @@ struct SerialScan
 		T partials[], 
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Iterate<0>::template Invoke(partials, partials, exclusive_partial);
+		return Iterate<0>::Invoke(partials, partials, exclusive_partial);
 	}
 	
 	// Interface
@@ -444,7 +433,7 @@ struct SerialScan
 		T results[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Iterate<0>::template Invoke(partials, results, exclusive_partial);
+		return Iterate<0>::Invoke(partials, results, exclusive_partial);
 	}
 };
 

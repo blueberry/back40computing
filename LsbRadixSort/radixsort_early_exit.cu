@@ -133,120 +133,123 @@ protected:
 	// for separate kernels are largely performance-independent.
 	// 
 	template <int SM_ARCH, typename IndexType>
-	struct DefaultSortingConfig : Base::template MultiCtaConfig<
+	struct DefaultSortingConfig
+	{
+		typedef typename MultiCtaLsbSortEnactor<KeyType, ConvertedKeyType, ValueType>::template MultiCtaConfig<
 
-		//---------------------------------------------------------------------
-		// Common
-		//---------------------------------------------------------------------
+			//---------------------------------------------------------------------
+			// Common
+			//---------------------------------------------------------------------
 
-		// IndexType
-		IndexType,
-		
-		// RADIX_BITS
-		(SM_ARCH >= 200) ? 					4 :		// 4-bit radix digits on GF100+ 
-		(SM_ARCH >= 120) ? 					4 :		// 4-bit radix digits on GT200 
-											4,		// 4-bit radix digits on G80/90
-							  
-		// LOG_SUBTILE_ELEMENTS
-		(SM_ARCH >= 200) ? 					5 :		// 32 elements on GF100+ 
-		(SM_ARCH >= 120) ? 					5 :		// 32 elements on GT200 
-											5,		// 32 elements on G80/90
-											
-		// CACHE_MODIFIER
-		NONE,										// Default (CA: cache all levels)
-		
-		//---------------------------------------------------------------------
-		// Upsweep Kernel
-		//---------------------------------------------------------------------
+			// IndexType
+			IndexType,
 
-		// UPSWEEP_CTA_OCCUPANCY
-		(SM_ARCH >= 200) ? 					8 :		// 8 CTAs/SM on GF100+ 
-		(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200 
-											3,		// 3 CTAs/SM on G80/90
-										
-		// UPSWEEP_LOG_THREADS
-		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
-		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
-											7,		// 128 threads/CTA on G80/90
+			// RADIX_BITS
+			(SM_ARCH >= 200) ? 					4 :		// 4-bit radix digits on GF100+
+			(SM_ARCH >= 120) ? 					4 :		// 4-bit radix digits on GT200
+												4,		// 4-bit radix digits on G80/90
 
-		// UPSWEEP_LOG_LOAD_VEC_SIZE
-		(SM_ARCH >= 200) ? 					0 :		// vec-1 loads on GF100+ 
-		(SM_ARCH >= 120) ? 					0 :		// vec-1 loads on GT200 
-											0,		// vec-1 loads on G80/90
-											
-		// UPSWEEP_LOG_LOADS_PER_TILE
-		(SM_ARCH >= 200) ? 					2 :		// 4 loads/tile on GF100+ 
-		(SM_ARCH >= 120) ? 					0 :		// 1 load/tile on GT200 
-											0,		// 1 load/tile on G80/90
-		
-		//---------------------------------------------------------------------
-		// Spine-scan Kernel
-		//---------------------------------------------------------------------
-											
-		// SPINE_CTA_OCCUPANCY
-		1,											// 1 CTA/SM on all architectures 
-											
-		// SPINE_LOG_THREADS
-		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
-		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
-											7,		// 128 threads/CTA on G80/90
-											
-		// SPINE_LOG_LOAD_VEC_SIZE
-		(SM_ARCH >= 200) ? 					2 :		// vec-4 loads on GF100+ 
-		(SM_ARCH >= 120) ? 					2 :		// vec-4 loads on GT200 
-											2,		// vec-4 loads on G80/90
-											
-		// SPINE_LOG_LOADS_PER_TILE
-		(SM_ARCH >= 200) ? 					0 :		// 1 loads/tile on GF100+ 
-		(SM_ARCH >= 120) ? 					0 :		// 1 loads/tile on GT200 
-											0,		// 1 loads/tile on G80/90
-											
-		// SPINE_LOG_RAKING_THREADS
-		(SM_ARCH >= 200) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GF100+ 
-		(SM_ARCH >= 120) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GT200 
-											B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// 1 warp on G80/90
-											
+			// LOG_SUBTILE_ELEMENTS
+			(SM_ARCH >= 200) ? 					5 :		// 32 elements on GF100+
+			(SM_ARCH >= 120) ? 					5 :		// 32 elements on GT200
+												5,		// 32 elements on G80/90
 
-		//---------------------------------------------------------------------
-		// Downsweep Kernel
-		//---------------------------------------------------------------------
+			// CACHE_MODIFIER
+			NONE,										// Default (CA: cache all levels)
+
+			//---------------------------------------------------------------------
+			// Upsweep Kernel
+			//---------------------------------------------------------------------
+
+			// UPSWEEP_CTA_OCCUPANCY
+			(SM_ARCH >= 200) ? 					8 :		// 8 CTAs/SM on GF100+
+			(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200
+												3,		// 3 CTAs/SM on G80/90
 											
-		// DOWNSWEEP_CTA_OCCUPANCY
-		(SM_ARCH >= 200) ? 					7 :		// 7 CTAs/SM on GF100+ 
-		(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200 
-											2,		// 2 CTAs/SM on G80/90
+			// UPSWEEP_LOG_THREADS
+			(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+
+			(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200
+												7,		// 128 threads/CTA on G80/90
+
+			// UPSWEEP_LOG_LOAD_VEC_SIZE
+			(SM_ARCH >= 200) ? 					0 :		// vec-1 loads on GF100+
+			(SM_ARCH >= 120) ? 					0 :		// vec-1 loads on GT200
+												0,		// vec-1 loads on G80/90
+
+			// UPSWEEP_LOG_LOADS_PER_TILE
+			(SM_ARCH >= 200) ? 					2 :		// 4 loads/tile on GF100+
+			(SM_ARCH >= 120) ? 					0 :		// 1 load/tile on GT200
+												0,		// 1 load/tile on G80/90
+
+			//---------------------------------------------------------------------
+			// Spine-scan Kernel
+			//---------------------------------------------------------------------
+
+			// SPINE_CTA_OCCUPANCY
+			1,											// 1 CTA/SM on all architectures
+
+			// SPINE_LOG_THREADS
+			(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+
+			(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200
+												7,		// 128 threads/CTA on G80/90
+
+			// SPINE_LOG_LOAD_VEC_SIZE
+			(SM_ARCH >= 200) ? 					2 :		// vec-4 loads on GF100+
+			(SM_ARCH >= 120) ? 					2 :		// vec-4 loads on GT200
+												2,		// vec-4 loads on G80/90
+
+			// SPINE_LOG_LOADS_PER_TILE
+			(SM_ARCH >= 200) ? 					0 :		// 1 loads/tile on GF100+
+			(SM_ARCH >= 120) ? 					0 :		// 1 loads/tile on GT200
+												0,		// 1 loads/tile on G80/90
+
+			// SPINE_LOG_RAKING_THREADS
+			(SM_ARCH >= 200) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GF100+
+			(SM_ARCH >= 120) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GT200
+												B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// 1 warp on G80/90
+
+
+			//---------------------------------------------------------------------
+			// Downsweep Kernel
+			//---------------------------------------------------------------------
+
+			// DOWNSWEEP_CTA_OCCUPANCY
+			(SM_ARCH >= 200) ? 					7 :		// 7 CTAs/SM on GF100+
+			(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200
+												2,		// 2 CTAs/SM on G80/90
+
+			// DOWNSWEEP_LOG_THREADS
+			(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+
+			(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200
+												7,		// 128 threads/CTA on G80/90
+
+			// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+			(SM_ARCH >= 200) ? 					1 :		// vec-2 loads on GF100+
+			(SM_ARCH >= 120) ? 					1 :		// vec-2 loads on GT200
+												1,		// vec-2 loads on G80/90
+
+			// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+			(SM_ARCH >= 200) ? 					1 :		// 2 loads/cycle on GF100+
+			(SM_ARCH >= 120) ? 					0 :		// 1 load/cycle on GT200
+												1,		// 2 loads/cycle on G80/90
+
+			// DOWNSWEEP_LOG_CYCLES_PER_TILE
+			(SM_ARCH >= 200) ?
+				(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ?
+												0 : 	// 1 cycle/tile on GF100+ for large (64bit+) keys|values
+												1) :	// 2 cycles/tile on GF100+
+			(SM_ARCH >= 120) ?
+				(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ?
+												0 : 	// 1 cycle/tile on GT200 for large (64bit+) keys|values
+												1) :	// 2 cycles/tile on GT200
+												1,		// 2 cycles/tile on G80/90
 											
-		// DOWNSWEEP_LOG_THREADS
-		(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+ 
-		(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200 
-											7,		// 128 threads/CTA on G80/90
-											
-		// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-		(SM_ARCH >= 200) ? 					1 :		// vec-2 loads on GF100+ 
-		(SM_ARCH >= 120) ? 					1 :		// vec-2 loads on GT200 
-											1,		// vec-2 loads on G80/90
-											
-		// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-		(SM_ARCH >= 200) ? 					1 :		// 2 loads/cycle on GF100+ 
-		(SM_ARCH >= 120) ? 					0 :		// 1 load/cycle on GT200 
-											1,		// 2 loads/cycle on G80/90
-											
-		// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		(SM_ARCH >= 200) ? 		
-			(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 
-											0 : 	// 1 cycle/tile on GF100+ for large (64bit+) keys|values
-											1) :	// 2 cycles/tile on GF100+ 
-		(SM_ARCH >= 120) ? 		
-			(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) > 4 ? 
-											0 : 	// 1 cycle/tile on GT200 for large (64bit+) keys|values
-											1) :	// 2 cycles/tile on GT200 
-											1,		// 2 cycles/tile on G80/90
-										
-		// DOWNSWEEP_LOG_RAKING_THREADS
-		(SM_ARCH >= 200) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 1 :	// 2 warps on GF100+ 
-		(SM_ARCH >= 120) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GT200 
-											B40C_LOG_WARP_THREADS(SM_ARCH) + 2		// 4 warps on G80/90
-	>{};										
+			// DOWNSWEEP_LOG_RAKING_THREADS
+			(SM_ARCH >= 200) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 1 :	// 2 warps on GF100+
+			(SM_ARCH >= 120) ? 					B40C_LOG_WARP_THREADS(SM_ARCH) + 0 :	// 1 warp on GT200
+												B40C_LOG_WARP_THREADS(SM_ARCH) + 2		// 4 warps on G80/90
+		> Config;
+	};
 
 	
 	//---------------------------------------------------------------------
@@ -423,10 +426,9 @@ protected:
 		cudaFuncGetAttributes(&spine_scan_kernel_attrs, LsbSpineScanKernel<SpineScanKernelConfigType>);
 		cudaFuncGetAttributes(&downsweep_attrs, LsbScanScatterKernel<DownsweepKernelConfigType>);
 		
-		
 		// mooch
 		if (CURRENT_PASS == 0) {
-		
+
 			//
 			// Invoke upsweep reduction kernel
 			//
@@ -444,7 +446,7 @@ protected:
 					(ConvertedKeyType *) work.problem_storage.d_keys[work.problem_storage.selector ^ 1],
 					work);
 			dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
-	
+
 			//
 			// Invoke spine scan kernel
 			//
@@ -480,7 +482,6 @@ protected:
 					work);
 			dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
 		}	
-			
 	    
 		return cudaSuccess;
 	}
@@ -505,7 +506,7 @@ protected:
 		template <typename EnactorType>
 		static void Invoke(EnactorType *enactor, typename SortingConfig::Decomposition &work) {
 			// Invoke
-			enactor->DigitPlacePass<
+			enactor->template DigitPlacePass<
 				SortingConfig, 
 				CURRENT_PASS, 
 				CURRENT_BIT,
@@ -536,7 +537,7 @@ protected:
 		template <typename EnactorType>
 		static void Invoke(EnactorType *enactor, typename SortingConfig::Decomposition &work) {
 			// Invoke
-			enactor->DigitPlacePass<
+			enactor->template DigitPlacePass<
 				SortingConfig, 
 				0, 
 				CURRENT_BIT,
@@ -567,7 +568,7 @@ protected:
 		template <typename EnactorType>
 		static void Invoke(EnactorType *enactor, typename SortingConfig::Decomposition &work) {
 			// Invoke
-			enactor->DigitPlacePass<
+			enactor->template DigitPlacePass<
 				SortingConfig, 
 				LAST_PASS, 
 				CURRENT_BIT,
@@ -589,7 +590,7 @@ protected:
 		template <typename EnactorType>
 		static void Invoke(EnactorType *enactor, typename SortingConfig::Decomposition &work) {
 			// Invoke
-			enactor->DigitPlacePass<
+			enactor->template DigitPlacePass<
 				SortingConfig, 
 				0, 
 				CURRENT_BIT,
@@ -610,8 +611,8 @@ protected:
 		template<typename EnactorType>
 		static cudaError_t EnactSort(EnactorType &enactor, Storage &problem_storage) 
 		{
-			typedef DefaultSortingConfig<SM_ARCH, Storage> SortingConfig;
-			return enactor.EnactSort<SortingConfig, START_BIT, NUM_BITS>(problem_storage);
+			typedef typename DefaultSortingConfig<SM_ARCH, Storage>::Config SortingConfig;
+			return enactor.template EnactSort<SortingConfig, START_BIT, NUM_BITS>(problem_storage);
 		}
 	};
 	
