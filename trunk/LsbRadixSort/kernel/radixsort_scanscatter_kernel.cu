@@ -158,6 +158,9 @@ struct DownsweepKernelConfig : DownsweepConfigType
 	static const int LOG_TILE_ELEMENTS				= DownsweepConfigType::LOG_CYCLES_PER_TILE + LOG_CYCLE_ELEMENTS;
 	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
 	
+	static const int LOG_TILE_ELEMENTS_PER_THREAD	= LOG_TILE_ELEMENTS - DownsweepConfigType::LOG_THREADS;
+	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
+
 	static const int LOG_SCAN_LANES_PER_LOAD		= B40C_MAX((DownsweepConfigType::RADIX_BITS - 2), 0);		// Always at one lane per load
 	static const int SCAN_LANES_PER_LOAD			= 1 << LOG_SCAN_LANES_PER_LOAD;								
 	
@@ -631,7 +634,7 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			KeyType		*d_in_keys,
 			IndexType	cta_offset,
-			IndexType	cta_out_of_bounds,
+			IndexType	guarded_elements,
 			int 		*base_partial,
 			int			*raking_segment,
 			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -663,7 +666,7 @@ struct ScanTileCycles
 					keys[CYCLE],	 
 					d_in_keys,
 					cta_offset + (CYCLE * Config::CYCLE_ELEMENTS),
-					cta_out_of_bounds);
+					guarded_elements);
 			
 			// Decode digits and update 8-bit composite counters for the keys in this cycle
 			DecodeCycleKeys<Config>::Invoke(
@@ -693,7 +696,7 @@ struct ScanTileCycles
 			Iterate<CYCLE + 1, TOTAL_CYCLES>::Invoke(
 				d_in_keys, 
 				cta_offset, 
-				cta_out_of_bounds, 
+				guarded_elements,
 				base_partial, 
 				raking_segment, 
 				lanes_warpscan, 
@@ -711,7 +714,7 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			KeyType		*d_in_keys,
 			IndexType	cta_offset,
-			IndexType	cta_out_of_bounds,
+			IndexType	guarded_elements,
 			int 		*base_partial,
 			int			*raking_segment,
 			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -725,7 +728,7 @@ struct ScanTileCycles
 	static __device__ __forceinline__ void Invoke(
 		KeyType		*d_in_keys,
 		IndexType	cta_offset,
-		IndexType	cta_out_of_bounds,
+		IndexType	guarded_elements,
 		int 		*base_partial,
 		int			*raking_segment,
 		int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -737,7 +740,7 @@ struct ScanTileCycles
 		Iterate<0, Config::CYCLES_PER_TILE>::Invoke(
 			d_in_keys, 
 			cta_offset, 
-			cta_out_of_bounds, 
+			guarded_elements,
 			base_partial, 
 			raking_segment, 
 			lanes_warpscan, 
@@ -748,6 +751,177 @@ struct ScanTileCycles
 	}
 	
 };
+
+
+
+template <typename Config, typename T, typename IndexType, bool UNGUARDED_IO>
+struct Scatter
+{
+	// Iterate
+	template <int LOAD, int TOTAL_LOADS>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(
+			T *dest,
+			T src[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType out_of_bounds)
+		{
+			if (UNGUARDED_IO || ((Config::THREADS * LOAD) + threadIdx.x < out_of_bounds)) {
+				dest[scatter_offsets[LOAD]] = src[LOAD];
+			}
+
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, out_of_bounds);
+		}
+	};
+
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
+	{
+		static __device__ __forceinline__ void Invoke(
+			T *dest, T src[Config::TILE_ELEMENTS_PER_THREAD], IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType out_of_bounds) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T *dest,
+		T src[Config::TILE_ELEMENTS_PER_THREAD],
+		IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+		IndexType out_of_bounds)
+	{
+		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src, scatter_offsets, out_of_bounds);
+	}
+};
+
+
+template <typename Config, typename T>
+struct Gather
+{
+	// Iterate over loads
+	template <int LOAD, int TOTAL_LOADS>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(T dest[Config::TILE_ELEMENTS_PER_THREAD], T *src)
+		{
+			dest[LOAD] = src[threadIdx.x];
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src + Config::THREADS);
+		}
+	};
+
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
+	{
+		static __device__ __forceinline__ void Invoke(T dest[Config::TILE_ELEMENTS_PER_THREAD], T *src) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T dest[Config::TILE_ELEMENTS_PER_THREAD],
+		T *src)
+	{
+		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src);
+	}
+};
+
+
+template <typename Config>
+struct ComputeScatterOffsets
+{
+	typedef typename Config::KeyType KeyType;
+	typedef typename Config::IndexType IndexType;
+
+	// Iterate over loads
+	template <int LOAD, int TOTAL_LOADS>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(
+			IndexType 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType	digit_carry[Config::RADIX_DIGITS],
+			KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD])
+		{
+			scatter_offsets[LOAD] = digit_carry[DecodeDigit<Config>(linear_keys[LOAD])] + (Config::THREADS * LOAD) + threadIdx.x;
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(scatter_offsets, digit_carry, linear_keys);
+		}
+	};
+
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
+	{
+		static __device__ __forceinline__ void Invoke(
+			IndexType 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType	digit_carry[Config::RADIX_DIGITS],
+			KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD]) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		IndexType 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+		IndexType	digit_carry[Config::RADIX_DIGITS],
+		KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD])
+	{
+		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(scatter_offsets, digit_carry, linear_keys);
+	}
+};
+
+
+
+template <typename Config, bool UNGUARDED_IO, bool STRICT_ALIGNMENT>
+struct SwapAndScatter
+{
+	typedef typename Config::KeyType KeyType;
+	typedef typename Config::ValueType ValueType;
+	typedef typename Config::IndexType IndexType;
+
+	static __device__ __forceinline__ void Invoke(
+		ValueType 	*d_in_values,
+		KeyType 	*d_out_keys,
+		ValueType 	*d_out_values,
+		int 		*exchange,
+		IndexType	digit_carry[Config::RADIX_DIGITS],
+		IndexType 	guarded_elements,
+		KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],			// The keys this thread will read this tile
+		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE])		// The CTA-scope rank of each key
+	{
+		KeyType *linear_keys = reinterpret_cast<KeyType *>(keys);
+		KeyType *key_exchange = reinterpret_cast<KeyType *>(exchange);
+		int *linear_ranks = reinterpret_cast<int *>(key_ranks);
+
+		// Scatter keys to smem
+		Scatter<Config, KeyType, int, true>::Invoke(key_exchange, linear_keys, linear_ranks, guarded_elements);
+
+		__syncthreads();
+
+		// Gather keys from smem
+		Gather<Config, KeyType>::Invoke(linear_keys, key_exchange);
+
+		// Compute global scatter offsets for gathered keys
+		IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD];
+		ComputeScatterOffsets<Config>::Invoke(scatter_offsets, digit_carry, linear_keys);
+
+		// Scatter keys to global digit partitions
+		Scatter<Config, KeyType, IndexType, UNGUARDED_IO>::Invoke(d_out_keys, linear_keys, scatter_offsets, guarded_elements);
+	}
+
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -820,7 +994,6 @@ __device__ __forceinline__ void ExchangePairs(
 		}
 	}
 }
-*/
 
 template <
 	typename Config, 
@@ -835,10 +1008,6 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 	typename Config::ValueType 	*d_in_values, 
 	typename Config::ValueType 	*d_out_values)				
 {
-	
-	
-	
-/*	
 	int2 offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 	
 	// Swap keys according to ranks
@@ -906,9 +1075,8 @@ __device__ __forceinline__ void SwapAndScatterSm13(
 			ScatterLoads<ValueType, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, NopFunctor<ValueType> >(d_out_values, datapairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, partial_tile_elements);
 		}
 	}
-*/	
 }
-
+*/
 
 /******************************************************************************
  * SM1.0 Local Exchange Routines
@@ -1060,7 +1228,7 @@ __device__ __forceinline__ void ProcessTile(
 	int							*base_partial,
 	int							*raking_segment,		
 	typename Config::IndexType 	cta_offset,
-	typename Config::IndexType 	cta_out_of_bounds)
+	typename Config::IndexType 	guarded_elements)
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
@@ -1073,7 +1241,7 @@ __device__ __forceinline__ void ProcessTile(
 	ScanTileCycles<Config, UNGUARDED_IO>::Invoke(
 		d_in_keys,
 		cta_offset,
-		cta_out_of_bounds,
+		guarded_elements,
 		base_partial,
 		raking_segment,
 		lanes_warpscan,
@@ -1093,9 +1261,6 @@ __device__ __forceinline__ void ProcessTile(
 		// Scan across my digit counts for each load
 		int inclusive_total = SerialScan<int, Config::LOADS_PER_TILE>::Invoke(
 			reinterpret_cast<int*>(digit_counts), 0);
-
-		printf("Block %d digit %d has count %d\n", blockIdx.x, threadIdx.x, inclusive_total);
-
 
 		// Second half of digit_carry update
 		IndexType my_carry = digit_carry[threadIdx.x] + digit_warpscan[1][threadIdx.x];
@@ -1118,44 +1283,19 @@ __device__ __forceinline__ void ProcessTile(
 
 	// Update the key ranks in each load with the digit prefixes for the tile
 	UpdateTileRanks<Config>::Invoke(key_ranks, key_digits, digit_prefixes);
-	
-	
-/*	
-	
-	//-------------------------------------------------------------------------
-	// Scatter 
-	//-------------------------------------------------------------------------
 
-#if ((__CUDA_ARCH__ < 130) || FERMI_ECC)		
-
-	SwapAndScatterSm10<KeyType, ValueType, CACHE_MODIFIER, RADIX_DIGITS, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
-		keypairs, 
-		ranks,
+	// Scatter to outgoing digit partitions (using a local scatter first)
+	SwapAndScatter<Config, UNGUARDED_IO, __B40C_CUDA_ARCH__ < 120>::Invoke(
+		d_in_values,
+		d_out_keys,
+		d_out_values,
 		exchange,
-		d_in_values, 
-		d_out_keys, 
-		d_out_values, 
-		digit_carry, 
-		digit_warpscan,
-		partial_tile_elements);
-	
-#else 
+		digit_carry,
+		guarded_elements,
+		keys,
+		key_ranks);
 
-	SwapAndScatterSm13<KeyType, ValueType, CACHE_MODIFIER, RADIX_BITS, RADIX_DIGITS, BIT, CYCLES_PER_TILE, LOADS_PER_CYCLE, UNGUARDED_IO, PostprocessFunctor>(
-		keypairs, 
-		ranks,
-		exchange,
-		d_in_values, 
-		d_out_keys, 
-		d_out_values, 
-		digit_carry, 
-		partial_tile_elements);
-	
-#endif
-*/
-	
 	__syncthreads();
-	
 }
 
 
@@ -1176,7 +1316,7 @@ __device__ __forceinline__ void DigitPass(
 	int							*raking_segment,		
 	typename Config::IndexType 	cta_offset,
 	typename Config::IndexType 	guarded_offset,
-	typename Config::IndexType 	cta_out_of_bounds)
+	typename Config::IndexType 	guarded_elements)
 {
 	typedef typename Config::IndexType IndexType;
 	
@@ -1191,8 +1331,7 @@ __device__ __forceinline__ void DigitPass(
 		ModifiedLoad<IndexType, Config::CACHE_MODIFIER>::Ld(my_digit_carry, d_spine, spine_digit_offset);
 		digit_carry[threadIdx.x] = my_digit_carry;
 	}
-	
-/*
+
 	// Scan in full tiles of tile_elements
 	while (cta_offset < guarded_offset) {
 
@@ -1210,18 +1349,17 @@ __device__ __forceinline__ void DigitPass(
 			base_partial,
 			raking_segment,
 			cta_offset,
-			cta_out_of_bounds);
+			0);
 	
 		cta_offset += Config::TILE_ELEMENTS;
 	}
-*/
-	
+
 	// Clean up last partial tile with guarded-io
-	if (cta_offset < cta_out_of_bounds) {
+	if (guarded_elements) {
 
 		ProcessTile<Config, false>(	
-			d_in_keys,
-			d_in_values,
+			d_in_keys + cta_offset,
+			d_in_values + cta_offset,
 			d_out_keys,
 			d_out_values,
 			exchange,
@@ -1232,8 +1370,8 @@ __device__ __forceinline__ void DigitPass(
 			lane_totals,
 			base_partial,
 			raking_segment,
-			cta_offset,
-			cta_out_of_bounds);
+			0,
+			guarded_elements);
 	}
 }
 
@@ -1274,13 +1412,11 @@ void LsbScanScatterKernel(
 	IndexType cta_offset;			// Offset at which this CTA begins processing
 	IndexType cta_elements;			// Total number of elements for this CTA to process
 	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	IndexType guarded_elements;		// Number of elements in partially-full tile 
-	IndexType cta_out_of_bounds;
+	IndexType guarded_elements;			// Number of elements in partially-full tile
 
 	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
-	cta_out_of_bounds = cta_offset + cta_elements;
-	
+
 	// location for placing 2-element partial reductions in the first lane of a cycle	
 	int *base_partial = KernelConfig::Grid::BasePartial(smem_pool); 								
 	
@@ -1334,10 +1470,9 @@ void LsbScanScatterKernel(
 	// Short-circuit this entire cycle
 	if (!non_trivial_digit_pass) return;
 	
-//	if (!selector) {
+	if (!selector) {
 	
 		// d_keys0 -> d_keys1 
-
 		DigitPass<KernelConfig>(	
 			d_spine,
 			d_keys0, 
@@ -1354,8 +1489,7 @@ void LsbScanScatterKernel(
 			raking_segment,
 			cta_offset,
 			guarded_offset,
-			cta_out_of_bounds);		
-/*
+			guarded_elements);
 
 	} else {
 		
@@ -1376,9 +1510,8 @@ void LsbScanScatterKernel(
 			raking_segment,
 			cta_offset,
 			guarded_offset,
-			cta_out_of_bounds);		
+			guarded_elements);
 	}
-*/
 }
 
 
