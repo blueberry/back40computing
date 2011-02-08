@@ -150,7 +150,8 @@ protected:
 												4,		// 4-bit radix digits on G80/90
 
 			// LOG_SUBTILE_ELEMENTS
-			(SM_ARCH >= 200) ? 					5 :		// 32 elements on GF100+
+			(SM_ARCH >= 200) ? 					10 :		// 32 elements on GF100+
+//			(SM_ARCH >= 200) ? 					5 :		// 32 elements on GF100+
 			(SM_ARCH >= 120) ? 					5 :		// 32 elements on GT200
 												5,		// 32 elements on G80/90
 
@@ -214,17 +215,17 @@ protected:
 			//---------------------------------------------------------------------
 
 			// DOWNSWEEP_CTA_OCCUPANCY
-			(SM_ARCH >= 200) ? 					7 :		// 7 CTAs/SM on GF100+
+			(SM_ARCH >= 200) ? 					8 :		// 7 CTAs/SM on GF100+
 			(SM_ARCH >= 120) ? 					5 :		// 5 CTAs/SM on GT200
 												2,		// 2 CTAs/SM on G80/90
 
 			// DOWNSWEEP_LOG_THREADS
-			(SM_ARCH >= 200) ? 					7 :		// 128 threads/CTA on GF100+
+			(SM_ARCH >= 200) ? 					6 :		// 64 threads/CTA on GF100+
 			(SM_ARCH >= 120) ? 					7 :		// 128 threads/CTA on GT200
 												7,		// 128 threads/CTA on G80/90
 
 			// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-			(SM_ARCH >= 200) ? 					1 :		// vec-2 loads on GF100+
+			(SM_ARCH >= 200) ? 					2 :		// vec-4 loads on GF100+
 			(SM_ARCH >= 120) ? 					1 :		// vec-2 loads on GT200
 												1,		// vec-2 loads on G80/90
 
@@ -338,8 +339,8 @@ protected:
 			
 		} else {
 
-			// GF100: Hard-coded
-			default_sweep_grid_size = 418;
+			// GF100
+			default_sweep_grid_size = (4 * this->cuda_props.device_props.multiProcessorCount * SortingConfig::Downsweep::CTA_OCCUPANCY) - 2;
 		}
 		
 		// Reduce by override, if specified
@@ -445,7 +446,7 @@ protected:
 		// Invoke spine scan kernel
 		//
 
-		grid_size = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	1 :  						// SM2.0+ gets 1 CTA
+		grid_size = 	(this->cuda_props.kernel_ptx_version >= 200) ? 	work.sweep_grid_size :  	// SM2.0+ gets the same grid size as the sweep kernels
 						(this->cuda_props.kernel_ptx_version >= 120) ? 	work.sweep_grid_size :		// GT200 gets the same grid size as the sweep kernels
 																		work.sweep_grid_size;		// G80/90 gets the same grid size as the sweep kernels
 
@@ -475,7 +476,7 @@ protected:
 				work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 				work);
 		dbg_sync_perror_exit("EarlyExitLsbSortEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
-	    
+
 		return cudaSuccess;
 	}
 

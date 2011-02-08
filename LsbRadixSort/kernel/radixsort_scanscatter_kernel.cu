@@ -633,8 +633,7 @@ struct ScanTileCycles
 	{
 		static __device__ __forceinline__ void Invoke(
 			KeyType		*d_in_keys,
-			IndexType	cta_offset,
-			IndexType	guarded_elements,
+			const IndexType	&guarded_elements,
 			int 		*base_partial,
 			int			*raking_segment,
 			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -665,7 +664,7 @@ struct ScanTileCycles
 			::Invoke(
 					keys[CYCLE],	 
 					d_in_keys,
-					cta_offset + (CYCLE * Config::CYCLE_ELEMENTS),
+					(CYCLE * Config::CYCLE_ELEMENTS),
 					guarded_elements);
 			
 			// Decode digits and update 8-bit composite counters for the keys in this cycle
@@ -695,7 +694,6 @@ struct ScanTileCycles
 			// Next cycle
 			Iterate<CYCLE + 1, TOTAL_CYCLES>::Invoke(
 				d_in_keys, 
-				cta_offset, 
 				guarded_elements,
 				base_partial, 
 				raking_segment, 
@@ -713,8 +711,7 @@ struct ScanTileCycles
 	{
 		static __device__ __forceinline__ void Invoke(
 			KeyType		*d_in_keys,
-			IndexType	cta_offset,
-			IndexType	guarded_elements,
+			const IndexType	&guarded_elements,
 			int 		*base_partial,
 			int			*raking_segment,
 			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -727,8 +724,7 @@ struct ScanTileCycles
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		KeyType		*d_in_keys,
-		IndexType	cta_offset,
-		IndexType	guarded_elements,
+		const IndexType	&guarded_elements,
 		int 		*base_partial,
 		int			*raking_segment,
 		int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
@@ -739,7 +735,6 @@ struct ScanTileCycles
 	{
 		Iterate<0, Config::CYCLES_PER_TILE>::Invoke(
 			d_in_keys, 
-			cta_offset, 
 			guarded_elements,
 			base_partial, 
 			raking_segment, 
@@ -765,13 +760,13 @@ struct Scatter
 			T *dest,
 			T src[Config::TILE_ELEMENTS_PER_THREAD],
 			IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-			IndexType out_of_bounds)
+			const IndexType	&guarded_elements)
 		{
-			if (UNGUARDED_IO || ((Config::THREADS * LOAD) + threadIdx.x < out_of_bounds)) {
+			if (UNGUARDED_IO || ((Config::THREADS * LOAD) + threadIdx.x < guarded_elements)) {
 				dest[scatter_offsets[LOAD]] = src[LOAD];
 			}
 
-			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, out_of_bounds);
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, guarded_elements);
 		}
 	};
 
@@ -780,8 +775,10 @@ struct Scatter
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			T *dest, T src[Config::TILE_ELEMENTS_PER_THREAD], IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-			IndexType out_of_bounds) {}
+			T *dest,
+			T src[Config::TILE_ELEMENTS_PER_THREAD],
+			IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			const IndexType	&guarded_elements) {}
 	};
 
 	// Interface
@@ -789,9 +786,9 @@ struct Scatter
 		T *dest,
 		T src[Config::TILE_ELEMENTS_PER_THREAD],
 		IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-		IndexType out_of_bounds)
+		const IndexType	&guarded_elements)
 	{
-		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src, scatter_offsets, out_of_bounds);
+		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src, scatter_offsets, guarded_elements);
 	}
 };
 
@@ -882,7 +879,7 @@ struct SwapAndScatter
 		ValueType 	*d_out_values,
 		int 		*exchange,
 		IndexType	digit_carry[Config::RADIX_DIGITS],
-		IndexType 	guarded_elements,
+		const IndexType	&guarded_elements,
 		KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],			// The keys this thread will read this tile
 		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE])		// The CTA-scope rank of each key
 	{
@@ -1227,8 +1224,7 @@ __device__ __forceinline__ void ProcessTile(
 	int 						lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
 	int							*base_partial,
 	int							*raking_segment,		
-	typename Config::IndexType 	cta_offset,
-	typename Config::IndexType 	guarded_elements)
+	const typename Config::IndexType 	&guarded_elements)
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
@@ -1240,7 +1236,6 @@ __device__ __forceinline__ void ProcessTile(
 	// Scan cycles
 	ScanTileCycles<Config, UNGUARDED_IO>::Invoke(
 		d_in_keys,
-		cta_offset,
 		guarded_elements,
 		base_partial,
 		raking_segment,
@@ -1252,7 +1247,6 @@ __device__ __forceinline__ void ProcessTile(
 
 	// Scan across digits
 	if (threadIdx.x < Config::RADIX_DIGITS) {
-
 		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE];					// Counts of my digit in each load in each cycle
 		
 		// Recover digit-counts from lanes_warpscan padding
@@ -1315,8 +1309,8 @@ __device__ __forceinline__ void DigitPass(
 	int							*base_partial,
 	int							*raking_segment,		
 	typename Config::IndexType 	cta_offset,
-	typename Config::IndexType 	guarded_offset,
-	typename Config::IndexType 	guarded_elements)
+	typename Config::IndexType 	&guarded_offset,
+	typename Config::IndexType 	&guarded_elements)
 {
 	typedef typename Config::IndexType IndexType;
 	
@@ -1336,8 +1330,8 @@ __device__ __forceinline__ void DigitPass(
 	while (cta_offset < guarded_offset) {
 
 		ProcessTile<Config, true>(	
-			d_in_keys,
-			d_in_values,
+			d_in_keys + cta_offset,
+			d_in_values + cta_offset,
 			d_out_keys,
 			d_out_values,
 			exchange,
@@ -1348,7 +1342,6 @@ __device__ __forceinline__ void DigitPass(
 			lane_totals,
 			base_partial,
 			raking_segment,
-			cta_offset,
 			0);
 	
 		cta_offset += Config::TILE_ELEMENTS;
@@ -1370,7 +1363,6 @@ __device__ __forceinline__ void DigitPass(
 			lane_totals,
 			base_partial,
 			raking_segment,
-			0,
 			guarded_elements);
 	}
 }
@@ -1411,8 +1403,8 @@ void LsbScanScatterKernel(
 	
 	IndexType cta_offset;			// Offset at which this CTA begins processing
 	IndexType cta_elements;			// Total number of elements for this CTA to process
-	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	IndexType guarded_elements;			// Number of elements in partially-full tile
+	__shared__ IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	__shared__ IndexType guarded_elements;		// Number of elements in partially-full tile
 
 	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
@@ -1432,35 +1424,35 @@ void LsbScanScatterKernel(
 		
 		// initialize raking segment
 		raking_segment = KernelConfig::Grid::RakingSegment(smem_pool); 
-	}
 
-	// initialize digit warpscans
-	if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
+		// initialize digit warpscans
+		if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
 
-		const int SELECTOR_IDX = KernelConfig::CURRENT_PASS & 0x1;
-		const int NEXT_SELECTOR_IDX = (KernelConfig::CURRENT_PASS + 1) & 0x1;
-		
-		// Initialize digit_warpscan
-		digit_warpscan[0][threadIdx.x] = 0;
+			const int SELECTOR_IDX = KernelConfig::CURRENT_PASS & 0x1;
+			const int NEXT_SELECTOR_IDX = (KernelConfig::CURRENT_PASS + 1) & 0x1;
 
-		// Determine where to read our input
-		selector = (KernelConfig::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
+			// Initialize digit_warpscan
+			digit_warpscan[0][threadIdx.x] = 0;
 
-		// Determine whether or not we have work to do and setup the next round 
-		// accordingly.  We can do this by looking at the first-block's 
-		// histograms and counting the number of digits with counts that are 
-		// non-zero and not-the-problem-size.
-		if (KernelConfig::PreprocessFunctor::MustApply || KernelConfig::PostprocessFunctor::MustApply) {
-			non_trivial_digit_pass = true;
-		} else {
-			int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
-			int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-			non_trivial_digit_pass = TallyWarpVote(KernelConfig::RADIX_DIGITS, predicate, smem_pool);
-		}
+			// Determine where to read our input
+			selector = (KernelConfig::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
 
-		// Let the next round know which set of buffers to use
-		if (blockIdx.x == 0) {
-			d_selectors[NEXT_SELECTOR_IDX] = selector ^ non_trivial_digit_pass;
+			// Determine whether or not we have work to do and setup the next round
+			// accordingly.  We can do this by looking at the first-block's
+			// histograms and counting the number of digits with counts that are
+			// non-zero and not-the-problem-size.
+			if (KernelConfig::PreprocessFunctor::MustApply || KernelConfig::PostprocessFunctor::MustApply) {
+				non_trivial_digit_pass = true;
+			} else {
+				int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
+				int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
+				non_trivial_digit_pass = TallyWarpVote(KernelConfig::RADIX_DIGITS, predicate, smem_pool);
+			}
+
+			// Let the next round know which set of buffers to use
+			if (blockIdx.x == 0) {
+				d_selectors[NEXT_SELECTOR_IDX] = selector ^ non_trivial_digit_pass;
+			}
 		}
 	}
 

@@ -364,9 +364,9 @@ __device__ __forceinline__ void ProcessTile(
 		Config::LOG_LOAD_VEC_SIZE, 
 		Config::THREADS, 
 		Config::CACHE_MODIFIER, 
-		true>::Invoke(keys, d_in_keys, cta_offset);
+		true>::Invoke(keys, d_in_keys, cta_offset, 0);
 
-//	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();
+//	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();			// mooch
 	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
 
 	// Bucket tile of keys

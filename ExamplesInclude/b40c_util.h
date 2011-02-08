@@ -237,17 +237,17 @@ void PrintValue<unsigned long long>(unsigned long long val) {
 template <typename K>
 void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K) * 8)
 {
-	const unsigned int NUM_USHORTS = (sizeof(K) + sizeof(unsigned short) - 1) / sizeof(unsigned short);
-	unsigned short key_bits[NUM_USHORTS];
+	const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
+	unsigned char key_bits[NUM_UCHARS];
 	
 	do {
 	
-		for (int j = 0; j < NUM_USHORTS; j++) {
-			unsigned short halfword = 0xffff; 
+		for (int j = 0; j < NUM_UCHARS; j++) {
+			unsigned char quarterword = 0xff;
 			for (int i = 0; i <= entropy_reduction; i++) {
-				halfword &= (rand() >> 8);
+				quarterword &= (rand() >> 7);
 			}
-			key_bits[j] = halfword;
+			key_bits[j] = quarterword;
 		}
 		
 		if (lower_key_bits < sizeof(K) * 8) {

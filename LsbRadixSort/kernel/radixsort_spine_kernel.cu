@@ -340,7 +340,7 @@ struct ProcessTile <Config, false>
 		
 		// Load tile
 		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset);
+			data, d_data, cta_offset, 0);
 		
 		// Reduce in registers, place partials in smem
 		ReduceVectors<Config>::Invoke(data, primary_base_partial);
@@ -357,7 +357,7 @@ struct ProcessTile <Config, false>
 		
 		// Store tile
 		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset);
+			data, d_data, cta_offset, 0);
 	}
 };
 
@@ -386,7 +386,7 @@ struct ProcessTile <Config, true>
 		
 		// Load tile
 		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset);
+			data, d_data, cta_offset, 0);
 		
 		// Reduce in registers, place partials in smem
 		ReduceVectors<Config>::Invoke(data, primary_base_partial);
