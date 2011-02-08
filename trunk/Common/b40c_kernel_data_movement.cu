@@ -286,7 +286,8 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
-			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, threadIdx.x);
+			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS) + threadIdx.x);
+//			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS));
 			Transform(data[LOAD][0], true);		// Apply transform function with in_bounds = true 
 			Iterate<LOAD, 1>::Invoke(data, vectors, d_in_vectors);
 		}
@@ -301,7 +302,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
-			Iterate<LOAD + 1, 0>::Invoke(data, vectors, d_in_vectors + ACTIVE_THREADS);
+			Iterate<LOAD + 1, 0>::Invoke(data, vectors, d_in_vectors);
 		}
 	};
 	
@@ -320,10 +321,11 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
 		IndexType cta_offset,
-		IndexType out_of_bounds = 0)
+		const IndexType &out_of_bounds)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		VectorType *vectors = (VectorType *) data;
+//		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
 		Iterate<0,0>::Invoke(data, vectors, d_in_vectors);
 	} 
@@ -355,7 +357,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds)
+			const IndexType &out_of_bounds)
 		{
 			if (thread_offset + VEC < out_of_bounds) {
 				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset + VEC);
@@ -375,7 +377,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds)
+			const IndexType &out_of_bounds)
 		{
 			Iterate<LOAD + 1, 0>::Invoke(
 				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE), out_of_bounds);
@@ -390,7 +392,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds) {}
+			const IndexType &out_of_bounds) {}
 	};
 
 	// Interface
@@ -398,7 +400,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
 		IndexType cta_offset,
-		IndexType out_of_bounds)
+		const IndexType &out_of_bounds)
 	{
 		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
 		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
@@ -643,7 +645,7 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
 		IndexType cta_offset,
-		IndexType out_of_bounds = 0)
+		const IndexType &out_of_bounds)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector stores
 		VectorType *vectors = (VectorType *) data;
@@ -677,7 +679,7 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds)
+			const IndexType &out_of_bounds)
 		{
 			if (thread_offset + VEC < out_of_bounds) {
 				ModifiedStore<T, CACHE_MODIFIER>::St(data[STORE][VEC], d_in, thread_offset + VEC);
@@ -693,7 +695,7 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds)
+			const IndexType &out_of_bounds)
 		{
 			Iterate<STORE + 1, 0>::Invoke(
 				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
@@ -707,7 +709,7 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
 			IndexType thread_offset,
-			IndexType out_of_bounds) {}
+			const IndexType &out_of_bounds) {}
 	};
 
 	// Interface
@@ -715,7 +717,7 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
 		IndexType cta_offset,
-		IndexType out_of_bounds)
+		const IndexType &out_of_bounds)
 	{
 		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE);
 		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);

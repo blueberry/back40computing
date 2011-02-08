@@ -130,7 +130,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitLsbSortEnactor<K> sorting_enactor;			
+	EarlyExitLsbSortEnactor<K> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -139,7 +139,7 @@ void TimedSort(
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
-	
+
 	// Perform the timed number of sorting iterations
 
 	cudaEvent_t start_event, stop_event;

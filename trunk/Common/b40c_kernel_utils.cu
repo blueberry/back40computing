@@ -186,10 +186,10 @@ struct CtaDecomposition {
 		if (cta_offset + cta_elements > num_elements) {
 			// The last CTA having work will have rounded its last subtile up past the end 
 			cta_elements = cta_elements - SUBTILE_ELEMENTS + 					// subtract subtile
-				(num_elements & (SUBTILE_ELEMENTS - 1));		// add delta to end of input
+				(num_elements & (SUBTILE_ELEMENTS - 1));						// add delta to end of input
 		}
 		cta_guarded_elements = cta_elements & (TILE_ELEMENTS - 1);				// The delta from the previous TILE alignment
-		guarded_offset = cta_elements - cta_guarded_elements;
+		guarded_offset = cta_offset + cta_elements - cta_guarded_elements;
 	}
 };
 
