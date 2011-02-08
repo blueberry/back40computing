@@ -66,6 +66,7 @@ using namespace b40c;
 //#define __B40C_ERROR_CHECKING__
 
 bool g_verbose;
+int g_max_ctas = 0;
 
 
 /******************************************************************************
@@ -89,7 +90,8 @@ struct Fribbitz {
  */
 void Usage() 
 {
-	printf("\ntest_large_problem_sorting [--device=<device index>] [--v] [--i=<num-iterations>] [--n=<num-elements>] [--keys-only]\n"); 
+	printf("\ntest_large_problem_sorting [--device=<device index>] [--v] [--i=<num-iterations>] "
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--keys-only]\n");
 	printf("\n");
 	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");
@@ -130,7 +132,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitLsbSortEnactor<K> sorting_enactor;
+	EarlyExitLsbSortEnactor<K> sorting_enactor(g_max_ctas);
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -388,6 +390,7 @@ int main(int argc, char** argv)
 
     args.GetCmdLineArgumenti("i", iterations);
     args.GetCmdLineArgumenti("n", num_elements);
+    args.GetCmdLineArgumenti("max-ctas", g_max_ctas);
     keys_only = args.CheckCmdLineFlag("keys-only");
 	g_verbose = args.CheckCmdLineFlag("v");
 
