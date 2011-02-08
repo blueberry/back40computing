@@ -227,17 +227,17 @@ protected:
 	{
 		int sweep_grid_size;
 		int spine_elements;
-		Storage problem_storage;
+		Storage *problem_storage;
 		
 		// Constructor
 		SortingCtaDecomposition(
-			const Storage &problem_storage,
+			Storage *problem_storage,
 			int subtile_elements,
 			int sweep_grid_size,
 			int spine_elements) :
 				
 				CtaDecomposition<typename Storage::IndexType>(
-					problem_storage.num_elements, 
+					problem_storage->num_elements,
 					subtile_elements, 
 					sweep_grid_size),
 				sweep_grid_size(sweep_grid_size),

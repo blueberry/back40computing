@@ -63,8 +63,7 @@ using namespace b40c;
  * Defines, constants, globals 
  ******************************************************************************/
 
-// mooch 
-#define __B40C_ERROR_CHECKING__		 
+//#define __B40C_ERROR_CHECKING__
 
 bool g_verbose;
 
@@ -134,14 +133,12 @@ void TimedSort(
 	EarlyExitLsbSortEnactor<K> sorting_enactor;			
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-/* mooch	
 	cudaMemcpy(
 		device_storage.d_keys[0], 
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
 	sorting_enactor.EnactSort(device_storage);
-*/	
 	
 	// Perform the timed number of sorting iterations
 
@@ -326,11 +323,7 @@ void TestSort(
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-
-		// mooch
-		h_keys[i] = i % 16;
-//		RandomBits<K>(h_keys[i], 0);
-		
+		RandomBits<K>(h_keys[i], 0);
 		h_reference_keys[i] = h_keys[i];
 	}
 
@@ -342,6 +335,7 @@ void TestSort(
 //		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
 //	}
 
+	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
     
 	// Display sorted key data
@@ -447,8 +441,6 @@ int main(int argc, char** argv)
 			keys_only);
 */
 
-	// Flushes any stdio from the GPU 
-	cudaThreadSynchronize();
 }
 
 

@@ -722,7 +722,6 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 	} 
 };
 
-	
-	
+
 } // namespace b40c
 

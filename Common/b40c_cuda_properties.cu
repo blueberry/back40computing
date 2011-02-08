@@ -31,6 +31,17 @@
 
 namespace b40c {
 
+// Defines to make syntax highlighting manageable in the Eclipse CDT.
+#ifdef __CDT_PARSER__
+	#define __shared__
+	#define __global__
+	#define __device__
+	#define __host__
+	#define __forceinline__
+	#define __launch_bounds__(a, b)
+#endif
+
+
 // CUDA architecture currently being compiled for
 #ifndef __CUDA_ARCH__
 	#define __B40C_CUDA_ARCH__ 0						// Host

@@ -157,10 +157,10 @@ struct CtaDecomposition {
 	 */	
 	template <int LOG_TILE_ELEMENTS, int LOG_SUBTILE_ELEMENTS>
 	__device__ __forceinline__ void GetCtaWorkLimits(
-		OffsetType &cta_offset,			// Out param: Offset at which this CTA begins processing
+		OffsetType &cta_offset,				// Out param: Offset at which this CTA begins processing
 		OffsetType &cta_elements,			// Out param: Total number of elements for this CTA to process
 		OffsetType &guarded_offset, 		// Out param: Offset of final, partially-full tile (requires guarded loads)
-		OffsetType &cta_guarded_elements)	// Out param: Number of elements in partially-full tile 
+		OffsetType &cta_guarded_elements)	// Out param: Number of elements in partially-full tile
 	{
 		const int TILE_ELEMENTS 		= 1 << LOG_TILE_ELEMENTS;
 		const int SUBTILE_ELEMENTS 		= 1 << LOG_SUBTILE_ELEMENTS;

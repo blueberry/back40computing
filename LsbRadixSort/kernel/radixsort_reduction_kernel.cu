@@ -644,7 +644,7 @@ void LsbRakingReductionKernel(
 	IndexType cta_offset;			// Offset at which this CTA begins processing
 	IndexType cta_elements;			// Total number of elements for this CTA to process
 	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	IndexType guarded_elements;		// Number of elements in partially-full tile 
+	IndexType guarded_elements;		// Number of elements in partially-full tile
 
 	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
