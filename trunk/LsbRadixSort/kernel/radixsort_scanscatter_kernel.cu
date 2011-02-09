@@ -93,7 +93,8 @@ template <
 	int _LOG_LOADS_PER_CYCLE,
 	int _LOG_CYCLES_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	CacheModifier _CACHE_MODIFIER>
+	CacheModifier _CACHE_MODIFIER,
+	bool _EARLY_EXIT>
 
 struct DownsweepConfig
 {
@@ -109,6 +110,7 @@ struct DownsweepConfig
 	static const int LOG_CYCLES_PER_TILE		= _LOG_CYCLES_PER_TILE;
 	static const int LOG_RAKING_THREADS			= _LOG_RAKING_THREADS;
 	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
+	static const bool EARLY_EXIT				= _EARLY_EXIT;
 };
 
 
@@ -161,7 +163,7 @@ struct DownsweepKernelConfig : DownsweepConfigType
 	static const int LOG_TILE_ELEMENTS_PER_THREAD	= LOG_TILE_ELEMENTS - DownsweepConfigType::LOG_THREADS;
 	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
 
-	static const int LOG_SCAN_LANES_PER_LOAD		= B40C_MAX((DownsweepConfigType::RADIX_BITS - 2), 0);		// Always at one lane per load
+	static const int LOG_SCAN_LANES_PER_LOAD		= B40C_MAX((DownsweepConfigType::RADIX_BITS - 2), 0);		// Always at least one lane per load
 	static const int SCAN_LANES_PER_LOAD			= 1 << LOG_SCAN_LANES_PER_LOAD;								
 	
 	static const int LOG_SCAN_LANES_PER_CYCLE		= DownsweepConfigType::LOG_LOADS_PER_CYCLE + LOG_SCAN_LANES_PER_LOAD;
@@ -345,7 +347,7 @@ struct ExtractCycleRanks
 
 			key_ranks[LOAD][VEC_ELEMENT] = base_partial_chars[counter_offsets[LOAD][VEC_ELEMENT]] +
 				SameDigitCount<Config>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
-			
+
 			// Next
 			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
 				key_ranks, key_digits, counter_offsets, base_partial);
@@ -1212,7 +1214,7 @@ __device__ __forceinline__ void DigitPass(
 	typename Config::IndexType 	&guarded_elements)
 {
 	typedef typename Config::IndexType IndexType;
-	
+
 	if (threadIdx.x < Config::RADIX_DIGITS) {
 
 		// Reset value-area of digit_warpscan
@@ -1228,7 +1230,7 @@ __device__ __forceinline__ void DigitPass(
 	// Scan in full tiles of tile_elements
 	while (cta_offset < guarded_offset) {
 
-		ProcessTile<Config, true>(	
+		ProcessTile<Config, true>(
 			d_in_keys + cta_offset,
 			d_in_values + cta_offset,
 			d_out_keys,
@@ -1294,19 +1296,11 @@ void LsbScanScatterKernel(
 	__shared__ int 		lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE];
 	__shared__ bool 	non_trivial_digit_pass;
 	__shared__ int 		selector;
-	
-	int *smem_pool = reinterpret_cast<int *>(smem_pool_int4s);
-
-
-	// Determine our threadblock's work range
-
-	IndexType cta_offset;			// Offset at which this CTA begins processing
-	IndexType cta_elements;			// Total number of elements for this CTA to process
+	__shared__ IndexType cta_offset;			// Offset at which this CTA begins processing
 	__shared__ IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 	__shared__ IndexType guarded_elements;		// Number of elements in partially-full tile
-
-	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
+	
+	int *smem_pool = reinterpret_cast<int *>(smem_pool_int4s);
 
 	// location for placing 2-element partial reductions in the first lane of a cycle	
 	int *base_partial = KernelConfig::Grid::BasePartial(smem_pool); 								
@@ -1327,31 +1321,41 @@ void LsbScanScatterKernel(
 		// initialize digit warpscans
 		if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
 
-			const int SELECTOR_IDX = KernelConfig::CURRENT_PASS & 0x1;
-			const int NEXT_SELECTOR_IDX = (KernelConfig::CURRENT_PASS + 1) & 0x1;
-
 			// Initialize digit_warpscan
 			digit_warpscan[0][threadIdx.x] = 0;
 
 			// Determine where to read our input
-			selector = (KernelConfig::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
+			if (KernelConfig::EARLY_EXIT) {
 
-			// Determine whether or not we have work to do and setup the next round
-			// accordingly.  We can do this by looking at the first-block's
-			// histograms and counting the number of digits with counts that are
-			// non-zero and not-the-problem-size.
-			if (KernelConfig::PreprocessFunctor::MustApply || KernelConfig::PostprocessFunctor::MustApply) {
-				non_trivial_digit_pass = true;
-			} else {
-				int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
-				int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-				non_trivial_digit_pass = TallyWarpVote(KernelConfig::RADIX_DIGITS, predicate, smem_pool);
+				// We have early-exit-upon-homogeneous-digits enabled
+
+				const int SELECTOR_IDX = KernelConfig::CURRENT_PASS & 0x1;
+				const int NEXT_SELECTOR_IDX = (KernelConfig::CURRENT_PASS + 1) & 0x1;
+
+				selector = (KernelConfig::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
+
+				// Determine whether or not we have work to do and setup the next round
+				// accordingly.  We can do this by looking at the first-block's
+				// histograms and counting the number of digits with counts that are
+				// non-zero and not-the-problem-size.
+				if (KernelConfig::PreprocessFunctor::MustApply || KernelConfig::PostprocessFunctor::MustApply) {
+					non_trivial_digit_pass = true;
+				} else {
+					int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
+					int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
+					non_trivial_digit_pass = TallyWarpVote(KernelConfig::RADIX_DIGITS, predicate, smem_pool);
+				}
+
+				// Let the next round know which set of buffers to use
+				if (blockIdx.x == 0) {
+					d_selectors[NEXT_SELECTOR_IDX] = selector ^ non_trivial_digit_pass;
+				}
 			}
 
-			// Let the next round know which set of buffers to use
-			if (blockIdx.x == 0) {
-				d_selectors[NEXT_SELECTOR_IDX] = selector ^ non_trivial_digit_pass;
-			}
+			// Determine our threadblock's work range
+			IndexType cta_elements;			// Total number of elements for this CTA to process
+			work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
+				cta_offset, cta_elements, guarded_offset, guarded_elements);
 		}
 	}
 
@@ -1359,17 +1363,17 @@ void LsbScanScatterKernel(
 	__syncthreads();
 	
 	// Short-circuit this entire cycle
-	if (!non_trivial_digit_pass) return;
+	if (KernelConfig::EARLY_EXIT && !non_trivial_digit_pass) return;
+
+	if ((KernelConfig::EARLY_EXIT && selector) || (!KernelConfig::EARLY_EXIT && (KernelConfig::CURRENT_PASS & 0x1))) {
 	
-	if (!selector) {
-	
-		// d_keys0 -> d_keys1 
+		// d_keys1 -> d_keys0
 		DigitPass<KernelConfig>(	
 			d_spine,
+			d_keys1,
+			d_values1,
 			d_keys0, 
 			d_values0, 
-			d_keys1, 
-			d_values1, 
 			smem_pool,
 			lanes_warpscan,
 			digit_carry,
@@ -1384,13 +1388,13 @@ void LsbScanScatterKernel(
 
 	} else {
 		
-		// d_keys1 -> d_keys0
+		// d_keys0 -> d_keys1
 		DigitPass<KernelConfig>(	
 			d_spine,
+			d_keys0,
+			d_values0,
 			d_keys1, 
 			d_values1, 
-			d_keys0, 
-			d_values0, 
 			smem_pool,
 			lanes_warpscan,
 			digit_carry,

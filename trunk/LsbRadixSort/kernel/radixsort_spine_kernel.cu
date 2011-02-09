@@ -419,7 +419,7 @@ struct ProcessTile <Config, true>
 		
 		// Store tile
 		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset);
+			data, d_data, cta_offset, 0);
 		
 	}
 };

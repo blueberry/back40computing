@@ -73,7 +73,8 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	CacheModifier _CACHE_MODIFIER>
+	CacheModifier _CACHE_MODIFIER,
+	bool _EARLY_EXIT>
 
 struct UpsweepConfig
 {
@@ -86,6 +87,7 @@ struct UpsweepConfig
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
 	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
 	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
+	static const bool EARLY_EXIT				= _EARLY_EXIT;
 };
 
 
@@ -635,10 +637,14 @@ void LsbRakingReductionKernel(
 	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
 
 	// Determine where to read our input
-	if ((KernelConfig::CURRENT_PASS != 0) && (d_selectors[KernelConfig::CURRENT_PASS & 0x1])) {
+	if (KernelConfig::EARLY_EXIT) {
+		if ((KernelConfig::CURRENT_PASS != 0) && (d_selectors[KernelConfig::CURRENT_PASS & 0x1])) {
+			d_in_keys = d_out_keys;
+		}
+	} else if (KernelConfig::CURRENT_PASS & 0x1) {
 		d_in_keys = d_out_keys;
 	}
-	
+
 	// Determine our threadblock's work range
 	
 	IndexType cta_offset;			// Offset at which this CTA begins processing
@@ -650,7 +656,9 @@ void LsbRakingReductionKernel(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 		
 	// Perform reduction pass over work range with agressive unrolling
-	ReductionPass<KernelConfig, true>(
+	ReductionPass<KernelConfig, false>(
+// mooch
+//	ReductionPass<KernelConfig, true>(
 		d_in_keys,
 		d_spine,
 		reinterpret_cast<int*>(smem_pool),
