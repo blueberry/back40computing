@@ -265,6 +265,7 @@ public:
 		int RADIX_BITS,
 		int LOG_SUBTILE_ELEMENTS,
 		CacheModifier CACHE_MODIFIER,
+		bool EARLY_EXIT,
 		
 		// Upsweep
 		int UPSWEEP_CTA_OCCUPANCY,
@@ -302,7 +303,8 @@ public:
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,  	
 			UPSWEEP_LOG_LOADS_PER_TILE,
-			CACHE_MODIFIER> 						Upsweep;
+			CACHE_MODIFIER,
+			EARLY_EXIT> 						Upsweep;
 		
 		typedef lsb_radix_sort::scan::ScanConfig<
 			typename StorageType::IndexType,		// Type of scan problem
@@ -326,7 +328,8 @@ public:
 			DOWNSWEEP_LOG_LOADS_PER_CYCLE,
 			DOWNSWEEP_LOG_CYCLES_PER_TILE,
 			DOWNSWEEP_LOG_RAKING_THREADS,
-			CACHE_MODIFIER> 						Downsweep;
+			CACHE_MODIFIER,
+			EARLY_EXIT> 						Downsweep;
 	};
 		
 protected:
