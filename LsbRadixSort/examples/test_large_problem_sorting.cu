@@ -212,7 +212,6 @@ void TimedSort(
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU sorting primitive
  */
-/*
 template <typename K, typename V>
 void TimedSort(
 	int num_elements,
@@ -230,7 +229,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitLsbSortEnactor<K, V> sorting_enactor;
+	EarlyExitLsbSortEnactor<K, V> sorting_enactor(g_max_ctas);
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -296,7 +295,7 @@ void TimedSort(
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
 }
-*/
+
 
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
@@ -330,12 +329,11 @@ void TestSort(
 	}
 
     // Run the timing test
-// mooch
-//	if (keys_only) {
+	if (keys_only) {
 		TimedSort<K>(num_elements, h_keys, iterations);
-//	} else {
-//		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
-//	}
+	} else {
+		TimedSort<K, V>(num_elements, h_keys, h_values, iterations);
+	}
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
