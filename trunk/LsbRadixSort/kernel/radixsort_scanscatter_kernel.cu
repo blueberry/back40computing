@@ -748,8 +748,21 @@ struct ScanTileCycles
 };
 
 
+/**
+ * Empty default transform function (leaves non-in_bounds values as they were)
+ */
+template <typename T>
+__device__ __forceinline__ void NopStoreTransform(T &val) {}
 
-template <typename Config, typename T, typename IndexType, bool UNGUARDED_IO>
+
+template <
+	typename T,
+	typename IndexType,
+	int LOADS_PER_TILE,
+	int ACTIVE_THREADS,										// Active threads that will be loading
+	CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+	bool UNGUARDED_IO,
+	void Transform(T&) = NopStoreTransform<T> > 			// Assignment function to transform the loaded value (can be used assign default values for items deemed not in bounds)
 struct Scatter
 {
 	// Iterate
@@ -758,12 +771,13 @@ struct Scatter
 	{
 		static __device__ __forceinline__ void Invoke(
 			T *dest,
-			T src[Config::TILE_ELEMENTS_PER_THREAD],
-			IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			T src[LOADS_PER_TILE],
+			IndexType scatter_offsets[LOADS_PER_TILE],
 			const IndexType	&guarded_elements)
 		{
-			if (UNGUARDED_IO || ((Config::THREADS * LOAD) + threadIdx.x < guarded_elements)) {
-				dest[scatter_offsets[LOAD]] = src[LOAD];
+			if (UNGUARDED_IO || ((ACTIVE_THREADS * LOAD) + threadIdx.x < guarded_elements)) {
+				Transform(src[LOAD]);
+				ModifiedStore<T, CACHE_MODIFIER>::St(src[LOAD], dest, scatter_offsets[LOAD]);
 			}
 
 			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, guarded_elements);
@@ -776,34 +790,41 @@ struct Scatter
 	{
 		static __device__ __forceinline__ void Invoke(
 			T *dest,
-			T src[Config::TILE_ELEMENTS_PER_THREAD],
-			IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+			T src[LOADS_PER_TILE],
+			IndexType scatter_offsets[LOADS_PER_TILE],
 			const IndexType	&guarded_elements) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T *dest,
-		T src[Config::TILE_ELEMENTS_PER_THREAD],
-		IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
+		T src[LOADS_PER_TILE],
+		IndexType scatter_offsets[LOADS_PER_TILE],
 		const IndexType	&guarded_elements)
 	{
-		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src, scatter_offsets, guarded_elements);
+		Iterate<0, LOADS_PER_TILE>::Invoke(dest, src, scatter_offsets, guarded_elements);
 	}
 };
 
 
-template <typename Config, typename T>
+template <typename Config, typename T, bool UNGUARDED_IO>
 struct Gather
 {
+	typedef typename Config::IndexType IndexType;
+
 	// Iterate over loads
 	template <int LOAD, int TOTAL_LOADS>
 	struct Iterate
 	{
-		static __device__ __forceinline__ void Invoke(T dest[Config::TILE_ELEMENTS_PER_THREAD], T *src)
+		static __device__ __forceinline__ void Invoke(
+			T dest[Config::TILE_ELEMENTS_PER_THREAD],
+			T *src,
+			const IndexType	&guarded_elements)
 		{
-			dest[LOAD] = src[threadIdx.x];
-			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src + Config::THREADS);
+			if (UNGUARDED_IO || ((Config::THREADS * LOAD) + threadIdx.x < guarded_elements)) {
+				dest[LOAD] = src[Config::THREADS * LOAD];
+			}
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, guarded_elements);
 		}
 	};
 
@@ -811,15 +832,19 @@ struct Gather
 	template <int TOTAL_LOADS>
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
 	{
-		static __device__ __forceinline__ void Invoke(T dest[Config::TILE_ELEMENTS_PER_THREAD], T *src) {}
+		static __device__ __forceinline__ void Invoke(
+			T dest[Config::TILE_ELEMENTS_PER_THREAD],
+			T *src,
+			const IndexType	&guarded_elements) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T dest[Config::TILE_ELEMENTS_PER_THREAD],
-		T *src)
+		T *src,
+		const IndexType	&guarded_elements)
 	{
-		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src);
+		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(dest, src + threadIdx.x, guarded_elements);
 	}
 };
 
@@ -888,192 +913,66 @@ struct SwapAndScatter
 		int *linear_ranks = reinterpret_cast<int *>(key_ranks);
 
 		// Scatter keys to smem
-		Scatter<Config, KeyType, int, true>::Invoke(key_exchange, linear_keys, linear_ranks, guarded_elements);
+		Scatter<KeyType, int, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, NONE, true>::Invoke(
+			key_exchange, linear_keys, linear_ranks, guarded_elements);
 
 		__syncthreads();
 
 		// Gather keys from smem
-		Gather<Config, KeyType>::Invoke(linear_keys, key_exchange);
+		Gather<Config, KeyType, true>::Invoke(linear_keys, key_exchange, guarded_elements);
 
 		// Compute global scatter offsets for gathered keys
 		IndexType scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD];
 		ComputeScatterOffsets<Config>::Invoke(scatter_offsets, digit_carry, linear_keys);
 
 		// Scatter keys to global digit partitions
-		Scatter<Config, KeyType, IndexType, UNGUARDED_IO>::Invoke(d_out_keys, linear_keys, scatter_offsets, guarded_elements);
-	}
+		Scatter<
+			KeyType,
+			IndexType,
+			Config::TILE_ELEMENTS_PER_THREAD,
+			Config::THREADS,
+			Config::CACHE_MODIFIER,
+			UNGUARDED_IO,
+			Config::PostprocessFunctor::Transform>::Invoke(d_out_keys, linear_keys, scatter_offsets, guarded_elements);
 
+		if (!IsKeysOnly<ValueType>()) {
+
+			// Read values
+			ValueType values[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+			ValueType *linear_values = reinterpret_cast<ValueType *>(values);
+			ValueType *value_exchange = reinterpret_cast<ValueType *>(exchange);
+
+			LoadTile<
+				ValueType,											// Type to load
+				IndexType,											// Integer type for indexing into global arrays
+				Config::LOG_LOADS_PER_TILE, 						// Number of vector loads (log)
+				Config::LOG_LOAD_VEC_SIZE,							// Number of items per vector load (log)
+				Config::THREADS,									// Active threads that will be loading
+				Config::CACHE_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+				UNGUARDED_IO>::Invoke(values, d_in_values, 0, guarded_elements);
+
+			__syncthreads();
+
+
+			// Scatter values to smem
+			Scatter<ValueType, int, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, NONE, true>::Invoke(
+					value_exchange, linear_values, linear_ranks, guarded_elements);
+
+			__syncthreads();
+
+			// Gather values from smem
+			Gather<Config, ValueType, true>::Invoke(linear_values, value_exchange, guarded_elements);
+
+			// Scatter values to global digit partitions
+			Scatter<ValueType, IndexType, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, Config::CACHE_MODIFIER, UNGUARDED_IO>::Invoke(
+				d_out_values, linear_values, scatter_offsets, guarded_elements);
+		}
+	}
 };
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/******************************************************************************
- * SM1.3 Local Exchange Routines
- * 
- * Routines for exchanging keys (and values) in shared memory (i.e., local 
- * scattering) in order to to facilitate coalesced global scattering
- ******************************************************************************/
-
-/*
-template <typename T, bool UNGUARDED_IO, int CYCLES_PER_TILE, int LOADS_PER_CYCLE, typename PostprocessFunctor>
-__device__ __forceinline__ void ScatterLoads(
-	T *d_out, 
-	typename VecType<T, 2>::Type pairs[LOADS_PER_CYCLE],
-	int2 offsets[LOADS_PER_CYCLE],
-	const int BASE4,
-	const int &partial_tile_elements,
-	PostprocessFunctor postprocess = PostprocessFunctor())				
-{
-	#pragma unroll 
-	for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-		postprocess(pairs[LOAD].x);
-		postprocess(pairs[LOAD].y);
-
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * (LOAD * 2 + 0)) < partial_tile_elements)) 
-			d_out[offsets[LOAD].x] = pairs[LOAD].x;
-		if (UNGUARDED_IO || (threadIdx.x + BASE4 + (B40C_RADIXSORT_THREADS * (LOAD * 2 + 1)) < partial_tile_elements)) 
-			d_out[offsets[LOAD].y] = pairs[LOAD].y;
-	}
-}
-
-template <typename T, int CYCLES_PER_TILE, int LOADS_PER_CYCLE>
-__device__ __forceinline__ void PushPairs(
-	T *swap, 
-	typename VecType<T, 2>::Type pairs[CYCLES_PER_TILE][LOADS_PER_CYCLE],
-	int2 ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE])				
-{
-	#pragma unroll 
-	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-	
-		#pragma unroll 
-		for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-			swap[ranks[CYCLE][LOAD].x] = pairs[CYCLE][LOAD].x;
-			swap[ranks[CYCLE][LOAD].y] = pairs[CYCLE][LOAD].y;
-		}
-	}
-}
-	
-template <typename T, int CYCLES_PER_TILE, int LOADS_PER_CYCLE>
-__device__ __forceinline__ void ExchangePairs(
-	T *swap, 
-	typename VecType<T, 2>::Type pairs[CYCLES_PER_TILE][LOADS_PER_CYCLE],
-	int2 ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE])				
-{
-	// Push in Pairs
-	PushPairs<T, CYCLES_PER_TILE, LOADS_PER_CYCLE>(swap, pairs, ranks);
-	
-	__syncthreads();
-	
-	// Extract pairs
-	#pragma unroll 
-	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-		
-		#pragma unroll 
-		for (int LOAD = 0; LOAD < (int) LOADS_PER_CYCLE; LOAD++) {
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			pairs[CYCLE][LOAD].x = swap[threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0))];
-			pairs[CYCLE][LOAD].y = swap[threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1))];
-		}
-	}
-}
-
-template <
-	typename Config, 
-	bool UNGUARDED_IO>
-__device__ __forceinline__ void SwapAndScatterSm13(
-	typename Config::KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],			// The keys this thread will read this tile
-	int 						key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],			// The CTA-scope rank of each key
-	int 						*exchange,
-	typename Config::IndexType 	digit_carry[Config::RADIX_DIGITS],
-	int 						partial_tile_elements,
-	typename Config::KeyType 	*d_out_keys, 
-	typename Config::ValueType 	*d_in_values, 
-	typename Config::ValueType 	*d_out_values)				
-{
-	int2 offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	
-	// Swap keys according to ranks
-	ExchangePairs<KeyType, CYCLES_PER_TILE, LOADS_PER_CYCLE>((KeyType*) exchange, keypairs, ranks);				
-	
-	// Calculate scatter offsets (re-decode digits from keys: it's less work than making a second exchange of digits)
-	if (CYCLES_PER_TILE > 0) {
-		const int CYCLE = 0;
-		if (LOADS_PER_CYCLE > 0) {
-			const int LOAD = 0;
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
-		}
-		if (LOADS_PER_CYCLE > 1) {
-			const int LOAD = 1;
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
-		}
-	}
-	if (CYCLES_PER_TILE > 1) {
-		const int CYCLE = 1;
-		if (LOADS_PER_CYCLE > 0) {
-			const int LOAD = 0;
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
-		}
-		if (LOADS_PER_CYCLE > 1) {
-			const int LOAD = 1;
-			const int BLOCK = ((CYCLE * LOADS_PER_CYCLE) + LOAD) * 2;
-			offsets[CYCLE][LOAD].x = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 0)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].x)];
-			offsets[CYCLE][LOAD].y = threadIdx.x + (B40C_RADIXSORT_THREADS * (BLOCK + 1)) + digit_carry[DecodeDigit<KeyType, RADIX_BITS, BIT>(keypairs[CYCLE][LOAD].y)];
-		}
-	}
-	
-	// Scatter keys
-	#pragma unroll 
-	for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-		const int BLOCK = CYCLE * LOADS_PER_CYCLE * 2;
-		ScatterLoads<KeyType, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, PostprocessFunctor>(d_out_keys, keypairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, partial_tile_elements);
-	}
-
-	if (!IsKeysOnly<ValueType>()) {
-	
-		__syncthreads();
-
-		// Read input data
-		typename VecType<ValueType, 2>::Type datapairs[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-
-		// N.B. -- I wish we could do some pragma unrolling here too, but the compiler won't comply, 
-		// telling me "Advisory: Loop was not unrolled, unexpected control flow"
-
-		if (CYCLES_PER_TILE > 0) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[0], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 0, partial_tile_elements);
-		if (CYCLES_PER_TILE > 1) ReadCycle<ValueType, CACHE_MODIFIER, UNGUARDED_IO, LOADS_PER_CYCLE, NopFunctor<ValueType> >::Read(d_in_values, datapairs[1], B40C_RADIXSORT_THREADS * LOADS_PER_CYCLE * 1, partial_tile_elements);
-		
-		// Swap data according to ranks
-		ExchangePairs<ValueType, CYCLES_PER_TILE, LOADS_PER_CYCLE>((ValueType*) exchange, datapairs, ranks);
-		
-		// Scatter data
-		#pragma unroll 
-		for (int CYCLE = 0; CYCLE < (int) CYCLES_PER_TILE; CYCLE++) {
-			const int BLOCK = CYCLE * LOADS_PER_CYCLE * 2;
-			ScatterLoads<ValueType, UNGUARDED_IO, CYCLES_PER_TILE, LOADS_PER_CYCLE, NopFunctor<ValueType> >(d_out_values, datapairs[CYCLE], offsets[CYCLE], B40C_RADIXSORT_THREADS * BLOCK, partial_tile_elements);
-		}
-	}
-}
-*/
 
 /******************************************************************************
  * SM1.0 Local Exchange Routines
@@ -1397,10 +1296,10 @@ void LsbScanScatterKernel(
 	__shared__ int 		selector;
 	
 	int *smem_pool = reinterpret_cast<int *>(smem_pool_int4s);
-	
-	
+
+
 	// Determine our threadblock's work range
-	
+
 	IndexType cta_offset;			// Offset at which this CTA begins processing
 	IndexType cta_elements;			// Total number of elements for this CTA to process
 	__shared__ IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
