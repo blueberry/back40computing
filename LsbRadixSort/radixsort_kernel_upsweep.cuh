@@ -37,13 +37,16 @@
 
 
 /******************************************************************************
- * Radix sorting upsweep digit-reduction/counting kernel.  The first kernel in 
+ * Upsweep digit-reduction/counting kernel.  The first kernel in 
  * a radix-sorting digit-place pass.
  ******************************************************************************/
 
 #pragma once
 
-#include "radixsort_kernel_common.cu"
+#include "b40c_cuda_properties.cuh"
+#include "b40c_kernel_utils.cuh"
+#include "b40c_kernel_data_movement.cuh"
+#include "radixsort_common.cuh"
 
 namespace b40c {
 namespace lsb_radix_sort {
@@ -103,13 +106,13 @@ struct UpsweepConfig
  */
 template <
 	typename 		UpsweepConfigType,
-	typename 		PreprocessFunctorType,
+	typename 		PreprocessTraitsType,
 	int 			_CURRENT_PASS,
 	int 			_CURRENT_BIT>
 
 struct UpsweepKernelConfig : UpsweepConfigType
 {
-	typedef PreprocessFunctorType					PreprocessFunctor;
+	typedef PreprocessTraitsType					PreprocessTraits;
 	
 	enum {		// N.B.: We use an enum type here b/c of a NVCC-win compiler bug involving ternary expressions in static-const fields
 
@@ -258,7 +261,7 @@ __device__ __forceinline__ void Bucket(
 	typedef typename Config::KeyType KeyType;
 
 	// Pre-process key with bit-twiddling functor if necessary
-	Config::PreprocessFunctor::Transform(key, true);
+	Config::PreprocessTraits::Preprocess(key, true);
 
 	// Extract lane containing corresponding composite counter 
 	int lane;
@@ -368,7 +371,6 @@ __device__ __forceinline__ void ProcessTile(
 		Config::CACHE_MODIFIER, 
 		true>::Invoke(keys, d_in_keys, cta_offset, 0);
 
-//	if (__B40C_CUDA_ARCH__ >= 200) __syncthreads();			// mooch
 	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
 
 	// Bucket tile of keys
@@ -446,13 +448,9 @@ __device__ __forceinline__ void UnrollTileBatches(
 }
 
 
-// Reduces all full-tiles (unguarded loads)
-template <typename Config, bool AGGRESSIVELY_UNROLL> struct FullTiles;
-
-
-// Reduces all full-tiles with modest unrolling (for lower static instruction count)
-template <typename Config>
-struct FullTiles<Config, false>
+// Reduces all full-tiles 
+template <typename Config> 
+struct FullTiles
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
@@ -467,8 +465,8 @@ struct FullTiles<Config, false>
 		int  		warp_id,
 		int  		warp_idx) 
 	{
-		// Loop over tile-batches of 32 keys per thread, aggregating after each batch
-		UnrollTileBatches<Config, 32 / Config::TILE_ELEMENTS_PER_THREAD, true>(
+		// Loop over tile-batches of 64 keys per thread, aggregating after each batch
+		UnrollTileBatches<Config, 64 / Config::TILE_ELEMENTS_PER_THREAD, true>(
 			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
 
 		// Loop over tiles one at a time
@@ -478,44 +476,10 @@ struct FullTiles<Config, false>
 };
 
 
-// Reduces all full-tiles with aggressive unrolling (for lower dynamic instruction count)
 template <typename Config>
-struct FullTiles<Config, true>
-{
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::IndexType IndexType;
-	
-	__device__ __forceinline__ static void Reduce(
-		KeyType 	*d_in_keys,
-		IndexType 	&cta_offset,
-		int			*composite_column,
-		int			*smem_pool,
-		IndexType  	out_of_bounds,
-		IndexType  	local_counts[Config::LANES_PER_WARP][4],
-		int  		warp_id,
-		int  		warp_idx) 
-	{
-		// Loop over tile-batches of 128 keys per thread, aggregating after each batch
-		UnrollTileBatches<Config, 128 / Config::TILE_ELEMENTS_PER_THREAD, true>(
-			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
-
-		// Loop over tile-batches of 8 keys per thread
-		UnrollTileBatches<Config, 8 / Config::TILE_ELEMENTS_PER_THREAD, false>(
-			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
-		
-		// Loop over tiles one at a time
-		UnrollTileBatches<Config, 1, false>(
-			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
-	}
-};
-
-
-template <
-	typename Config, 
-	bool AGGRESSIVE_UNROLLING>
 __device__ __forceinline__ void ReductionPass(
-	typename Config::KeyType 	*d_in_keys,
-	typename Config::IndexType 	*d_spine,
+	typename Config::KeyType 	* __restrict d_in_keys,
+	typename Config::IndexType 	* __restrict d_spine,
 	int*	smem_pool,
 	int* 	composite_column,
 	typename Config::IndexType 	cta_offset,
@@ -544,7 +508,7 @@ __device__ __forceinline__ void ReductionPass(
 	
 	// Process loads in bulk (if applicable), making sure to leave
 	// enough headroom for one more (partial) tile before rollover  
-	FullTiles<Config, AGGRESSIVE_UNROLLING>::Reduce(
+	FullTiles<Config>::Reduce(
 		d_in_keys,
 		cta_offset,
 		composite_column,
@@ -616,32 +580,30 @@ __device__ __forceinline__ void ReductionPass(
 
 
 /**
- * Kernel entry point
+ * Upsweep reduction 
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
-__global__ 
-void LsbRakingReductionKernel(
-	int *d_selectors,
-	typename KernelConfig::IndexType 	*d_spine,
-	typename KernelConfig::KeyType 		*d_in_keys,
-	typename KernelConfig::KeyType 		*d_out_keys,
-	CtaDecomposition<typename KernelConfig::IndexType> work_decomposition)
+template <typename Config>
+__device__ __forceinline__ void LsbUpsweep(
+	int 							* __restrict &d_selectors,
+	typename Config::IndexType 		* __restrict &d_spine,
+	typename Config::KeyType 		* __restrict &d_in_keys,
+	typename Config::KeyType 		* __restrict &d_out_keys,
+	CtaDecomposition<typename Config::IndexType> &work_decomposition)
 {
-	typedef typename KernelConfig::IndexType IndexType;
+	typedef typename Config::IndexType IndexType;
 	
 	// Shared memory pool
-	__shared__ unsigned char smem_pool[KernelConfig::SMEM_BYTES];
+	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
 	
 	// The smem column in composite lanes for each thread 
 	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
 
 	// Determine where to read our input
-	if (KernelConfig::EARLY_EXIT) {
-		if ((KernelConfig::CURRENT_PASS != 0) && (d_selectors[KernelConfig::CURRENT_PASS & 0x1])) {
+	if (Config::EARLY_EXIT) {
+		if ((Config::CURRENT_PASS != 0) && (d_selectors[Config::CURRENT_PASS & 0x1])) {
 			d_in_keys = d_out_keys;
 		}
-	} else if (KernelConfig::CURRENT_PASS & 0x1) {
+	} else if (Config::CURRENT_PASS & 0x1) {
 		d_in_keys = d_out_keys;
 	}
 
@@ -652,13 +614,11 @@ void LsbRakingReductionKernel(
 	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 	IndexType guarded_elements;		// Number of elements in partially-full tile
 
-	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SUBTILE_ELEMENTS>(
+	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SUBTILE_ELEMENTS>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 		
-	// Perform reduction pass over work range with agressive unrolling
-	ReductionPass<KernelConfig, false>(
-// mooch
-//	ReductionPass<KernelConfig, true>(
+	// Perform reduction pass over work range
+	ReductionPass<Config>(
 		d_in_keys,
 		d_spine,
 		reinterpret_cast<int*>(smem_pool),
@@ -669,18 +629,38 @@ void LsbRakingReductionKernel(
 
 
 /**
- * Host stub to calm the linker for arch-specializations that we didn't
- * end up compiling PTX for.
+ * Upsweep reduction kernel entry point 
  */
 template <typename KernelConfig>
-__host__ void __wrapper__device_stub_LsbRakingReductionKernel(
-	int 								*&,
-	typename KernelConfig::IndexType 	*&,
-	typename KernelConfig::KeyType 		*&,
-	typename KernelConfig::KeyType 		*&,
-	CtaDecomposition<typename KernelConfig::IndexType> &)
-{}
- 
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+__global__ 
+void UpsweepKernel(
+	int 								* __restrict d_selectors,
+	typename KernelConfig::IndexType 	* __restrict d_spine,
+	typename KernelConfig::KeyType 		* __restrict d_in_keys,
+	typename KernelConfig::KeyType 		* __restrict d_out_keys,
+	CtaDecomposition<typename KernelConfig::IndexType> work_decomposition)
+{
+	LsbUpsweep<KernelConfig>(
+		d_selectors, 
+		d_spine, 
+		d_in_keys, 
+		d_out_keys, 
+		work_decomposition);
+}
+
+
+/**
+ * Wrapper stub for arbitrary types to quiet the linker
+ */
+template <typename KernelConfig>
+void __wrapper__device_stub_UpsweepKernel(
+	int 								* __restrict &,
+	typename KernelConfig::IndexType 	* __restrict &,
+	typename KernelConfig::KeyType 		* __restrict &,
+	typename KernelConfig::KeyType 		* __restrict &,
+	CtaDecomposition<typename KernelConfig::IndexType> &) {}
+
 
 
 } // namespace upsweep

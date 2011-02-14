@@ -27,8 +27,8 @@
 
 #pragma once
 
-#include <b40c_cuda_properties.cu>
-#include <b40c_vector_types.cu>
+#include "b40c_cuda_properties.cuh"
+#include "b40c_vector_types.cuh"
 
 namespace b40c {
 
@@ -225,7 +225,9 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
  * Empty default transform function (leaves non-in_bounds values as they were)
  */
 template <typename T> 
-__device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) {} 
+__device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) 
+{
+} 
 	
 
 /**
@@ -356,16 +358,19 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
+			IndexType cta_offset,
 			const IndexType &out_of_bounds)
 		{
-			if (thread_offset + VEC < out_of_bounds) {
-				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset + VEC);
+			IndexType thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + ((ACTIVE_THREADS * LOAD) << LOG_LOAD_VEC_SIZE) + VEC;
+
+			if (thread_offset < out_of_bounds) {
+				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset);
 				Transform(data[LOAD][VEC], true);
 			} else {
 				Transform(data[LOAD][VEC], false);	// !in_bounds 
 			}
-			Iterate<LOAD, VEC + 1>::Invoke(data, d_in, thread_offset, out_of_bounds);
+			
+			Iterate<LOAD, VEC + 1>::Invoke(data, d_in, cta_offset, out_of_bounds);
 		}
 	};
 
@@ -376,11 +381,11 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
+			IndexType cta_offset,
 			const IndexType &out_of_bounds)
 		{
 			Iterate<LOAD + 1, 0>::Invoke(
-				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE), out_of_bounds);
+				data, d_in, cta_offset, out_of_bounds);
 		}
 	};
 	
@@ -391,7 +396,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
+			IndexType cta_offset,
 			const IndexType &out_of_bounds) {}
 	};
 
@@ -402,8 +407,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		IndexType cta_offset,
 		const IndexType &out_of_bounds)
 	{
-		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
-		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
+		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
 	} 
 };
 
@@ -723,6 +727,69 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
 	} 
 };
+
+
+/**
+ * Empty default transform function (leaves non-in_bounds values as they were)
+ */
+template <typename T>
+__device__ __forceinline__ void NopStoreTransform(T &val) {}
+
+
+/**
+ * Scatter a tile of data items using the corresponding tile of scatter_offsets
+ */
+template <
+	typename T,
+	typename IndexType,
+	int LOADS_PER_TILE,
+	int ACTIVE_THREADS,										// Active threads that will be loading
+	CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+	bool UNGUARDED_IO,
+	void Transform(T&) = NopStoreTransform<T> > 			// Assignment function to transform the loaded value (can be used assign default values for items deemed not in bounds)
+struct Scatter
+{
+	// Iterate
+	template <int LOAD, int TOTAL_LOADS>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(
+			T *dest,
+			T src[LOADS_PER_TILE],
+			IndexType scatter_offsets[LOADS_PER_TILE],
+			const IndexType	&guarded_elements)
+		{
+			if (UNGUARDED_IO || ((ACTIVE_THREADS * LOAD) + threadIdx.x < guarded_elements)) {
+				Transform(src[LOAD]);
+				ModifiedStore<T, CACHE_MODIFIER>::St(src[LOAD], dest, scatter_offsets[LOAD]);
+			}
+
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, guarded_elements);
+		}
+	};
+
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
+	{
+		static __device__ __forceinline__ void Invoke(
+			T *dest,
+			T src[LOADS_PER_TILE],
+			IndexType scatter_offsets[LOADS_PER_TILE],
+			const IndexType	&guarded_elements) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(
+		T *dest,
+		T src[LOADS_PER_TILE],
+		IndexType scatter_offsets[LOADS_PER_TILE],
+		const IndexType	&guarded_elements)
+	{
+		Iterate<0, LOADS_PER_TILE>::Invoke(dest, src, scatter_offsets, guarded_elements);
+	}
+};
+
 
 
 } // namespace b40c

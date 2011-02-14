@@ -43,11 +43,14 @@
 
 #pragma once
 
-#include "radixsort_kernel_common.cu"
+#include "b40c_cuda_properties.cuh"
+#include "b40c_kernel_utils.cuh"
+#include "b40c_kernel_data_movement.cuh"
+#include "radixsort_common.cuh"
 
 namespace b40c {
 namespace lsb_radix_sort {
-namespace scan {
+namespace spine_scan {
 
 
 /******************************************************************************
@@ -74,7 +77,7 @@ template <
 	int _LOG_RAKING_THREADS,
 	CacheModifier _CACHE_MODIFIER>
 
-struct ScanConfig
+struct SpineScanConfig
 {
 	typedef _ScanType							ScanType;
 	typedef _IndexType							IndexType;
@@ -97,20 +100,20 @@ struct ScanConfig
  * sorting pass.  It encapsulates granularity details derived from the inherited 
  * UpsweepConfigType 
  */
-template <typename ScanConfigType>
-struct ScanKernelConfig : ScanConfigType
+template <typename SpineScanConfigType>
+struct SpineScanKernelConfig : SpineScanConfigType
 {
-	static const int THREADS						= 1 << ScanConfigType::LOG_THREADS;
+	static const int THREADS						= 1 << SpineScanConfigType::LOG_THREADS;
 
-	static const int LOG_WARPS						= ScanConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
+	static const int LOG_WARPS						= SpineScanConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
 	static const int WARPS							= 1 << LOG_WARPS;
 
-	static const int LOAD_VEC_SIZE					= 1 << ScanConfigType::LOG_LOAD_VEC_SIZE;
-	static const int LOADS_PER_TILE					= 1 << ScanConfigType::LOG_LOADS_PER_TILE;
+	static const int LOAD_VEC_SIZE					= 1 << SpineScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int LOADS_PER_TILE					= 1 << SpineScanConfigType::LOG_LOADS_PER_TILE;
 
-	static const int LOG_TILE_ELEMENTS				= ScanConfigType::LOG_THREADS +
-															ScanConfigType::LOG_LOADS_PER_TILE +
-															ScanConfigType::LOG_LOAD_VEC_SIZE;
+	static const int LOG_TILE_ELEMENTS				= SpineScanConfigType::LOG_THREADS +
+															SpineScanConfigType::LOG_LOADS_PER_TILE +
+															SpineScanConfigType::LOG_LOAD_VEC_SIZE;
 	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
 
 	// We reduce/scan the elements of a loaded vector in registers, and then place that
@@ -118,19 +121,19 @@ struct ScanKernelConfig : ScanConfigType
 
 	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we
 	// back up the primary raking warps with a single warp of raking-threads.
-	static const bool TwoLevelGrid 					= (ScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
+	static const bool TwoLevelGrid 					= (SpineScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
 
 	// Primary smem SRTS grid type
 	typedef SrtsGrid<
-		typename ScanConfigType::ScanType,
-		ScanConfigType::LOG_THREADS,
-		ScanConfigType::LOG_LOADS_PER_TILE,
-		ScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;
+		typename SpineScanConfigType::ScanType,
+		SpineScanConfigType::LOG_THREADS,
+		SpineScanConfigType::LOG_LOADS_PER_TILE,
+		SpineScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;
 
 	// Secondary smem SRTS grid type
 	typedef SrtsGrid<
-		typename ScanConfigType::ScanType,
-		ScanConfigType::LOG_RAKING_THREADS,
+		typename SpineScanConfigType::ScanType,
+		SpineScanConfigType::LOG_RAKING_THREADS,
 		0,
 		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;
 	
@@ -427,19 +430,18 @@ struct ProcessTile <Config, true>
 
 
 /**
- * Kernel entry point
+ * Spine scan 
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
-__global__ void LsbSpineScanKernel(
-	typename KernelConfig::ScanType *d_spine,
-	typename KernelConfig::IndexType spine_elements)
+template <typename Config>
+__device__ __forceinline__ void LsbSpineScan(
+	typename Config::ScanType * &d_spine,
+	typename Config::IndexType  &spine_elements)
 {
-	typedef typename KernelConfig::ScanType ScanType;
-	typedef typename KernelConfig::IndexType IndexType;
+	typedef typename Config::ScanType ScanType;
+	typedef typename Config::IndexType IndexType;
 
 	// Shared memory pool
-	__shared__ unsigned char smem_pool[KernelConfig::SMEM_BYTES];
+	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
 	__shared__ int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 	
 	// Exit if we're not the first CTA
@@ -448,7 +450,7 @@ __global__ void LsbSpineScanKernel(
 	}
 	
 	ScanType 	*primary_grid = reinterpret_cast<ScanType*>(smem_pool);
-	ScanType 	*primary_base_partial = KernelConfig::PrimaryGrid::BasePartial(primary_grid);
+	ScanType 	*primary_base_partial = Config::PrimaryGrid::BasePartial(primary_grid);
 	ScanType 	*primary_raking_seg = 0;
 
 	ScanType 	*secondary_base_partial = 0;
@@ -457,14 +459,14 @@ __global__ void LsbSpineScanKernel(
 	ScanType carry = 0;
 	
 	// Initialize partial-placement and raking offset pointers
-	if (threadIdx.x < KernelConfig::PrimaryGrid::RAKING_THREADS) {
+	if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
 
-		primary_raking_seg = KernelConfig::PrimaryGrid::RakingSegment(primary_grid);
+		primary_raking_seg = Config::PrimaryGrid::RakingSegment(primary_grid);
 
-		ScanType *secondary_grid = reinterpret_cast<ScanType*>(smem_pool + KernelConfig::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
-		secondary_base_partial = KernelConfig::SecondaryGrid::BasePartial(secondary_grid);
-		if (KernelConfig::TwoLevelGrid && (threadIdx.x < KernelConfig::SecondaryGrid::RAKING_THREADS)) {
-			secondary_raking_seg = KernelConfig::SecondaryGrid::RakingSegment(secondary_grid);
+		ScanType *secondary_grid = reinterpret_cast<ScanType*>(smem_pool + Config::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
+		secondary_base_partial = Config::SecondaryGrid::BasePartial(secondary_grid);
+		if (Config::TwoLevelGrid && (threadIdx.x < Config::SecondaryGrid::RAKING_THREADS)) {
+			secondary_raking_seg = Config::SecondaryGrid::RakingSegment(secondary_grid);
 		}
 
 		// Initialize warpscan
@@ -477,7 +479,7 @@ __global__ void LsbSpineScanKernel(
 	IndexType cta_offset = 0;
 	while (cta_offset < spine_elements) {
 		
-		ProcessTile<KernelConfig, KernelConfig::TwoLevelGrid>::Invoke(
+		ProcessTile<Config, Config::TwoLevelGrid>::Invoke(
 			primary_base_partial,
 			primary_raking_seg,
 			secondary_base_partial,
@@ -487,18 +489,29 @@ __global__ void LsbSpineScanKernel(
 			cta_offset,
 			carry);
 
-		cta_offset += KernelConfig::TILE_ELEMENTS;
+		cta_offset += Config::TILE_ELEMENTS;
 	}
 } 
 
 
-
 /**
- * Host stub to calm the linker for arch-specializations that we didn't
- * end up compiling PTX for.
+ * Spine scan kernel entry point
  */
 template <typename KernelConfig>
-__host__ void __wrapper__device_stub_LsbSpineScanKernel(
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+__global__ void SpineScanKernel(
+	typename KernelConfig::ScanType *d_spine,
+	typename KernelConfig::IndexType spine_elements)
+{
+	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
+} 
+
+
+/**
+ * Wrapper stub for arbitrary types to quiet the linker
+ */
+template <typename KernelConfig>
+void __wrapper__device_stub_SpineScanKernel(
 	typename KernelConfig::ScanType *&,
 	typename KernelConfig::IndexType &) {}
 

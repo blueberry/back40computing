@@ -27,8 +27,8 @@
 
 #pragma once
 
-#include <b40c_cuda_properties.cu>
-#include <b40c_kernel_data_movement.cu>
+#include "b40c_cuda_properties.cuh"
+#include "b40c_kernel_data_movement.cuh"
 
 namespace b40c {
 
