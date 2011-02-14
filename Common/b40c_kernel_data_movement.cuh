@@ -200,14 +200,6 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 		}
 	};
 	
-	// Accomodate bizarre introduction of "signed" for char loads
-	template <CacheModifier CACHE_MODIFIER> struct ModifiedLoad<char, CACHE_MODIFIER>
-	{
-		__device__ __forceinline__ static void Ld(signed char &val, char* d_ptr, int offset) {
-			val = d_ptr[offset]; 
-		}
-	};
-
 #endif	// loads
 
 
@@ -562,14 +554,6 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 		}
 	};
 	
-	// Accomodate bizarre introduction of "signed" for char stores
-	template <CacheModifier CACHE_MODIFIER> struct ModifiedStore<char, CACHE_MODIFIER>
-	{
-		__device__ __forceinline__ static void St(const signed char &val, char* d_ptr, int offset) {
-			d_ptr[offset] = val; 
-		}
-	};
-
 #endif	// stores
 	
 
