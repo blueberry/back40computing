@@ -60,7 +60,7 @@ using namespace lsb_radix_sort;
  * Enumeration of pre-defined, tuned granularity configurations 
  ******************************************************************************/
 
-__host__ __device__ enum TunedGranularityEnum
+enum TunedGranularityEnum
 {
 //		SMALL_PROBLEM_SINGLE_CTA,
 //		SMALL_PROBLEM_SINGLE_GRID,
@@ -128,8 +128,8 @@ template <
 	int CURRENT_BIT,
 	int GRANULARITY_ENUM>
 __launch_bounds__ (
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_THREADS,
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_OCCUPANCY)
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_OCCUPANCY))
 __global__ 
 void TunedUpsweepKernel(
 	int 						* d_selectors,
@@ -163,8 +163,8 @@ template <
 	int CURRENT_BIT,
 	int GRANULARITY_ENUM>
 __launch_bounds__ (
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS,
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY)
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY))
 __global__ 
 void TunedSpineScanKernel(
 	int 		*d_spine,
@@ -191,8 +191,8 @@ template <
 	int CURRENT_BIT,
 	int GRANULARITY_ENUM>
 __launch_bounds__ (
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_THREADS,
-	TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_OCCUPANCY)
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_OCCUPANCY))
 __global__ 
 void TunedDownsweepKernel(
 	int 						* __restrict d_selectors,
