@@ -185,15 +185,7 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 			val = d_ptr[offset]; 
 		}
 	};
-	
-	// NONE-modified load 
-	template <> struct ModifiedLoad<char, NONE>
-	{
-		__device__ __forceinline__ static void Ld(signed char &val, char* d_ptr, int offset) {
-			val = d_ptr[offset]; 
-		}
-	};
-	
+
 #else // loads
 
 	//
@@ -367,7 +359,7 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset);
 				Transform(data[LOAD][VEC], true);
 			} else {
-				Transform(data[LOAD][VEC], false);	// !in_bounds 
+				Transform(data[LOAD][VEC], false);	// !in_bounds
 			}
 			
 			Iterate<LOAD, VEC + 1>::Invoke(data, d_in, cta_offset, out_of_bounds);
@@ -555,15 +547,7 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 			d_ptr[offset] = val; 
 		}
 	};
-	
-	// NONE-modified store 
-	template <> struct ModifiedStore<char, NONE>
-	{
-		__device__ __forceinline__ static void St(const signed char &val, char* d_ptr, int offset) {
-			d_ptr[offset] = val; 
-		}
-	};
-	
+
 #else	// stores
 
 	//
