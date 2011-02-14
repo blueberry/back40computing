@@ -48,7 +48,7 @@
 #include "radixsort_common.cuh"
 #include "radixsort_enactor.cuh"
 #include "radixsort_granularity.cuh"
-#include "radixsort_granularity_tuned_default.cuh"
+#include "radixsort_granularity_tuned_large.cuh"
 #include "radixsort_granularity_tuned_small.cuh"
 
 namespace b40c {
@@ -77,12 +77,12 @@ struct TunedGranularity;
 // Default specialization of granularity config type 
 template <int SM_ARCH, typename KeyType, typename ValueType, typename IndexType> 
 struct TunedGranularity<DEFAULT, SM_ARCH, KeyType, ValueType, IndexType> 
-	: DefaultGranularityConfig<SM_ARCH, KeyType, ValueType, IndexType> 
+	: large_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType>
 {
 	static const TunedGranularityEnum GRANULARITY_ENUM 	= DEFAULT;
 
-	// Largely-unnecessary duplication of inner type data to accomodate use in __launch_bounds__
-	typedef DefaultGranularityConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
+	// Largely-unnecessary duplication of inner type data to accommodate use in __launch_bounds__
+	typedef large_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
 	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
@@ -95,12 +95,12 @@ struct TunedGranularity<DEFAULT, SM_ARCH, KeyType, ValueType, IndexType>
 // Small-probelm specialization of granularity config type 
 template <int SM_ARCH, typename KeyType, typename ValueType, typename IndexType> 
 struct TunedGranularity<SMALL_PROBLEM, SM_ARCH, KeyType, ValueType, IndexType> 
-	: SmallGranularityConfig<SM_ARCH, KeyType, ValueType, IndexType> 
+	: small_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType>
 {
 	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
 
-	// Largely-unnecessary duplication of inner type data to accomodate use in __launch_bounds__
-	typedef SmallGranularityConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
+	// Largely-unnecessary duplication of inner type data to accommodate use in __launch_bounds__
+	typedef small_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
 	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
