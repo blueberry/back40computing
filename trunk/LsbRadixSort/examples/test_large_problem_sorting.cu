@@ -44,8 +44,6 @@
  * your application 
  ******************************************************************************/
 
-#include <radixsort_early_exit.cu>		// Sorting includes
-
 #include <stdlib.h> 
 #include <stdio.h> 
 #include <string.h> 
@@ -53,8 +51,14 @@
 #include <float.h>
 #include <algorithm>
 
-#include <test_utils.cu>				// Utilities and correctness-checking
-#include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
+// Sorting includes
+#include "radixsort_enactor_tuned.cuh"
+#include "radixsort_storage.cuh"
+
+// Test utils
+#include "test_utils.h"					// Utilities and correctness-checking
+#include "b40c_util.h"					// Misc. utils (random-number gen, I/O, etc.)
+#include "b40c_error_synchronize.h"		// Error reporting
 
 using namespace b40c;
 
@@ -132,7 +136,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitLsbSortEnactor<K> sorting_enactor(g_max_ctas);
+	LsbSortEnactorTuned<K> sorting_enactor(g_max_ctas);
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -181,7 +185,11 @@ void TimedSort(
 		avg_runtime,
 		throughput);
 	
-    // Copy out data 
+    // Clean up events
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
+
+	// Copy out data 
     cudaMemcpy(
     	h_keys, 
     	device_storage.d_keys[device_storage.selector],				 
@@ -191,10 +199,6 @@ void TimedSort(
     // Free allocated memory
     if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
     if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
-    
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
 }
 
 
@@ -219,6 +223,7 @@ void TimedSort(
 	V *h_values, 
 	int iterations)
 {
+/*	
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
@@ -229,7 +234,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	EarlyExitLsbSortEnactor<K, V> sorting_enactor(g_max_ctas);
+	LsbSortEnactorTuned<K, V> sorting_enactor(g_max_ctas);
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -278,6 +283,10 @@ void TimedSort(
 		avg_runtime,
 		throughput);
 	
+    // Clean up events
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
+
     // Copy out data 
     cudaMemcpy(
     	h_keys, 
@@ -291,9 +300,7 @@ void TimedSort(
     if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
     if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
+*/	
 }
 
 
@@ -422,12 +429,10 @@ int main(int argc, char** argv)
 			iterations,
 			num_elements, 
 			keys_only);
-*/			
 	TestSort<unsigned int, unsigned int>(
 			iterations,
 			num_elements, 
 			keys_only);
-/*	
 	TestSort<long long, long long>(
 			iterations,
 			num_elements, 
@@ -441,6 +446,11 @@ int main(int argc, char** argv)
 			num_elements, 
 			keys_only);
 */
+
+	TestSort<double, double>(
+			iterations,
+			num_elements, 
+			keys_only);
 
 }
 

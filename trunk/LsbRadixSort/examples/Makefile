@@ -67,7 +67,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20) 
+SM_TARGETS = $(GEN_SM20) $(GEN_SM13)
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -128,21 +128,23 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-SORTING_DEPS = 	../radixsort_base.cu \
-				../radixsort_early_exit.cu \
-				../radixsort_multi_cta.cu \
-				../radixsort_single_grid.cu \
-				../kernel/radixsort_kernel_common.cu \
-				../kernel/radixsort_key_conversion.cu \
-				../kernel/radixsort_reduction_kernel.cu \
-				../kernel/radixsort_scanscatter_kernel.cu \
-				../kernel/radixsort_spine_kernel.cu \
-				../kernel/radixsort_single_grid_kernel.cu \
-				../../Common/b40c_cuda_properties.cu \
-				../../Common/b40c_error_synchronize.cu \
-				../../Common/b40c_kernel_data_movement.cu \
-				../../Common/b40c_kernel_utils.cu \
-				../../Common/b40c_vector_types.cu 
+SORTING_DEPS = 	./Makefile \
+				../radixsort_common.cuh \
+				../radixsort_enactor.cuh \
+				../radixsort_enactor_tuned.cuh \
+				../radixsort_granularity.cuh \
+				../radixsort_granularity_tuned_default.cuh \
+				../radixsort_granularity_tuned_small.cuh \
+				../radixsort_kernel_downsweep.cuh \
+				../radixsort_kernel_spine.cuh \
+				../radixsort_kernel_upsweep.cuh \
+				../radixsort_storage.cuh \
+				../../ExamplesInclude/b40c_util.h \
+				../../Common/b40c_cuda_properties.cuh \
+				../../Common/b40c_error_synchronize.h \
+				../../Common/b40c_kernel_data_movement.cuh \
+				../../Common/b40c_kernel_utils.cuh \
+				../../Common/b40c_vector_types.cuh 
 				 
 
 
@@ -152,7 +154,7 @@ SORTING_DEPS = 	../radixsort_base.cu \
 
 large: bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
+bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_problem_sorting.cu test_utils.h $(SORTING_DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_large_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 	
@@ -164,7 +166,7 @@ bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_probl
 
 small: bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.cu $(SORTING_DEPS)
+bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu test_utils.h $(SORTING_DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 
 
@@ -175,7 +177,7 @@ bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_probl
 
 advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu test_utils.cu $(SORTING_DEPS)
+bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu test_utils.h $(SORTING_DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 
 

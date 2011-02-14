@@ -145,6 +145,10 @@ void DeviceInit(CommandLineArgs &args)
 		fprintf(stderr, "Device does not support CUDA.\n");
 		exit(1);
 	}
+    if (!args.CheckCmdLineFlag("quiet")) {
+        printf("Using device %d: %s\n", dev, deviceProp.name);
+    }
+
 	cudaSetDevice(dev);
 }
 
