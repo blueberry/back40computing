@@ -223,7 +223,7 @@ void TimedSort(
 	V *h_values, 
 	int iterations)
 {
-/*	
+/*
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
@@ -300,7 +300,7 @@ void TimedSort(
     if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
     if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 
-*/	
+*/
 }
 
 
@@ -447,7 +447,7 @@ int main(int argc, char** argv)
 			keys_only);
 */
 
-	TestSort<double, double>(
+	TestSort<unsigned int, unsigned int>(
 			iterations,
 			num_elements, 
 			keys_only);

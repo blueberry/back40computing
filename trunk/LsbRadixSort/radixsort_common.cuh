@@ -43,6 +43,8 @@
 
 #pragma once
 
+#include "b40c_cuda_properties.cuh"
+
 namespace b40c {
 namespace lsb_radix_sort {
 

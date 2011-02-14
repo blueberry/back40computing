@@ -288,8 +288,8 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
-			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS) + threadIdx.x);
-//			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS));
+//			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS) + threadIdx.x);
+			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS));
 			Transform(data[LOAD][0], true);		// Apply transform function with in_bounds = true 
 			Iterate<LOAD, 1>::Invoke(data, vectors, d_in_vectors);
 		}
@@ -327,8 +327,8 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		VectorType *vectors = (VectorType *) data;
-//		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
-		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
+		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+//		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset);
 		Iterate<0,0>::Invoke(data, vectors, d_in_vectors);
 	} 
 };

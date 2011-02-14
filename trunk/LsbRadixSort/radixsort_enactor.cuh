@@ -58,6 +58,34 @@ using namespace lsb_radix_sort;
 
 
 /**
+ * Utility type for managing the state for a specific sorting operation
+ */
+template <typename Storage>
+struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
+{
+	typedef typename Storage::IndexType IndexType;
+
+	int sweep_grid_size;
+	int spine_elements;
+	Storage *problem_storage;
+
+	// Constructor
+	SortingCtaDecomposition(
+		Storage *problem_storage,
+		int subtile_elements,
+		int sweep_grid_size,
+		int spine_elements) : CtaDecomposition<IndexType>(
+			problem_storage->num_elements,
+			subtile_elements,
+			sweep_grid_size),
+			sweep_grid_size(sweep_grid_size),
+			spine_elements(spine_elements),
+			problem_storage(problem_storage) {};
+};
+
+
+
+/**
  * Basic LSB radix sorting enactor class.  
  * 
  * @template-param KeyType
@@ -88,35 +116,6 @@ protected:
 	struct DispatchType<void, __dummy>
 	{
 		typedef LsbSortEnactor<KeyType, ValueType, void> Type;
-	};
-	
-	
-	//---------------------------------------------------------------------
-	// Utility Types
-	//---------------------------------------------------------------------
-
-	// Wrapper for managing the state for a specific sorting operation 
-	template <typename Storage>
-	struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
-	{
-		typedef typename Storage::IndexType IndexType;
-		
-		int sweep_grid_size;
-		int spine_elements;
-		Storage *problem_storage;
-		
-		// Constructor
-		SortingCtaDecomposition(
-			Storage *problem_storage,
-			int subtile_elements,
-			int sweep_grid_size,
-			int spine_elements) : CtaDecomposition<IndexType>(
-				problem_storage->num_elements,
-				subtile_elements, 
-				sweep_grid_size),
-				sweep_grid_size(sweep_grid_size),
-				spine_elements(spine_elements),
-				problem_storage(problem_storage) {};
 	};
 
 	
