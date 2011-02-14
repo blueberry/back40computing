@@ -133,7 +133,7 @@ SORTING_DEPS = 	./Makefile \
 				../radixsort_enactor.cuh \
 				../radixsort_enactor_tuned.cuh \
 				../radixsort_granularity.cuh \
-				../radixsort_granularity_tuned_default.cuh \
+				../radixsort_granularity_tuned_large.cuh \
 				../radixsort_granularity_tuned_small.cuh \
 				../radixsort_kernel_downsweep.cuh \
 				../radixsort_kernel_spine.cuh \

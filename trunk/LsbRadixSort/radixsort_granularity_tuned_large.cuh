@@ -37,7 +37,8 @@
 
 
 /******************************************************************************
- * Small-problem "granularity tuning types" for LSB radix sorting
+ * Default (i.e., large-problem) "granularity tuning types" for LSB
+ * radix sorting
  ******************************************************************************/
 
 #pragma once
@@ -48,7 +49,7 @@
 
 namespace b40c {
 namespace lsb_radix_sort {
-namespace small_problem_tuning {
+namespace large_problem_tuning {
 
 /**
  * Enumeration of architecture-families that we have tuned for
@@ -102,36 +103,36 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 
 		// Common
 		4,						// RADIX_BITS: 				4-bit radix digits
-		9,						// LOG_SUBTILE_ELEMENTS: 	512 subtile elements
+		10,						// LOG_SUBTILE_ELEMENTS: 	1024 subtile elements
 		NONE,					// CACHE_MODIFIER: 			Default (CA: cache all levels)
-		false,					// EARLY_EXIT: 				No early termination if homogeneous digits
+		true,					// EARLY_EXIT: 				Terminate downsweep if homogeneous digits
 		false,					// UNIFORM_SMEM_ALLOCATION:	No dynamic smem padding added
 		true, 					// UNIFORM_GRID_SIZE: 		Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
 											
 		// Upsweep Kernel
 		8,						// UPSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
 		7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
-		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-2 loads
-		0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
-
+		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-1 loads
+		2,						// UPSWEEP_LOG_LOADS_PER_TILE: 	4 loads/tile
+	
 		// Spine-scan Kernel
 		1,										// SPINE_CTA_OCCUPANCY: 		Only 1 CTA/SM really needed
-		8,										// SPINE_LOG_THREADS: 			128 threads/CTA
+		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
 		2,										// SPINE_LOG_LOAD_VEC_SIZE:		vec-4 loads
 		0,										// SPINE_LOG_LOADS_PER_TILE:	1 loads/tile
 		B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// SPINE_LOG_RAKING_THREADS:	1 warp
-
+	
 		// Downsweep Kernel
-		4,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
-		8,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
-		0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
+		8,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
+		6,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
+		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE: 	2 loads/cycle
 		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
-			0 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycles/tile
+			1 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycles/tile
 			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 2		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
+		B40C_LOG_WARP_THREADS(SM_ARCH) + 1		// DOWNSWEEP_LOG_RAKING_THREADS: 2 warps
 	> 
-{};
+{}; 
 
 
 
@@ -228,7 +229,7 @@ struct TunedConfig<SM10, KeyType, ValueType, IndexType>
 
 
 
-}// namespace small_problem_tuning
+}// namespace large_problem_tuning
 }// namespace lsb_radix_sort
 }// namespace b40c
 
