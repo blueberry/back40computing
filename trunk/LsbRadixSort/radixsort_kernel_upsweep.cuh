@@ -379,32 +379,35 @@ __device__ __forceinline__ void ProcessTile(
 
 
 // Unroll tiles
-template <typename Config, int UNROLL_COUNT> 
+template <typename Config>
 struct UnrollTiles
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
 	
 	// Iterate over counts
-	template <int COUNT, int __dummy = 0>
+	template <int UNROLL_COUNT, int __dummy = 0>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			KeyType *d_in_keys, 
 			IndexType cta_offset, 
 			int *composite_column)
 		{
-			ProcessTile<Config>(d_in_keys, cta_offset, composite_column);
-			Iterate<COUNT + 1>::Invoke(d_in_keys, cta_offset + Config::TILE_ELEMENTS, composite_column);
+			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset, composite_column);
+			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset + (Config::TILE_ELEMENTS * UNROLL_COUNT / 2), composite_column);
 		}
 	};
 
 	// Terminate
 	template <int __dummy>
-	struct Iterate<UNROLL_COUNT, __dummy> {
+	struct Iterate<1, __dummy> {
 		static __device__ __forceinline__ void Invoke(
 			KeyType *d_in_keys, 
 			IndexType cta_offset, 
-			int *composite_column) {}
+			int *composite_column)
+		{
+			ProcessTile<Config>(d_in_keys, cta_offset, composite_column);
+		}
 	};
 };
 
@@ -426,7 +429,7 @@ __device__ __forceinline__ void UnrollTileBatches(
 	
 	while (cta_offset + UNROLLED_ELEMENTS < out_of_bounds) {
 	
-		UnrollTiles<Config, UNROLL_COUNT>::template Iterate<0>::Invoke(
+		UnrollTiles<Config>::template Iterate<UNROLL_COUNT>::Invoke(
 			d_in_keys, cta_offset, composite_column);
 
 		cta_offset += UNROLLED_ELEMENTS;
