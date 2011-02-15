@@ -541,22 +541,23 @@ __device__ __forceinline__ void ReductionPass(
 	IndexType *raking_pool = reinterpret_cast<IndexType*>(smem_pool);
 
 	// Iterate over lanes per warp, placing the four counts from each into smem
-	int base_row_offset =		// My thread's (first) reduction counter placement offset 
-		FastMul(warp_id, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * Config::WARPS) + warp_idx;	
-
 	if (warp_id < Config::COMPOSITE_LANES) {
+
+		// My thread's (first) reduction counter placement offset
+		IndexType *base_partial = raking_pool +
+				FastMul(warp_id, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4) + warp_idx;
 
 		// We have at least one lane to place
 		#pragma unroll
 		for (int i = 0; i < Config::LANES_PER_WARP; i++) {
-	
+
+			const int STRIDE = Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4 * Config::WARPS * i;
+
 			// Four counts per composite lane
-			raking_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0)] = local_counts[i][0];
-			raking_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1)] = local_counts[i][1];
-			raking_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2)] = local_counts[i][2];
-			raking_pool[base_row_offset + (Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3)] = local_counts[i][3];
-			
-			base_row_offset += Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * Config::WARPS;
+			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0) + STRIDE] = local_counts[i][0];
+			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1) + STRIDE] = local_counts[i][1];
+			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2) + STRIDE] = local_counts[i][2];
+			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3) + STRIDE] = local_counts[i][3];
 		}
 	}
 
