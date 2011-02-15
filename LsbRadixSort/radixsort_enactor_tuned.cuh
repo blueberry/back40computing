@@ -157,10 +157,6 @@ template <
 	typename KeyType,
 	typename ValueType,
 	typename IndexType,
-	typename PreprocessTraits, 
-	typename PostprocessTraits, 
-	int CURRENT_PASS, 
-	int CURRENT_BIT,
 	int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS),
@@ -273,7 +269,7 @@ protected:
 	    	// Get kernel attributes
 			cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
 			cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>);
-			cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>);
+			cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>);
 			cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>);
 
 			int max_static_smem = B40C_MAX(
@@ -303,7 +299,7 @@ protected:
 		dbg_sync_perror_exit("LsbSortEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
 
 		// Invoke spine scan kernel
-		TunedSpineScanKernel<KeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
+		TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>
 			<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
 				(IndexType *) this->d_spine,
 				work.spine_elements);
