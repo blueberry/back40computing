@@ -130,32 +130,32 @@ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
 /**
  * A given threadblock may receive one of three different amounts of 
  * work: "big", "normal", and "last".  The big workloads are one
- * subtile greater than the normal, and the last workload 
+ * grain greater than the normal, and the last workload 
  * does the extra work.
  */
 template <typename OffsetType>
 struct CtaDecomposition {
 
 	OffsetType num_elements;
-	OffsetType total_subtiles;
-	OffsetType subtiles_per_cta;
-	OffsetType extra_subtiles;
+	OffsetType total_grains;
+	OffsetType grains_per_cta;
+	OffsetType extra_grains;
 	
 	/**
 	 * Constructor
 	 */
-	CtaDecomposition(OffsetType num_elements, int subtile_elements, int grid_size) :
+	CtaDecomposition(OffsetType num_elements, int schedule_granularity, int grid_size) :
 		num_elements(num_elements),
-		total_subtiles((num_elements + subtile_elements - 1) / subtile_elements),	// round up
-		subtiles_per_cta(total_subtiles / grid_size),								// round down for the ks
-		extra_subtiles(total_subtiles - (subtiles_per_cta * grid_size)) 			// the +1 subtilers
+		total_grains((num_elements + schedule_granularity - 1) / schedule_granularity),	// round up
+		grains_per_cta(total_grains / grid_size),										// round down for the ks
+		extra_grains(total_grains - (grains_per_cta * grid_size)) 						// the +1 subtilers
 	{
 	}
 		
 	/**
 	 * Computes work limits for the current CTA
 	 */	
-	template <int LOG_TILE_ELEMENTS, int LOG_SUBTILE_ELEMENTS>
+	template <int LOG_TILE_ELEMENTS, int LOG_SCHEDULE_GRANULARITY>
 	__device__ __forceinline__ void GetCtaWorkLimits(
 		OffsetType &cta_offset,				// Out param: Offset at which this CTA begins processing
 		OffsetType &cta_elements,			// Out param: Total number of elements for this CTA to process
@@ -163,19 +163,19 @@ struct CtaDecomposition {
 		OffsetType &cta_guarded_elements)	// Out param: Number of elements in partially-full tile
 	{
 		const int TILE_ELEMENTS 		= 1 << LOG_TILE_ELEMENTS;
-		const int SUBTILE_ELEMENTS 		= 1 << LOG_SUBTILE_ELEMENTS;
+		const int SCHEDULE_GRANULARITY 		= 1 << LOG_SCHEDULE_GRANULARITY;
 		
 		// Compute number of elements and offset at which to start tile processing
-		if (blockIdx.x < extra_subtiles) {
-			// These CTAs get subtiles_per_cta+1 subtiles
-			cta_elements = (subtiles_per_cta + 1) << LOG_SUBTILE_ELEMENTS;
+		if (blockIdx.x < extra_grains) {
+			// These CTAs get grains_per_cta+1 grains
+			cta_elements = (grains_per_cta + 1) << LOG_SCHEDULE_GRANULARITY;
 			cta_offset = cta_elements * blockIdx.x;
-		} else if (blockIdx.x < total_subtiles) {
-			// These CTAs get subtiles_per_cta subtiles
-			cta_elements = subtiles_per_cta << LOG_SUBTILE_ELEMENTS;
-			cta_offset = (cta_elements * blockIdx.x) + (extra_subtiles << LOG_SUBTILE_ELEMENTS);
+		} else if (blockIdx.x < total_grains) {
+			// These CTAs get grains_per_cta grains
+			cta_elements = grains_per_cta << LOG_SCHEDULE_GRANULARITY;
+			cta_offset = (cta_elements * blockIdx.x) + (extra_grains << LOG_SCHEDULE_GRANULARITY);
 		} else {
-			// These CTAs get no work (problem small enough that some CTAs don't even a single subtile)
+			// These CTAs get no work (problem small enough that some CTAs don't even a single grain)
 			cta_elements = 0;
 			cta_offset = 0;
 		}
@@ -184,11 +184,11 @@ struct CtaDecomposition {
 		// and (ii) how many extra guarded-load elements to process 
 		// afterward (always less than a full tile) 
 		if (cta_offset + cta_elements > num_elements) {
-			// The last CTA having work will have rounded its last subtile up past the end 
-			cta_elements = cta_elements - SUBTILE_ELEMENTS + 					// subtract subtile
-				(num_elements & (SUBTILE_ELEMENTS - 1));						// add delta to end of input
+			// The last CTA having work will have rounded its last grain up past the end 
+			cta_elements = cta_elements - SCHEDULE_GRANULARITY + 					// subtract grain
+				(num_elements & (SCHEDULE_GRANULARITY - 1));						// add delta to end of input
 		}
-		cta_guarded_elements = cta_elements & (TILE_ELEMENTS - 1);				// The delta from the previous TILE alignment
+		cta_guarded_elements = cta_elements & (TILE_ELEMENTS - 1);					// The delta from the previous TILE alignment
 		guarded_offset = cta_offset + cta_elements - cta_guarded_elements;
 	}
 };
@@ -211,7 +211,7 @@ template <
 	int _LOG_RAKING_THREADS> 
 struct SrtsGrid
 {
-	typedef _PartialType							PartialType;
+	typedef _PartialType				PartialType;
 	
 	enum {		// N.B.: We use an enum type here b/c of a NVCC-win compiler bug involving ternary expressions in static-const fields
 
@@ -340,19 +340,39 @@ struct WarpScan
  * Perform a warp-synchronous reduction
  */
 template <typename T, int NUM_ELEMENTS>
-__device__ __forceinline__ void WarpReduce(
-	int idx, 
-	volatile T *storage, 
-	T partial_reduction) 
+struct WarpReduce
 {
-	storage[idx] = partial_reduction;
+	// General iteration
+	template <int OFFSET_RIGHT, int __dummy = 0>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(T partial, volatile T *storage, int tid) 
+		{
+			partial = partial + storage[tid + OFFSET_RIGHT];
+			storage[tid] = partial;
+			Iterate<OFFSET_RIGHT / 2>::Invoke(partial, storage, tid);
+		}
+	};
+	
+	// Termination
+	template <int __dummy>
+	struct Iterate<0, __dummy>
+	{
+		static __device__ __forceinline__ void Invoke(T partial, volatile T *storage, int tid) {}
+	};
 
-	if (NUM_ELEMENTS > 16) storage[idx] = partial_reduction = partial_reduction + storage[idx + 16];
-	if (NUM_ELEMENTS > 8) storage[idx] = partial_reduction = partial_reduction + storage[idx + 8];
-	if (NUM_ELEMENTS > 4) storage[idx] = partial_reduction = partial_reduction + storage[idx + 4];
-	if (NUM_ELEMENTS > 2) storage[idx] = partial_reduction = partial_reduction + storage[idx + 2];
-	if (NUM_ELEMENTS > 1) storage[idx] = partial_reduction = partial_reduction + storage[idx + 1];
-}
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partial,								// Input partial
+		volatile T *storage,					// Smem for reducing
+		int tid = threadIdx.x)					// Thread's warp-reduce id 
+	{
+		storage[tid] = partial;
+		Iterate<NUM_ELEMENTS / 2>::Invoke(partial, storage, tid);
+		return storage[0];
+	}
+};
+
 
 
 /**
@@ -544,8 +564,7 @@ __device__ __forceinline__ static void ThreadExit() {
  */
 template <int ACTIVE_THREADS>
 __device__ __forceinline__ int TallyWarpVoteSm10(int predicate, int storage[]) {
-	WarpReduce<int, ACTIVE_THREADS>(threadIdx.x, storage, predicate);
-	return storage[0];
+	return WarpReduce<int, ACTIVE_THREADS>(storage, predicate);
 }
 
 

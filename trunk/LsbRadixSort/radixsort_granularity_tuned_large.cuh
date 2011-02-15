@@ -102,12 +102,12 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 		IndexType,				// IndexType
 
 		// Common
-		4,						// RADIX_BITS: 				4-bit radix digits
-		10,						// LOG_SUBTILE_ELEMENTS: 	1024 subtile elements
-		NONE,					// CACHE_MODIFIER: 			Default (CA: cache all levels)
-		true,					// EARLY_EXIT: 				Terminate downsweep if homogeneous digits
-		false,					// UNIFORM_SMEM_ALLOCATION:	No dynamic smem padding added
-		true, 					// UNIFORM_GRID_SIZE: 		Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
+		4,						// RADIX_BITS: 					4-bit radix digits
+		10,						// LOG_SCHEDULE_GRANULARITY: 	1024 grain elements
+		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
+		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
+		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
 											
 		// Upsweep Kernel
 		8,						// UPSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
@@ -148,12 +148,12 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 		IndexType,				// IndexType
 
 		// Common
-		4,						// RADIX_BITS: 				4-bit radix digits
-		9,						// LOG_SUBTILE_ELEMENTS: 	512 subtile elements
-		NONE,					// CACHE_MODIFIER: 			Default (CA: cache all levels)
-		true,					// EARLY_EXIT: 				Terminate downsweep if homogeneous digits
-		true,					// UNIFORM_SMEM_ALLOCATION:	Use dynamic smem padding to maintain constant grid smem allocations across all kernels
-		true, 					// UNIFORM_GRID_SIZE: 		Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
+		4,						// RADIX_BITS: 					4-bit radix digits
+		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
+		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
+		true,					// UNIFORM_SMEM_ALLOCATION:		Use dynamic smem padding to maintain constant grid smem allocations across all kernels
+		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
 
 		// Upsweep Kernel
 		5,						// UPSWEEP_CTA_OCCUPANCY:		8 CTAs/SM
@@ -194,12 +194,12 @@ struct TunedConfig<SM10, KeyType, ValueType, IndexType>
 		IndexType,				// IndexType
 
 		// Common
-		4,						// RADIX_BITS: 				4-bit radix digits
-		9,						// LOG_SUBTILE_ELEMENTS: 	512 subtile elements
-		NONE,					// CACHE_MODIFIER: 			Default (CA: cache all levels)
-		true,					// EARLY_EXIT: 				Terminate downsweep if homogeneous digits
-		false,					// UNIFORM_SMEM_ALLOCATION:	No dynamic smem padding added
-		true, 					// UNIFORM_GRID_SIZE: 		Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
+		4,						// RADIX_BITS: 					4-bit radix digits
+		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
+		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
+		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
+		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
 
 		// Upsweep Kernel
 		3,						// UPSWEEP_CTA_OCCUPANCY:		8 CTAs/SM
