@@ -70,7 +70,7 @@ struct FamilyClassifier
 {
 	static const Family FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
 									(CUDA_ARCH < SM20) ? 	SM13 :
-														SM20;
+															SM20;
 };
 
 
@@ -158,7 +158,7 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 		// Upsweep Kernel
 		5,						// UPSWEEP_CTA_OCCUPANCY:		8 CTAs/SM
 		7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
-		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-1 loads
+		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-2 loads
 		0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
 
 		// Spine-scan Kernel

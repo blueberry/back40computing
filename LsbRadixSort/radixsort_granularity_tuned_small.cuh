@@ -69,7 +69,7 @@ struct FamilyClassifier
 {
 	static const Family FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
 									(CUDA_ARCH < SM20) ? 	SM13 :
-														SM20;
+															SM20;
 };
 
 
