@@ -63,13 +63,13 @@ enum Family
 
 
 /**
- * Classifies a given SM_ARCH into an architecture-family
+ * Classifies a given CUDA_ARCH into an architecture-family
  */
-template <int SM_ARCH>
+template <int CUDA_ARCH>
 struct FamilyClassifier
 {
-	static const Family FAMILY =	(SM_ARCH < SM13) ? 	SM10 :
-									(SM_ARCH < SM20) ? 	SM13 :
+	static const Family FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
+									(CUDA_ARCH < SM20) ? 	SM13 :
 														SM20;
 };
 
@@ -81,12 +81,12 @@ struct FamilyClassifier
  * for separate kernels are largely performance-independent.
  */
 template <
-	int SM_ARCH,
+	int CUDA_ARCH,
 	typename KeyType,
 	typename ValueType,
 	typename IndexType>
 struct TunedConfig :
-	TunedConfig<FamilyClassifier<SM_ARCH>::FAMILY, KeyType, ValueType, IndexType> {};
+	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, IndexType> {};
 
 
 
@@ -120,7 +120,7 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
 		2,										// SPINE_LOG_LOAD_VEC_SIZE:		vec-4 loads
 		0,										// SPINE_LOG_LOADS_PER_TILE:	1 loads/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// SPINE_LOG_RAKING_THREADS:	1 warp
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
 	
 		// Downsweep Kernel
 		8,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
@@ -130,7 +130,7 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
 			1 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycles/tile
 			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 1		// DOWNSWEEP_LOG_RAKING_THREADS: 2 warps
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 1		// DOWNSWEEP_LOG_RAKING_THREADS: 2 warps
 	> 
 {}; 
 
@@ -166,7 +166,7 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
 		2,										// SPINE_LOG_LOAD_VEC_SIZE: 	vec-4 loads
 		0,										// SPINE_LOG_LOADS_PER_TILE: 	1 loads/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// SPINE_LOG_RAKING_THREADS:	1 warp
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
 
 		// Downsweep Kernel
 		5,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
@@ -176,7 +176,7 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
 			0 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycles/tile
 			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 0		// DOWNSWEEP_LOG_RAKING_THREADS: 1 warps
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0		// DOWNSWEEP_LOG_RAKING_THREADS: 1 warps
 	>
 {};
 
@@ -212,7 +212,7 @@ struct TunedConfig<SM10, KeyType, ValueType, IndexType>
 		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
 		2,										// SPINE_LOG_LOAD_VEC_SIZE: 	vec-4 loads
 		0,										// SPINE_LOG_LOADS_PER_TILE: 	1 loads/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 0,		// SPINE_LOG_RAKING_THREADS:	1 warp
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
 
 		// Downsweep Kernel
 		2,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
@@ -222,7 +222,7 @@ struct TunedConfig<SM10, KeyType, ValueType, IndexType>
 		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
 			1 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycles/tile
 			1, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycle/tile
-		B40C_LOG_WARP_THREADS(SM_ARCH) + 2		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 2		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
 	>
 {};
 

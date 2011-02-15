@@ -62,27 +62,27 @@ using namespace lsb_radix_sort;
 
 enum TunedGranularityEnum
 {
-//		SMALL_PROBLEM_SINGLE_CTA,
-//		SMALL_PROBLEM_SINGLE_GRID,
 	SMALL_PROBLEM,
-	DEFAULT
+	LARGE_PROBLEM			// default
 };
 
 
 // Generic tuned granularity config type 
-template <TunedGranularityEnum GRANULARITY_ENUM, int SM_ARCH, typename KeyType, typename ValueType, typename IndexType> 
+template <TunedGranularityEnum GRANULARITY_ENUM, int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
 struct TunedGranularity;
 
 
-// Default specialization of granularity config type 
-template <int SM_ARCH, typename KeyType, typename ValueType, typename IndexType> 
-struct TunedGranularity<DEFAULT, SM_ARCH, KeyType, ValueType, IndexType> 
-	: large_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType>
+// Large-problem specialization of granularity config type
+template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
+struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
+	: large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
 {
-	static const TunedGranularityEnum GRANULARITY_ENUM 	= DEFAULT;
+	static const TunedGranularityEnum GRANULARITY_ENUM 	= LARGE_PROBLEM;
 
-	// Largely-unnecessary duplication of inner type data to accommodate use in __launch_bounds__
-	typedef large_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
+	// Largely-unnecessary duplication of inner type data to accommodate
+	// use in __launch_bounds__.  TODO: Section can be removed if CUDA Runtime
+	// supports template specialization around kernel call sites.
+	typedef large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
 	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
@@ -93,14 +93,16 @@ struct TunedGranularity<DEFAULT, SM_ARCH, KeyType, ValueType, IndexType>
 
 
 // Small-probelm specialization of granularity config type 
-template <int SM_ARCH, typename KeyType, typename ValueType, typename IndexType> 
-struct TunedGranularity<SMALL_PROBLEM, SM_ARCH, KeyType, ValueType, IndexType> 
-	: small_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType>
+template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
+struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
+	: small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
 {
 	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
 
-	// Largely-unnecessary duplication of inner type data to accommodate use in __launch_bounds__
-	typedef small_problem_tuning::TunedConfig<SM_ARCH, KeyType, ValueType, IndexType> Base;
+	// Largely-unnecessary duplication of inner type data to accommodate
+	// use in __launch_bounds__.  TODO: Section can be removed if CUDA Runtime
+	// supports template specialization around kernel call sites.
+	typedef small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
 	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
@@ -113,20 +115,12 @@ struct TunedGranularity<SMALL_PROBLEM, SM_ARCH, KeyType, ValueType, IndexType>
 
 /******************************************************************************
  * LSB sorting kernel entry points that understand our tuned granularity
- * enumeration type 
+ * enumeration type.  TODO: Section can be removed if CUDA Runtime supports template
+ * specialization around kernel call sites.
  ******************************************************************************/
 
 // Upsweep
-template <
-	typename KeyType,
-	typename ConvertedKeyType,
-	typename ValueType,
-	typename IndexType,
-	typename PreprocessTraits, 
-	typename PostprocessTraits, 
-	int CURRENT_PASS, 
-	int CURRENT_BIT,
-	int GRANULARITY_ENUM>
+template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_OCCUPANCY))
@@ -144,20 +138,11 @@ void TunedUpsweepKernel(
 	typedef UpsweepKernelConfig<typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
 	
 	// Invoke the wrapped kernel logic
-	LsbUpsweep<KernelConfig>(
-		d_selectors, 
-		d_spine, 
-		d_in_keys, 
-		d_out_keys, 
-		work_decomposition);
+	LsbUpsweep<KernelConfig>(d_selectors, d_spine, d_in_keys, d_out_keys, work_decomposition);
 }
 
 // SpineScan
-template <
-	typename KeyType,
-	typename ValueType,
-	typename IndexType,
-	int GRANULARITY_ENUM>
+template <typename KeyType, typename ValueType, typename IndexType, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY))
@@ -176,16 +161,7 @@ void TunedSpineScanKernel(
 }
 
 // Downsweep
-template <
-	typename KeyType,
-	typename ConvertedKeyType,
-	typename ValueType,
-	typename IndexType,
-	typename PreprocessTraits, 
-	typename PostprocessTraits, 
-	int CURRENT_PASS, 
-	int CURRENT_BIT,
-	int GRANULARITY_ENUM>
+template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_OCCUPANCY))
@@ -224,21 +200,35 @@ void TunedDownsweepKernel(
  */
 template <typename KeyType, typename ValueType = KeysOnly> 
 class LsbSortEnactorTuned : 
-	public LsbSortEnactor<KeyType, ValueType, LsbSortEnactorTuned<KeyType, ValueType> >
+	public LsbSortEnactor<KeyType, ValueType, LsbSortEnactorTuned<KeyType, ValueType> >,
+	public Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned<KeyType, ValueType> >
 {
-	
+
 protected:
 
-	// Typedef for base class
+	// Typedefs for base classes
 	typedef LsbSortEnactor<KeyType, ValueType, LsbSortEnactorTuned<KeyType, ValueType> > BaseEnactorType;
+	typedef Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned<KeyType, ValueType> > BaseArchType;
 
-	// Our base class is a friend that invoke our templated 
+	// Our base classes are friends that invoke our templated
 	// dispatch functions (which by their nature aren't virtual) 
 	friend BaseEnactorType;
+	friend BaseArchType;
+
+	// Type for encapsulating static type data regarding a sorting invocation
+	template <int _START_BIT, int _NUM_BITS, TunedGranularityEnum _GRANULARITY_ENUM>
+	struct Detail {
+		static const int START_BIT 								= _START_BIT;
+		static const int NUM_BITS 								= _NUM_BITS;
+		static const TunedGranularityEnum GRANULARITY_ENUM 		= _GRANULARITY_ENUM;
+	};
 	
-	
+
 	//-----------------------------------------------------------------------------
 	// Sorting Operation 
+	//
+	// TODO: Section can be removed if CUDA Runtime supports template
+	// specialization around kernel call sites.
 	//-----------------------------------------------------------------------------
 	
     /**
@@ -322,66 +312,31 @@ protected:
 
 	
 	//-----------------------------------------------------------------------------
-	// Architecture specialization 
+	// Granularity specialization interface required by Architecture subclass
 	//-----------------------------------------------------------------------------
 
-	// Sorting pass call-sites specialized per SM architecture 
-	template <int SM_ARCH, int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM>
-	struct Architecture
+	// The arch version of the code for the current device that actually have
+	// compiled kernels for
+	int PtxVersion()
 	{
-		template<typename EnactorType, typename Storage>
-		static cudaError_t EnactSort(EnactorType *enactor, Storage &problem_storage) 
-		{
-			typedef TunedGranularity<
-				GRANULARITY_ENUM, 
-				SM_ARCH, 
-				KeyType, 
-				ValueType, 
-				typename Storage::IndexType> SortingConfig; 
+		return this->cuda_props.kernel_ptx_version;
+	}
 
-			return ((BaseEnactorType *) enactor)->template 
-				EnactSort<Storage, SortingConfig, START_BIT, NUM_BITS>(problem_storage);
-		}
-	};
-	
-	// Host-side dispatch to specialized sorting pass call-sites 
-	template <int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM>
-	struct Architecture<0, START_BIT, NUM_BITS, GRANULARITY_ENUM> 
+	// Dispatch call-back with static CUDA_ARCH
+	template <int CUDA_ARCH, typename Storage, typename Detail>
+	cudaError_t Enact(Storage &problem_storage)
 	{
-		template<typename EnactorType, typename Storage>
-		static cudaError_t EnactSort(EnactorType *enactor, Storage &problem_storage) 
-		{
-			// Determine the arch version of the we actually have a compiled kernel for
-			int ptx_version = enactor->cuda_props.kernel_ptx_version;
-			
-			// Dispatch 
-			switch (ptx_version) {
-			case 100:
-				return Architecture<100, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			case 110:
-				return Architecture<110, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			case 120:
-				return Architecture<120, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			case 130:
-				return Architecture<130, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			case 200:
-				return Architecture<200, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			case 210:
-				return Architecture<210, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			default:
-				// We were compiled for something new: treat it as we would SM2.0
-				return Architecture<200, START_BIT, NUM_BITS, GRANULARITY_ENUM>:: 
-					EnactSort(enactor, problem_storage);
-			};
-		}
-	};
-	
+		typedef TunedGranularity<
+			Detail::GRANULARITY_ENUM,
+			CUDA_ARCH,
+			KeyType,
+			ValueType,
+			typename Storage::IndexType> SortingConfig;
+
+		return ((BaseEnactorType *) this)->template
+			EnactSort<Storage, SortingConfig, Detail::START_BIT, Detail::NUM_BITS>(problem_storage);
+	}
+
 	
 public:
 
@@ -392,9 +347,8 @@ public:
 	/**
 	 * Constructor.
 	 */
-	LsbSortEnactorTuned(
-		int sweep_grid_size_override = 0) : 
-			BaseEnactorType::LsbSortEnactor(sweep_grid_size_override) {}
+	LsbSortEnactorTuned(int sweep_grid_size_override = 0) :
+		BaseEnactorType::LsbSortEnactor(sweep_grid_size_override) {}
 
 	
 	//-----------------------------------------------------------------------------
@@ -402,30 +356,28 @@ public:
 	//-----------------------------------------------------------------------------
 	
 	/**
-	 * Enacts a radix sorting operation on the specified device data.
+	 * Enacts a radix sorting operation on the specified device data using the
+	 * enumerated tuned granularity configuration
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage, int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM>
 	cudaError_t EnactSort(Storage &problem_storage)
 	{
-		return Architecture<
-			__B40C_CUDA_ARCH__, 
-			START_BIT, 
-			NUM_BITS, 
-			GRANULARITY_ENUM>::EnactSort(this, problem_storage);
+		return BaseArchType::template
+			Enact<Storage, Detail<START_BIT, NUM_BITS, GRANULARITY_ENUM> >(problem_storage);
 	}
 
 	/**
 	 * Enacts a radix sorting operation on the specified device data using the
-	 * DEFAULT granularity configuration (i.e., tuned for large-problem sorting)
+	 * LARGE_PROBLEM granularity configuration (i.e., tuned for large-problem sorting)
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage>
 	cudaError_t EnactSort(Storage &problem_storage) 
 	{
-		return EnactSort<Storage, 0, sizeof(KeyType) * 8, DEFAULT>(problem_storage);
+		return EnactSort<Storage, 0, sizeof(KeyType) * 8, LARGE_PROBLEM>(problem_storage);
 	}
 	
 };

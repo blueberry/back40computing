@@ -54,7 +54,7 @@ namespace lsb_radix_sort {
 
 		
 /**
- * Unified granularity configuration for all three kernels in a sorting pass 
+ * Unified granularity configuration type for all three kernels in a sorting pass
  * (upsweep, spinescan, and downsweep).  
  * 
  * This C++ type encapsulates all three sets of kernel-tuning parameters (they 
@@ -113,17 +113,19 @@ struct GranularityConfig
 		UPSWEEP_LOG_LOAD_VEC_SIZE,  	
 		UPSWEEP_LOG_LOADS_PER_TILE,
 		CACHE_MODIFIER,
-		EARLY_EXIT> 							Upsweep;
+		EARLY_EXIT>
+			Upsweep;
 	
 	typedef spine_scan::SpineScanConfig<
-		IndexType,		// Type of scan problem
+		IndexType,								// Type of scan problem
 		int,									// Type for indexing into scan problem
 		SPINE_CTA_OCCUPANCY,
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		CACHE_MODIFIER> 						SpineScan;
+		CACHE_MODIFIER>
+			SpineScan;
 	
 	typedef downsweep::DownsweepConfig<
 		ConvertedKeyType,
@@ -138,7 +140,8 @@ struct GranularityConfig
 		DOWNSWEEP_LOG_CYCLES_PER_TILE,
 		DOWNSWEEP_LOG_RAKING_THREADS,
 		CACHE_MODIFIER,
-		EARLY_EXIT> 							Downsweep;
+		EARLY_EXIT>
+			Downsweep;
 };
 		
 

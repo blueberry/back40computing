@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,10 @@
 
 namespace b40c {
 
+/******************************************************************************
+ * IDE macros
+ ******************************************************************************/
+
 // Defines to make syntax highlighting manageable in the Eclipse CDT.
 #ifdef __CDT_PARSER__
 	#define __shared__
@@ -42,12 +46,89 @@ namespace b40c {
 #endif
 
 
-// CUDA architecture currently being compiled for
+
+/******************************************************************************
+ * Macros and routines for guiding compilation paths
+ ******************************************************************************/
+
+/**
+ * CUDA architecture of the current compilation path
+ */
 #ifndef __CUDA_ARCH__
-	#define __B40C_CUDA_ARCH__ 0						// Host
+	#define __B40C_CUDA_ARCH__ 0						// Host path
 #else
-	#define __B40C_CUDA_ARCH__ __CUDA_ARCH__
+	#define __B40C_CUDA_ARCH__ __CUDA_ARCH__			// Device path
 #endif
+
+
+/**
+ * Enactor specialization for the device compilation-path. Use in accordance
+ * with the curiously-recurring template pattern (CRTP).
+ *
+ * Dispatches to an Enact() method in the derived class that is
+ * specialized by CUDA_ARCH.  This path drives the actual compilation of
+ * kernels, allowing them to be specific to CUDA_ARCH.
+ */
+template <int CUDA_ARCH, typename Derived>
+class Architecture
+{
+protected:
+
+	template<typename Storage, typename Detail>
+	cudaError_t Enact(Storage &problem_storage)
+	{
+		Derived *enactor = static_cast<Derived*>(this);
+		return enactor->template Enact<CUDA_ARCH, Storage, Detail>(problem_storage);
+	}
+};
+
+
+/**
+ * Enactor specialization for the host compilation-path. Use in accordance
+ * with the curiously-recurring template pattern (CRTP).
+ *
+ * Dispatches to an Enact() method in the derived class that is specialized by
+ * the version of the accompanying PTX assembly.  This path does not drive the
+ * compilation of kernels.
+ */
+template <typename Derived>
+class Architecture<0, Derived>
+{
+protected:
+
+	template<typename Storage, typename Detail>
+	cudaError_t Enact(Storage &problem_storage)
+	{
+		// Determine the arch version of the we actually have a compiled kernel for
+		Derived *enactor = static_cast<Derived*>(this);
+
+		// Dispatch
+		switch (enactor->PtxVersion()) {
+		case 100:
+			return enactor->template Enact<100, Storage, Detail>(problem_storage);
+		case 110:
+			return enactor->template Enact<110, Storage, Detail>(problem_storage);
+		case 120:
+			return enactor->template Enact<120, Storage, Detail>(problem_storage);
+		case 130:
+			return enactor->template Enact<130, Storage, Detail>(problem_storage);
+		case 200:
+			return enactor->template Enact<200, Storage, Detail>(problem_storage);
+		case 210:
+			return enactor->template Enact<210, Storage, Detail>(problem_storage);
+		default:
+			// We were compiled for something new: treat it as we would SM2.0
+			return enactor->template Enact<200, Storage, Detail>(problem_storage);
+		};
+	}
+};
+
+
+
+/******************************************************************************
+ * Device properties by SM architectural version
+ ******************************************************************************/
+
 
 // Threads per warp. (The CUDA Toolkit gives us warp-size, but not the log of it, which is also useful)
 #define B40C_LOG_WARP_THREADS(arch)		(5)			// 32 threads in a warp 
@@ -77,6 +158,12 @@ namespace b40c {
 										 (arch >= 200) ? B40C_SM12_SMEM_BYTES() : 	\
 														 B40C_SM10_SMEM_BYTES())		
 
+
+/******************************************************************************
+ * Inlined PTX helper macros
+ ******************************************************************************/
+
+
 // Register modifier for pointer-types (for inlining PTX assembly)
 #if defined(_WIN64) || defined(__LP64__)
 	#define _B40C_LP64_ true			
@@ -88,6 +175,11 @@ namespace b40c {
 	#define _B40C_ASM_PTR_ "r"
 #endif
 
+
+
+/******************************************************************************
+ * CUDA/GPU inspection utilities
+ ******************************************************************************/
 
 /**
  * Empty Kernel
@@ -126,6 +218,8 @@ public:
 		kernel_ptx_version = flush_kernel_attrs.ptxVersion * 10;
 	}
 };
+
+
 
 
 } // namespace b40c
