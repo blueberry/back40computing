@@ -136,7 +136,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	LsbSortEnactorTuned<K> sorting_enactor(g_max_ctas);
+	LsbSortEnactorTuned<K> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -144,7 +144,7 @@ void TimedSort(
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.EnactSort(device_storage);
+	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 	// Perform the timed number of sorting iterations
 
@@ -169,7 +169,7 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.EnactSort(device_storage);
+		sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -223,7 +223,6 @@ void TimedSort(
 	V *h_values, 
 	int iterations)
 {
-/*
 	printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 	
 	// Allocate device storage   
@@ -234,7 +233,7 @@ void TimedSort(
     dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
 
 	// Create sorting enactor
-	LsbSortEnactorTuned<K, V> sorting_enactor(g_max_ctas);
+	LsbSortEnactorTuned<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	cudaMemcpy(
@@ -242,7 +241,7 @@ void TimedSort(
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
-	sorting_enactor.EnactSort(device_storage);
+	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 	// Perform the timed number of sorting iterations
 
@@ -267,7 +266,7 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.EnactSort(device_storage);
+		sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -299,8 +298,6 @@ void TimedSort(
     if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
     if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
     if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
-
-*/
 }
 
 

@@ -89,7 +89,7 @@ template <
 	typename _ValueType,
 	typename _IndexType,
 	int _RADIX_BITS,
-	int _LOG_SUBTILE_ELEMENTS,
+	int _LOG_SCHEDULE_GRANULARITY,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -105,7 +105,7 @@ struct DownsweepConfig
 	typedef _ValueType							ValueType;
 	typedef _IndexType							IndexType;
 	static const int RADIX_BITS					= _RADIX_BITS;
-	static const int LOG_SUBTILE_ELEMENTS		= _LOG_SUBTILE_ELEMENTS;
+	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE 			= _LOG_LOAD_VEC_SIZE;
@@ -1277,7 +1277,7 @@ __device__ __forceinline__ void LsbDownsweep(
 
 			// Determine our threadblock's work range
 			IndexType cta_elements;			// Total number of elements for this CTA to process
-			work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SUBTILE_ELEMENTS>(
+			work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
 				cta_offset, cta_elements, guarded_offset, guarded_elements);
 		}
 	}

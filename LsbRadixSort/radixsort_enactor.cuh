@@ -72,11 +72,11 @@ struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
 	// Constructor
 	SortingCtaDecomposition(
 		Storage *problem_storage,
-		int subtile_elements,
+		int schedule_granularity,
 		int sweep_grid_size,
 		int spine_elements) : CtaDecomposition<IndexType>(
 			problem_storage->num_elements,
-			subtile_elements,
+			schedule_granularity,
 			sweep_grid_size),
 			sweep_grid_size(sweep_grid_size),
 			spine_elements(spine_elements),
@@ -132,10 +132,6 @@ protected:
 	// Device properties
 	const CudaProperties cuda_props;
 
-	// Override for maximum grid size to launch for sweep kernels 
-	// (0 == no override)
-	int sweep_grid_size_override;
-	
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
 	void *d_spine;
@@ -166,9 +162,9 @@ protected:
 	 * launch for [up|down]sweep grids for the given problem size
 	 */
 	template <typename SortingConfig>
-	int SweepGridSize(int num_elements) 
+	int SweepGridSize(int num_elements, int max_grid_size) 
 	{
-		const int SUBTILE_ELEMENTS = 1 << SortingConfig::Upsweep::LOG_SUBTILE_ELEMENTS;
+		const int SCHEDULE_GRANULARITY = 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
 
 		int default_sweep_grid_size;
 		if (cuda_props.device_sm_version < 120) {
@@ -241,16 +237,16 @@ protected:
 		}
 		
 		// Reduce by override, if specified
-		if (sweep_grid_size_override) {
-			default_sweep_grid_size = sweep_grid_size_override;
+		if (max_grid_size > 0) {
+			default_sweep_grid_size = max_grid_size;
 		}
 		
 		// Reduce if we have less work than we can divide up among this 
 		// many CTAs
 		
-		int subtiles = (num_elements + SUBTILE_ELEMENTS - 1) / SUBTILE_ELEMENTS;
-		if (default_sweep_grid_size > subtiles) {
-			default_sweep_grid_size = subtiles;
+		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
+		if (default_sweep_grid_size > grains) {
+			default_sweep_grid_size = grains;
 		}
 		
 		return default_sweep_grid_size;
@@ -585,9 +581,7 @@ public:
 	/**
 	 * Constructor.
 	 */
-	LsbSortEnactor(
-		int sweep_grid_size_override = 0) :
-			sweep_grid_size_override(sweep_grid_size_override),
+	LsbSortEnactor() :
 			d_selectors(NULL),
 			d_spine(NULL),
 			spine_bytes(DEFAULT_SPINE_BYTES),
@@ -629,16 +623,23 @@ public:
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
+	 * @param problem_storage 
+	 * 		Instance of MultiCtaSortStorage type describing the details of the 
+	 * 		problem to sort. 
+	 * @param max_grid_size
+	 * 		Upper limit on the size of the grid of threadblocks that can be launched 
+	 * 		per kernel.  (0 == use default)
+	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage, typename SortingConfig, int START_BIT, int NUM_BITS> 
-	cudaError_t EnactSort(Storage &problem_storage) 
+	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0) 
 	{
 	    typedef SortingCtaDecomposition<Storage> Decomposition;
 
 	    const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
 		const int NUM_PASSES 			= (NUM_BITS + RADIX_BITS - 1) / RADIX_BITS;
-		const int SUBTILE_ELEMENTS 		= 1 << SortingConfig::Upsweep::LOG_SUBTILE_ELEMENTS;
+		const int SCHEDULE_GRANULARITY 	= 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
 		const int SPINE_TILE_ELEMENTS 	= 1 << 
 				(SortingConfig::SpineScan::LOG_THREADS + 
 				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
@@ -646,10 +647,10 @@ public:
 		
 		const int OFFSET_BYTES = sizeof(typename Storage::IndexType);
 
-		int sweep_grid_size = SweepGridSize<SortingConfig>(problem_storage.num_elements);
+		int sweep_grid_size = SweepGridSize<SortingConfig>(problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
-		Decomposition work(&problem_storage, SUBTILE_ELEMENTS, sweep_grid_size, spine_elements);
+		Decomposition work(&problem_storage, SCHEDULE_GRANULARITY, sweep_grid_size, spine_elements);
 			
 		if (DEBUG) {
 			printf("\n\n");
@@ -663,8 +664,8 @@ public:
 				1, 1 << SortingConfig::SpineScan::LOG_THREADS, spine_elements);
 			printf("Downsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Downsweep::LOG_THREADS);
-			printf("Work: \t\t[num_elements: %d, subtile_elements: %d, total_subtiles: %d, subtiles_per_cta: %d, extra_subtiles: %d]\n",
-				work.num_elements, SUBTILE_ELEMENTS, work.total_subtiles, work.subtiles_per_cta, work.extra_subtiles);
+			printf("Work: \t\t[num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
+				work.num_elements, SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
 			printf("\n\n");
 		}
 		

@@ -75,10 +75,10 @@ class Architecture
 protected:
 
 	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage)
+	cudaError_t Enact(Storage &problem_storage, Detail &detail)
 	{
 		Derived *enactor = static_cast<Derived*>(this);
-		return enactor->template Enact<CUDA_ARCH, Storage, Detail>(problem_storage);
+		return enactor->template Enact<CUDA_ARCH, Storage, Detail>(problem_storage, detail);
 	}
 };
 
@@ -97,7 +97,7 @@ class Architecture<0, Derived>
 protected:
 
 	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage)
+	cudaError_t Enact(Storage &problem_storage, Detail &detail)
 	{
 		// Determine the arch version of the we actually have a compiled kernel for
 		Derived *enactor = static_cast<Derived*>(this);
@@ -105,20 +105,20 @@ protected:
 		// Dispatch
 		switch (enactor->PtxVersion()) {
 		case 100:
-			return enactor->template Enact<100, Storage, Detail>(problem_storage);
+			return enactor->template Enact<100, Storage, Detail>(problem_storage, detail);
 		case 110:
-			return enactor->template Enact<110, Storage, Detail>(problem_storage);
+			return enactor->template Enact<110, Storage, Detail>(problem_storage, detail);
 		case 120:
-			return enactor->template Enact<120, Storage, Detail>(problem_storage);
+			return enactor->template Enact<120, Storage, Detail>(problem_storage, detail);
 		case 130:
-			return enactor->template Enact<130, Storage, Detail>(problem_storage);
+			return enactor->template Enact<130, Storage, Detail>(problem_storage, detail);
 		case 200:
-			return enactor->template Enact<200, Storage, Detail>(problem_storage);
+			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
 		case 210:
-			return enactor->template Enact<210, Storage, Detail>(problem_storage);
+			return enactor->template Enact<210, Storage, Detail>(problem_storage, detail);
 		default:
 			// We were compiled for something new: treat it as we would SM2.0
-			return enactor->template Enact<200, Storage, Detail>(problem_storage);
+			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
 		};
 	}
 };
@@ -130,7 +130,7 @@ protected:
  ******************************************************************************/
 
 
-// Threads per warp. (The CUDA Toolkit gives us warp-size, but not the log of it, which is also useful)
+// Threads per warp. 
 #define B40C_LOG_WARP_THREADS(arch)		(5)			// 32 threads in a warp 
 #define B40C_WARP_THREADS(arch)			(1 << B40C_LOG_WARP_THREADS(arch))
 

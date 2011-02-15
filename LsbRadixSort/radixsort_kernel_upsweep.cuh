@@ -71,7 +71,7 @@ template <
 	typename _KeyType,
 	typename _IndexType,
 	int _RADIX_BITS,
-	int _LOG_SUBTILE_ELEMENTS,
+	int _LOG_SCHEDULE_GRANULARITY,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -84,7 +84,7 @@ struct UpsweepConfig
 	typedef _KeyType							KeyType;
 	typedef _IndexType							IndexType;
 	static const int RADIX_BITS					= _RADIX_BITS;
-	static const int LOG_SUBTILE_ELEMENTS		= _LOG_SUBTILE_ELEMENTS;
+	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
@@ -618,7 +618,7 @@ __device__ __forceinline__ void LsbUpsweep(
 	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 	IndexType guarded_elements;		// Number of elements in partially-full tile
 
-	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SUBTILE_ELEMENTS>(
+	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 		
 	// Perform reduction pass over work range

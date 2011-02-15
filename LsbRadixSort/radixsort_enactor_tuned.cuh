@@ -221,6 +221,13 @@ protected:
 		static const int START_BIT 								= _START_BIT;
 		static const int NUM_BITS 								= _NUM_BITS;
 		static const TunedGranularityEnum GRANULARITY_ENUM 		= _GRANULARITY_ENUM;
+
+		// Upper limit on the size of the grid of threadblocks that can be launched 
+		// per kernel.  (0 == use default)		
+		int max_grid_size;
+		
+		// Constructor
+		Detail(int max_grid_size = 0) : max_grid_size(max_grid_size) {}
 	};
 	
 
@@ -324,8 +331,9 @@ protected:
 
 	// Dispatch call-back with static CUDA_ARCH
 	template <int CUDA_ARCH, typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage)
+	cudaError_t Enact(Storage &problem_storage, Detail &detail)
 	{
+		// Obtain tuned granularity type
 		typedef TunedGranularity<
 			Detail::GRANULARITY_ENUM,
 			CUDA_ARCH,
@@ -333,8 +341,13 @@ protected:
 			ValueType,
 			typename Storage::IndexType> SortingConfig;
 
-		return ((BaseEnactorType *) this)->template
-			EnactSort<Storage, SortingConfig, Detail::START_BIT, Detail::NUM_BITS>(problem_storage);
+		// Enact sort using that type
+		return ((BaseEnactorType *) this)->template EnactSort<
+				Storage, 
+				SortingConfig, 
+				Detail::START_BIT, 
+				Detail::NUM_BITS>(
+			problem_storage, detail.max_grid_size);
 	}
 
 	
@@ -347,8 +360,7 @@ public:
 	/**
 	 * Constructor.
 	 */
-	LsbSortEnactorTuned(int sweep_grid_size_override = 0) :
-		BaseEnactorType::LsbSortEnactor(sweep_grid_size_override) {}
+	LsbSortEnactorTuned() : BaseEnactorType::LsbSortEnactor() {}
 
 	
 	//-----------------------------------------------------------------------------
@@ -359,25 +371,41 @@ public:
 	 * Enacts a radix sorting operation on the specified device data using the
 	 * enumerated tuned granularity configuration
 	 *
+	 * @param problem_storage 
+	 * 		Instance of MultiCtaSortStorage type describing the details of the 
+	 * 		problem to sort. 
+	 * @param max_grid_size
+	 * 		Upper limit on the size of the grid of threadblocks that can be launched 
+	 * 		per kernel.  (0 == use default)
+	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage, int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM>
-	cudaError_t EnactSort(Storage &problem_storage)
+	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0)
 	{
-		return BaseArchType::template
-			Enact<Storage, Detail<START_BIT, NUM_BITS, GRANULARITY_ENUM> >(problem_storage);
+		typedef Detail<START_BIT, NUM_BITS, GRANULARITY_ENUM> DetailType;
+		DetailType detail(max_grid_size);
+		
+		return BaseArchType::template Enact<Storage, DetailType>(problem_storage, detail);
 	}
 
 	/**
 	 * Enacts a radix sorting operation on the specified device data using the
 	 * LARGE_PROBLEM granularity configuration (i.e., tuned for large-problem sorting)
 	 *
+	 * @param problem_storage 
+	 * 		Instance of MultiCtaSortStorage type describing the details of the 
+	 * 		problem to sort. 
+	 * @param max_grid_size
+	 * 		Upper limit on the size of the grid of threadblocks that can be launched 
+	 * 		per kernel.  (0 == use default)
+	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage>
-	cudaError_t EnactSort(Storage &problem_storage) 
+	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0) 
 	{
-		return EnactSort<Storage, 0, sizeof(KeyType) * 8, LARGE_PROBLEM>(problem_storage);
+		return EnactSort<Storage, 0, sizeof(KeyType) * 8, LARGE_PROBLEM>(problem_storage, max_grid_size);
 	}
 	
 };
