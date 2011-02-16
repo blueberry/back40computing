@@ -382,29 +382,44 @@ template <typename T, int LENGTH>
 struct SerialReduce
 {
 	// Iterate
-	template <int COUNT, int TOTAL_COUNT>
+	template <int COUNT, int TOTAL>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ T Invoke(T partials[]) 
 		{
-			return partials[COUNT] + Iterate<COUNT + 1, TOTAL_COUNT>::Invoke(partials);
+			T a = Iterate<COUNT - 2, TOTAL>::Invoke(partials);
+			T b = partials[TOTAL - COUNT];
+			T c = partials[TOTAL - (COUNT - 1)];
+//			asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(c) : "r"(c), "r"(b), "r"(a));
+			return a + b + c;
 		}
 	};
 	
+
 	// Terminate
-	template <int TOTAL_COUNT>
-	struct Iterate<TOTAL_COUNT, TOTAL_COUNT>
+	template <int TOTAL>
+	struct Iterate<2, TOTAL>
+	{
+		static __device__ __forceinline__ T Invoke(T partials[])
+		{
+			return partials[TOTAL - 2] + partials[TOTAL - 1];
+		}
+	};
+
+	// Terminate
+	template <int TOTAL>
+	struct Iterate<1, TOTAL>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[]) 
 		{
-			return partials[TOTAL_COUNT];
+			return partials[TOTAL - 1];
 		}
 	};
 	
 	// Interface
 	static __device__ __forceinline__ T Invoke(T partials[])			
 	{
-		return Iterate<0, LENGTH - 1>::Invoke(partials);
+		return Iterate<LENGTH, LENGTH>::Invoke(partials);
 	}
 };
 
