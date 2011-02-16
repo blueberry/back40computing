@@ -1112,7 +1112,7 @@ __device__ __forceinline__ void DigitPass(
 	typename Config::ValueType 	* __restrict d_out_values, 
 	int 						*exchange,								
 	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-	int							digit_carry[Config::RADIX_DIGITS],
+	typename Config::IndexType	digit_carry[Config::RADIX_DIGITS],
 	int							digit_warpscan[2][Config::RADIX_DIGITS],						 
 	int							digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS],
 	int 						lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
@@ -1196,17 +1196,17 @@ __device__ __forceinline__ void LsbDownsweep(
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
 
-	__shared__ int4		smem_pool_int4s[Config::SMEM_POOL_INT4S];
-	__shared__ int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
-	__shared__ int 		digit_carry[Config::RADIX_DIGITS];
-	__shared__ int 		digit_warpscan[2][Config::RADIX_DIGITS];						 
-	__shared__ int 		digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS];
-	__shared__ int 		lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE];
-	__shared__ bool 	non_trivial_digit_pass;
-	__shared__ int 		selector;
-	__shared__ IndexType cta_offset;			// Offset at which this CTA begins processing
-	__shared__ IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	__shared__ IndexType guarded_elements;		// Number of elements in partially-full tile
+	__shared__ int4			smem_pool_int4s[Config::SMEM_POOL_INT4S];
+	__shared__ int 			lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
+	__shared__ IndexType	digit_carry[Config::RADIX_DIGITS];
+	__shared__ int 			digit_warpscan[2][Config::RADIX_DIGITS];
+	__shared__ int 			digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS];
+	__shared__ int 			lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE];
+	__shared__ bool 		non_trivial_digit_pass;
+	__shared__ int 			selector;
+	__shared__ IndexType 	cta_offset;			// Offset at which this CTA begins processing
+	__shared__ IndexType 	guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	__shared__ IndexType 	guarded_elements;		// Number of elements in partially-full tile
 	
 	int *smem_pool = reinterpret_cast<int *>(smem_pool_int4s);
 
