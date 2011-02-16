@@ -85,7 +85,7 @@ __global__ void TunedUpsweepKernel(int * __restrict d_selectors, IndexType * __r
 
 // SpineScan
 template <typename KeyType, typename ValueType, typename IndexType, int GRANULARITY_ENUM>
-__global__ void TunedSpineScanKernel(int *d_spine, IndexType spine_elements);
+__global__ void TunedSpineScanKernel(IndexType *d_spine, int spine_elements);
 
 // Downsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
@@ -413,8 +413,8 @@ __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY))
 __global__
 void TunedSpineScanKernel(
-	int 		*d_spine,
-	IndexType	spine_elements)
+	IndexType 		*d_spine,
+	int				spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	using namespace spine_scan;

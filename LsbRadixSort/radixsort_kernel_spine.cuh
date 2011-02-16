@@ -443,7 +443,7 @@ __device__ __forceinline__ void LsbSpineScan(
 
 	// Shared memory pool
 	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
-	__shared__ int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+	__shared__ ScanType warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 	
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) {
