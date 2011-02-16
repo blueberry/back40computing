@@ -67,7 +67,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20)
+SM_TARGETS = $(GEN_SM20) 
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -141,7 +141,6 @@ SORTING_DEPS = 	./Makefile \
 				../radixsort_storage.cuh \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
-				../../Common/b40c_error_synchronize.h \
 				../../Common/b40c_kernel_data_movement.cuh \
 				../../Common/b40c_kernel_utils.cuh \
 				../../Common/b40c_vector_types.cuh 

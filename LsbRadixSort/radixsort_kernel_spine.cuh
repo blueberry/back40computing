@@ -125,17 +125,17 @@ struct SpineScanKernelConfig : SpineScanConfigType
 
 	// Primary smem SRTS grid type
 	typedef SrtsGrid<
-		typename SpineScanConfigType::ScanType,
-		SpineScanConfigType::LOG_THREADS,
-		SpineScanConfigType::LOG_LOADS_PER_TILE,
-		SpineScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;
+		typename SpineScanConfigType::ScanType,						// Partial type
+		SpineScanConfigType::LOG_THREADS,							// Depositing threads (the CTA size)
+		SpineScanConfigType::LOG_LOADS_PER_TILE,					// Dependent lanes (the number of loads)
+		SpineScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;		// Raking threads
 
 	// Secondary smem SRTS grid type
 	typedef SrtsGrid<
-		typename SpineScanConfigType::ScanType,
-		SpineScanConfigType::LOG_RAKING_THREADS,
-		0,
-		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;
+		typename SpineScanConfigType::ScanType,						// Partial type
+		SpineScanConfigType::LOG_RAKING_THREADS,					// Depositing threads (the primary raking threads)
+		0,															// 1 lane (the primary raking threads only make one deposit)
+		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
 	
 
 	static const int SMEM_BYTES						= (TwoLevelGrid) ?
@@ -191,7 +191,7 @@ struct ReduceVectors
 			ScanType *base_partial) 
 		{
 			// Store partial reduction into SRTS grid
-			base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE] = partial;
+			base_partial[LOAD * Config::PrimaryGrid::LANE_STRIDE] = partial;
 
 			// Next load
 			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(data, base_partial);
@@ -244,7 +244,7 @@ struct ScanVectors
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
-			ScanType exclusive_partial = base_partial[LOAD * Config::PrimaryGrid::PARTIAL_STRIDE];
+			ScanType exclusive_partial = base_partial[LOAD * Config::PrimaryGrid::LANE_STRIDE];
 			ScanType inclusive_partial = data[LOAD][0] + exclusive_partial;
 			data[LOAD][0] = exclusive_partial;
 			Iterate<LOAD, TOTAL_LOADS, 1, TOTAL_VEC_ELEMENTS>::Invoke(inclusive_partial, data, base_partial);
@@ -303,7 +303,7 @@ __device__ __forceinline__ void WarpRakeAndScan(
 		
 		// Warpscan
 		PartialType warpscan_total;
-		partial = WarpScan<PartialType, Grid::RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
+		partial = WarpScan<PartialType, Grid::LOG_RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
 		partial += carry;
 		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
 

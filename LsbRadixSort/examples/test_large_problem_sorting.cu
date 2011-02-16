@@ -58,7 +58,6 @@
 // Test utils
 #include "test_utils.h"					// Utilities and correctness-checking
 #include "b40c_util.h"					// Misc. utils (random-number gen, I/O, etc.)
-#include "b40c_error_synchronize.h"		// Error reporting
 
 
 // #define DEBUG
@@ -133,18 +132,15 @@ void TimedSort(
 	
 	// Allocate device storage  
 	MultiCtaSortStorage<K> device_storage(num_elements);		
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
-    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
+	if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
+		"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create sorting enactor
 	LsbSortEnactorTuned<K> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-	cudaMemcpy(
-		device_storage.d_keys[0], 
-		h_keys, 
-		sizeof(K) * num_elements, 
-		cudaMemcpyHostToDevice);		// copy keys
+	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
+		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 	sorting_enactor.DEBUG = true;
 	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 	sorting_enactor.DEBUG = false;
@@ -160,11 +156,8 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		cudaMemcpy(
-			device_storage.d_keys[0], 
-			h_keys, 
-			sizeof(K) * num_elements, 
-			cudaMemcpyHostToDevice);		// copy keys
+		if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
+			"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start cuda timing record
 		cudaEventRecord(start_event, 0);
@@ -190,12 +183,9 @@ void TimedSort(
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
 
-	// Copy out data 
-    cudaMemcpy(
-    	h_keys, 
-    	device_storage.d_keys[device_storage.selector],				 
-    	sizeof(K) * num_elements, 
-    	cudaMemcpyDeviceToHost);
+    // Copy out data
+    if (B40CPerror(cudaMemcpy(h_keys, device_storage.d_keys[device_storage.selector], sizeof(K) * num_elements, cudaMemcpyDeviceToHost),
+		"TimedSort cudaMemcpy device_storage.d_keys failed: ", __FILE__, __LINE__)) exit(1);
     
     // Free allocated memory
     if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -228,20 +218,17 @@ void TimedSort(
 	
 	// Allocate device storage   
 	MultiCtaSortStorage<K, V> device_storage(num_elements);	
-	cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements);
-    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__);
-	cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements);
-    dbg_perror_exit("TimedSort:: cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__);
+	if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
+		"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
+	if (B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
+		"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create sorting enactor
 	LsbSortEnactorTuned<K, V> sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-	cudaMemcpy(
-		device_storage.d_keys[0], 
-		h_keys, 
-		sizeof(K) * num_elements, 
-		cudaMemcpyHostToDevice);		// copy keys
+	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
+		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 	sorting_enactor.DEBUG = true;
 	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 	sorting_enactor.DEBUG = false;
@@ -257,11 +244,8 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		cudaMemcpy(
-			device_storage.d_keys[0], 
-			h_keys, 
-			sizeof(K) * num_elements, 
-			cudaMemcpyHostToDevice);		// copy keys
+		if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
+			"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start cuda timing record
 		cudaEventRecord(start_event, 0);
@@ -288,11 +272,8 @@ void TimedSort(
 	cudaEventDestroy(stop_event);
 
     // Copy out data 
-    cudaMemcpy(
-    	h_keys, 
-    	device_storage.d_keys[device_storage.selector], 
-    	sizeof(K) * num_elements, 
-    	cudaMemcpyDeviceToHost);
+    if (B40CPerror(cudaMemcpy(h_keys, device_storage.d_keys[device_storage.selector], sizeof(K) * num_elements, cudaMemcpyDeviceToHost),
+		"TimedSort cudaMemcpy device_storage.d_keys failed: ", __FILE__, __LINE__)) exit(1);
     
     // Free allocated memory
     if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);

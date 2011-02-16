@@ -46,7 +46,6 @@
 #include <limits.h>
 
 #include "b40c_kernel_utils.cuh"
-#include "b40c_error_synchronize.h"		// Error reporting
 
 #include "radixsort_kernel_upsweep.cuh"
 #include "radixsort_kernel_spine.cuh"
@@ -61,7 +60,7 @@ using namespace lsb_radix_sort;
  * Utility type for managing the state for a specific sorting operation
  */
 template <typename Storage>
-struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
+struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType>
 {
 	typedef typename Storage::IndexType IndexType;
 
@@ -74,10 +73,10 @@ struct SortingCtaDecomposition : CtaDecomposition<typename Storage::IndexType>
 		Storage *problem_storage,
 		int schedule_granularity,
 		int sweep_grid_size,
-		int spine_elements) : CtaDecomposition<IndexType>(
-			problem_storage->num_elements,
-			schedule_granularity,
-			sweep_grid_size),
+		int spine_elements) : CtaWorkDistribution<IndexType>(
+				problem_storage->num_elements,
+				schedule_granularity,
+				sweep_grid_size),
 			sweep_grid_size(sweep_grid_size),
 			spine_elements(spine_elements),
 			problem_storage(problem_storage) {};
@@ -142,18 +141,6 @@ protected:
 	// Utility Routines
 	//-----------------------------------------------------------------------------
 	
-	/**
-	 * Displays error message in accordance with debug mode
-	 */
-	cudaError_t Perror(cudaError_t error, const char *message, const char *filename, int line)
-	{
-		if (error) {
-			fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
-			fflush(stderr);
-		}
-		return error;
-	}
-
 	/**
 	 * Utility function: Determines the number of spine elements needed 
 	 * for a given grid size, rounded up to the nearest spine tile
@@ -276,26 +263,26 @@ protected:
 		do {
 			// If necessary, allocate pair of ints denoting input and output vectors for even and odd passes
 			if (d_selectors == NULL) {
-				if (retval = Perror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
+				if (retval = B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
 					"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__)) break;
 			}
 
 			// If necessary, allocate device memory for temporary storage in the problem structure
 			if (problem_storage.d_keys[0] == NULL) {
-				if (retval = Perror(cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType)),
+				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType)),
 					"LsbSortEnactor cudaMalloc problem_storage.d_keys[0] failed", __FILE__, __LINE__)) break;
 			}
 			if (problem_storage.d_keys[1] == NULL) {
-				if (retval = Perror(cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(KeyType)),
+				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(KeyType)),
 					"LsbSortEnactor cudaMalloc problem_storage.d_keys[1] failed", __FILE__, __LINE__)) break;
 			}
 			if (!IsKeysOnly<ValueType>()) {
 				if (problem_storage.d_values[0] == NULL) {
-					if (retval = Perror(cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(ValueType)),
+					if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(ValueType)),
 						"LsbSortEnactor cudaMalloc problem_storage.d_values[0] failed", __FILE__, __LINE__)) break;
 				}
 				if (problem_storage.d_values[1] == NULL) {
-					if (retval = Perror(cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType)),
+					if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType)),
 						"LsbSortEnactor cudaMalloc problem_storage.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
 			}
@@ -305,13 +292,13 @@ protected:
 
 			if (problem_spine_bytes > spine_bytes) {
 				if (d_spine) {
-					if (retval = Perror(cudaFree(d_spine),
+					if (retval = B40CPerror(cudaFree(d_spine),
 						"LsbSortEnactor cudaFree d_spine failed", __FILE__, __LINE__)) break;
 				}
 
 				spine_bytes = problem_spine_bytes;
 
-				if (retval = Perror(cudaMalloc((void**) &d_spine, spine_bytes),
+				if (retval = B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
 					"LsbSortEnactor cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
 			}
 		} while (0);
@@ -339,7 +326,7 @@ protected:
 			int old_selector = problem_storage.selector;
 
 			// Copy out the selector from the last pass
-			if (retval = Perror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
+			if (retval = B40CPerror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
 				"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__)) break;
 
 			// Correct new selector if the original indicated that we started off from the alternate
@@ -395,11 +382,11 @@ protected:
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
 
-				if (retval = Perror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel<UpsweepKernelConfigType>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel<UpsweepKernelConfigType>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = Perror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, SpineScanKernel<SpineScanKernelConfigType>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, SpineScanKernel<SpineScanKernelConfigType>),
 					"LsbSortEnactor cudaFuncGetAttributes spine_scan_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = Perror(cudaFuncGetAttributes(&downsweep_attrs, DownsweepKernel<DownsweepKernelConfigType>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&downsweep_attrs, DownsweepKernel<DownsweepKernelConfigType>),
 					"LsbSortEnactor cudaFuncGetAttributes downsweep_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -426,7 +413,7 @@ protected:
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke spine scan kernel
@@ -434,7 +421,7 @@ protected:
 				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
 					(IndexType *) d_spine,
 					work.spine_elements);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke downsweep scan/scatter kernel
@@ -447,7 +434,7 @@ protected:
 					work.problem_storage->d_values[work.problem_storage->selector],
 					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactor:: DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);
@@ -641,10 +628,10 @@ public:
     virtual ~LsbSortEnactor() 
     {
    		if (d_spine) {
-   			Perror(cudaFree(d_spine), "LsbSortEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
+   			B40CPerror(cudaFree(d_spine), "LsbSortEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
    		}
    		if (d_selectors) {
-   			Perror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
+   			B40CPerror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
    		}
     }
     
