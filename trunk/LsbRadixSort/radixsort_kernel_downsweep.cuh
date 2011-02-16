@@ -171,31 +171,16 @@ struct DownsweepKernelConfig : DownsweepConfigType
 	
 	static const int LOG_SCAN_LANES_PER_CYCLE		= DownsweepConfigType::LOG_LOADS_PER_CYCLE + LOG_SCAN_LANES_PER_LOAD;
 	static const int SCAN_LANES_PER_CYCLE			= 1 << LOG_SCAN_LANES_PER_CYCLE;
-	
-	static const int LOG_PARTIALS_PER_LANE 			= DownsweepConfigType::LOG_THREADS;
-	
-	static const int LOG_PARTIALS_PER_CYCLE			= LOG_SCAN_LANES_PER_CYCLE + LOG_PARTIALS_PER_LANE;
-
-	static const int LOG_RAKING_THREADS_PER_LANE 	= DownsweepConfigType::LOG_RAKING_THREADS - LOG_SCAN_LANES_PER_CYCLE;
-	static const int RAKING_THREADS_PER_LANE 		= 1 << LOG_RAKING_THREADS_PER_LANE;
 
 	// Smem SRTS grid type for reducing and scanning a cycle of 
 	// (radix-digits/4) lanes of composite 8-bit digit counters
 	typedef SrtsGrid<
 		int,											// type
-		DownsweepConfigType::LOG_THREADS,				// depositing threads
-		LOG_SCAN_LANES_PER_CYCLE, 						// deposits per thread
+		DownsweepConfigType::LOG_THREADS,				// depositing threads (lane size)
+		LOG_SCAN_LANES_PER_CYCLE, 						// lanes
 		DownsweepConfigType::LOG_RAKING_THREADS> 		// raking threads
 			Grid;
 	
-	static const int LOG_ROWS_PER_LOAD 				= LOG_PARTIALS_PER_CYCLE - Grid::LOG_PARTIALS_PER_ROW;
-
-	static const int LOG_ROWS_PER_LANE 				= LOG_PARTIALS_PER_LANE - Grid::LOG_PARTIALS_PER_ROW;
-	static const int ROWS_PER_LANE 					= 1 << LOG_ROWS_PER_LANE;
-
-	static const int LOG_ROWS_PER_CYCLE 			= LOG_SCAN_LANES_PER_CYCLE + LOG_ROWS_PER_LANE;
-	static const int ROWS_PER_CYCLE 				= 1 << LOG_ROWS_PER_CYCLE;
-
 	static const int EXCHANGE_BYTES					= B40C_MAX(
 														(TILE_ELEMENTS * sizeof(DownsweepConfigType::KeyType)), 
 														(TILE_ELEMENTS * sizeof(DownsweepConfigType::ValueType)));
@@ -269,7 +254,7 @@ struct DecodeCycleKeys
 			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
-			const int PADDED_BYTES_PER_LANE 	= Config::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW * 4;
+			const int PADDED_BYTES_PER_LANE 	= Config::Grid::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW * 4;
 			const int LOAD_OFFSET_BYTES 		= LOAD * Config::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
 			const KeyType COUNTER_BYTE_MASK 	= (Config::RADIX_BITS < 2) ? 0x1 : 0x3;
 			
@@ -400,7 +385,7 @@ struct ExtractCycleRanks
 template <typename Config>
 __device__ __forceinline__ void ScanCycleLanes(
 	int* 	raking_segment,
-	int 	lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+	int 	lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 	int 	lane_totals[Config::SCAN_LANES_PER_CYCLE])
 {
 	// Upsweep rake
@@ -408,10 +393,10 @@ __device__ __forceinline__ void ScanCycleLanes(
 
 	// Warpscan reduction in digit warpscan_lane
 	int warpscan_total;
-	int warpscan_lane = threadIdx.x >> Config::LOG_RAKING_THREADS_PER_LANE;
-	int warpscan_tid = threadIdx.x & (Config::RAKING_THREADS_PER_LANE - 1);
+	int warpscan_lane = threadIdx.x >> Config::Grid::LOG_RAKING_THREADS_PER_LANE;
+	int warpscan_tid = threadIdx.x & (Config::Grid::RAKING_THREADS_PER_LANE - 1);
 
-	int prefix = WarpScan<int, Config::RAKING_THREADS_PER_LANE>::Invoke(
+	int prefix = WarpScan<int, Config::Grid::LOG_RAKING_THREADS_PER_LANE>::Invoke(
 		partial, warpscan_total, lanes_warpscan[warpscan_lane], warpscan_tid);
 	
 	// Save off each lane's warpscan total for this cycle 
@@ -514,7 +499,7 @@ struct RecoverTileDigitCounts
 			digit_counts[CYCLE][LOAD] = composite_counter[my_quad_byte];
 
 			// Correct for possible overflow
-			if (WarpVoteAll(Config::RADIX_DIGITS, digit_counts[CYCLE][LOAD] <= 1)) {
+			if (WarpVoteAll(Config::RADIX_BITS, digit_counts[CYCLE][LOAD] <= 1)) {
 				// We overflowed in this load: all keys for this load have same
 				// digit, i.e., whoever owns the digit matching one of their own 
 				// key's digit gets all 256 counts
@@ -639,7 +624,7 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			int 		*base_partial,
 			int			*raking_segment,
-			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 			KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
@@ -651,7 +636,7 @@ struct ScanTileCycles
 			// Reset smem composite counters
 			#pragma unroll
 			for (int SCAN_LANE = 0; SCAN_LANE < Config::SCAN_LANES_PER_CYCLE; SCAN_LANE++) {
-				base_partial[SCAN_LANE * Config::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW ] = 0;
+				base_partial[SCAN_LANE * Config::Grid::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW] = 0;
 			}
 
 			// Decode digits and update 8-bit composite counters for the keys in this cycle
@@ -697,7 +682,7 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			int 		*base_partial,
 			int			*raking_segment,
-			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 			KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 			int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
@@ -708,7 +693,7 @@ struct ScanTileCycles
 	static __device__ __forceinline__ void Invoke(
 		int 		*base_partial,
 		int			*raking_segment,
-		int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+		int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 		KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
 		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
@@ -1028,7 +1013,7 @@ __device__ __forceinline__ void ProcessTile(
 	typename Config::KeyType 	* __restrict d_out_keys, 
 	typename Config::ValueType 	* __restrict d_out_values, 
 	int 						*exchange,								
-	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 	typename Config::IndexType	digit_carry[Config::RADIX_DIGITS],
 	int							digit_warpscan[2][Config::RADIX_DIGITS],						 
 	int							digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS],
@@ -1086,7 +1071,7 @@ __device__ __forceinline__ void ProcessTile(
 		
 		// Perform overflow-free SIMD Kogge-Stone across digits
 		int tile_total;
-		int digit_prefix = WarpScan<int, Config::RADIX_DIGITS>::Invoke(
+		int digit_prefix = WarpScan<int, Config::RADIX_BITS>::Invoke(
 				inclusive_total,
 				tile_total,
 				digit_warpscan); 
@@ -1126,7 +1111,7 @@ __device__ __forceinline__ void DigitPass(
 	typename Config::KeyType 	* __restrict d_out_keys, 
 	typename Config::ValueType 	* __restrict d_out_values, 
 	int 						*exchange,								
-	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE],
+	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 	int							digit_carry[Config::RADIX_DIGITS],
 	int							digit_warpscan[2][Config::RADIX_DIGITS],						 
 	int							digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS],
@@ -1206,13 +1191,13 @@ __device__ __forceinline__ void LsbDownsweep(
 	typename Config::KeyType 	* __restrict &d_keys1,
 	typename Config::ValueType 	* __restrict &d_values0,
 	typename Config::ValueType 	* __restrict &d_values1,
-	CtaDecomposition<typename Config::IndexType> &work_decomposition)
+	CtaWorkDistribution<typename Config::IndexType> &work_decomposition)
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::IndexType IndexType;
 
 	__shared__ int4		smem_pool_int4s[Config::SMEM_POOL_INT4S];
-	__shared__ int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::RAKING_THREADS_PER_LANE];		// One warpscan per lane
+	__shared__ int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
 	__shared__ int 		digit_carry[Config::RADIX_DIGITS];
 	__shared__ int 		digit_warpscan[2][Config::RADIX_DIGITS];						 
 	__shared__ int 		digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS];
@@ -1234,8 +1219,8 @@ __device__ __forceinline__ void LsbDownsweep(
 	if (threadIdx.x < Config::Grid::RAKING_THREADS) {
 
 		// initalize lane warpscans
-		int warpscan_lane = threadIdx.x >> Config::LOG_RAKING_THREADS_PER_LANE;
-		int warpscan_tid = threadIdx.x & (Config::RAKING_THREADS_PER_LANE - 1);
+		int warpscan_lane = threadIdx.x >> Config::Grid::LOG_RAKING_THREADS_PER_LANE;
+		int warpscan_tid = threadIdx.x & (Config::Grid::RAKING_THREADS_PER_LANE - 1);
 		lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
 		
 		// initialize raking segment
@@ -1266,7 +1251,7 @@ __device__ __forceinline__ void LsbDownsweep(
 				} else {
 					int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
 					int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-					non_trivial_digit_pass = TallyWarpVote(Config::RADIX_DIGITS, predicate, smem_pool);
+					non_trivial_digit_pass = TallyWarpVote(Config::RADIX_BITS, predicate, smem_pool);
 				}
 
 				// Let the next round know which set of buffers to use
@@ -1346,7 +1331,7 @@ void DownsweepKernel(
 	typename KernelConfig::KeyType 		* __restrict d_keys1,
 	typename KernelConfig::ValueType 	* __restrict d_values0,
 	typename KernelConfig::ValueType 	* __restrict d_values1,
-	CtaDecomposition<typename KernelConfig::IndexType> work_decomposition)
+	CtaWorkDistribution<typename KernelConfig::IndexType> work_decomposition)
 {
 	LsbDownsweep<KernelConfig>(
 		d_selectors,
@@ -1370,7 +1355,7 @@ void __wrapper__device_stub_DownsweepKernel(
 	typename KernelConfig::KeyType 		* __restrict &,
 	typename KernelConfig::ValueType 	* __restrict &,
 	typename KernelConfig::ValueType 	* __restrict &,
-	CtaDecomposition<typename KernelConfig::IndexType> &) {}
+	CtaWorkDistribution<typename KernelConfig::IndexType> &) {}
 
 
 

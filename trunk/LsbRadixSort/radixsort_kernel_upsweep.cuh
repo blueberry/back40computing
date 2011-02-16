@@ -592,7 +592,7 @@ __device__ __forceinline__ void LsbUpsweep(
 	typename Config::IndexType 		* __restrict &d_spine,
 	typename Config::KeyType 		* __restrict &d_in_keys,
 	typename Config::KeyType 		* __restrict &d_out_keys,
-	CtaDecomposition<typename Config::IndexType> &work_decomposition)
+	CtaWorkDistribution<typename Config::IndexType> &work_decomposition)
 {
 	typedef typename Config::IndexType IndexType;
 	
@@ -643,7 +643,7 @@ void UpsweepKernel(
 	typename KernelConfig::IndexType 	* __restrict d_spine,
 	typename KernelConfig::KeyType 		* __restrict d_in_keys,
 	typename KernelConfig::KeyType 		* __restrict d_out_keys,
-	CtaDecomposition<typename KernelConfig::IndexType> work_decomposition)
+	CtaWorkDistribution<typename KernelConfig::IndexType> work_decomposition)
 {
 	LsbUpsweep<KernelConfig>(
 		d_selectors, 
@@ -663,7 +663,7 @@ void __wrapper__device_stub_UpsweepKernel(
 	typename KernelConfig::IndexType 	* __restrict &,
 	typename KernelConfig::KeyType 		* __restrict &,
 	typename KernelConfig::KeyType 		* __restrict &,
-	CtaDecomposition<typename KernelConfig::IndexType> &) {}
+	CtaWorkDistribution<typename KernelConfig::IndexType> &) {}
 
 
 

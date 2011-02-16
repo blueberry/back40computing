@@ -130,7 +130,7 @@ void TunedUpsweepKernel(
 	IndexType 					* d_spine,
 	ConvertedKeyType 			* d_in_keys,
 	ConvertedKeyType			* d_out_keys,
-	CtaDecomposition<IndexType>	work_decomposition)
+	CtaWorkDistribution<IndexType>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture 
 	using namespace upsweep; 
@@ -173,7 +173,7 @@ void TunedDownsweepKernel(
 	ConvertedKeyType 			* __restrict d_keys1,
 	ValueType 					* __restrict d_values0,
 	ValueType					* __restrict d_values1,
-	CtaDecomposition<IndexType>	work_decomposition)
+	CtaWorkDistribution<IndexType>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture 
 	using namespace downsweep; 
@@ -268,11 +268,11 @@ protected:
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
 
-				if (retval = Perror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = Perror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = Perror(cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+				if (retval = B40CPerror(cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -299,7 +299,7 @@ protected:
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactorTuned:: TunedUpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke spine scan kernel
@@ -307,7 +307,7 @@ protected:
 				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
 					(IndexType *) this->d_spine,
 					work.spine_elements);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactorTuned:: TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke downsweep scan/scatter kernel
@@ -320,7 +320,7 @@ protected:
 					work.problem_storage->d_values[work.problem_storage->selector],
 					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactorTuned:: TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);

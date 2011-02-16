@@ -37,11 +37,11 @@ namespace b40c {
  * Enumeration of data movement cache modifiers.
  */
 enum CacheModifier {
-	NONE,
-	CG,
-	CS, 
-	CA,
-	WB
+	NONE,				// default (CA)
+	CG,					// cache global
+	CS, 				// cache streaming
+	CA,					// cache all
+	WB					// write back
 };
 
 
@@ -209,9 +209,7 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
  * Empty default transform function (leaves non-in_bounds values as they were)
  */
 template <typename T> 
-__device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) 
-{
-} 
+__device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) {}
 	
 
 /**
@@ -240,7 +238,6 @@ template <
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER,
 	void Transform(T&, bool)>
-
 struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true, Transform>
 {
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
@@ -329,7 +326,6 @@ template <
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER,
 	void Transform(T&, bool)>
-
 struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false, Transform>
 {
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
@@ -580,7 +576,6 @@ template <
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER>
-
 struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true>
 {
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
@@ -638,7 +633,6 @@ template <
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER>
-
 struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false>
 {
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
