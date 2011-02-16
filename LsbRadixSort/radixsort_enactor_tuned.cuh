@@ -257,64 +257,75 @@ protected:
 		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
 		int threads[3] = {1 << SortingConfig::Upsweep::LOG_THREADS, 1 << SortingConfig::SpineScan::LOG_THREADS, 1 << SortingConfig::Downsweep::LOG_THREADS};
 
-		// Tuning option for dynamic smem allocation
-		if (SortingConfig::UNIFORM_SMEM_ALLOCATION) {
-			
-			// We need to compute dynamic smem allocations to ensure all three 
-			// kernels end up allocating the same amount of smem per CTA
+		cudaError_t retval = cudaSuccess;
+		do {
+			// Tuning option for dynamic smem allocation
+			if (SortingConfig::UNIFORM_SMEM_ALLOCATION) {
 
-	    	// Get kernel attributes
-			cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
-			cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>);
-			cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>);
-			cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>);
+				// We need to compute dynamic smem allocations to ensure all three
+				// kernels end up allocating the same amount of smem per CTA
 
-			int max_static_smem = B40C_MAX(
-				upsweep_kernel_attrs.sharedSizeBytes, 
-				B40C_MAX(spine_scan_kernel_attrs.sharedSizeBytes, downsweep_attrs.sharedSizeBytes));
-			
-			dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
-			dynamic_smem[1] = max_static_smem - spine_scan_kernel_attrs.sharedSizeBytes;
-			dynamic_smem[2] = max_static_smem - downsweep_attrs.sharedSizeBytes;
-		}	
+				// Get kernel attributes
+				cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
 
-		// Tuning option for spine-scan kernel grid size
-		if (SortingConfig::UNIFORM_GRID_SIZE) {
-			
-			// We need to make sure that all kernels launch the same number of CTAs
-			grid_size[1] = work.sweep_grid_size;
-		}
+				if (retval = Perror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = Perror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>),
+					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = Perror(cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 
-		// Invoke upsweep reduction kernel
-		TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
-			<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
-				this->d_selectors,
-				(IndexType *) this->d_spine,
-				(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
-				(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
-				work);
-		dbg_sync_perror_exit("LsbSortEnactor:: LsbRakingReductionKernel failed: ", __FILE__, __LINE__);
+				int max_static_smem = B40C_MAX(
+					upsweep_kernel_attrs.sharedSizeBytes,
+					B40C_MAX(spine_scan_kernel_attrs.sharedSizeBytes, downsweep_attrs.sharedSizeBytes));
 
-		// Invoke spine scan kernel
-		TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>
-			<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
-				(IndexType *) this->d_spine,
-				work.spine_elements);
-		dbg_sync_perror_exit("LsbSortEnactor:: LsbSpineScanKernel failed: ", __FILE__, __LINE__);
+				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_scan_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_attrs.sharedSizeBytes;
+			}
 
-		// Invoke downsweep scan/scatter kernel
-		TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
-			<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
-				this->d_selectors,
-				(IndexType *) this->d_spine,
-				(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
-				(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
-				work.problem_storage->d_values[work.problem_storage->selector],
-				work.problem_storage->d_values[work.problem_storage->selector ^ 1],
-				work);
-		dbg_sync_perror_exit("LsbSortEnactor:: LsbScanScatterKernel failed: ", __FILE__, __LINE__);
+			// Tuning option for spine-scan kernel grid size
+			if (SortingConfig::UNIFORM_GRID_SIZE) {
 
-		return cudaSuccess;
+				// We need to make sure that all kernels launch the same number of CTAs
+				grid_size[1] = work.sweep_grid_size;
+			}
+
+			// Invoke upsweep reduction kernel
+			TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
+				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
+					this->d_selectors,
+					(IndexType *) this->d_spine,
+					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
+					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
+					work);
+			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+				"LsbSortEnactorTuned:: TunedUpsweepKernel failed ", __FILE__, __LINE__))) break;
+
+			// Invoke spine scan kernel
+			TunedSpineScanKernel<KeyType, ValueType, IndexType, SortingConfig::GRANULARITY_ENUM>
+				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
+					(IndexType *) this->d_spine,
+					work.spine_elements);
+			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+				"LsbSortEnactorTuned:: TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
+
+			// Invoke downsweep scan/scatter kernel
+			TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, IndexType, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
+				<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
+					this->d_selectors,
+					(IndexType *) this->d_spine,
+					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
+					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
+					work.problem_storage->d_values[work.problem_storage->selector],
+					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
+					work);
+			if (DEBUG && (retval = Perror(cudaThreadSynchronize(),
+				"LsbSortEnactorTuned:: TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
+
+		} while (0);
+
+		return retval;
 	}
 
 	

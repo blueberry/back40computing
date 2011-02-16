@@ -60,14 +60,15 @@
 #include "b40c_util.h"					// Misc. utils (random-number gen, I/O, etc.)
 #include "b40c_error_synchronize.h"		// Error reporting
 
+
+// #define DEBUG
+
 using namespace b40c;
 
 
 /******************************************************************************
  * Defines, constants, globals 
  ******************************************************************************/
-
-//#define __B40C_ERROR_CHECKING__
 
 bool g_verbose;
 int g_max_ctas = 0;
@@ -144,7 +145,9 @@ void TimedSort(
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
+	sorting_enactor.DEBUG = true;
 	sorting_enactor.EnactSort(device_storage, g_max_ctas);
+	sorting_enactor.DEBUG = false;
 
 	// Perform the timed number of sorting iterations
 
@@ -156,8 +159,6 @@ void TimedSort(
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
-		sorting_enactor.DEBUG = (i == 0);
-		
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(
 			device_storage.d_keys[0], 
@@ -241,7 +242,9 @@ void TimedSort(
 		h_keys, 
 		sizeof(K) * num_elements, 
 		cudaMemcpyHostToDevice);		// copy keys
+	sorting_enactor.DEBUG = true;
 	sorting_enactor.EnactSort(device_storage, g_max_ctas);
+	sorting_enactor.DEBUG = false;
 
 	// Perform the timed number of sorting iterations
 
@@ -252,8 +255,6 @@ void TimedSort(
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
-
-		sorting_enactor.DEBUG = (i == 0);
 
 		// Move a fresh copy of the problem into device storage
 		cudaMemcpy(
