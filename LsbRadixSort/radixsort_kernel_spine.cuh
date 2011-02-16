@@ -305,10 +305,11 @@ __device__ __forceinline__ void WarpRakeAndScan(
 		PartialType warpscan_total;
 		partial = WarpScan<PartialType, Grid::LOG_RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
 		partial += carry;
-		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
 
 		// Raking scan 
 		SerialScan<PartialType, Grid::PARTIALS_PER_SEG>::Invoke(raking_seg, partial);
+
+		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
 	}
 }
 
