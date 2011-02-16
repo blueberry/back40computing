@@ -57,7 +57,7 @@ using namespace lsb_radix_sort;
 
 
 /******************************************************************************
- * Enumeration of pre-defined, tuned granularity configurations 
+ * Enumeration of predefined, tuned granularity configurations
  ******************************************************************************/
 
 enum TunedGranularityEnum
@@ -67,122 +67,30 @@ enum TunedGranularityEnum
 };
 
 
-// Generic tuned granularity config type 
+// Forward declaration of tuned granularity configuration types
 template <TunedGranularityEnum GRANULARITY_ENUM, int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
 struct TunedGranularity;
 
 
-// Large-problem specialization of granularity config type
-template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
-struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
-	: large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
-{
-	static const TunedGranularityEnum GRANULARITY_ENUM 	= LARGE_PROBLEM;
-
-	// Largely-unnecessary duplication of inner type data to accommodate
-	// use in __launch_bounds__.  TODO: Section can be removed if CUDA Runtime
-	// supports template specialization around kernel call sites.
-	typedef large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
-	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
-	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
-	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
-	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
-	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
-	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
-};
-
-
-// Small-probelm specialization of granularity config type 
-template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
-struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
-	: small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
-{
-	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
-
-	// Largely-unnecessary duplication of inner type data to accommodate
-	// use in __launch_bounds__.  TODO: Section can be removed if CUDA Runtime
-	// supports template specialization around kernel call sites.
-	typedef small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
-	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
-	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
-	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
-	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
-	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
-	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
-};
-
-
-
 /******************************************************************************
- * LSB sorting kernel entry points that understand our tuned granularity
- * enumeration type.  TODO: Section can be removed if CUDA Runtime supports template
- * specialization around kernel call sites.
+ * Forward declarations of LSB sorting kernel entry points that understand our
+ * tuned granularity enumeration type.   TODO: Section can be removed if CUDA
+ * Runtime is fixed to properly support template specialization around kernel
+ * call sites.
  ******************************************************************************/
 
 // Upsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
-__launch_bounds__ (
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_THREADS),
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_OCCUPANCY))
-__global__ 
-void TunedUpsweepKernel(
-	int 						* d_selectors,
-	IndexType 					* d_spine,
-	ConvertedKeyType 			* d_in_keys,
-	ConvertedKeyType			* d_out_keys,
-	CtaWorkDistribution<IndexType>	work_decomposition)
-{
-	// Load the tuned granularity type identified by the enum for this architecture 
-	using namespace upsweep; 
-	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
-	typedef UpsweepKernelConfig<typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
-	
-	// Invoke the wrapped kernel logic
-	LsbUpsweep<KernelConfig>(d_selectors, d_spine, d_in_keys, d_out_keys, work_decomposition);
-}
+__global__ void TunedUpsweepKernel(int * d_selectors, IndexType * d_spine, ConvertedKeyType * d_in_keys, ConvertedKeyType * d_out_keys, CtaWorkDistribution<IndexType> work_decomposition);
 
 // SpineScan
 template <typename KeyType, typename ValueType, typename IndexType, int GRANULARITY_ENUM>
-__launch_bounds__ (
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS),
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY))
-__global__ 
-void TunedSpineScanKernel(
-	int 		*d_spine,
-	IndexType	spine_elements)
-{
-	// Load the tuned granularity type identified by the enum for this architecture 
-	using namespace spine_scan; 
-	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
-	typedef SpineScanKernelConfig<typename SortingConfig::SpineScan> KernelConfig;
-
-	// Invoke the wrapped kernel logic
-	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
-}
+__global__ void TunedSpineScanKernel(int *d_spine, IndexType spine_elements);
 
 // Downsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
-__launch_bounds__ (
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_THREADS),
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_OCCUPANCY))
-__global__ 
-void TunedDownsweepKernel(
-	int 						* __restrict d_selectors,
-	IndexType 					* __restrict d_spine,
-	ConvertedKeyType 			* __restrict d_keys0,
-	ConvertedKeyType 			* __restrict d_keys1,
-	ValueType 					* __restrict d_values0,
-	ValueType					* __restrict d_values1,
-	CtaWorkDistribution<IndexType>	work_decomposition)
-{
-	// Load the tuned granularity type identified by the enum for this architecture 
-	using namespace downsweep; 
-	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
-	typedef DownsweepKernelConfig<typename SortingConfig::Downsweep, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
-	
-	// Invoke the wrapped kernel logic
-	LsbDownsweep<KernelConfig>(d_selectors, d_spine, d_keys0, d_keys1, d_values0, d_values1, work_decomposition);
-}
+__global__ void TunedDownsweepKernel(int *d_selectors, IndexType *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, CtaWorkDistribution<IndexType> work_decomposition);
+
 
 
 
@@ -234,8 +142,8 @@ protected:
 	//-----------------------------------------------------------------------------
 	// Sorting Operation 
 	//
-	// TODO: Section can be removed if CUDA Runtime supports template
-	// specialization around kernel call sites.
+	// TODO: Section can be removed if CUDA Runtime is fixed to properly support
+	// template specialization around kernel call sites.
 	//-----------------------------------------------------------------------------
 	
     /**
@@ -420,6 +328,131 @@ public:
 	}
 	
 };
+
+
+
+
+/******************************************************************************
+ * Tuned granularity configuration types tagged by our tuning enumeration
+ ******************************************************************************/
+
+// Large-problem specialization of granularity config type
+template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
+struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
+	: large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
+{
+	static const TunedGranularityEnum GRANULARITY_ENUM 	= LARGE_PROBLEM;
+
+	// Largely-unnecessary duplication of inner type data to accommodate
+	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
+	// properly support template specialization around kernel call sites.
+	typedef large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
+	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
+	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
+	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
+	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
+	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
+	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
+};
+
+
+// Small-probelm specialization of granularity config type
+template <int CUDA_ARCH, typename KeyType, typename ValueType, typename IndexType>
+struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, IndexType>
+	: small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType>
+{
+	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
+
+	// Largely-unnecessary duplication of inner type data to accommodate
+	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
+	// properly support template specialization around kernel call sites.
+	typedef small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, IndexType> Base;
+	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
+	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
+	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
+	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
+	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
+	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
+};
+
+
+
+
+/******************************************************************************
+ * LSB sorting kernel entry points that understand our tuned granularity
+ * enumeration type.  TODO: Section can be removed if CUDA Runtime is fixed to
+ * properly support template specialization around kernel call sites.
+ ******************************************************************************/
+
+// Upsweep
+template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
+__launch_bounds__ (
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::UPSWEEP_OCCUPANCY))
+__global__
+void TunedUpsweepKernel(
+	int 						* __restrict d_selectors,
+	IndexType 					* __restrict d_spine,
+	ConvertedKeyType 			* __restrict d_in_keys,
+	ConvertedKeyType			* __restrict d_out_keys,
+	CtaWorkDistribution<IndexType>	work_decomposition)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	using namespace upsweep;
+	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
+	typedef UpsweepKernelConfig<typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
+
+	// Invoke the wrapped kernel logic
+	LsbUpsweep<KernelConfig>(d_selectors, d_spine, d_in_keys, d_out_keys, work_decomposition);
+}
+
+// SpineScan
+template <typename KeyType, typename ValueType, typename IndexType, int GRANULARITY_ENUM>
+__launch_bounds__ (
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::SPINESCAN_OCCUPANCY))
+__global__
+void TunedSpineScanKernel(
+	int 		*d_spine,
+	IndexType	spine_elements)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	using namespace spine_scan;
+	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
+	typedef SpineScanKernelConfig<typename SortingConfig::SpineScan> KernelConfig;
+
+	// Invoke the wrapped kernel logic
+	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
+}
+
+// Downsweep
+template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename IndexType, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
+__launch_bounds__ (
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_THREADS),
+	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType>::DOWNSWEEP_OCCUPANCY))
+__global__
+void TunedDownsweepKernel(
+	int 						* __restrict d_selectors,
+	IndexType 					* __restrict d_spine,
+	ConvertedKeyType 			* __restrict d_keys0,
+	ConvertedKeyType 			* __restrict d_keys1,
+	ValueType 					* __restrict d_values0,
+	ValueType					* __restrict d_values1,
+	CtaWorkDistribution<IndexType>	work_decomposition)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	using namespace downsweep;
+	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, IndexType> SortingConfig;
+	typedef DownsweepKernelConfig<typename SortingConfig::Downsweep, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
+
+	// Invoke the wrapped kernel logic
+	LsbDownsweep<KernelConfig>(d_selectors, d_spine, d_keys0, d_keys1, d_values0, d_values1, work_decomposition);
+}
+
+
+
+
+
 
 
 

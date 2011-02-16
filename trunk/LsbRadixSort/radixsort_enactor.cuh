@@ -57,30 +57,12 @@ using namespace lsb_radix_sort;
 
 
 /**
- * Utility type for managing the state for a specific sorting operation
+ * Forward declaration of an internal utility type for managing the state for a
+ * specific sorting operation.  TODO: Class can be moved inside LsbSortEnactor
+ * if CUDA Runtime is fixed to properly support template specialization around
+ * kernel call sites.
  */
-template <typename Storage>
-struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType>
-{
-	typedef typename Storage::IndexType IndexType;
-
-	int sweep_grid_size;
-	int spine_elements;
-	Storage *problem_storage;
-
-	// Constructor
-	SortingCtaDecomposition(
-		Storage *problem_storage,
-		int schedule_granularity,
-		int sweep_grid_size,
-		int spine_elements) : CtaWorkDistribution<IndexType>(
-				problem_storage->num_elements,
-				schedule_granularity,
-				sweep_grid_size),
-			sweep_grid_size(sweep_grid_size),
-			spine_elements(spine_elements),
-			problem_storage(problem_storage) {};
-};
+template <typename Storage> struct SortingCtaDecomposition;
 
 
 
@@ -720,6 +702,32 @@ public:
 };
 
 
+
+/**
+ * Utility type for managing the state for a specific sorting operation
+ */
+template <typename Storage>
+struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType>
+{
+	typedef typename Storage::IndexType IndexType;
+
+	int sweep_grid_size;
+	int spine_elements;
+	Storage *problem_storage;
+
+	// Constructor
+	SortingCtaDecomposition(
+		Storage *problem_storage,
+		int schedule_granularity,
+		int sweep_grid_size,
+		int spine_elements) : CtaWorkDistribution<IndexType>(
+				problem_storage->num_elements,
+				schedule_granularity,
+				sweep_grid_size),
+			sweep_grid_size(sweep_grid_size),
+			spine_elements(spine_elements),
+			problem_storage(problem_storage) {};
+};
 
 }// namespace b40c
 
