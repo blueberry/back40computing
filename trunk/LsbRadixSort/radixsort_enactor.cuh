@@ -313,26 +313,28 @@ protected:
 	template <typename Storage, typename SortingConfig>
     cudaError_t PostSort(Storage &problem_storage, int passes)
     {
+		cudaError_t retval = cudaSuccess;
+
 		if (!SortingConfig::Upsweep::EARLY_EXIT) {
+
 			// We moved data between storage buffers at every pass
 			problem_storage.selector = (problem_storage.selector + passes) & 0x1;
 
-	    	return cudaSuccess;
+		} else {
+
+			do {
+				// Save old selector
+				int old_selector = problem_storage.selector;
+
+				// Copy out the selector from the last pass
+				if (retval = B40CPerror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
+					"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__)) break;
+
+				// Correct new selector if the original indicated that we started off from the alternate
+				problem_storage.selector ^= old_selector;
+
+			} while (0);
 		}
-
-		cudaError_t retval = cudaSuccess;
-		do {
-			// Save old selector
-			int old_selector = problem_storage.selector;
-
-			// Copy out the selector from the last pass
-			if (retval = B40CPerror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
-				"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__)) break;
-
-			// Correct new selector if the original indicated that we started off from the alternate
-			problem_storage.selector ^= old_selector;
-
-		} while (0);
 
 		return retval;
     }
