@@ -52,8 +52,8 @@
 #include <algorithm>
 
 // Sorting includes
-#include "radixsort_enactor_tuned.cuh"
-#include "radixsort_storage.cuh"
+#include "radixsort_api_enactor_tuned.cuh"
+#include "radixsort_api_storage.cuh"
 
 // Test utils
 #include "test_utils.h"					// Utilities and correctness-checking
@@ -136,7 +136,7 @@ void TimedSort(
 		"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create sorting enactor
-	LsbSortEnactorTuned<K> sorting_enactor;
+	LsbSortEnactorTuned sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
@@ -224,7 +224,7 @@ void TimedSort(
 		"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create sorting enactor
-	LsbSortEnactorTuned<K, V> sorting_enactor;
+	LsbSortEnactorTuned sorting_enactor;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),

@@ -344,6 +344,53 @@ struct SrtsGrid
  *
  * This procedure assumes that no explicit barrier synchronization is needed
  * between steps (i.e., warp-synchronous programming)
+ */
+template <typename T, int LOG_NUM_ELEMENTS, int STEPS = LOG_NUM_ELEMENTS>
+struct WarpScanInclusive
+{
+	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
+	static const int WIDTH = 1 << STEPS;
+
+	// General iteration
+	template <int OFFSET_LEFT, int __dummy = 0>
+	struct Iterate
+	{
+		static __device__ __forceinline__ int Invoke(
+			T partial, volatile T ks_warpscan[][NUM_ELEMENTS], int warpscan_tid)
+		{
+			ks_warpscan[1][warpscan_tid] = partial;
+			partial = partial + ks_warpscan[1][warpscan_tid - OFFSET_LEFT];
+			return Iterate<OFFSET_LEFT * 2>::Invoke(partial, ks_warpscan, warpscan_tid);
+		}
+	};
+
+	// Termination
+	template <int __dummy>
+	struct Iterate<WIDTH, __dummy>
+	{
+		static __device__ __forceinline__ int Invoke(
+			T partial, volatile T ks_warpscan[][NUM_ELEMENTS], int warpscan_tid)
+		{
+			return partial;
+		}
+	};
+
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partial,									// Input partial
+		volatile T ks_warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	{
+		return Iterate<1>::Invoke(partial, ks_warpscan, warpscan_tid);
+	}
+};
+
+
+/**
+ * Performs NUM_ELEMENTS steps of a Kogge-Stone style prefix scan.
+ *
+ * This procedure assumes that no explicit barrier synchronization is needed
+ * between steps (i.e., warp-synchronous programming)
  *
  * Can be used to perform concurrent, independent warp-scans if
  * storage pointers and their local-thread indexing id's are set up properly.
@@ -663,7 +710,7 @@ __device__ __forceinline__ int TallyWarpVoteSm10(int predicate, int storage[]) {
  * Tally a warp-vote regarding the given predicate
  * (For the first warp only)
  */
-__shared__ int vote_reduction[B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+__shared__ int vote_reduction[B40C_WARP_THREADS(__B40C_CUDA_ARCH__) * 2];
 template <int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int TallyWarpVoteSm10(int predicate) {
 	return TallyWarpVoteSm10<LOG_ACTIVE_THREADS>(predicate, vote_reduction);
