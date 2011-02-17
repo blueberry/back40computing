@@ -392,18 +392,18 @@ __device__ __forceinline__ void ScanCycleLanes(
 	int partial = SerialReduce<int, Config::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 	// Warpscan reduction in digit warpscan_lane
-	int warpscan_total;
 	int warpscan_lane = threadIdx.x >> Config::Grid::LOG_RAKING_THREADS_PER_LANE;
 	int warpscan_tid = threadIdx.x & (Config::Grid::RAKING_THREADS_PER_LANE - 1);
 
-	int prefix = WarpScan<int, Config::Grid::LOG_RAKING_THREADS_PER_LANE>::Invoke(
-		partial, warpscan_total, lanes_warpscan[warpscan_lane], warpscan_tid);
+	int inclusive_prefix = WarpScanInclusive<int, Config::Grid::LOG_RAKING_THREADS_PER_LANE>::Invoke(
+		partial, lanes_warpscan[warpscan_lane], warpscan_tid);
+	int exclusive_prefix = inclusive_prefix - partial;
 	
-	// Save off each lane's warpscan total for this cycle 
-	lane_totals[warpscan_lane] = warpscan_total;
+	// Save off each lane's warpscan total for this cycle
+	if (warpscan_tid == Config::Grid::RAKING_THREADS_PER_LANE - 1) lane_totals[warpscan_lane] = inclusive_prefix;
 
 	// Downsweep rake
-	SerialScan<int, Config::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment, prefix);
+	SerialScan<int, Config::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment, exclusive_prefix);
 }
 
 
@@ -1066,21 +1066,25 @@ __device__ __forceinline__ void ProcessTile(
 		int inclusive_total = SerialScan<int, Config::LOADS_PER_TILE>::Invoke(
 			reinterpret_cast<int*>(digit_counts), 0);
 
-		// Second half of digit_carry update
+		// Add the inclusive scan of digit counts from the previous tile to the running carry
 		IndexType my_carry = digit_carry[threadIdx.x] + digit_warpscan[1][threadIdx.x];
-		
-		// Perform overflow-free SIMD Kogge-Stone across digits
-		int tile_total;
-		int digit_prefix = WarpScan<int, Config::RADIX_BITS>::Invoke(
-				inclusive_total,
-				tile_total,
-				digit_warpscan); 
 
-		// first-half of digit_carry update 
-		digit_carry[threadIdx.x] = my_carry - digit_prefix;
+		// Perform overflow-free SIMD Kogge-Stone across digits
+		int digit_prefix_inclusive = WarpScanInclusive<int, Config::RADIX_BITS>::Invoke(
+				inclusive_total,
+				digit_warpscan);
+
+		// Save inclusive scan in digit_warpscan
+		digit_warpscan[1][threadIdx.x] = digit_prefix_inclusive;
+
+		// Calculate exclusive scan
+		int digit_prefix_exclusive = digit_prefix_inclusive - inclusive_total;
+
+		// Subtract the digit prefix from the running carry (to offset threadIdx during scatter)
+		digit_carry[threadIdx.x] = my_carry - digit_prefix_exclusive;
 
 		// Compute the digit prefixes for this tile for each load  
-		UpdateDigitPrefixes<Config>::Invoke(digit_prefix, digit_counts, digit_prefixes);
+		UpdateDigitPrefixes<Config>::Invoke(digit_prefix_exclusive, digit_counts, digit_prefixes);
 	}
 	
 	__syncthreads();

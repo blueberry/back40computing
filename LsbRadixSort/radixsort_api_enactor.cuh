@@ -68,16 +68,8 @@ template <typename Storage> struct SortingCtaDecomposition;
 
 /**
  * Basic LSB radix sorting enactor class.  
- * 
- * @template-param KeyType
- * 		Type of keys to be sorted
- * @template-param ValueType
- * 		Type of values to be sorted.
  */
-template <
-	typename KeyType, 
-	typename ValueType = KeysOnly,
-	typename DerivedEnactorType = void> 
+template <typename DerivedEnactorType = void>
 class LsbSortEnactor 
 {
 protected:
@@ -96,7 +88,7 @@ protected:
 	template <int __dummy>
 	struct DispatchType<void, __dummy>
 	{
-		typedef LsbSortEnactor<KeyType, ValueType, void> Type;
+		typedef LsbSortEnactor<void> Type;
 	};
 
 	
@@ -241,6 +233,9 @@ protected:
 	template <typename StorageType>
     cudaError_t PreSort(StorageType &problem_storage, int problem_spine_elements) 
     {
+		typedef typename StorageType::KeyType KeyType;
+		typedef typename StorageType::ValueType ValueType;
+
 		cudaError_t retval = cudaSuccess;
 		do {
 			// If necessary, allocate pair of ints denoting input and output vectors for even and odd passes
@@ -490,7 +485,7 @@ protected:
 				Decomposition,
 				0, 
 				CURRENT_BIT,
-				KeyTraits<KeyType>,												// possible bit twiddling
+				KeyTraits<typename Decomposition::KeyType>,						// possible bit twiddling
 				KeyTraits<typename SortingConfig::ConvertedKeyType> >(work);	// no bit twiddling
 			
 			if (retval) return retval;
@@ -528,7 +523,7 @@ protected:
 				LAST_PASS, 
 				CURRENT_BIT,
 				KeyTraits<typename SortingConfig::ConvertedKeyType>,		// no bit twiddling
-				KeyTraits<KeyType> >(work);									// possible bit twiddling
+				KeyTraits<typename Decomposition::KeyType> >(work);			// possible bit twiddling
 		}
 	};
 
@@ -552,8 +547,8 @@ protected:
 				Decomposition,
 				0, 
 				CURRENT_BIT,
-				KeyTraits<KeyType>,											// possible bit twiddling
-				KeyTraits<KeyType> >(work);									// possible bit twiddling
+				KeyTraits<typename Decomposition::KeyType>,				// possible bit twiddling
+				KeyTraits<typename Decomposition::KeyType> >(work);		// possible bit twiddling
 		}
 	};
 	
@@ -576,6 +571,7 @@ public:
 	 * Utility function: Returns the maximum problem size this enactor can sort on the device
 	 * it was initialized for.
 	 */
+	template <typename KeyType, typename ValueType>
 	size_t MaxProblemSize() 
 	{
 		// Begin with device memory, subtract 192MB for video/spine/etc.  Factor in 
@@ -709,6 +705,8 @@ public:
 template <typename Storage>
 struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType>
 {
+	typedef typename Storage::KeyType KeyType;
+	typedef typename Storage::ValueType ValueType;
 	typedef typename Storage::IndexType IndexType;
 
 	int sweep_grid_size;

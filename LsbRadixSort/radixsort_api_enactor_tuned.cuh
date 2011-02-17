@@ -46,8 +46,8 @@
 #include <limits.h>
 
 #include "radixsort_common.cuh"
-#include "radixsort_enactor.cuh"
-#include "radixsort_granularity.cuh"
+#include "radixsort_api_enactor.cuh"
+#include "radixsort_api_granularity.cuh"
 #include "radixsort_granularity_tuned_large.cuh"
 #include "radixsort_granularity_tuned_small.cuh"
 
@@ -106,17 +106,16 @@ __global__ void TunedDownsweepKernel(int * __restrict d_selectors, IndexType * _
  * @template-param ValueType
  * 		Type of values to be sorted.
  */
-template <typename KeyType, typename ValueType = KeysOnly> 
 class LsbSortEnactorTuned : 
-	public LsbSortEnactor<KeyType, ValueType, LsbSortEnactorTuned<KeyType, ValueType> >,
-	public Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned<KeyType, ValueType> >
+	public LsbSortEnactor<LsbSortEnactorTuned>,
+	public Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned>
 {
 
 protected:
 
 	// Typedefs for base classes
-	typedef LsbSortEnactor<KeyType, ValueType, LsbSortEnactorTuned<KeyType, ValueType> > BaseEnactorType;
-	typedef Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned<KeyType, ValueType> > BaseArchType;
+	typedef LsbSortEnactor<LsbSortEnactorTuned> 					BaseEnactorType;
+	typedef Architecture<__B40C_CUDA_ARCH__, LsbSortEnactorTuned> 	BaseArchType;
 
 	// Our base classes are friends that invoke our templated
 	// dispatch functions (which by their nature aren't virtual) 
@@ -158,7 +157,9 @@ protected:
 		typename PostprocessTraits>
 	cudaError_t DigitPlacePass(Decomposition &work)
 	{
-		typedef typename Decomposition::IndexType IndexType; 
+		typedef typename Decomposition::KeyType KeyType;
+		typedef typename Decomposition::ValueType ValueType;
+		typedef typename Decomposition::IndexType IndexType;
 		typedef typename SortingConfig::ConvertedKeyType ConvertedKeyType;
 
 		int dynamic_smem[3] = {0, 0, 0};
@@ -256,8 +257,8 @@ protected:
 		typedef TunedGranularity<
 			Detail::GRANULARITY_ENUM,
 			CUDA_ARCH,
-			KeyType,
-			ValueType,
+			typename Storage::KeyType,
+			typename Storage::ValueType,
 			typename Storage::IndexType> SortingConfig;
 
 		// Enact sort using that type
@@ -324,7 +325,8 @@ public:
 	template <typename Storage>
 	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0) 
 	{
-		return EnactSort<Storage, 0, sizeof(KeyType) * 8, LARGE_PROBLEM>(problem_storage, max_grid_size);
+		return EnactSort<Storage, 0, sizeof(typename Storage::KeyType) * 8, LARGE_PROBLEM>(
+			problem_storage, max_grid_size);
 	}
 	
 };

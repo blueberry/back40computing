@@ -44,7 +44,7 @@
 
 #include "b40c_cuda_properties.cuh"
 #include "b40c_kernel_data_movement.cuh"
-#include "radixsort_granularity.cuh"
+#include "radixsort_api_granularity.cuh"
 
 namespace b40c {
 namespace lsb_radix_sort {
