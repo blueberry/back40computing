@@ -56,7 +56,6 @@
 #include "radixsort_api_storage.cuh"
 
 // Test utils
-#include "test_utils.h"					// Utilities and correctness-checking
 #include "b40c_util.h"					// Misc. utils (random-number gen, I/O, etc.)
 
 

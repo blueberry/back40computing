@@ -648,8 +648,6 @@ public:
 				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
 				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
 		
-		const int OFFSET_BYTES = sizeof(typename Storage::IndexType);
-
 		int sweep_grid_size = SweepGridSize<SortingConfig>(problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
@@ -660,7 +658,7 @@ public:
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
 				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d, indexing-bits: %d]\n", 
-				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, OFFSET_BYTES * 8);
+				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::IndexType) * 8);
 			printf("Upsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Upsweep::LOG_THREADS);
 			printf("SpineScan: \t[grid_size: %d, threads %d, spine_elements: %d]\n",
