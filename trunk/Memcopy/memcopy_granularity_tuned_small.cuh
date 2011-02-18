@@ -20,17 +20,17 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Small-problem "granularity tuning types" for LSB radix sorting
+ * Default (i.e., small-problem) "granularity tuning types" for memcopy
  ******************************************************************************/
 
 #pragma once
 
 #include "b40c_cuda_properties.cuh"
 #include "b40c_kernel_data_movement.cuh"
-#include "radixsort_api_granularity.cuh"
+#include "memcopy_api_granularity.cuh"
 
 namespace b40c {
-namespace lsb_radix_sort {
+namespace memcopy {
 namespace small_problem_tuning {
 
 /**
@@ -59,8 +59,7 @@ struct FamilyClassifier
 /**
  * Granularity parameterization type
  *
- * We can tune this type per SM-architecture, per problem type.  Parameters
- * for separate kernels are largely performance-independent.
+ * We can tune this type per SM-architecture, per problem type.
  */
 template <
 	int CUDA_ARCH,
@@ -78,43 +77,16 @@ struct TunedConfig :
 
 template <typename KeyType, typename ValueType, typename IndexType>
 struct TunedConfig<SM20, KeyType, ValueType, IndexType>
-	: GranularityConfig<
-		KeyType,				// KeyType
-		ValueType,				// ValueType
-		IndexType,				// IndexType
-
-		// Common
-		4,						// RADIX_BITS: 					4-bit radix digits
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
-		false,					// EARLY_EXIT: 					No early termination if homogeneous digits
-		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
-		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
-											
-		// Upsweep Kernel
-		8,						// UPSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
-		7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
-		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-2 loads
-		0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
-
-		// Spine-scan Kernel
-		1,										// SPINE_CTA_OCCUPANCY: 		Only 1 CTA/SM really needed
-		8,										// SPINE_LOG_THREADS: 			128 threads/CTA
-		2,										// SPINE_LOG_LOAD_VEC_SIZE:		vec-4 loads
-		0,										// SPINE_LOG_LOADS_PER_TILE:	1 loads/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
-
-		// Downsweep Kernel
-		4,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
-		8,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
-		0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
-		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE: 	2 loads/cycle
-		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
-			0 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycles/tile
-			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 2		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
-	> 
-{};
+	: MemcopyConfig<
+		T,						// Data type
+		IndexType,				// Index type
+		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		7,						// LOG_THREADS: 				128 threads
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
+		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
+		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+	> {};
 
 
 
@@ -124,43 +96,16 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 
 template <typename KeyType, typename ValueType, typename IndexType>
 struct TunedConfig<SM13, KeyType, ValueType, IndexType>
-	: GranularityConfig<
-		KeyType,				// KeyType
-		ValueType,				// ValueType
-		IndexType,				// IndexType
-
-		// Common
-		4,						// RADIX_BITS: 					4-bit radix digits
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
-		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
-		true,					// UNIFORM_SMEM_ALLOCATION:		Use dynamic smem padding to maintain constant grid smem allocations across all kernels
-		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
-
-		// Upsweep Kernel
-		5,						// UPSWEEP_CTA_OCCUPANCY:		8 CTAs/SM
-		7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
-		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-1 loads
-		0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
-
-		// Spine-scan Kernel
-		1,										// SPINE_CTA_OCCUPANCY: 		Only 1 CTA/SM really needed
-		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
-		2,										// SPINE_LOG_LOAD_VEC_SIZE: 	vec-4 loads
-		0,										// SPINE_LOG_LOADS_PER_TILE: 	1 loads/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
-
-		// Downsweep Kernel
-		5,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
-		6,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
-		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
-		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE: 	2 loads/cycle
-		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
-			0 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycles/tile
-			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0		// DOWNSWEEP_LOG_RAKING_THREADS: 1 warps
-	>
-{};
+	: MemcopyConfig<
+		T,						// Data type
+		IndexType,				// Index type
+		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		7,						// LOG_THREADS: 				128 threads
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
+		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
+		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+	> {};
 
 
 
@@ -170,48 +115,21 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 
 template <typename KeyType, typename ValueType, typename IndexType>
 struct TunedConfig<SM10, KeyType, ValueType, IndexType>
-	: GranularityConfig<
-		KeyType,				// KeyType
-		ValueType,				// ValueType
-		IndexType,				// IndexType
-
-		// Common
-		4,						// RADIX_BITS: 					4-bit radix digits
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
-		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
-		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
-		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
-
-		// Upsweep Kernel
-		3,						// UPSWEEP_CTA_OCCUPANCY:		8 CTAs/SM
-		7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
-		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-1 loads
-		0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
-
-		// Spine-scan Kernel
-		1,										// SPINE_CTA_OCCUPANCY: 		Only 1 CTA/SM really needed
-		7,										// SPINE_LOG_THREADS: 			128 threads/CTA
-		2,										// SPINE_LOG_LOAD_VEC_SIZE: 	vec-4 loads
-		0,										// SPINE_LOG_LOADS_PER_TILE: 	1 loads/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0,	// SPINE_LOG_RAKING_THREADS:	1 warp
-
-		// Downsweep Kernel
-		2,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
-		7,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
-		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
-		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE: 	2 loads/cycle
-		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
-			1 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycles/tile
-			1, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 2 cycle/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 2		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
-	>
+	: MemcopyConfig<
+		T,						// Data type
+		IndexType,				// Index type
+		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		7,						// LOG_THREADS: 				128 threads
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
+		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
+		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+	> {};
 {};
 
 
 
 
 }// namespace small_problem_tuning
-}// namespace lsb_radix_sort
+}// namespace memcopy
 }// namespace b40c
-
