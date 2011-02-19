@@ -265,7 +265,7 @@ protected:
 			}
 
 			// Make sure our spine is big enough
-			int problem_spine_bytes = problem_spine_elements * sizeof(typename StorageType::IndexType);
+			int problem_spine_bytes = problem_spine_elements * sizeof(typename StorageType::SizeT);
 
 			if (problem_spine_bytes > spine_bytes) {
 				if (d_spine) {
@@ -333,7 +333,7 @@ protected:
 		using namespace lsb_radix_sort::spine_scan;
 		using namespace lsb_radix_sort::downsweep;
 
-		typedef typename Decomposition::IndexType IndexType; 
+		typedef typename Decomposition::SizeT SizeT;
 		typedef typename SortingConfig::ConvertedKeyType ConvertedKeyType;
 
 		// Detailed kernel granularity parameterization types
@@ -388,7 +388,7 @@ protected:
 			UpsweepKernel<UpsweepKernelConfigType>
 				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
 					d_selectors,
-					(IndexType *) d_spine,
+					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
@@ -398,7 +398,7 @@ protected:
 			// Invoke spine scan kernel
 			SpineScanKernel<SpineScanKernelConfigType>
 				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
-					(IndexType *) d_spine,
+					(SizeT *) d_spine,
 					work.spine_elements);
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
@@ -407,7 +407,7 @@ protected:
 			DownsweepKernel<DownsweepKernelConfigType>
 				<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
 					d_selectors,
-					(IndexType *) d_spine,
+					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work.problem_storage->d_values[work.problem_storage->selector],
@@ -658,7 +658,7 @@ public:
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
 				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d, indexing-bits: %d]\n", 
-				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::IndexType) * 8);
+				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::SizeT) * 8);
 			printf("Upsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Upsweep::LOG_THREADS);
 			printf("SpineScan: \t[grid_size: %d, threads %d, spine_elements: %d]\n",
@@ -701,11 +701,11 @@ public:
  * Utility type for managing the state for a specific sorting operation
  */
 template <typename Storage>
-struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType>
+struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::SizeT>
 {
 	typedef typename Storage::KeyType KeyType;
 	typedef typename Storage::ValueType ValueType;
-	typedef typename Storage::IndexType IndexType;
+	typedef typename Storage::SizeT SizeT;
 
 	int sweep_grid_size;
 	int spine_elements;
@@ -716,7 +716,7 @@ struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::IndexType
 		Storage *problem_storage,
 		int schedule_granularity,
 		int sweep_grid_size,
-		int spine_elements) : CtaWorkDistribution<IndexType>(
+		int spine_elements) : CtaWorkDistribution<SizeT>(
 				problem_storage->num_elements,
 				schedule_granularity,
 				sweep_grid_size),

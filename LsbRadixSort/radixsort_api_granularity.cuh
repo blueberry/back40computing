@@ -65,7 +65,7 @@ template <
 	// Common
 	typename KeyType,
 	typename ValueType,
-	typename IndexType,
+	typename SizeT,
 	int RADIX_BITS,
 	int LOG_SCHEDULE_GRANULARITY,
 	CacheModifier CACHE_MODIFIER,
@@ -94,7 +94,7 @@ template <
 	int DOWNSWEEP_LOG_CYCLES_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct GranularityConfig
+struct LsbSortConfig
 {
 	// Unsigned integer type to cast keys as in order to make them suitable 
 	// for radix sorting 
@@ -105,7 +105,7 @@ struct GranularityConfig
 	
 	typedef upsweep::UpsweepConfig<
 		ConvertedKeyType, 
-		IndexType,
+		SizeT,
 		RADIX_BITS, 
 		LOG_SCHEDULE_GRANULARITY,
 		UPSWEEP_CTA_OCCUPANCY,  
@@ -117,7 +117,7 @@ struct GranularityConfig
 			Upsweep;
 	
 	typedef spine_scan::SpineScanConfig<
-		IndexType,								// Type of scan problem
+		SizeT,								// Type of scan problem
 		int,									// Type for indexing into scan problem
 		SPINE_CTA_OCCUPANCY,
 		SPINE_LOG_THREADS,
@@ -130,7 +130,7 @@ struct GranularityConfig
 	typedef downsweep::DownsweepConfig<
 		ConvertedKeyType,
 		ValueType,
-		IndexType,
+		SizeT,
 		RADIX_BITS,
 		LOG_SCHEDULE_GRANULARITY,
 		DOWNSWEEP_CTA_OCCUPANCY,

@@ -142,20 +142,20 @@ __device__ __forceinline__ K MagnitudeShift(K key) {
  * grain greater than the normal, and the last workload 
  * does the extra work.
  */
-template <typename OffsetType> 		// Integer type for indexing into problem arrays (e.g., int, long long, etc.)
+template <typename SizeT> 		// Integer type for indexing into problem arrays (e.g., int, long long, etc.)
 struct CtaWorkDistribution
 {
-	OffsetType num_elements;		// Number of elements in the problem
-	OffsetType total_grains;		// Number of "grain" blocks to break the problem into (round up)
-	OffsetType grains_per_cta;		// Number of "grain" blocks per CTA
-	OffsetType extra_grains;		// Number of CTAs having one extra "grain block"
+	SizeT num_elements;		// Number of elements in the problem
+	SizeT total_grains;		// Number of "grain" blocks to break the problem into (round up)
+	SizeT grains_per_cta;	// Number of "grain" blocks per CTA
+	SizeT extra_grains;		// Number of CTAs having one extra "grain block"
 	
 
 	/**
 	 * Constructor
 	 */
 	CtaWorkDistribution(
-		OffsetType num_elements,
+		SizeT num_elements,
 		int schedule_granularity, 	// Problem granularity by which work is distributed amongst CTA threadblocks
 		int grid_size) :
 			num_elements(num_elements),
@@ -172,10 +172,10 @@ struct CtaWorkDistribution
 		int LOG_TILE_ELEMENTS,				// CTA tile size, i.e., granularity by which the CTA processes work
 		int LOG_SCHEDULE_GRANULARITY>		// Problem granularity by which work is distributed amongst CTA threadblocks
 	__device__ __forceinline__ void GetCtaWorkLimits(
-		OffsetType &cta_offset,				// Out param: Offset at which this CTA begins processing
-		OffsetType &cta_elements,			// Out param: Total number of elements for this CTA to process
-		OffsetType &guarded_offset, 		// Out param: Offset of final, partially-full tile (requires guarded loads)
-		OffsetType &cta_guarded_elements)	// Out param: Number of elements in partially-full tile
+		SizeT &cta_offset,				// Out param: Offset at which this CTA begins processing
+		SizeT &cta_elements,			// Out param: Total number of elements for this CTA to process
+		SizeT &guarded_offset, 			// Out param: Offset of final, partially-full tile (requires guarded loads)
+		SizeT &cta_guarded_elements)	// Out param: Number of elements in partially-full tile
 	{
 		const int TILE_ELEMENTS 				= 1 << LOG_TILE_ELEMENTS;
 		const int SCHEDULE_GRANULARITY 			= 1 << LOG_SCHEDULE_GRANULARITY;

@@ -69,7 +69,7 @@ namespace spine_scan {
  */
 template <
 	typename _ScanType,
-	typename _IndexType,
+	typename _SizeT,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -80,7 +80,7 @@ template <
 struct SpineScanConfig
 {
 	typedef _ScanType							ScanType;
-	typedef _IndexType							IndexType;
+	typedef _SizeT							SizeT;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
@@ -327,7 +327,7 @@ template <typename Config>
 struct ProcessTile <Config, false>
 {
 	typedef typename Config::ScanType ScanType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	__device__ __forceinline__ static void Invoke(
 		ScanType 	*primary_base_partial,
@@ -336,14 +336,14 @@ struct ProcessTile <Config, false>
 		ScanType 	*secondary_raking_seg,
 		ScanType 	warpscan[2][Config::PrimaryGrid::RAKING_THREADS],
 		ScanType 	*d_data,
-		IndexType 	cta_offset,
+		SizeT 		cta_offset,
 		ScanType 	&carry)
 	{
 		// Tile of scan elements
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
+		LoadTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset, 0);
 		
 		// Reduce in registers, place partials in smem
@@ -360,7 +360,7 @@ struct ProcessTile <Config, false>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
+		StoreTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset, 0);
 	}
 };
@@ -373,7 +373,7 @@ template <typename Config>
 struct ProcessTile <Config, true>
 {
 	typedef typename Config::ScanType ScanType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	__device__ __forceinline__ static void Invoke(
 		ScanType 	*primary_base_partial,
@@ -382,14 +382,14 @@ struct ProcessTile <Config, true>
 		ScanType 	*secondary_raking_seg,
 		ScanType 	warpscan[2][Config::SecondaryGrid::RAKING_THREADS],
 		ScanType 	*d_data,
-		IndexType 	cta_offset,
+		SizeT 		cta_offset,
 		ScanType 	&carry)
 	{
 		// Tile of scan elements
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
+		LoadTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset, 0);
 		
 		// Reduce in registers, place partials in smem
@@ -422,7 +422,7 @@ struct ProcessTile <Config, true>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, IndexType, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
+		StoreTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset, 0);
 		
 	}
@@ -436,10 +436,10 @@ struct ProcessTile <Config, true>
 template <typename Config>
 __device__ __forceinline__ void LsbSpineScan(
 	typename Config::ScanType * &d_spine,
-	typename Config::IndexType  &spine_elements)
+	typename Config::SizeT  &spine_elements)
 {
 	typedef typename Config::ScanType ScanType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 
 	// Shared memory pool
 	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
@@ -477,7 +477,7 @@ __device__ __forceinline__ void LsbSpineScan(
 	}
 
 	// Scan the spine in tiles
-	IndexType cta_offset = 0;
+	SizeT cta_offset = 0;
 	while (cta_offset < spine_elements) {
 		
 		ProcessTile<Config, Config::TwoLevelGrid>::Invoke(
@@ -502,7 +502,7 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ void SpineScanKernel(
 	typename KernelConfig::ScanType *d_spine,
-	typename KernelConfig::IndexType spine_elements)
+	typename KernelConfig::SizeT spine_elements)
 {
 	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
 } 
@@ -514,7 +514,7 @@ __global__ void SpineScanKernel(
 template <typename KernelConfig>
 void __wrapper__device_stub_SpineScanKernel(
 	typename KernelConfig::ScanType *&,
-	typename KernelConfig::IndexType &) {}
+	typename KernelConfig::SizeT &) {}
 
 
 

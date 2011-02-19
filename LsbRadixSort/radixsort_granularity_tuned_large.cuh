@@ -84,9 +84,9 @@ template <
 	int CUDA_ARCH,
 	typename KeyType,
 	typename ValueType,
-	typename IndexType>
+	typename SizeT>
 struct TunedConfig :
-	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, IndexType> {};
+	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, SizeT> {};
 
 
 
@@ -94,12 +94,12 @@ struct TunedConfig :
 // SM2.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM20, KeyType, ValueType, IndexType>
-	: GranularityConfig<
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM20, KeyType, ValueType, SizeT>
+	: LsbSortConfig<
 		KeyType,				// KeyType
 		ValueType,				// ValueType
-		IndexType,				// IndexType
+		SizeT,					// SizeT
 
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits
@@ -140,12 +140,12 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 // SM1.3 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM13, KeyType, ValueType, IndexType>
-	: GranularityConfig<
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM13, KeyType, ValueType, SizeT>
+	: LsbSortConfig<
 		KeyType,				// KeyType
 		ValueType,				// ValueType
-		IndexType,				// IndexType
+		SizeT,					// SizeT
 
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits
@@ -186,12 +186,12 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 // SM1.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM10, KeyType, ValueType, IndexType>
-	: GranularityConfig<
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM10, KeyType, ValueType, SizeT>
+	: LsbSortConfig<
 		KeyType,				// KeyType
 		ValueType,				// ValueType
-		IndexType,				// IndexType
+		SizeT,					// SizeT
 
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits

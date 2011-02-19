@@ -217,7 +217,7 @@ __device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) {}
  */
 template <
 	typename T,													// Type to load
-	typename IndexType,											// Integer type for indexing into global arrays 
+	typename SizeT,											// Integer type for indexing into global arrays
 	int LOG_LOADS_PER_TILE, 									// Number of vector loads (log)
 	int LOG_LOAD_VEC_SIZE,										// Number of items per vector load (log)
 	int ACTIVE_THREADS,											// Active threads that will be loading
@@ -232,13 +232,13 @@ template <
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOG_LOADS_PER_TILE, 
 	int LOG_LOAD_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER,
 	void Transform(T&, bool)>
-struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true, Transform>
+struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true, Transform>
 {
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
 	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
@@ -303,8 +303,8 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset,
-		const IndexType &out_of_bounds)
+		SizeT cta_offset,
+		const SizeT &out_of_bounds)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		VectorType *vectors = (VectorType *) data;
@@ -320,13 +320,13 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOG_LOADS_PER_TILE, 
 	int LOG_LOAD_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER,
 	void Transform(T&, bool)>
-struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false, Transform>
+struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false, Transform>
 {
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
 	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
@@ -338,10 +338,10 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType cta_offset,
-			const IndexType &out_of_bounds)
+			SizeT cta_offset,
+			const SizeT &out_of_bounds)
 		{
-			IndexType thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + ((ACTIVE_THREADS * LOAD) << LOG_LOAD_VEC_SIZE) + VEC;
+			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + ((ACTIVE_THREADS * LOAD) << LOG_LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < out_of_bounds) {
 				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset);
@@ -361,8 +361,8 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType cta_offset,
-			const IndexType &out_of_bounds)
+			SizeT cta_offset,
+			const SizeT &out_of_bounds)
 		{
 			Iterate<LOAD + 1, 0>::Invoke(
 				data, d_in, cta_offset, out_of_bounds);
@@ -376,16 +376,16 @@ struct LoadTile <T, IndexType, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THR
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			IndexType cta_offset,
-			const IndexType &out_of_bounds) {}
+			SizeT cta_offset,
+			const SizeT &out_of_bounds) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset,
-		const IndexType &out_of_bounds)
+		SizeT cta_offset,
+		const SizeT &out_of_bounds)
 	{
 		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
 	} 
@@ -558,7 +558,7 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOG_STORES_PER_TILE, 
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
@@ -571,12 +571,12 @@ template <
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOG_STORES_PER_TILE, 
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER>
-struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true>
+struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, true>
 {
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
 	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
@@ -611,8 +611,8 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset,
-		const IndexType &out_of_bounds)
+		SizeT cta_offset,
+		const SizeT &out_of_bounds)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector stores
 		VectorType *vectors = (VectorType *) data;
@@ -628,12 +628,12 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOG_STORES_PER_TILE, 
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	CacheModifier CACHE_MODIFIER>
-struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false>
+struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THREADS, CACHE_MODIFIER, false>
 {
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
 	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
@@ -644,8 +644,8 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
-			const IndexType &out_of_bounds)
+			SizeT thread_offset,
+			const SizeT &out_of_bounds)
 		{
 			if (thread_offset + VEC < out_of_bounds) {
 				ModifiedStore<T, CACHE_MODIFIER>::St(data[STORE][VEC], d_in, thread_offset + VEC);
@@ -660,8 +660,8 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
-			const IndexType &out_of_bounds)
+			SizeT thread_offset,
+			const SizeT &out_of_bounds)
 		{
 			Iterate<STORE + 1, 0>::Invoke(
 				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
@@ -674,18 +674,18 @@ struct StoreTile <T, IndexType, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			IndexType thread_offset,
-			const IndexType &out_of_bounds) {}
+			SizeT thread_offset,
+			const SizeT &out_of_bounds) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
-		IndexType cta_offset,
-		const IndexType &out_of_bounds)
+		SizeT cta_offset,
+		const SizeT &out_of_bounds)
 	{
-		IndexType thread_offset = cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE);
+		SizeT thread_offset = cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE);
 		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
 	} 
 };
@@ -703,7 +703,7 @@ __device__ __forceinline__ void NopStoreTransform(T &val) {}
  */
 template <
 	typename T,
-	typename IndexType,
+	typename SizeT,
 	int LOADS_PER_TILE,
 	int ACTIVE_THREADS,										// Active threads that will be loading
 	CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
@@ -718,8 +718,8 @@ struct Scatter
 		static __device__ __forceinline__ void Invoke(
 			T *dest,
 			T src[LOADS_PER_TILE],
-			IndexType scatter_offsets[LOADS_PER_TILE],
-			const IndexType	&guarded_elements)
+			SizeT scatter_offsets[LOADS_PER_TILE],
+			const SizeT	&guarded_elements)
 		{
 			if (UNGUARDED_IO || ((ACTIVE_THREADS * LOAD) + threadIdx.x < guarded_elements)) {
 				Transform(src[LOAD]);
@@ -737,16 +737,16 @@ struct Scatter
 		static __device__ __forceinline__ void Invoke(
 			T *dest,
 			T src[LOADS_PER_TILE],
-			IndexType scatter_offsets[LOADS_PER_TILE],
-			const IndexType	&guarded_elements) {}
+			SizeT scatter_offsets[LOADS_PER_TILE],
+			const SizeT	&guarded_elements) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T *dest,
 		T src[LOADS_PER_TILE],
-		IndexType scatter_offsets[LOADS_PER_TILE],
-		const IndexType	&guarded_elements)
+		SizeT scatter_offsets[LOADS_PER_TILE],
+		const SizeT	&guarded_elements)
 	{
 		Iterate<0, LOADS_PER_TILE>::Invoke(dest, src, scatter_offsets, guarded_elements);
 	}

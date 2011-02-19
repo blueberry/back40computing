@@ -66,6 +66,13 @@ protected:
 	// Device properties
 	const CudaProperties cuda_props;
 
+	// A pair of counters in global device memory and a selector for
+	// indexing into the pair.  If we perform workstealing passes, the
+	// current counter can provide an atomic reference of progress.  One pass
+	// resets the counter for the next
+	size_t*	d_work_progress;
+	int 	progress_selector;
+
 
 	//-----------------------------------------------------------------------------
 	// Utility Routines
@@ -179,12 +186,25 @@ public:
 	 * Constructor.
 	 */
 	MemcopyEnactor() :
+			d_work_progress(NULL),
+			progress_selector(0),
 #if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
 			DEBUG(true)
 #else
 			DEBUG(false)
 #endif
 		{}
+
+
+	/**
+     * Destructor
+     */
+    virtual ~MemcopyEnactor()
+    {
+   		if (d_work_progress) {
+   			B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
+   		}
+    }
 
     
 	/**
@@ -200,11 +220,11 @@ public:
 	cudaError_t Enact(
 		typename MemcopyConfig::T *d_dest,
 		typename MemcopyConfig::T *d_src,
-		typename MemcopyConfig::IndexType length,
+		size_t length,
 		int max_grid_size = 0)
 	{
 		typedef typename MemcopyConfig::T T;
-		typedef typename MemcopyConfig::IndexType IndexType;
+		typedef typename MemcopyConfig::SizeT SizeT;
 		typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
 
 		const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
@@ -212,7 +232,7 @@ public:
 		int sweep_grid_size = SweepGridSize<MemcopyConfig>(length, max_grid_size);
 		int dynamic_smem = 0;
 		
-		CtaWorkDistribution<IndexType> work(length, SCHEDULE_GRANULARITY, sweep_grid_size);
+		CtaWorkDistribution<SizeT> work(length, SCHEDULE_GRANULARITY, sweep_grid_size);
 
 		if (DEBUG) {
 			printf("\n\n");
@@ -228,13 +248,41 @@ public:
 		cudaError_t retval = cudaSuccess;
 		do {
 
+			// Work-stealing setup
+			if (MemcopyConfig::WORK_STEALING) {
+
+				// Make sure that our progress counters are allocated
+				if (d_work_progress == NULL) {
+					// Allocate
+					if (retval = B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
+						"LsbSortEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
+
+					// Initialize
+					size_t h_work_progress[2] = {0, 0};
+					if (retval = B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
+						"LsbSortEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
+				}
+
+				// Update our progress counter selector to index the next progress counter
+				progress_selector ^= 1;
+			}
+
 			// Invoke memcopy kernel
 			MemcopyKernel<MemcopyKernelConfigType><<<sweep_grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
-				d_dest, d_src, work);
+				d_dest, d_src, d_work_progress, work, progress_selector);
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);
+
+		if (retval) {
+			// We had an error, which means that the device counters may not be
+			// properly initialized for the next pass: reset them.
+	   		if (d_work_progress) {
+	   			B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
+	   			d_work_progress = NULL;
+	   		}
+		}
 
 	    return retval;
 	}

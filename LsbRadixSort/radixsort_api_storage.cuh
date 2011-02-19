@@ -77,14 +77,14 @@ namespace b40c {
  * the input started in d_keys[0].)
  * 
  */
-template <typename _KeyType, typename _ValueType, typename _IndexType>
+template <typename _KeyType, typename _ValueType, typename _SizeT>
 class MultiCtaSortStorageBase
 {
 public:	
 	
 	typedef _KeyType KeyType;
 	typedef _ValueType ValueType;
-	typedef _IndexType IndexType;	// Integer type suitable for indexing storage elements (e.g., int, long long, etc.)
+	typedef _SizeT SizeT;			// Integer type suitable for indexing storage elements (e.g., int, long long, etc.)
 
 	// Pair of device vector pointers for keys
 	KeyType* d_keys[2];
@@ -93,7 +93,7 @@ public:
 	ValueType* d_values[2];
 
 	// Number of elements for sorting in the above vectors 
-	IndexType num_elements;
+	SizeT num_elements;
 	
 	// Selector into the pair of device vector pointers indicating valid 
 	// sorting elements (i.e., where the results are)
