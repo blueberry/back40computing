@@ -71,30 +71,28 @@ template <typename Config, bool UNGUARDED_IO>
 __device__ __forceinline__ void ProcessTile(
 	typename Config::T * __restrict d_out,
 	typename Config::T * __restrict d_in,
-	typename Config::IndexType 	cta_offset,
-	typename Config::IndexType 	out_of_bounds)
+	typename Config::SizeT 	cta_offset,
+	typename Config::SizeT 	out_of_bounds)
 {
 	typedef typename Config::T T;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 
 	T data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 
 	// Load tile
 	LoadTile<
 		T,
-		IndexType,
+		SizeT,
 		Config::LOG_LOADS_PER_TILE,
 		Config::LOG_LOAD_VEC_SIZE,
 		Config::THREADS,
 		Config::CACHE_MODIFIER,
 		UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
-//	__syncthreads();
-
 	// Store tile
 	StoreTile<
 		T,
-		IndexType,
+		SizeT,
 		Config::LOG_LOADS_PER_TILE,
 		Config::LOG_LOAD_VEC_SIZE,
 		Config::THREADS,
@@ -104,38 +102,94 @@ __device__ __forceinline__ void ProcessTile(
 
 
 /**
- * Memcopy pass
+ * Memcopy pass (non-workstealing)
+ */
+template <typename Config, bool WORK_STEALING>
+struct MemcopyPass
+{
+	static __device__ __forceinline__ void Invoke(
+		typename Config::T 			* __restrict &d_out,
+		typename Config::T 			* __restrict &d_in,
+		typename Config::SizeT 		* __restrict &d_work_progress,
+		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
+		int &progress_selector)
+	{
+		typedef typename Config::SizeT SizeT;
+
+		// Determine our threadblock's work range
+		SizeT cta_offset;			// Offset at which this CTA begins processing
+		SizeT cta_elements;			// Total number of elements for this CTA to process
+		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+		SizeT guarded_elements;		// Number of elements in partially-full tile
+
+		work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
+			cta_offset, cta_elements, guarded_offset, guarded_elements);
+
+		// Copy full tiles of tile_elements
+		while (cta_offset < guarded_offset) {
+
+			ProcessTile<Config, true>(d_out, d_in, cta_offset, cta_elements);
+			cta_offset += Config::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (guarded_elements) {
+	
+			ProcessTile<Config, false>(d_out, d_in, cta_offset, cta_elements);
+		}
+	}
+};
+
+
+/**
+ * Memcopy pass (workstealing)
  */
 template <typename Config>
-__device__ __forceinline__ void MemcopyPass(
-	typename Config::T * __restrict &d_out,
-	typename Config::T * __restrict &d_in,
-	CtaWorkDistribution<typename Config::IndexType> &work_decomposition)
+struct MemcopyPass <Config, true>
 {
-	typedef typename Config::IndexType IndexType;
-	
-	// Determine our threadblock's work range
-	IndexType cta_offset;			// Offset at which this CTA begins processing
-	IndexType cta_elements;			// Total number of elements for this CTA to process
-	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	IndexType guarded_elements;		// Number of elements in partially-full tile
+	static __device__ __forceinline__ void Invoke(
+		typename Config::T 			* __restrict &d_out,
+		typename Config::T 			* __restrict &d_in,
+		typename Config::SizeT 		* __restrict &d_work_progress,
+		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
+		int &progress_selector)
+	{
+		typedef typename Config::SizeT SizeT;
 
-	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
+		__shared__ SizeT cta_offset;
 
-	// Copy full tiles of tile_elements
-	while (cta_offset < guarded_offset) {
+		// First CTA resets the work progress for the next pass
+		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
+			d_work_progress[progress_selector ^ 1] = 0;
+		}
 
-		ProcessTile<Config, true>(d_out, d_in, cta_offset, cta_elements);
-		cta_offset += Config::TILE_ELEMENTS;
+		// Steal full-tiles of work, incrementing progress counter
+		SizeT unguarded_elements = work_decomposition.num_elements & (~(Config::TILE_ELEMENTS - 1));
+		while (true) {
+
+			// Thread zero atomically steals work from the progress counter
+			if (threadIdx.x == 0) {
+				cta_offset = atomicAdd(&d_work_progress[progress_selector], Config::TILE_ELEMENTS);
+			}
+
+			__syncthreads();
+
+			if (cta_offset >= unguarded_elements) {
+				// All done
+				break;
+			}
+
+			ProcessTile<Config, true>(d_out, d_in, cta_offset, unguarded_elements);
+		}
+
+		// Last CTA does any extra, guarded work
+		if (blockIdx.x == gridDim.x - 1) {
+			SizeT guarded_elements = work_decomposition.num_elements & (Config::TILE_ELEMENTS - 1);
+			ProcessTile<Config, false>(d_out, d_in, unguarded_elements, guarded_elements);
+		}
+
 	}
-
-	// Clean up last partial tile with guarded-io
-	if (guarded_elements) {
-
-		ProcessTile<Config, false>(d_out, d_in, cta_offset, cta_elements);
-	}
-}
+};
 
 
 /**
@@ -145,11 +199,14 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void MemcopyKernel(
-	typename KernelConfig::T * __restrict d_out,
-	typename KernelConfig::T * __restrict d_in,
-	CtaWorkDistribution<typename KernelConfig::IndexType> work_decomposition)
+	typename KernelConfig::T 			* __restrict d_out,
+	typename KernelConfig::T 			* __restrict d_in,
+	typename KernelConfig::SizeT 		* __restrict d_work_progress,
+	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
+	int progress_selector)
 {
-	MemcopyPass<KernelConfig>(d_out, d_in, work_decomposition);
+	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
+		d_out, d_in, d_work_progress, work_decomposition, progress_selector);
 }
 
 
@@ -158,9 +215,11 @@ void MemcopyKernel(
  */
 template <typename KernelConfig>
 void __wrapper__device_stub_MemcopyKernel(
-	typename KernelConfig::T * __restrict &,
-	typename KernelConfig::T * __restrict &,
-	CtaWorkDistribution<typename KernelConfig::IndexType> &) {}
+	typename KernelConfig::T 			* __restrict &,
+	typename KernelConfig::T 			* __restrict &,
+	typename KernelConfig::SizeT 		* __restrict &,
+	CtaWorkDistribution<typename KernelConfig::SizeT> &,
+	int &) {}
 
 
 

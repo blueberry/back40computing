@@ -69,7 +69,7 @@ namespace upsweep {
  */
 template <
 	typename _KeyType,
-	typename _IndexType,
+	typename _SizeT,
 	int _RADIX_BITS,
 	int _LOG_SCHEDULE_GRANULARITY,
 	int _CTA_OCCUPANCY,
@@ -82,7 +82,7 @@ template <
 struct UpsweepConfig
 {
 	typedef _KeyType							KeyType;
-	typedef _IndexType							IndexType;
+	typedef _SizeT							SizeT;
 	static const int RADIX_BITS					= _RADIX_BITS;
 	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
@@ -147,9 +147,9 @@ struct UpsweepKernelConfig : UpsweepConfigType
 		COMPOSITES_PER_LANE 				= 1 << LOG_COMPOSITES_PER_LANE,
 	
 		// To prevent digit-counter overflow, we must partially-aggregate the
-		// 8-bit composite counters back into IndexType-bit registers periodically.  The lanes
+		// 8-bit composite counters back into SizeT-bit registers periodically.  The lanes
 		// are divided up amongst the warps for aggregation.  Each lane is
-		// therefore equivalent to four rows of IndexType-bit digit-counts, each the width of a warp.
+		// therefore equivalent to four rows of SizeT-bit digit-counts, each the width of a warp.
 	
 		LANES_PER_WARP 						= B40C_MAX(1, COMPOSITE_LANES / WARPS),
 	
@@ -161,7 +161,7 @@ struct UpsweepKernelConfig : UpsweepConfigType
 
 		// Required size of the re-purposable shared memory region
 		COMPOSITE_COUNTER_BYTES				= COMPOSITE_LANES * COMPOSITES_PER_LANE * sizeof(int),
-		PARTIALS_BYTES						= AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW * sizeof(typename UpsweepConfigType::IndexType),
+		PARTIALS_BYTES						= AGGREGATED_ROWS * PADDED_AGGREGATED_PARTIALS_PER_ROW * sizeof(typename UpsweepConfigType::SizeT),
 	
 		SMEM_BYTES 							= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES)
 	};
@@ -187,13 +187,13 @@ __device__ __forceinline__ void ResetCompositeLanes(int *composite_column)
 template <typename Config> 
 struct ReduceCompositeLanes
 {
-	typedef typename Config::IndexType IndexType; 
+	typedef typename Config::SizeT SizeT;
 	
 	// Next composite counter
 	template <int LANE, int TOTAL_LANES, int COMPOSITE, int TOTAL_COMPOSITES>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			IndexType local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[Config::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx)
@@ -217,7 +217,7 @@ struct ReduceCompositeLanes
 	template <int LANE, int TOTAL_LANES, int TOTAL_COMPOSITES>
 	struct Iterate<LANE, TOTAL_LANES, TOTAL_COMPOSITES, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
-			IndexType local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[Config::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx)
@@ -230,7 +230,7 @@ struct ReduceCompositeLanes
 	template <int TOTAL_LANES, int TOTAL_COMPOSITES>
 	struct Iterate<TOTAL_LANES, TOTAL_LANES, 0, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
-			IndexType local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[Config::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx) {}
@@ -238,7 +238,7 @@ struct ReduceCompositeLanes
 	
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		IndexType local_counts[Config::LANES_PER_WARP][4],
+		SizeT local_counts[Config::LANES_PER_WARP][4],
 		int *smem_pool,
 		int warp_id,
 		int warp_idx) 
@@ -353,18 +353,18 @@ struct BucketTileKeys
 template <typename Config>
 __device__ __forceinline__ void ProcessTile(
 	typename Config::KeyType *d_in_keys, 
-	typename Config::IndexType cta_offset, 
+	typename Config::SizeT cta_offset,
 	int *composite_column) 
 {
 	typedef typename Config::KeyType KeyType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 
 	// Load tile of keys
 	KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 
 	LoadTile<
 		KeyType, 
-		IndexType, 
+		SizeT,
 		Config::LOG_LOADS_PER_TILE, 
 		Config::LOG_LOAD_VEC_SIZE, 
 		Config::THREADS, 
@@ -383,14 +383,14 @@ template <typename Config>
 struct UnrollTiles
 {
 	typedef typename Config::KeyType KeyType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	// Iterate over counts
 	template <int UNROLL_COUNT, int __dummy = 0>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			KeyType *d_in_keys, 
-			IndexType cta_offset, 
+			SizeT cta_offset,
 			int *composite_column)
 		{
 			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset, composite_column);
@@ -403,7 +403,7 @@ struct UnrollTiles
 	struct Iterate<1, __dummy> {
 		static __device__ __forceinline__ void Invoke(
 			KeyType *d_in_keys, 
-			IndexType cta_offset, 
+			SizeT cta_offset,
 			int *composite_column)
 		{
 			ProcessTile<Config>(d_in_keys, cta_offset, composite_column);
@@ -416,14 +416,14 @@ struct UnrollTiles
 // occasional partial-reduction to avoid overflow.
 template <typename Config, int UNROLL_COUNT, bool REDUCE_AFTERWARD>
 __device__ __forceinline__ void UnrollTileBatches(
-	typename Config::KeyType *d_in_keys,
-	typename Config::IndexType &cta_offset,
-	int* 	composite_column,
-	int*	smem_pool,
-	typename Config::IndexType out_of_bounds,
-	typename Config::IndexType local_counts[Config::LANES_PER_WARP][4],
-	int 	warp_id,
-	int 	warp_idx) 
+	typename Config::KeyType 	*d_in_keys,
+	typename Config::SizeT 		&cta_offset,
+	int* 						composite_column,
+	int*						smem_pool,
+	typename Config::SizeT 		out_of_bounds,
+	typename Config::SizeT 		local_counts[Config::LANES_PER_WARP][4],
+	int 						warp_id,
+	int 						warp_idx)
 {
 	const int UNROLLED_ELEMENTS = UNROLL_COUNT * Config::TILE_ELEMENTS;
 	
@@ -456,15 +456,15 @@ template <typename Config>
 struct FullTiles
 {
 	typedef typename Config::KeyType KeyType;
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	__device__ __forceinline__ static void Reduce(
 		KeyType 	*d_in_keys,
-		IndexType 	&cta_offset,
+		SizeT 		&cta_offset,
 		int			*composite_column,
 		int			*smem_pool,
-		IndexType  	out_of_bounds,
-		IndexType  	local_counts[Config::LANES_PER_WARP][4],
+		SizeT  		out_of_bounds,
+		SizeT  		local_counts[Config::LANES_PER_WARP][4],
 		int  		warp_id,
 		int  		warp_idx) 
 	{
@@ -482,20 +482,20 @@ struct FullTiles
 template <typename Config>
 __device__ __forceinline__ void ReductionPass(
 	typename Config::KeyType 	* __restrict d_in_keys,
-	typename Config::IndexType 	* __restrict d_spine,
+	typename Config::SizeT 		* __restrict d_spine,
 	int*	smem_pool,
 	int* 	composite_column,
-	typename Config::IndexType 	cta_offset,
-	typename Config::IndexType 	out_of_bounds)
+	typename Config::SizeT 	cta_offset,
+	typename Config::SizeT 	out_of_bounds)
 {
 	typedef typename Config::KeyType KeyType; 
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
 	int warp_idx = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
 	
 	// Each thread is responsible for aggregating an unencoded segment of a fours-group
-	IndexType local_counts[Config::LANES_PER_WARP][4];								
+	SizeT local_counts[Config::LANES_PER_WARP][4];
 	
 	// Initialize local counts
 	#pragma unroll 
@@ -541,13 +541,13 @@ __device__ __forceinline__ void ReductionPass(
 	// Final raking reduction of aggregated local_counts within each warp  
 	//
 	
-	IndexType *raking_pool = reinterpret_cast<IndexType*>(smem_pool);
+	SizeT *raking_pool = reinterpret_cast<SizeT*>(smem_pool);
 
 	// Iterate over lanes per warp, placing the four counts from each into smem
 	if (warp_id < Config::COMPOSITE_LANES) {
 
 		// My thread's (first) reduction counter placement offset
-		IndexType *base_partial = raking_pool +
+		SizeT *base_partial = raking_pool +
 				FastMul(warp_id, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4) + warp_idx;
 
 		// We have at least one lane to place
@@ -571,7 +571,7 @@ __device__ __forceinline__ void ReductionPass(
 
 		int base_row_offset = FastMul(threadIdx.x, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW);
 
-		IndexType digit_count = SerialReduce<IndexType, Config::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
+		SizeT digit_count = SerialReduce<SizeT, Config::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 			raking_pool + base_row_offset);
 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
@@ -589,12 +589,12 @@ __device__ __forceinline__ void ReductionPass(
 template <typename Config>
 __device__ __forceinline__ void LsbUpsweep(
 	int 							* __restrict &d_selectors,
-	typename Config::IndexType 		* __restrict &d_spine,
+	typename Config::SizeT 			* __restrict &d_spine,
 	typename Config::KeyType 		* __restrict &d_in_keys,
 	typename Config::KeyType 		* __restrict &d_out_keys,
-	CtaWorkDistribution<typename Config::IndexType> &work_decomposition)
+	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
 {
-	typedef typename Config::IndexType IndexType;
+	typedef typename Config::SizeT SizeT;
 	
 	// Shared memory pool
 	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
@@ -613,10 +613,10 @@ __device__ __forceinline__ void LsbUpsweep(
 
 	// Determine our threadblock's work range
 	
-	IndexType cta_offset;			// Offset at which this CTA begins processing
-	IndexType cta_elements;			// Total number of elements for this CTA to process
-	IndexType guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	IndexType guarded_elements;		// Number of elements in partially-full tile
+	SizeT cta_offset;			// Offset at which this CTA begins processing
+	SizeT cta_elements;			// Total number of elements for this CTA to process
+	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	SizeT guarded_elements;		// Number of elements in partially-full tile
 
 	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
@@ -640,10 +640,10 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void UpsweepKernel(
 	int 								* __restrict d_selectors,
-	typename KernelConfig::IndexType 	* __restrict d_spine,
+	typename KernelConfig::SizeT 		* __restrict d_spine,
 	typename KernelConfig::KeyType 		* __restrict d_in_keys,
 	typename KernelConfig::KeyType 		* __restrict d_out_keys,
-	CtaWorkDistribution<typename KernelConfig::IndexType> work_decomposition)
+	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
 	LsbUpsweep<KernelConfig>(
 		d_selectors, 
@@ -660,10 +660,10 @@ void UpsweepKernel(
 template <typename KernelConfig>
 void __wrapper__device_stub_UpsweepKernel(
 	int 								* __restrict &,
-	typename KernelConfig::IndexType 	* __restrict &,
+	typename KernelConfig::SizeT 		* __restrict &,
 	typename KernelConfig::KeyType 		* __restrict &,
 	typename KernelConfig::KeyType 		* __restrict &,
-	CtaWorkDistribution<typename KernelConfig::IndexType> &) {}
+	CtaWorkDistribution<typename KernelConfig::SizeT> &) {}
 
 
 

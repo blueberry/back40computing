@@ -94,9 +94,9 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU memcopy primitive
  */
-template <typename T, typename IndexType>
+template <typename T, typename SizeT>
 void TimedMemcopy(
-	IndexType num_elements,
+	SizeT num_elements,
 	T *h_data,
 	int iterations)
 {
@@ -115,13 +115,13 @@ void TimedMemcopy(
 	// Establish granularity configuration type
 	typedef MemcopyConfig<
 		T,
-		IndexType,
 		9,									// 512 items
 		8,									// 8 CTAs/SM
 		7,									// 128 threads
 		1,									// vec-2
 		1,									// 2 loads per tile
-		NONE> Config;
+		NONE,								// Default cache modifier (CA)
+		true> Config;						// Workstealing mode
 
 	// Perform a single memcopy iteration to allocate any memory if needed, prime code caches, etc.
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -186,24 +186,29 @@ void TimedMemcopy(
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to copy
  */
-template<typename T, typename IndexType>
+template<typename T, typename SizeT>
 void TestMemcopy(
 	int iterations,
-	IndexType num_elements)
+	SizeT num_elements)
 {
     // Allocate the memcopy problem on the host and fill the keys with random bytes
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
 	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
 
-	for (IndexType i = 0; i < num_elements; ++i) {
+	if ((h_data == NULL) || (h_reference == NULL)){
+		fprintf(stderr, "Host malloc of problem data failed\n");
+		exit(1);
+	}
+
+	for (SizeT i = 0; i < num_elements; ++i) {
 //		RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
 		h_reference[i] = h_data[i];
 	}
 
     // Run the timing test
-	TimedMemcopy<T, IndexType>(num_elements, h_data, iterations);
+	TimedMemcopy<T, SizeT>(num_elements, h_data, iterations);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
@@ -259,28 +264,28 @@ int main(int argc, char** argv)
     args.GetCmdLineArgumenti("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	typedef int IndexType;
+	typedef int SizeT;
 
 /*	
 	// Execute test(s)
-	TestMemcopy<unsigned char, IndexType>(
+	TestMemcopy<unsigned char, SizeT>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned short, IndexType>(
+	TestMemcopy<unsigned short, SizeT>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned int, IndexType>(
+	TestMemcopy<unsigned int, SizeT>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned long long, IndexType>(
+	TestMemcopy<unsigned long long, SizeT>(
 			iterations,
 			num_elements);
-	TestMemcopy<Fribbitz, IndexType>(
+	TestMemcopy<Fribbitz, SizeT>(
 			iterations,
 			num_elements);
 */
 
-	TestMemcopy<unsigned int, IndexType>(
+	TestMemcopy<unsigned int, SizeT>(
 			iterations,
 			num_elements);
 

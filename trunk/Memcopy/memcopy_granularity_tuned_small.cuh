@@ -65,9 +65,9 @@ template <
 	int CUDA_ARCH,
 	typename KeyType,
 	typename ValueType,
-	typename IndexType>
+	typename SizeT>
 struct TunedConfig :
-	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, IndexType> {};
+	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, SizeT> {};
 
 
 
@@ -75,11 +75,11 @@ struct TunedConfig :
 // SM2.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM20, KeyType, ValueType, IndexType>
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 	: MemcopyConfig<
 		T,						// Data type
-		IndexType,				// Index type
+		SizeT,					// Index type
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads
@@ -94,11 +94,11 @@ struct TunedConfig<SM20, KeyType, ValueType, IndexType>
 // SM1.3 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM13, KeyType, ValueType, IndexType>
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM13, KeyType, ValueType, SizeT>
 	: MemcopyConfig<
 		T,						// Data type
-		IndexType,				// Index type
+		SizeT,					// Index type
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads
@@ -113,11 +113,11 @@ struct TunedConfig<SM13, KeyType, ValueType, IndexType>
 // SM1.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename IndexType>
-struct TunedConfig<SM10, KeyType, ValueType, IndexType>
+template <typename KeyType, typename ValueType, typename SizeT>
+struct TunedConfig<SM10, KeyType, ValueType, SizeT>
 	: MemcopyConfig<
 		T,						// Data type
-		IndexType,				// Index type
+		SizeT,					// Index type
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads
