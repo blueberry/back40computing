@@ -95,9 +95,11 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 	// Create memcopy enactor
 	MemcopyEnactorTuned memcopy_enactor;
 
-	// Perform a single memcopy iteration to allocate any memory if needed, prime code caches, etc.
+	// Move a fresh copy of the problem into device storage
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedMemcopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+
+	// Perform a single memcopy iteration to allocate any memory if needed, prime code caches, etc.
 	memcopy_enactor.DEBUG = true;
 	memcopy_enactor.Enact(d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 	memcopy_enactor.DEBUG = false;
@@ -111,10 +113,6 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 	double elapsed = 0;
 	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
-
-		// Move a fresh copy of the problem into device storage
-		if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-			"TimedMemcopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start cuda timing record
 		cudaEventRecord(start_event, 0);
@@ -172,7 +170,8 @@ void TestMemcopy(int iterations, size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		RandomBits<T>(h_data[i], 0);
+//		RandomBits<T>(h_data[i], 0);
+		h_data[i] = i;
 		h_reference[i] = h_data[i];
 	}
 

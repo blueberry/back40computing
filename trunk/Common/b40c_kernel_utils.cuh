@@ -149,7 +149,7 @@ struct CtaWorkDistribution
 	SizeT total_grains;		// Number of "grain" blocks to break the problem into (round up)
 	SizeT grains_per_cta;	// Number of "grain" blocks per CTA
 	SizeT extra_grains;		// Number of CTAs having one extra "grain block"
-	
+	int grid_size;			// Number of CTAs
 
 	/**
 	 * Constructor
@@ -161,7 +161,8 @@ struct CtaWorkDistribution
 			num_elements(num_elements),
 			total_grains((num_elements + schedule_granularity - 1) / schedule_granularity),		// round up
 			grains_per_cta(total_grains / grid_size),											// round down for the ks
-			extra_grains(total_grains - (grains_per_cta * grid_size)) 							// the CTAs with +1 grains
+			extra_grains(total_grains - (grains_per_cta * grid_size)), 							// the CTAs with +1 grains
+			grid_size(grid_size)
 	{}
 
 

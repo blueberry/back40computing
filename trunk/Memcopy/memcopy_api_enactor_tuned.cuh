@@ -60,11 +60,11 @@ template <TunedGranularityEnum GRANULARITY_ENUM, int CUDA_ARCH> struct TunedGran
  * call sites.
  ******************************************************************************/
 
-template <typename T, int GRANULARITY_ENUM>
+template <int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::OCCUPANCY))
-__global__ void TunedMemcopyKernel(T * __restrict, T * __restrict, size_t * __restrict, CtaWorkDistribution<size_t>, int, int);
+__global__ void TunedMemcopyKernel(void * __restrict, void * __restrict, size_t * __restrict, CtaWorkDistribution<size_t>, int, int);
 
 
 
@@ -131,20 +131,31 @@ protected:
 	 */
 	template <typename MemcopyConfig>
 	cudaError_t MemcopyPass(
-		typename MemcopyConfig::T *d_dest,
-		typename MemcopyConfig::T *d_src,
+		void *d_dest,
+		void *d_src,
 		CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
-		int sweep_grid_size)
+		int extra_bytes)
 	{
 		int dynamic_smem = 0;
 		int threads = 1 << MemcopyConfig::LOG_THREADS;
 
+		if (DEBUG) {
+			printf("\n\n");
+			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
+				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
+			printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
+				work.grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(typename MemcopyConfig::SizeT));
+			printf("Work: \t\t[type bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d, extra_bytes: %d]\n",
+				sizeof(typename MemcopyConfig::T), work.num_elements, 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
+			printf("\n\n");
+		}		
+		
 		cudaError_t retval = cudaSuccess;
 		do {
 
-			TunedMemcopyKernel<typename MemcopyConfig::T, MemcopyConfig::GRANULARITY_ENUM>
-					<<<sweep_grid_size, threads, dynamic_smem>>>(
-				d_dest, d_src, d_work_progress, work, progress_selector, 0);
+			TunedMemcopyKernel<MemcopyConfig::GRANULARITY_ENUM>
+					<<<work.grid_size, threads, dynamic_smem>>>(
+				d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__))) break;
@@ -166,10 +177,31 @@ protected:
 		// Obtain tuned granularity type
 		typedef TunedGranularity<Detail::GRANULARITY_ENUM, CUDA_ARCH> MemcopyConfig;
 		typedef typename MemcopyConfig::T T;
+		typedef typename MemcopyConfig::SizeT SizeT;
+		const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
 
-		// Enact sort using that type
-		return ((BaseEnactorType *) this)->template Enact<MemcopyConfig>(
-			(T*) storage.d_dest, (T*) storage.d_src, storage.num_bytes, detail.max_grid_size);
+		// Obtain a CTA work distribution for copying items of type T (instead of bytes)
+		int num_elements = storage.num_bytes / sizeof(T);
+		int grid_size = (MemcopyConfig::WORK_STEALING) ? 
+			cuda_props.device_props.multiProcessorCount * MemcopyConfig::CTA_OCCUPANCY : 								// workstealing  
+			SweepGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, detail.max_grid_size);		// even-shares
+		CtaWorkDistribution<SizeT> work(num_elements, SCHEDULE_GRANULARITY, grid_size);
+		int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
+		
+		cudaError_t retval = cudaSuccess;
+		do {
+			// Setup
+			if (retval = Setup<MemcopyConfig>(work)) break;
+			
+			// Invoke memcopy kernel
+			if (retval = MemcopyPass<MemcopyConfig>(storage.d_dest, storage.d_src, work, extra_bytes)) break;
+
+		} while (0);
+
+		// Cleanup
+		Cleanup(retval);
+
+	    return retval;
 	}
 
 	
@@ -216,6 +248,7 @@ public:
 		
 		return BaseArchType::Enact(storage, detail);
 	}
+	
 
 	/**
 	 * Enacts a memcopy operation on the specified device data using the
@@ -289,10 +322,10 @@ struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH>
  * properly support template specialization around kernel call sites.
  ******************************************************************************/
 
-template <typename T, int GRANULARITY_ENUM>
+template <int GRANULARITY_ENUM>
 void TunedMemcopyKernel(
-	T 				* __restrict d_out,
-	T 				* __restrict d_in,
+	void			* __restrict d_out,
+	void			* __restrict d_in,
 	size_t 			* __restrict d_work_progress,
 	CtaWorkDistribution<size_t> work_decomposition,
 	int 			progress_selector,
@@ -301,10 +334,16 @@ void TunedMemcopyKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__> MemcopyConfig;
 	typedef MemcopyKernelConfig<MemcopyConfig> KernelConfig;
+	typedef typename MemcopyConfig::T T;
 
+	T* out = reinterpret_cast<T*>(d_out);
+	T* in = reinterpret_cast<T*>(d_in);
+	
 	// Invoke the wrapped kernel logic
 	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
-		d_out, d_in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
+		out, 
+		in, 
+		d_work_progress, work_decomposition, progress_selector, extra_bytes);
 }
 
 
