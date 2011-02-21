@@ -96,10 +96,10 @@ namespace b40c {
 												 	 	 B40C_SM10_SM_THREADS())
 
 // Physical threads per CTA
-#define B40C_SM20_CTA_THREADS()			(1024)		// 1024 threads on SM2.0+
-#define B40C_SM10_CTA_THREADS()			(512)		// 512 threads on SM1.0-SM1.3
-#define B40C_CTA_THREADS(arch)			((arch >= 200) ? B40C_SM20_CTA_THREADS() : 	\
-												 	 	 B40C_SM10_CTA_THREADS())
+#define B40C_SM20_LOG_CTA_THREADS()		(10)		// 1024 threads on SM2.0+
+#define B40C_SM10_LOG_CTA_THREADS()		(9)			// 512 threads on SM1.0-SM1.3
+#define B40C_LOG_CTA_THREADS(arch)		((arch >= 200) ? B40C_SM20_LOG_CTA_THREADS() : 	\
+												 	 	 B40C_SM10_LOG_CTA_THREADS())
 
 // Max CTAs per SM
 #define B40C_SM20_SM_CTAS()				(8)		// 8 CTAs on SM2.0+

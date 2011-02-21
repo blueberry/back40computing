@@ -48,7 +48,7 @@ int g_iterations = 0;
 template <typename T>
 struct Detail
 {
-	MemcopyEnactor<> memcopy_enactor;
+	MemcopyEnactor<> enactor;
 	T *d_dest;
 	T *d_src;
 	size_t num_elements;
@@ -69,7 +69,7 @@ void Usage()
 	printf("\ntune_memcopy_large [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
 	printf("\n");
-	printf("\t--v\tDisplays copied results to the console.\n");
+	printf("\t--v\tDisplays verbose configuration to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the memcopy operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
@@ -90,9 +90,11 @@ void TimedMemcopy(Detail<typename Config::T> &detail)
 	fflush(stdout);
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	detail.memcopy_enactor.DEBUG = g_verbose;
-	detail.memcopy_enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas);
-	detail.memcopy_enactor.DEBUG = false;
+	detail.enactor.DEBUG = g_verbose;
+	if (detail.enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas)) {
+		exit(1);
+	}
+	detail.enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
 
@@ -108,17 +110,19 @@ void TimedMemcopy(Detail<typename Config::T> &detail)
 		cudaEventRecord(start_event, 0);
 
 		// Call the memcopy API routine
-		detail.memcopy_enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas);
+		if (detail.enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas)) {
+			exit(1);
+		}
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
 		cudaEventSynchronize(stop_event);
 		cudaEventElapsedTime(&duration, start_event, stop_event);
 		elapsed += (double) duration;
-	}
 
-	// Flushes any stdio from the GPU
-	cudaThreadSynchronize();
+		// Flushes any stdio from the GPU
+		cudaThreadSynchronize();
+	}
 
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
@@ -138,30 +142,34 @@ void TimedMemcopy(Detail<typename Config::T> &detail)
  * Kernel configuration sweep types
  ******************************************************************************/
 
-enum Ranges
-{
-	MIN_LOG_THREADS 			= 5,
-	MAX_LOG_THREADS 			= 10 + 1,
 
-	MIN_LOG_LOAD_VEC_SIZE 		= 0,
-	MAX_LOG_LOAD_VEC_SIZE 		= 2 + 1,
-
-	MIN_LOG_LOADS_PER_TILE 		= 0,
-	MAX_LOG_LOADS_PER_TILE 		= 2 + 1,
-
-	MIN_CACHE_MODIFIER 			= NONE,
-	MAX_CACHE_MODIFIER 			= LIMIT,
-
-	MIN_WORK_STEALING 			= 0,
-	MAX_WORK_STEALING 			= 1 + 1
-};
 
 
 template <int CUDA_ARCH, typename T>
 struct SweepConfig
 {
+	enum
+	{
+		MIN_LOG_THREADS 			= B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		MAX_LOG_THREADS 			= B40C_LOG_CTA_THREADS(CUDA_ARCH) + 1,
+
+		MIN_LOG_LOAD_VEC_SIZE 		= 0,
+		MAX_LOG_LOAD_VEC_SIZE 		= 2 + 1,
+
+		MIN_LOG_LOADS_PER_TILE 		= 0,
+		MAX_LOG_LOADS_PER_TILE 		= 2 + 1,
+
+		MIN_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE : NONE + 1,
+//		MAX_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE + 1 : LIMIT,			// No cache modifiers exist pre-fermi
+		MAX_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE + 1 : CS,			// CS seems to break things on windows with 128-bit vector loads
+
+		MIN_WORK_STEALING 			= 0,
+		MAX_WORK_STEALING 			= (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1				// Atomics needed for pre-Fermi work-stealing are too painful
+	};
+
 	// Next WORK_STEALING
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
 	struct Iterate
 	{
 		static void Invoke(Detail<T> &detail)
@@ -172,57 +180,72 @@ struct SweepConfig
 			TimedMemcopy<Config>(detail);
 
 			// Next WORK_STEALING
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING + 1>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING + 1,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 		}
 	};
 
 	// Last WORK_STEALING, next CACHE_MODIFIER
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, MAX_WORK_STEALING,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
 	{
 		static void Invoke(Detail<T> &detail)
 		{
 			// Next CACHE_MODIFIER (reset WORK_STEALING)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER + 1, MIN_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER + 1, MIN_WORK_STEALING,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 		}
 	};
 
 	// Last CACHE_MODIFIER, next LOG_LOADS_PER_TILE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int WORK_STEALING>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int WORK_STEALING,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, WORK_STEALING,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
 	{
 		static void Invoke(Detail<T> &detail)
 		{
 			// Next LOG_LOADS_PER_TILE (reset CACHE_MODIFIER)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE + 1, MIN_CACHE_MODIFIER, MIN_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE + 1, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_LOADS_PER_TILE, next LOG_LOAD_VEC_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int CACHE_MODIFIER, int WORK_STEALING>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int CACHE_MODIFIER, int WORK_STEALING,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
 	{
 		static void Invoke(Detail<T> &detail)
 		{
 			// Next LOG_LOAD_VEC_SIZE (reset LOG_LOADS_PER_TILE)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE + 1, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE + 1, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_LOAD_VEC_SIZE, next LOG_THREADS
-	template <int LOG_THREADS, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING>
-	struct Iterate<LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	struct Iterate<LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
 	{
 		static void Invoke(Detail<T> &detail)
 		{
 			// Next LOG_THREADS (reset LOG_LOAD_VEC_SIZE)
-			Iterate<LOG_THREADS + 1, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS + 1, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_THREADS
-	template <int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING>
-	struct Iterate<MAX_LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING>
+	template <int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	struct Iterate<MAX_LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
 	{
 		static void Invoke(Detail<T> &detail) {}
 	};
@@ -230,7 +253,8 @@ struct SweepConfig
 	// Interface
 	static void Invoke(Detail<T> &detail)
 	{
-		Iterate<MIN_LOG_THREADS, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING>::Invoke(detail);
+		Iterate<MIN_LOG_THREADS, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
+			MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
 	}
 };
 
@@ -253,11 +277,10 @@ public:
 	// Constructor
 	MemcopyTuner() {}
 
-	// The arch version of the code for the current device that actually have
-	// compiled kernels for
+	// Return the current device's sm version
 	int PtxVersion()
 	{
-		return cuda_props.kernel_ptx_version;
+		return cuda_props.device_sm_version;
 	}
 
 	// Dispatch call-back with static CUDA_ARCH
@@ -370,9 +393,9 @@ int main(int argc, char** argv)
 	MemcopyTuner tuner;
 
 	// Execute test(s)
-	tuner.TestMemcopy<unsigned char>(num_elements * 4);
-	tuner.TestMemcopy<unsigned short>(num_elements * 2);
-	tuner.TestMemcopy<unsigned int>(num_elements);
+//	tuner.TestMemcopy<unsigned char>(num_elements * 4);
+//	tuner.TestMemcopy<unsigned short>(num_elements * 2);
+//	tuner.TestMemcopy<unsigned int>(num_elements);
 	tuner.TestMemcopy<unsigned long long>(num_elements / 2);
 
 	return 0;

@@ -80,7 +80,7 @@ protected:
 		do {
 
 			MemcopyKernel<MemcopyKernelConfigType><<<sweep_grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
-				d_dest, d_src, d_work_progress, work, progress_selector);
+				d_dest, d_src, d_work_progress, work, progress_selector, 0);
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__))) break;
 

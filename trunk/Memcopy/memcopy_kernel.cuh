@@ -90,7 +90,7 @@ __device__ __forceinline__ void ProcessTile(
 		UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 	__syncthreads();
-	
+
 	// Store tile
 	StoreTile<
 		T,
@@ -114,7 +114,8 @@ struct MemcopyPass
 		typename Config::T 			* __restrict &d_in,
 		typename Config::SizeT 		* __restrict &d_work_progress,
 		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
-		int &progress_selector)
+		int &progress_selector,
+		int &extra_bytes)
 	{
 		typedef typename Config::SizeT SizeT;
 
@@ -136,8 +137,18 @@ struct MemcopyPass
 
 		// Clean up last partial tile with guarded-io
 		if (guarded_elements) {
-	
 			ProcessTile<Config, false>(d_out, d_in, cta_offset, cta_elements);
+		}
+
+		// Cleanup any extra bytes
+		if ((sizeof(typename Config::T) > 1) && (blockIdx.x == gridDim.x - 1) && (threadIdx.x < extra_bytes)) {
+
+			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + cta_elements);
+			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + cta_elements);
+			unsigned char extra_byte;
+
+			ModifiedLoad<unsigned char, Config::CACHE_MODIFIER>::Ld(extra_byte, d_in_bytes, threadIdx.x);
+			ModifiedStore<unsigned char, Config::CACHE_MODIFIER>::St(extra_byte, d_out_bytes, threadIdx.x);
 		}
 	}
 };
@@ -154,7 +165,8 @@ struct MemcopyPass <Config, true>
 		typename Config::T 			* __restrict &d_in,
 		typename Config::SizeT 		* __restrict &d_work_progress,
 		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
-		int &progress_selector)
+		int &progress_selector,
+		int &extra_bytes)
 	{
 		typedef typename Config::SizeT SizeT;
 
@@ -186,9 +198,18 @@ struct MemcopyPass <Config, true>
 
 		// Last CTA does any extra, guarded work
 		if (blockIdx.x == gridDim.x - 1) {
-			ProcessTile<Config, false>(d_out, d_in, unguarded_elements, work_decomposition.num_elements);
-		}
 
+			ProcessTile<Config, false>(d_out, d_in, unguarded_elements, work_decomposition.num_elements);
+
+			// Cleanup any extra bytes
+			if ((sizeof(typename Config::T) > 1) && (threadIdx.x < extra_bytes)) {
+				unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + work_decomposition.num_elements);
+				unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + work_decomposition.num_elements);
+				unsigned char extra_byte;
+				ModifiedLoad<unsigned char, Config::CACHE_MODIFIER>::Ld(extra_byte, d_in_bytes, threadIdx.x);
+				ModifiedStore<unsigned char, Config::CACHE_MODIFIER>::St(extra_byte, d_out_bytes, threadIdx.x);
+			}
+		}
 	}
 };
 
@@ -204,10 +225,11 @@ void MemcopyKernel(
 	typename KernelConfig::T 			* __restrict d_in,
 	typename KernelConfig::SizeT 		* __restrict d_work_progress,
 	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
-	int progress_selector)
+	int progress_selector,
+	int extra_bytes)
 {
 	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
-		d_out, d_in, d_work_progress, work_decomposition, progress_selector);
+		d_out, d_in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
 }
 
 
@@ -220,6 +242,7 @@ void __wrapper__device_stub_MemcopyKernel(
 	typename KernelConfig::T 			* __restrict &,
 	typename KernelConfig::SizeT 		* __restrict &,
 	CtaWorkDistribution<typename KernelConfig::SizeT> &,
+	int &,
 	int &) {}
 
 
