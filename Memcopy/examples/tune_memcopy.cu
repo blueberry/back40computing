@@ -393,9 +393,9 @@ int main(int argc, char** argv)
 	MemcopyTuner tuner;
 
 	// Execute test(s)
-//	tuner.TestMemcopy<unsigned char>(num_elements * 4);
-//	tuner.TestMemcopy<unsigned short>(num_elements * 2);
-//	tuner.TestMemcopy<unsigned int>(num_elements);
+	tuner.TestMemcopy<unsigned char>(num_elements * 4);
+	tuner.TestMemcopy<unsigned short>(num_elements * 2);
+	tuner.TestMemcopy<unsigned int>(num_elements);
 	tuner.TestMemcopy<unsigned long long>(num_elements / 2);
 
 	return 0;
