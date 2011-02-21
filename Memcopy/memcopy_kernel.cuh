@@ -89,6 +89,8 @@ __device__ __forceinline__ void ProcessTile(
 		Config::CACHE_MODIFIER,
 		UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
+	__syncthreads();
+	
 	// Store tile
 	StoreTile<
 		T,

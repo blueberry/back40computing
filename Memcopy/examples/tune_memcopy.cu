@@ -87,6 +87,7 @@ template <typename Config>
 void TimedMemcopy(Detail<typename Config::T> &detail)
 {
 	Config::Print();
+	fflush(stdout);
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	detail.memcopy_enactor.DEBUG = g_verbose;
@@ -121,9 +122,10 @@ void TimedMemcopy(Detail<typename Config::T> &detail)
 
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
-	double throughput = ((double) detail.num_elements) / avg_runtime / 1000.0 / 1000.0;
+	double throughput =  0.0;
+	if (avg_runtime > 0.0) throughput = ((double) detail.num_elements) / avg_runtime / 1000.0 / 1000.0; 
     printf(", %f, %f, %f\n",
-		avg_runtime, throughput, 2 * throughput * sizeof(Config::T));
+		avg_runtime, throughput, 2 * throughput * sizeof(typename Config::T));
     fflush(stdout);
 
     // Clean up events
@@ -166,7 +168,7 @@ struct SweepConfig
 		{
 			// Invoke this config
 			const int CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> LOG_THREADS);
-			typedef MemcopyConfig<typename T, CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, (CacheModifier) CACHE_MODIFIER, WORK_STEALING> Config;
+			typedef MemcopyConfig<T, CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, (CacheModifier) CACHE_MODIFIER, WORK_STEALING> Config;
 			TimedMemcopy<Config>(detail);
 
 			// Next WORK_STEALING
@@ -325,16 +327,6 @@ public:
 	    if (detail.d_src) cudaFree(detail.d_src);
 	    if (detail.d_dest) cudaFree(detail.d_dest);
 
-		// Display copied data
-		if (g_verbose) {
-			printf("\n\nData:\n");
-			for (int i = 0; i < num_elements; i++) {
-				PrintValue<T>(h_data[i]);
-				printf(", ");
-			}
-			printf("\n\n");
-		}
-
 	    // Verify solution
 		CompareResults<T>(h_data, h_reference, num_elements, true);
 		printf("\n");
@@ -379,9 +371,9 @@ int main(int argc, char** argv)
 
 	// Execute test(s)
 	tuner.TestMemcopy<unsigned char>(num_elements * 4);
-//	tuner.TestMemcopy<unsigned short>(num_elements * 2);
-//	tuner.TestMemcopy<unsigned int>(num_elements);
-//	tuner.TestMemcopy<unsigned long long>(num_elements / 2);
+	tuner.TestMemcopy<unsigned short>(num_elements * 2);
+	tuner.TestMemcopy<unsigned int>(num_elements);
+	tuner.TestMemcopy<unsigned long long>(num_elements / 2);
 
 	return 0;
 }
