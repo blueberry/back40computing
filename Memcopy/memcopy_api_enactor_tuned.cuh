@@ -64,7 +64,7 @@ template <typename T, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::OCCUPANCY))
-__global__ void TunedMemcopyKernel(T * __restrict d_out, T * __restrict d_in, size_t * __restrict d_work_progress, CtaWorkDistribution<size_t> work_decomposition, int progress_selector);
+__global__ void TunedMemcopyKernel(T * __restrict, T * __restrict, size_t * __restrict, CtaWorkDistribution<size_t>, int, int);
 
 
 
@@ -108,13 +108,13 @@ protected:
 	struct Storage {
 		void *d_dest;
 		void *d_src;
-		size_t num_elements;
+		size_t num_bytes;
 
 		// Constructor
 		Storage(
 			void *d_dest,
 			void *d_src,
-			size_t num_elements) : d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
+			size_t num_bytes) : d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
 	};
 
 
@@ -144,7 +144,7 @@ protected:
 
 			TunedMemcopyKernel<typename MemcopyConfig::T, MemcopyConfig::GRANULARITY_ENUM>
 					<<<sweep_grid_size, threads, dynamic_smem>>>(
-				d_dest, d_src, d_work_progress, work, progress_selector);
+				d_dest, d_src, d_work_progress, work, progress_selector, 0);
 
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__))) break;
@@ -169,7 +169,7 @@ protected:
 
 		// Enact sort using that type
 		return ((BaseEnactorType *) this)->template Enact<MemcopyConfig>(
-			(T*) storage.d_dest, (T*) storage.d_src, storage.num_elements, detail.max_grid_size);
+			(T*) storage.d_dest, (T*) storage.d_src, storage.num_bytes, detail.max_grid_size);
 	}
 
 	
@@ -197,7 +197,7 @@ public:
 	 * 		Pointer to array of bytes to be copied into
 	 * @param d_src
 	 * 		Pointer to array of bytes to be copied from
-	 * @param length
+	 * @param num_bytes
 	 * 		Number of bytes to copy
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
@@ -208,11 +208,11 @@ public:
 	cudaError_t Enact(
 		void *d_dest,
 		void *d_src,
-		size_t length,
+		size_t num_bytes,
 		int max_grid_size = 0)
 	{
 		Detail<GRANULARITY_ENUM> detail(max_grid_size);
-		Storage storage(d_dest, d_src, length);
+		Storage storage(d_dest, d_src, num_bytes);
 		
 		return BaseArchType::Enact(storage, detail);
 	}
@@ -225,7 +225,7 @@ public:
 	 * 		Pointer to array of bytes to be copied into
 	 * @param d_src
 	 * 		Pointer to array of bytes to be copied from
-	 * @param length
+	 * @param num_bytes
 	 * 		Number of bytes to copy
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
@@ -235,10 +235,10 @@ public:
 	cudaError_t Enact(
 		void *d_dest,
 		void *d_src,
-		size_t length,
+		size_t num_bytes,
 		int max_grid_size = 0)
 	{
-		return Enact<LARGE_PROBLEM>(d_dest, d_src, length, max_grid_size);
+		return Enact<LARGE_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
 	}
 };
 
@@ -295,7 +295,8 @@ void TunedMemcopyKernel(
 	T 				* __restrict d_in,
 	size_t 			* __restrict d_work_progress,
 	CtaWorkDistribution<size_t> work_decomposition,
-	int 			progress_selector)
+	int 			progress_selector,
+	int 			extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__> MemcopyConfig;
@@ -303,7 +304,7 @@ void TunedMemcopyKernel(
 
 	// Invoke the wrapped kernel logic
 	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
-		d_out, d_in, d_work_progress, work_decomposition, progress_selector);
+		d_out, d_in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
 }
 
 

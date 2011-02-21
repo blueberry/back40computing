@@ -69,7 +69,8 @@ else
 	ARCH = -m64
 endif
 
-NVCCFLAGS = -Xptxas -v
+NVCCFLAGS = -Xptxas -v 
+#NVCCFLAGS += -Xcompiler /bigobj
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)

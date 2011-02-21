@@ -39,11 +39,11 @@ namespace b40c {
 enum CacheModifier {
 	NONE 	= 0,		// default (currently CA)
 	CG		= 1,		// cache global
-	CS		= 2, 		// cache streaming
-	CA		= 3,		// cache all
-	WB		= 3,			// write back all levels
+	CA		= 2,		// cache all
+	WB		= 2,		// write back all levels
+	CS		= 3, 		// cache streaming
 
-	LIMIT	= WB + 1
+	LIMIT	= CS + 1
 };
 
 
