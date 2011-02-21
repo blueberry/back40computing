@@ -61,13 +61,8 @@ struct FamilyClassifier
  *
  * We can tune this type per SM-architecture, per problem type.
  */
-template <
-	int CUDA_ARCH,
-	typename KeyType,
-	typename ValueType,
-	typename SizeT>
-struct TunedConfig :
-	TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, KeyType, ValueType, SizeT> {};
+template <int CUDA_ARCH>
+struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY> {};
 
 
 
@@ -75,17 +70,17 @@ struct TunedConfig :
 // SM2.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename SizeT>
-struct TunedConfig<SM20, KeyType, ValueType, SizeT>
+template <>
+struct TunedConfig<SM20>
 	: MemcopyConfig<
-		T,						// Data type
-		SizeT,					// Index type
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		unsigned char,			// Data type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		7,						// LOG_THREADS: 				128 threads
-		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
-		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
-		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		6,						// LOG_THREADS: 				128 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		2,						// LOG_LOADS_PER_TILE: 			4 loads
+		NONE,					// CACHE_MODIFIER: 				CA (cache all levels)
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		10						// LOG_SCHEDULE_GRANULARITY:	2048 items
 	> {};
 
 
@@ -94,17 +89,17 @@ struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 // SM1.3 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename SizeT>
-struct TunedConfig<SM13, KeyType, ValueType, SizeT>
+template <>
+struct TunedConfig<SM13>
 	: MemcopyConfig<
-		T,						// Data type
-		SizeT,					// Index type
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		unsigned char,			// Data type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		7,						// LOG_THREADS: 				128 threads
-		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
-		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
-		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		6,						// LOG_THREADS: 				128 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		2,						// LOG_LOADS_PER_TILE: 			4 loads
+		NONE,					// CACHE_MODIFIER: 				CA (cache all levels)
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		10						// LOG_SCHEDULE_GRANULARITY:	2048 items
 	> {};
 
 
@@ -113,19 +108,19 @@ struct TunedConfig<SM13, KeyType, ValueType, SizeT>
 // SM1.0 default granularity parameterization type
 //-----------------------------------------------------------------------------
 
-template <typename KeyType, typename ValueType, typename SizeT>
-struct TunedConfig<SM10, KeyType, ValueType, SizeT>
+template <>
+struct TunedConfig<SM10>
 	: MemcopyConfig<
-		T,						// Data type
-		SizeT,					// Index type
-		9,						// LOG_SCHEDULE_GRANULARITY: 	512 items
+		unsigned char,			// Data type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		7,						// LOG_THREADS: 				128 threads
-		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
-		1,						// LOG_LOADS_PER_TILE: 			2 loads per tile
-		NONE					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		6,						// LOG_THREADS: 				128 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		2,						// LOG_LOADS_PER_TILE: 			4 loads
+		NONE,					// CACHE_MODIFIER: 				CA (cache all levels)
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		10						// LOG_SCHEDULE_GRANULARITY:	2048 items
 	> {};
-{};
+
 
 
 

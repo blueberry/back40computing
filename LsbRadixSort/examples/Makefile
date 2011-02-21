@@ -142,6 +142,7 @@ SORTING_DEPS = 	./Makefile \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
 				../../Common/b40c_kernel_data_movement.cuh \
+				../../Common/b40c_enactor_base.cuh \
 				../../Common/b40c_kernel_utils.cuh \
 				../../Common/b40c_vector_types.cuh 
 				 

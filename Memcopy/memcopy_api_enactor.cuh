@@ -26,7 +26,9 @@
 #pragma once
 
 #include <stdio.h>
+
 #include "b40c_kernel_utils.cuh"
+#include "b40c_enactor_base.cuh"
 #include "memcopy_kernel.cuh"
 
 namespace b40c {
@@ -34,37 +36,20 @@ using namespace memcopy;
 
 
 /**
- * Basic mem-copy enactor class.
+ * Basic memcopy enactor class.
  */
 template <typename DerivedEnactorType = void>
-class MemcopyEnactor
+class MemcopyEnactor : public EnactorBase
 {
 protected:
 
 	//---------------------------------------------------------------------
-	// Specialize templated dispatch to self (no derived class) or 
-	// derived class (CRTP -- curiously recurring template pattern)
-	//---------------------------------------------------------------------
-
-	template <typename DerivedType, int __dummy = 0>
-	struct DispatchType 
-	{
-		typedef DerivedType Type;
-	};
-	
-	template <int __dummy>
-	struct DispatchType<void, __dummy>
-	{
-		typedef MemcopyEnactor<void> Type;
-	};
-
-	
-	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
-		
-	// Device properties
-	const CudaProperties cuda_props;
+
+	// Dispatch type (to self, or to derived class as per CRTP -- curiously
+	// recurring template pattern
+	typedef typename DispatchType<MemcopyEnactor, DerivedEnactorType>::Type Dispatch;
 
 	// A pair of counters in global device memory and a selector for
 	// indexing into the pair.  If we perform workstealing passes, the
@@ -75,125 +60,42 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
-	// Utility Routines
+	// Memcopy Pass
 	//-----------------------------------------------------------------------------
-	
-	/**
-	 * Returns the number of threadblocks that the specified device should 
-	 * launch for [up|down]sweep grids for the given problem size
+
+    /**
+	 * Performs a distribution sorting pass over a single digit place
 	 */
 	template <typename MemcopyConfig>
-	int SweepGridSize(int num_elements, int max_grid_size) 
+	cudaError_t MemcopyPass(
+		typename MemcopyConfig::T *d_dest,
+		typename MemcopyConfig::T *d_src,
+		CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
+		int sweep_grid_size)
 	{
-		const int SCHEDULE_GRANULARITY = 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
+		typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
+		int dynamic_smem = 0;
 
-		int default_sweep_grid_size;
-		if (cuda_props.device_sm_version < 120) {
-			
-			// G80/G90: Four times the SM-count
-			default_sweep_grid_size = cuda_props.device_props.multiProcessorCount * 4;
-			
-		} else if (cuda_props.device_sm_version < 200) {
-			
-			// GT200: Special sauce
-			
-			// Start with with full downsweep occupancy of all SMs 
-			default_sweep_grid_size = 
-				cuda_props.device_props.multiProcessorCount * MemcopyConfig::CTA_OCCUPANCY;
+		cudaError_t retval = cudaSuccess;
+		do {
 
-			// Increase by default every 64 million key-values
-			int step = 1024 * 1024 * 64;		 
-			default_sweep_grid_size *= (num_elements + step - 1) / step;
+			MemcopyKernel<MemcopyKernelConfigType><<<sweep_grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
+				d_dest, d_src, d_work_progress, work, progress_selector);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
+				"MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__))) break;
 
-			double multiplier1 = 4.0;
-			double multiplier2 = 16.0;
+		} while (0);
 
-			double delta1 = 0.068;
-			double delta2 = 0.1285;
-			
-			int dividend = (num_elements + 512 - 1) / 512;
-
-			int bumps = 0;
-			while(true) {
-
-				if (default_sweep_grid_size <= cuda_props.device_props.multiProcessorCount) {
-					break;
-				}
-				
-				double quotient = ((double) dividend) / (multiplier1 * default_sweep_grid_size);
-				quotient -= (int) quotient;
-
-				if ((quotient > delta1) && (quotient < 1 - delta1)) {
-
-					quotient = ((double) dividend) / (multiplier2 * default_sweep_grid_size / 3.0);
-					quotient -= (int) quotient;
-
-					if ((quotient > delta2) && (quotient < 1 - delta2)) {
-						break;
-					}
-				}
-
-				if (bumps == 3) {
-					// Bump it down by 27
-					default_sweep_grid_size -= 27;
-					bumps = 0;
-				} else {
-					// Bump it down by 1
-					default_sweep_grid_size--;
-					bumps++;
-				}
-			}
-			
-		} else {
-
-			// GF10x
-			if (cuda_props.device_sm_version == 210) {
-				// GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * MemcopyConfig::CTA_OCCUPANCY);
-			} else {
-				// Anything but GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * MemcopyConfig::CTA_OCCUPANCY) - 2;
-			}
-		}
-		
-		// Reduce by override, if specified
-		if (max_grid_size > 0) {
-			default_sweep_grid_size = max_grid_size;
-		}
-		
-		// Reduce if we have less work than we can divide up among this 
-		// many CTAs
-		
-		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
-		if (default_sweep_grid_size > grains) {
-			default_sweep_grid_size = grains;
-		}
-		
-		return default_sweep_grid_size;
-	}	
+		return retval;
+	}
 
 
 public:
 
 	/**
-	 * Debug level.  If set, the enactor blocks after kernel calls to check
-	 * for successful launch/execution
-	 */
-	bool DEBUG;
-
-
-	/**
 	 * Constructor.
 	 */
-	MemcopyEnactor() :
-			d_work_progress(NULL),
-			progress_selector(0),
-#if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
-			DEBUG(true)
-#else
-			DEBUG(false)
-#endif
-		{}
+	MemcopyEnactor() : d_work_progress(NULL), progress_selector(0) {}
 
 
 	/**
@@ -225,12 +127,11 @@ public:
 	{
 		typedef typename MemcopyConfig::T T;
 		typedef typename MemcopyConfig::SizeT SizeT;
-		typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
 
 		const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
 
-		int sweep_grid_size = SweepGridSize<MemcopyConfig>(length, max_grid_size);
-		int dynamic_smem = 0;
+		int sweep_grid_size = SweepGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(
+			length, max_grid_size);
 		
 		CtaWorkDistribution<SizeT> work(length, SCHEDULE_GRANULARITY, sweep_grid_size);
 
@@ -238,8 +139,8 @@ public:
 			printf("\n\n");
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
 				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-			printf("Memcopy: \t[grid_size: %d, threads %d]\n",
-				sweep_grid_size, 1 << MemcopyConfig::LOG_THREADS);
+			printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
+				sweep_grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(SizeT));
 			printf("Work: \t\t[num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
 				work.num_elements, SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
 			printf("\n\n");
@@ -268,10 +169,7 @@ public:
 			}
 
 			// Invoke memcopy kernel
-			MemcopyKernel<MemcopyKernelConfigType><<<sweep_grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
-				d_dest, d_src, d_work_progress, work, progress_selector);
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__))) break;
+			if (retval = ((Dispatch *) this)->template MemcopyPass<MemcopyConfig>(d_dest, d_src, work, sweep_grid_size)) break;
 
 		} while (0);
 
