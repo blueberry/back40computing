@@ -48,7 +48,7 @@ namespace b40c {
 
 
 /******************************************************************************
- * Macros and routines for guiding compilation paths
+ * Macros for guiding compilation paths
  ******************************************************************************/
 
 /**
@@ -59,69 +59,6 @@ namespace b40c {
 #else
 	#define __B40C_CUDA_ARCH__ __CUDA_ARCH__			// Device path
 #endif
-
-
-/**
- * Enactor specialization for the device compilation-path. Use in accordance
- * with the curiously-recurring template pattern (CRTP).
- *
- * Dispatches to an Enact() method in the derived class that is
- * specialized by CUDA_ARCH.  This path drives the actual compilation of
- * kernels, allowing them to be specific to CUDA_ARCH.
- */
-template <int CUDA_ARCH, typename Derived>
-class Architecture
-{
-protected:
-
-	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage, Detail &detail)
-	{
-		Derived *enactor = static_cast<Derived*>(this);
-		return enactor->template Enact<CUDA_ARCH, Storage, Detail>(problem_storage, detail);
-	}
-};
-
-
-/**
- * Enactor specialization for the host compilation-path. Use in accordance
- * with the curiously-recurring template pattern (CRTP).
- *
- * Dispatches to an Enact() method in the derived class that is specialized by
- * the version of the accompanying PTX assembly.  This path does not drive the
- * compilation of kernels.
- */
-template <typename Derived>
-class Architecture<0, Derived>
-{
-protected:
-
-	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage, Detail &detail)
-	{
-		// Determine the arch version of the we actually have a compiled kernel for
-		Derived *enactor = static_cast<Derived*>(this);
-
-		// Dispatch
-		switch (enactor->PtxVersion()) {
-		case 100:
-			return enactor->template Enact<100, Storage, Detail>(problem_storage, detail);
-		case 110:
-			return enactor->template Enact<110, Storage, Detail>(problem_storage, detail);
-		case 120:
-			return enactor->template Enact<120, Storage, Detail>(problem_storage, detail);
-		case 130:
-			return enactor->template Enact<130, Storage, Detail>(problem_storage, detail);
-		case 200:
-			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
-		case 210:
-			return enactor->template Enact<210, Storage, Detail>(problem_storage, detail);
-		default:
-			// We were compiled for something new: treat it as we would SM2.0
-			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
-		};
-	}
-};
 
 
 
@@ -150,14 +87,21 @@ protected:
 #define B40C_SMEM_BYTES(arch)			((arch >= 200) ? B40C_SM20_SMEM_BYTES() : 	\
 														 B40C_SM10_SMEM_BYTES())		
 
-// Physical threads per SM (bytes)
+// Physical threads per SM
 #define B40C_SM20_SM_THREADS()			(1536)		// 1536 threads on SM2.0+
 #define B40C_SM12_SM_THREADS()			(1024)		// 1024 threads on SM1.2-SM1.3
 #define B40C_SM10_SM_THREADS()			(768)		// 768 threads on SM1.0-SM1.1
-#define B40C_SM_THREADS(arch)			((arch >= 200) ? B40C_SM20_SMEM_BYTES() : 	\
-										 (arch >= 200) ? B40C_SM12_SMEM_BYTES() : 	\
-														 B40C_SM10_SMEM_BYTES())		
+#define B40C_SM_THREADS(arch)			((arch >= 200) ? B40C_SM20_SM_THREADS() : 	\
+										 (arch >= 200) ? B40C_SM12_SM_THREADS() : 	\
+												 	 	 B40C_SM10_SM_THREADS())
 
+// Max CTAs per SM
+#define B40C_SM20_SM_CTAS()				(8)		// 8 CTAs on SM2.0+
+#define B40C_SM12_SM_CTAS()				(8)		// 8 CTAs on SM1.2-SM1.3
+#define B40C_SM10_SM_CTAS()				(8)		// 8 CTAs on SM1.0-SM1.1
+#define B40C_SM_CTAS(arch)				((arch >= 200) ? B40C_SM20_SM_CTAS() : 	\
+										 (arch >= 200) ? B40C_SM12_SM_CTAS() : 	\
+												 	 	 B40C_SM10_SM_CTAS())
 
 /******************************************************************************
  * Inlined PTX helper macros

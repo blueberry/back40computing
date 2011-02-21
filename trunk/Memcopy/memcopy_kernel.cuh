@@ -184,8 +184,7 @@ struct MemcopyPass <Config, true>
 
 		// Last CTA does any extra, guarded work
 		if (blockIdx.x == gridDim.x - 1) {
-			SizeT guarded_elements = work_decomposition.num_elements & (Config::TILE_ELEMENTS - 1);
-			ProcessTile<Config, false>(d_out, d_in, unguarded_elements, guarded_elements);
+			ProcessTile<Config, false>(d_out, d_in, unguarded_elements, work_decomposition.num_elements);
 		}
 
 	}

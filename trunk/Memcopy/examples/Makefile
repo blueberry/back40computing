@@ -92,11 +92,15 @@ endif
 
 DEPS = 			./Makefile \
 				../memcopy_api_enactor.cuh \
+				../memcopy_api_enactor_tuned.cuh \
 				../memcopy_api_granularity.cuh \
+				../memcopy_granularity_tuned_large.cuh \
+				../memcopy_granularity_tuned_small.cuh \
 				../memcopy_kernel.cuh \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
 				../../Common/b40c_kernel_data_movement.cuh \
+				../../Common/b40c_enactor_base.cuh \
 				../../Common/b40c_kernel_utils.cuh \
 				../../Common/b40c_vector_types.cuh 
 				 
@@ -111,7 +115,17 @@ large: bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_memcopy_large.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_memcopy_large.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
+
 	
+#-------------------------------------------------------------------------------
+# (make tune) Evaluates the space of memcopy configuration types
+#-------------------------------------------------------------------------------
+
+tune: bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : tune_memcopy.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) tune_memcopy.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 
 
 #
@@ -120,6 +134,7 @@ bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_memcopy_large.cu $(
 
 clean :
 	rm -f bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
+	rm -f bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

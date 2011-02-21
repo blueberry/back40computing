@@ -28,15 +28,13 @@
 
 // Memcopy includes
 #include "memcopy_api_granularity.cuh"
-#include "memcopy_api_enactor.cuh"
+#include "memcopy_api_enactor_tuned.cuh"
 
 // Test utils
-#include "b40c_util.h"					// Misc. utils (random-number gen, I/O, etc.)
+#include "b40c_util.h"
 
 using namespace b40c;
 using namespace memcopy;
-
-// #define DEBUG
 
 
 /******************************************************************************
@@ -47,20 +45,9 @@ bool g_verbose;
 int g_max_ctas = 0;
 
 
-/******************************************************************************
- * Test structures
- ******************************************************************************/
-
-// Test value-type structure 
-struct Fribbitz {
-	char a;
-	double b;
-	unsigned short c;
-};
-
 
 /******************************************************************************
- * Routines
+ * Utility Routines
  ******************************************************************************/
 
 /**
@@ -82,7 +69,6 @@ void Usage()
 }
 
 
-
 /**
  * Timed memcopy.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
@@ -94,11 +80,8 @@ void Usage()
  * @param[in] 		iterations  
  * 		Number of times to invoke the GPU memcopy primitive
  */
-template <typename T, typename SizeT>
-void TimedMemcopy(
-	SizeT num_elements,
-	T *h_data,
-	int iterations)
+template <typename T>
+void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 {
 	printf("%d iterations, %d elements", iterations, num_elements);
 	
@@ -110,24 +93,13 @@ void TimedMemcopy(
 		"TimedMemcopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create memcopy enactor
-	MemcopyEnactor<> memcopy_enactor;
-
-	// Establish granularity configuration type
-	typedef MemcopyConfig<
-		T,
-		9,									// 512 items
-		8,									// 8 CTAs/SM
-		7,									// 128 threads
-		1,									// vec-2
-		1,									// 2 loads per tile
-		NONE,								// Default cache modifier (CA)
-		true> Config;						// Workstealing mode
+	MemcopyEnactorTuned memcopy_enactor;
 
 	// Perform a single memcopy iteration to allocate any memory if needed, prime code caches, etc.
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedMemcopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 	memcopy_enactor.DEBUG = true;
-	memcopy_enactor.Enact<Config>(d_dest, d_src, num_elements, g_max_ctas);
+	memcopy_enactor.Enact(d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 	memcopy_enactor.DEBUG = false;
 
 	// Perform the timed number of memcopy iterations
@@ -148,7 +120,7 @@ void TimedMemcopy(
 		cudaEventRecord(start_event, 0);
 
 		// Call the memcopy API routine
-		memcopy_enactor.Enact<Config>(d_dest, d_src, num_elements, g_max_ctas);
+		memcopy_enactor.Enact(d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -186,10 +158,8 @@ void TimedMemcopy(
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to copy
  */
-template<typename T, typename SizeT>
-void TestMemcopy(
-	int iterations,
-	SizeT num_elements)
+template<typename T>
+void TestMemcopy(int iterations, size_t num_elements)
 {
     // Allocate the memcopy problem on the host and fill the keys with random bytes
 
@@ -201,14 +171,13 @@ void TestMemcopy(
 		exit(1);
 	}
 
-	for (SizeT i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
-		h_data[i] = i;
+	for (size_t i = 0; i < num_elements; ++i) {
+		RandomBits<T>(h_data[i], 0);
 		h_reference[i] = h_data[i];
 	}
 
     // Run the timing test
-	TimedMemcopy<T, SizeT>(num_elements, h_data, iterations);
+	TimedMemcopy<T>(num_elements, h_data, iterations);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
@@ -264,28 +233,26 @@ int main(int argc, char** argv)
     args.GetCmdLineArgumenti("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	typedef int SizeT;
-
 /*	
 	// Execute test(s)
-	TestMemcopy<unsigned char, SizeT>(
+	TestMemcopy<unsigned char>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned short, SizeT>(
+	TestMemcopy<unsigned short>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned int, SizeT>(
+	TestMemcopy<unsigned int>(
 			iterations,
 			num_elements);
-	TestMemcopy<unsigned long long, SizeT>(
+	TestMemcopy<unsigned long long>(
 			iterations,
 			num_elements);
-	TestMemcopy<Fribbitz, SizeT>(
+	TestMemcopy<Fribbitz>(
 			iterations,
 			num_elements);
 */
 
-	TestMemcopy<unsigned int, SizeT>(
+	TestMemcopy<unsigned int>(
 			iterations,
 			num_elements);
 

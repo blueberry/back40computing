@@ -103,9 +103,9 @@ struct DownsweepConfig
 {
 	typedef _KeyType							KeyType;
 	typedef _ValueType							ValueType;
-	typedef _SizeT							SizeT;
+	typedef _SizeT								SizeT;
 	static const int RADIX_BITS					= _RADIX_BITS;
-	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
+	static const int LOG_SCHEDULE_GRANULARITY	= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE 			= _LOG_LOAD_VEC_SIZE;

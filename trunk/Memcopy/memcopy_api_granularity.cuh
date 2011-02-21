@@ -44,24 +44,37 @@ namespace memcopy {
  */
 template <
 	typename _T,
-	int _LOG_SCHEDULE_GRANULARITY,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	CacheModifier _CACHE_MODIFIER,
-	bool _WORK_STEALING>
+	bool _WORK_STEALING,
+	int _LOG_SCHEDULE_GRANULARITY = _LOG_THREADS + _LOG_LOAD_VEC_SIZE + _LOG_LOADS_PER_TILE>
 struct MemcopyConfig
 {
 	typedef _T									T;
 	typedef size_t								SizeT;
-	static const int LOG_SCHEDULE_GRANULARITY	= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
 	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
 	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
 	static const bool WORK_STEALING				= _WORK_STEALING;
+	static const int LOG_SCHEDULE_GRANULARITY	= _LOG_SCHEDULE_GRANULARITY;
+
+	static void Print()
+	{
+		printf("%d, %d, %d, %d, %d, %d, %d, %d",
+			sizeof(T),
+			CTA_OCCUPANCY,
+			LOG_THREADS,
+			LOG_LOAD_VEC_SIZE,
+			LOG_LOADS_PER_TILE,
+			CACHE_MODIFIER,
+			WORK_STEALING,
+			LOG_SCHEDULE_GRANULARITY);
+	}
 };
 		
 

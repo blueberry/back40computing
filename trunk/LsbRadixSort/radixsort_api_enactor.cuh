@@ -46,6 +46,7 @@
 #include <limits.h>
 
 #include "b40c_kernel_utils.cuh"
+#include "b40c_enactor_base.cuh"
 
 #include "radixsort_kernel_upsweep.cuh"
 #include "radixsort_kernel_spine.cuh"
@@ -70,37 +71,20 @@ template <typename Storage> struct SortingCtaDecomposition;
  * Basic LSB radix sorting enactor class.  
  */
 template <typename DerivedEnactorType = void>
-class LsbSortEnactor 
+class LsbSortEnactor : public EnactorBase
 {
 protected:
 
 	//---------------------------------------------------------------------
-	// Specialize templated dispatch to self (no derived class) or 
-	// derived class (CRTP -- curiously recurring template pattern)
-	//---------------------------------------------------------------------
-
-	template <typename DerivedType, int __dummy = 0>
-	struct DispatchType 
-	{
-		typedef DerivedType Type;
-	};
-	
-	template <int __dummy>
-	struct DispatchType<void, __dummy>
-	{
-		typedef LsbSortEnactor<void> Type;
-	};
-
-	
-	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
-		
+
+	// Dispatch type (to self, or to derived class as per CRTP -- curiously
+	// recurring template pattern
+	typedef typename DispatchType<LsbSortEnactor, DerivedEnactorType>::Type Dispatch;
+
 	// Number of bytes backed by d_spine 
 	int spine_bytes;
-
-	// Device properties
-	const CudaProperties cuda_props;
 
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
@@ -126,102 +110,6 @@ protected:
 		return spine_tiles * spine_tile_elements;
 	}
 
-	
-	/**
-	 * Returns the number of threadblocks that the specified device should 
-	 * launch for [up|down]sweep grids for the given problem size
-	 */
-	template <typename SortingConfig>
-	int SweepGridSize(int num_elements, int max_grid_size) 
-	{
-		const int SCHEDULE_GRANULARITY = 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
-
-		int default_sweep_grid_size;
-		if (cuda_props.device_sm_version < 120) {
-			
-			// G80/G90: Four times the SM-count
-			default_sweep_grid_size = cuda_props.device_props.multiProcessorCount * 4;
-			
-		} else if (cuda_props.device_sm_version < 200) {
-			
-			// GT200: Special sauce
-			
-			// Start with with full downsweep occupancy of all SMs 
-			default_sweep_grid_size = 
-				cuda_props.device_props.multiProcessorCount * 
-				SortingConfig::Downsweep::CTA_OCCUPANCY; 
-
-			// Increase by default every 64 million key-values
-			int step = 1024 * 1024 * 64;		 
-			default_sweep_grid_size *= (num_elements + step - 1) / step;
-
-			double multiplier1 = 4.0;
-			double multiplier2 = 16.0;
-
-			double delta1 = 0.068;
-			double delta2 = 0.1285;
-			
-			int dividend = (num_elements + 512 - 1) / 512;
-
-			int bumps = 0;
-			while(true) {
-
-				if (default_sweep_grid_size <= cuda_props.device_props.multiProcessorCount) {
-					break;
-				}
-				
-				double quotient = ((double) dividend) / (multiplier1 * default_sweep_grid_size);
-				quotient -= (int) quotient;
-
-				if ((quotient > delta1) && (quotient < 1 - delta1)) {
-
-					quotient = ((double) dividend) / (multiplier2 * default_sweep_grid_size / 3.0);
-					quotient -= (int) quotient;
-
-					if ((quotient > delta2) && (quotient < 1 - delta2)) {
-						break;
-					}
-				}
-
-				if (bumps == 3) {
-					// Bump it down by 27
-					default_sweep_grid_size -= 27;
-					bumps = 0;
-				} else {
-					// Bump it down by 1
-					default_sweep_grid_size--;
-					bumps++;
-				}
-			}
-			
-		} else {
-
-			// GF10x
-			if (cuda_props.device_sm_version == 210) {
-				// GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * SortingConfig::Downsweep::CTA_OCCUPANCY);
-			} else {
-				// Anything but GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * SortingConfig::Downsweep::CTA_OCCUPANCY) - 2;
-			}
-		}
-		
-		// Reduce by override, if specified
-		if (max_grid_size > 0) {
-			default_sweep_grid_size = max_grid_size;
-		}
-		
-		// Reduce if we have less work than we can divide up among this 
-		// many CTAs
-		
-		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
-		if (default_sweep_grid_size > grains) {
-			default_sweep_grid_size = grains;
-		}
-		
-		return default_sweep_grid_size;
-	}	
-
 
 	//-----------------------------------------------------------------------------
 	// Sorting Operation 
@@ -231,7 +119,7 @@ protected:
      * Pre-sorting logic.
      */
 	template <typename StorageType>
-    cudaError_t PreSort(StorageType &problem_storage, int problem_spine_elements) 
+    cudaError_t PreSort(StorageType &problem_storage, int problem_spine_elements)
     {
 		typedef typename StorageType::KeyType KeyType;
 		typedef typename StorageType::ValueType ValueType;
@@ -555,36 +443,6 @@ protected:
 	
 public:
 
-	//---------------------------------------------------------------------
-	// Utility Fields
-	//---------------------------------------------------------------------
-	
-	// Debug level.  If set, the enactor blocks after kernel calls to check
-	// for successful launch/execution
-	bool DEBUG;
-
-	//-----------------------------------------------------------------------------
-	// Utility Methods
-	//-----------------------------------------------------------------------------
-
-	/**
-	 * Utility function: Returns the maximum problem size this enactor can sort on the device
-	 * it was initialized for.
-	 */
-	template <typename KeyType, typename ValueType>
-	size_t MaxProblemSize() 
-	{
-		// Begin with device memory, subtract 192MB for video/spine/etc.  Factor in 
-		// two vectors for keys (and values, if present)
-
-		size_t element_size = (IsKeysOnly<ValueType>()) ? sizeof(KeyType) : sizeof(KeyType) + sizeof(ValueType);
-		size_t available_bytes = cuda_props.device_props.totalGlobalMem - (192 * 1024 * 1024);
-		size_t elements = available_bytes / (element_size * 2);
-		
-		return elements;
-	}
-
-	
 	//-----------------------------------------------------------------------------
 	// Construction 
 	//-----------------------------------------------------------------------------
@@ -595,13 +453,9 @@ public:
 	LsbSortEnactor() :
 			d_selectors(NULL),
 			d_spine(NULL),
-			spine_bytes(0),
-#if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
-			DEBUG(true) {}
-#else
-			DEBUG(false) {}
-#endif
+			spine_bytes(0) {}
 	
+
 	/**
      * Destructor
      */
@@ -636,7 +490,7 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Storage, typename SortingConfig, int START_BIT, int NUM_BITS> 
-	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0) 
+	cudaError_t Enact(Storage &problem_storage, int max_grid_size = 0)
 	{
 	    typedef SortingCtaDecomposition<Storage> Decomposition;
 
@@ -648,7 +502,8 @@ public:
 				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
 				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
 		
-		int sweep_grid_size = SweepGridSize<SortingConfig>(problem_storage.num_elements, max_grid_size);
+		int sweep_grid_size = SweepGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
+			problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
 		Decomposition work(&problem_storage, SCHEDULE_GRANULARITY, sweep_grid_size, spine_elements);
@@ -657,8 +512,8 @@ public:
 			printf("\n\n");
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
 				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d, indexing-bits: %d]\n", 
-				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::SizeT) * 8);
+			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d, SizeT bytes: %d]\n",
+				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::SizeT));
 			printf("Upsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Upsweep::LOG_THREADS);
 			printf("SpineScan: \t[grid_size: %d, threads %d, spine_elements: %d]\n",
@@ -683,7 +538,7 @@ public:
 				0,
 				NUM_PASSES - 1,
 				START_BIT,
-				RADIX_BITS>::Invoke((typename DispatchType<DerivedEnactorType>::Type *) this, work)) break;
+				RADIX_BITS>::Invoke((Dispatch *) this, work)) break;
 
 			// Perform any cleanup after sorting
 			if (retval = PostSort<Storage, SortingConfig>(problem_storage, NUM_PASSES)) break;
