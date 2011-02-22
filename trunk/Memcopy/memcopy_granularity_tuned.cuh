@@ -1,0 +1,226 @@
+/******************************************************************************
+ * 
+ * Copyright 2010-2011 Duane Merrill
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ * 
+ * For more information, see our Google Code project site: 
+ * http://code.google.com/p/back40computing/
+ * 
+ ******************************************************************************/
+
+/******************************************************************************
+ * "Granularity tuning types" for memcopy
+ ******************************************************************************/
+
+#pragma once
+
+#include "b40c_cuda_properties.cuh"
+#include "b40c_kernel_data_movement.cuh"
+
+#include "memcopy_api_granularity.cuh"
+#include "memcopy_kernel.cuh"
+
+namespace b40c {
+namespace memcopy {
+
+
+/******************************************************************************
+ * Tuning classifiers to specialize granularity-tuning types on
+ ******************************************************************************/
+
+/**
+ * Enumeration of architecture-families that we have tuned for
+ */
+enum Family
+{
+	SM20 	= 200,
+	SM13	= 130,
+	SM10	= 100
+};
+
+
+/**
+ * Classifies a given CUDA_ARCH into an architecture-family
+ */
+template <int CUDA_ARCH>
+struct FamilyClassifier
+{
+	static const Family FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
+									(CUDA_ARCH < SM20) ? 	SM13 :
+															SM20;
+};
+
+
+/**
+ * Enumeration of problem-size genres that we may have tuned for
+ */
+enum ProblemSize
+{
+	SMALL 	= 0,
+	LARGE 	= 1
+};
+
+
+/******************************************************************************
+ * Granularity tuning types
+ ******************************************************************************/
+
+/**
+ * Default, catch-all granularity parameterization type.  Defers to the
+ * architecture "family" that we know we have specialization type(s) for below.
+ */
+template <int CUDA_ARCH, ProblemSize PROBLEM_SIZE>
+struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, PROBLEM_SIZE> {};
+
+
+
+//-----------------------------------------------------------------------------
+// SM2.0 specializations(s)
+//-----------------------------------------------------------------------------
+
+template <>
+struct TunedConfig<SM20, LARGE>
+	: MemcopyConfig<
+		unsigned int,			// Data type					Use int32s as primary movement type
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		7,						// LOG_THREADS: 				128 threads/CTA
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
+		1,						// LOG_LOADS_PER_TILE: 			2 loads
+		CG,						// CACHE_MODIFIER: 				CG (cache global only)
+		true,					// WORK_STEALING: 				Work-stealing load-balancing
+		9>						// LOG_SCHEDULE_GRANULARITY:	2048 items
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+template <>
+struct TunedConfig<SM20, SMALL>
+	: MemcopyConfig<
+		unsigned long long,		// Data type					Use int64s as primary movement type
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		5,						// LOG_THREADS: 				128 threads/CTA
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		1,						// LOG_LOADS_PER_TILE: 			2 loads
+		CG,						// CACHE_MODIFIER: 				CG (cache global only)
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+{
+	static const ProblemSize PROBLEM_SIZE = SMALL;
+};
+
+
+
+
+//-----------------------------------------------------------------------------
+// SM1.3 specializations(s)
+//-----------------------------------------------------------------------------
+
+template <>
+struct TunedConfig<SM13, LARGE>
+	: MemcopyConfig<
+		unsigned short,			// Data type					Use int16s as primary movement type
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		7,						// LOG_THREADS: 				128 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		0,						// LOG_LOADS_PER_TILE: 			1 loads
+		NONE,					// CACHE_MODIFIER: 				NONE
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		9>						// LOG_SCHEDULE_GRANULARITY:	512 items
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+template <>
+struct TunedConfig<SM13, SMALL>
+	: MemcopyConfig<
+		unsigned short,			// Data type					Use int16s as primary movement type
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		5,						// LOG_THREADS: 				32 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		0,						// LOG_LOADS_PER_TILE: 			1 loads
+		NONE,					// CACHE_MODIFIER: 				NONE
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+{
+	static const ProblemSize PROBLEM_SIZE = SMALL;
+};
+
+
+//-----------------------------------------------------------------------------
+// SM1.0 specializations(s)
+//-----------------------------------------------------------------------------
+
+template <ProblemSize _PROBLEM_SIZE>
+struct TunedConfig<SM13, _PROBLEM_SIZE>
+	: MemcopyConfig<
+		unsigned short,			// Data type					Use int16s as primary movement type
+		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
+		5,						// LOG_THREADS: 				32 threads/CTA
+		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		0,						// LOG_LOADS_PER_TILE: 			1 loads
+		NONE,					// CACHE_MODIFIER: 				NONE
+		false,					// WORK_STEALING: 				Equal-shares load-balancing
+		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+{
+	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+};
+
+
+
+
+
+
+/******************************************************************************
+ * Memcopy kernel entry points that can derive a tuned granularity type
+ * implicitly from the PROBLEM_SIZE template parameter.  (As opposed to having
+ * the granularity type passed explicitly.)
+ *
+ * TODO: Section can be removed if CUDA Runtime is fixed to
+ * properly support template specialization around kernel call sites.
+ ******************************************************************************/
+
+template <int PROBLEM_SIZE>
+__launch_bounds__ (
+	(TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE>::THREADS),
+	(TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE>::OCCUPANCY))
+void TunedMemcopyKernel(
+	void			* __restrict d_out,
+	void			* __restrict d_in,
+	size_t 			* __restrict d_work_progress,
+	CtaWorkDistribution<size_t> work_decomposition,
+	int 			progress_selector,
+	int 			extra_bytes)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	typedef TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE> MemcopyConfig;
+	typedef MemcopyKernelConfig<MemcopyConfig> KernelConfig;
+	typedef typename MemcopyConfig::T T;
+
+	T* out = reinterpret_cast<T*>(d_out);
+	T* in = reinterpret_cast<T*>(d_in);
+
+	// Invoke the wrapped kernel logic
+	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
+		out,
+		in,
+		d_work_progress, work_decomposition, progress_selector, extra_bytes);
+}
+
+
+
+
+
+}// namespace memcopy
+}// namespace b40c
+
