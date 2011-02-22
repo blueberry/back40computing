@@ -111,11 +111,11 @@ DEPS = 			./Makefile \
 # (make large) Simple test driver for large-problem memcopy
 #-------------------------------------------------------------------------------
 
-large: bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+large: bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_memcopy_large.cu $(DEPS)
+bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_memcopy.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_memcopy_large.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_memcopy.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 
 	
 #-------------------------------------------------------------------------------
@@ -134,7 +134,7 @@ bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : tune_memcopy.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_memcopy_large_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
+	rm -f bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
 	rm -f bin/tune_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 

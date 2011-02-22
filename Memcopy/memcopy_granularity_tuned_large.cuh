@@ -73,14 +73,14 @@ struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY> {};
 template <>
 struct TunedConfig<SM20>
 	: MemcopyConfig<
-		unsigned char,			// Data type					Use bytes as primary movement type
+		unsigned int,			// Data type					Use int32s as primary movement type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads/CTA
-		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		2,						// LOG_LOADS_PER_TILE: 			4 loads
-		NONE,					// CACHE_MODIFIER: 				CA (cache all levels)
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		1,						// LOG_LOADS_PER_TILE: 			4 loads
+		CG,						// CACHE_MODIFIER: 				CG (cache global only)
 		true,					// WORK_STEALING: 				Work-stealing load-balancing
-		11						// LOG_SCHEDULE_GRANULARITY:	2048 items
+		9						// LOG_SCHEDULE_GRANULARITY:	2048 items
 	> {};
 
 
@@ -92,7 +92,7 @@ struct TunedConfig<SM20>
 template <>
 struct TunedConfig<SM13>
 	: MemcopyConfig<
-		unsigned short,			// Data type					Use shorts as primary movement type
+		unsigned short,			// Data type					Use int16s as primary movement type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads/CTA
 		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
@@ -111,7 +111,7 @@ struct TunedConfig<SM13>
 template <>
 struct TunedConfig<SM10>
 	: MemcopyConfig<
-		unsigned short,			// Data type					Use shorts as primary movement type
+		unsigned short,			// Data type					Use int16s as primary movement type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
 		7,						// LOG_THREADS: 				128 threads/CTA
 		2,						// LOG_LOAD_VEC_SIZE: 			vec-4

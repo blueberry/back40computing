@@ -89,29 +89,64 @@ protected:
 	//-----------------------------------------------------------------------------
 
 	/**
-	 * Returns the number of threadblocks that the specified device should
-	 * launch for [up|down]sweep grids for the given problem size
+	 * Returns the number of threadblocks to launch for the given problem size.
+	 * Does not exceed the full-occupancy on the current device or the
+	 * optional max_grid_size limit.
+	 *
+	 * Useful for kernels that work-steal or use global barriers (where
+	 * over-subscription is not ideal or allowed)
 	 */
 	template <int SCHEDULE_GRANULARITY, int CTA_OCCUPANCY>
-	int SweepGridSize(int num_elements, int max_grid_size)
+	int OccupiedGridSize(int num_elements, int max_grid_size = 0)
 	{
-		int default_sweep_grid_size;
+		int grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
+		if ((max_grid_size > 0) && (grid_size > max_grid_size)) {
+			grid_size = max_grid_size;
+		}
+
+		// Reduce by override, if specified
+		if (max_grid_size > 0) {
+			grid_size = max_grid_size;
+		}
+
+		// Reduce if we have less work than we can divide up among this
+		// many CTAs
+		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
+		if (grid_size > grains) {
+			grid_size = grains;
+		}
+
+		return grid_size;
+	}
+
+
+	/**
+	 * Returns the number of threadblocks to launch for the given problem size.
+	 * May over/under subscribe the current device based upon heuristics.  Does not
+	 * the optional max_grid_size limit.
+	 *
+	 * Useful for kernels that evenly divide up the work amongst threadblocks.
+	 */
+	template <int SCHEDULE_GRANULARITY, int CTA_OCCUPANCY>
+	int OversubscribedGridSize(int num_elements, int max_grid_size)
+	{
+		int grid_size;
 		if (cuda_props.device_sm_version < 120) {
 
 			// G80/G90: CTA occupancy times SM count
-			default_sweep_grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
+			grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
 
 		} else if (cuda_props.device_sm_version < 200) {
 
 			// GT200: Special sauce
 
 			// Start with with full downsweep occupancy of all SMs
-			default_sweep_grid_size =
+			grid_size =
 				cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
 
 			// Increase by default every 64 million key-values
 			int step = 1024 * 1024 * 64;
-			default_sweep_grid_size *= (num_elements + step - 1) / step;
+			grid_size *= (num_elements + step - 1) / step;
 
 			double multiplier1 = 4.0;
 			double multiplier2 = 16.0;
@@ -124,16 +159,16 @@ protected:
 			int bumps = 0;
 			while(true) {
 
-				if (default_sweep_grid_size <= cuda_props.device_props.multiProcessorCount) {
+				if (grid_size <= cuda_props.device_props.multiProcessorCount) {
 					break;
 				}
 
-				double quotient = ((double) dividend) / (multiplier1 * default_sweep_grid_size);
+				double quotient = ((double) dividend) / (multiplier1 * grid_size);
 				quotient -= (int) quotient;
 
 				if ((quotient > delta1) && (quotient < 1 - delta1)) {
 
-					quotient = ((double) dividend) / (multiplier2 * default_sweep_grid_size / 3.0);
+					quotient = ((double) dividend) / (multiplier2 * grid_size / 3.0);
 					quotient -= (int) quotient;
 
 					if ((quotient > delta2) && (quotient < 1 - delta2)) {
@@ -143,11 +178,11 @@ protected:
 
 				if (bumps == 3) {
 					// Bump it down by 27
-					default_sweep_grid_size -= 27;
+					grid_size -= 27;
 					bumps = 0;
 				} else {
 					// Bump it down by 1
-					default_sweep_grid_size--;
+					grid_size--;
 					bumps++;
 				}
 			}
@@ -157,27 +192,26 @@ protected:
 			// GF10x
 			if (cuda_props.device_sm_version == 210) {
 				// GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY);
+				grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY);
 			} else {
 				// Anything but GF110
-				default_sweep_grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY) - 2;
+				grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY) - 2;
 			}
 		}
 
 		// Reduce by override, if specified
 		if (max_grid_size > 0) {
-			default_sweep_grid_size = max_grid_size;
+			grid_size = max_grid_size;
 		}
 
 		// Reduce if we have less work than we can divide up among this
 		// many CTAs
-
 		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
-		if (default_sweep_grid_size > grains) {
-			default_sweep_grid_size = grains;
+		if (grid_size > grains) {
+			grid_size = grains;
 		}
 
-		return default_sweep_grid_size;
+		return grid_size;
 	}
 
 

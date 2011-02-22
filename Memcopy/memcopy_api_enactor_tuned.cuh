@@ -44,8 +44,8 @@ using namespace memcopy;
 
 enum TunedGranularityEnum
 {
-	SMALL_PROBLEM,
-	LARGE_PROBLEM			// default
+	SMALL_PROBLEM		= 0,
+	LARGE_PROBLEM		= 1
 };
 
 
@@ -87,43 +87,37 @@ protected:
 	typedef MemcopyEnactor<MemcopyEnactorTuned> 					BaseEnactorType;
 	typedef Architecture<__B40C_CUDA_ARCH__, MemcopyEnactorTuned> 	BaseArchType;
 
-	// Our base classes are friends that invoke our templated
-	// dispatch functions (which by their nature aren't virtual) 
-	friend BaseEnactorType;
-	friend BaseArchType;
-
+	// Befriend our base types: they need to call back into a
+	// protected methods (which are templated, and therefore can't be virtual)
+	friend class BaseEnactorType;
+	friend class BaseArchType;
 
 	// Type for encapsulating operational details regarding an invocation
 	template <TunedGranularityEnum _GRANULARITY_ENUM>
-	struct Detail {
-		static const TunedGranularityEnum GRANULARITY_ENUM 		= _GRANULARITY_ENUM;
+	struct Detail
+	{
+		static const TunedGranularityEnum GRANULARITY_ENUM = _GRANULARITY_ENUM;
 		int max_grid_size;
 		
 		// Constructor
 		Detail(int max_grid_size = 0) : max_grid_size(max_grid_size) {}
 	};
-	
 
 	// Type for encapsulating storage details regarding an invocation
-	struct Storage {
+	struct Storage
+	{
 		void *d_dest;
 		void *d_src;
 		size_t num_bytes;
 
 		// Constructor
-		Storage(
-			void *d_dest,
-			void *d_src,
-			size_t num_bytes) : d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
+		Storage(void *d_dest, void *d_src, size_t num_bytes) : d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
 	};
 
 
 
 	//-----------------------------------------------------------------------------
 	// Memcopy Operation
-	//
-	// TODO: Section can be removed if CUDA Runtime is fixed to properly support
-	// template specialization around kernel call sites.
 	//-----------------------------------------------------------------------------
 
     /**
@@ -139,28 +133,14 @@ protected:
 		int dynamic_smem = 0;
 		int threads = 1 << MemcopyConfig::LOG_THREADS;
 
-		if (DEBUG) {
-			printf("\n\n");
-			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
-				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-			printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
-				work.grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(typename MemcopyConfig::SizeT));
-			printf("Work: \t\t[type bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d, extra_bytes: %d]\n",
-				sizeof(typename MemcopyConfig::T), work.num_elements, 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
-			printf("\n\n");
-		}		
-		
 		cudaError_t retval = cudaSuccess;
-		do {
 
-			TunedMemcopyKernel<MemcopyConfig::GRANULARITY_ENUM>
-					<<<work.grid_size, threads, dynamic_smem>>>(
-				d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
+		TunedMemcopyKernel<MemcopyConfig::GRANULARITY_ENUM><<<work.grid_size, threads, dynamic_smem>>>(
+			d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__))) break;
-
-		} while (0);
+		if (DEBUG) {
+			retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}
@@ -177,31 +157,13 @@ protected:
 		// Obtain tuned granularity type
 		typedef TunedGranularity<Detail::GRANULARITY_ENUM, CUDA_ARCH> MemcopyConfig;
 		typedef typename MemcopyConfig::T T;
-		typedef typename MemcopyConfig::SizeT SizeT;
-		const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
 
-		// Obtain a CTA work distribution for copying items of type T (instead of bytes)
 		int num_elements = storage.num_bytes / sizeof(T);
-		int grid_size = (MemcopyConfig::WORK_STEALING) ? 
-			cuda_props.device_props.multiProcessorCount * MemcopyConfig::CTA_OCCUPANCY : 								// workstealing  
-			SweepGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, detail.max_grid_size);		// even-shares
-		CtaWorkDistribution<SizeT> work(num_elements, SCHEDULE_GRANULARITY, grid_size);
 		int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
-		
-		cudaError_t retval = cudaSuccess;
-		do {
-			// Setup
-			if (retval = Setup<MemcopyConfig>(work)) break;
-			
-			// Invoke memcopy kernel
-			if (retval = MemcopyPass<MemcopyConfig>(storage.d_dest, storage.d_src, work, extra_bytes)) break;
 
-		} while (0);
-
-		// Cleanup
-		Cleanup(retval);
-
-	    return retval;
+		// Invoke base class enact with type
+		return BaseEnactorType::template Enact<MemcopyConfig>(
+			(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 
 	
@@ -245,7 +207,7 @@ public:
 	{
 		Detail<GRANULARITY_ENUM> detail(max_grid_size);
 		Storage storage(d_dest, d_src, num_bytes);
-		
+
 		return BaseArchType::Enact(storage, detail);
 	}
 	
@@ -271,7 +233,12 @@ public:
 		size_t num_bytes,
 		int max_grid_size = 0)
 	{
-		return Enact<LARGE_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
+		// Hybrid approach
+		if (num_bytes > 1024 * 2252) {
+			return Enact<LARGE_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
+		} else {
+			return Enact<SMALL_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
+		}
 	}
 };
 

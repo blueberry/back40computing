@@ -502,7 +502,7 @@ public:
 				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
 				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
 		
-		int sweep_grid_size = SweepGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
+		int sweep_grid_size = OversubscribedGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
 			problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 

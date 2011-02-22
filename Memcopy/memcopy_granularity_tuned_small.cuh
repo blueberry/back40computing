@@ -73,14 +73,14 @@ struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY> {};
 template <>
 struct TunedConfig<SM20>
 	: MemcopyConfig<
-		unsigned char,			// Data type
+		unsigned long long,		// Data type					Use int64s as primary movement type
 		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		6,						// LOG_THREADS: 				128 threads/CTA
-		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		2,						// LOG_LOADS_PER_TILE: 			4 loads
-		NONE,					// CACHE_MODIFIER: 				CA (cache all levels)
+		5,						// LOG_THREADS: 				128 threads/CTA
+		1,						// LOG_LOAD_VEC_SIZE: 			vec-4
+		1,						// LOG_LOADS_PER_TILE: 			4 loads
+		CG,						// CACHE_MODIFIER: 				CG (cache global only)
 		false,					// WORK_STEALING: 				Equal-shares load-balancing
-		10						// LOG_SCHEDULE_GRANULARITY:	2048 items
+		7						// LOG_SCHEDULE_GRANULARITY:	128 items
 	> {};
 
 
