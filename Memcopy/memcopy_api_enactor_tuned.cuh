@@ -30,43 +30,11 @@
 
 #include "memcopy_api_enactor.cuh"
 #include "memcopy_api_granularity.cuh"
-#include "memcopy_granularity_tuned_large.cuh"
-#include "memcopy_granularity_tuned_small.cuh"
+#include "memcopy_granularity_tuned.cuh"
 
 namespace b40c {
 
 using namespace memcopy;
-
-
-/******************************************************************************
- * Enumeration of predefined, tuned granularity configurations
- ******************************************************************************/
-
-enum TunedGranularityEnum
-{
-	SMALL_PROBLEM		= 0,
-	LARGE_PROBLEM		= 1
-};
-
-
-// Forward declaration of tuned granularity configuration types
-template <TunedGranularityEnum GRANULARITY_ENUM, int CUDA_ARCH> struct TunedGranularity;
-
-
-/******************************************************************************
- * Forward declarations of memcopy kernel entry points that understand our
- * tuned granularity enumeration type.   TODO: Section can be removed if CUDA
- * Runtime is fixed to properly support template specialization around kernel
- * call sites.
- ******************************************************************************/
-
-template <int GRANULARITY_ENUM>
-__launch_bounds__ (
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::THREADS),
-	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__>::OCCUPANCY))
-__global__ void TunedMemcopyKernel(void * __restrict, void * __restrict, size_t * __restrict, CtaWorkDistribution<size_t>, int, int);
-
-
 
 
 /******************************************************************************
@@ -93,10 +61,10 @@ protected:
 	friend class BaseArchType;
 
 	// Type for encapsulating operational details regarding an invocation
-	template <TunedGranularityEnum _GRANULARITY_ENUM>
+	template <ProblemSize _PROBLEM_SIZE>
 	struct Detail
 	{
-		static const TunedGranularityEnum GRANULARITY_ENUM = _GRANULARITY_ENUM;
+		static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 		int max_grid_size;
 		
 		// Constructor
@@ -135,7 +103,7 @@ protected:
 
 		cudaError_t retval = cudaSuccess;
 
-		TunedMemcopyKernel<MemcopyConfig::GRANULARITY_ENUM><<<work.grid_size, threads, dynamic_smem>>>(
+		TunedMemcopyKernel<MemcopyConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
 			d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
 		if (DEBUG) {
@@ -155,7 +123,7 @@ protected:
 	cudaError_t Enact(Storage &storage, Detail &detail)
 	{
 		// Obtain tuned granularity type
-		typedef TunedGranularity<Detail::GRANULARITY_ENUM, CUDA_ARCH> MemcopyConfig;
+		typedef TunedConfig<CUDA_ARCH, Detail::PROBLEM_SIZE> MemcopyConfig;
 		typedef typename MemcopyConfig::T T;
 
 		int num_elements = storage.num_bytes / sizeof(T);
@@ -198,14 +166,14 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	template <TunedGranularityEnum GRANULARITY_ENUM>
+	template <ProblemSize PROBLEM_SIZE>
 	cudaError_t Enact(
 		void *d_dest,
 		void *d_src,
 		size_t num_bytes,
 		int max_grid_size = 0)
 	{
-		Detail<GRANULARITY_ENUM> detail(max_grid_size);
+		Detail<PROBLEM_SIZE> detail(max_grid_size);
 		Storage storage(d_dest, d_src, num_bytes);
 
 		return BaseArchType::Enact(storage, detail);
@@ -214,7 +182,7 @@ public:
 
 	/**
 	 * Enacts a memcopy operation on the specified device data using the
-	 * LARGE_PROBLEM granularity configuration
+	 * LARGE granularity configuration
 	 *
 	 * @param d_dest
 	 * 		Pointer to array of bytes to be copied into
@@ -235,9 +203,9 @@ public:
 	{
 		// Hybrid approach
 		if (num_bytes > 1024 * 2252) {
-			return Enact<LARGE_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
+			return Enact<LARGE>(d_dest, d_src, num_bytes, max_grid_size);
 		} else {
-			return Enact<SMALL_PROBLEM>(d_dest, d_src, num_bytes, max_grid_size);
+			return Enact<SMALL>(d_dest, d_src, num_bytes, max_grid_size);
 		}
 	}
 };
@@ -248,13 +216,13 @@ public:
 /******************************************************************************
  * Tuned granularity configuration types tagged by our tuning enumeration
  ******************************************************************************/
-
+/*
 // Large-problem specialization of granularity config type
 template <int CUDA_ARCH>
-struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH>
+struct TunedGranularity<LARGE, CUDA_ARCH>
 	: large_problem_tuning::TunedConfig<CUDA_ARCH>
 {
-	static const TunedGranularityEnum GRANULARITY_ENUM 	= LARGE_PROBLEM;
+	static const ProblemSize PROBLEM_SIZE 	= LARGE;
 
 	// Largely-unnecessary duplication of inner type data to accommodate
 	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
@@ -267,10 +235,10 @@ struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH>
 
 // Small-problem specialization of granularity config type
 template <int CUDA_ARCH>
-struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH>
+struct TunedGranularity<SMALL, CUDA_ARCH>
 	: small_problem_tuning::TunedConfig<CUDA_ARCH>
 {
-	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
+	static const ProblemSize PROBLEM_SIZE 	= SMALL;
 
 	// Largely-unnecessary duplication of inner type data to accommodate
 	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
@@ -279,39 +247,11 @@ struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH>
 	static const int THREADS 					= 1 << Base::LOG_THREADS;
 	static const int OCCUPANCY 					= Base::CTA_OCCUPANCY;
 };
+*/
 
 
 
 
-/******************************************************************************
- * Memcopy kernel entry points that understand our tuned granularity
- * enumeration type.  TODO: Section can be removed if CUDA Runtime is fixed to
- * properly support template specialization around kernel call sites.
- ******************************************************************************/
-
-template <int GRANULARITY_ENUM>
-void TunedMemcopyKernel(
-	void			* __restrict d_out,
-	void			* __restrict d_in,
-	size_t 			* __restrict d_work_progress,
-	CtaWorkDistribution<size_t> work_decomposition,
-	int 			progress_selector,
-	int 			extra_bytes)
-{
-	// Load the tuned granularity type identified by the enum for this architecture
-	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__> MemcopyConfig;
-	typedef MemcopyKernelConfig<MemcopyConfig> KernelConfig;
-	typedef typename MemcopyConfig::T T;
-
-	T* out = reinterpret_cast<T*>(d_out);
-	T* in = reinterpret_cast<T*>(d_in);
-	
-	// Invoke the wrapped kernel logic
-	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
-		out, 
-		in, 
-		d_work_progress, work_decomposition, progress_selector, extra_bytes);
-}
 
 
 

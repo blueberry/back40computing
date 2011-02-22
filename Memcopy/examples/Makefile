@@ -95,8 +95,7 @@ DEPS = 			./Makefile \
 				../memcopy_api_enactor.cuh \
 				../memcopy_api_enactor_tuned.cuh \
 				../memcopy_api_granularity.cuh \
-				../memcopy_granularity_tuned_large.cuh \
-				../memcopy_granularity_tuned_small.cuh \
+				../memcopy_granularity_tuned.cuh \
 				../memcopy_kernel.cuh \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
