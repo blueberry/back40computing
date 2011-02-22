@@ -41,9 +41,9 @@ using namespace memcopy;
  * Defines, constants, globals 
  ******************************************************************************/
 
-bool g_verbose;
-int g_max_ctas = 0;
-
+bool 	g_verbose 						= false;
+int 	g_max_ctas 						= 0;
+int 	g_iterations  					= 1;
 
 
 /******************************************************************************
@@ -56,14 +56,14 @@ int g_max_ctas = 0;
 void Usage() 
 {
 	printf("\ntest_memcopy_large [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the memcopy operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
-	printf("\t--n\tThe number of elements to comprise the sample problem\n");
+	printf("\t--n\tThe number of bytes to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
 	printf("\n");
 }
@@ -73,17 +73,13 @@ void Usage()
  * Timed memcopy.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  *
- * @param[in] 		num_elements 
- * 		Size in elements of the vector to copy
  * @param[in] 		h_data
  * 		Vector of data to copy (also copied back out)
- * @param[in] 		iterations  
- * 		Number of times to invoke the GPU memcopy primitive
  */
-template <typename T>
-void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
+template <typename T, TunedGranularityEnum GRANULARITY_ENUM>
+double TimedMemcopy(T *h_data, T *h_reference, size_t num_elements)
 {
-	printf("%d iterations, %d elements", iterations, num_elements);
+	printf("%d iterations, %d bytes\n\n", g_iterations, num_elements);
 	
 	// Allocate device storage  
 	T *d_src, *d_dest;
@@ -92,19 +88,20 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 	if (B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
 		"TimedMemcopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-	// Create memcopy enactor
+	// Create enactor
 	MemcopyEnactorTuned memcopy_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedMemcopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
-	// Perform a single memcopy iteration to allocate any memory if needed, prime code caches, etc.
+	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	memcopy_enactor.DEBUG = true;
-	memcopy_enactor.Enact(d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
+	memcopy_enactor.template Enact<GRANULARITY_ENUM>(
+		d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 	memcopy_enactor.DEBUG = false;
 
-	// Perform the timed number of memcopy iterations
+	// Perform the timed number of iterations
 
 	cudaEvent_t start_event, stop_event;
 	cudaEventCreate(&start_event);
@@ -112,15 +109,16 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 
 	double elapsed = 0;
 	float duration = 0;
-	for (int i = 0; i < iterations; i++) {
+	for (int i = 0; i < g_iterations; i++) {
 
-		// Start cuda timing record
+		// Start timing record
 		cudaEventRecord(start_event, 0);
 
 		// Call the memcopy API routine
-		memcopy_enactor.Enact(d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
+		memcopy_enactor.template Enact<GRANULARITY_ENUM>(
+			d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 
-		// End cuda timing record
+		// End timing record
 		cudaEventRecord(stop_event, 0);
 		cudaEventSynchronize(stop_event);
 		cudaEventElapsedTime(&duration, start_event, stop_event);
@@ -128,9 +126,9 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
 	}
 
 	// Display timing information
-	double avg_runtime = elapsed / iterations;
-	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0; 
-    printf(", %f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec\n",
+	double avg_runtime = elapsed / g_iterations;
+	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+    printf("\n%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec\n",
 		avg_runtime, throughput, 2 * throughput * sizeof(T));
 	
     // Clean up events
@@ -144,20 +142,35 @@ void TimedMemcopy(size_t num_elements, T *h_data, int iterations)
     // Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
+
+	// Flushes any stdio from the GPU
+	cudaThreadSynchronize();
+
+	// Display copied data
+	if (g_verbose) {
+		printf("\n\nData:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue<T>(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+	}
+
+    // Verify solution
+	CompareResults(h_data, h_reference, num_elements, true);
+	printf("\n");
+	fflush(stdout);
+
+	return throughput;
 }
 
 
 /**
  * Creates an example memcopy problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
- *
- * @param[in] 		iterations  
- * 		Number of times to invoke the GPU memcopy primitive
- * @param[in] 		num_elements 
- * 		Size in elements of the vector to copy
  */
 template<typename T>
-void TestMemcopy(int iterations, size_t num_elements)
+void TestMemcopy(size_t num_elements)
 {
     // Allocate the memcopy problem on the host and fill the keys with random bytes
 
@@ -175,26 +188,19 @@ void TestMemcopy(int iterations, size_t num_elements)
 		h_reference[i] = h_data[i];
 	}
 
-    // Run the timing test
-	TimedMemcopy<T>(num_elements, h_data, iterations);
+	//
+    // Run the timing test(s)
+	//
 
-	// Flushes any stdio from the GPU
-	cudaThreadSynchronize();
-    
-	// Display copied data
-	if (g_verbose) {
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {	
-			PrintValue<T>(h_data[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}	
-	
-    // Verify solution
-	CompareResults<T>(h_data, h_reference, num_elements, true);
-	printf("\n");
-	fflush(stdout);
+	printf("\nUsing LARGE_PROBLEM config: ");
+	double large = TimedMemcopy<T, LARGE_PROBLEM>(h_data, h_reference, num_elements);
+
+	printf("\nUsing SMALL_PROBLEM config: ");
+	double small = TimedMemcopy<T, SMALL_PROBLEM>(h_data, h_reference, num_elements);
+
+	if (large > small) {
+		printf("Large faster at %d bytes\n", num_elements);
+	}
 
 	// Free our allocated host memory 
 	if (h_data) free(h_data);
@@ -215,45 +221,30 @@ int main(int argc, char** argv)
 	//srand(time(NULL));	
 	srand(0);				// presently deterministic
 
-    int num_elements 					= 1024;
-    int iterations  					= 1;
-
     //
 	// Check command line arguments
     //
+
+	size_t num_elements = 1024;
 
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
 
-    args.GetCmdLineArgumenti("i", iterations);
-    args.GetCmdLineArgumenti("n", num_elements);
-    args.GetCmdLineArgumenti("max-ctas", g_max_ctas);
+    args.GetCmdLineArgument("i", g_iterations);
+    args.GetCmdLineArgument("n", num_elements);
+    args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-/*	
 	// Execute test(s)
-	TestMemcopy<unsigned char>(
-			iterations,
-			num_elements);
-	TestMemcopy<unsigned short>(
-			iterations,
-			num_elements);
-	TestMemcopy<unsigned int>(
-			iterations,
-			num_elements);
-	TestMemcopy<unsigned long long>(
-			iterations,
-			num_elements);
-	TestMemcopy<Fribbitz>(
-			iterations,
-			num_elements);
-*/
-
-	TestMemcopy<unsigned int>(
-			iterations,
-			num_elements);
+    if (args.CheckCmdLineFlag("sweep")) {
+		for (size_t num_elements = 4096; num_elements < 1024 * 1024 * 4; num_elements += 4096) {
+			TestMemcopy<unsigned char>(num_elements);
+		}
+    } else {
+		TestMemcopy<unsigned char>(num_elements);
+    }
 
 	return 0;
 }

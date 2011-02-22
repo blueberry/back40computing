@@ -152,23 +152,13 @@ SORTING_DEPS = 	./Makefile \
 # (make large) Simple test driver for large-problem sorting
 #-------------------------------------------------------------------------------
 
-large: bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+large: bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_large_problem_sorting.cu $(SORTING_DEPS)
+bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sorting.cu $(SORTING_DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_large_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
-	
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 
-#-------------------------------------------------------------------------------
-# (make small) Illustrates the small-problem sorting enactor that explicitly 
-# only sorts 17-bits, and does so using a single kernel launch.  
-#-------------------------------------------------------------------------------
 
-small: bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_small_problem_sorting.cu $(SORTING_DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_small_problem_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 
 
 #-------------------------------------------------------------------------------
 # (make advanced) Advanced test driver (this can take quite some time to compile as it generates
@@ -188,7 +178,7 @@ bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_ad
 #
 
 clean :
-	rm -f bin/test_large_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+	rm -f bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) bin/test_small_problem_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

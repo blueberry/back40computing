@@ -128,23 +128,25 @@ struct MemcopyPass
 		work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
 			cta_offset, cta_elements, guarded_offset, guarded_elements);
 
+		SizeT out_of_bounds = cta_offset + cta_elements;
+
 		// Copy full tiles of tile_elements
 		while (cta_offset < guarded_offset) {
 
-			ProcessTile<Config, true>(d_out, d_in, cta_offset, cta_elements);
+			ProcessTile<Config, true>(d_out, d_in, cta_offset, out_of_bounds);
 			cta_offset += Config::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
 		if (guarded_elements) {
-			ProcessTile<Config, false>(d_out, d_in, cta_offset, cta_elements);
+			ProcessTile<Config, false>(d_out, d_in, cta_offset, out_of_bounds);
 		}
 
 		// Cleanup any extra bytes
 		if ((sizeof(typename Config::T) > 1) && (blockIdx.x == gridDim.x - 1) && (threadIdx.x < extra_bytes)) {
 
-			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + cta_elements);
-			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + cta_elements);
+			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + out_of_bounds);
+			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + out_of_bounds);
 			unsigned char extra_byte;
 
 			ModifiedLoad<unsigned char, Config::CACHE_MODIFIER>::Ld(extra_byte, d_in_bytes, threadIdx.x);

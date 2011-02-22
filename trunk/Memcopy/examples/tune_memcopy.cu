@@ -307,7 +307,7 @@ public:
 	template<typename T>
 	void TestMemcopy(size_t num_elements)
 	{
-		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
+		printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
 			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 		// Allocate the memcopy problem on the host and fill the keys with random bytes
@@ -352,7 +352,7 @@ public:
 
 	    // Verify solution
 		CompareResults<T>(h_data, h_reference, num_elements, true);
-		printf("\n");
+		printf("\n\n");
 		fflush(stdout);
 
 		// Free our allocated host memory
@@ -377,7 +377,7 @@ int main(int argc, char** argv)
 	//srand(time(NULL));	
 	srand(0);				// presently deterministic
 
-    int num_elements 					= 1024;
+    size_t num_elements 								= 1024;
 
 	// Check command line arguments
     if (args.CheckCmdLineFlag("help")) {
@@ -385,9 +385,9 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
-    args.GetCmdLineArgumenti("i", g_iterations);
-    args.GetCmdLineArgumenti("n", num_elements);
-    args.GetCmdLineArgumenti("max-ctas", g_max_ctas);
+    args.GetCmdLineArgument("i", g_iterations);
+    args.GetCmdLineArgument("n", num_elements);
+    args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
 	MemcopyTuner tuner;

@@ -81,43 +81,41 @@ public:
 		return false;
 	}
 
-	void GetCmdLineArgumenti(const char *arg_name, int &val)
-	{
-		using namespace std;
-		map<string, string>::iterator itr;
-		if ((itr = pairs.find(arg_name)) != pairs.end()) {
-			istringstream strstream(itr->second);
-			strstream >> val;
-	    }
-	}
-
-	void GetCmdLineArgumentf(const char *arg_name, float &val)
-	{
-		using namespace std;
-		map<string, string>::iterator itr;
-		if ((itr = pairs.find(arg_name)) != pairs.end()) {
-			istringstream strstream(itr->second);
-			strstream >> val;
-	    }
-	}
-
-	void GetCmdLineArgumentstr(const char* arg_name, char* &val)
-	{
-		using namespace std;
-		map<string, string>::iterator itr;
-		if ((itr = pairs.find(arg_name)) != pairs.end()) {
-
-			string s = itr->second;
-			val = (char*) malloc(sizeof(char) * (s.length() + 1));
-			strcpy(val, s.c_str());
-
-		} else {
-
-	    	val = NULL;
-		}
-	}
+	template <typename T>
+	void GetCmdLineArgument(const char *arg_name, T &val);
 
 };
+
+template <typename T>
+void CommandLineArgs::GetCmdLineArgument(const char *arg_name, T &val)
+{
+	using namespace std;
+	map<string, string>::iterator itr;
+	if ((itr = pairs.find(arg_name)) != pairs.end()) {
+		istringstream strstream(itr->second);
+		strstream >> val;
+    }
+}
+
+template <>
+void CommandLineArgs::GetCmdLineArgument<char*>(const char* arg_name, char* &val)
+{
+	using namespace std;
+	map<string, string>::iterator itr;
+	if ((itr = pairs.find(arg_name)) != pairs.end()) {
+
+		string s = itr->second;
+		val = (char*) malloc(sizeof(char) * (s.length() + 1));
+		strcpy(val, s.c_str());
+
+	} else {
+    	val = NULL;
+	}
+}
+
+
+
+
 
 /******************************************************************************
  * Device initialization
@@ -132,7 +130,7 @@ void DeviceInit(CommandLineArgs &args)
 		exit(1);
 	}
 	int dev = 0;
-	args.GetCmdLineArgumenti("device", dev);
+	args.GetCmdLineArgument("device", dev);
 	if (dev < 0) {
 		dev = 0;
 	}
@@ -271,9 +269,9 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
  * Compares the equivalence of two arrays
  */
 template <typename T>
-int CompareResults(T* computed, T* reference, const unsigned int len, bool verbose)
+int CompareResults(T* computed, T* reference, size_t len, bool verbose)
 {
-	for (int i = 0; i < len; i++) {
+	for (size_t i = 0; i < len; i++) {
 
 		if (computed[i] != reference[i]) {
 			printf("Incorrect: [%d]: ", i);
@@ -283,19 +281,15 @@ int CompareResults(T* computed, T* reference, const unsigned int len, bool verbo
 
 			if (verbose) {
 				printf("\nresult[...");
-				for (int j = -4; j <= 4; j++) {
-					if ((i + j >= 0) && (i + j < len)) {
-						PrintValue<T>(computed[i + j]);
-						printf(", ");
-					}
+				for (size_t j = (i >= 4) ? i - 4 : 0; (j < i + 4) && (j < len); j++) {
+					PrintValue<T>(computed[j]);
+					printf(", ");
 				}
 				printf("...]");
 				printf("\nreference[...");
-				for (int j = -4; j <= 4; j++) {
-					if ((i + j >= 0) && (i + j < len)) {
-						PrintValue<T>(reference[i + j]);
-						printf(", ");
-					}
+				for (size_t j = (i >= 4) ? i - 4 : 0; (j < i + 4) && (j < len); j++) {
+					PrintValue<T>(reference[j]);
+					printf(", ");
 				}
 				printf("...]");
 			}
