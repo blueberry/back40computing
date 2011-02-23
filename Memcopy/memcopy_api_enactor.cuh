@@ -51,8 +51,8 @@ protected:
 	// Members
 	//---------------------------------------------------------------------
 
-	// Dispatch type (to self, or to derived class as per CRTP -- curiously
-	// recurring template pattern
+	// Dispatch type (either to self or to derived class as per CRTP -- curiously
+	// recurring template pattern)
 	typedef typename DispatchType<MemcopyEnactor, DerivedEnactorType>::Type Dispatch;
 	Dispatch *dispatch;
 
