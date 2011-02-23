@@ -107,10 +107,10 @@ DEPS = 			./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make large) Simple test driver for large-problem memcopy
+# (make test) Simple test driver for large-problem memcopy
 #-------------------------------------------------------------------------------
 
-large: bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_memcopy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_memcopy.cu $(DEPS)
 	mkdir -p bin

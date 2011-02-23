@@ -40,7 +40,17 @@ namespace memcopy {
  ******************************************************************************/
 
 /**
- * Enumeration of architecture-families that we have tuned for
+ * Enumeration of problem-size genres that we may have tuned for
+ */
+enum ProblemSize
+{
+	SMALL 	= 0,
+	LARGE 	= 1
+};
+
+
+/**
+ * Enumeration of architecture-families that we have tuned for below
  */
 enum Family
 {
@@ -62,18 +72,8 @@ struct FamilyClassifier
 };
 
 
-/**
- * Enumeration of problem-size genres that we may have tuned for
- */
-enum ProblemSize
-{
-	SMALL 	= 0,
-	LARGE 	= 1
-};
-
-
 /******************************************************************************
- * Granularity tuning types
+ * Granularity tuning types (family and, optionally, specific)
  ******************************************************************************/
 
 /**
@@ -91,35 +91,17 @@ struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, PROBLEM_SI
 
 template <>
 struct TunedConfig<SM20, LARGE>
-	: MemcopyConfig<
-		unsigned int,			// Data type					Use int32s as primary movement type
-		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		7,						// LOG_THREADS: 				128 threads/CTA
-		1,						// LOG_LOAD_VEC_SIZE: 			vec-2
-		1,						// LOG_LOADS_PER_TILE: 			2 loads
-		CG,						// CACHE_MODIFIER: 				CG (cache global only)
-		true,					// WORK_STEALING: 				Work-stealing load-balancing
-		9>						// LOG_SCHEDULE_GRANULARITY:	2048 items
+	: MemcopyConfig<unsigned int, 8, 7, 1, 1, CG, true, 9>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 template <>
 struct TunedConfig<SM20, SMALL>
-	: MemcopyConfig<
-		unsigned long long,		// Data type					Use int64s as primary movement type
-		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		5,						// LOG_THREADS: 				128 threads/CTA
-		1,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		1,						// LOG_LOADS_PER_TILE: 			2 loads
-		CG,						// CACHE_MODIFIER: 				CG (cache global only)
-		false,					// WORK_STEALING: 				Equal-shares load-balancing
-		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+	: MemcopyConfig<unsigned long long, 8, 5, 1, 1, CG, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
-
-
 
 
 //-----------------------------------------------------------------------------
@@ -128,30 +110,14 @@ struct TunedConfig<SM20, SMALL>
 
 template <>
 struct TunedConfig<SM13, LARGE>
-	: MemcopyConfig<
-		unsigned short,			// Data type					Use int16s as primary movement type
-		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		7,						// LOG_THREADS: 				128 threads/CTA
-		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		0,						// LOG_LOADS_PER_TILE: 			1 loads
-		NONE,					// CACHE_MODIFIER: 				NONE
-		false,					// WORK_STEALING: 				Equal-shares load-balancing
-		9>						// LOG_SCHEDULE_GRANULARITY:	512 items
+	: MemcopyConfig<unsigned short, 8, 7, 2, 0, NONE, false, 9>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 template <>
 struct TunedConfig<SM13, SMALL>
-	: MemcopyConfig<
-		unsigned short,			// Data type					Use int16s as primary movement type
-		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		5,						// LOG_THREADS: 				32 threads/CTA
-		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		0,						// LOG_LOADS_PER_TILE: 			1 loads
-		NONE,					// CACHE_MODIFIER: 				NONE
-		false,					// WORK_STEALING: 				Equal-shares load-balancing
-		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+	: MemcopyConfig<unsigned short, 8, 5, 2, 0, NONE, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -162,16 +128,8 @@ struct TunedConfig<SM13, SMALL>
 //-----------------------------------------------------------------------------
 
 template <ProblemSize _PROBLEM_SIZE>
-struct TunedConfig<SM13, _PROBLEM_SIZE>
-	: MemcopyConfig<
-		unsigned short,			// Data type					Use int16s as primary movement type
-		8,						// CTA_OCCUPANCY: 				8 CTAs/SM
-		5,						// LOG_THREADS: 				32 threads/CTA
-		2,						// LOG_LOAD_VEC_SIZE: 			vec-4
-		0,						// LOG_LOADS_PER_TILE: 			1 loads
-		NONE,					// CACHE_MODIFIER: 				NONE
-		false,					// WORK_STEALING: 				Equal-shares load-balancing
-		7>						// LOG_SCHEDULE_GRANULARITY:	128 items
+struct TunedConfig<SM10, _PROBLEM_SIZE>
+: MemcopyConfig<unsigned short, 8, 5, 2, 0, NONE, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 };
@@ -192,9 +150,9 @@ struct TunedConfig<SM13, _PROBLEM_SIZE>
 
 template <int PROBLEM_SIZE>
 __launch_bounds__ (
-	(TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE>::THREADS),
-	(TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE>::OCCUPANCY))
-void TunedMemcopyKernel(
+	(1 << TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyConfig::LOG_THREADS),
+	(TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyConfig::CTA_OCCUPANCY))
+__global__ void TunedMemcopyKernel(
 	void			* __restrict d_out,
 	void			* __restrict d_in,
 	size_t 			* __restrict d_work_progress,
@@ -203,7 +161,7 @@ void TunedMemcopyKernel(
 	int 			extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef TunedConfig<__B40C_CUDA_ARCH__, PROBLEM_SIZE> MemcopyConfig;
+	typedef TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE> MemcopyConfig;
 	typedef MemcopyKernelConfig<MemcopyConfig> KernelConfig;
 	typedef typename MemcopyConfig::T T;
 
@@ -215,9 +173,8 @@ void TunedMemcopyKernel(
 		out,
 		in,
 		d_work_progress, work_decomposition, progress_selector, extra_bytes);
+
 }
-
-
 
 
 

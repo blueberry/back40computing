@@ -35,6 +35,10 @@ namespace b40c {
 using namespace memcopy;
 
 
+/******************************************************************************
+ * MemcopyEnactor Declaration
+ ******************************************************************************/
+
 /**
  * Basic memcopy enactor class.
  */
@@ -72,54 +76,27 @@ protected:
 		typename MemcopyConfig::T *d_dest,
 		typename MemcopyConfig::T *d_src,
 		CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
-		int extra_bytes)
-	{
-		// Load detailed kernel-configuration type
-		typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
-		int dynamic_smem = 0;
-
-		cudaError_t retval = cudaSuccess;
-
-		MemcopyKernel<MemcopyKernelConfigType><<<work.grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
-			d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
-		if (DEBUG) {
-			retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__);
-		}
-
-		return retval;
-	}
-
+		int extra_bytes);
 
 public:
 
 	/**
-	 * Constructor.
+	 * Constructor
 	 */
-	MemcopyEnactor() :
-		d_work_progress(NULL),
-		progress_selector(0)
-	{
-		dispatch = static_cast<Dispatch*>(this);
-	}
+	MemcopyEnactor();
 
 
 	/**
      * Destructor
      */
-    virtual ~MemcopyEnactor()
-    {
-   		if (d_work_progress) {
-   			B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-   		}
-    }
+    virtual ~MemcopyEnactor();
 
-    
+
 	/**
 	 * Enacts a memcopy on the specified device data.
 	 *
 	 * For generating memcopy kernels having computational granularities in accordance
 	 * with user-supplied granularity-specialization types.  (Useful for auto-tuning.)
-	 *
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -129,77 +106,147 @@ public:
 		typename MemcopyConfig::T *d_src,
 		size_t num_elements,
 		int extra_bytes = 0,
-		int max_grid_size = 0)
-	{
-		typedef typename MemcopyConfig::T T;
-		typedef typename MemcopyConfig::SizeT SizeT;
-		const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
-
-		int grid_size = (MemcopyConfig::WORK_STEALING) ?
-				OccupiedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size) :
-				OversubscribedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size);
-
-		if (!grid_size) {
-			if (!extra_bytes) {
-				// Nothing to do
-				return cudaSuccess;
-			} else {
-				// We have to process the extra bytes
-				grid_size = 1;
-			}
-		}
-
-		// Obtain a CTA work distribution for copying items of type T
-		CtaWorkDistribution<SizeT> work(num_elements, SCHEDULE_GRANULARITY, grid_size);
-
-		if (DEBUG) {
-			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-				cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-			printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
-				work.grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(typename MemcopyConfig::SizeT));
-			printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d, extra_bytes: %d]\n",
-				sizeof(typename MemcopyConfig::T), work.num_elements, 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
-		}
-
-		cudaError_t retval = cudaSuccess;
-		do {
-			// Setup
-			if (MemcopyConfig::WORK_STEALING) {
-
-				// Make sure that our progress counters are allocated
-				if (d_work_progress == NULL) {
-					// Allocate
-					if (retval = B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
-						"LsbSortEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
-
-					// Initialize
-					size_t h_work_progress[2] = {0, 0};
-					if (retval = B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
-						"LsbSortEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
-				}
-
-				// Update our progress counter selector to index the next progress counter
-				progress_selector ^= 1;
-			}
-
-			// Invoke memcopy kernel
-			if (retval = dispatch->template MemcopyPass<MemcopyConfig>(d_dest, d_src, work, extra_bytes)) break;
-
-		} while (0);
-
-		// Cleanup
-		if (retval) {
-			// We had an error, which means that the device counters may not be
-			// properly initialized for the next pass: reset them.
-	   		if (d_work_progress) {
-	   			B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-	   			d_work_progress = NULL;
-	   		}
-		}
-
-	    return retval;
-	}
+		int max_grid_size = 0);
 };
+
+
+
+/******************************************************************************
+ * MemcopyEnactor Implementation
+ ******************************************************************************/
+
+/**
+ * Performs a memcopy pass
+ */
+template <typename DerivedEnactorType>
+template <typename MemcopyConfig>
+cudaError_t MemcopyEnactor<DerivedEnactorType>::MemcopyPass(
+	typename MemcopyConfig::T *d_dest,
+	typename MemcopyConfig::T *d_src,
+	CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
+	int extra_bytes)
+{
+	// Load detailed kernel-configuration type
+	typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
+
+	int dynamic_smem = 0;
+	cudaError_t retval = cudaSuccess;
+
+	MemcopyKernel<MemcopyKernelConfigType><<<work.grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
+		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
+
+	if (DEBUG) {
+		retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactor:: MemcopyKernel failed ", __FILE__, __LINE__);
+	}
+
+	return retval;
+}
+
+
+/**
+ * Constructor
+ */
+template <typename DerivedEnactorType>
+MemcopyEnactor<DerivedEnactorType>::MemcopyEnactor() :
+	d_work_progress(NULL),
+	progress_selector(0)
+{
+	dispatch = static_cast<Dispatch*>(this);
+}
+
+
+/**
+ * Destructor
+ */
+template <typename DerivedEnactorType>
+MemcopyEnactor<DerivedEnactorType>::~MemcopyEnactor()
+{
+	if (d_work_progress) {
+		B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
+	}
+}
+
+    
+/**
+ * Enacts a memcopy on the specified device data.
+ */
+template <typename DerivedEnactorType>
+template <typename MemcopyConfig>
+cudaError_t MemcopyEnactor<DerivedEnactorType>::Enact(
+	typename MemcopyConfig::T *d_dest,
+	typename MemcopyConfig::T *d_src,
+	size_t num_elements,
+	int extra_bytes,
+	int max_grid_size)
+{
+	typedef typename MemcopyConfig::T T;
+	typedef typename MemcopyConfig::SizeT SizeT;
+	const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
+
+	int grid_size = (MemcopyConfig::WORK_STEALING) ?
+			OccupiedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size) :
+			OversubscribedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size);
+
+	if (!grid_size) {
+		if (!extra_bytes) {
+			// Nothing to do
+			return cudaSuccess;
+		} else {
+			// We have to process the extra bytes
+			grid_size = 1;
+		}
+	}
+
+	// Obtain a CTA work distribution for copying items of type T
+	CtaWorkDistribution<SizeT> work(num_elements, SCHEDULE_GRANULARITY, grid_size);
+
+	if (DEBUG) {
+		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
+			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
+		printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
+			work.grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(typename MemcopyConfig::SizeT));
+		printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d, extra_bytes: %d]\n",
+			sizeof(typename MemcopyConfig::T), work.num_elements, 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
+	}
+
+	cudaError_t retval = cudaSuccess;
+	do {
+		// Setup
+		if (MemcopyConfig::WORK_STEALING) {
+
+			// Make sure that our progress counters are allocated
+			if (d_work_progress == NULL) {
+				// Allocate
+				if (retval = B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
+					"LsbSortEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
+
+				// Initialize
+				size_t h_work_progress[2] = {0, 0};
+				if (retval = B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
+					"LsbSortEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
+			}
+
+			// Update our progress counter selector to index the next progress counter
+			progress_selector ^= 1;
+		}
+
+		// Invoke memcopy kernel
+		if (retval = dispatch->template MemcopyPass<MemcopyConfig>(d_dest, d_src, work, extra_bytes)) break;
+
+	} while (0);
+
+	// Cleanup
+	if (retval) {
+		// We had an error, which means that the device counters may not be
+		// properly initialized for the next pass: reset them.
+		if (d_work_progress) {
+			B40CPerror(cudaFree(d_work_progress), "MemcopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
+			d_work_progress = NULL;
+		}
+	}
+
+	return retval;
+}
 
 
 
