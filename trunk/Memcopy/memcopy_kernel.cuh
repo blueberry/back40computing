@@ -101,7 +101,7 @@ struct MemcopyPass
 
 		SizeT out_of_bounds = cta_offset + cta_elements;
 
-		// Copy full tiles of tile_elements
+		// Process full tiles of tile_elements
 		while (cta_offset < guarded_offset) {
 
 			ProcessTile<Config, true>(d_out, d_in, cta_offset, out_of_bounds);

@@ -160,7 +160,7 @@ struct CtaWorkDistribution
 		int grid_size) :
 			num_elements(num_elements),
 			total_grains((num_elements + schedule_granularity - 1) / schedule_granularity),		// round up
-			grains_per_cta(total_grains / grid_size),											// round down for the ks
+			grains_per_cta((grid_size > 0) ? total_grains / grid_size : 0),						// round down for the ks
 			extra_grains(total_grains - (grains_per_cta * grid_size)), 							// the CTAs with +1 grains
 			grid_size(grid_size)
 	{}
@@ -170,8 +170,8 @@ struct CtaWorkDistribution
 	 * Computes work limits for the current CTA
 	 */	
 	template <
-		int LOG_TILE_ELEMENTS,				// CTA tile size, i.e., granularity by which the CTA processes work
-		int LOG_SCHEDULE_GRANULARITY>		// Problem granularity by which work is distributed amongst CTA threadblocks
+		int LOG_TILE_ELEMENTS,			// CTA tile size, i.e., granularity by which the CTA processes work
+		int LOG_SCHEDULE_GRANULARITY>	// Problem granularity by which work is distributed amongst CTA threadblocks
 	__device__ __forceinline__ void GetCtaWorkLimits(
 		SizeT &cta_offset,				// Out param: Offset at which this CTA begins processing
 		SizeT &cta_elements,			// Out param: Total number of elements for this CTA to process
@@ -186,10 +186,12 @@ struct CtaWorkDistribution
 			// This CTA gets grains_per_cta+1 grains
 			cta_elements = (grains_per_cta + 1) << LOG_SCHEDULE_GRANULARITY;
 			cta_offset = cta_elements * blockIdx.x;
+
 		} else if (blockIdx.x < total_grains) {
 			// This CTA gets grains_per_cta grains
 			cta_elements = grains_per_cta << LOG_SCHEDULE_GRANULARITY;
 			cta_offset = (cta_elements * blockIdx.x) + (extra_grains << LOG_SCHEDULE_GRANULARITY);
+
 		} else {
 			// This CTA gets no work (problem small enough that some CTAs don't even a single grain)
 			cta_elements = 0;
@@ -341,6 +343,27 @@ struct SrtsGrid
  ******************************************************************************/
 
 /**
+ * Binary associative operators
+ */
+namespace binary_ops
+{
+
+template <typename T>
+T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
+{
+	return a + b;
+}
+
+template <typename T>
+T __host__ __device__ __forceinline__ Max(const T &a, const T &b)
+{
+	return (a > b) ? a : b;
+}
+
+} // namespace binary_ops
+
+
+/**
  * Performs NUM_ELEMENTS steps of a Kogge-Stone style prefix scan.
  *
  * This procedure assumes that no explicit barrier synchronization is needed
@@ -457,7 +480,10 @@ struct WarpScan
  * Can be used to perform concurrent, independent warp-reductions if
  * storage pointers and their local-thread indexing id's are set up properly.
  */
-template <typename T, int LOG_NUM_ELEMENTS>
+template <
+	typename T,
+	int LOG_NUM_ELEMENTS,
+	T BinaryOp(const T&, const T&) = binary_ops::Sum>
 struct WarpReduce
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -468,7 +494,8 @@ struct WarpReduce
 	{
 		static __device__ __forceinline__ void Invoke(T partial, volatile T *storage, int tid) 
 		{
-			partial = partial + storage[tid + OFFSET_RIGHT];
+			T from_storage = storage[tid + OFFSET_RIGHT];
+			partial = BinaryOp(partial, from_storage);
 			storage[tid] = partial;
 			Iterate<OFFSET_RIGHT / 2>::Invoke(partial, storage, tid);
 		}
@@ -484,7 +511,7 @@ struct WarpReduce
 	// Interface
 	static __device__ __forceinline__ T Invoke(
 		T partial,					// Input partial
-		volatile T *storage,		// Smem for reducing
+		volatile T *storage,		// Smem for reducing of length equal to at least 1.5x NUM_ELEMENTS
 		int tid = threadIdx.x)		// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		storage[tid] = partial;
@@ -498,7 +525,10 @@ struct WarpReduce
 /**
  * Have each thread concurrently perform a serial reduction over its specified segment 
  */
-template <typename T, int LENGTH> 
+template <
+	typename T,
+	int LENGTH,
+	T BinaryOp(const T&, const T&) = binary_ops::Sum>
 struct SerialReduce
 {
 	// Iterate
@@ -511,11 +541,8 @@ struct SerialReduce
 			T b = partials[TOTAL - COUNT];
 			T c = partials[TOTAL - (COUNT - 1)];
 
-// TODO: consider using video 3-op instructions on SM2.0+
-//			asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-			a += b + c;
-
-			return a;
+			// TODO: consider specializing with a video 3-op instructions on SM2.0+, e.g., asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
+			return BinaryOp(a, BinaryOp(b, c));
 		}
 	};
 
@@ -525,7 +552,7 @@ struct SerialReduce
 	{
 		static __device__ __forceinline__ T Invoke(T partials[])
 		{
-			return partials[TOTAL - 2] + partials[TOTAL - 1];
+			return BinaryOp(partials[TOTAL - 2], partials[TOTAL - 1]);
 		}
 	};
 

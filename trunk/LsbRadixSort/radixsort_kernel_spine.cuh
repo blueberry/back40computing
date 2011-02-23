@@ -121,13 +121,13 @@ struct SpineScanKernelConfig : SpineScanConfigType
 
 	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we
 	// back up the primary raking warps with a single warp of raking-threads.
-	static const bool TwoLevelGrid 					= (SpineScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
+	static const bool TWO_LEVEL_GRID 					= (SpineScanConfigType::LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
 
 	// Primary smem SRTS grid type
 	typedef SrtsGrid<
 		typename SpineScanConfigType::ScanType,						// Partial type
 		SpineScanConfigType::LOG_THREADS,							// Depositing threads (the CTA size)
-		SpineScanConfigType::LOG_LOADS_PER_TILE,					// Dependent lanes (the number of loads)
+		SpineScanConfigType::LOG_LOADS_PER_TILE,					// Lanes (the number of loads)
 		SpineScanConfigType::LOG_RAKING_THREADS> PrimaryGrid;		// Raking threads
 
 	// Secondary smem SRTS grid type
@@ -138,7 +138,7 @@ struct SpineScanKernelConfig : SpineScanConfigType
 		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
 	
 
-	static const int SMEM_BYTES						= (TwoLevelGrid) ?
+	static const int SMEM_BYTES						= (TWO_LEVEL_GRID) ?
 															PrimaryGrid::SMEM_BYTES + SecondaryGrid::SMEM_BYTES :	// two-level smem SRTS
 															PrimaryGrid::SMEM_BYTES;								// one-level smem SRTS
 };
@@ -158,49 +158,25 @@ struct ReduceVectors
 {
 	typedef typename Config::ScanType ScanType;
 	
-	// Iterate over vec-elements
-	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
+	// Next load
+	template <int LOAD, int TOTAL_LOADS>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			ScanType partial,
-			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
-			ScanType *base_partial) 
-		{
-			partial += data[LOAD][VEC_ELEMENT];
-			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(partial, data, base_partial);
-		}
-	};
-
-	// First vector element: Identity
-	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<LOAD, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
-		static __device__ __forceinline__ void Invoke(
-			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
-			ScanType *base_partial) 
-		{
-			Iterate<LOAD, TOTAL_LOADS, 1, TOTAL_VEC_ELEMENTS>::Invoke(data[LOAD][0], data, base_partial);
-		}
-	};
-
-	// Last vector element + 1: Next load
-	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
-		static __device__ __forceinline__ void Invoke(
-			ScanType partial,
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
 			// Store partial reduction into SRTS grid
-			base_partial[LOAD * Config::PrimaryGrid::LANE_STRIDE] = partial;
+			base_partial[LOAD * Config::PrimaryGrid::LANE_STRIDE] =
+				SerialReduce<ScanType, Config::LOAD_VEC_SIZE>::Invoke(data[LOAD]);
 
 			// Next load
-			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(data, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(data, base_partial);
 		}
 	};
 	
-	// Last load + 1: Terminate
-	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) {} 
@@ -211,7 +187,7 @@ struct ReduceVectors
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 		ScanType *base_partial)
 	{
-		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(data, base_partial);
+		Iterate<0, Config::LOADS_PER_TILE>::Invoke(data, base_partial);
 	}
 
 };
@@ -223,50 +199,24 @@ struct ScanVectors
 {
 	typedef typename Config::ScanType ScanType;
 	
-	// Iterate over vec-elements
-	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
+	// Next load
+	template <int LOAD, int TOTAL_LOADS>
 	struct Iterate {
-		static __device__ __forceinline__ void Invoke(
-			ScanType exclusive_partial,
-			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
-			ScanType *base_partial) 
-		{
-			ScanType inclusive_partial = data[LOAD][VEC_ELEMENT] + exclusive_partial;
-			data[LOAD][VEC_ELEMENT] = exclusive_partial;
-			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(inclusive_partial, data, base_partial);
-		}
-	};
-
-	// First vector element: Load exclusive partial reduction from SRTS grid
-	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<LOAD, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) 
 		{
 			ScanType exclusive_partial = base_partial[LOAD * Config::PrimaryGrid::LANE_STRIDE];
-			ScanType inclusive_partial = data[LOAD][0] + exclusive_partial;
-			data[LOAD][0] = exclusive_partial;
-			Iterate<LOAD, TOTAL_LOADS, 1, TOTAL_VEC_ELEMENTS>::Invoke(inclusive_partial, data, base_partial);
-		}
-	};
+			SerialScan<ScanType, Config::LOAD_VEC_SIZE>::Invoke(data[LOAD], exclusive_partial);
 
-	// Last vector element + 1: Next load
-	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
-		static __device__ __forceinline__ void Invoke(
-			ScanType exclusive_partial,
-			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
-			ScanType *base_partial) 
-		{
 			// Next load
-			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(data, base_partial);
+			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(data, base_partial);
 		}
 	};
 	
-	// Last load + 1: Terminate
-	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
-	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
+	// Terminate
+	template <int TOTAL_LOADS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS> {
 		static __device__ __forceinline__ void Invoke(
 			ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 			ScanType *base_partial) {} 
@@ -277,7 +227,7 @@ struct ScanVectors
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
 		ScanType *base_partial)
 	{
-		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(data, base_partial);
+		Iterate<0, Config::LOADS_PER_TILE>::Invoke(data, base_partial);
 	}
 
 };
@@ -317,7 +267,7 @@ __device__ __forceinline__ void WarpRakeAndScan(
 /**
  * Process a scan tile.
  */
-template <typename Config, bool TwoLevelGrid> struct ProcessTile;
+template <typename Config, bool TWO_LEVEL_GRID> struct ProcessTile;
 
 
 /**
@@ -466,7 +416,7 @@ __device__ __forceinline__ void LsbSpineScan(
 
 		ScanType *secondary_grid = reinterpret_cast<ScanType*>(smem_pool + Config::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
 		secondary_base_partial = Config::SecondaryGrid::BasePartial(secondary_grid);
-		if (Config::TwoLevelGrid && (threadIdx.x < Config::SecondaryGrid::RAKING_THREADS)) {
+		if (Config::TWO_LEVEL_GRID && (threadIdx.x < Config::SecondaryGrid::RAKING_THREADS)) {
 			secondary_raking_seg = Config::SecondaryGrid::RakingSegment(secondary_grid);
 		}
 
@@ -480,7 +430,7 @@ __device__ __forceinline__ void LsbSpineScan(
 	SizeT cta_offset = 0;
 	while (cta_offset < spine_elements) {
 		
-		ProcessTile<Config, Config::TwoLevelGrid>::Invoke(
+		ProcessTile<Config, Config::TWO_LEVEL_GRID>::Invoke(
 			primary_base_partial,
 			primary_raking_seg,
 			secondary_base_partial,

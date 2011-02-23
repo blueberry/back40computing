@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuned Memcopy Enactor
+ * Tuned Reduction Enactor
  ******************************************************************************/
 
 #pragma once
@@ -28,25 +28,25 @@
 #include <stdio.h>
 #include <limits.h>
 
-#include "memcopy_api_enactor.cuh"
-#include "memcopy_api_granularity.cuh"
-#include "memcopy_granularity_tuned.cuh"
+#include "reduction_api_enactor.cuh"
+#include "reduction_api_granularity.cuh"
+#include "reduction_granularity_tuned.cuh"
 
 namespace b40c {
 
-using namespace memcopy;
+using namespace reduction;
 
 
 /******************************************************************************
- * MemcopyEnactorTuned Declaration
+ * ReductionEnactorTuned Declaration
  ******************************************************************************/
 
 /**
- * Tuned memcopy enactor class.
+ * Tuned reduction enactor class.
  */
-class MemcopyEnactorTuned :
-	public MemcopyEnactor<MemcopyEnactorTuned>,
-	public Architecture<__B40C_CUDA_ARCH__, MemcopyEnactorTuned>
+class ReductionEnactorTuned :
+	public ReductionEnactor<ReductionEnactorTuned>,
+	public Architecture<__B40C_CUDA_ARCH__, ReductionEnactorTuned>
 {
 protected:
 
@@ -55,8 +55,8 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef MemcopyEnactor<MemcopyEnactorTuned> 					BaseEnactorType;
-	typedef Architecture<__B40C_CUDA_ARCH__, MemcopyEnactorTuned> 	BaseArchType;
+	typedef ReductionEnactor<ReductionEnactorTuned> 					BaseEnactorType;
+	typedef Architecture<__B40C_CUDA_ARCH__, ReductionEnactorTuned> 	BaseArchType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -71,17 +71,17 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
-	// Memcopy Operation
+	// Reduction Operation
 	//-----------------------------------------------------------------------------
 
     /**
-	 * Performs a memcopy pass
+	 * Performs a reduction pass
 	 */
-	template <typename MemcopyConfig>
-	cudaError_t MemcopyPass(
+	template <typename ReductionConfig>
+	cudaError_t ReductionPass(
 		void *d_dest,
 		void *d_src,
-		CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
+		CtaWorkDistribution<typename ReductionConfig::SizeT> &work,
 		int extra_bytes);
 
 
@@ -101,11 +101,11 @@ public:
 	/**
 	 * Constructor.
 	 */
-	MemcopyEnactorTuned();
+	ReductionEnactorTuned();
 
 
 	/**
-	 * Enacts a memcopy operation on the specified device data using the
+	 * Enacts a reduction operation on the specified device data using the
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
@@ -128,7 +128,7 @@ public:
 
 
 	/**
-	 * Enacts a memcopy operation on the specified device data using the
+	 * Enacts a reduction operation on the specified device data using the
 	 * LARGE granularity configuration
 	 *
 	 * @param d_dest
@@ -152,7 +152,7 @@ public:
 
 
 /******************************************************************************
- * MemcopyEnactorTuned Implementation
+ * ReductionEnactorTuned Implementation
  ******************************************************************************/
 
 
@@ -160,7 +160,7 @@ public:
  * Type for encapsulating operational details regarding an invocation
  */
 template <ProblemSize _PROBLEM_SIZE>
-struct MemcopyEnactorTuned::Detail
+struct ReductionEnactorTuned::Detail
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 	int max_grid_size;
@@ -173,7 +173,7 @@ struct MemcopyEnactorTuned::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-struct MemcopyEnactorTuned::Storage
+struct ReductionEnactorTuned::Storage
 {
 	void *d_dest;
 	void *d_src;
@@ -186,24 +186,24 @@ struct MemcopyEnactorTuned::Storage
 
 
 /**
- * Performs a memcopy pass
+ * Performs a reduction pass
  */
-template <typename MemcopyConfig>
-cudaError_t MemcopyEnactorTuned::MemcopyPass(
+template <typename ReductionConfig>
+cudaError_t ReductionEnactorTuned::ReductionPass(
 	void *d_dest,
 	void *d_src,
-	CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
+	CtaWorkDistribution<typename ReductionConfig::SizeT> &work,
 	int extra_bytes)
 {
 	cudaError_t retval = cudaSuccess;
 	int dynamic_smem = 0;
-	int threads = 1 << MemcopyConfig::LOG_THREADS;
+	int threads = 1 << ReductionConfig::LOG_THREADS;
 
-	TunedMemcopyKernel<MemcopyConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
+	TunedReductionKernel<ReductionConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
 		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
 	if (DEBUG) {
-		retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__);
+		retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactorTuned:: ReductionKernelTuned failed ", __FILE__, __LINE__);
 	}
 
 	return retval;
@@ -214,17 +214,17 @@ cudaError_t MemcopyEnactorTuned::MemcopyPass(
  * Dispatch call-back with static CUDA_ARCH
  */
 template <int CUDA_ARCH, typename StorageType, typename DetailType>
-cudaError_t MemcopyEnactorTuned::Enact(StorageType &storage, DetailType &detail)
+cudaError_t ReductionEnactorTuned::Enact(StorageType &storage, DetailType &detail)
 {
 	// Obtain tuned granularity type
-	typedef TunedConfig<CUDA_ARCH, DetailType::PROBLEM_SIZE> MemcopyConfig;
-	typedef typename MemcopyConfig::T T;
+	typedef TunedConfig<CUDA_ARCH, DetailType::PROBLEM_SIZE> ReductionConfig;
+	typedef typename ReductionConfig::T T;
 
 	int num_elements = storage.num_bytes / sizeof(T);
 	int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
 
 	// Invoke base class enact with type
-	return BaseEnactorType::template Enact<MemcopyConfig>(
+	return BaseEnactorType::template Enact<ReductionConfig>(
 		(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 }
 
@@ -232,18 +232,18 @@ cudaError_t MemcopyEnactorTuned::Enact(StorageType &storage, DetailType &detail)
 /**
  * Constructor.
  */
-MemcopyEnactorTuned::MemcopyEnactorTuned()
-	: BaseEnactorType::MemcopyEnactor()
+ReductionEnactorTuned::ReductionEnactorTuned()
+	: BaseEnactorType::ReductionEnactor()
 {
 }
 
 
 /**
- * Enacts a memcopy operation on the specified device data using the
+ * Enacts a reduction operation on the specified device data using the
  * enumerated tuned granularity configuration
  */
 template <ProblemSize PROBLEM_SIZE>
-cudaError_t MemcopyEnactorTuned::Enact(
+cudaError_t ReductionEnactorTuned::Enact(
 	void *d_dest,
 	void *d_src,
 	size_t num_bytes,
@@ -257,10 +257,10 @@ cudaError_t MemcopyEnactorTuned::Enact(
 
 
 /**
- * Enacts a memcopy operation on the specified device data using the
+ * Enacts a reduction operation on the specified device data using the
  * LARGE granularity configuration
  */
-cudaError_t MemcopyEnactorTuned::Enact(
+cudaError_t ReductionEnactorTuned::Enact(
 	void *d_dest,
 	void *d_src,
 	size_t num_bytes,
