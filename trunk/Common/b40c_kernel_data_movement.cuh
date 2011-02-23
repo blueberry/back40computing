@@ -46,6 +46,13 @@ enum CacheModifier {
 	LIMIT	= CS + 1
 };
 
+#define CacheModifierToString(modifier)	(	(modifier == NONE) 	? "NONE" :		\
+											(modifier == CG) 	? "CG" :		\
+											(modifier == CA) 	? "CA" :		\
+											(modifier == WB) 	? "WB" :		\
+											(modifier == CS) 	? "CS" :		\
+																"<ERROR>")
+
 
 /******************************************************************************
  * Load Operations 

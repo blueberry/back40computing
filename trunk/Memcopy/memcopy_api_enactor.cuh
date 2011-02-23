@@ -126,13 +126,10 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::MemcopyPass(
 	CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
 	int extra_bytes)
 {
-	// Load detailed kernel-configuration type
-	typedef MemcopyKernelConfig<MemcopyConfig> MemcopyKernelConfigType;
-
 	int dynamic_smem = 0;
 	cudaError_t retval = cudaSuccess;
 
-	MemcopyKernel<MemcopyKernelConfigType><<<work.grid_size, MemcopyKernelConfigType::THREADS, dynamic_smem>>>(
+	MemcopyKernel<MemcopyConfig><<<work.grid_size, MemcopyConfig::THREADS, dynamic_smem>>>(
 		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
 	if (DEBUG) {
@@ -181,11 +178,10 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::Enact(
 {
 	typedef typename MemcopyConfig::T T;
 	typedef typename MemcopyConfig::SizeT SizeT;
-	const int SCHEDULE_GRANULARITY 	= 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY;
 
 	int grid_size = (MemcopyConfig::WORK_STEALING) ?
-			OccupiedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size) :
-			OversubscribedGridSize<SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size);
+		OccupiedGridSize<MemcopyConfig::SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size) :
+		OversubscribedGridSize<MemcopyConfig::SCHEDULE_GRANULARITY, MemcopyConfig::CTA_OCCUPANCY>(num_elements, max_grid_size);
 
 	if (!grid_size) {
 		if (!extra_bytes) {
@@ -198,7 +194,7 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::Enact(
 	}
 
 	// Obtain a CTA work distribution for copying items of type T
-	CtaWorkDistribution<SizeT> work(num_elements, SCHEDULE_GRANULARITY, grid_size);
+	CtaWorkDistribution<SizeT> work(num_elements, MemcopyConfig::SCHEDULE_GRANULARITY, grid_size);
 
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
@@ -206,7 +202,7 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::Enact(
 		printf("Memcopy: \t[grid_size: %d, threads %d, SizeT %d bytes]\n",
 			work.grid_size, 1 << MemcopyConfig::LOG_THREADS, sizeof(typename MemcopyConfig::SizeT));
 		printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d, extra_bytes: %d]\n",
-			sizeof(typename MemcopyConfig::T), work.num_elements, 1 << MemcopyConfig::LOG_SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
+			sizeof(typename MemcopyConfig::T), work.num_elements, MemcopyConfig::SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains, extra_bytes);
 	}
 
 	cudaError_t retval = cudaSuccess;
