@@ -76,7 +76,7 @@ void Usage()
  * @param[in] 		h_data
  * 		Vector of data to copy (also copied back out)
  */
-template <typename T, TunedGranularityEnum GRANULARITY_ENUM>
+template <typename T, ProblemSize PROBLEM_SIZE>
 double TimedMemcopy(T *h_data, T *h_reference, size_t num_elements)
 {
 	printf("%d iterations, %d bytes\n\n", g_iterations, num_elements);
@@ -97,7 +97,7 @@ double TimedMemcopy(T *h_data, T *h_reference, size_t num_elements)
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	memcopy_enactor.DEBUG = true;
-	memcopy_enactor.template Enact<GRANULARITY_ENUM>(
+	memcopy_enactor.template Enact<PROBLEM_SIZE>(
 		d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 	memcopy_enactor.DEBUG = false;
 
@@ -115,7 +115,7 @@ double TimedMemcopy(T *h_data, T *h_reference, size_t num_elements)
 		cudaEventRecord(start_event, 0);
 
 		// Call the memcopy API routine
-		memcopy_enactor.template Enact<GRANULARITY_ENUM>(
+		memcopy_enactor.template Enact<PROBLEM_SIZE>(
 			d_dest, d_src, num_elements * sizeof(T), g_max_ctas);
 
 		// End timing record
@@ -192,11 +192,11 @@ void TestMemcopy(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	printf("\nUsing LARGE_PROBLEM config: ");
-	double large = TimedMemcopy<T, LARGE_PROBLEM>(h_data, h_reference, num_elements);
+	printf("\nUsing LARGE config: ");
+	double large = TimedMemcopy<T, LARGE>(h_data, h_reference, num_elements);
 
-	printf("\nUsing SMALL_PROBLEM config: ");
-	double small = TimedMemcopy<T, SMALL_PROBLEM>(h_data, h_reference, num_elements);
+	printf("\nUsing SMALL config: ");
+	double small = TimedMemcopy<T, SMALL>(h_data, h_reference, num_elements);
 
 	if (large > small) {
 		printf("Large faster at %d bytes\n", num_elements);

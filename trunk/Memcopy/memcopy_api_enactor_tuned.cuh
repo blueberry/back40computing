@@ -38,7 +38,7 @@ using namespace memcopy;
 
 
 /******************************************************************************
- * Tuned Memcopy Enactor
+ * MemcopyEnactorTuned Declaration
  ******************************************************************************/
 
 /**
@@ -48,8 +48,11 @@ class MemcopyEnactorTuned :
 	public MemcopyEnactor<MemcopyEnactorTuned>,
 	public Architecture<__B40C_CUDA_ARCH__, MemcopyEnactorTuned>
 {
-
 protected:
+
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
 	typedef MemcopyEnactor<MemcopyEnactorTuned> 					BaseEnactorType;
@@ -61,27 +64,10 @@ protected:
 	friend class BaseArchType;
 
 	// Type for encapsulating operational details regarding an invocation
-	template <ProblemSize _PROBLEM_SIZE>
-	struct Detail
-	{
-		static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
-		int max_grid_size;
-		
-		// Constructor
-		Detail(int max_grid_size = 0) : max_grid_size(max_grid_size) {}
-	};
+	template <ProblemSize _PROBLEM_SIZE> struct Detail;
 
 	// Type for encapsulating storage details regarding an invocation
-	struct Storage
-	{
-		void *d_dest;
-		void *d_src;
-		size_t num_bytes;
-
-		// Constructor
-		Storage(void *d_dest, void *d_src, size_t num_bytes) : d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
-	};
-
+	struct Storage;
 
 
 	//-----------------------------------------------------------------------------
@@ -96,61 +82,28 @@ protected:
 		void *d_dest,
 		void *d_src,
 		CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
-		int extra_bytes)
-	{
-		int dynamic_smem = 0;
-		int threads = 1 << MemcopyConfig::LOG_THREADS;
-
-		cudaError_t retval = cudaSuccess;
-
-		TunedMemcopyKernel<MemcopyConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
-			d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
-
-		if (DEBUG) {
-			retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__);
-		}
-
-		return retval;
-	}
+		int extra_bytes);
 
 
 	//-----------------------------------------------------------------------------
 	// Granularity specialization interface required by Architecture subclass
 	//-----------------------------------------------------------------------------
 
-	// Dispatch call-back with static CUDA_ARCH
+	/**
+	 * Dispatch call-back with static CUDA_ARCH
+	 */
 	template <int CUDA_ARCH, typename Storage, typename Detail>
-	cudaError_t Enact(Storage &storage, Detail &detail)
-	{
-		// Obtain tuned granularity type
-		typedef TunedConfig<CUDA_ARCH, Detail::PROBLEM_SIZE> MemcopyConfig;
-		typedef typename MemcopyConfig::T T;
+	cudaError_t Enact(Storage &storage, Detail &detail);
 
-		int num_elements = storage.num_bytes / sizeof(T);
-		int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
 
-		// Invoke base class enact with type
-		return BaseEnactorType::template Enact<MemcopyConfig>(
-			(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
-	}
-
-	
 public:
-
-	//-----------------------------------------------------------------------------
-	// Construction 
-	//-----------------------------------------------------------------------------
 
 	/**
 	 * Constructor.
 	 */
-	MemcopyEnactorTuned() : BaseEnactorType::MemcopyEnactor() {}
+	MemcopyEnactorTuned();
 
-	
-	//-----------------------------------------------------------------------------
-	// Memcopy Interface
-	//-----------------------------------------------------------------------------
-	
+
 	/**
 	 * Enacts a memcopy operation on the specified device data using the
 	 * enumerated tuned granularity configuration
@@ -171,14 +124,8 @@ public:
 		void *d_dest,
 		void *d_src,
 		size_t num_bytes,
-		int max_grid_size = 0)
-	{
-		Detail<PROBLEM_SIZE> detail(max_grid_size);
-		Storage storage(d_dest, d_src, num_bytes);
+		int max_grid_size = 0);
 
-		return BaseArchType::Enact(storage, detail);
-	}
-	
 
 	/**
 	 * Enacts a memcopy operation on the specified device data using the
@@ -199,62 +146,135 @@ public:
 		void *d_dest,
 		void *d_src,
 		size_t num_bytes,
-		int max_grid_size = 0)
-	{
-		// Hybrid approach
-		if (num_bytes > 1024 * 2252) {
-			return Enact<LARGE>(d_dest, d_src, num_bytes, max_grid_size);
-		} else {
-			return Enact<SMALL>(d_dest, d_src, num_bytes, max_grid_size);
-		}
-	}
+		int max_grid_size = 0);
 };
-
 
 
 
 /******************************************************************************
- * Tuned granularity configuration types tagged by our tuning enumeration
+ * MemcopyEnactorTuned Implementation
  ******************************************************************************/
-/*
-// Large-problem specialization of granularity config type
-template <int CUDA_ARCH>
-struct TunedGranularity<LARGE, CUDA_ARCH>
-	: large_problem_tuning::TunedConfig<CUDA_ARCH>
-{
-	static const ProblemSize PROBLEM_SIZE 	= LARGE;
 
-	// Largely-unnecessary duplication of inner type data to accommodate
-	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
-	// properly support template specialization around kernel call sites.
-	typedef large_problem_tuning::TunedConfig<CUDA_ARCH> Base;
-	static const int THREADS 					= 1 << Base::LOG_THREADS;
-	static const int OCCUPANCY 					= Base::CTA_OCCUPANCY;
+
+/**
+ * Type for encapsulating operational details regarding an invocation
+ */
+template <ProblemSize _PROBLEM_SIZE>
+struct MemcopyEnactorTuned::Detail
+{
+	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+	int max_grid_size;
+
+	// Constructor
+	Detail(int max_grid_size = 0) : max_grid_size(max_grid_size) {}
 };
 
 
-// Small-problem specialization of granularity config type
-template <int CUDA_ARCH>
-struct TunedGranularity<SMALL, CUDA_ARCH>
-	: small_problem_tuning::TunedConfig<CUDA_ARCH>
+/**
+ * Type for encapsulating storage details regarding an invocation
+ */
+struct MemcopyEnactorTuned::Storage
 {
-	static const ProblemSize PROBLEM_SIZE 	= SMALL;
+	void *d_dest;
+	void *d_src;
+	size_t num_bytes;
 
-	// Largely-unnecessary duplication of inner type data to accommodate
-	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
-	// properly support template specialization around kernel call sites.
-	typedef small_problem_tuning::TunedConfig<CUDA_ARCH> Base;
-	static const int THREADS 					= 1 << Base::LOG_THREADS;
-	static const int OCCUPANCY 					= Base::CTA_OCCUPANCY;
+	// Constructor
+	Storage(void *d_dest, void *d_src, size_t num_bytes) :
+		d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
 };
-*/
+
+
+/**
+ * Performs a memcopy pass
+ */
+template <typename MemcopyConfig>
+cudaError_t MemcopyEnactorTuned::MemcopyPass(
+	void *d_dest,
+	void *d_src,
+	CtaWorkDistribution<typename MemcopyConfig::SizeT> &work,
+	int extra_bytes)
+{
+	cudaError_t retval = cudaSuccess;
+	int dynamic_smem = 0;
+	int threads = 1 << MemcopyConfig::LOG_THREADS;
+
+	TunedMemcopyKernel<MemcopyConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
+		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
+
+	if (DEBUG) {
+		retval = B40CPerror(cudaThreadSynchronize(), "MemcopyEnactorTuned:: MemcopyKernelTuned failed ", __FILE__, __LINE__);
+	}
+
+	return retval;
+}
+
+
+/**
+ * Dispatch call-back with static CUDA_ARCH
+ */
+template <int CUDA_ARCH, typename StorageType, typename DetailType>
+cudaError_t MemcopyEnactorTuned::Enact(StorageType &storage, DetailType &detail)
+{
+	// Obtain tuned granularity type
+	typedef TunedConfig<CUDA_ARCH, DetailType::PROBLEM_SIZE> MemcopyConfig;
+	typedef typename MemcopyConfig::T T;
+
+	int num_elements = storage.num_bytes / sizeof(T);
+	int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
+
+	// Invoke base class enact with type
+	return BaseEnactorType::template Enact<MemcopyConfig>(
+		(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
+}
+
+
+/**
+ * Constructor.
+ */
+MemcopyEnactorTuned::MemcopyEnactorTuned()
+	: BaseEnactorType::MemcopyEnactor()
+{
+}
+
+
+/**
+ * Enacts a memcopy operation on the specified device data using the
+ * enumerated tuned granularity configuration
+ */
+template <ProblemSize PROBLEM_SIZE>
+cudaError_t MemcopyEnactorTuned::Enact(
+	void *d_dest,
+	void *d_src,
+	size_t num_bytes,
+	int max_grid_size)
+{
+	Detail<PROBLEM_SIZE> detail(max_grid_size);
+	Storage storage(d_dest, d_src, num_bytes);
+
+	return BaseArchType::Enact(storage, detail);
+}
+
+
+/**
+ * Enacts a memcopy operation on the specified device data using the
+ * LARGE granularity configuration
+ */
+cudaError_t MemcopyEnactorTuned::Enact(
+	void *d_dest,
+	void *d_src,
+	size_t num_bytes,
+	int max_grid_size)
+{
+	// Hybrid approach
+	if (num_bytes > 1024 * 2252) {
+		return Enact<LARGE>(d_dest, d_src, num_bytes, max_grid_size);
+	} else {
+		return Enact<SMALL>(d_dest, d_src, num_bytes, max_grid_size);
+	}
+}
 
 
 
-
-
-
-
-
-}// namespace b40c
+} // namespace b40c
 
