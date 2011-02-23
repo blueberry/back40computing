@@ -37,7 +37,7 @@
 
 
 /******************************************************************************
- * Meta-type for Sorting Granularity Configuration
+ * LSB Sorting Granularity Configuration
  ******************************************************************************/
 
 #pragma once
@@ -52,7 +52,11 @@
 namespace b40c {
 namespace lsb_radix_sort {
 
-		
+
+/******************************************************************************
+ * Meta-type for Sorting Granularity Configuration
+ ******************************************************************************/
+
 /**
  * Unified granularity configuration type for all three kernels in a sorting pass
  * (upsweep, spinescan, and downsweep).  

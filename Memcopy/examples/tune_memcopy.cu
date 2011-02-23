@@ -66,7 +66,7 @@ struct Detail
  */
 void Usage()
 {
-	printf("\ntune_memcopy_large [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntune_memcopy [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
@@ -176,7 +176,7 @@ struct SweepConfig
 		{
 			// Invoke this config
 			const int CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> LOG_THREADS);
-			typedef MemcopyConfig<T, CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, (CacheModifier) CACHE_MODIFIER, WORK_STEALING> Config;
+			typedef MemcopyKernelConfig<T, size_t, CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, (CacheModifier) CACHE_MODIFIER, WORK_STEALING> Config;
 			TimedMemcopy<Config>(detail);
 
 			// Next WORK_STEALING

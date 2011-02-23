@@ -55,7 +55,7 @@ int 	g_iterations  					= 1;
  */
 void Usage() 
 {
-	printf("\ntest_memcopy_large [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntest_memcopy [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
@@ -198,8 +198,8 @@ void TestMemcopy(size_t num_elements)
 	printf("\nUsing SMALL config: ");
 	double small = TimedMemcopy<T, SMALL>(h_data, h_reference, num_elements);
 
-	if (large > small) {
-		printf("Large faster at %d bytes\n", num_elements);
+	if (small > large) {
+		printf("Small faster at %d bytes\n", num_elements);
 	}
 
 	// Free our allocated host memory 
@@ -232,19 +232,20 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+    bool sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	// Execute test(s)
-    if (args.CheckCmdLineFlag("sweep")) {
-		for (size_t num_elements = 4096; num_elements < 1024 * 1024 * 4; num_elements += 4096) {
-			TestMemcopy<unsigned char>(num_elements);
-		}
-    } else {
-		TestMemcopy<unsigned char>(num_elements);
-    }
+	// Execute test(s), optionally sweeping problem size downward
+    size_t orig_num_elements = num_elements;
+    do {
+
+    	TestMemcopy<unsigned char>(num_elements);
+		num_elements -= 4096;
+
+    } while (sweep && (num_elements < orig_num_elements ));
 
 	return 0;
 }

@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Granularity tuning types" for memcopy
+ * Tuned Memcopy Granularity Types
  ******************************************************************************/
 
 #pragma once
@@ -36,7 +36,7 @@ namespace memcopy {
 
 
 /******************************************************************************
- * Tuning classifiers to specialize granularity-tuning types on
+ * Tuning classifiers to specialize granularity types on
  ******************************************************************************/
 
 /**
@@ -73,7 +73,10 @@ struct FamilyClassifier
 
 
 /******************************************************************************
- * Granularity tuning types (family and, optionally, specific)
+ * Granularity tuning types
+ *
+ * Specialized by family (and optionally by specific architecture) and by
+ * problem size type
  ******************************************************************************/
 
 /**
@@ -84,21 +87,20 @@ template <int CUDA_ARCH, ProblemSize PROBLEM_SIZE>
 struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, PROBLEM_SIZE> {};
 
 
-
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
 template <>
 struct TunedConfig<SM20, LARGE>
-	: MemcopyConfig<unsigned int, 8, 7, 1, 1, CG, true, 9>
+	: MemcopyKernelConfig<unsigned int, size_t, 8, 7, 1, 1, CG, true, 9>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 template <>
 struct TunedConfig<SM20, SMALL>
-	: MemcopyConfig<unsigned long long, 8, 5, 1, 1, CG, false, 7>
+	: MemcopyKernelConfig<unsigned long long, size_t, 8, 5, 1, 1, CG, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -110,14 +112,14 @@ struct TunedConfig<SM20, SMALL>
 
 template <>
 struct TunedConfig<SM13, LARGE>
-	: MemcopyConfig<unsigned short, 8, 7, 2, 0, NONE, false, 9>
+	: MemcopyKernelConfig<unsigned short, size_t, 8, 7, 2, 0, NONE, false, 9>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 template <>
 struct TunedConfig<SM13, SMALL>
-	: MemcopyConfig<unsigned short, 8, 5, 2, 0, NONE, false, 7>
+	: MemcopyKernelConfig<unsigned short, size_t, 8, 5, 2, 0, NONE, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -129,7 +131,7 @@ struct TunedConfig<SM13, SMALL>
 
 template <ProblemSize _PROBLEM_SIZE>
 struct TunedConfig<SM10, _PROBLEM_SIZE>
-: MemcopyConfig<unsigned short, 8, 5, 2, 0, NONE, false, 7>
+: MemcopyKernelConfig<unsigned short, size_t, 8, 5, 2, 0, NONE, false, 7>
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 };
@@ -148,32 +150,28 @@ struct TunedConfig<SM10, _PROBLEM_SIZE>
  * properly support template specialization around kernel call sites.
  ******************************************************************************/
 
-template <int PROBLEM_SIZE>
+template <int PROBLEM_SIZE, typename SizeT>
 __launch_bounds__ (
-	(1 << TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyConfig::LOG_THREADS),
-	(TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyConfig::CTA_OCCUPANCY))
+	(1 << TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyKernelConfig::LOG_THREADS),
+	(TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::MemcopyKernelConfig::CTA_OCCUPANCY))
 __global__ void TunedMemcopyKernel(
 	void			* __restrict d_out,
 	void			* __restrict d_in,
-	size_t 			* __restrict d_work_progress,
-	CtaWorkDistribution<size_t> work_decomposition,
+	SizeT 			* __restrict d_work_progress,
+	CtaWorkDistribution<SizeT> work_decomposition,
 	int 			progress_selector,
 	int 			extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE> MemcopyConfig;
-	typedef MemcopyKernelConfig<MemcopyConfig> KernelConfig;
-	typedef typename MemcopyConfig::T T;
+	typedef TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE> Config;
+	typedef typename Config::T T;
 
-	T* out = reinterpret_cast<T*>(d_out);
-	T* in = reinterpret_cast<T*>(d_in);
+	T* out = (T*)(d_out);
+	T* in = (T*)(d_in);
 
 	// Invoke the wrapped kernel logic
-	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
-		out,
-		in,
-		d_work_progress, work_decomposition, progress_selector, extra_bytes);
-
+	MemcopyPass<Config, Config::WORK_STEALING>::Invoke(
+		out, in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
 }
 
 

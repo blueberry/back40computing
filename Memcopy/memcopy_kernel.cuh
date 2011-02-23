@@ -34,35 +34,6 @@ namespace memcopy {
 
 
 /******************************************************************************
- * Kernel Configuration  
- ******************************************************************************/
-
-/**
- * A detailed memcopy configuration type that specializes kernel code for a specific
- * memcopy pass.  It encapsulates granularity details derived from the inherited
- * MemcopyConfigType
- */
-template <typename MemcopyConfigType>
-struct MemcopyKernelConfig : MemcopyConfigType
-{
-	static const int THREADS						= 1 << MemcopyConfigType::LOG_THREADS;
-
-	static const int LOG_WARPS						= MemcopyConfigType::LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
-	static const int WARPS							= 1 << LOG_WARPS;
-
-	static const int LOAD_VEC_SIZE					= 1 << MemcopyConfigType::LOG_LOAD_VEC_SIZE;
-	static const int LOADS_PER_TILE					= 1 << MemcopyConfigType::LOG_LOADS_PER_TILE;
-
-	static const int LOG_TILE_ELEMENTS_PER_THREAD	= MemcopyConfigType::LOG_LOAD_VEC_SIZE + MemcopyConfigType::LOG_LOADS_PER_TILE;
-	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
-
-	static const int LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + MemcopyConfigType::LOG_THREADS;
-	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
-};
-
-
-
-/******************************************************************************
  * Memcopy kernel subroutines
  ******************************************************************************/
 
@@ -219,18 +190,18 @@ struct MemcopyPass <Config, true>
 /**
  * Upsweep reduction kernel entry point 
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename Config>
+__launch_bounds__ (Config::THREADS, Config::CTA_OCCUPANCY)
 __global__ 
 void MemcopyKernel(
-	typename KernelConfig::T 			* __restrict d_out,
-	typename KernelConfig::T 			* __restrict d_in,
-	typename KernelConfig::SizeT 		* __restrict d_work_progress,
-	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
+	typename Config::T 			* __restrict d_out,
+	typename Config::T 			* __restrict d_in,
+	typename Config::SizeT 		* __restrict d_work_progress,
+	CtaWorkDistribution<typename Config::SizeT> work_decomposition,
 	int progress_selector,
 	int extra_bytes)
 {
-	MemcopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
+	MemcopyPass<Config, Config::WORK_STEALING>::Invoke(
 		d_out, d_in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
 }
 
@@ -238,12 +209,12 @@ void MemcopyKernel(
 /**
  * Wrapper stub for arbitrary types to quiet the linker
  */
-template <typename KernelConfig>
+template <typename Config>
 void __wrapper__device_stub_MemcopyKernel(
-	typename KernelConfig::T 			* __restrict &,
-	typename KernelConfig::T 			* __restrict &,
-	typename KernelConfig::SizeT 		* __restrict &,
-	CtaWorkDistribution<typename KernelConfig::SizeT> &,
+	typename Config::T 			* __restrict &,
+	typename Config::T 			* __restrict &,
+	typename Config::SizeT 		* __restrict &,
+	CtaWorkDistribution<typename Config::SizeT> &,
 	int &,
 	int &) {}
 
