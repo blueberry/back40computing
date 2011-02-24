@@ -48,7 +48,7 @@ int 	g_iterations  					= 1;
 
 
 /******************************************************************************
- * Utility Routines
+ * Test wrappers for binary, associative operations
  ******************************************************************************/
 
 template <typename T>
@@ -80,6 +80,9 @@ struct Max
 };
 
 
+/******************************************************************************
+ * Utility Routines
+ ******************************************************************************/
 
 /**
  * Displays the commandline usage for this tool
@@ -103,15 +106,8 @@ void Usage()
 /**
  * Timed reduction.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
- *
- * @param[in] 		h_data
- * 		Vector of data to copy (also copied back out)
  */
-template <
-	typename T,
-//	ProblemSize PROBLEM_SIZE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+template <typename T, typename Op>  // ProblemSize PROBLEM_SIZE,
 double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 {
 	printf("%d iterations, %d bytes\n\n", g_iterations, num_elements);
@@ -125,23 +121,23 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 
 	typedef ReductionConfig <
 		T,
-		BinaryOp,
-		Identity,
+		Op::Op,
+		Op::Identity,
 
 		// Common
 		size_t,			// SizeT
 		NONE,			// CACHE_MODIFIER
-		false,			// WORK_STEALING
-		false,			// _UNIFORM_SMEM_ALLOCATION
-		true,			// _UNIFORM_GRID_SIZE
+		true,			// WORK_STEALING
+		true,			// _UNIFORM_SMEM_ALLOCATION
+		false,			// _UNIFORM_GRID_SIZE
 
 		// Upsweep
 		8,
 		7,
 		1,
-		1,
+		2,
 		B40C_LOG_WARP_THREADS(200),
-		9,
+		10,
 
 		// Spine
 		7,
@@ -233,10 +229,7 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
  * Creates an example reduction problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<
-	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+template<typename T, typename Op>
 void TestReduction(size_t num_elements)
 {
     // Allocate the reduction problem on the host and fill the keys with random bytes
@@ -255,14 +248,14 @@ void TestReduction(size_t num_elements)
 	for (size_t i = 0; i < num_elements; ++i) {
 //		RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
-		h_reference[0] = BinaryOp(h_reference[0], h_data[i]);
+		h_reference[0] = Op::Op(h_reference[0], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
 
-	TimedReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
+	TimedReduction<T, Op>(h_data, h_reference, num_elements);
 
 /*
 	printf("\nUsing LARGE config: ");
@@ -312,15 +305,13 @@ int main(int argc, char** argv)
 	g_verbose = args.CheckCmdLineFlag("v");
 
 	typedef unsigned int T;
+	typedef Sum<T> Op;
 
 	// Execute test(s), optionally sweeping problem size downward
     size_t orig_num_elements = num_elements;
     do {
 
-    	TestReduction<
-    		T,
-    		Sum<T>::Op,
-    		Sum<T>::Identity>(num_elements);
+    	TestReduction<T, Op>(num_elements);
 
     	num_elements -= 4096;
 

@@ -45,15 +45,21 @@ int g_max_ctas = 0;
 int g_iterations = 0;
 
 
-template <typename T>
+template <typename _T, typename _OpType>
 struct Detail
 {
+	typedef _T T;
+	typedef _OpType OpType;
+
 	ReductionEnactor<> enactor;
 	T *d_dest;
 	T *d_src;
+	T *h_data;
+	T *h_reference;
 	size_t num_elements;
 
-	Detail(size_t num_elements) : d_dest(NULL), d_src(NULL), num_elements(num_elements) {}
+	Detail(size_t num_elements) :
+		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 };
 
 
@@ -80,20 +86,23 @@ void Usage()
 }
 
 
+
 /**
  * Timed reduction for a specific granularity configuration type
  */
-template <typename Config>
-void TimedReduction(Detail<typename Config::T> &detail)
+template <typename Detail, typename Config>
+void TimedReduction(Detail &detail)
 {
 	Config::Print();
 	fflush(stdout);
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	detail.enactor.DEBUG = g_verbose;
+
 	if (detail.enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas)) {
 		exit(1);
 	}
+
 	detail.enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -128,13 +137,23 @@ void TimedReduction(Detail<typename Config::T> &detail)
 	double avg_runtime = elapsed / g_iterations;
 	double throughput =  0.0;
 	if (avg_runtime > 0.0) throughput = ((double) detail.num_elements) / avg_runtime / 1000.0 / 1000.0; 
-    printf(", %f, %f, %f\n",
-		avg_runtime, throughput, 2 * throughput * sizeof(typename Config::T));
+    printf(", %f, %f, %f, ",
+		avg_runtime, throughput, throughput * sizeof(typename Detail::T));
     fflush(stdout);
 
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
+
+    // Copy out data
+    if (B40CPerror(cudaMemcpy(detail.h_data, detail.d_dest, sizeof(typename Detail::T), cudaMemcpyDeviceToHost),
+		"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+    // Verify solution
+	CompareResults<typename Detail::T>(detail.h_data, detail.h_reference, 1, true);
+	printf("\n");
+	fflush(stdout);
+
 }
 
 
@@ -145,7 +164,7 @@ void TimedReduction(Detail<typename Config::T> &detail)
 
 
 
-template <int CUDA_ARCH, typename T>
+template <int CUDA_ARCH, typename T, typename Detail>
 struct SweepConfig
 {
 	enum
@@ -164,97 +183,139 @@ struct SweepConfig
 		MAX_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE + 1 : CS,			// CS seems to break things on windows with 128-bit vector loads
 
 		MIN_WORK_STEALING 			= 0,
-		MAX_WORK_STEALING 			= (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1				// Atomics needed for pre-Fermi work-stealing are too painful
+		MAX_WORK_STEALING 			= (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1,				// Atomics needed for pre-Fermi work-stealing are too painful
+
+		MIN_UNIFORM_GRID_SIZE		= 0,
+		MAX_UNIFORM_GRID_SIZE		= 1 + 1,
+
+		MIN_UNIFORM_SMEM_ALLOCATION	= 0,
+		MAX_UNIFORM_SMEM_ALLOCATION	= 1 + 1
 	};
 
-	// Next WORK_STEALING
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
+	// Next UNIFORM_SMEM_ALLOCATION
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
 	struct Iterate
 	{
-		static void Invoke(Detail<T> &detail)
+		static void Invoke(Detail &detail)
 		{
-			// Invoke this config
 			const int CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> LOG_THREADS);
-			typedef ReductionKernelConfig<T, size_t, CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, (CacheModifier) CACHE_MODIFIER, WORK_STEALING> Config;
-			TimedReduction<Config>(detail);
 
-			// Next WORK_STEALING
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING + 1,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+			// Establish the granularity configuration type
+			typedef ReductionConfig <
+					T, Detail::OpType::Op, Detail::OpType::Identity,														// Problem type
+					size_t, (CacheModifier) CACHE_MODIFIER,	WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,		// Common config
+					CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, B40C_LOG_WARP_THREADS(200), LOG_LOADS_PER_TILE + LOG_LOAD_VEC_SIZE + LOG_THREADS,	// Upsweep config
+					7, 1, 1, B40C_LOG_WARP_THREADS(200)>									// Generic spine config
+				Config;
+
+			// Invoke this config
+			TimedReduction<Detail, Config>(detail);
+
+			// Next UNIFORM_SMEM_ALLOCATION
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION + 1,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
+		}
+	};
+
+	// Last UNIFORM_SMEM_ALLOCATION, next UNIFORM_GRID_SIZE
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, MAX_UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
+	{
+		static void Invoke(Detail &detail)
+		{
+			// Next UNIFORM_GRID_SIZE (reset UNIFORM_SMEM_ALLOCATION)
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE + 1, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
+		}
+	};
+
+	// Last WORK_STEALING, next UNIFORM_GRID_SIZE
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, MAX_UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
+	{
+		static void Invoke(Detail &detail)
+		{
+			// Next UNIFORM_GRID_SIZE (reset MIN_UNIFORM_GRID_SIZE)
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING + 1, MIN_UNIFORM_GRID_SIZE, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 		}
 	};
 
 	// Last WORK_STEALING, next CACHE_MODIFIER
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, MAX_WORK_STEALING,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, MAX_WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
 	{
-		static void Invoke(Detail<T> &detail)
+		static void Invoke(Detail &detail)
 		{
 			// Next CACHE_MODIFIER (reset WORK_STEALING)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER + 1, MIN_WORK_STEALING,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER + 1, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 		}
 	};
 
 	// Last CACHE_MODIFIER, next LOG_LOADS_PER_TILE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int WORK_STEALING,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, WORK_STEALING,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int WORK_STEALING, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
 	{
-		static void Invoke(Detail<T> &detail)
+		static void Invoke(Detail &detail)
 		{
 			// Next LOG_LOADS_PER_TILE (reset CACHE_MODIFIER)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE + 1, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE + 1, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_LOADS_PER_TILE, next LOG_LOAD_VEC_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int CACHE_MODIFIER, int WORK_STEALING,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
 	{
-		static void Invoke(Detail<T> &detail)
+		static void Invoke(Detail &detail)
 		{
 			// Next LOG_LOAD_VEC_SIZE (reset LOG_LOADS_PER_TILE)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE + 1, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE + 1, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_LOAD_VEC_SIZE, next LOG_THREADS
-	template <int LOG_THREADS, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
-	struct Iterate<LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_THREADS, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
 	{
-		static void Invoke(Detail<T> &detail)
+		static void Invoke(Detail &detail)
 		{
 			// Next LOG_THREADS (reset LOG_LOAD_VEC_SIZE)
-			Iterate<LOG_THREADS + 1, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+			Iterate<LOG_THREADS + 1, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_UNIFORM_SMEM_ALLOCATION,
+				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 		}
 	};
 
 	// Last LOG_THREADS
-	template <int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING>
-	struct Iterate<MAX_LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>
+	template <int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int UNIFORM_SMEM_ALLOCATION,
+		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_UNIFORM_SMEM_ALLOCATION, int MAX_UNIFORM_GRID_SIZE>
+	struct Iterate<MAX_LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,
+		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>
 	{
-		static void Invoke(Detail<T> &detail) {}
+		static void Invoke(Detail &detail) {}
 	};
 
 	// Interface
-	static void Invoke(Detail<T> &detail)
+	static void Invoke(Detail &detail)
 	{
-		Iterate<MIN_LOG_THREADS, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING,
-			MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING>::Invoke(detail);
+		Iterate<MIN_LOG_THREADS, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_SMEM_ALLOCATION, MIN_UNIFORM_GRID_SIZE,
+			MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_UNIFORM_SMEM_ALLOCATION, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
 	}
 };
 
@@ -264,6 +325,35 @@ struct SweepConfig
 /******************************************************************************
  * ReductionTuner
  ******************************************************************************/
+
+template <typename T>
+struct Sum
+{
+	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	{
+		return a + b;
+	}
+
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return 0;
+	}
+};
+
+template <typename T>
+struct Max
+{
+	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	{
+		return (a > b) ? a : b;
+	}
+
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return 0;
+	}
+};
+
 
 class ReductionTuner : public Architecture<__B40C_CUDA_ARCH__, ReductionTuner>
 {
@@ -288,76 +378,57 @@ public:
 	cudaError_t Enact(Storage &problem_storage, Detail &detail)
 	{
 		// Run the timing tests
-		printf("\n");
-		printf("sizeof(T), CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, "
-				"CACHE_MODIFIER, WORK_STEALING, LOG_SCHEDULE_GRANULARITY, "
-				"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s)\n");
-		SweepConfig<CUDA_ARCH, Storage>::Invoke(detail);
-
+		SweepConfig<CUDA_ARCH, Storage, Detail>::Invoke(detail);
 		return cudaSuccess;
 	}
 
 	/**
 	 * Creates an example reduction problem and then dispatches the problem
 	 * to the GPU for the given number of iterations, displaying runtime information.
-	 *
-	 * @param[in] 		num_elements
-	 * 		Size in elements of the vector to copy
 	 */
-	template<typename T>
+	template<typename T, typename OpType>
 	void TestReduction(size_t num_elements)
 	{
-		printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
+		// Allocate storage and enactor
+		Detail<T, OpType> detail(num_elements);
 
-		// Allocate the reduction problem on the host and fill the keys with random bytes
+		if (B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
+			"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 
-		T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-		T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
+		if (B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T)),
+			"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-		if ((h_data == NULL) || (h_reference == NULL)){
+		if ((detail.h_data = (T*) malloc(num_elements * sizeof(T))) == NULL) {
+			fprintf(stderr, "Host malloc of problem data failed\n");
+			exit(1);
+		}
+		if ((detail.h_reference = (T*) malloc(sizeof(T))) == NULL) {
 			fprintf(stderr, "Host malloc of problem data failed\n");
 			exit(1);
 		}
 
+		detail.h_reference[0] = OpType::Identity();
 		for (size_t i = 0; i < num_elements; ++i) {
-//			RandomBits<T>(h_data[i], 0);
-			h_data[i] = i;
-			h_reference[i] = h_data[i];
+			// RandomBits<T>(detail.h_data[i], 0);
+			detail.h_data[i] = i;
+			detail.h_reference[0] = OpType::Op(detail.h_reference[0], detail.h_data[i]);
 		}
 
-		printf("%d iterations, %d elements", g_iterations, num_elements);
-
-		// Allocate device storage and enactor
-		Detail<T> detail(num_elements);
-		if (B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
-			"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-		if (B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T) * num_elements),
-			"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
 		// Move a fresh copy of the problem into device storage
-		if (B40CPerror(cudaMemcpy(detail.d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+		if (B40CPerror(cudaMemcpy(detail.d_src, detail.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 			"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
+		// Have the base class call back with a constant dispatch-arch for our current device
 		T dummy;
 		BaseArchType::Enact(dummy, detail);
-
-	    // Copy out data
-	    if (B40CPerror(cudaMemcpy(h_data, detail.d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-			"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	    // Free allocated memory
 	    if (detail.d_src) cudaFree(detail.d_src);
 	    if (detail.d_dest) cudaFree(detail.d_dest);
 
-	    // Verify solution
-		CompareResults<T>(h_data, h_reference, num_elements, true);
-		printf("\n\n");
-		fflush(stdout);
-
 		// Free our allocated host memory
-		if (h_data) free(h_data);
-	    if (h_reference) free(h_reference);
+		if (detail.h_data) free(detail.h_data);
+	    if (detail.h_reference) free(detail.h_reference);
 	}
 
 };
@@ -390,13 +461,26 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
+	CudaProperties cuda_props;
+
+	printf("Test Reduction: %d iterations, %d elements", g_iterations, num_elements);
+	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
+		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
+
+	printf("SizeT bytes, CACHE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, "
+		"UPSWEEP_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
+		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
+		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s)\n");
+
 	ReductionTuner tuner;
 
+//	typedef unsigned short T;
+//	typedef unsigned char T;
+	typedef unsigned int T;
+//	typedef unsigned long long T;
+
 	// Execute test(s)
-	tuner.TestReduction<unsigned char>(num_elements * 4);
-	tuner.TestReduction<unsigned short>(num_elements * 2);
-	tuner.TestReduction<unsigned int>(num_elements);
-	tuner.TestReduction<unsigned long long>(num_elements / 2);
+	tuner.TestReduction<T, Sum<T>>(num_elements * sizeof(num_elements) / 4);
 
 	return 0;
 }
