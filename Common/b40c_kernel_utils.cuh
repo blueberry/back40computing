@@ -292,7 +292,7 @@ struct SrtsGrid
 		SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW,
 	
 		// Number of rows in the grid
-		LOG_ROWS						= LOG_PARTIALS - LOG_PARTIALS_PER_ROW,
+		LOG_ROWS						= B40C_MAX(0, LOG_PARTIALS - LOG_PARTIALS_PER_ROW),
 		ROWS 							= 1 << LOG_ROWS,
 	
 		// Number of rows per lane
