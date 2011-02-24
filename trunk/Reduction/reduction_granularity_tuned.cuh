@@ -99,21 +99,38 @@ struct TunedConfig : TunedConfig<
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-// Large problems
+// Large problems, 8B+ data
 template <typename ProblemType, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, LARGE, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+// Large problems, 4B data
+template <typename ProblemType>
+struct TunedConfig<ProblemType, SM20, LARGE, 4>
 	: ReductionConfig<ProblemType, NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
-// Large problems, 8B data
+// Large problems, 2B data
 template <typename ProblemType>
-struct TunedConfig<ProblemType, SM20, LARGE, 8>
-	: ReductionConfig<ProblemType, NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
+struct TunedConfig<ProblemType, SM20, LARGE, 2>
+	: ReductionConfig<ProblemType, NONE, true, true, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
+
+// Large problems, 1B data
+template <typename ProblemType>
+struct TunedConfig<ProblemType, SM20, LARGE, 1>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+
 
 // Small problems
 template <typename ProblemType, int T_SIZE>

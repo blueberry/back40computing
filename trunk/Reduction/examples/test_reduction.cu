@@ -282,8 +282,8 @@ int main(int argc, char** argv)
 
 //	typedef unsigned char T;
 //	typedef unsigned short T;
-//	typedef unsigned int T;
-	typedef unsigned long long T;
+	typedef unsigned int T;
+//	typedef unsigned long long T;
 
 	typedef Sum<T> BinaryOp;
 //	typedef Max<T> BinaryOp;
