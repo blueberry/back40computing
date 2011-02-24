@@ -28,8 +28,7 @@
 
 // Reduction includes
 #include "reduction_api_granularity.cuh"
-#include "reduction_api_enactor.cuh"
-//#include "reduction_api_enactor_tuned.cuh"
+#include "reduction_api_enactor_tuned.cuh"
 
 // Test utils
 #include "b40c_util.h"
@@ -107,10 +106,17 @@ void Usage()
  * Timed reduction.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  */
-template <typename T, typename Op>  // ProblemSize PROBLEM_SIZE,
-double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
+template <
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity(),
+	ProblemSize PROBLEM_SIZE>
+double TimedReduction(
+	T *h_data,
+	T *h_reference,
+	size_t num_elements)
 {
-	printf("%d iterations, %d bytes\n\n", g_iterations, num_elements);
+	printf("%d iterations, %d elements\n\n", g_iterations, num_elements);
 	
 	// Allocate device storage  
 	T *d_src, *d_dest;
@@ -119,36 +125,8 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 	if (B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T)),
 		"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-	typedef ReductionConfig <
-		T,
-		Op::Op,
-		Op::Identity,
-
-		// Common
-		size_t,			// SizeT
-		NONE,			// CACHE_MODIFIER
-		true,			// WORK_STEALING
-		true,			// _UNIFORM_SMEM_ALLOCATION
-		false,			// _UNIFORM_GRID_SIZE
-
-		// Upsweep
-		8,
-		7,
-		1,
-		2,
-		B40C_LOG_WARP_THREADS(200),
-		10,
-
-		// Spine
-		7,
-		1,
-		1,
-		B40C_LOG_WARP_THREADS(200)> Config;
-
-
 	// Create enactor
-//	ReductionEnactorTuned reduction_enactor;
-	ReductionEnactor<> reduction_enactor;
+	ReductionEnactorTuned reduction_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -156,8 +134,7 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	reduction_enactor.DEBUG = true;
-	reduction_enactor.template Enact<Config>(
-//	reduction_enactor.template Enact<PROBLEM_SIZE>(
+	reduction_enactor.template Enact<T, BinaryOp, Identity, PROBLEM_SIZE>(
 		d_dest, d_src, num_elements, g_max_ctas);
 	reduction_enactor.DEBUG = false;
 
@@ -175,8 +152,7 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 		cudaEventRecord(start_event, 0);
 
 		// Call the reduction API routine
-//		reduction_enactor.template Enact<PROBLEM_SIZE>(
-		reduction_enactor.template Enact<Config>(
+		reduction_enactor.template Enact<T, BinaryOp, Identity, PROBLEM_SIZE>(
 			d_dest, d_src, num_elements, g_max_ctas);
 
 		// End timing record
@@ -197,7 +173,8 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 	cudaEventDestroy(stop_event);
 
     // Copy out data
-    if (B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T), cudaMemcpyDeviceToHost),
+	T h_dest[1];
+    if (B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T), cudaMemcpyDeviceToHost),
 		"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
     // Free allocated memory
@@ -210,14 +187,14 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
 	// Display copied data
 	if (g_verbose) {
 		printf("\n\nReduction: ");
-		PrintValue(h_data[0]);
+		PrintValue(h_dest[0]);
 		printf(", Reference: ");
 		PrintValue(h_reference[0]);
 		printf("\n\n");
 	}
 
     // Verify solution
-	CompareResults(h_data, h_reference, 1, true);
+	CompareResults(h_dest, h_reference, 1, true);
 	printf("\n");
 	fflush(stdout);
 
@@ -229,13 +206,16 @@ double TimedReduction(T *h_data, T *h_reference, size_t num_elements)
  * Creates an example reduction problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T, typename Op>
+template<
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
 void TestReduction(size_t num_elements)
 {
     // Allocate the reduction problem on the host and fill the keys with random bytes
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
+	T *h_reference 		= (T*) malloc(sizeof(T));
 
 	if ((h_data == NULL) || (h_reference == NULL)){
 		fprintf(stderr, "Host malloc of problem data failed\n");
@@ -243,31 +223,27 @@ void TestReduction(size_t num_elements)
 	}
 
 	// Identity
-	h_reference[0] = 0;
+	h_reference[0] = Identity();
 
 	for (size_t i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
+		// RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
-		h_reference[0] = Op::Op(h_reference[0], h_data[i]);
+		h_reference[0] = BinaryOp(h_reference[0], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
-
-	TimedReduction<T, Op>(h_data, h_reference, num_elements);
-
-/*
 	printf("\nUsing LARGE config: ");
-	double large = TimedReduction<T, LARGE>(h_data, h_reference, num_elements);
+	double large = TimedReduction<T, BinaryOp, Identity, LARGE>(h_data, h_reference, num_elements);
 
 	printf("\nUsing SMALL config: ");
-	double small = TimedReduction<T, SMALL>(h_data, h_reference, num_elements);
+	double small = TimedReduction<T, BinaryOp, Identity, SMALL>(h_data, h_reference, num_elements);
 
 	if (small > large) {
-		printf("Small faster at %d bytes\n", num_elements);
+		printf("Small faster at %d elements\n", num_elements);
 	}
-*/
+
 	// Free our allocated host memory 
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
@@ -304,15 +280,19 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	typedef unsigned int T;
-	typedef Sum<T> Op;
+//	typedef unsigned char T;
+//	typedef unsigned short T;
+//	typedef unsigned int T;
+	typedef unsigned long long T;
+
+	typedef Sum<T> BinaryOp;
+//	typedef Max<T> BinaryOp;
 
 	// Execute test(s), optionally sweeping problem size downward
     size_t orig_num_elements = num_elements;
     do {
 
-    	TestReduction<T, Op>(num_elements);
-
+    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
     	num_elements -= 4096;
 
     } while (sweep && (num_elements < orig_num_elements ));

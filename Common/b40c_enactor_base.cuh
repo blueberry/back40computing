@@ -104,16 +104,16 @@ protected:
 			grid_size = max_grid_size;
 		}
 
-		// Reduce by override, if specified
-		if (max_grid_size > 0) {
-			grid_size = max_grid_size;
-		}
-
 		// Reduce if we have less work than we can divide up among this
 		// many CTAs
 		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
 		if (grid_size > grains) {
 			grid_size = grains;
+		}
+
+		// Reduce by override, if specified
+		if (max_grid_size > 0) {
+			grid_size = B40C_MIN(max_grid_size, grid_size);
 		}
 
 		return grid_size;
@@ -199,16 +199,16 @@ protected:
 			}
 		}
 
-		// Reduce by override, if specified
-		if (max_grid_size > 0) {
-			grid_size = max_grid_size;
-		}
-
 		// Reduce if we have less work than we can divide up among this
 		// many CTAs
 		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
 		if (grid_size > grains) {
 			grid_size = grains;
+		}
+
+		// Reduce by override, if specified
+		if (max_grid_size > 0) {
+			grid_size = B40C_MIN(max_grid_size, grid_size);
 		}
 
 		return grid_size;

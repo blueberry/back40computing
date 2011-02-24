@@ -63,12 +63,6 @@ protected:
 	friend class BaseEnactorType;
 	friend class BaseArchType;
 
-	// Type for encapsulating operational details regarding an invocation
-	template <ProblemSize _PROBLEM_SIZE> struct Detail;
-
-	// Type for encapsulating storage details regarding an invocation
-	struct Storage;
-
 
 	//-----------------------------------------------------------------------------
 	// Reduction Operation
@@ -79,10 +73,10 @@ protected:
 	 */
 	template <typename ReductionConfig>
 	cudaError_t ReductionPass(
-		void *d_dest,
-		void *d_src,
-		CtaWorkDistribution<typename ReductionConfig::SizeT> &work,
-		int extra_bytes);
+		typename ReductionConfig::Upsweep::Problem::T *d_dest,
+		typename ReductionConfig::Upsweep::Problem::T *d_src,
+		CtaWorkDistribution<typename ReductionConfig::Upsweep::Problem::SizeT> &work,
+		int spine_elements);
 
 
 	//-----------------------------------------------------------------------------
@@ -109,42 +103,51 @@ public:
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of bytes to be copied into
+	 * 		Pointer to array of elements to be reduced
 	 * @param d_src
-	 * 		Pointer to array of bytes to be copied from
-	 * @param num_bytes
-	 * 		Number of bytes to copy
+	 * 		Pointer to result location
+	 * @param num_elements
+	 * 		Number of elements to reduce
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	template <ProblemSize PROBLEM_SIZE>
+	template <
+		typename T,
+		T BinaryOp(const T&, const T&),
+		T Identity(),
+		ProblemSize PROBLEM_SIZE>
 	cudaError_t Enact(
-		void *d_dest,
-		void *d_src,
-		size_t num_bytes,
+		T *d_dest,
+		T *d_src,
+		size_t num_elements,
 		int max_grid_size = 0);
 
 
 	/**
-	 * Enacts a reduction operation on the specified device data using the
-	 * LARGE granularity configuration
+	 * Enacts a reduction operation on the specified device data using
+	 * a heuristic for selecting granularity configuration based upon
+	 * problem size.
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of bytes to be copied into
+	 * 		Pointer to array of elements to be reduced
 	 * @param d_src
-	 * 		Pointer to array of bytes to be copied from
-	 * @param num_bytes
-	 * 		Number of bytes to copy
+	 * 		Pointer to result location
+	 * @param num_elements
+	 * 		Number of elements to reduce
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
+	template <
+		typename T,
+		T BinaryOp(const T&, const T&),
+		T Identity()>
 	cudaError_t Enact(
-		void *d_dest,
-		void *d_src,
+		T *d_dest,
+		T *d_src,
 		size_t num_bytes,
 		int max_grid_size = 0);
 };
@@ -155,14 +158,16 @@ public:
  * ReductionEnactorTuned Implementation
  ******************************************************************************/
 
-
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <ProblemSize _PROBLEM_SIZE>
-struct ReductionEnactorTuned::Detail
+template <ProblemSize _PROBLEM_SIZE, typename ReductionProblemType>
+struct Detail
 {
+	typedef ReductionProblemType ProblemType;
+
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+
 	int max_grid_size;
 
 	// Constructor
@@ -173,15 +178,16 @@ struct ReductionEnactorTuned::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-struct ReductionEnactorTuned::Storage
+template <typename T, typename SizeT>
+struct Storage
 {
-	void *d_dest;
-	void *d_src;
-	size_t num_bytes;
+	T *d_dest;
+	T *d_src;
+	SizeT num_elements;
 
 	// Constructor
-	Storage(void *d_dest, void *d_src, size_t num_bytes) :
-		d_dest(d_dest), d_src(d_src), num_bytes(num_bytes) {}
+	Storage(T *d_dest, T *d_src, SizeT num_elements) :
+		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
 };
 
 
@@ -190,21 +196,68 @@ struct ReductionEnactorTuned::Storage
  */
 template <typename ReductionConfig>
 cudaError_t ReductionEnactorTuned::ReductionPass(
-	void *d_dest,
-	void *d_src,
-	CtaWorkDistribution<typename ReductionConfig::SizeT> &work,
-	int extra_bytes)
+	typename ReductionConfig::Upsweep::Problem::T *d_dest,
+	typename ReductionConfig::Upsweep::Problem::T *d_src,
+	CtaWorkDistribution<typename ReductionConfig::Upsweep::Problem::SizeT> &work,
+	int spine_elements)
 {
+	typedef typename ReductionConfig::Upsweep::Problem Problem;
+	typedef typename Problem::T T;
+
 	cudaError_t retval = cudaSuccess;
-	int dynamic_smem = 0;
-	int threads = 1 << ReductionConfig::LOG_THREADS;
 
-	TunedReductionKernel<ReductionConfig::PROBLEM_SIZE><<<work.grid_size, threads, dynamic_smem>>>(
-		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
+	do {
+		if (work.grid_size == 1) {
 
-	if (DEBUG) {
-		retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactorTuned:: ReductionKernelTuned failed ", __FILE__, __LINE__);
-	}
+			// No need to scan the spine if there's only one CTA in the upsweep grid
+			int dynamic_smem = 0;
+			TunedUpsweepReductionKernel<Problem, ReductionConfig::PROBLEM_SIZE>
+					<<<work.grid_size, ReductionConfig::Upsweep::THREADS, dynamic_smem>>>(
+				d_src, d_dest, d_work_progress, work, progress_selector);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+
+		} else {
+
+			int dynamic_smem[2] = 	{0, 0};
+			int grid_size[2] = 		{work.grid_size, 1};
+
+			// Tuning option for dynamic smem allocation
+			if (ReductionConfig::UNIFORM_SMEM_ALLOCATION) {
+
+				// We need to compute dynamic smem allocations to ensure all three
+				// kernels end up allocating the same amount of smem per CTA
+
+				// Get kernel attributes
+				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
+				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<Problem, ReductionConfig::PROBLEM_SIZE>),
+					"ReductionEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineReductionKernel<Problem, ReductionConfig::PROBLEM_SIZE>),
+					"ReductionEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+				int max_static_smem = B40C_MAX(upsweep_kernel_attrs.sharedSizeBytes, spine_kernel_attrs.sharedSizeBytes);
+
+				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+			}
+
+			// Tuning option for spine-scan kernel grid size
+			if (ReductionConfig::UNIFORM_GRID_SIZE) {
+				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
+			}
+
+			// Upsweep reduction into spine
+			TunedUpsweepReductionKernel<Problem, ReductionConfig::PROBLEM_SIZE>
+					<<<grid_size[0], ReductionConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
+				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+
+			// Spine reduction
+			TunedSpineReductionKernel<Problem, ReductionConfig::PROBLEM_SIZE>
+					<<<grid_size[1], ReductionConfig::Spine::THREADS, dynamic_smem[1]>>>(
+				(T*) d_spine, d_dest, spine_elements);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
+		}
+	} while (0);
 
 	return retval;
 }
@@ -213,19 +266,15 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 /**
  * Dispatch call-back with static CUDA_ARCH
  */
-template <int CUDA_ARCH, typename StorageType, typename DetailType>
-cudaError_t ReductionEnactorTuned::Enact(StorageType &storage, DetailType &detail)
+template <int CUDA_ARCH, typename _Storage, typename _Detail>
+cudaError_t ReductionEnactorTuned::Enact(_Storage &storage, _Detail &detail)
 {
 	// Obtain tuned granularity type
-	typedef TunedConfig<CUDA_ARCH, DetailType::PROBLEM_SIZE> ReductionConfig;
-	typedef typename ReductionConfig::T T;
-
-	int num_elements = storage.num_bytes / sizeof(T);
-	int extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
+	typedef TunedConfig<typename _Detail::ProblemType, CUDA_ARCH, _Detail::PROBLEM_SIZE> ReductionConfig;
 
 	// Invoke base class enact with type
 	return BaseEnactorType::template Enact<ReductionConfig>(
-		(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
+		storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 }
 
 
@@ -242,15 +291,21 @@ ReductionEnactorTuned::ReductionEnactorTuned()
  * Enacts a reduction operation on the specified device data using the
  * enumerated tuned granularity configuration
  */
-template <ProblemSize PROBLEM_SIZE>
+template <
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity(),
+	ProblemSize PROBLEM_SIZE>
 cudaError_t ReductionEnactorTuned::Enact(
-	void *d_dest,
-	void *d_src,
-	size_t num_bytes,
+	T *d_dest,
+	T *d_src,
+	size_t num_elements,
 	int max_grid_size)
 {
-	Detail<PROBLEM_SIZE> detail(max_grid_size);
-	Storage storage(d_dest, d_src, num_bytes);
+	typedef size_t SizeT;
+
+	Detail<PROBLEM_SIZE, ReductionProblem<T, SizeT, BinaryOp, Identity> > detail(max_grid_size);
+	Storage<T, SizeT> storage(d_dest, d_src, num_elements);
 
 	return BaseArchType::Enact(storage, detail);
 }
@@ -260,17 +315,21 @@ cudaError_t ReductionEnactorTuned::Enact(
  * Enacts a reduction operation on the specified device data using the
  * LARGE granularity configuration
  */
+template <
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
 cudaError_t ReductionEnactorTuned::Enact(
-	void *d_dest,
-	void *d_src,
-	size_t num_bytes,
+	T *d_dest,
+	T *d_src,
+	size_t num_elements,
 	int max_grid_size)
 {
 	// Hybrid approach
-	if (num_bytes > 1024 * 2252) {
-		return Enact<LARGE>(d_dest, d_src, num_bytes, max_grid_size);
+	if (num_elements > 1024 * 2252) {
+		return Enact<T, BinaryOp, Identity, LARGE>(d_dest, d_src, num_elements, max_grid_size);
 	} else {
-		return Enact<SMALL>(d_dest, d_src, num_bytes, max_grid_size);
+		return Enact<T, BinaryOp, Identity, SMALL>(d_dest, d_src, num_bytes, max_grid_size);
 	}
 }
 

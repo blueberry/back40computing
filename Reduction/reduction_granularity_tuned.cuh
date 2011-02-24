@@ -83,24 +83,42 @@ struct FamilyClassifier
  * Default, catch-all granularity parameterization type.  Defers to the
  * architecture "family" that we know we have specialization type(s) for below.
  */
-template <int CUDA_ARCH, ProblemSize PROBLEM_SIZE>
-struct TunedConfig : TunedConfig<FamilyClassifier<CUDA_ARCH>::FAMILY, PROBLEM_SIZE> {};
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	ProblemSize PROBLEM_SIZE,
+	int T_SIZE = sizeof(typename ProblemType::T)>
+struct TunedConfig : TunedConfig<
+	ProblemType,
+	FamilyClassifier<CUDA_ARCH>::FAMILY,
+	PROBLEM_SIZE,
+	T_SIZE> {};
 
 
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <>
-struct TunedConfig<SM20, LARGE>
-	: ReductionKernelConfig<unsigned int, size_t, 8, 7, 1, 1, CG, true, 9>
+// Large problems
+template <typename ProblemType, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, LARGE, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
-template <>
-struct TunedConfig<SM20, SMALL>
-	: ReductionKernelConfig<unsigned long long, size_t, 8, 5, 1, 1, CG, false, 7>
+// Large problems, 8B data
+template <typename ProblemType>
+struct TunedConfig<ProblemType, SM20, LARGE, 8>
+	: ReductionConfig<ProblemType, NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+// Small problems
+template <typename ProblemType, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, SMALL, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -110,32 +128,35 @@ struct TunedConfig<SM20, SMALL>
 // SM1.3 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <>
-struct TunedConfig<SM13, LARGE>
-	: ReductionKernelConfig<unsigned short, size_t, 8, 7, 2, 0, NONE, false, 9>
+// Large problems
+template <typename ProblemType, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, LARGE, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
-template <>
-struct TunedConfig<SM13, SMALL>
-	: ReductionKernelConfig<unsigned short, size_t, 8, 5, 2, 0, NONE, false, 7>
+// Small problems
+template <typename ProblemType, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, SMALL, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
+
 
 
 //-----------------------------------------------------------------------------
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <ProblemSize _PROBLEM_SIZE>
-struct TunedConfig<SM10, _PROBLEM_SIZE>
-: ReductionKernelConfig<unsigned short, size_t, 8, 5, 2, 0, NONE, false, 7>
+
+template <ProblemSize _PROBLEM_SIZE, typename ProblemType, int T_SIZE>
+struct TunedConfig<ProblemType, SM10, _PROBLEM_SIZE, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 };
-
 
 
 
@@ -150,28 +171,50 @@ struct TunedConfig<SM10, _PROBLEM_SIZE>
  * properly support template specialization around kernel call sites.
  ******************************************************************************/
 
-template <int PROBLEM_SIZE, typename SizeT>
+/**
+ * Tuned upsweep reduction kernel entry point
+ */
+template <typename ProblemType, int PROBLEM_SIZE>
 __launch_bounds__ (
-	(1 << TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionKernelConfig::LOG_THREADS),
-	(TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionKernelConfig::CTA_OCCUPANCY))
-__global__ void TunedReductionKernel(
-	void			* __restrict d_out,
-	void			* __restrict d_in,
-	SizeT 			* __restrict d_work_progress,
-	CtaWorkDistribution<SizeT> work_decomposition,
-	int 			progress_selector,
-	int 			extra_bytes)
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Upsweep::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Upsweep::CTA_OCCUPANCY))
+__global__ void TunedUpsweepReductionKernel(
+	typename ProblemType::T 			* __restrict d_in,
+	typename ProblemType::T 			* __restrict d_spine,
+	typename ProblemType::SizeT 		* __restrict d_work_progress,
+	CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition,
+	int progress_selector)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef TunedConfig<__B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE> Config;
-	typedef typename Config::T T;
+	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Upsweep Config;
 
-	T* out = (T*)(d_out);
-	T* in = (T*)(d_in);
+	typename ProblemType::T *d_spine_partial = d_spine + blockIdx.x;
 
-	// Invoke the wrapped kernel logic
-	ReductionPass<Config, Config::WORK_STEALING>::Invoke(
-		out, in, d_work_progress, work_decomposition, progress_selector, extra_bytes);
+	UpsweepReductionPass<Config, Config::WORK_STEALING>::Invoke(
+		d_in,
+		d_spine_partial,
+		d_work_progress,
+		work_decomposition,
+		progress_selector);
+}
+
+
+/**
+ * Tuned upsweep reduction kernel entry point
+ */
+template <typename ProblemType, int PROBLEM_SIZE>
+__launch_bounds__ (
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Spine::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Spine::CTA_OCCUPANCY))
+__global__ void TunedSpineReductionKernel(
+	typename ProblemType::T 		* __restrict 	d_spine,
+	typename ProblemType::T 		* __restrict 	d_out,
+	typename ProblemType::SizeT 					spine_elements)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Spine Config;
+
+	SpineReductionPass<Config>(d_spine, d_out, spine_elements);
 }
 
 

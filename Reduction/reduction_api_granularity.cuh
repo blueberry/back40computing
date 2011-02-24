@@ -42,17 +42,14 @@ namespace reduction {
  * types, we assure operational consistency over an entire reduction pass.
  */
 template <
-	// Problem type
-	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
+	typename ReductionProblemType,
 
 	// Common
-	typename SizeT,
 	CacheModifier CACHE_MODIFIER,
 	bool WORK_STEALING,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
+	bool _OVERSUBSCRIBED_GRID_SIZE,
 
 	// Upsweep
 	int UPSWEEP_CTA_OCCUPANCY,
@@ -71,13 +68,11 @@ struct ReductionConfig
 {
 	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
 	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
+	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
 
 	// Kernel config for the upsweep reduction kernel
 	typedef ReductionKernelConfig <
-		T,
-		BinaryOp,
-		Identity,
-		SizeT,
+		ReductionProblemType,
 		UPSWEEP_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -90,29 +85,26 @@ struct ReductionConfig
 
 	// Kernel config for the spine reduction kernel
 	typedef ReductionKernelConfig <
-		T,
-		BinaryOp,
-		Identity,
-		int,
-		1,
+		ReductionProblemType,
+		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
 		CACHE_MODIFIER,
-		false,
+		false,								// Workstealing makes no sense in a single-CTA grid
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
 	static void Print()
 	{
 
-		printf("%d, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
-			sizeof(SizeT),
+		printf("%s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
 			CacheModifierToString(CACHE_MODIFIER),
 			(WORK_STEALING) ? "true" : "false",
 			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
 			(UNIFORM_GRID_SIZE) ? "true" : "false",
+			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
 			UPSWEEP_CTA_OCCUPANCY,
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,

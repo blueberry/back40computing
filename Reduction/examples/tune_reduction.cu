@@ -202,9 +202,10 @@ struct SweepConfig
 			const int CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> LOG_THREADS);
 
 			// Establish the granularity configuration type
-			typedef ReductionConfig <
-					T, Detail::OpType::Op, Detail::OpType::Identity,														// Problem type
-					size_t, (CacheModifier) CACHE_MODIFIER,	WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION,		// Common config
+			typedef ReductionProblem<T, size_t, Detail::OpType::Op, Detail::OpType::Identity> Problem;
+
+			typedef ReductionConfig <Problem,
+					(CacheModifier) CACHE_MODIFIER,	WORK_STEALING, UNIFORM_GRID_SIZE, UNIFORM_SMEM_ALLOCATION, false,		// Dispatch/common config
 					CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, B40C_LOG_WARP_THREADS(200), LOG_LOADS_PER_TILE + LOG_LOAD_VEC_SIZE + LOG_THREADS,	// Upsweep config
 					7, 1, 1, B40C_LOG_WARP_THREADS(200)>									// Generic spine config
 				Config;
@@ -467,17 +468,17 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("SizeT bytes, CACHE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, "
+	printf("CACHE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
 		"UPSWEEP_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
 		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
-		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s)\n");
+		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	ReductionTuner tuner;
 
 //	typedef unsigned short T;
 //	typedef unsigned char T;
-	typedef unsigned int T;
-//	typedef unsigned long long T;
+//	typedef unsigned int T;
+	typedef unsigned long long T;
 
 	// Execute test(s)
 	tuner.TestReduction<T, Sum<T>>(num_elements * sizeof(num_elements) / 4);
