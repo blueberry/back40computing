@@ -103,6 +103,27 @@ struct ReductionConfig
 		false,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
+
+	static void Print()
+	{
+
+		printf("%d, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
+			sizeof(SizeT),
+			CacheModifierToString(CACHE_MODIFIER),
+			(WORK_STEALING) ? "true" : "false",
+			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
+			(UNIFORM_GRID_SIZE) ? "true" : "false",
+			UPSWEEP_CTA_OCCUPANCY,
+			UPSWEEP_LOG_THREADS,
+			UPSWEEP_LOG_LOAD_VEC_SIZE,
+			UPSWEEP_LOG_LOADS_PER_TILE,
+			UPSWEEP_LOG_RAKING_THREADS,
+			UPSWEEP_LOG_SCHEDULE_GRANULARITY,
+			SPINE_LOG_THREADS,
+			SPINE_LOG_LOAD_VEC_SIZE,
+			SPINE_LOG_LOADS_PER_TILE,
+			SPINE_LOG_RAKING_THREADS);
+	}
 };
 		
 

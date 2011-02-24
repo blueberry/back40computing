@@ -188,32 +188,59 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
 {
 	typedef typename ReductionConfig::Upsweep::T T;
 
-	int dynamic_smem = 0;
 	cudaError_t retval = cudaSuccess;
+	do {
+		if (work.grid_size == 1) {
 
-	if (work.grid_size == 1) {
+			// No need to scan the spine if there's only one CTA in the upsweep grid
+			int dynamic_smem = 0;
+			UpsweepReductionKernel<ReductionConfig::Upsweep>
+					<<<work.grid_size, ReductionConfig::Upsweep::THREADS, dynamic_smem>>>(
+				d_src, d_dest, d_work_progress, work, progress_selector);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
-		// No need to scan the spine if there's only one CTA in the upsweep grid
-		UpsweepReductionKernel<ReductionConfig::Upsweep>
-				<<<work.grid_size, ReductionConfig::Upsweep::THREADS, dynamic_smem>>>(
-			d_src, d_dest, d_work_progress, work, progress_selector);
+		} else {
 
-	} else {
+			int dynamic_smem[2] = 	{0, 0};
+			int grid_size[2] = 		{work.grid_size, 1};
 
-		// Upsweep reduction into spine
-		UpsweepReductionKernel<ReductionConfig::Upsweep>
-				<<<work.grid_size, ReductionConfig::Upsweep::THREADS, dynamic_smem>>>(
-			d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+			// Tuning option for dynamic smem allocation
+			if (ReductionConfig::UNIFORM_SMEM_ALLOCATION) {
 
-		// Spine reduction
-		SpineReductionKernel<ReductionConfig::Spine>
-				<<<1, ReductionConfig::Spine::THREADS, dynamic_smem>>>(
-			(T*) d_spine, d_dest, spine_elements);
-	}
+				// We need to compute dynamic smem allocations to ensure all three
+				// kernels end up allocating the same amount of smem per CTA
 
-	if (DEBUG) {
-		retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor:: ReductionKernel failed ", __FILE__, __LINE__);
-	}
+				// Get kernel attributes
+				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
+				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepReductionKernel<ReductionConfig::Upsweep>),
+					"ReductionEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineReductionKernel<ReductionConfig::Spine>),
+					"ReductionEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+				int max_static_smem = B40C_MAX(upsweep_kernel_attrs.sharedSizeBytes, spine_kernel_attrs.sharedSizeBytes);
+
+				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+			}
+
+			// Tuning option for spine-scan kernel grid size
+			if (ReductionConfig::UNIFORM_GRID_SIZE) {
+				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
+			}
+
+			// Upsweep reduction into spine
+			UpsweepReductionKernel<ReductionConfig::Upsweep>
+					<<<grid_size[0], ReductionConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
+				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+
+			// Spine reduction
+			SpineReductionKernel<ReductionConfig::Spine>
+					<<<grid_size[1], ReductionConfig::Spine::THREADS, dynamic_smem[1]>>>(
+				(T*) d_spine, d_dest, spine_elements);
+			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
+		}
+	} while (0);
 
 	return retval;
 }

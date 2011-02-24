@@ -143,19 +143,6 @@ struct ReductionKernelConfig
 		if (!in_bounds) val = Identity();
 	}
 
-	static void Print()
-	{
-		printf("%d, %d, %d, %d, %d, %d, %s, %s, %d",
-			sizeof(SizeT),
-			CTA_OCCUPANCY,
-			LOG_THREADS,
-			LOG_LOAD_VEC_SIZE,
-			LOG_LOADS_PER_TILE,
-			LOG_RAKING_THREADS,
-			CacheModifierToString(CACHE_MODIFIER),
-			(WORK_STEALING) ? "true" : "false",
-			LOG_SCHEDULE_GRANULARITY);
-	}
 };
 
 
@@ -228,7 +215,7 @@ struct CollectiveReduction <Config, true>
 		T *d_out)
 	{
 		// Shared memory pool
-		__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
+		__shared__ uint4 smem_pool[(Config::SMEM_BYTES + sizeof(uint4) - 1) / sizeof(uint4)];
 
 		// Determine the deposit and raking pointers for SRTS grids
 		T *primary_grid 			= reinterpret_cast<T*>(smem_pool);
@@ -308,7 +295,7 @@ __device__ __forceinline__ void ProcessTile(
 		SerialReduce<T, Config::TILE_ELEMENTS_PER_THREAD, Config::BinaryOp>::Invoke(
 			reinterpret_cast<T*>(data)));
 
-//	__syncthreads();
+	__syncthreads();
 }
 
 
