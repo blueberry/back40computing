@@ -214,12 +214,12 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::Enact(
 			if (d_work_progress == NULL) {
 				// Allocate
 				if (retval = B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
-					"LsbSortEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
+					"ReductionEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
 
 				// Initialize
 				size_t h_work_progress[2] = {0, 0};
 				if (retval = B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
-					"LsbSortEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
+					"ReductionEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
 			}
 
 			// Update our progress counter selector to index the next progress counter

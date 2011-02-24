@@ -38,6 +38,32 @@ namespace reduction {
  ******************************************************************************/
 
 /**
+ * Type of reduction problem
+ */
+template <
+	typename _T,
+	typename _SizeT,
+	_T _BinaryOp(const _T&, const _T&),
+	_T _Identity()>
+struct ReductionProblem
+{
+	typedef _T								T;
+	typedef _SizeT							SizeT;
+
+	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
+	{
+		return _BinaryOp(a, b);
+	}
+
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return _Identity();
+	}
+};
+
+
+
+/**
  * Reduction kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
@@ -50,12 +76,9 @@ namespace reduction {
  */
 template <
 	// Problem type parameters
-	typename _T,
-	_T _BinaryOp(const _T&, const _T&),
-	_T _Identity(),
+	typename ReductionProblem,
 
 	// Tunable parameters
-	typename _SizeT,
 	int _CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -67,8 +90,8 @@ template <
 
 struct ReductionKernelConfig
 {
-	typedef _T										T;
-	typedef _SizeT									SizeT;
+	typedef ReductionProblem						Problem;
+
 	static const int CTA_OCCUPANCY  				= _CTA_OCCUPANCY;
 	static const CacheModifier CACHE_MODIFIER 		= _CACHE_MODIFIER;
 	static const bool WORK_STEALING					= _WORK_STEALING;
@@ -109,14 +132,14 @@ struct ReductionKernelConfig
 
 	// Primary smem SRTS grid type
 	typedef SrtsGrid<
-		T,										// Partial type
+		typename Problem::T,					// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane (CTA threads only make one deposit)
 		LOG_RAKING_THREADS> PrimaryGrid;		// Raking threads
 
 	// Secondary smem SRTS grid type
 	typedef SrtsGrid<
-		T,										// Partial type
+		typename Problem::T,					// Partial type
 		LOG_RAKING_THREADS,						// Depositing threads (the primary raking threads)
 		0,										// 1 lane (the primary raking threads only make one deposit)
 		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
@@ -127,20 +150,10 @@ struct ReductionKernelConfig
 		PrimaryGrid::SMEM_BYTES;								// one-level smem SRTS
 
 
-	static __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return _BinaryOp(a, b);
-	}
-
-	static __device__ __forceinline__ T Identity()
-	{
-		return _Identity();
-	}
-
-	static __device__ __forceinline__ void LoadTransform(T &val, bool in_bounds)
+	static __device__ __forceinline__ void LoadTransform(typename Problem::T &val, bool in_bounds)
 	{
 		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = Identity();
+		if (!in_bounds) val = Problem::Identity();
 	}
 
 };
@@ -159,8 +172,8 @@ struct ReductionKernelConfig
 template <typename Config, bool TWO_LEVEL_GRID>
 struct CollectiveReduction
 {
-	typedef typename Config::T T;
-	typedef typename Config::SizeT SizeT;
+	typedef typename Config::Problem::T T;
+	typedef typename Config::Problem::SizeT SizeT;
 
 	static __device__ __forceinline__ void Invoke(
 		T carry,
@@ -183,10 +196,10 @@ struct CollectiveReduction
 
 			// Raking reduction
 			T *primary_raking_seg = Config::PrimaryGrid::RakingSegment(primary_grid);
-			T raking_partial = SerialReduce<T, Config::PrimaryGrid::PARTIALS_PER_SEG, Config::BinaryOp>::Invoke(primary_raking_seg);
+			T raking_partial = SerialReduce<T, Config::PrimaryGrid::PARTIALS_PER_SEG, Config::Problem::BinaryOp>::Invoke(primary_raking_seg);
 
 			// WarpReduce
-			T total = WarpReduce<T, Config::PrimaryGrid::LOG_RAKING_THREADS, Config::BinaryOp>::Invoke(
+			T total = WarpReduce<T, Config::PrimaryGrid::LOG_RAKING_THREADS, Config::Problem::BinaryOp>::Invoke(
 				raking_partial, primary_grid);
 
 			// Write output
@@ -207,8 +220,8 @@ struct CollectiveReduction
 template <typename Config>
 struct CollectiveReduction <Config, true>
 {
-	typedef typename Config::T T;
-	typedef typename Config::SizeT SizeT;
+	typedef typename Config::Problem::T T;
+	typedef typename Config::Problem::SizeT SizeT;
 
 	static __device__ __forceinline__ void Invoke(
 		T carry,
@@ -233,7 +246,7 @@ struct CollectiveReduction <Config, true>
 
 			// Raking reduction in primary grid
 			T *primary_raking_seg = Config::PrimaryGrid::RakingSegment(primary_grid);
-			T raking_partial = SerialReduce<T, Config::PrimaryGrid::PARTIALS_PER_SEG, Config::BinaryOp>::Invoke(primary_raking_seg);
+			T raking_partial = SerialReduce<T, Config::PrimaryGrid::PARTIALS_PER_SEG, Config::Problem::BinaryOp>::Invoke(primary_raking_seg);
 
 			// Place raked partial in secondary grid
 			T *secondary_base_partial = Config::SecondaryGrid::BasePartial(secondary_grid);
@@ -247,10 +260,10 @@ struct CollectiveReduction <Config, true>
 
 			// Raking reduction in secondary grid
 			T *secondary_raking_seg = Config::SecondaryGrid::RakingSegment(secondary_grid);
-			T raking_partial = SerialReduce<T, Config::SecondaryGrid::PARTIALS_PER_SEG, Config::BinaryOp>::Invoke(secondary_raking_seg);
+			T raking_partial = SerialReduce<T, Config::SecondaryGrid::PARTIALS_PER_SEG, Config::Problem::BinaryOp>::Invoke(secondary_raking_seg);
 
 			// WarpReduce
-			T total = WarpReduce<T, Config::SecondaryGrid::LOG_RAKING_THREADS, Config::BinaryOp>::Invoke(
+			T total = WarpReduce<T, Config::SecondaryGrid::LOG_RAKING_THREADS, Config::Problem::BinaryOp>::Invoke(
 				raking_partial, secondary_grid);
 
 			// Write output
@@ -269,13 +282,13 @@ struct CollectiveReduction <Config, true>
  */
 template <typename Config, bool UNGUARDED_IO>
 __device__ __forceinline__ void ProcessTile(
-	typename Config::T * __restrict d_in,
-	typename Config::SizeT 	cta_offset,
-	typename Config::SizeT 	out_of_bounds,
-	typename Config::T &carry)
+	typename Config::Problem::T * __restrict d_in,
+	typename Config::Problem::SizeT 	cta_offset,
+	typename Config::Problem::SizeT 	out_of_bounds,
+	typename Config::Problem::T &carry)
 {
-	typedef typename Config::T T;
-	typedef typename Config::SizeT SizeT;
+	typedef typename Config::Problem::T T;
+	typedef typename Config::Problem::SizeT SizeT;
 
 	T data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 
@@ -291,8 +304,8 @@ __device__ __forceinline__ void ProcessTile(
 		Config::LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 	// Reduce into carry
-	carry = Config::BinaryOp(carry,
-		SerialReduce<T, Config::TILE_ELEMENTS_PER_THREAD, Config::BinaryOp>::Invoke(
+	carry = Config::Problem::BinaryOp(carry,
+		SerialReduce<T, Config::TILE_ELEMENTS_PER_THREAD, Config::Problem::BinaryOp>::Invoke(
 			reinterpret_cast<T*>(data)));
 
 	__syncthreads();
@@ -306,15 +319,15 @@ template <typename Config, bool WORK_STEALING>
 struct UpsweepReductionPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename Config::T 			* __restrict &d_in,
-		typename Config::T 			* __restrict &d_out,
-		typename Config::SizeT 		* __restrict &d_work_progress,
-		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
+		typename Config::Problem::T 			* __restrict &d_in,
+		typename Config::Problem::T 			* __restrict &d_out,
+		typename Config::Problem::SizeT 		* __restrict &d_work_progress,
+		CtaWorkDistribution<typename Config::Problem::SizeT> &work_decomposition,
 		int &progress_selector)
 	{
-		typedef typename Config::SizeT SizeT;
+		typedef typename Config::Problem::SizeT SizeT;
 
-		typename Config::T carry = Config::Identity();		// The value we will accumulate
+		typename Config::Problem::T carry = Config::Problem::Identity();		// The value we will accumulate
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -353,20 +366,20 @@ template <typename Config>
 struct UpsweepReductionPass <Config, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename Config::T 			* __restrict &d_in,
-		typename Config::T 			* __restrict &d_out,
-		typename Config::SizeT 		* __restrict &d_work_progress,
-		CtaWorkDistribution<typename Config::SizeT> &work_decomposition,
+		typename Config::Problem::T 			* __restrict &d_in,
+		typename Config::Problem::T 			* __restrict &d_out,
+		typename Config::Problem::SizeT 		* __restrict &d_work_progress,
+		CtaWorkDistribution<typename Config::Problem::SizeT> &work_decomposition,
 		int &progress_selector)
 	{
-		typedef typename Config::SizeT SizeT;
-		typedef typename Config::T T;
+		typedef typename Config::Problem::SizeT SizeT;
+		typedef typename Config::Problem::T T;
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT cta_offset;
 
 		// The value we will accumulate
-		T carry = Config::Identity();
+		T carry = Config::Problem::Identity();
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
@@ -408,18 +421,18 @@ struct UpsweepReductionPass <Config, true>
  */
 template <typename Config>
 __device__ __forceinline__ void SpineReductionPass(
-	typename Config::T 		* __restrict 	d_spine,
-	typename Config::T 		* __restrict 	d_out,
-	typename Config::SizeT 					spine_elements)
+	typename Config::Problem::T 		* __restrict 	d_spine,
+	typename Config::Problem::T 		* __restrict 	d_out,
+	typename Config::Problem::SizeT 					spine_elements)
 {
-	typedef typename Config::SizeT SizeT;
-	typedef typename Config::T T;
+	typedef typename Config::Problem::SizeT SizeT;
+	typedef typename Config::Problem::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
 	// The value we will accumulate
-	T carry = Config::Identity();
+	T carry = Config::Problem::Identity();
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT cta_guarded_elements = spine_elements & (Config::TILE_ELEMENTS - 1);
@@ -457,13 +470,13 @@ template <typename Config>
 __launch_bounds__ (Config::THREADS, Config::CTA_OCCUPANCY)
 __global__
 void UpsweepReductionKernel(
-	typename Config::T 			* __restrict d_in,
-	typename Config::T 			* __restrict d_spine,
-	typename Config::SizeT 		* __restrict d_work_progress,
-	CtaWorkDistribution<typename Config::SizeT> work_decomposition,
+	typename Config::Problem::T 			* __restrict d_in,
+	typename Config::Problem::T 			* __restrict d_spine,
+	typename Config::Problem::SizeT 		* __restrict d_work_progress,
+	CtaWorkDistribution<typename Config::Problem::SizeT> work_decomposition,
 	int progress_selector)
 {
-	typename Config::T *d_spine_partial = d_spine + blockIdx.x;
+	typename Config::Problem::T *d_spine_partial = d_spine + blockIdx.x;
 
 	UpsweepReductionPass<Config, Config::WORK_STEALING>::Invoke(
 		d_in,
@@ -479,10 +492,10 @@ void UpsweepReductionKernel(
  */
 template <typename Config>
 void __wrapper__device_stub_UpsweepReductionKernel(
-	typename Config::T 			* __restrict &,
-	typename Config::T 			* __restrict &,
-	typename Config::SizeT 		* __restrict &,
-	CtaWorkDistribution<typename Config::SizeT> &,
+	typename Config::Problem::T 			* __restrict &,
+	typename Config::Problem::T 			* __restrict &,
+	typename Config::Problem::SizeT 		* __restrict &,
+	CtaWorkDistribution<typename Config::Problem::SizeT> &,
 	int &) {}
 
 
@@ -492,15 +505,15 @@ void __wrapper__device_stub_UpsweepReductionKernel(
  ******************************************************************************/
 
 /**
- * Upsweep reduction kernel entry point 
+ * Spine reduction kernel entry point
  */
 template <typename Config>
 __launch_bounds__ (Config::THREADS, Config::CTA_OCCUPANCY)
 __global__ 
 void SpineReductionKernel(
-	typename Config::T 		* __restrict 	d_spine,
-	typename Config::T 		* __restrict 	d_out,
-	typename Config::SizeT 					spine_elements)
+	typename Config::Problem::T 		* __restrict 	d_spine,
+	typename Config::Problem::T 		* __restrict 	d_out,
+	typename Config::Problem::SizeT 					spine_elements)
 {
 	SpineReductionPass<Config>(d_spine, d_out, spine_elements);
 }
@@ -511,9 +524,9 @@ void SpineReductionKernel(
  */
 template <typename Config>
 void __wrapper__device_stub_SpineReductionKernel(
-		typename Config::T * __restrict &,
-		typename Config::T * __restrict &,
-		typename Config::SizeT&) {}
+		typename Config::Problem::T * __restrict &,
+		typename Config::Problem::T * __restrict &,
+		typename Config::Problem::SizeT&) {}
 
 
 

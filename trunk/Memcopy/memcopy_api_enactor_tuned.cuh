@@ -63,12 +63,6 @@ protected:
 	friend class BaseEnactorType;
 	friend class BaseArchType;
 
-	// Type for encapsulating operational details regarding an invocation
-	template <ProblemSize _PROBLEM_SIZE> struct Detail;
-
-	// Type for encapsulating storage details regarding an invocation
-	struct Storage;
-
 
 	//-----------------------------------------------------------------------------
 	// Memcopy Operation
@@ -160,7 +154,7 @@ public:
  * Type for encapsulating operational details regarding an invocation
  */
 template <ProblemSize _PROBLEM_SIZE>
-struct MemcopyEnactorTuned::Detail
+struct Detail
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 	int max_grid_size;
@@ -173,7 +167,7 @@ struct MemcopyEnactorTuned::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-struct MemcopyEnactorTuned::Storage
+struct Storage
 {
 	void *d_dest;
 	void *d_src;
