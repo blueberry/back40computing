@@ -70,7 +70,7 @@ else
 endif
 
 NVCCFLAGS = -Xptxas -v 
-#NVCCFLAGS += -Xcompiler /bigobj
+NVCCFLAGS += -Xcompiler /bigobj
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
@@ -102,6 +102,7 @@ DEPS = 			./Makefile \
 				../../Common/b40c_kernel_data_movement.cuh \
 				../../Common/b40c_enactor_base.cuh \
 				../../Common/b40c_kernel_utils.cuh \
+				../../Common/b40c_parameter_generation.cuh \
 				../../Common/b40c_vector_types.cuh 
 				 
 
