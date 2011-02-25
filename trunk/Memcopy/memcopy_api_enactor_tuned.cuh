@@ -60,8 +60,8 @@ protected:
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
-	friend class BaseEnactorType;
-	friend class BaseArchType;
+	friend BaseEnactorType;
+	friend BaseArchType;
 
 
 	//-----------------------------------------------------------------------------
