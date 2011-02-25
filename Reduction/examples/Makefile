@@ -70,7 +70,7 @@ else
 endif
 
 NVCCFLAGS = -Xptxas -v 
-NVCCFLAGS += -Xcompiler /bigobj
+#NVCCFLAGS += -Xcompiler /bigobj
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)

@@ -60,8 +60,8 @@ protected:
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
-	friend class BaseEnactorType;
-	friend class BaseArchType;
+	friend BaseEnactorType;
+	friend BaseArchType;
 
 
 	//-----------------------------------------------------------------------------
@@ -329,7 +329,7 @@ cudaError_t ReductionEnactorTuned::Enact(
 	if (num_elements > 1024 * 2252) {
 		return Enact<T, BinaryOp, Identity, LARGE>(d_dest, d_src, num_elements, max_grid_size);
 	} else {
-		return Enact<T, BinaryOp, Identity, SMALL>(d_dest, d_src, num_bytes, max_grid_size);
+		return Enact<T, BinaryOp, Identity, SMALL>(d_dest, d_src, num_elements, max_grid_size);
 	}
 }
 

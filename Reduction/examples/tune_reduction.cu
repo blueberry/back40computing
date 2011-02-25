@@ -199,7 +199,7 @@ enum TuningParam {
 	SPINE_LOG_LOADS_PER_TILE,
 	SPINE_LOG_RAKING_THREADS,
 */
-	LIMIT
+	PARAM_LIMIT
 };
 
 
@@ -258,7 +258,7 @@ template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_LOADS_PER_TILE> {
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, TuningParam::LIMIT> {
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, PARAM_LIMIT> {
 	enum {
 		MIN = 0, MAX = 1
 	};
@@ -379,15 +379,12 @@ public:
 	cudaError_t Enact(Storage &problem_storage, TuneProblemDetail &detail)
 	{
 		// Run the timing tests
-//		SweepConfig<CUDA_ARCH, Storage, TuneProblemDetail>::Invoke(detail);
-
 		ParamListSweep<
 			CUDA_ARCH,
 			TuneProblemDetail,
 			CACHE_MODIFIER,
-			TuningParam::LIMIT,
+			PARAM_LIMIT,
 			Ranges>::template Invoke<void>(detail);
-
 		return cudaSuccess;
 	}
 
@@ -489,7 +486,7 @@ int main(int argc, char** argv)
 //	typedef unsigned long long T;
 
 	// Execute test(s)
-	tuner.TestReduction<T, Sum<T>>(num_elements * sizeof(num_elements) / 4);
+	tuner.TestReduction<T, Sum<T> >(num_elements * sizeof(num_elements) / 4);
 
 	return 0;
 }
