@@ -32,6 +32,7 @@
 
 // Test utils
 #include "b40c_util.h"
+#include "b40c_parameter_generation.cuh"
 
 using namespace b40c;
 using namespace reduction;
@@ -45,22 +46,34 @@ int g_max_ctas = 0;
 int g_iterations = 0;
 
 
-template <typename _T, typename _OpType>
-struct Detail
+template <typename T>
+struct Sum
 {
-	typedef _T T;
-	typedef _OpType OpType;
+	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	{
+		return a + b;
+	}
 
-	ReductionEnactor<> enactor;
-	T *d_dest;
-	T *d_src;
-	T *h_data;
-	T *h_reference;
-	size_t num_elements;
-
-	Detail(size_t num_elements) :
-		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return 0;
+	}
 };
+
+template <typename T>
+struct Max
+{
+	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	{
+		return (a > b) ? a : b;
+	}
+
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return 0;
+	}
+};
+
 
 
 /******************************************************************************
@@ -86,12 +99,11 @@ void Usage()
 }
 
 
-
 /**
- * Timed reduction for a specific granularity configuration type
+ * Timed reduction for applying a specific granularity configuration type
  */
-template <typename Detail, typename Config>
-void TimedReduction(Detail &detail)
+template <typename TuneProblemDetail, typename Config>
+void TimedReduction(TuneProblemDetail &detail)
 {
 	Config::Print();
 	fflush(stdout);
@@ -138,7 +150,7 @@ void TimedReduction(Detail &detail)
 	double throughput =  0.0;
 	if (avg_runtime > 0.0) throughput = ((double) detail.num_elements) / avg_runtime / 1000.0 / 1000.0; 
     printf(", %f, %f, %f, ",
-		avg_runtime, throughput, throughput * sizeof(typename Detail::T));
+		avg_runtime, throughput, throughput * sizeof(typename TuneProblemDetail::T));
     fflush(stdout);
 
     // Clean up events
@@ -146,11 +158,11 @@ void TimedReduction(Detail &detail)
 	cudaEventDestroy(stop_event);
 
     // Copy out data
-    if (B40CPerror(cudaMemcpy(detail.h_data, detail.d_dest, sizeof(typename Detail::T), cudaMemcpyDeviceToHost),
+    if (B40CPerror(cudaMemcpy(detail.h_data, detail.d_dest, sizeof(typename TuneProblemDetail::T), cudaMemcpyDeviceToHost),
 		"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
     // Verify solution
-	CompareResults<typename Detail::T>(detail.h_data, detail.h_reference, 1, true);
+	CompareResults<typename TuneProblemDetail::T>(detail.h_data, detail.h_reference, 1, true);
 	printf("\n");
 	fflush(stdout);
 
@@ -158,204 +170,192 @@ void TimedReduction(Detail &detail)
 
 
 /******************************************************************************
- * Kernel configuration sweep types
+ * Tuning Parameter Enumerations and Ranges
  ******************************************************************************/
 
+/**
+ * Enumerated tuning params
+ */
+enum TuningParam {
+	CACHE_MODIFIER = 0,
+	WORK_STEALING,
+	UNIFORM_SMEM_ALLOCATION,
+	UNIFORM_GRID_SIZE,
+	OVERSUBSCRIBED_GRID_SIZE,
+	UPSWEEP_LOG_THREADS,
+	UPSWEEP_LOG_LOAD_VEC_SIZE,
+	UPSWEEP_LOG_LOADS_PER_TILE,
 
+/*
+	// Derive these from the others above
+	UPSWEEP_CTA_OCCUPANCY,
+	UPSWEEP_LOG_RAKING_THREADS,
+	UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
-
-template <int CUDA_ARCH, typename T, typename Detail>
-struct SweepConfig
-{
-	enum
-	{
-		MIN_LOG_THREADS 			= B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX_LOG_THREADS 			= B40C_LOG_CTA_THREADS(CUDA_ARCH) + 1,
-
-		MIN_LOG_LOAD_VEC_SIZE 		= 0,
-		MAX_LOG_LOAD_VEC_SIZE 		= 2 + 1,
-
-		MIN_LOG_LOADS_PER_TILE 		= 0,
-		MAX_LOG_LOADS_PER_TILE 		= 2 + 1,
-
-		MIN_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE : NONE + 1,
-//		MAX_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE + 1 : LIMIT,			// No cache modifiers exist pre-fermi
-		MAX_CACHE_MODIFIER 			= (CUDA_ARCH < 200) ? NONE + 1 : CS,			// CS seems to break things on windows with 128-bit vector loads
-
-		MIN_WORK_STEALING 			= 0,
-		MAX_WORK_STEALING 			= (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1,				// Atomics needed for pre-Fermi work-stealing are too painful
-
-		MIN_UNIFORM_GRID_SIZE		= 0,
-		MAX_UNIFORM_GRID_SIZE		= 1 + 1,
-
-		MIN_OVERSUBSCRIBED_GRID_SIZE	= 0,
-		MAX_OVERSUBSCRIBED_GRID_SIZE	= 1 + 1
-	};
-
-	// Next OVERSUBSCRIBED_GRID_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate
-	{
-		static void Invoke(Detail &detail)
-		{
-			const int CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> LOG_THREADS);
-
-			// Establish the granularity configuration type
-			typedef ReductionProblem<T, size_t, Detail::OpType::Op, Detail::OpType::Identity> Problem;
-
-			typedef ReductionConfig <Problem,
-					(CacheModifier) CACHE_MODIFIER,	WORK_STEALING, false, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,		// Dispatch/common config
-					CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, B40C_LOG_WARP_THREADS(200), LOG_LOADS_PER_TILE + LOG_LOAD_VEC_SIZE + LOG_THREADS,	// Upsweep config
-					7, 1, 1, B40C_LOG_WARP_THREADS(200)>									// Generic spine config
-				Config;
-
-			// Invoke this config
-			TimedReduction<Detail, Config>(detail);
-
-			// Next OVERSUBSCRIBED_GRID_SIZE
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE + 1,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last OVERSUBSCRIBED_GRID_SIZE, next UNIFORM_GRID_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, MAX_OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next UNIFORM_GRID_SIZE (reset OVERSUBSCRIBED_GRID_SIZE)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE + 1, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last WORK_STEALING, next UNIFORM_GRID_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, MAX_UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next UNIFORM_GRID_SIZE (reset MIN_UNIFORM_GRID_SIZE)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING + 1, MIN_UNIFORM_GRID_SIZE, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last WORK_STEALING, next CACHE_MODIFIER
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, MAX_WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next CACHE_MODIFIER (reset WORK_STEALING)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER + 1, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last CACHE_MODIFIER, next LOG_LOADS_PER_TILE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int WORK_STEALING, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next LOG_LOADS_PER_TILE (reset CACHE_MODIFIER)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE + 1, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last LOG_LOADS_PER_TILE, next LOG_LOAD_VEC_SIZE
-	template <int LOG_THREADS, int LOG_LOAD_VEC_SIZE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next LOG_LOAD_VEC_SIZE (reset LOG_LOADS_PER_TILE)
-			Iterate<LOG_THREADS, LOG_LOAD_VEC_SIZE + 1, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last LOG_LOAD_VEC_SIZE, next LOG_THREADS
-	template <int LOG_THREADS, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail)
-		{
-			// Next LOG_THREADS (reset LOG_LOAD_VEC_SIZE)
-			Iterate<LOG_THREADS + 1, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_UNIFORM_GRID_SIZE, MIN_OVERSUBSCRIBED_GRID_SIZE,
-				MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-		}
-	};
-
-	// Last LOG_THREADS
-	template <int LOG_LOAD_VEC_SIZE, int LOG_LOADS_PER_TILE, int CACHE_MODIFIER, int WORK_STEALING, int UNIFORM_GRID_SIZE, int OVERSUBSCRIBED_GRID_SIZE,
-		int MAX_LOG_THREADS, int MAX_LOG_LOAD_VEC_SIZE, int MAX_LOG_LOADS_PER_TILE, int MAX_CACHE_MODIFIER, int MAX_WORK_STEALING, int MAX_OVERSUBSCRIBED_GRID_SIZE, int MAX_UNIFORM_GRID_SIZE>
-	struct Iterate<MAX_LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, CACHE_MODIFIER, WORK_STEALING, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE,
-		MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>
-	{
-		static void Invoke(Detail &detail) {}
-	};
-
-	// Interface
-	static void Invoke(Detail &detail)
-	{
-		Iterate<MIN_LOG_THREADS, MIN_LOG_LOAD_VEC_SIZE, MIN_LOG_LOADS_PER_TILE, MIN_CACHE_MODIFIER, MIN_WORK_STEALING, MIN_OVERSUBSCRIBED_GRID_SIZE, MIN_UNIFORM_GRID_SIZE,
-			MAX_LOG_THREADS, MAX_LOG_LOAD_VEC_SIZE, MAX_LOG_LOADS_PER_TILE, MAX_CACHE_MODIFIER, MAX_WORK_STEALING, MAX_OVERSUBSCRIBED_GRID_SIZE, MAX_UNIFORM_GRID_SIZE>::Invoke(detail);
-	}
+	// General performance is insensitive to these because it's only a single-CTA:
+	// simply use reasonable defaults
+	SPINE_LOG_THREADS,
+	SPINE_LOG_LOAD_VEC_SIZE,
+	SPINE_LOG_LOADS_PER_TILE,
+	SPINE_LOG_RAKING_THREADS,
+*/
+	LIMIT
 };
 
 
+/**
+ * Ranges for the tuning params
+ */
+template <int CUDA_ARCH, int PARAM> struct Ranges;
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, CACHE_MODIFIER> {
+	enum {
+		MIN = (CUDA_ARCH < 200) ? NONE : NONE + 1,
+		MAX = (CUDA_ARCH < 200) ? NONE + 1 : CS
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, WORK_STEALING> {
+	enum {
+		MIN = 0, MAX = (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UNIFORM_SMEM_ALLOCATION> {
+	enum {
+		MIN = 0, MAX = 2
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UNIFORM_GRID_SIZE> {
+	enum {
+		MIN = 0, MAX = 2
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, OVERSUBSCRIBED_GRID_SIZE> {
+	enum {
+		MIN = 0, MAX = 2
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_THREADS> {
+	enum {
+		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		MAX = B40C_LOG_CTA_THREADS(CUDA_ARCH) + 1
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_LOAD_VEC_SIZE> {
+	enum {
+		MIN = 0, MAX = 2 + 1
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_LOADS_PER_TILE> {
+	enum {
+		MIN = 0, MAX = 2 + 1
+	};
+};
+
+template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, TuningParam::LIMIT> {
+	enum {
+		MIN = 0, MAX = 1
+	};
+};
 
 
 /******************************************************************************
- * ReductionTuner
+ * Tuning Parameter Enumerations and Ranges
  ******************************************************************************/
 
-template <typename T>
-struct Sum
-{
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
-	{
-		return a + b;
-	}
 
-	static __host__ __device__ __forceinline__ T Identity()
+/**
+ * Encapsulation structure for
+ * 		- Wrapping problem type and storage
+ * 		- Providing call-back for parameter-list generation
+ */
+template <typename _T, typename _OpType>
+struct TuneProblemDetail
+{
+	typedef _T T;
+	typedef _OpType OpType;
+
+	ReductionEnactor<> enactor;
+	T *d_dest;
+	T *d_src;
+	T *h_data;
+	T *h_reference;
+	size_t num_elements;
+
+	/**
+	 * Constructor
+	 */
+	TuneProblemDetail(size_t num_elements) :
+		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+
+	/**
+	 * Callback invoked by parameter-list generation
+	 */
+	template <int CUDA_ARCH, typename ParamList>
+	void Invoke()
 	{
-		return 0;
+		const int C_CACHE_MODIFIER =
+			ParamList::template Access<CACHE_MODIFIER>::VALUE;
+		const int C_WORK_STEALING =
+			ParamList::template Access<WORK_STEALING>::VALUE;
+		const int C_UNIFORM_SMEM_ALLOCATION =
+			ParamList::template Access<UNIFORM_SMEM_ALLOCATION>::VALUE;
+		const int C_UNIFORM_GRID_SIZE =
+			ParamList::template Access<UNIFORM_GRID_SIZE>::VALUE;
+		const int C_OVERSUBSCRIBED_GRID_SIZE =
+			ParamList::template Access<OVERSUBSCRIBED_GRID_SIZE>::VALUE;
+		const int C_UPSWEEP_LOG_THREADS =
+			ParamList::template Access<UPSWEEP_LOG_THREADS>::VALUE;
+		const int C_UPSWEEP_LOG_LOAD_VEC_SIZE =
+			ParamList::template Access<UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
+		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
+			ParamList::template Access<UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
+
+		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
+
+		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY = C_UPSWEEP_LOG_LOADS_PER_TILE + C_UPSWEEP_LOG_LOAD_VEC_SIZE + C_UPSWEEP_LOG_THREADS;
+
+		const int C_UPSWEEP_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(CUDA_ARCH);
+
+		// Establish the problem type
+		typedef ReductionProblem<
+			typename TuneProblemDetail::T,
+			size_t,
+			TuneProblemDetail::OpType::Op,
+			TuneProblemDetail::OpType::Identity> Problem;
+
+		// Establish the granularity configuration type
+		typedef ReductionConfig <Problem,
+			(CacheModifier) C_CACHE_MODIFIER,
+			C_WORK_STEALING,
+			C_UNIFORM_SMEM_ALLOCATION,
+			C_UNIFORM_GRID_SIZE,
+			C_OVERSUBSCRIBED_GRID_SIZE,
+			C_UPSWEEP_CTA_OCCUPANCY,
+			C_UPSWEEP_LOG_THREADS,
+			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
+			C_UPSWEEP_LOG_LOADS_PER_TILE,
+			C_UPSWEEP_LOG_RAKING_THREADS,
+			C_UPSWEEP_LOG_SCHEDULE_GRANULARITY,
+			7, 1, 1, B40C_LOG_WARP_THREADS(CUDA_ARCH)> Config;
+
+		// Invoke this config
+		TimedReduction<TuneProblemDetail, Config>(*this);
+
 	}
 };
 
-template <typename T>
-struct Max
-{
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
-	{
-		return (a > b) ? a : b;
-	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
-	}
-};
 
 
+/**
+ * Reduction Tuner
+ */
 class ReductionTuner : public Architecture<__B40C_CUDA_ARCH__, ReductionTuner>
 {
 	typedef Architecture<__B40C_CUDA_ARCH__, ReductionTuner> 	BaseArchType;
@@ -375,11 +375,19 @@ public:
 	}
 
 	// Dispatch call-back with static CUDA_ARCH
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage, Detail &detail)
+	template <int CUDA_ARCH, typename Storage, typename TuneProblemDetail>
+	cudaError_t Enact(Storage &problem_storage, TuneProblemDetail &detail)
 	{
 		// Run the timing tests
-		SweepConfig<CUDA_ARCH, Storage, Detail>::Invoke(detail);
+//		SweepConfig<CUDA_ARCH, Storage, TuneProblemDetail>::Invoke(detail);
+
+		ParamListSweep<
+			CUDA_ARCH,
+			TuneProblemDetail,
+			CACHE_MODIFIER,
+			TuningParam::LIMIT,
+			Ranges>::template Invoke<void>(detail);
+
 		return cudaSuccess;
 	}
 
@@ -391,7 +399,7 @@ public:
 	void TestReduction(size_t num_elements)
 	{
 		// Allocate storage and enactor
-		Detail<T, OpType> detail(num_elements);
+		TuneProblemDetail<T, OpType> detail(num_elements);
 
 		if (B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
 			"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
