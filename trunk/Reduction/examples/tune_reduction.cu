@@ -317,12 +317,19 @@ struct TuneProblemDetail
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			ParamList::template Access<UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 
-		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), (B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
-
+		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(
+				B40C_SM_CTAS(CUDA_ARCH), 
+				(B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
 		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY = C_UPSWEEP_LOG_LOADS_PER_TILE + C_UPSWEEP_LOG_LOAD_VEC_SIZE + C_UPSWEEP_LOG_THREADS;
-
 		const int C_UPSWEEP_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(CUDA_ARCH);
 
+		// General performance is insensitive to spine config it's only a single-CTA:
+		// simply use reasonable defaults
+		const int C_SPINE_LOG_THREADS = 8;
+		const int C_SPINE_LOG_LOAD_VEC_SIZE = 0;
+		const int C_SPINE_LOG_LOADS_PER_TILE = 1;
+		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(CUDA_ARCH);
+		
 		// Establish the problem type
 		typedef ReductionProblem<
 			typename TuneProblemDetail::T,
@@ -343,11 +350,13 @@ struct TuneProblemDetail
 			C_UPSWEEP_LOG_LOADS_PER_TILE,
 			C_UPSWEEP_LOG_RAKING_THREADS,
 			C_UPSWEEP_LOG_SCHEDULE_GRANULARITY,
-			7, 1, 1, B40C_LOG_WARP_THREADS(CUDA_ARCH)> Config;
+			C_SPINE_LOG_THREADS, 
+			C_SPINE_LOG_LOAD_VEC_SIZE, 
+			C_SPINE_LOG_LOADS_PER_TILE, 
+			C_SPINE_LOG_RAKING_THREADS> Config;		
 
 		// Invoke this config
 		TimedReduction<TuneProblemDetail, Config>(*this);
-
 	}
 };
 
@@ -473,16 +482,16 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("CACHE_MODIFIER, WORK_STEALING, _UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
+	printf("CACHE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
 		"UPSWEEP_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
 		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	ReductionTuner tuner;
 
-//	typedef unsigned char T;
+	typedef unsigned char T;
 //	typedef unsigned short T;
-	typedef unsigned int T;
+//	typedef unsigned int T;
 //	typedef unsigned long long T;
 
 	// Execute test(s)

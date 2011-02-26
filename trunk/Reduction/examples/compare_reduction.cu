@@ -33,6 +33,13 @@
 // Test utils
 #include "b40c_util.h"
 
+#include <thrust/host_vector.h>
+#include <thrust/device_vector.h>
+#include <thrust/generate.h>
+#include <thrust/reduce.h>
+#include <thrust/functional.h>
+
+
 using namespace b40c;
 using namespace reduction;
 
@@ -42,7 +49,6 @@ using namespace reduction;
  ******************************************************************************/
 
 bool 	g_verbose 						= false;
-bool 	g_sweep							= false;
 int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
 
@@ -110,14 +116,14 @@ void Usage()
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
-	T Identity(),
-	ProblemSize PROBLEM_SIZE>
+	T Identity()>
 double TimedReduction(
 	T *h_data,
 	T *h_reference,
 	size_t num_elements)
 {
-	printf("%d iterations, %d elements\n", g_iterations, num_elements);
+	T h_dest[1] = {0};
+	printf("B40C Reduction: %d iterations, %d elements, ", g_iterations, num_elements);
 	
 	// Allocate device storage  
 	T *d_src, *d_dest;
@@ -132,12 +138,10 @@ double TimedReduction(
 	// Move a fresh copy of the problem into device storage
 	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
-
+	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	reduction_enactor.DEBUG = true;
-	reduction_enactor.template Enact<T, BinaryOp, Identity, PROBLEM_SIZE>(
+	reduction_enactor.template Enact<T, BinaryOp, Identity>(
 		d_dest, d_src, num_elements, g_max_ctas);
-	reduction_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
 
@@ -153,7 +157,7 @@ double TimedReduction(
 		cudaEventRecord(start_event, 0);
 
 		// Call the reduction API routine
-		reduction_enactor.template Enact<T, BinaryOp, Identity, PROBLEM_SIZE>(
+		reduction_enactor.template Enact<T, BinaryOp, Identity>(
 			d_dest, d_src, num_elements, g_max_ctas);
 
 		// End timing record
@@ -166,7 +170,7 @@ double TimedReduction(
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-    printf("\n%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
+    printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T));
 	
     // Clean up events
@@ -174,7 +178,6 @@ double TimedReduction(
 	cudaEventDestroy(stop_event);
 
     // Copy out data
-	T h_dest[1];
     if (B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T), cudaMemcpyDeviceToHost),
 		"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
@@ -187,7 +190,7 @@ double TimedReduction(
 
 	// Display copied data
 	if (g_verbose) {
-		printf("\n\nReduction: ");
+		printf("Reduction: ");
 		PrintValue(h_dest[0]);
 		printf(", Reference: ");
 		PrintValue(h_reference[0]);
@@ -201,6 +204,97 @@ double TimedReduction(
 
 	return throughput;
 }
+
+
+/**
+ * Timed reduction.  Uses the GPU to copy the specified vector of elements for the given
+ * number of iterations, displaying runtime information.
+ */
+template <
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
+double TimedThrustReduction(
+	T *h_data,
+	T *h_reference,
+	size_t num_elements)
+{
+	T h_dest[1] = {0};
+	printf("Thrust Reduction: %d iterations, %d elements, ", g_iterations, num_elements);
+	
+	// Allocate device storage  
+	T *d_src, *d_dest;
+	if (B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+		"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+	if (B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T)),
+		"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+	// Move a fresh copy of the problem into device storage
+	if (B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+	
+	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
+	thrust::device_ptr<T> dev_ptr(d_src);		
+	h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+	
+	// Perform the timed number of iterations
+
+	cudaEvent_t start_event, stop_event;
+	cudaEventCreate(&start_event);
+	cudaEventCreate(&stop_event);
+
+	double elapsed = 0;
+	float duration = 0;
+	for (int i = 0; i < g_iterations; i++) {
+
+		// Start timing record
+		cudaEventRecord(start_event, 0);
+
+		h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+		
+		// End timing record
+		cudaEventRecord(stop_event, 0);
+		cudaEventSynchronize(stop_event);
+		cudaEventElapsedTime(&duration, start_event, stop_event);
+		elapsed += (double) duration;		
+	}
+
+	// Display timing information
+	double avg_runtime = elapsed / g_iterations;
+	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+    printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
+		avg_runtime, throughput, throughput * sizeof(T));
+	
+    // Clean up events
+	cudaEventDestroy(start_event);
+	cudaEventDestroy(stop_event);
+
+    // Free allocated memory
+    if (d_src) cudaFree(d_src);
+    if (d_dest) cudaFree(d_dest);
+
+	// Flushes any stdio from the GPU
+	cudaThreadSynchronize();
+
+	// Display copied data
+	if (g_verbose) {
+		printf("Reduction: ");
+		PrintValue(h_dest[0]);
+		printf(", Reference: ");
+		PrintValue(h_reference[0]);
+		printf("\n\n");
+	}
+
+    // Verify solution
+	CompareResults(h_dest, h_reference, 1, true);
+	printf("\n");
+	fflush(stdout);
+
+	return throughput;
+}
+
+
+
 
 
 /**
@@ -235,25 +329,10 @@ void TestReduction(size_t num_elements)
 	//
     // Run the timing test(s)
 	//
+	double b40c = TimedReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
+	double thrust = TimedThrustReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
+	printf("B40C speedup: %.2f\n", b40c/thrust);
 	
-
-	// Execute test(s), optionally sweeping problem size downward
-	size_t orig_num_elements = num_elements;
-	do {
-	
-		printf("\nLARGE config:\t");
-		double large = TimedReduction<T, BinaryOp, Identity, LARGE>(h_data, h_reference, num_elements);
-
-		printf("\nSMALL config:\t");
-		double small = TimedReduction<T, BinaryOp, Identity, SMALL>(h_data, h_reference, num_elements);
-
-		if (small > large) {
-			printf("Small faster at %d elements\n", num_elements);
-		}
-
-		num_elements -= 4096;
-	
-	} while (g_sweep && (num_elements < orig_num_elements ));
 
 	// Free our allocated host memory 
 	if (h_data) free(h_data);
@@ -285,36 +364,49 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
-    g_sweep = args.CheckCmdLineFlag("sweep");
+    bool sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
+	// Execute test(s), optionally sweeping problem size downward
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
+	
+	
+	
+/*	
+    size_t orig_num_elements = num_elements;
+    do {
+
+    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+    	num_elements -= 4096;
+
+    } while (sweep && (num_elements < orig_num_elements ));
+*/    
 
 	return 0;
 }

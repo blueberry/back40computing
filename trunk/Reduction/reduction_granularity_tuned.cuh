@@ -77,7 +77,7 @@ struct FamilyClassifier
  *
  * Specialized by family (and optionally by specific architecture) and by
  * problem size type
- ******************************************************************************/
+ *******************************************************************************/
 
 /**
  * Default, catch-all granularity parameterization type.  Defers to the
@@ -145,10 +145,26 @@ struct TunedConfig<ProblemType, SM20, SMALL, T_SIZE>
 // SM1.3 specializations(s)
 //-----------------------------------------------------------------------------
 
-// Large problems
+// Large problems, 4B+
 template <typename ProblemType, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, LARGE, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+// Large problems, 2B
+template <typename ProblemType>
+struct TunedConfig<ProblemType, SM13, LARGE, 2>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 6, 1, 2, 5, 9, 8, 0, 1, 5>
+{
+	static const ProblemSize PROBLEM_SIZE = LARGE;
+};
+
+// Large problems, 1B
+template <typename ProblemType>
+struct TunedConfig<ProblemType, SM13, LARGE, 1>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 4, 8, 2, 2, 5, 12, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
@@ -156,7 +172,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T_SIZE>
 // Small problems
 template <typename ProblemType, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, SMALL, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 5, 0, 2, 5, 7, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -170,7 +186,7 @@ struct TunedConfig<ProblemType, SM13, SMALL, T_SIZE>
 
 template <ProblemSize _PROBLEM_SIZE, typename ProblemType, int T_SIZE>
 struct TunedConfig<ProblemType, SM10, _PROBLEM_SIZE, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
+	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 };

@@ -129,7 +129,7 @@ cudaError_t MemcopyEnactor<DerivedEnactorType>::MemcopyPass(
 	int dynamic_smem = 0;
 	cudaError_t retval = cudaSuccess;
 
-	MemcopyKernel<MemcopyConfig><<<work.grid_size, MemcopyConfig::THREADS, dynamic_smem>>>(
+	MemcopyKernel<typename MemcopyConfig><<<work.grid_size, MemcopyConfig::THREADS, dynamic_smem>>>(
 		d_dest, d_src, d_work_progress, work, progress_selector, extra_bytes);
 
 	if (DEBUG) {
