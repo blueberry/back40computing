@@ -28,6 +28,9 @@ NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release 
 
 KERNELS = 
 
+# detect OS
+OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
+
 #-------------------------------------------------------------------------------
 # Gen targets
 #-------------------------------------------------------------------------------
@@ -36,7 +39,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20) 
+SM_TARGETS = $(GEN_SM20)
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -48,7 +51,7 @@ SM_TARGETS = $(GEN_SM20)
 #-------------------------------------------------------------------------------
 
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../../thrust
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -70,7 +73,10 @@ else
 endif
 
 NVCCFLAGS = -Xptxas -v 
-#NVCCFLAGS += -Xcompiler /bigobj
+
+ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
+	NVCCFLAGS += -Xcompiler /bigobj
+endif
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
@@ -129,6 +135,17 @@ bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : tune_reduction.cu $(DEPS)
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) tune_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 
 
+#-------------------------------------------------------------------------------
+# (make compare) Compares reduction performance against other libraries (e.g., Thrust)
+#-------------------------------------------------------------------------------
+
+compare: bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
+
+
 #
 # Clean
 #
@@ -136,6 +153,7 @@ bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : tune_reduction.cu $(DEPS)
 clean :
 	rm -f bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
 	rm -f bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
+	rm -f bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

@@ -326,9 +326,11 @@ cudaError_t ReductionEnactorTuned::Enact(
 	int max_grid_size)
 {
 	// Hybrid approach
-	if (num_elements > 1024 * 2252) {
+	if (sizeof(T) * num_elements > 256 * 1024) {
+		// Large: problem size > 256KB
 		return Enact<T, BinaryOp, Identity, LARGE>(d_dest, d_src, num_elements, max_grid_size);
 	} else {
+		// Small: problem size <= 256KB
 		return Enact<T, BinaryOp, Identity, SMALL>(d_dest, d_src, num_elements, max_grid_size);
 	}
 }
