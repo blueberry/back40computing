@@ -84,7 +84,8 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	CacheModifier _CACHE_MODIFIER,
+	CacheModifier _READ_MODIFIER,
+	CacheModifier _WRITE_MODIFIER,
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
@@ -93,7 +94,8 @@ struct ReductionKernelConfig
 	typedef ReductionProblem						Problem;
 
 	static const int CTA_OCCUPANCY  				= _CTA_OCCUPANCY;
-	static const CacheModifier CACHE_MODIFIER 		= _CACHE_MODIFIER;
+	static const CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
+	static const CacheModifier WRITE_MODIFIER 		= _WRITE_MODIFIER;
 	static const bool WORK_STEALING					= _WORK_STEALING;
 
 	static const int LOG_THREADS 					= _LOG_THREADS;
@@ -145,9 +147,9 @@ struct ReductionKernelConfig
 		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
 
 
-	static const int SMEM_BYTES	= (TWO_LEVEL_GRID) ?
-		PrimaryGrid::SMEM_BYTES + SecondaryGrid::SMEM_BYTES :	// two-level smem SRTS
-		PrimaryGrid::SMEM_BYTES;								// one-level smem SRTS
+	static const int SMEM_QUADS	= (TWO_LEVEL_GRID) ?
+		PrimaryGrid::SMEM_QUADS + SecondaryGrid::SMEM_QUADS :	// two-level smem SRTS
+		PrimaryGrid::SMEM_QUADS;								// one-level smem SRTS
 
 
 	static __device__ __forceinline__ void LoadTransform(typename Problem::T &val, bool in_bounds)
@@ -180,7 +182,7 @@ struct CollectiveReduction
 		T *d_out)
 	{
 		// Shared memory pool
-		__shared__ uint4 smem_pool[(Config::SMEM_BYTES + sizeof(uint4) - 1) / sizeof(uint4)];
+		__shared__ uint4 smem_pool[Config::SMEM_QUADS];
 
 		// Determine the deposit and raking pointers for SRTS grid
 		T *primary_grid 			= reinterpret_cast<T*>(smem_pool);
@@ -204,7 +206,7 @@ struct CollectiveReduction
 
 			// Write output
 			if (threadIdx.x == 0) {
-				d_out[0] = total;
+				ModifiedStore<T, Config::WRITE_MODIFIER>::St(total, d_out, 0);
 			}
 		}
 	}
@@ -228,12 +230,12 @@ struct CollectiveReduction <Config, true>
 		T *d_out)
 	{
 		// Shared memory pool
-		__shared__ uint4 smem_pool[(Config::SMEM_BYTES + sizeof(uint4) - 1) / sizeof(uint4)];
+		__shared__ uint4 smem_pool[Config::SMEM_QUADS];
 
 		// Determine the deposit and raking pointers for SRTS grids
 		T *primary_grid 			= reinterpret_cast<T*>(smem_pool);
 		T *secondary_grid 			= reinterpret_cast<T*>(
-										smem_pool + Config::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
+										smem_pool + Config::PrimaryGrid::SMEM_QUADS);		// Offset by the primary grid
 		T *primary_base_partial 	= Config::PrimaryGrid::BasePartial(primary_grid);
 
 		// Place partials in primary smem grid
@@ -299,7 +301,7 @@ __device__ __forceinline__ void ProcessTile(
 		Config::LOG_LOADS_PER_TILE,
 		Config::LOG_LOAD_VEC_SIZE,
 		Config::THREADS,
-		Config::CACHE_MODIFIER,
+		Config::READ_MODIFIER,
 		UNGUARDED_IO,
 		Config::LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 

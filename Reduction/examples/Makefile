@@ -50,8 +50,9 @@ SM_TARGETS = $(GEN_SM20)
 # Includes
 #-------------------------------------------------------------------------------
 
+THRUST_INC = "../../../Thrust"
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../../thrust
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -143,7 +144,7 @@ compare: bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -DUNIX -O3  
 
 
 #

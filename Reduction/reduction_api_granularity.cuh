@@ -45,7 +45,8 @@ template <
 	typename ReductionProblemType,
 
 	// Common
-	CacheModifier CACHE_MODIFIER,
+	CacheModifier READ_MODIFIER,
+	CacheModifier WRITE_MODIFIER,
 	bool WORK_STEALING,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
@@ -78,7 +79,8 @@ struct ReductionConfig
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
 		UPSWEEP_LOG_RAKING_THREADS,
-		CACHE_MODIFIER,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
 		WORK_STEALING,
 		UPSWEEP_LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
@@ -91,7 +93,8 @@ struct ReductionConfig
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		CACHE_MODIFIER,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
 		false,								// Workstealing makes no sense in a single-CTA grid
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
@@ -99,8 +102,9 @@ struct ReductionConfig
 	static void Print()
 	{
 
-		printf("%s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
-			CacheModifierToString(CACHE_MODIFIER),
+		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
+			CacheModifierToString(READ_MODIFIER),
+			CacheModifierToString(WRITE_MODIFIER),
 			(WORK_STEALING) ? "true" : "false",
 			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
 			(UNIFORM_GRID_SIZE) ? "true" : "false",
