@@ -80,18 +80,27 @@ struct FamilyClassifier
  *******************************************************************************/
 
 /**
- * Default, catch-all granularity parameterization type.  Defers to the
- * architecture "family" that we know we have specialization type(s) for below.
+ * Granularity parameterization type
  */
 template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	ProblemSize PROBLEM_SIZE,
+	typename T = typename ProblemType::T,
 	int T_SIZE = sizeof(typename ProblemType::T)>
+struct TunedConfig;
+
+
+/**
+ * Default, catch-all granularity parameterization type.  Defers to the
+ * architecture "family" that we know we have specialization type(s) for below.
+ */
+template <typename ProblemType, int CUDA_ARCH, ProblemSize PROBLEM_SIZE, typename T, int T_SIZE>
 struct TunedConfig : TunedConfig<
 	ProblemType,
 	FamilyClassifier<CUDA_ARCH>::FAMILY,
 	PROBLEM_SIZE,
+	T,
 	T_SIZE> {};
 
 
@@ -100,32 +109,32 @@ struct TunedConfig : TunedConfig<
 //-----------------------------------------------------------------------------
 
 // Large problems, 8B+ data
-template <typename ProblemType, int T_SIZE>
-struct TunedConfig<ProblemType, SM20, LARGE, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 // Large problems, 4B data
-template <typename ProblemType>
-struct TunedConfig<ProblemType, SM20, LARGE, 4>
-	: ReductionConfig<ProblemType, NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
+	: ReductionConfig<ProblemType, NONE, NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 // Large problems, 2B data
-template <typename ProblemType>
-struct TunedConfig<ProblemType, SM20, LARGE, 2>
-	: ReductionConfig<ProblemType, NONE, true, true, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
+	: ReductionConfig<ProblemType, NONE, NONE, true, true, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 // Large problems, 1B data
-template <typename ProblemType>
-struct TunedConfig<ProblemType, SM20, LARGE, 1>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
@@ -133,9 +142,9 @@ struct TunedConfig<ProblemType, SM20, LARGE, 1>
 
 
 // Small problems
-template <typename ProblemType, int T_SIZE>
-struct TunedConfig<ProblemType, SM20, SMALL, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -146,33 +155,33 @@ struct TunedConfig<ProblemType, SM20, SMALL, T_SIZE>
 //-----------------------------------------------------------------------------
 
 // Large problems, 4B+
-template <typename ProblemType, int T_SIZE>
-struct TunedConfig<ProblemType, SM13, LARGE, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 // Large problems, 2B
-template <typename ProblemType>
-struct TunedConfig<ProblemType, SM13, LARGE, 2>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 6, 1, 2, 5, 9, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 8, 6, 1, 2, 5, 9, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 // Large problems, 1B
-template <typename ProblemType>
-struct TunedConfig<ProblemType, SM13, LARGE, 1>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 4, 8, 2, 2, 5, 12, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 4, 8, 2, 2, 5, 12, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = LARGE;
 };
 
 // Small problems
-template <typename ProblemType, int T_SIZE>
-struct TunedConfig<ProblemType, SM13, SMALL, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 5, 0, 2, 5, 7, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 8, 5, 0, 2, 5, 7, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = SMALL;
 };
@@ -184,9 +193,9 @@ struct TunedConfig<ProblemType, SM13, SMALL, T_SIZE>
 //-----------------------------------------------------------------------------
 
 
-template <ProblemSize _PROBLEM_SIZE, typename ProblemType, int T_SIZE>
-struct TunedConfig<ProblemType, SM10, _PROBLEM_SIZE, T_SIZE>
-	: ReductionConfig<ProblemType, NONE, false, false, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
+template <ProblemSize _PROBLEM_SIZE, typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM10, _PROBLEM_SIZE, T, T_SIZE>
+	: ReductionConfig<ProblemType, NONE, NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
 {
 	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
 };

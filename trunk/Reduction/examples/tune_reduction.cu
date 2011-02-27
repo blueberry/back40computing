@@ -32,9 +32,11 @@
 
 // Test utils
 #include "b40c_util.h"
+#include "b40c_numeric_traits.cuh"
 #include "b40c_parameter_generation.cuh"
 
 using namespace b40c;
+using namespace traits;
 using namespace reduction;
 
 /******************************************************************************
@@ -177,8 +179,7 @@ void TimedReduction(TuneProblemDetail &detail)
  * Enumerated tuning params
  */
 enum TuningParam {
-	CACHE_MODIFIER = 0,
-	WORK_STEALING,
+	WORK_STEALING = 0,
 	UNIFORM_SMEM_ALLOCATION,
 	UNIFORM_GRID_SIZE,
 	OVERSUBSCRIBED_GRID_SIZE,
@@ -186,83 +187,125 @@ enum TuningParam {
 	UPSWEEP_LOG_LOAD_VEC_SIZE,
 	UPSWEEP_LOG_LOADS_PER_TILE,
 
-/*
+	PARAM_LIMIT,
+
+	// Parameters below here are currently not part of the tuning sweep
+
+	// These can be tuned, but we're currently not compelled to
+	READ_MODIFIER,
+	WRITE_MODIFIER,
+	UPSWEEP_LOG_RAKING_THREADS,
+
 	// Derive these from the others above
 	UPSWEEP_CTA_OCCUPANCY,
-	UPSWEEP_LOG_RAKING_THREADS,
 	UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
-	// General performance is insensitive to these because it's only a single-CTA:
-	// simply use reasonable defaults
+	// General performance is insensitive to the spine kernel params
+	// because it's only a single-CTA: we'll just use reasonable defaults
 	SPINE_LOG_THREADS,
 	SPINE_LOG_LOAD_VEC_SIZE,
 	SPINE_LOG_LOADS_PER_TILE,
-	SPINE_LOG_RAKING_THREADS,
-*/
-	PARAM_LIMIT
+	SPINE_LOG_RAKING_THREADS
 };
 
 
 /**
  * Ranges for the tuning params
  */
-template <int CUDA_ARCH, int PARAM> struct Ranges;
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList, int PARAM> struct Ranges;
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, CACHE_MODIFIER> {
+// READ_MODIFIER
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, READ_MODIFIER> {
+	typedef typename ProblemDetail::T T;
 	enum {
-		MIN = (CUDA_ARCH < 200) ? NONE : NONE + 1,
-		MAX = (CUDA_ARCH < 200) ? NONE + 1 : CS
+		MIN = NONE,
+		MAX = ((CUDA_ARCH < 200) || (NumericTraits<T>::REPRESENTATION == NAN)) ? NONE : CS		// No type modifiers for pre-Fermi or non-builtin types
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, WORK_STEALING> {
+// WRITE_MODIFIER
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, WRITE_MODIFIER> {
+	typedef typename ProblemDetail::T T;
 	enum {
-		MIN = 0, MAX = (CUDA_ARCH < 200) ? 0 + 1 : 1 + 1
+		MIN = NONE,
+		MAX = ((CUDA_ARCH < 200) || (NumericTraits<T>::REPRESENTATION == NAN)) ? NONE : CS		// No type modifiers for pre-Fermi or non-builtin types
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UNIFORM_SMEM_ALLOCATION> {
+// WORK_STEALING
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, WORK_STEALING> {
 	enum {
-		MIN = 0, MAX = 2
+		MIN = 0,
+		MAX = (CUDA_ARCH < 200) ? 0 : 1			// No workstealing pre-Fermi
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UNIFORM_GRID_SIZE> {
+// UNIFORM_SMEM_ALLOCATION
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UNIFORM_SMEM_ALLOCATION> {
 	enum {
-		MIN = 0, MAX = 2
+		MIN = 0,
+		MAX = 1
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, OVERSUBSCRIBED_GRID_SIZE> {
+// UNIFORM_GRID_SIZE
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UNIFORM_GRID_SIZE> {
 	enum {
-		MIN = 0, MAX = 2
+		MIN = 0,
+		MAX = 1
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_THREADS> {
+// OVERSUBSCRIBED_GRID_SIZE
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, OVERSUBSCRIBED_GRID_SIZE> {
+	enum {
+		MIN = 0,
+		MAX = 1
+	};
+};
+
+// UPSWEEP_LOG_THREADS
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UPSWEEP_LOG_THREADS> {
 	enum {
 		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX = B40C_LOG_CTA_THREADS(CUDA_ARCH) + 1
+		MAX = B40C_LOG_CTA_THREADS(CUDA_ARCH)
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_LOAD_VEC_SIZE> {
+// UPSWEEP_LOG_LOAD_VEC_SIZE
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
 	enum {
-		MIN = 0, MAX = 2 + 1
+		MIN = 0,
+		MAX = 2
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, UPSWEEP_LOG_LOADS_PER_TILE> {
+// UPSWEEP_LOG_LOADS_PER_TILE
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
 	enum {
-		MIN = 0, MAX = 2 + 1
+		MIN = 0,
+		MAX = 2
 	};
 };
 
-template <int CUDA_ARCH> struct Ranges<CUDA_ARCH, PARAM_LIMIT> {
+// UPSWEEP_LOG_RAKING_THREADS
+template <int CUDA_ARCH, typename ProblemDetail, typename ParamList>
+struct Ranges<CUDA_ARCH, ProblemDetail, ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 	enum {
-		MIN = 0, MAX = 1
+		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		MAX = ParamList::template Access<UPSWEEP_LOG_THREADS>::VALUE
 	};
 };
+
 
 
 /******************************************************************************
@@ -300,8 +343,12 @@ struct TuneProblemDetail
 	template <int CUDA_ARCH, typename ParamList>
 	void Invoke()
 	{
-		const int C_CACHE_MODIFIER =
-			ParamList::template Access<CACHE_MODIFIER>::VALUE;
+		const int C_READ_MODIFIER =
+//			ParamList::template Access<READ_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+			NONE;
+		const int C_WRITE_MODIFIER =
+//			ParamList::template Access<WRITE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+			NONE;
 		const int C_WORK_STEALING =
 			ParamList::template Access<WORK_STEALING>::VALUE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
@@ -316,12 +363,17 @@ struct TuneProblemDetail
 			ParamList::template Access<UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			ParamList::template Access<UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
+		const int C_UPSWEEP_LOG_RAKING_THREADS =
+//			ParamList::template Access<UPSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
+			B40C_LOG_WARP_THREADS(CUDA_ARCH);
 
 		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(
-				B40C_SM_CTAS(CUDA_ARCH), 
-				(B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
-		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY = C_UPSWEEP_LOG_LOADS_PER_TILE + C_UPSWEEP_LOG_LOAD_VEC_SIZE + C_UPSWEEP_LOG_THREADS;
-		const int C_UPSWEEP_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(CUDA_ARCH);
+			B40C_SM_CTAS(CUDA_ARCH),
+			(B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
+		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY =
+			C_UPSWEEP_LOG_LOADS_PER_TILE +
+			C_UPSWEEP_LOG_LOAD_VEC_SIZE +
+			C_UPSWEEP_LOG_THREADS;
 
 		// General performance is insensitive to spine config it's only a single-CTA:
 		// simply use reasonable defaults
@@ -339,7 +391,8 @@ struct TuneProblemDetail
 
 		// Establish the granularity configuration type
 		typedef ReductionConfig <Problem,
-			(CacheModifier) C_CACHE_MODIFIER,
+			(CacheModifier) C_READ_MODIFIER,
+			(CacheModifier) C_WRITE_MODIFIER,
 			C_WORK_STEALING,
 			C_UNIFORM_SMEM_ALLOCATION,
 			C_UNIFORM_GRID_SIZE,
@@ -391,7 +444,7 @@ public:
 		ParamListSweep<
 			CUDA_ARCH,
 			TuneProblemDetail,
-			CACHE_MODIFIER,
+			0,
 			PARAM_LIMIT,
 			Ranges>::template Invoke<void>(detail);
 		return cudaSuccess;
@@ -482,16 +535,16 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("CACHE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
+	printf("READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
 		"UPSWEEP_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
 		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	ReductionTuner tuner;
 
-	typedef unsigned char T;
+//	typedef unsigned char T;
 //	typedef unsigned short T;
-//	typedef unsigned int T;
+	typedef unsigned int T;
 //	typedef unsigned long long T;
 
 	// Execute test(s)

@@ -63,7 +63,7 @@ struct ParamTuple
 };
 
 
-template <int CUDA_ARCH, typename TuneProblemDetail, int PARAM, int MAX_PARAM, template <int , int> class Ranges>
+template <int CUDA_ARCH, typename TuneProblemDetail, int PARAM, int MAX_PARAM, template <int, typename, typename, int> class Ranges>
 struct ParamListSweep
 {
 	// Next parameter increment
@@ -100,14 +100,14 @@ struct ParamListSweep
 	{
 		// Sweep current parameter
 		Sweep<
-			Ranges<CUDA_ARCH, PARAM>::MIN,
-			Ranges<CUDA_ARCH, PARAM>::MAX>::template Invoke<ParamList>(detail);
+			Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, PARAM>::MIN,
+			Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, PARAM>::MAX + 1>::template Invoke<ParamList>(detail);
 
 	}
 };
 
 // End of currently-generated list
-template <int CUDA_ARCH, typename TuneProblemDetail, int MAX_PARAM, template <int , int> class Ranges>
+template <int CUDA_ARCH, typename TuneProblemDetail, int MAX_PARAM, template <int, typename, typename, int> class Ranges>
 struct ParamListSweep <CUDA_ARCH, TuneProblemDetail, MAX_PARAM, MAX_PARAM, Ranges>
 {
 	template <typename ParamList>

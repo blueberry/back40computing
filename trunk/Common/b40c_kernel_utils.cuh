@@ -306,8 +306,8 @@ struct SrtsGrid
 		// Stride between lanes (in partials)
 		LANE_STRIDE						= ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
-		// Total number of smem bytes needed to back the grid
-		SMEM_BYTES						= ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)
+		// Total number of quad words (uint4) needed to back the grid
+		SMEM_QUADS						= ((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4)
 	};
 	
 	
