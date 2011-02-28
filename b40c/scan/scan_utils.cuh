@@ -212,6 +212,36 @@ struct SerialScan
 };
 
 
+/**
+ * Warp rake and scan. Must hold that the number of raking threads in the grid
+ * config type is at most the size of a warp.  (May be less.)
+ */
+template <typename SrtsGrid>
+__device__ __forceinline__ void WarpRakeAndScan(
+	typename SrtsGrid::PartialType *raking_seg,
+	typename SrtsGrid::PartialType warpscan[2][SrtsGrid::RAKING_THREADS],
+	typename SrtsGrid::PartialType &carry)
+{
+	typedef typename SrtsGrid::PartialType PartialType;
+
+	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+
+		// Raking reduction
+		PartialType partial = SerialReduce<PartialType, SrtsGrid::PARTIALS_PER_SEG>::Invoke(raking_seg);
+
+		// Warpscan
+		PartialType warpscan_total;
+		partial = WarpScan<PartialType, SrtsGrid::LOG_RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
+		partial += carry;
+
+		// Raking scan
+		SerialScan<PartialType, SrtsGrid::PARTIALS_PER_SEG>::Invoke(raking_seg, partial);
+
+		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
+	}
+}
+
+
 } // namespace scan
 } // namespace b40c
 

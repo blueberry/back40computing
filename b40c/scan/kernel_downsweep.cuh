@@ -26,11 +26,10 @@
 #pragma once
 
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/scan/kernel_tile.cuh>
+#include <b40c/scan/kernel_cta.cuh>
 
 namespace b40c {
 namespace scan {
-
 
 
 /**
@@ -38,79 +37,40 @@ namespace scan {
  */
 template <typename ScanKernelConfig>
 __device__ __forceinline__ void DownsweepScanPass(
-		typename ScanKernelConfig::T 			* &d_in,
-		typename ScanKernelConfig::T 			* &d_out,
-		typename ScanKernelConfig::T 			* __restrict &d_spine_partial,
-		util::CtaWorkDistribution<typename ScanKernelConfig::SizeT> &work_decomposition)
-	{
-		typedef ScanTile<ScanKernelConfig> Tile;
-		typedef typename Tile::T T;
-		typedef typename Tile::SizeT SizeT;
+	typename ScanKernelConfig::T 			* &d_in,
+	typename ScanKernelConfig::T 			* &d_out,
+	typename ScanKernelConfig::T 			* __restrict &d_spine_partial,
+	util::CtaWorkDistribution<typename ScanKernelConfig::SizeT> &work_decomposition)
+{
+	typedef ScanCta<ScanKernelConfig> ScanCta;
+	typedef typename ScanCta::T T;
+	typedef typename ScanCta::SizeT SizeT;
 
-		// Shared memory pool
-		__shared__ uint4 smem_pool[Tile::SMEM_QUADS];
+	ScanCta cta(d_in, d_out);
 
-		// Warpscan shared memory
-		__shared__ ScanType warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+	// Determine our threadblock's work range
+	SizeT cta_offset;			// Offset at which this CTA begins processing
+	SizeT cta_elements;			// Total number of elements for this CTA to process
+	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	SizeT guarded_elements;		// Number of elements in partially-full tile
 
-		// The carry that thread-0 will aggregate
-		T carry = Tile::Identity();		// The value we will accumulate
+	work_decomposition.GetCtaWorkLimits<ScanCta::LOG_TILE_ELEMENTS, ScanCta::LOG_SCHEDULE_GRANULARITY>(
+		cta_offset, cta_elements, guarded_offset, guarded_elements);
 
-		// Determine our threadblock's work range
-		SizeT cta_offset;			// Offset at which this CTA begins processing
-		SizeT cta_elements;			// Total number of elements for this CTA to process
-		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-		SizeT guarded_elements;		// Number of elements in partially-full tile
+	SizeT out_of_bounds = cta_offset + cta_elements;
 
-		work_decomposition.GetCtaWorkLimits<Tile::LOG_TILE_ELEMENTS, Tile::LOG_SCHEDULE_GRANULARITY>(
-			cta_offset, cta_elements, guarded_offset, guarded_elements);
+	// Process full tiles of tile_elements
+	while (cta_offset < guarded_offset) {
 
-		SizeT out_of_bounds = cta_offset + cta_elements;
-
-		T *primary_grid = reinterpret_cast<ScanType*>(smem_pool);
-		T *primary_base_partial = Config::PrimaryGrid::BasePartial(primary_grid);
-		T *primary_raking_seg = NULL;
-		T *secondary_base_partial = NULL;
-		T *secondary_raking_seg = NULL;
-
-		ScanType carry = 0;
-
-		// Initialize partial-placement and raking offset pointers
-		if (threadIdx.x < Config::PrimaryGrid::RAKING_THREADS) {
-
-			primary_raking_seg = Config::PrimaryGrid::RakingSegment(primary_grid);
-
-			ScanType *secondary_grid = reinterpret_cast<ScanType*>(smem_pool + Config::PrimaryGrid::SMEM_BYTES);		// Offset by the primary grid
-			secondary_base_partial = Config::SecondaryGrid::BasePartial(secondary_grid);
-			if (Config::TWO_LEVEL_GRID && (threadIdx.x < Config::SecondaryGrid::RAKING_THREADS)) {
-				secondary_raking_seg = Config::SecondaryGrid::RakingSegment(secondary_grid);
-			}
-
-			// Initialize warpscan
-			if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
-				warpscan[0][threadIdx.x] = 0;
-			}
-		}
-
-
-
-
-		// Process full tiles of tile_elements
-		while (cta_offset < guarded_offset) {
-
-			Tile::ProcessTile<true>(d_in, cta_offset, out_of_bounds, carry);
-			cta_offset += Tile::TILE_ELEMENTS;
-		}
-
-		// Clean up last partial tile with guarded-io
-		if (guarded_elements) {
-			Tile::ProcessTile<false>(d_in, cta_offset, out_of_bounds, carry);
-		}
-
-		// Collectively scan accumulated carry from each thread
-		Tile::CollectiveScan(carry, d_out);
+		cta.ProcessTile<true>(cta_offset, out_of_bounds);
+		cta_offset += ScanCta::TILE_ELEMENTS;
 	}
-};
+
+	// Clean up last partial tile with guarded-io
+	if (guarded_elements) {
+		cta.ProcessTile<false>(cta_offset, out_of_bounds);
+	}
+}
 
 
 

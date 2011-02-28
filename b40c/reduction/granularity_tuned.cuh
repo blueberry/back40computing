@@ -223,8 +223,8 @@ __launch_bounds__ (
 	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Upsweep::THREADS),
 	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepReductionKernel(
-	typename ReductionProblemType::T 			* __restrict d_in,
-	typename ReductionProblemType::T 			* __restrict d_spine,
+	typename ReductionProblemType::T 			*d_in,
+	typename ReductionProblemType::T 			*d_spine,
 	typename ReductionProblemType::SizeT 		* __restrict d_work_progress,
 	util::CtaWorkDistribution<typename ReductionProblemType::SizeT> work_decomposition,
 	int progress_selector)
@@ -251,9 +251,9 @@ __launch_bounds__ (
 	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Spine::THREADS),
 	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ReductionConfig::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineReductionKernel(
-	typename ReductionProblemType::T 		* __restrict 	d_spine,
-	typename ReductionProblemType::T 		* __restrict 	d_out,
-	typename ReductionProblemType::SizeT 					spine_elements)
+	typename ReductionProblemType::T 		*d_spine,
+	typename ReductionProblemType::T 		*d_out,
+	typename ReductionProblemType::SizeT 	spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Spine ReductionKernelConfig;

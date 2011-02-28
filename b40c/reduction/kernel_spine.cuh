@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/kernel_tile.cuh>
+#include <b40c/reduction/kernel_cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -36,22 +36,21 @@ namespace reduction {
  */
 template <typename ReductionKernelConfig>
 __device__ __forceinline__ void SpineReductionPass(
-	typename ReductionKernelConfig::T 		* __restrict 	d_spine,
-	typename ReductionKernelConfig::T 		* __restrict 	d_out,
-	typename ReductionKernelConfig::SizeT 					spine_elements)
+	typename ReductionKernelConfig::T 		*d_spine,
+	typename ReductionKernelConfig::T 		*d_out,
+	typename ReductionKernelConfig::SizeT 	spine_elements)
 {
-	typedef ReductionTile<ReductionKernelConfig> Tile;
-	typedef typename Tile::SizeT SizeT;
-	typedef typename Tile::T T;
+	typedef ReductionCta<ReductionKernelConfig> ReductionCta;
+	typedef typename ReductionCta::SizeT SizeT;
+	typedef typename ReductionCta::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// The value we will accumulate
-	T carry = Tile::Identity();
+	ReductionCta cta(d_spine, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (Tile::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -60,17 +59,17 @@ __device__ __forceinline__ void SpineReductionPass(
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
 
-		Tile::ProcessTile<true>(d_spine, cta_offset, cta_guarded_offset, carry);
-		cta_offset += Tile::TILE_ELEMENTS;
+		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
+		cta_offset += ReductionCta::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
-		Tile::ProcessTile<false>(d_spine, cta_offset, spine_elements, carry);
+		cta.ProcessTile<false>(cta_offset, spine_elements);
 	}
 
 	// Collectively reduce accumulated carry from each thread
-	Tile::CollectiveReduction(carry, d_out);
+	cta.CollectiveReduction();
 }
 
 
@@ -85,9 +84,9 @@ template <typename ReductionKernelConfig>
 __launch_bounds__ (ReductionKernelConfig::THREADS, ReductionKernelConfig::CTA_OCCUPANCY)
 __global__ 
 void SpineReductionKernel(
-	typename ReductionKernelConfig::T 		* __restrict 	d_spine,
-	typename ReductionKernelConfig::T 		* __restrict 	d_out,
-	typename ReductionKernelConfig::SizeT 					spine_elements)
+	typename ReductionKernelConfig::T 		* d_spine,
+	typename ReductionKernelConfig::T 		* d_out,
+	typename ReductionKernelConfig::SizeT 	spine_elements)
 {
 	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
 }
@@ -98,8 +97,8 @@ void SpineReductionKernel(
  */
 template <typename ReductionKernelConfig>
 void __wrapper__device_stub_SpineReductionKernel(
-		typename ReductionKernelConfig::T * __restrict &,
-		typename ReductionKernelConfig::T * __restrict &,
+		typename ReductionKernelConfig::T *&,
+		typename ReductionKernelConfig::T *&,
 		typename ReductionKernelConfig::SizeT&) {}
 
 

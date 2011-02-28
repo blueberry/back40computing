@@ -195,7 +195,7 @@ __global__ void TunedSpineScanKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Spine ScanKernelConfig;
 
-	SpineScanPass<ScanKernelConfig>(d_spine, d_out, spine_elements);
+	SpineScanPass<ScanKernelConfig>(d_spine, spine_elements);
 }
 
 

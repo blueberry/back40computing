@@ -20,38 +20,36 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction kernel
+ * Scan kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/reduction/kernel_tile.cuh>
+#include <b40c/scan/kernel_cta.cuh>
 
 namespace b40c {
-namespace reduction {
+namespace scan {
 
 
 /**
- * Spine reduction pass
+ * Spine scan pass
  */
-template <typename ReductionKernelConfig>
-__device__ __forceinline__ void SpineReductionPass(
-	typename ReductionKernelConfig::T 		* __restrict 	d_spine,
-	typename ReductionKernelConfig::T 		* __restrict 	d_out,
-	typename ReductionKernelConfig::SizeT 					spine_elements)
+template <typename ScanKernelConfig>
+__device__ __forceinline__ void SpineScanPass(
+	typename ScanKernelConfig::T 		* __restrict 	d_spine,
+	typename ScanKernelConfig::SizeT 					spine_elements)
 {
-	typedef ReductionTile<ReductionKernelConfig> Tile;
-	typedef typename Tile::SizeT SizeT;
-	typedef typename Tile::T T;
+	typedef ScanCta<ScanKernelConfig> ScanCta;
+	typedef typename ScanCta::SizeT SizeT;
+	typedef typename ScanCta::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// The value we will accumulate
-	T carry = Tile::Identity();
+	ScanCta cta(d_spine, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (Tile::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -60,51 +58,46 @@ __device__ __forceinline__ void SpineReductionPass(
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
 
-		Tile::ProcessTile<true>(d_spine, cta_offset, cta_guarded_offset, carry);
-		cta_offset += Tile::TILE_ELEMENTS;
+		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
+		cta_offset += ScanCta::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
-		Tile::ProcessTile<false>(d_spine, cta_offset, spine_elements, carry);
+		cta.ProcessTile<false>(cta_offset, spine_elements);
 	}
-
-	// Collectively reduce accumulated carry from each thread
-	Tile::CollectiveReduction(carry, d_out);
 }
 
 
 /******************************************************************************
- * Spine Reduction Kernel Entry-point
+ * Spine Scan Kernel Entry-point
  ******************************************************************************/
 
 /**
- * Spine reduction kernel entry point
+ * Spine scan kernel entry point
  */
-template <typename ReductionKernelConfig>
-__launch_bounds__ (ReductionKernelConfig::THREADS, ReductionKernelConfig::CTA_OCCUPANCY)
+template <typename ScanKernelConfig>
+__launch_bounds__ (ScanKernelConfig::THREADS, ScanKernelConfig::CTA_OCCUPANCY)
 __global__ 
-void SpineReductionKernel(
-	typename ReductionKernelConfig::T 		* __restrict 	d_spine,
-	typename ReductionKernelConfig::T 		* __restrict 	d_out,
-	typename ReductionKernelConfig::SizeT 					spine_elements)
+void SpineScanKernel(
+	typename ScanKernelConfig::T			*d_spine,
+	typename ScanKernelConfig::SizeT 		spine_elements)
 {
-	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
+	SpineScanPass<ScanKernelConfig>(d_spine, spine_elements);
 }
 
 
 /**
  * Wrapper stub for arbitrary types to quiet the linker
  */
-template <typename ReductionKernelConfig>
-void __wrapper__device_stub_SpineReductionKernel(
-		typename ReductionKernelConfig::T * __restrict &,
-		typename ReductionKernelConfig::T * __restrict &,
-		typename ReductionKernelConfig::SizeT&) {}
+template <typename ScanKernelConfig>
+void __wrapper__device_stub_SpineScanKernel(
+		typename ScanKernelConfig::T *&,
+		typename ScanKernelConfig::SizeT&) {}
 
 
 
 
-} // namespace reduction
+} // namespace scan
 } // namespace b40c
 
