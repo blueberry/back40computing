@@ -34,17 +34,33 @@ namespace reduction {
 
 
 /******************************************************************************
- * ReductionTile Declaration
+ * ReductionCta Declaration
  ******************************************************************************/
 
 /**
- * Derivation of ReductionKernelConfig that encapsulates tile-processing routines
+ * Derivation of ReductionKernelConfig that encapsulates tile-processing
+ * routines
+ */
+template <
+	typename ReductionKernelConfig,
+	bool TWO_LEVEL_GRID = ReductionKernelConfig::TWO_LEVEL_GRID>
+struct ReductionCta;
+
+
+/**
+ * Derivation of ReductionKernelConfig that encapsulates tile-processing
+ * routines (one-level SRTS grid)
  */
 template <typename ReductionKernelConfig>
-struct ReductionTile : ReductionKernelConfig
+struct ReductionCta<ReductionKernelConfig, false> : ReductionKernelConfig
 {
 	typedef typename ReductionKernelConfig::T T;
 	typedef typename ReductionKernelConfig::SizeT SizeT;
+
+	// The value we will accumulate
+	T carry;
+	T* d_in;
+	T* d_out;
 
 	/**
 	 * Process a single tile
@@ -52,11 +68,9 @@ struct ReductionTile : ReductionKernelConfig
 	 * Each thread reduces only the strided values it loads.
 	 */
 	template <bool UNGUARDED_IO>
-	static __device__ __forceinline__ void ProcessTile(
-		T * __restrict 		d_in,
+	__device__ __forceinline__ void ProcessTile(
 		SizeT 				cta_offset,
-		SizeT 				out_of_bounds,
-		T 					&carry);
+		SizeT 				out_of_bounds);
 
 
 	/**
@@ -74,16 +88,55 @@ struct ReductionTile : ReductionKernelConfig
 	 * Used to collectively reduce each thread's aggregate after striding through
 	 * the input.
 	 */
-	static __device__ __forceinline__ void CollectiveReduction(
-		T carry,
-		T *d_out);
+	__device__ __forceinline__ void CollectiveReduction();
+
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ ReductionCta(
+		T *d_in,
+		T *d_out) :
+			carry(Identity()),
+			d_in(d_in),
+			d_out(d_out)
+	{}
+};
+
+
+/**
+ * Derivation of ReductionKernelConfig that encapsulates tile-processing
+ * routines (two-level SRTS grid)
+ */
+template <typename ReductionKernelConfig>
+struct ReductionCta<ReductionKernelConfig, true> : ReductionCta<ReductionKernelConfig, false>
+{
+	typedef typename ReductionKernelConfig::T T;
+
+	/**
+	 * Collective reduction across all threads
+	 *
+	 * Used to collectively reduce each thread's aggregate after striding through
+	 * the input.
+	 */
+	__device__ __forceinline__ void CollectiveReduction();
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ ReductionCta(
+		T *d_in,
+		T *d_out) : ReductionCta<ReductionKernelConfig, false>(d_in, d_out)
+	{
+
+	}
 
 };
 
 
 
 /******************************************************************************
- * ReductionTile Implementation
+ * ReductionCta Implementation
  ******************************************************************************/
 
 /**
@@ -91,11 +144,9 @@ struct ReductionTile : ReductionKernelConfig
  */
 template <typename ReductionKernelConfig>
 template <bool UNGUARDED_IO>
-void ReductionTile<ReductionKernelConfig>::ProcessTile(
-	T * __restrict 		d_in,
-	SizeT 				cta_offset,
-	SizeT 				out_of_bounds,
-	T 					&carry)					// in/out param
+void ReductionCta<ReductionKernelConfig, false>::ProcessTile(
+	SizeT cta_offset,
+	SizeT out_of_bounds)
 {
 	T data[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
@@ -126,7 +177,7 @@ void ReductionTile<ReductionKernelConfig>::ProcessTile(
  * that are out of range.
  */
 template <typename ReductionKernelConfig>
-void ReductionTile<ReductionKernelConfig>::LoadTransform(
+void ReductionCta<ReductionKernelConfig, false>::LoadTransform(
 	T &val,
 	bool in_bounds)
 {
@@ -141,22 +192,18 @@ void ReductionTile<ReductionKernelConfig>::LoadTransform(
  * Used to collectively reduce each thread's aggregate after striding through
  * the input.  For when we have one warp or smaller of raking threads.
  */
-template <typename ReductionTile, bool TWO_LEVEL_GRID>
-struct CollectiveReductionHelper
+template <typename ReductionKernelConfig>
+void ReductionCta<ReductionKernelConfig, false>::CollectiveReduction()
 {
-	typedef typename ReductionTile::T T;
+	// Shared memory pool
+	__shared__ uint4 smem_pool[SMEM_QUADS];
 
-	static __device__ __forceinline__ void Invoke(T carry, T *d_out)
-	{
-		// Shared memory pool
-		__shared__ uint4 smem_pool[ReductionTile::SMEM_QUADS];
+	T *primary_grid = reinterpret_cast<T*>(smem_pool);
 
-		T *primary_grid = reinterpret_cast<T*>(smem_pool);
+	b40c::reduction::CollectiveReduction<T, PrimaryGrid, BinaryOp, WRITE_MODIFIER>(
+		carry, d_out, primary_grid);
+}
 
-		CollectiveReduction<T, ReductionTile::PrimaryGrid, ReductionTile::BinaryOp, ReductionTile::WRITE_MODIFIER>(
-			carry, d_out, primary_grid);
-	}
-};
 
 
 /**
@@ -165,40 +212,18 @@ struct CollectiveReductionHelper
  * Used to collectively reduce each thread's aggregate after striding through
  * the input.  For when we have more than one warp of raking threads.
  */
-template <typename ReductionTile>
-struct CollectiveReductionHelper <ReductionTile, true>
-{
-	typedef typename ReductionTile::T T;
-
-	static __device__ __forceinline__ void Invoke(T carry, T *d_out)
-	{
-		// Shared memory pool
-		__shared__ uint4 smem_pool[ReductionTile::SMEM_QUADS];
-
-		T *primary_grid = reinterpret_cast<T*>(smem_pool);
-		T *secondary_grid = reinterpret_cast<T*>(smem_pool + ReductionTile::PrimaryGrid::SMEM_QUADS);		// Offset by the primary grid
-
-		CollectiveReduction<T, ReductionTile::PrimaryGrid, ReductionTile::BinaryOp, ReductionTile::WRITE_MODIFIER>(
-			carry, d_out, primary_grid, secondary_grid);
-	}
-};
-
-
-/**
- * Collective reduction across all threads
- *
- * Used to collectively reduce each thread's aggregate after striding through
- * the input.
- */
 template <typename ReductionKernelConfig>
-void ReductionTile<ReductionKernelConfig>::CollectiveReduction(
-	T carry,
-	T *d_out)
+void ReductionCta<ReductionKernelConfig, true>::CollectiveReduction()
 {
-	CollectiveReductionHelper<ReductionTile, TWO_LEVEL_GRID>::Invoke(carry, d_out);
+	// Shared memory pool
+	__shared__ uint4 smem_pool[SMEM_QUADS];
+
+	T *primary_grid = reinterpret_cast<T*>(smem_pool);
+	T *secondary_grid = reinterpret_cast<T*>(smem_pool + PrimaryGrid::SMEM_QUADS);		// Offset by the primary grid
+
+	b40c::reduction::CollectiveReduction<T, PrimaryGrid, SecondaryGrid, BinaryOp, WRITE_MODIFIER>(
+		carry, d_out, primary_grid, secondary_grid);
 }
-
-
 
 
 } // namespace reduction
