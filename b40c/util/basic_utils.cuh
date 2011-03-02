@@ -52,6 +52,13 @@ namespace util {
  ******************************************************************************/
 
 /**
+ * Supress warnings for unused constants
+ */
+template <typename T>
+__host__ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
+
+
+/**
  * Perform a swap
  */
 template <typename T> 
@@ -128,6 +135,23 @@ struct Log2<N, 0, COUNT>
 		COUNT - 1;
 };
 
+
+/**
+ * If/Then/Else
+ */
+template <bool IF, typename ThenType, typename ElseType>
+struct If
+{
+	// true
+	typedef ThenType Type;
+};
+
+template <typename ThenType, typename ElseType>
+struct If<false, ThenType, ElseType>
+{
+	// false
+	typedef ElseType Type;
+};
 
 
 

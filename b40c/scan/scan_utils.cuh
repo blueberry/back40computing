@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <b40c/reduction/reduction_utils.cuh>
+
 namespace b40c {
 namespace scan {
 
@@ -57,7 +59,7 @@ template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
 	int STEPS = LOG_NUM_ELEMENTS,
-	T BinaryOp(const T&, const T&) = defaults::Sum<T> >
+	T BinaryOp(const T&, const T&) = defaults::Sum>
 struct WarpScanInclusive
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -110,7 +112,7 @@ struct WarpScanInclusive
 template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
-	T BinaryOp(const T&, const T&) = defaults::Sum<T> >
+	T BinaryOp(const T&, const T&) = defaults::Sum>
 struct WarpScan
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -124,8 +126,8 @@ struct WarpScan
 			volatile T warpscan[][NUM_ELEMENTS],
 			int warpscan_tid)
 		{
-
-			partial = BinaryOp(partial, warpscan[1][warpscan_tid - OFFSET_LEFT]);
+			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
+			partial = BinaryOp(partial, offset_partial);
 			warpscan[1][warpscan_tid] = partial;
 			Iterate<OFFSET_LEFT * 2>::Invoke(partial, warpscan, warpscan_tid);
 		}
@@ -149,7 +151,6 @@ struct WarpScan
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		warpscan[1][warpscan_tid] = partial;
-
 		Iterate<1>::Invoke(partial, warpscan, warpscan_tid);
 
 		// Set aggregate reduction
@@ -168,7 +169,7 @@ struct WarpScan
 template <
 	typename T,
 	int LENGTH,
-	T BinaryOp(const T&, const T&) = defaults::Sum<T> >
+	T BinaryOp(const T&, const T&) = defaults::Sum>
 struct SerialScan
 {
 	// Iterate
@@ -213,31 +214,63 @@ struct SerialScan
 
 
 /**
- * Warp rake and scan. Must hold that the number of raking threads in the grid
- * config type is at most the size of a warp.  (May be less.)
+ * Warp rake and scan. Must hold that the number of raking threads in the SRTS
+ * grid type is at most the size of a warp.  (May be less.)
  */
-template <typename SrtsGrid>
+template <
+	typename SrtsGrid,
+	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
 __device__ __forceinline__ void WarpRakeAndScan(
-	typename SrtsGrid::PartialType *raking_seg,
-	typename SrtsGrid::PartialType warpscan[2][SrtsGrid::RAKING_THREADS],
-	typename SrtsGrid::PartialType &carry)
+	typename SrtsGrid::T *raking_seg,
+	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
 {
-	typedef typename SrtsGrid::PartialType PartialType;
+	typedef typename SrtsGrid::T T;
 
 	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 
 		// Raking reduction
-		PartialType partial = SerialReduce<PartialType, SrtsGrid::PARTIALS_PER_SEG>::Invoke(raking_seg);
+		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
 
-		// Warpscan
-		PartialType warpscan_total;
-		partial = WarpScan<PartialType, SrtsGrid::LOG_RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
-		partial += carry;
+		// Warp scan
+		T warpscan_total;
+		partial = WarpScan<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(partial, warpscan_total, warpscan);
 
 		// Raking scan
-		SerialScan<PartialType, SrtsGrid::PARTIALS_PER_SEG>::Invoke(raking_seg, partial);
+		SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg, partial);
+	}
+}
 
-		carry += warpscan_total;			// Increment the CTA's running total by the full tile reduction
+
+/**
+ * Warp rake and scan. Must hold that the number of raking threads in the SRTS
+ * grid type is at most the size of a warp.  (May be less.)
+ *
+ * Carry is updated in all raking threads
+ */
+template <
+	typename SrtsGrid,
+	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+__device__ __forceinline__ void WarpRakeAndScan(
+	typename SrtsGrid::T *raking_seg,
+	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
+	typename SrtsGrid::T &carry)
+{
+	typedef typename SrtsGrid::T T;
+
+	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+
+		// Raking reduction
+		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
+
+		// Warp scan
+		T warpscan_total;
+		partial = WarpScan<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(partial, warpscan_total, warpscan);
+		partial = BinaryOp(partial, carry);
+
+		// Raking scan
+		SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg, partial);
+
+		carry = BinaryOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
 	}
 }
 

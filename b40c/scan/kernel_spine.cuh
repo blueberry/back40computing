@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/scan/kernel_cta.cuh>
+#include <b40c/scan/cta_scan.cuh>
 
 namespace b40c {
 namespace scan {
@@ -36,20 +36,26 @@ namespace scan {
  */
 template <typename ScanKernelConfig>
 __device__ __forceinline__ void SpineScanPass(
-	typename ScanKernelConfig::T 		* __restrict 	d_spine,
-	typename ScanKernelConfig::SizeT 					spine_elements)
+	typename ScanKernelConfig::T 		*d_in,
+	typename ScanKernelConfig::T 		*d_out,
+	typename ScanKernelConfig::SizeT 	spine_elements)
 {
-	typedef ScanCta<ScanKernelConfig> ScanCta;
-	typedef typename ScanCta::SizeT SizeT;
-	typedef typename ScanCta::T T;
+	typedef CtaScan<ScanKernelConfig> CtaScan;
+	typedef typename CtaScan::SizeT SizeT;
+	typedef typename CtaScan::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	ScanCta cta(d_spine, d_out);
+	// Shared storage for CTA processing
+	__shared__ uint4 smem_pool[ScanKernelConfig::SMEM_QUADS];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+
+	// CTA processing abstraction
+	CtaScan cta(smem_pool, warpscan, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (CtaScan::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -59,7 +65,7 @@ __device__ __forceinline__ void SpineScanPass(
 	while (cta_offset < cta_guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += ScanCta::TILE_ELEMENTS;
+		cta_offset += CtaScan::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -80,10 +86,11 @@ template <typename ScanKernelConfig>
 __launch_bounds__ (ScanKernelConfig::THREADS, ScanKernelConfig::CTA_OCCUPANCY)
 __global__ 
 void SpineScanKernel(
-	typename ScanKernelConfig::T			*d_spine,
+	typename ScanKernelConfig::T			*d_in,
+	typename ScanKernelConfig::T			*d_out,
 	typename ScanKernelConfig::SizeT 		spine_elements)
 {
-	SpineScanPass<ScanKernelConfig>(d_spine, spine_elements);
+	SpineScanPass<ScanKernelConfig>(d_in, d_out, spine_elements);
 }
 
 
@@ -92,6 +99,7 @@ void SpineScanKernel(
  */
 template <typename ScanKernelConfig>
 void __wrapper__device_stub_SpineScanKernel(
+		typename ScanKernelConfig::T *&,
 		typename ScanKernelConfig::T *&,
 		typename ScanKernelConfig::SizeT&) {}
 

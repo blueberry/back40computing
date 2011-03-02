@@ -110,46 +110,46 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_reduction.h \
+				./test_scan.h \
 				../b40c_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/reduction/*.cuh) \
+				$(wildcard ../../b40c/scan/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for large-problem reduction
+# (make test) Simple test driver for large-problem scan
 #-------------------------------------------------------------------------------
 
-test: bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_reduction.cu $(DEPS)
+bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of reduction configuration types
+# (make tune) Evaluates the space of scan configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
+tune: bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
 
-bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_reduction.cu $(DEPS)
+bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
 
 
 #-------------------------------------------------------------------------------
-# (make compare) Compares reduction performance against other libraries (e.g., Thrust)
+# (make compare) Compares scan performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+compare: bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DEPS)
+bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
 #
@@ -157,9 +157,9 @@ bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DE
 #
 
 clean :
-	rm -f bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

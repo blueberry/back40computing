@@ -29,6 +29,7 @@
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
+#include <b40c/reduction/kernel_config.cuh>
 
 namespace b40c {
 namespace scan {
@@ -38,29 +39,12 @@ namespace scan {
  * Type of scan problem
  */
 template <
-	typename _T,
-	typename _SizeT,
-	_T _BinaryOp(const _T&, const _T&),
-	_T _Identity()>
-struct ScanProblemType
+	typename T,
+	typename SizeT,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
+struct ScanProblemType : reduction::ReductionProblemType<T, SizeT, BinaryOp, Identity>
 {
-	// The type of data we are operating upon
-	typedef _T T;
-
-	// The integer type we should use to index into data arrays (e.g., size_t, uint32, uint64, etc)
-	typedef _SizeT SizeT;
-
-	// Wrapper for the binary associative scan operator
-	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return _BinaryOp(a, b);
-	}
-
-	// Wrapper for the identity operator
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return _Identity();
-	}
 };
 
 
@@ -122,34 +106,33 @@ struct ScanKernelConfig : ScanProblemType
 	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
 	static const int SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY;
 
-
+	//
 	// We reduce the elements in registers, and then place that partial
 	// scan into smem rows for further scan
-
-	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we
-	// back up the primary raking warps with a single warp of raking-threads.
+	//
+	// Because all lanes are dependent, we need a two-level grid if
+	// (LOG_RAKING_THREADS > LOG_WARP_THREADS) in order cooperate between
+	// multiple raking warps.
 	//
 	// (N.B.: Typically two-level grids are a losing performance proposition)
-	static const bool TWO_LEVEL_GRID				= (LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
+	//
 
-	// Primary smem SRTS grid type
+	// SRTS grid type
 	typedef util::SrtsGrid<
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
-		0,										// 1 lane (CTA threads only make one deposit)
-		LOG_RAKING_THREADS> PrimaryGrid;		// Raking threads
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_RAKING_THREADS,						// Raking threads
+		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),	// Secondary grid type
+			util::SrtsGrid<										// Yes secondary grid
+				T,													// Partial type
+				LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
+				0,													// 1 lane (the primary raking threads only make one deposit)
+				B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>,			// Raking threads (1 warp)
+			util::InvalidSrtsGrid>::Type>						// No secondary grid
+		SrtsGrid;
 
-	// Secondary smem SRTS grid type
-	typedef util::SrtsGrid<
-		T,										// Partial type
-		LOG_RAKING_THREADS,						// Depositing threads (the primary raking threads)
-		0,										// 1 lane (the primary raking threads only make one deposit)
-		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
-
-
-	static const int SMEM_QUADS	= (TWO_LEVEL_GRID) ?
-		PrimaryGrid::SMEM_QUADS + SecondaryGrid::SMEM_QUADS :	// two-level smem SRTS
-		PrimaryGrid::SMEM_QUADS;								// one-level smem SRTS
+	static const int SMEM_QUADS	= SrtsGrid::SMEM_QUADS;
 };
 
 

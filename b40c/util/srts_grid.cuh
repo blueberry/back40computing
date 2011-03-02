@@ -35,6 +35,15 @@ namespace util {
 
 
 /**
+ * An invalid SRTS grid type
+ */
+struct InvalidSrtsGrid
+{
+	enum { SMEM_QUADS = 0 };
+};
+
+
+/**
  * Description of a (typically) conflict-free serial-reduce-then-scan (SRTS) 
  * shared-memory grid.
  *
@@ -51,15 +60,19 @@ namespace util {
  * results from every raking thread)
  */
 template <
-	typename _PartialType,		// Type of items we will be reducing/scanning
-	int _LOG_ACTIVE_THREADS, 	// Number of threads placing a lane partial (i.e., the number of partials per lane)
-	int _LOG_SCAN_LANES,		// Number of independent scan lanes
-	int _LOG_RAKING_THREADS> 	// Number of threads used for raking (typically 1 warp)
+	typename _T,							// Type of items we will be reducing/scanning
+	int _LOG_ACTIVE_THREADS, 						// Number of threads placing a lane partial (i.e., the number of partials per lane)
+	int _LOG_SCAN_LANES,							// Number of scan lanes
+	int _LOG_RAKING_THREADS, 						// Number of threads used for raking (typically 1 warp)
+	typename SecondarySrtsGrid = InvalidSrtsGrid>	// Whether or not the application calls for a two-level grid (e.g., dependent scan lanes > arch warp threads)
 struct SrtsGrid
 {
 	// Type of items we will be reducing/scanning
-	typedef _PartialType				PartialType;
+	typedef _T T;
 	
+	// Secondary SRTS grid type (if specified)
+	typedef SecondarySrtsGrid SecondaryGrid;
+
 	// N.B.: We use an enum type here b/c of a NVCC-win compiler bug where the
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.
@@ -88,10 +101,10 @@ struct SrtsGrid
 		// Number of partials that we can put in one stripe across the shared memory banks
 		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) +
 											B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) -
-											Log2<sizeof(PartialType)>::VALUE,
+											Log2<sizeof(T)>::VALUE,
 	
 		// Number of partials that we must use to "pad out" one memory bank
-		LOG_PADDING_PARTIALS			= B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - Log2<sizeof(PartialType)>::VALUE),
+		LOG_PADDING_PARTIALS			= B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - Log2<sizeof(T)>::VALUE),
 		PADDING_PARTIALS				= 1 << LOG_PADDING_PARTIALS,
 	
 		// Number of consecutive partials we can have without padding (i.e., a "row")
@@ -121,7 +134,8 @@ struct SrtsGrid
 		LANE_STRIDE						= ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
 		// Total number of quad words (uint4) needed to back the grid
-		SMEM_QUADS						= ((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4)
+		SMEM_QUADS						= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)) +
+											SecondarySrtsGrid::SMEM_QUADS
 	};
 	
 	
@@ -130,7 +144,7 @@ struct SrtsGrid
 	 * its partial for raking reduction/scan into the first lane.  Positions in subsequent
 	 * lanes can be obtained via increments of LANE_STRIDE.
 	 */
-	static __device__ __forceinline__ PartialType* BasePartial(PartialType *smem) 
+	static __device__ __forceinline__ T* BasePartial(T *smem)
 	{
 		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
 		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
@@ -141,7 +155,7 @@ struct SrtsGrid
 	 * Returns the location in the smem grid where the calling thread can begin serial
 	 * raking/scanning
 	 */
-	static __device__ __forceinline__ PartialType* RakingSegment(PartialType *smem) 
+	static __device__ __forceinline__ T* RakingSegment(T *smem)
 	{
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;

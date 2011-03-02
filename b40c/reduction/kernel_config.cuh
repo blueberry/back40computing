@@ -124,34 +124,34 @@ struct ReductionKernelConfig : ReductionProblemType
 	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
 	static const int SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY;
 
-
+	//
 	// We reduce the elements in registers, and then place that partial
-	// reduction into smem rows for further reduction
-
-	// We need a two-level grid if (LOG_RAKING_THREADS > LOG_WARP_THREADS).  If so, we
-	// back up the primary raking warps with a single warp of raking-threads.
+	// scan into smem rows for further reduction
+	//
+	// Because all lanes are dependent, we need a two-level grid if
+	// (LOG_RAKING_THREADS > LOG_WARP_THREADS) in order cooperate between
+	// multiple raking warps.
 	//
 	// (N.B.: Typically two-level grids are a losing performance proposition)
-	static const bool TWO_LEVEL_GRID				= (LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__));
+	//
 
-	// Primary smem SRTS grid type
+	// SRTS grid type
 	typedef util::SrtsGrid<
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane (CTA threads only make one deposit)
-		LOG_RAKING_THREADS> PrimaryGrid;		// Raking threads
+		LOG_RAKING_THREADS,						// Raking threads
+		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),	// Secondary grid type
+			util::SrtsGrid<										// Yes secondary grid
+				T,													// Partial type
+				LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
+				0,													// 1 lane (the primary raking threads only make one deposit)
+				B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>,			// Raking threads (1 warp)
+			util::InvalidSrtsGrid>::Type>						// No secondary grid
+		SrtsGrid;
 
-	// Secondary smem SRTS grid type
-	typedef util::SrtsGrid<
-		T,										// Partial type
-		LOG_RAKING_THREADS,						// Depositing threads (the primary raking threads)
-		0,										// 1 lane (the primary raking threads only make one deposit)
-		B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)> SecondaryGrid;	// Raking threads (1 warp)
+	static const int SMEM_QUADS	= SrtsGrid::SMEM_QUADS;
 
-
-	static const int SMEM_QUADS	= (TWO_LEVEL_GRID) ?
-		PrimaryGrid::SMEM_QUADS + SecondaryGrid::SMEM_QUADS :	// two-level smem SRTS
-		PrimaryGrid::SMEM_QUADS;								// one-level smem SRTS
 };
 
 

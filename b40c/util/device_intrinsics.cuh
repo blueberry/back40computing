@@ -91,7 +91,7 @@ __device__ __forceinline__ int TallyWarpVote(int predicate)
 	const int ACTIVE_WARPS = 1 << LOG_ACTIVE_WARPS;
 	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
 
-	__shared__ int vote_reduction[ACTIVE_WARPS + 1][ACTIVE_THREADS];
+	__shared__ int storage[ACTIVE_WARPS + 1][ACTIVE_THREADS];
 
 	int tid = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
 	int wid = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
