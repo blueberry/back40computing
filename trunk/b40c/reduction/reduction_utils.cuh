@@ -47,10 +47,8 @@ T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
 } // defaults
 
 
-
-
 /**
- * Perform a warp-synchronous reduction.
+ * Perform NUM_ELEMENTS of warp-synchronous reduction.
  *
  * This procedure assumes that no explicit barrier synchronization is needed
  * between steps (i.e., warp-synchronous programming)
@@ -61,21 +59,24 @@ T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
 template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
-	T BinaryOp(const T&, const T&) = defaults::Sum<T> >
+	T BinaryOp(const T&, const T&) = defaults::Sum>
 struct WarpReduce
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
 	// General iteration
-	template <int OFFSET_RIGHT, int __dummy = 0>
+	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
-		static __device__ __forceinline__ void Invoke(T partial, volatile T *storage, int tid) 
+		static __device__ __forceinline__ void Invoke(
+			T partial,
+			volatile T warpscan[][NUM_ELEMENTS],
+			int warpscan_tid)
 		{
-			T from_storage = storage[tid + OFFSET_RIGHT];
-			partial = BinaryOp(partial, from_storage);
-			storage[tid] = partial;
-			Iterate<OFFSET_RIGHT / 2>::Invoke(partial, storage, tid);
+			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
+			partial = BinaryOp(partial, offset_partial);
+			warpscan[1][warpscan_tid] = partial;
+			Iterate<OFFSET_LEFT / 2>::Invoke(partial, warpscan, warpscan_tid);
 		}
 	};
 	
@@ -83,18 +84,23 @@ struct WarpReduce
 	template <int __dummy>
 	struct Iterate<0, __dummy>
 	{
-		static __device__ __forceinline__ void Invoke(T partial, volatile T *storage, int tid) {}
+		static __device__ __forceinline__ void Invoke(
+			T partial,
+			volatile T warpscan[][NUM_ELEMENTS],
+			int warpscan_tid) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,					// Input partial
-		volatile T *storage,		// Smem for reducing of length equal to at least 1.5x NUM_ELEMENTS
-		int tid = threadIdx.x)		// Thread's local index into a segment of NUM_ELEMENTS items
+		T partial,								// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		storage[tid] = partial;
-		Iterate<NUM_ELEMENTS / 2>::Invoke(partial, storage, tid);
-		return storage[0];
+		warpscan[1][warpscan_tid] = partial;
+		Iterate<NUM_ELEMENTS / 2>::Invoke(partial, warpscan, warpscan_tid);
+
+		// Return aggregate reduction
+		return warpscan[1][NUM_ELEMENTS - 1];
 	}
 };
 
@@ -106,7 +112,7 @@ struct WarpReduce
 template <
 	typename T,
 	int LENGTH,
-	T BinaryOp(const T&, const T&) = defaults::Sum<T> >
+	T BinaryOp(const T&, const T&) = defaults::Sum >
 struct SerialReduce
 {
 	// Iterate
@@ -153,105 +159,62 @@ struct SerialReduce
 
 
 /**
- * Collective reduction across all threads: One-level raking grid
+ * Warp rake and reduce. Must hold that the number of raking threads in the SRTS
+ * grid type is at most the size of a warp.  (May be less.)
  *
- * Used to collectively reduce each thread's aggregate after striding through
- * the input.  For when we have one warp or smaller of raking threads.
+ * Carry is updated in all raking threads
  */
 template <
-	typename T,
 	typename SrtsGrid,
-	T BinaryOp(const T&, const T&),
-	util::st::CacheModifier WRITE_MODIFIER>
-__device__ __forceinline__ void CollectiveReduction(
-	T partial,
-	T *out,
-	T *grid)
+	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+__device__ __forceinline__ void WarpRakeAndReduce(
+	typename SrtsGrid::T *raking_seg,
+	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
+	typename SrtsGrid::T &carry)
 {
-	// Determine the deposit and raking pointers for SRTS grid
-	T *primary_base_partial = SrtsGrid::BasePartial(grid);
+	typedef typename SrtsGrid::T T;
 
-	// Place partials in primary smem grid
-	primary_base_partial[0] = partial;
-
-	__syncthreads();
-
-	// Primary rake and reduce (guaranteed one warp or fewer raking threads)
 	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 
 		// Raking reduction
-		T *primary_raking_seg = SrtsGrid::RakingSegment(grid);
-		T raking_partial = SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(primary_raking_seg);
+		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
 
-		// WarpReduce
-		T total = WarpReduce<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
-			raking_partial, grid);
-
-		// Write output
-		if (threadIdx.x == 0) {
-			util::ModifiedStore<T, WRITE_MODIFIER>::St(total, out, 0);
-		}
+		// Warp reduction
+		T warpscan_total = WarpReduce<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
+			partial, warpscan);
+		carry = BinaryOp(carry, warpscan_total);
 	}
 }
 
 
 /**
- * Collective reduction across all threads: Two-level raking grid
+ * Warp rake and reduce. Must hold that the number of raking threads in the SRTS
+ * grid type is at most the size of a warp.  (May be less.)
  *
- * Used to collectively reduce each thread's aggregate after striding through
- * the input.  For when we have more than one warp of raking threads.
+ * Result is computed in all threads.
  */
 template <
-	typename T,
-	typename PrimarySrtsGrid,
-	typename SecondarySrtsGrid,
-	T BinaryOp(const T&, const T&),
-	util::st::CacheModifier WRITE_MODIFIER>
-__device__ __forceinline__ void CollectiveReduction(
-	T partial,
-	T *out,
-	T *primary_grid,
-	T *secondary_grid)
+	typename SrtsGrid,
+	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+__device__ __forceinline__ typename SrtsGrid::T WarpRakeAndReduce(
+	typename SrtsGrid::T *raking_seg,
+	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
 {
-	// Determine the deposit and raking pointers for SRTS grids
-	T *primary_base_partial = PrimarySrtsGrid::BasePartial(primary_grid);
+	typedef typename SrtsGrid::T T;
 
-	// Place partials in primary smem grid
-	primary_base_partial[0] = partial;
+	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 
-	__syncthreads();
+		// Raking reduction
+		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
 
-	// Primary rake and reduce
-	if (threadIdx.x < PrimarySrtsGrid::RAKING_THREADS) {
-
-		// Raking reduction in primary grid
-		T *primary_raking_seg = PrimarySrtsGrid::RakingSegment(primary_grid);
-		T raking_partial = SerialReduce<T, PrimarySrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(primary_raking_seg);
-
-		// Place raked partial in secondary grid
-		T *secondary_base_partial = SecondarySrtsGrid::BasePartial(secondary_grid);
-		secondary_base_partial[0] = raking_partial;
+		// Warp reduction
+		WarpReduce<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(partial, warpscan);
 	}
 
 	__syncthreads();
 
-	// Secondary rake and reduce (guaranteed one warp or fewer raking threads)
-	if (threadIdx.x < SecondarySrtsGrid::RAKING_THREADS) {
-
-		// Raking reduction in secondary grid
-		T *secondary_raking_seg = SecondarySrtsGrid::RakingSegment(secondary_grid);
-		T raking_partial = SerialReduce<T, SecondarySrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(secondary_raking_seg);
-
-		// WarpReduce
-		T total = WarpReduce<T, SecondarySrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
-			raking_partial, secondary_grid);
-
-		// Write output
-		if (threadIdx.x == 0) {
-			util::ModifiedStore<T, WRITE_MODIFIER>::St(total, out, 0);
-		}
-	}
-};
+	return warpscan[1][SrtsGrid::RAKING_THREADS - 1];
+}
 
 
 } // namespace reduction

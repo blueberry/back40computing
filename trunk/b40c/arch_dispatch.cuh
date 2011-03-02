@@ -33,63 +33,52 @@ namespace b40c {
 
 
 /**
- * Specialization for the device compilation-path. Use in accordance
- * with the curiously-recurring template pattern (CRTP).
+ * Specialization for the device compilation-path.
  *
- * Dispatches to an Enact() method in the derived class that is
- * specialized by CUDA_ARCH.  This path drives the actual compilation of
- * kernels, allowing them to be specific to CUDA_ARCH.
+ * Dispatches to the static method Dispatch::Enact templated by the static CUDA_ARCH.
+ * This path drives the actual compilation of kernels, allowing invocation sites to be
+ * specialized in type and number by CUDA_ARCH.
  */
-template <int CUDA_ARCH, typename Derived>
-class ArchDispatch
+template <int CUDA_ARCH, typename Dispatch>
+struct ArchDispatch
 {
-protected:
-
 	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage, Detail &detail)
+	static cudaError_t Enact(Storage &problem_storage, Detail &detail, int dummy)
 	{
-		Derived *enactor = static_cast<Derived*>(this);
-		return enactor->template Enact<CUDA_ARCH, Storage, Detail>(problem_storage, detail);
+		return Dispatch::template Enact<CUDA_ARCH, Storage, Detail>(problem_storage, detail);
 	}
 };
 
 
 /**
- * Specialization specialization for the host compilation-path. Use in accordance
- * with the curiously-recurring template pattern (CRTP).
+ * Specialization specialization for the host compilation-path.
  *
- * Dispatches to an Enact() method in the derived class that is specialized by
- * the version of the accompanying PTX assembly.  This path does not drive the
- * compilation of kernels.
+ * Dispatches to the static method Dispatch::Enact templated by the dynamic
+ * ptx_version.  This path does not drive the compilation of kernels.
  */
-template <typename Derived>
-class ArchDispatch<0, Derived>
+template <typename Dispatch>
+struct ArchDispatch<0, Dispatch>
 {
-protected:
-
 	template<typename Storage, typename Detail>
-	cudaError_t Enact(Storage &problem_storage, Detail &detail)
+	static cudaError_t Enact(Storage &problem_storage, Detail &detail, int ptx_version)
 	{
-		// Determine the arch version of the we actually have a compiled kernel for
-		Derived *enactor = static_cast<Derived*>(this);
-
 		// Dispatch
-		switch (enactor->PtxVersion()) {
+		switch (ptx_version) {
 		case 100:
-			return enactor->template Enact<100, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<100, Storage, Detail>(problem_storage, detail);
 		case 110:
-			return enactor->template Enact<110, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<110, Storage, Detail>(problem_storage, detail);
 		case 120:
-			return enactor->template Enact<120, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<120, Storage, Detail>(problem_storage, detail);
 		case 130:
-			return enactor->template Enact<130, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<130, Storage, Detail>(problem_storage, detail);
 		case 200:
-			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<200, Storage, Detail>(problem_storage, detail);
 		case 210:
-			return enactor->template Enact<210, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<210, Storage, Detail>(problem_storage, detail);
 		default:
 			// We were compiled for something new: treat it as we would SM2.0
-			return enactor->template Enact<200, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<200, Storage, Detail>(problem_storage, detail);
 		};
 	}
 };

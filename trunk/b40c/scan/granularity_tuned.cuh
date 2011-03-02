@@ -29,9 +29,11 @@
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
+#include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/scan/kernel_spine.cuh>
-#include <b40c/scan/kernel_upsweep.cuh>
+#include <b40c/scan/kernel_downsweep.cuh>
 #include <b40c/scan/granularity.cuh>
+
 
 namespace b40c {
 namespace scan {
@@ -44,17 +46,18 @@ namespace scan {
 /**
  * Enumeration of problem-size genres that we may have tuned for
  */
-enum ProblemSize
+enum ProbSizeGenre
 {
-	SMALL 	= 0,
-	LARGE 	= 1
+	UNKNOWN = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
+	SMALL,
+	LARGE
 };
 
 
 /**
  * Enumeration of architecture-families that we have tuned for below
  */
-enum Family
+enum ArchFamily
 {
 	SM20 	= 200,
 	SM13	= 130,
@@ -66,9 +69,9 @@ enum Family
  * Classifies a given CUDA_ARCH into an architecture-family
  */
 template <int CUDA_ARCH>
-struct FamilyClassifier
+struct ArchFamilyClassifier
 {
-	static const Family FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
+	static const ArchFamily FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
 									(CUDA_ARCH < SM20) ? 	SM13 :
 															SM20;
 };
@@ -87,7 +90,7 @@ struct FamilyClassifier
 template <
 	typename ScanProblemType,
 	int CUDA_ARCH,
-	ProblemSize PROBLEM_SIZE,
+	ProbSizeGenre PROB_SIZE_GENRE,
 	typename T = typename ScanProblemType::T,
 	int T_SIZE = sizeof(typename ScanProblemType::T)>
 struct TunedConfig;
@@ -97,11 +100,11 @@ struct TunedConfig;
  * Default, catch-all granularity parameterization type.  Defers to the
  * architecture "family" that we know we have specialization type(s) for below.
  */
-template <typename ScanProblemType, int CUDA_ARCH, ProblemSize PROBLEM_SIZE, typename T, int T_SIZE>
+template <typename ScanProblemType, int CUDA_ARCH, ProbSizeGenre PROB_SIZE_GENRE, typename T, int T_SIZE>
 struct TunedConfig : TunedConfig<
 	ScanProblemType,
-	FamilyClassifier<CUDA_ARCH>::FAMILY,
-	PROBLEM_SIZE,
+	ArchFamilyClassifier<CUDA_ARCH>::FAMILY,
+	PROB_SIZE_GENRE,
 	T,
 	T_SIZE> {};
 
@@ -111,11 +114,11 @@ struct TunedConfig : TunedConfig<
 //-----------------------------------------------------------------------------
 
 // All problems
-template <typename ScanProblemType, ProblemSize _PROBLEM_SIZE, typename T, int T_SIZE>
-struct TunedConfig<ScanProblemType, SM20, _PROBLEM_SIZE, T, T_SIZE>
+template <typename ScanProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ScanProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
 	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
 {
-	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
 
@@ -124,11 +127,11 @@ struct TunedConfig<ScanProblemType, SM20, _PROBLEM_SIZE, T, T_SIZE>
 //-----------------------------------------------------------------------------
 
 // All problems
-template <typename ScanProblemType, ProblemSize _PROBLEM_SIZE, typename T, int T_SIZE>
-struct TunedConfig<ScanProblemType, SM13, _PROBLEM_SIZE, T, T_SIZE>
+template <typename ScanProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ScanProblemType, SM13, _PROB_SIZE_GENRE, T, T_SIZE>
 	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
 {
-	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
 
@@ -139,11 +142,11 @@ struct TunedConfig<ScanProblemType, SM13, _PROBLEM_SIZE, T, T_SIZE>
 
 
 // All problems
-template <typename ScanProblemType, ProblemSize _PROBLEM_SIZE, typename T, int T_SIZE>
-struct TunedConfig<ScanProblemType, SM10, _PROBLEM_SIZE, T, T_SIZE>
+template <typename ScanProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ScanProblemType, SM10, _PROB_SIZE_GENRE, T, T_SIZE>
 	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
 {
-	static const ProblemSize PROBLEM_SIZE = _PROBLEM_SIZE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
 
@@ -152,7 +155,7 @@ struct TunedConfig<ScanProblemType, SM10, _PROBLEM_SIZE, T, T_SIZE>
 
 /******************************************************************************
  * Scan kernel entry points that can derive a tuned granularity type
- * implicitly from the PROBLEM_SIZE template parameter.  (As opposed to having
+ * implicitly from the PROB_SIZE_GENRE template parameter.  (As opposed to having
  * the granularity type passed explicitly.)
  *
  * TODO: Section can be removed if CUDA Runtime is fixed to
@@ -160,12 +163,58 @@ struct TunedConfig<ScanProblemType, SM10, _PROBLEM_SIZE, T, T_SIZE>
  ******************************************************************************/
 
 /**
+ * Tuned upsweep reduction kernel entry point
+ */
+template <typename ScanProblemType, int PROB_SIZE_GENRE>
+__launch_bounds__ (
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Upsweep::THREADS),
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Upsweep::CTA_OCCUPANCY))
+__global__ void TunedUpsweepReductionKernel(
+	typename ScanProblemType::T 			*d_in,
+	typename ScanProblemType::T 			*d_spine,
+	typename ScanProblemType::SizeT 		* __restrict d_work_progress,
+	util::CtaWorkDistribution<typename ScanProblemType::SizeT> work_decomposition,
+	int progress_selector)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
+
+	typename ScanProblemType::T *d_spine_partial = d_spine + blockIdx.x;
+
+	reduction::UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
+		d_in,
+		d_spine_partial,
+		d_work_progress,
+		work_decomposition,
+		progress_selector);
+}
+
+/**
+ * Tuned spine scan kernel entry point
+ */
+template <typename ScanProblemType, int PROB_SIZE_GENRE>
+__launch_bounds__ (
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Spine::THREADS),
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Spine::CTA_OCCUPANCY))
+__global__ void TunedSpineScanKernel(
+	typename ScanProblemType::T 		* d_in,
+	typename ScanProblemType::T 		* d_out,
+	typename ScanProblemType::SizeT 	spine_elements)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine ScanKernelConfig;
+
+	SpineScanPass<ScanKernelConfig>(d_in, d_out, spine_elements);
+}
+
+
+/**
  * Tuned downsweep scan kernel entry point
  */
-template <typename ScanProblemType, int PROBLEM_SIZE>
+template <typename ScanProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ScanConfig::Downsweep::THREADS),
-	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ScanConfig::Downsweep::CTA_OCCUPANCY))
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Downsweep::THREADS),
+	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ScanConfig::Downsweep::CTA_OCCUPANCY))
 __global__ void TunedDownsweepScanKernel(
 	typename ScanProblemType::T 			* d_in,
 	typename ScanProblemType::T 			* d_out,
@@ -173,30 +222,15 @@ __global__ void TunedDownsweepScanKernel(
 	util::CtaWorkDistribution<typename ScanProblemType::SizeT> work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Downsweep ScanKernelConfig;
+	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep ScanKernelConfig;
 
 	typename ScanProblemType::T *d_spine_partial = d_spine + blockIdx.x;
 
-	DownsweepScanPass(d_in, d_out, d_spine_partial, work_decomposition);
+	DownsweepScanPass<ScanKernelConfig>(d_in, d_out, d_spine_partial, work_decomposition);
 }
 
 
-/**
- * Tuned spine scan kernel entry point
- */
-template <typename ScanProblemType, int PROBLEM_SIZE>
-__launch_bounds__ (
-	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ScanConfig::Spine::THREADS),
-	(TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::ScanConfig::Spine::CTA_OCCUPANCY))
-__global__ void TunedSpineScanKernel(
-	typename ScanProblemType::T 		* __restrict 	d_spine,
-	typename ScanProblemType::SizeT 					spine_elements)
-{
-	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ScanProblemType, __B40C_CUDA_ARCH__, (ProblemSize) PROBLEM_SIZE>::Spine ScanKernelConfig;
 
-	SpineScanPass<ScanKernelConfig>(d_spine, spine_elements);
-}
 
 
 

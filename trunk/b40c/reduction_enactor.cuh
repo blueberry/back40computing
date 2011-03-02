@@ -201,12 +201,12 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
 	do {
 		if (work.grid_size == 1) {
 
-			// No need to scan the spine if there's only one CTA in the upsweep grid
+			// No need to upsweep reduce if there's only one CTA in the upsweep grid
 			int dynamic_smem = 0;
-			UpsweepReductionKernel<typename ReductionConfig::Upsweep>
-					<<<work.grid_size, ReductionConfig::Upsweep::THREADS, dynamic_smem>>>(
-				d_src, d_dest, d_work_progress, work, progress_selector);
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			SpineReductionKernel<typename ReductionConfig::Spine>
+					<<<work.grid_size, ReductionConfig::Spine::THREADS, dynamic_smem>>>(
+				d_src, d_dest, work.num_elements);
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
@@ -296,13 +296,18 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 	int max_grid_size)
 {
 	typedef typename ReductionConfig::Upsweep Upsweep;
+	typedef typename ReductionConfig::Spine Spine;
 	typedef typename Upsweep::T T;
 	typedef typename Upsweep::SizeT SizeT;
 
-	int sweep_grid_size = (ReductionConfig::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size) :
-		OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size);
+	// Compute sweep grid size
+	int sweep_grid_size = (num_elements <= Spine::TILE_ELEMENTS) ?
+		1 :
+		(ReductionConfig::OVERSUBSCRIBED_GRID_SIZE) ?
+				OversubscribedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size) :
+				OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size);
 
+	// Compute spine elements (round up to nearest spine tile elements)
 	int spine_elements = sweep_grid_size;
 
 	// Obtain a CTA work distribution for copying items of type T
@@ -311,12 +316,17 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
 			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-		printf("Upsweep: \t[sweep_grid_size: %d, threads %d, SizeT %d bytes, workstealing: %s]\n",
-			work.grid_size, Upsweep::THREADS, sizeof(SizeT), Upsweep::WORK_STEALING ? "true" : "false");
-		if (sweep_grid_size > 1) printf("Spine: \t\t[threads: %d, spine_elements: %d]\n",
-			ReductionConfig::Spine::THREADS, spine_elements);
-		printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
-			sizeof(T), work.num_elements, Upsweep::SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
+		if (sweep_grid_size > 1) {
+			printf("Upsweep: \t[sweep_grid_size: %d, threads %d, SizeT %d bytes, workstealing: %s, tile_elements: %d]\n",
+				work.grid_size, Upsweep::THREADS, sizeof(SizeT), Upsweep::WORK_STEALING ? "true" : "false", Upsweep::TILE_ELEMENTS);
+			printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
+				Spine::THREADS, spine_elements, Spine::TILE_ELEMENTS);
+			printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
+				sizeof(T), work.num_elements, Upsweep::SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
+		} else {
+			printf("Spine: \t\t[threads: %d, tile_elements: %d]\n",
+				Spine::THREADS, Spine::TILE_ELEMENTS);
+		}
 	}
 
 	cudaError_t retval = cudaSuccess;

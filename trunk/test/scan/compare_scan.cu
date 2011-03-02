@@ -21,21 +21,21 @@
 
 
 /******************************************************************************
- * Simple test driver program for *large-problem* reduction.
+ * Simple test driver program for *large-problem* scan.
  ******************************************************************************/
 
 #include <stdio.h> 
 
-// Reduction includes
-#include <b40c/reduction/granularity_tuned.cuh>
-#include <b40c/reduction_enactor_tuned.cuh>
+// Scan includes
+#include <b40c/scan/granularity_tuned.cuh>
+#include <b40c/scan_enactor_tuned.cuh>
 
 // Test utils
 #include "b40c_util.h"
-#include "test_reduction.h"
+#include "test_scan.h"
 
 #include <thrust/device_vector.h>
-#include <thrust/reduce.h>
+#include <thrust/scan.h>
 
 using namespace b40c;
 
@@ -49,7 +49,6 @@ int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
 
 
-
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
@@ -59,12 +58,12 @@ int 	g_iterations  					= 1;
  */
 void Usage() 
 {
-	printf("\ntest_reduction [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntest_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
-	printf("\t--i\tPerforms the reduction operation <num-iterations> times\n");
+	printf("\t--i\tPerforms the scan operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of bytes to comprise the sample problem\n");
@@ -73,36 +72,37 @@ void Usage()
 }
 
 
+
+
+
 /**
- * Timed Thrust reduction.  Uses the GPU to copy the specified vector of elements for the given
+ * Timed scan.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  */
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-double TimedThrustReduction(
+double TimedThrustScan(
 	T *h_data,
 	T *h_reference,
 	size_t num_elements)
 {
-	T h_dest[1] = {0};
-	printf("Thrust Reduction: %d iterations, %d elements, ", g_iterations, num_elements);
-	
 	// Allocate device storage  
 	T *d_src, *d_dest;
 	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
-		"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T)),
-		"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
+		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	thrust::device_ptr<T> dev_ptr(d_src);		
-	h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+	thrust::device_ptr<T> dev_src(d_src);
+	thrust::device_ptr<T> dev_dest(d_dest);
+	thrust::exclusive_scan(dev_src, dev_src + num_elements, dev_dest);
 	
 	// Perform the timed number of iterations
 
@@ -117,7 +117,7 @@ double TimedThrustReduction(
 		// Start timing record
 		cudaEventRecord(start_event, 0);
 
-		h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+		thrust::exclusive_scan(dev_src, dev_src + num_elements, dev_dest);
 		
 		// End timing record
 		cudaEventRecord(stop_event, 0);
@@ -129,12 +129,18 @@ double TimedThrustReduction(
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+	printf("\nThrust Scan: %d iterations, %d elements, ", g_iterations, num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
-		avg_runtime, throughput, throughput * sizeof(T));
+		avg_runtime, throughput, throughput * sizeof(T) * 3);
 	
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
+
+    // Copy out data
+	T *h_dest = (T*) malloc(num_elements * sizeof(T));
+    if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
+		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
     // Free allocated memory
     if (d_src) cudaFree(d_src);
@@ -145,36 +151,40 @@ double TimedThrustReduction(
 
 	// Display copied data
 	if (g_verbose) {
-		printf("Reduction: ");
-		PrintValue(h_dest[0]);
-		printf(", Reference: ");
-		PrintValue(h_reference[0]);
+		printf("\n\nData:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue<T>(h_dest[i]);
+			printf(", ");
+		}
 		printf("\n\n");
 	}
 
     // Verify solution
-	CompareResults(h_dest, h_reference, 1, true);
+	CompareResults(h_dest, h_reference, num_elements, true);
 	printf("\n");
 	fflush(stdout);
+
+	if (h_dest) free(h_dest);
 
 	return throughput;
 }
 
 
+
 /**
- * Creates an example reduction problem and then dispatches the problem
+ * Creates an example scan problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
 template<
 	typename T,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-void TestReduction(size_t num_elements)
+void TestScan(size_t num_elements)
 {
-    // Allocate the reduction problem on the host and fill the keys with random bytes
+    // Allocate the scan problem on the host and fill the keys with random bytes
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-	T *h_reference 		= (T*) malloc(sizeof(T));
+	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
 
 	if ((h_data == NULL) || (h_reference == NULL)){
 		fprintf(stderr, "Host malloc of problem data failed\n");
@@ -185,17 +195,22 @@ void TestReduction(size_t num_elements)
 	h_reference[0] = Identity();
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(h_data[i], 0);
-		h_data[i] = i;
-		h_reference[0] = BinaryOp(h_reference[0], h_data[i]);
+//		RandomBits<T>(h_data[i], 0);
+//		h_data[i] = i;
+		h_data[i] = 1;
+		h_reference[i] = (i == 0) ?
+			Identity() :
+			BinaryOp(h_reference[i - 1], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedReduction<T, BinaryOp, Identity, reduction::UNKNOWN>(h_data, h_reference, num_elements);
-	double thrust = TimedThrustReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
+
+	double b40c = TimedScan<T, BinaryOp, Identity, scan::UNKNOWN>(h_data, h_reference, num_elements);
+	double thrust = TimedThrustScan<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
 	printf("B40C speedup: %.2f\n", b40c/thrust);
+	
 
 	// Free our allocated host memory 
 	if (h_data) free(h_data);
@@ -238,25 +253,25 @@ int main(int argc, char** argv)
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
 
 	return 0;

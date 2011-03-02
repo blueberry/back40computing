@@ -21,18 +21,18 @@
 
 
 /******************************************************************************
- * Simple test driver program for *large-problem* reduction.
+ * Simple test driver program for *large-problem* scan.
  ******************************************************************************/
 
 #include <stdio.h> 
 
-// Reduction includes
-#include <b40c/reduction/granularity_tuned.cuh>
-#include <b40c/reduction_enactor_tuned.cuh>
+// Scan includes
+#include <b40c/scan/granularity_tuned.cuh>
+#include <b40c/scan_enactor_tuned.cuh>
 
 // Test utils
 #include "b40c_util.h"
-#include "test_reduction.h"
+#include "test_scan.h"
 
 using namespace b40c;
 
@@ -46,7 +46,6 @@ int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
 
 
-
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
@@ -56,12 +55,12 @@ int 	g_iterations  					= 1;
  */
 void Usage()
 {
-	printf("\ntest_reduction [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntest_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
-	printf("\t--i\tPerforms the reduction operation <num-iterations> times\n");
+	printf("\t--i\tPerforms the scan operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of bytes to comprise the sample problem\n");
@@ -70,20 +69,21 @@ void Usage()
 }
 
 
+
 /**
- * Creates an example reduction problem and then dispatches the problem
+ * Creates an example scan problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
 template<
 	typename T,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-void TestReduction(size_t num_elements)
+void TestScan(size_t num_elements)
 {
-    // Allocate the reduction problem on the host and fill the keys with random bytes
+    // Allocate the scan problem on the host and fill the keys with random bytes
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-	T *h_reference 		= (T*) malloc(sizeof(T));
+	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
 
 	if ((h_data == NULL) || (h_reference == NULL)){
 		fprintf(stderr, "Host malloc of problem data failed\n");
@@ -94,27 +94,27 @@ void TestReduction(size_t num_elements)
 	h_reference[0] = Identity();
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(h_data[i], 0);
-		h_data[i] = i;
-		h_reference[0] = BinaryOp(h_reference[0], h_data[i]);
+//		RandomBits<T>(h_data[i], 0);
+//		h_data[i] = i;
+		h_data[i] = 1;
+		h_reference[i] = (i == 0) ?
+			Identity() :
+			BinaryOp(h_reference[i - 1], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
 
-
 	// Execute test(s), optionally sweeping problem size downward
 	size_t orig_num_elements = num_elements;
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedReduction<T, BinaryOp, Identity, reduction::LARGE>(
-			h_data, h_reference, num_elements);
+		double large = TimedScan<T, BinaryOp, Identity, scan::LARGE>(h_data, h_reference, num_elements);
 
 		printf("\nSMALL config:\t");
-		double small = TimedReduction<T, BinaryOp, Identity, reduction::SMALL>(
-			h_data, h_reference, num_elements);
+		double small = TimedScan<T, BinaryOp, Identity, scan::SMALL>(h_data, h_reference, num_elements);
 
 		if (small > large) {
 			printf("%d-byte elements: Small faster at %d elements\n", sizeof(T), num_elements);
@@ -164,25 +164,25 @@ int main(int argc, char** argv)
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
 
 	return 0;

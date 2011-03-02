@@ -20,28 +20,28 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuned Reduction Enactor
+ * Tuned Scan Enactor
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/reduction_enactor.cuh>
+#include <b40c/scan_enactor.cuh>
 #include <b40c/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/reduction/granularity.cuh>
-#include <b40c/reduction/kernel_upsweep.cuh>
-#include <b40c/reduction/kernel_spine.cuh>
+#include <b40c/scan/granularity.cuh>
+#include <b40c/reduction/granularity_tuned.cuh>
+#include <b40c/scan/granularity_tuned.cuh>
 
 namespace b40c {
 
 /******************************************************************************
- * ReductionEnactorTuned Declaration
+ * ScanEnactorTuned Declaration
  ******************************************************************************/
 
 /**
- * Tuned reduction enactor class.
+ * Tuned scan enactor class.
  */
-class ReductionEnactorTuned : public ReductionEnactor<ReductionEnactorTuned>
+class ScanEnactorTuned : public ScanEnactor<ScanEnactorTuned>
 {
 protected:
 
@@ -50,7 +50,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef ReductionEnactor<ReductionEnactorTuned> BaseEnactorType;
+	typedef ScanEnactor<ScanEnactorTuned> BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -58,14 +58,14 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
-	// Reduction Operation
+	// Scan Operation
 	//-----------------------------------------------------------------------------
 
     /**
-	 * Performs a reduction pass
+	 * Performs a scan pass
 	 */
 	template <typename TunedConfig>
-	cudaError_t ReductionPass(
+	cudaError_t ScanPass(
 		typename TunedConfig::Upsweep::T *d_dest,
 		typename TunedConfig::Upsweep::T *d_src,
 		util::CtaWorkDistribution<typename TunedConfig::Upsweep::SizeT> &work,
@@ -88,19 +88,19 @@ public:
 	/**
 	 * Constructor.
 	 */
-	ReductionEnactorTuned();
+	ScanEnactorTuned();
 
 
 	/**
-	 * Enacts a reduction operation on the specified device data using the
+	 * Enacts a scan operation on the specified device data using the
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be reduced
+	 * 		Pointer to array of elements to be scanned
 	 * @param d_src
 	 * 		Pointer to result location
 	 * @param num_elements
-	 * 		Number of elements to reduce
+	 * 		Number of elements to scan
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -110,7 +110,7 @@ public:
 		typename T,
 		T BinaryOp(const T&, const T&),
 		T Identity(),
-		reduction::ProbSizeGenre PROB_SIZE_GENRE>
+		scan::ProbSizeGenre PROB_SIZE_GENRE>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
@@ -119,16 +119,16 @@ public:
 
 
 	/**
-	 * Enacts a reduction operation on the specified device data using
+	 * Enacts a scan operation on the specified device data using
 	 * a heuristic for selecting granularity configuration based upon
 	 * problem size.
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be reduced
+	 * 		Pointer to array of elements to be scanned
 	 * @param d_src
 	 * 		Pointer to result location
 	 * @param num_elements
-	 * 		Number of elements to reduce
+	 * 		Number of elements to scan
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -151,19 +151,19 @@ public:
  * Helper structures
  ******************************************************************************/
 
-namespace reduction_enactor_tuned {
+namespace scan_enactor_tuned {
 
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ReductionEnactorTuned, typename ProblemType>
+template <typename ScanEnactorTuned, typename ProblemType>
 struct Detail : ProblemType
 {
-	ReductionEnactorTuned *enactor;
+	ScanEnactorTuned *enactor;
 	int max_grid_size;
 
 	// Constructor
-	Detail(ReductionEnactorTuned *enactor, int max_grid_size = 0) :
+	Detail(ScanEnactorTuned *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
 };
 
@@ -192,7 +192,7 @@ struct Storage
 template <
 	typename Storage,
 	typename Detail,
-	reduction::ProbSizeGenre PROB_SIZE_GENRE>
+	scan::ProbSizeGenre PROB_SIZE_GENRE>
 struct ConfigResolver
 {
 	/**
@@ -202,7 +202,7 @@ struct ConfigResolver
 	static cudaError_t Enact(Storage &storage, Detail &detail)
 	{
 		// Obtain tuned granularity type
-		typedef reduction::TunedConfig<Detail, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef scan::TunedConfig<Detail, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Enact<TunedConfig>(
@@ -220,7 +220,7 @@ struct ConfigResolver
 template <
 	typename Storage,
 	typename Detail>
-struct ConfigResolver <Storage, Detail, reduction::UNKNOWN>
+struct ConfigResolver <Storage, Detail, scan::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -229,14 +229,14 @@ struct ConfigResolver <Storage, Detail, reduction::UNKNOWN>
 	static cudaError_t Enact(Storage &storage, Detail &detail)
 	{
 		// Obtain large tuned granularity type
-		typedef reduction::TunedConfig<Detail, CUDA_ARCH, reduction::LARGE> LargeConfig;
+		typedef scan::TunedConfig<Detail, CUDA_ARCH, scan::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS * LargeConfig::Upsweep::CTA_OCCUPANCY * detail.enactor->SmCount();
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef reduction::TunedConfig<Detail, CUDA_ARCH, reduction::SMALL> SmallConfig;
+			typedef scan::TunedConfig<Detail, CUDA_ARCH, scan::SMALL> SmallConfig;
 			return detail.enactor->template Enact<SmallConfig>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -248,44 +248,43 @@ struct ConfigResolver <Storage, Detail, reduction::UNKNOWN>
 };
 
 
-} // namespace reduction_enactor_tuned
+} // namespace scan_enactor_tuned
 
 
 /******************************************************************************
- * ReductionEnactorTuned Implementation
+ * ScanEnactorTuned Implementation
  ******************************************************************************/
 
 /**
- * Performs a reduction pass
+ * Performs a scan pass
  */
 template <typename TunedConfig>
-cudaError_t ReductionEnactorTuned::ReductionPass(
+cudaError_t ScanEnactorTuned::ScanPass(
 	typename TunedConfig::Upsweep::T *d_dest,
 	typename TunedConfig::Upsweep::T *d_src,
 	util::CtaWorkDistribution<typename TunedConfig::Upsweep::SizeT> &work,
 	int spine_elements)
 {
-	using namespace reduction;
+	using namespace scan;
 
-	typedef typename TunedConfig::Upsweep::ReductionProblemType ReductionProblemType;
-	typedef typename ReductionProblemType::T T;
+	typedef typename TunedConfig::Downsweep::ScanProblemType ScanProblemType;
+	typedef typename TunedConfig::Downsweep::T T;
 
 	cudaError_t retval = cudaSuccess;
-
 	do {
 		if (work.grid_size == 1) {
 
-			// No need to scan the spine if there's only one CTA in the upsweep grid
+			// No need to upsweep reduce or downsweep scan if there's only one CTA in the sweep grid
 			int dynamic_smem = 0;
-			TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<work.grid_size, TunedConfig::Spine::THREADS, dynamic_smem>>>(
 				d_src, d_dest, work.num_elements);
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
-			int dynamic_smem[2] = 	{0, 0};
-			int grid_size[2] = 		{work.grid_size, 1};
+			int dynamic_smem[3] = 	{0, 0, 0};
+			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
 			// Tuning option for dynamic smem allocation
 			if (TunedConfig::UNIFORM_SMEM_ALLOCATION) {
@@ -294,16 +293,21 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 				// kernels end up allocating the same amount of smem per CTA
 
 				// Get kernel attributes
-				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ReductionEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ReductionEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
-				int max_static_smem = B40C_MAX(upsweep_kernel_attrs.sharedSizeBytes, spine_kernel_attrs.sharedSizeBytes);
+				int max_static_smem = B40C_MAX(
+					upsweep_kernel_attrs.sharedSizeBytes,
+					B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
 
 				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
 				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
 			}
 
 			// Tuning option for spine-scan kernel grid size
@@ -311,17 +315,24 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
-			// Upsweep reduction into spine
-			TunedUpsweepReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			// Upsweep scan into spine
+			TunedUpsweepReductionKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+				d_src, (T*) d_spine, NULL, work, 0);
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
-			// Spine reduction
-			TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			// Spine scan
+			TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) d_spine, d_dest, spine_elements);
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
+				(T*) d_spine, (T*) d_spine, spine_elements);
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
+
+			// Downsweep scan into spine
+			TunedDownsweepScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
+					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
+				d_src, d_dest, (T*) d_spine, work);
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
+
 		}
 	} while (0);
 
@@ -332,32 +343,32 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 /**
  * Constructor.
  */
-ReductionEnactorTuned::ReductionEnactorTuned()
-	: BaseEnactorType::ReductionEnactor()
+ScanEnactorTuned::ScanEnactorTuned()
+	: BaseEnactorType::ScanEnactor()
 {
 }
 
 
 /**
- * Enacts a reduction operation on the specified device data using the
+ * Enacts a scan operation on the specified device data using the
  * enumerated tuned granularity configuration
  */
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
 	T Identity(),
-	reduction::ProbSizeGenre PROB_SIZE_GENRE>
-cudaError_t ReductionEnactorTuned::Enact(
+	scan::ProbSizeGenre PROB_SIZE_GENRE>
+cudaError_t ScanEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
 	size_t num_elements,
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef reduction::ReductionProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
-	typedef reduction_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
-	typedef reduction_enactor_tuned::Storage<T, SizeT> Storage;
-	typedef reduction_enactor_tuned::ConfigResolver<Storage, Detail, PROB_SIZE_GENRE> Resolver;
+	typedef scan::ScanProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
+	typedef scan_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
+	typedef scan_enactor_tuned::Storage<T, SizeT> Storage;
+	typedef scan_enactor_tuned::ConfigResolver<Storage, Detail, PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
 	Storage storage(d_dest, d_src, num_elements);
@@ -367,20 +378,20 @@ cudaError_t ReductionEnactorTuned::Enact(
 
 
 /**
- * Enacts a reduction operation on the specified device data using the
+ * Enacts a scan operation on the specified device data using the
  * LARGE granularity configuration
  */
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-cudaError_t ReductionEnactorTuned::Enact(
+cudaError_t ScanEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
 	size_t num_elements,
 	int max_grid_size)
 {
-	return Enact<T, BinaryOp, Identity, reduction::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
+	return Enact<T, BinaryOp, Identity, scan::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
 }
 
 

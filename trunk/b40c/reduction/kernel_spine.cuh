@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/kernel_cta.cuh>
+#include <b40c/reduction/cta_reduction.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -36,21 +36,26 @@ namespace reduction {
  */
 template <typename ReductionKernelConfig>
 __device__ __forceinline__ void SpineReductionPass(
-	typename ReductionKernelConfig::T 		*d_spine,
+	typename ReductionKernelConfig::T 		*d_in,
 	typename ReductionKernelConfig::T 		*d_out,
 	typename ReductionKernelConfig::SizeT 	spine_elements)
 {
-	typedef ReductionCta<ReductionKernelConfig> ReductionCta;
-	typedef typename ReductionCta::SizeT SizeT;
-	typedef typename ReductionCta::T T;
+	typedef CtaReduction<ReductionKernelConfig> CtaReduction;
+	typedef typename CtaReduction::SizeT SizeT;
+	typedef typename CtaReduction::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	ReductionCta cta(d_spine, d_out);
+	// Shared storage for CTA processing
+	__shared__ uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+
+	// CTA processing abstraction
+	CtaReduction cta(smem_pool, warpscan, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (CtaReduction::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -60,7 +65,7 @@ __device__ __forceinline__ void SpineReductionPass(
 	while (cta_offset < cta_guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += ReductionCta::TILE_ELEMENTS;
+		cta_offset += CtaReduction::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -69,7 +74,7 @@ __device__ __forceinline__ void SpineReductionPass(
 	}
 
 	// Collectively reduce accumulated carry from each thread
-	cta.CollectiveReduction();
+	cta.FinalReduction();
 }
 
 
@@ -84,11 +89,11 @@ template <typename ReductionKernelConfig>
 __launch_bounds__ (ReductionKernelConfig::THREADS, ReductionKernelConfig::CTA_OCCUPANCY)
 __global__ 
 void SpineReductionKernel(
-	typename ReductionKernelConfig::T 		* d_spine,
-	typename ReductionKernelConfig::T 		* d_out,
+	typename ReductionKernelConfig::T 		*d_in,
+	typename ReductionKernelConfig::T 		*d_out,
 	typename ReductionKernelConfig::SizeT 	spine_elements)
 {
-	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
+	SpineReductionPass<ReductionKernelConfig>(d_in, d_out, spine_elements);
 }
 
 
