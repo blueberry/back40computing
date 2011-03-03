@@ -37,33 +37,27 @@ namespace util {
  *
  * Can be used to construct types that describe static lists of integer constants.
  */
-template <typename NextTuple, int N, int DEPTH>
+template <typename NextTuple, int N, int PARAM>
 struct ParamTuple
 {
 	typedef NextTuple next;
-	enum { VALUE = N };
-
-	template<int COUNT, int __dummy = 0>
-	struct Iterate
-	{
-		enum { VALUE = NextTuple::template Iterate<COUNT - 1>::VALUE };
+	enum {
+		P = PARAM,
+		V = N
 	};
+};
 
-	template<int __dummy>
-	struct Iterate<0, __dummy>
-	{
-		enum { VALUE = N };
-	};
 
-	/**
-	 * Provides access to the parameter instance
-	 * for the specified parameter enum
-	 */
-	template <int PARAM>
-	struct Access
-	{
-		enum { VALUE = Iterate<DEPTH - PARAM>::VALUE };
-	};
+template <typename ParamTuple, int SEARCH_PARAM, int PARAM = ParamTuple::P>
+struct Access
+{
+	enum { VALUE = Access<typename ParamTuple::next, SEARCH_PARAM>::VALUE };
+};
+
+template <typename ParamTuple, int PARAM>
+struct Access<ParamTuple, PARAM, PARAM>
+{
+	enum { VALUE = ParamTuple::V };
 };
 
 
@@ -81,11 +75,10 @@ struct ParamTuple
  * the enumeration to establish an upper bound on raking threads.)
  */
 template <
-	int CUDA_ARCH,
 	typename TuneProblemDetail,
 	int PARAM,
 	int MAX_PARAM,
-	template <int, typename, typename, int> class Ranges>
+	template <typename, int> class Ranges>
 struct ParamListSweep
 {
 	// Next parameter increment
@@ -97,7 +90,6 @@ struct ParamListSweep
 		{
 			// Sweep subsequent parameter
 			ParamListSweep<
-				CUDA_ARCH,
 				TuneProblemDetail,
 				PARAM + 1,
 				MAX_PARAM,
@@ -122,25 +114,24 @@ struct ParamListSweep
 	{
 		// Sweep current parameter
 		Sweep<
-			Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, PARAM>::MIN,
-			Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, PARAM>::MAX + 1>::template Invoke<ParamList>(detail);
+			Ranges<ParamList, PARAM>::MIN,
+			Ranges<ParamList, PARAM>::MAX + 1>::template Invoke<ParamList>(detail);
 
 	}
 };
 
 // End of currently-generated list
 template <
-	int CUDA_ARCH,
 	typename TuneProblemDetail,
 	int MAX_PARAM,
-	template <int, typename, typename, int> class Ranges>
-struct ParamListSweep <CUDA_ARCH, TuneProblemDetail, MAX_PARAM, MAX_PARAM, Ranges>
+	template <typename, int> class Ranges>
+struct ParamListSweep <TuneProblemDetail, MAX_PARAM, MAX_PARAM, Ranges>
 {
 	template <typename ParamList>
 	static void Invoke(TuneProblemDetail &detail)
 	{
 		// Invoke callback
-		detail.template Invoke<CUDA_ARCH, ParamList>();
+		detail.template Invoke<ParamList>();
 	}
 
 };

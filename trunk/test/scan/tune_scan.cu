@@ -56,7 +56,7 @@ int g_iterations = 0;
 template <typename T>
 struct Sum
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
 	{
 		return a + b;
 	}
@@ -70,7 +70,7 @@ struct Sum
 template <typename T>
 struct Max
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
@@ -105,78 +105,6 @@ void Usage()
 	printf("\n");
 }
 
-
-/**
- * Timed scan for applying a specific granularity configuration type
- */
-template <typename TuneProblemDetail, typename Config>
-void TimedScan(TuneProblemDetail &detail)
-{
-	typedef typename TuneProblemDetail::T T;
-
-	printf("%d, ", sizeof(T));
-	Config::Print();
-	fflush(stdout);
-
-	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	detail.enactor.DEBUG = g_verbose;
-	if (detail.enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas)) {
-		exit(1);
-	}
-	detail.enactor.DEBUG = false;
-
-	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
-
-	double elapsed = 0;
-	float duration = 0;
-	for (int i = 0; i < g_iterations; i++) {
-
-		// Start cuda timing record
-		cudaEventRecord(start_event, 0);
-
-		// Call the scan API routine
-		if (detail.enactor.template Enact<Config>(detail.d_dest, detail.d_src, detail.num_elements, g_max_ctas)) {
-			exit(1);
-		}
-
-		// End cuda timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;
-
-		// Flushes any stdio from the GPU
-		cudaThreadSynchronize();
-	}
-
-	// Display timing information
-	double avg_runtime = elapsed / g_iterations;
-	double throughput =  0.0;
-	if (avg_runtime > 0.0) throughput = ((double) detail.num_elements) / avg_runtime / 1000.0 / 1000.0; 
-    printf(", %f, %f, %f, ",
-		avg_runtime, throughput, throughput * sizeof(typename TuneProblemDetail::T));
-    fflush(stdout);
-
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
-    // Copy out data
-    if (util::B40CPerror(cudaMemcpy(detail.h_data, detail.d_dest, sizeof(T) * detail.num_elements, cudaMemcpyDeviceToHost),
-		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-    // Verify solution
-	CompareResults<typename TuneProblemDetail::T>(detail.h_data, detail.h_reference, 1, true);
-	printf("\n");
-	fflush(stdout);
-
-}
-
-
 /******************************************************************************
  * Tuning Parameter Enumerations and Ranges
  ******************************************************************************/
@@ -185,19 +113,22 @@ void TimedScan(TuneProblemDetail &detail)
  * Enumerated tuning params
  */
 enum TuningParam {
-	UNIFORM_SMEM_ALLOCATION,
-	UNIFORM_GRID_SIZE,
-	OVERSUBSCRIBED_GRID_SIZE,
 
-	UPSWEEP_LOG_THREADS,
-	UPSWEEP_LOG_LOAD_VEC_SIZE,
-	UPSWEEP_LOG_LOADS_PER_TILE,
+	PARAM_BEGIN,
 
-	DOWNSWEEP_LOG_THREADS,
-	DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-	DOWNSWEEP_LOG_LOADS_PER_TILE,
+		UNIFORM_SMEM_ALLOCATION,
+		UNIFORM_GRID_SIZE,
+		OVERSUBSCRIBED_GRID_SIZE,
 
-	PARAM_LIMIT,
+		UPSWEEP_LOG_THREADS,
+		UPSWEEP_LOG_LOAD_VEC_SIZE,
+		UPSWEEP_LOG_LOADS_PER_TILE,
+
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_TILE,
+
+	PARAM_END,
 
 	// Parameters below here are currently not part of the tuning sweep
 
@@ -221,148 +152,17 @@ enum TuningParam {
 };
 
 
-/**
- * Ranges for the tuning params
- */
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList, int PARAM> struct Ranges;
-
-// READ_MODIFIER
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, READ_MODIFIER> {
-	typedef typename TuneProblemDetail::T T;
-	enum {
-		MIN = util::ld::NONE,
-		MAX = ((CUDA_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
-	};
-};
-
-// WRITE_MODIFIER
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, WRITE_MODIFIER> {
-	typedef typename TuneProblemDetail::T T;
-	enum {
-		MIN = util::st::NONE,
-		MAX = ((CUDA_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
-	};
-};
-
-// UNIFORM_SMEM_ALLOCATION
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UNIFORM_SMEM_ALLOCATION> {
-	enum {
-		MIN = 0,
-		MAX = 1
-	};
-};
-
-// UNIFORM_GRID_SIZE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UNIFORM_GRID_SIZE> {
-	enum {
-		MIN = 0,
-		MAX = 1
-	};
-};
-
-// OVERSUBSCRIBED_GRID_SIZE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, OVERSUBSCRIBED_GRID_SIZE> {
-	enum {
-		MIN = 0,
-		MAX = 1
-	};
-};
-
-// UPSWEEP_LOG_THREADS
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UPSWEEP_LOG_THREADS> {
-	enum {
-		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX = B40C_LOG_CTA_THREADS(CUDA_ARCH)
-	};
-};
-
-// UPSWEEP_LOG_LOAD_VEC_SIZE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
-	enum {
-		MIN = 0,
-		MAX = 2
-	};
-};
-
-// UPSWEEP_LOG_LOADS_PER_TILE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
-	enum {
-		MIN = 0,
-		MAX = 2
-	};
-};
-
-// UPSWEEP_LOG_RAKING_THREADS
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, UPSWEEP_LOG_RAKING_THREADS> {
-	enum {
-		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX = ParamList::template Access<UPSWEEP_LOG_THREADS>::VALUE
-	};
-};
-
-// DOWNSWEEP_LOG_THREADS
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, DOWNSWEEP_LOG_THREADS> {
-	enum {
-		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX = B40C_LOG_CTA_THREADS(CUDA_ARCH)
-	};
-};
-
-// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, DOWNSWEEP_LOG_LOAD_VEC_SIZE> {
-	enum {
-		MIN = 0,
-		MAX = 2
-	};
-};
-
-// DOWNSWEEP_LOG_LOADS_PER_TILE
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, DOWNSWEEP_LOG_LOADS_PER_TILE> {
-	enum {
-		MIN = 0,
-		MAX = 2
-	};
-};
-
-// DOWNSWEEP_LOG_RAKING_THREADS
-template <int CUDA_ARCH, typename TuneProblemDetail, typename ParamList>
-struct Ranges<CUDA_ARCH, TuneProblemDetail, ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
-	enum {
-		MIN = B40C_LOG_WARP_THREADS(CUDA_ARCH),
-		MAX = ParamList::template Access<DOWNSWEEP_LOG_THREADS>::VALUE
-	};
-};
-
-
-/******************************************************************************
- * Tuning Parameter Enumerations and Ranges
- ******************************************************************************/
-
 
 /**
  * Encapsulation structure for
  * 		- Wrapping problem type and storage
  * 		- Providing call-back for parameter-list generation
  */
-template <typename _T, typename _OpType>
-struct TuneProblemDetail
+template <typename T, typename OpType>
+class TuneProblemDetail : public ScanEnactor<TuneProblemDetail<typename T, typename OpType> >
 {
-	typedef _T T;
-	typedef _OpType OpType;
+public:
 
-	ScanEnactor<> enactor;
 	T *d_dest;
 	T *d_src;
 	T *h_data;
@@ -370,55 +170,255 @@ struct TuneProblemDetail
 	size_t num_elements;
 
 	/**
+	 * Ranges for the tuning params
+	 */
+	template <typename ParamList, int PARAM> struct Ranges;
+
+	// READ_MODIFIER
+	template <typename ParamList>
+	struct Ranges<ParamList, READ_MODIFIER> {
+		enum {
+			MIN = util::ld::NONE,
+			MAX = MIN
+//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+		};
+	};
+
+	// WRITE_MODIFIER
+	template <typename ParamList>
+	struct Ranges<ParamList, WRITE_MODIFIER> {
+		enum {
+			MIN = util::st::NONE,
+			MAX = MIN
+//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+		};
+	};
+
+	// UNIFORM_SMEM_ALLOCATION
+	template <typename ParamList>
+	struct Ranges<ParamList, UNIFORM_SMEM_ALLOCATION> {
+		enum {
+			MIN = 0,
+			MAX = MIN
+//			MAX = 1
+		};
+	};
+
+	// UNIFORM_GRID_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 1
+		};
+	};
+
+	// OVERSUBSCRIBED_GRID_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = MIN
+//			MAX = 1
+		};
+	};
+
+	// UPSWEEP_LOG_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, UPSWEEP_LOG_THREADS> {
+		enum {
+			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+		};
+	};
+
+	// UPSWEEP_LOG_LOAD_VEC_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// UPSWEEP_LOG_LOADS_PER_TILE
+	template <typename ParamList>
+	struct Ranges<ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// UPSWEEP_LOG_RAKING_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
+		enum {
+			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = MIN
+//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+		};
+	};
+
+	// DOWNSWEEP_LOG_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, DOWNSWEEP_LOG_THREADS> {
+		enum {
+			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+		};
+	};
+
+	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, DOWNSWEEP_LOG_LOAD_VEC_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// DOWNSWEEP_LOG_LOADS_PER_TILE
+	template <typename ParamList>
+	struct Ranges<ParamList, DOWNSWEEP_LOG_LOADS_PER_TILE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// DOWNSWEEP_LOG_RAKING_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
+		enum {
+			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = MIN
+//			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
+		};
+	};
+
+
+	/**
 	 * Constructor
 	 */
 	TuneProblemDetail(size_t num_elements) :
 		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
+
+	/**
+	 * Timed scan for applying a specific granularity configuration type
+	 */
+	template <typename ScanConfig>
+	void TimedScan()
+	{
+		printf("%d, ", sizeof(T));
+		ScanConfig::Print();
+		fflush(stdout);
+
+		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
+		DEBUG = g_verbose;
+		if (this->template Enact<ScanConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			exit(1);
+		}
+		DEBUG = false;
+
+		// Perform the timed number of iterations
+
+		cudaEvent_t start_event, stop_event;
+		cudaEventCreate(&start_event);
+		cudaEventCreate(&stop_event);
+
+		double elapsed = 0;
+		float duration = 0;
+		for (int i = 0; i < g_iterations; i++) {
+
+			// Start cuda timing record
+			cudaEventRecord(start_event, 0);
+
+			// Call the scan API routine
+			if (this->template Enact<ScanConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+				exit(1);
+			}
+
+			// End cuda timing record
+			cudaEventRecord(stop_event, 0);
+			cudaEventSynchronize(stop_event);
+			cudaEventElapsedTime(&duration, start_event, stop_event);
+			elapsed += (double) duration;
+
+			// Flushes any stdio from the GPU
+			cudaThreadSynchronize();
+		}
+
+		// Display timing information
+		double avg_runtime = elapsed / g_iterations;
+		double throughput =  0.0;
+		if (avg_runtime > 0.0) throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+	    printf(", %f, %f, %f, ",
+			avg_runtime, throughput, throughput * sizeof(T) * 3);
+	    fflush(stdout);
+
+	    // Clean up events
+		cudaEventDestroy(start_event);
+		cudaEventDestroy(stop_event);
+
+	    // Copy out data
+	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
+			"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+	    // Verify solution
+		CompareResults<T>(h_data, h_reference, num_elements, true);
+		printf("\n");
+		fflush(stdout);
+	}
+
+
 	/**
 	 * Callback invoked by parameter-list generation
 	 */
-	template <int CUDA_ARCH, typename ParamList>
+	template <typename ParamList>
 	void Invoke()
 	{
 		const int C_READ_MODIFIER =
-//			ParamList::template Access<READ_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+//			util::Access<ParamList, READ_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
 			util::ld::NONE;
 		const int C_WRITE_MODIFIER =
-//			ParamList::template Access<WRITE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+//			util::Access<ParamList, WRITE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
 			util::ld::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
-			ParamList::template Access<UNIFORM_SMEM_ALLOCATION>::VALUE;
+//			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
+			0;
 		const int C_UNIFORM_GRID_SIZE =
-			ParamList::template Access<UNIFORM_GRID_SIZE>::VALUE;
+			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
-			ParamList::template Access<OVERSUBSCRIBED_GRID_SIZE>::VALUE;
+//			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
+			0;
 
 		const int C_UPSWEEP_LOG_THREADS =
-			ParamList::template Access<UPSWEEP_LOG_THREADS>::VALUE;
+			util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE;
 		const int C_UPSWEEP_LOG_LOAD_VEC_SIZE =
-			ParamList::template Access<UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
+			util::Access<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
-			ParamList::template Access<UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
+			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_UPSWEEP_LOG_RAKING_THREADS =
-//			ParamList::template Access<UPSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
-			B40C_LOG_WARP_THREADS(CUDA_ARCH);
+//			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
+			B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(
-			B40C_SM_CTAS(CUDA_ARCH),
-			(B40C_SM_THREADS(CUDA_ARCH)) >> C_UPSWEEP_LOG_THREADS);
+			B40C_SM_CTAS(TUNE_ARCH),
+			(B40C_SM_THREADS(TUNE_ARCH)) >> C_UPSWEEP_LOG_THREADS);
 
 		const int C_DOWNSWEEP_LOG_THREADS =
-			ParamList::template Access<DOWNSWEEP_LOG_THREADS>::VALUE;
+			util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE;
 		const int C_DOWNSWEEP_LOG_LOAD_VEC_SIZE =
-			ParamList::template Access<DOWNSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
+			util::Access<ParamList, DOWNSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_DOWNSWEEP_LOG_LOADS_PER_TILE =
-			ParamList::template Access<DOWNSWEEP_LOG_LOADS_PER_TILE>::VALUE;
+			util::Access<ParamList, DOWNSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_DOWNSWEEP_LOG_RAKING_THREADS =
-//			ParamList::template Access<DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
-			B40C_LOG_WARP_THREADS(CUDA_ARCH);
+//			util::Access<ParamList, DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
+			B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_DOWNSWEEP_CTA_OCCUPANCY = B40C_MIN(
-			B40C_SM_CTAS(CUDA_ARCH),
-			(B40C_SM_THREADS(CUDA_ARCH)) >> C_DOWNSWEEP_LOG_THREADS);
+			B40C_SM_CTAS(TUNE_ARCH),
+			(B40C_SM_THREADS(TUNE_ARCH)) >> C_DOWNSWEEP_LOG_THREADS);
 
 
 		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY =
@@ -441,14 +441,14 @@ struct TuneProblemDetail
 		const int C_SPINE_LOG_THREADS = 8;
 		const int C_SPINE_LOG_LOAD_VEC_SIZE = 0;
 		const int C_SPINE_LOG_LOADS_PER_TILE = 1;
-		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(CUDA_ARCH);
+		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		
 		// Establish the problem type
 		typedef scan::ScanProblemType<
-			typename TuneProblemDetail::T,
+			T,
 			size_t,
-			TuneProblemDetail::OpType::Op,
-			TuneProblemDetail::OpType::Identity> ScanProblemType;
+			OpType::BinaryOp,
+			OpType::Identity> ScanProblemType;
 
 		// Establish the granularity configuration type
 		typedef scan::ScanConfig <ScanProblemType,
@@ -477,7 +477,7 @@ struct TuneProblemDetail
 			C_DOWNSWEEP_LOG_RAKING_THREADS> ScanConfig;
 
 		// Invoke this config
-		TimedScan<TuneProblemDetail, ScanConfig>(*this);
+		TimedScan<ScanConfig>();
 	}
 };
 
@@ -496,24 +496,29 @@ void TestScan(size_t num_elements)
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
 		"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 
-	if (util::B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T)),
+	if (util::B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T) * num_elements),
 		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-	if ((detail.h_data = (T*) malloc(num_elements * sizeof(T))) == NULL) {
+	if ((detail.h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
-	if ((detail.h_reference = (T*) malloc(sizeof(T))) == NULL) {
+	if ((detail.h_reference = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
 
 	detail.h_reference[0] = OpType::Identity();
+
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(detail.h_data[i], 0);
-		detail.h_data[i] = i;
-		detail.h_reference[0] = OpType::Op(detail.h_reference[0], detail.h_data[i]);
+//		RandomBits<T>(h_data[i], 0);
+//		detail.h_data[i] = i;
+		detail.h_data[i] = 1;
+		detail.h_reference[i] = (i == 0) ?
+			OpType::Identity() :
+			OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i]);
 	}
+
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(detail.d_src, detail.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -521,11 +526,10 @@ void TestScan(size_t num_elements)
 
 	// Run the timing tests
 	util::ParamListSweep<
-		TUNE_ARCH,
 		Detail,
-		0,
-		PARAM_LIMIT,
-		Ranges>::template Invoke<void>(detail);
+		PARAM_BEGIN + 1,
+		PARAM_END,
+		Detail::template Ranges>::template Invoke<void>(detail);
 
 	// Free allocated memory
 	if (detail.d_src) cudaFree(detail.d_src);
@@ -576,7 +580,6 @@ int main(int argc, char** argv)
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)
-/*
 	{
 		typedef unsigned char T;
 		TestScan<T, Sum<T> >(num_elements * 4);
@@ -585,17 +588,14 @@ int main(int argc, char** argv)
 		typedef unsigned short T;
 		TestScan<T, Sum<T> >(num_elements * 2);
 	}
-*/
 	{
 		typedef unsigned int T;
 		TestScan<T, Sum<T> >(num_elements);
 	}
-/*
 	{
 		typedef unsigned long long T;
 		TestScan<T, Sum<T> >(num_elements / 2);
 	}
-*/
 
 	return 0;
 }

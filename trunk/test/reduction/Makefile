@@ -84,16 +84,16 @@ else
 	ARCH = -m64
 endif
 
-NVCCFLAGS = -Xptxas -v 
+NVCCFLAGS = -Xptxas -v -Xcudafe -\#
 
 ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
-	NVCCFLAGS += -Xcompiler /bigobj
+	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
 endif
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
-	NVCCFLAGS += -Xptxas -abi=no
+	NVCCFLAGS += -Xptxas -abi=no 
 endif
 endif
 
