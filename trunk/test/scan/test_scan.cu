@@ -111,10 +111,12 @@ void TestScan(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedScan<T, BinaryOp, Identity, scan::LARGE>(h_data, h_reference, num_elements);
+		double large = TimedScan<T, BinaryOp, Identity, scan::LARGE>(
+			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedScan<T, BinaryOp, Identity, scan::SMALL>(h_data, h_reference, num_elements);
+		double small = TimedScan<T, BinaryOp, Identity, scan::SMALL>(
+			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%d-byte elements: Small faster at %d elements\n", sizeof(T), num_elements);

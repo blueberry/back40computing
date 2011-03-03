@@ -35,10 +35,6 @@ namespace b40c {
 namespace scan {
 
 
-/******************************************************************************
- * CtaScan Declaration
- ******************************************************************************/
-
 /**
  * Derivation of ScanKernelConfig that encapsulates tile-processing
  * routines
@@ -58,15 +54,31 @@ struct CtaScan :
 	T *d_in;
 	T *d_out;
 
+	
 	/**
 	 * Process a single tile
 	 */
 	template <bool UNGUARDED_IO>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds);
+		SizeT out_of_bounds)
+	{
+		// Tile of scan elements
+		T data[CtaScan::LOADS_PER_TILE][CtaScan::LOAD_VEC_SIZE];
 
+		// Load tile
+		util::LoadTile<T, SizeT, CtaScan::LOG_LOADS_PER_TILE, CtaScan::LOG_LOAD_VEC_SIZE, CtaScan::THREADS, CtaScan::READ_MODIFIER, UNGUARDED_IO>::Invoke(
+			data, d_in, cta_offset, out_of_bounds);
 
+		// Scan tile
+		this->template ScanTileWithCarry<CtaScan::LOAD_VEC_SIZE, CtaScan::BinaryOp>(data, carry);
+
+		// Store tile
+		util::StoreTile<T, SizeT, CtaScan::LOG_LOADS_PER_TILE, CtaScan::LOG_LOAD_VEC_SIZE, CtaScan::THREADS, CtaScan::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
+			data, d_out, cta_offset, out_of_bounds);
+	}
+
+	
 	/**
 	 * Constructor
 	 */
@@ -75,46 +87,17 @@ struct CtaScan :
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		T *d_in,
 		T *d_out,
-		T spine_partial = Identity()) :
-			CtaScanBase<typename ScanKernelConfig::SrtsGrid>(smem_pool, warpscan),
+		T spine_partial = CtaScan::Identity()) :
+			CtaScanBase<typename CtaScan::SrtsGrid>(smem_pool, warpscan),
 			carry(spine_partial),			// Seed carry with spine partial
 			d_in(d_in),
 			d_out(d_out)
 	{
-		this->template Initialize<Identity>();
+		this->template Initialize<CtaScan::Identity>();
 	}
 
 };
 
-
-/******************************************************************************
- * CtaScan Implementation
- ******************************************************************************/
-
-
-/**
- * Process a single tile
- */
-template <typename ScanKernelConfig>
-template <bool UNGUARDED_IO>
-void CtaScan<ScanKernelConfig>::ProcessTile(
-	SizeT cta_offset,
-	SizeT out_of_bounds)
-{
-	// Tile of scan elements
-	T data[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-	// Load tile
-	util::LoadTile<T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, THREADS, READ_MODIFIER, UNGUARDED_IO>::Invoke(
-		data, d_in, cta_offset, out_of_bounds);
-
-	// Scan tile
-	this->template ScanTileWithCarry<LOAD_VEC_SIZE, BinaryOp>(data, carry);
-
-	// Store tile
-	util::StoreTile<T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, THREADS, WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
-		data, d_out, cta_offset, out_of_bounds);
-}
 
 
 } // namespace scan

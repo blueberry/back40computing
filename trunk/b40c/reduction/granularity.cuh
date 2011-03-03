@@ -103,8 +103,8 @@ struct ReductionConfig
 	static void Print()
 	{
 		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
-			CacheModifierToString(READ_MODIFIER),
-			CacheModifierToString(WRITE_MODIFIER),
+			CacheModifierToString((int) READ_MODIFIER),
+			CacheModifierToString((int) WRITE_MODIFIER),
 			(WORK_STEALING) ? "true" : "false",
 			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
 			(UNIFORM_GRID_SIZE) ? "true" : "false",

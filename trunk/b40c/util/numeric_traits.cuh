@@ -35,7 +35,7 @@ namespace util {
 
 enum Representation
 {
-	NAN,
+	NOT_A_NUMBER,
 	SIGNED_INTEGER,
 	UNSIGNED_INTEGER,
 	FLOATING_POINT
@@ -50,7 +50,7 @@ struct BaseTraits
 
 
 // Default, non-numeric types
-template <typename T> struct NumericTraits : 				BaseTraits<NAN> {};
+template <typename T> struct NumericTraits : 				BaseTraits<NOT_A_NUMBER> {};
 
 template <> struct NumericTraits<char> : 					BaseTraits<SIGNED_INTEGER> {};
 template <> struct NumericTraits<signed char> : 			BaseTraits<SIGNED_INTEGER> {};

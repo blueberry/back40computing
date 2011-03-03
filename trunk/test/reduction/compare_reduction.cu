@@ -87,7 +87,6 @@ double TimedThrustReduction(
 	size_t num_elements)
 {
 	T h_dest[1] = {0};
-	printf("Thrust Reduction: %d iterations, %d elements, ", g_iterations, num_elements);
 	
 	// Allocate device storage  
 	T *d_src, *d_dest;
@@ -129,6 +128,7 @@ double TimedThrustReduction(
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+	printf("\nThrust Reduction: %d iterations, %d elements, ", g_iterations, num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T));
 	
@@ -193,7 +193,7 @@ void TestReduction(size_t num_elements)
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedReduction<T, BinaryOp, Identity, reduction::UNKNOWN>(h_data, h_reference, num_elements);
+	double b40c = TimedReduction<T, BinaryOp, Identity, reduction::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 	double thrust = TimedThrustReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 

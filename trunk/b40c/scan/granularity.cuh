@@ -126,8 +126,8 @@ struct ScanConfig
 				"%d, %d, %d, %d, "
 				"%d, %d, %d, %d, %d",
 
-			CacheModifierToString(READ_MODIFIER),
-			CacheModifierToString(WRITE_MODIFIER),
+			CacheModifierToString((int) READ_MODIFIER),
+			CacheModifierToString((int) WRITE_MODIFIER),
 			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
 			(UNIFORM_GRID_SIZE) ? "true" : "false",
 			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",

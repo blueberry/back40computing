@@ -84,11 +84,12 @@ template <
 double TimedReduction(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements)
+	size_t num_elements,
+	int max_ctas,
+	bool verbose,
+	int iterations)
 {
 	using namespace b40c;
-
-	printf("B40C reduction: %d iterations, %d elements\n", g_iterations, num_elements);
 
 	// Allocate device storage
 	T *d_src, *d_dest;
@@ -107,7 +108,7 @@ double TimedReduction(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	reduction_enactor.DEBUG = true;
 	reduction_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, g_max_ctas);
+		d_dest, d_src, num_elements, max_ctas);
 	reduction_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -118,14 +119,14 @@ double TimedReduction(
 
 	double elapsed = 0;
 	float duration = 0;
-	for (int i = 0; i < g_iterations; i++) {
+	for (int i = 0; i < iterations; i++) {
 
 		// Start timing record
 		cudaEventRecord(start_event, 0);
 
 		// Call the reduction API routine
 		reduction_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, g_max_ctas);
+			d_dest, d_src, num_elements, max_ctas);
 
 		// End timing record
 		cudaEventRecord(stop_event, 0);
@@ -135,9 +136,10 @@ double TimedReduction(
 	}
 
 	// Display timing information
-	double avg_runtime = elapsed / g_iterations;
+	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-    printf("\n%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
+	printf("\nB40C reduction: %d iterations, %d elements, ", iterations, num_elements);
+    printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T));
 
     // Clean up events
@@ -157,7 +159,7 @@ double TimedReduction(
 	cudaThreadSynchronize();
 
 	// Display copied data
-	if (g_verbose) {
+	if (verbose) {
 		printf("\n\nReduction: ");
 		PrintValue(h_dest[0]);
 		printf(", Reference: ");
