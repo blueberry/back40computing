@@ -156,9 +156,11 @@ namespace reduction_enactor_tuned {
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ReductionEnactorTuned, typename ProblemType>
-struct Detail : ProblemType
+template <typename ReductionEnactorTuned, typename ReductionProblemType>
+struct Detail
 {
+	typedef ReductionProblemType ProblemType;
+	
 	ReductionEnactorTuned *enactor;
 	int max_grid_size;
 
@@ -189,20 +191,17 @@ struct Storage
  *
  * Default specialization for problem type genres
  */
-template <
-	typename Storage,
-	typename Detail,
-	reduction::ProbSizeGenre PROB_SIZE_GENRE>
+template <reduction::ProbSizeGenre PROB_SIZE_GENRE>
 struct ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &storage, Detail &detail)
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain tuned granularity type
-		typedef reduction::TunedConfig<Detail, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Enact<TunedConfig>(
@@ -217,26 +216,24 @@ struct ConfigResolver
  * Specialization for UNKNOWN problem type to select other problem type genres
  * based upon problem size, etc.
  */
-template <
-	typename Storage,
-	typename Detail>
-struct ConfigResolver <Storage, Detail, reduction::UNKNOWN>
+template <>
+struct ConfigResolver <reduction::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &storage, Detail &detail)
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain large tuned granularity type
-		typedef reduction::TunedConfig<Detail, CUDA_ARCH, reduction::LARGE> LargeConfig;
+		typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, reduction::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS * LargeConfig::Upsweep::CTA_OCCUPANCY * detail.enactor->SmCount();
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef reduction::TunedConfig<Detail, CUDA_ARCH, reduction::SMALL> SmallConfig;
+			typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, reduction::SMALL> SmallConfig;
 			return detail.enactor->template Enact<SmallConfig>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -267,7 +264,7 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 {
 	using namespace reduction;
 
-	typedef typename TunedConfig::Upsweep::ReductionProblemType ReductionProblemType;
+	typedef typename TunedConfig::Upsweep::ProblemType ReductionProblemType;
 	typedef typename ReductionProblemType::T T;
 
 	cudaError_t retval = cudaSuccess;
@@ -357,7 +354,7 @@ cudaError_t ReductionEnactorTuned::Enact(
 	typedef reduction::ReductionProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
 	typedef reduction_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
 	typedef reduction_enactor_tuned::Storage<T, SizeT> Storage;
-	typedef reduction_enactor_tuned::ConfigResolver<Storage, Detail, PROB_SIZE_GENRE> Resolver;
+	typedef reduction_enactor_tuned::ConfigResolver<PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
 	Storage storage(d_dest, d_src, num_elements);

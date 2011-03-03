@@ -156,12 +156,17 @@ namespace scan_enactor_tuned {
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ScanEnactorTuned, typename ProblemType>
-struct Detail : ProblemType
+template <typename ScanEnactorTuned, typename ScanProblemType>
+struct Detail
 {
+	typedef ScanProblemType ProblemType;
+	
 	ScanEnactorTuned *enactor;
 	int max_grid_size;
 
+	// Constructor
+	Detail() {}
+	
 	// Constructor
 	Detail(ScanEnactorTuned *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
@@ -189,20 +194,17 @@ struct Storage
  *
  * Default specialization for problem type genres
  */
-template <
-	typename Storage,
-	typename Detail,
-	scan::ProbSizeGenre PROB_SIZE_GENRE>
+template <scan::ProbSizeGenre PROB_SIZE_GENRE>
 struct ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &storage, Detail &detail)
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain tuned granularity type
-		typedef scan::TunedConfig<Detail, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Enact<TunedConfig>(
@@ -217,26 +219,24 @@ struct ConfigResolver
  * Specialization for UNKNOWN problem type to select other problem type genres
  * based upon problem size, etc.
  */
-template <
-	typename Storage,
-	typename Detail>
-struct ConfigResolver <Storage, Detail, scan::UNKNOWN>
+template <>
+struct ConfigResolver <scan::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &storage, Detail &detail)
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain large tuned granularity type
-		typedef scan::TunedConfig<Detail, CUDA_ARCH, scan::LARGE> LargeConfig;
+		typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, scan::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS * LargeConfig::Upsweep::CTA_OCCUPANCY * detail.enactor->SmCount();
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef scan::TunedConfig<Detail, CUDA_ARCH, scan::SMALL> SmallConfig;
+			typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, scan::SMALL> SmallConfig;
 			return detail.enactor->template Enact<SmallConfig>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -267,8 +267,8 @@ cudaError_t ScanEnactorTuned::ScanPass(
 {
 	using namespace scan;
 
-	typedef typename TunedConfig::Downsweep::ScanProblemType ScanProblemType;
-	typedef typename TunedConfig::Downsweep::T T;
+	typedef typename TunedConfig::Downsweep::ProblemType ScanProblemType;
+	typedef typename ScanProblemType::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -332,7 +332,6 @@ cudaError_t ScanEnactorTuned::ScanPass(
 					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) d_spine, work);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
-
 		}
 	} while (0);
 
@@ -368,7 +367,7 @@ cudaError_t ScanEnactorTuned::Enact(
 	typedef scan::ScanProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
 	typedef scan_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
 	typedef scan_enactor_tuned::Storage<T, SizeT> Storage;
-	typedef scan_enactor_tuned::ConfigResolver<Storage, Detail, PROB_SIZE_GENRE> Resolver;
+	typedef scan_enactor_tuned::ConfigResolver<PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
 	Storage storage(d_dest, d_src, num_elements);

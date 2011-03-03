@@ -149,7 +149,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneProblemDetail : public ReductionEnactor<TuneProblemDetail<typename T, typename OpType> >
+class TuneProblemDetail : public ReductionEnactor<TuneProblemDetail<T, OpType> >
 {
 public:
 
@@ -170,7 +170,7 @@ public:
 		enum {
 			MIN = util::ld::NONE,
 			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -180,7 +180,7 @@ public:
 		enum {
 			MIN = util::st::NONE,
 			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NAN)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -216,7 +216,7 @@ public:
 	struct Ranges<ParamList, WORK_STEALING> {
 		enum {
 			MIN = 0,
-			MAX = 1
+			MAX = (TUNE_ARCH < 200) ? 0 : 1				// Only bother tuning atomic worstealing on Fermi+
 		};
 	};
 
@@ -275,11 +275,11 @@ public:
 		fflush(stdout);
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-		DEBUG = g_verbose;
+		this->DEBUG = g_verbose;
 		if (this->template Enact<ReductionConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
-		DEBUG = false;
+		this->DEBUG = false;
 
 		// Perform the timed number of iterations
 

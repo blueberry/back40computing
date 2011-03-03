@@ -110,11 +110,11 @@ void TestReduction(size_t num_elements)
 
 		printf("\nLARGE config:\t");
 		double large = TimedReduction<T, BinaryOp, Identity, reduction::LARGE>(
-			h_data, h_reference, num_elements);
+			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
 		double small = TimedReduction<T, BinaryOp, Identity, reduction::SMALL>(
-			h_data, h_reference, num_elements);
+			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%d-byte elements: Small faster at %d elements\n", sizeof(T), num_elements);

@@ -80,7 +80,7 @@ struct CtaReductionBase<SrtsGrid, util::InvalidSrtsGrid>
 	/**
 	 * Reduce a single tile.  Carry-in/out is seeded/updated only in raking threads (homogeneously)
 	 */
-	template <int VEC_SIZE, T BinaryOp(const typename T&, const typename T&)>
+	template <int VEC_SIZE, T BinaryOp(const T&, const T&)>
 	__device__ __forceinline__ void ReduceTileWithCarry(
 		T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
 		T &carry)
@@ -100,7 +100,7 @@ struct CtaReductionBase<SrtsGrid, util::InvalidSrtsGrid>
 	/**
 	 * Reduce a single tile.  Result is computed in all threads.
 	 */
-	template <int VEC_SIZE, T BinaryOp(const typename T&, const typename T&)>
+	template <int VEC_SIZE, T BinaryOp(const T&, const T&)>
 	__device__ __forceinline__ T ReduceTile(T data[SrtsGrid::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce in registers, place partials in smem
@@ -158,7 +158,7 @@ struct CtaReductionBase
 	/**
 	 * Reduce a single tile.  Carry-in/out is seeded/updated only in raking threads (homogeneously)
 	 */
-	template <int VEC_SIZE, T BinaryOp(const typename T&, const typename T&)>
+	template <int VEC_SIZE, T BinaryOp(const T&, const T&)>
 	__device__ __forceinline__ void ReduceTileWithCarry(
 		T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
 		T &carry)
@@ -186,7 +186,7 @@ struct CtaReductionBase
 	/**
 	 * Reduce a single tile.  Result is computed in all threads.
 	 */
-	template <int VEC_SIZE, T BinaryOp(const typename T&, const typename T&)>
+	template <int VEC_SIZE, T BinaryOp(const T&, const T&)>
 	__device__ __forceinline__ T ReduceTile(T data[SrtsGrid::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce in registers, place partials in smem

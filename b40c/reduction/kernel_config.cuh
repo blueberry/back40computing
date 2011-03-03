@@ -93,6 +93,7 @@ template <
 
 struct ReductionKernelConfig : ReductionProblemType
 {
+	typedef ReductionProblemType ProblemType;
 	typedef typename ReductionProblemType::T T;
 
 	static const int CTA_OCCUPANCY  						= _CTA_OCCUPANCY;

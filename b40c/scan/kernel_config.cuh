@@ -76,6 +76,7 @@ template <
 
 struct ScanKernelConfig : ScanProblemType
 {
+	typedef ScanProblemType ProblemType;
 	typedef typename ScanProblemType::T T;
 
 	static const int CTA_OCCUPANCY  						= _CTA_OCCUPANCY;

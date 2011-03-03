@@ -207,7 +207,7 @@ void TestScan(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	double b40c = TimedScan<T, BinaryOp, Identity, scan::UNKNOWN>(h_data, h_reference, num_elements);
+	double b40c = TimedScan<T, BinaryOp, Identity, scan::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 	double thrust = TimedThrustScan<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 	

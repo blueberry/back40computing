@@ -95,7 +95,7 @@ struct CtaReduction :
 		T *d_in,
 		T *d_out) :
 			CtaReductionBase<typename ReductionKernelConfig::SrtsGrid>(smem_pool, warpscan),
-			carry(Identity()),
+			carry(CtaReduction::Identity()),
 			d_in(d_in),
 			d_out(d_out) {}
 };
@@ -114,21 +114,21 @@ void CtaReduction<ReductionKernelConfig>::ProcessTile(
 	SizeT cta_offset,
 	SizeT out_of_bounds)
 {
-	T data[LOADS_PER_TILE][LOAD_VEC_SIZE];
+	T data[CtaReduction::LOADS_PER_TILE][CtaReduction::LOAD_VEC_SIZE];
 
 	// Load tile
 	util::LoadTile<
 		T,
 		SizeT,
-		LOG_LOADS_PER_TILE,
-		LOG_LOAD_VEC_SIZE,
-		THREADS,
-		READ_MODIFIER,
+		CtaReduction::LOG_LOADS_PER_TILE,
+		CtaReduction::LOG_LOAD_VEC_SIZE,
+		CtaReduction::THREADS,
+		CtaReduction::READ_MODIFIER,
 		UNGUARDED_IO,
 		LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 	// Reduce the data we loaded for this tile
-	T tile_partial = SerialReduce<T, TILE_ELEMENTS_PER_THREAD, BinaryOp>::Invoke(
+	T tile_partial = SerialReduce<T, CtaReduction::TILE_ELEMENTS_PER_THREAD, CtaReduction::BinaryOp>::Invoke(
 		reinterpret_cast<T*>(data));
 
 	// Reduce into carry
@@ -148,7 +148,7 @@ void CtaReduction<ReductionKernelConfig>::LoadTransform(
 	bool in_bounds)
 {
 	// Assigns identity value to out-of-bounds loads
-	if (!in_bounds) val = Identity();
+	if (!in_bounds) val = CtaReduction::Identity();
 }
 
 
@@ -158,11 +158,11 @@ void CtaReduction<ReductionKernelConfig>::LoadTransform(
 template <typename ReductionKernelConfig>
 void CtaReduction<ReductionKernelConfig>::FinalReduction()
 {
-	T total = this->template ReduceTile<1, BinaryOp>(reinterpret_cast<T (*)[1]>(&carry));
+	T total = this->template ReduceTile<1, CtaReduction::BinaryOp>(reinterpret_cast<T (*)[1]>(&carry));
 
 	// Write output
 	if (threadIdx.x == 0) {
-		util::ModifiedStore<T, WRITE_MODIFIER>::St(total, d_out, 0);
+		util::ModifiedStore<T, CtaReduction::WRITE_MODIFIER>::St(total, d_out, 0);
 	}
 }
 

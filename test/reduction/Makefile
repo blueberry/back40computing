@@ -51,6 +51,16 @@ else
 	TUNE_ARCH = 200
 endif
 
+ifeq ($(TUNE_ARCH), 200) 
+	TUNE_SM_TARGETS = $(GEN_SM20)
+endif
+ifeq ($(TUNE_ARCH), 130) 
+	TUNE_SM_TARGETS = $(GEN_SM13)
+endif
+ifeq ($(TUNE_ARCH), 100) 
+	TUNE_SM_TARGETS = $(GEN_SM10)
+endif
+
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -138,7 +148,7 @@ tune: bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
 
 bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_reduction.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
 
 
 #-------------------------------------------------------------------------------
