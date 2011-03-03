@@ -121,7 +121,7 @@ struct ScanConfig
 
 	static void Print()
 	{
-		printf("%s, %s, %s, %s, %s, %d"
+		printf("%s, %s, %s, %s, %s, %d, "
 				"%d, %d, %d, %d, %d, "
 				"%d, %d, %d, %d, "
 				"%d, %d, %d, %d, %d",

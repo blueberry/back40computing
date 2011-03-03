@@ -72,8 +72,8 @@ template <int CUDA_ARCH>
 struct ArchFamilyClassifier
 {
 	static const ArchFamily FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
-									(CUDA_ARCH < SM20) ? 	SM13 :
-															SM20;
+										(CUDA_ARCH < SM20) ? 	SM13 :
+																SM20;
 };
 
 

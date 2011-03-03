@@ -123,7 +123,7 @@ struct SrtsGrid
 		ROWS 							= 1 << LOG_ROWS,
 	
 		// Number of rows per lane
-		LOG_ROWS_PER_LANE				= LOG_ROWS - LOG_SCAN_LANES,
+		LOG_ROWS_PER_LANE				= B40C_MAX(0, LOG_ROWS - LOG_SCAN_LANES),
 		ROWS_PER_LANE					= 1 << LOG_ROWS_PER_LANE,
 
 		// Number of raking thraeds per lane
