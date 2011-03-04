@@ -61,6 +61,16 @@ ifeq ($(TUNE_ARCH), 100)
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
 
+#-------------------------------------------------------------------------------
+# Tune size
+#-------------------------------------------------------------------------------
+
+ifdef tunesize
+    TUNE_SIZE = $(tunesize)
+else 
+	TUNE_SIZE = 4
+endif
+
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -144,11 +154,11 @@ bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_scan.cu $(DEPS)
 # (make tune) Evaluates the space of scan configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
+tune: bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_scan.cu $(DEPS)
+bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------

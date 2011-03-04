@@ -121,6 +121,31 @@ struct TunedConfig<ScanProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
 	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
+// Large problems, 2B data
+template <typename ScanProblemType, typename T>
+struct TunedConfig<ScanProblemType, SM20, LARGE, T, 2>
+	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+// Large problems, 4B data
+template <typename ScanProblemType, typename T>
+struct TunedConfig<ScanProblemType, SM20, LARGE, T, 4>
+	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, false, false, 11, 3, 9, 2, 0, 5, 8, 0, 1, 5, 3, 9, 1, 1, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+// Large problems, 8B data
+template <typename ScanProblemType, typename T>
+struct TunedConfig<ScanProblemType, SM20, LARGE, T, 8>
+	: ScanConfig<ScanProblemType, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 5, 8, 6, 0, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+
 
 //-----------------------------------------------------------------------------
 // SM1.3 specializations(s)
