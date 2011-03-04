@@ -47,6 +47,9 @@ using namespace b40c;
 #ifndef TUNE_ARCH
 	#define TUNE_ARCH (200)
 #endif
+#ifndef TUNE_SIZE
+	#define TUNE_SIZE (4)
+#endif
 
 bool g_verbose;
 int g_max_ctas = 0;
@@ -580,22 +583,19 @@ int main(int argc, char** argv)
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)
-	{
-		typedef unsigned char T;
-		TestScan<T, Sum<T> >(num_elements * 4);
-	}
-	{
-		typedef unsigned short T;
-		TestScan<T, Sum<T> >(num_elements * 2);
-	}
-	{
-		typedef unsigned int T;
-		TestScan<T, Sum<T> >(num_elements);
-	}
-	{
-		typedef unsigned long long T;
-		TestScan<T, Sum<T> >(num_elements / 2);
-	}
+#if TUNE_SIZE == 1
+	typedef unsigned char T;
+	TestScan<T, Sum<T> >(num_elements * 4);
+#elif TUNE_SIZE == 2
+	typedef unsigned short T;
+	TestScan<T, Sum<T> >(num_elements * 2);
+#elif TUNE_SIZE == 4
+	typedef unsigned int T;
+	TestScan<T, Sum<T> >(num_elements);
+#elif TUNE_SIZE == 8
+	typedef unsigned long long T;
+	TestScan<T, Sum<T> >(num_elements / 2);
+#endif
 
 	return 0;
 }
