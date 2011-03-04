@@ -129,7 +129,7 @@ double TimedThrustScan(
 	// Display timing information
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-	printf("\nThrust Scan: %d iterations, %zu elements, ", g_iterations, num_elements);
+	printf("\nThrust Scan: %d iterations, %lu elements, ", g_iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T) * 3);
 	

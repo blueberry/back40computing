@@ -139,7 +139,7 @@ double TimedScan(
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-	printf("\nB40C scan: %d iterations, %zu elements, ", iterations, num_elements);
+	printf("\nB40C scan: %d iterations, %lu elements, ", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T) * 3);
 
