@@ -25,6 +25,7 @@
 
 #pragma once
 
+#include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/work_distribution.cuh>
 #include <b40c/reduction/cta_reduction.cuh>
 
@@ -86,7 +87,6 @@ struct UpsweepReductionPass
 };
 
 
-
 /**
  * Upsweep reduction pass (workstealing)
  */
@@ -125,7 +125,7 @@ struct UpsweepReductionPass <ReductionKernelConfig, true>
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = atomicAdd(&d_work_progress[progress_selector], CtaReduction::TILE_ELEMENTS);
+				cta_offset = util::AtomicInt<SizeT>::Add(d_work_progress + progress_selector, CtaReduction::TILE_ELEMENTS);
 			}
 
 			__syncthreads();		// Protect cta_offset

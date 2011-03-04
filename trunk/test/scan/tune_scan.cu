@@ -119,9 +119,7 @@ enum TuningParam {
 
 	PARAM_BEGIN,
 
-		UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE,
-		OVERSUBSCRIBED_GRID_SIZE,
 
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -136,6 +134,8 @@ enum TuningParam {
 	// Parameters below here are currently not part of the tuning sweep
 
 	// These can be tuned, but we're currently not compelled to
+	UNIFORM_SMEM_ALLOCATION,
+	OVERSUBSCRIBED_GRID_SIZE,
 	READ_MODIFIER,
 	WRITE_MODIFIER,
 	UPSWEEP_LOG_RAKING_THREADS,
@@ -258,8 +258,7 @@ public:
 	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -295,8 +294,7 @@ public:
 	struct Ranges<ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
+			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -314,7 +312,7 @@ public:
 	template <typename ScanConfig>
 	void TimedScan()
 	{
-		printf("%d, ", sizeof(T));
+		printf("%zu, ", sizeof(T));
 		ScanConfig::Print();
 		fflush(stdout);
 
@@ -572,7 +570,7 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Scan: %d iterations, %d elements", g_iterations, num_elements);
+	printf("Test Scan: %d iterations, %zu elements", g_iterations, num_elements);
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
@@ -598,6 +596,7 @@ int main(int argc, char** argv)
 #endif
 
 	return 0;
+
 }
 
 
