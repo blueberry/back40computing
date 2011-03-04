@@ -119,7 +119,7 @@ void TestScan(size_t num_elements)
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
-			printf("%zu-byte elements: Small faster at %zu elements\n", sizeof(T), num_elements);
+			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
 		}
 
 		num_elements -= 4096;

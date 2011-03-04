@@ -270,7 +270,7 @@ public:
 	template <typename ReductionConfig>
 	void TimedReduction()
 	{
-		printf("%zu, ", sizeof(T));
+		printf("%lu, ", (unsigned long) sizeof(T));
 		ReductionConfig::Print();
 		fflush(stdout);
 
@@ -491,7 +491,7 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Reduction: %d iterations, %zu elements", g_iterations, num_elements);
+	printf("Test Reduction: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 

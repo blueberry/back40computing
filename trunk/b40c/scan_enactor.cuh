@@ -389,8 +389,8 @@ cudaError_t ScanEnactor<DerivedEnactorType>::Enact(
 				Spine::THREADS, spine_elements, Spine::TILE_ELEMENTS);
 			printf("Downsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
 				work.grid_size, Downsweep::THREADS, Downsweep::TILE_ELEMENTS);
-			printf("Work: \t\t[element bytes: %zu, SizeT %zu bytes, num_elements: %zu, schedule_granularity: %d, total_grains: %zu, grains_per_cta: %zu, extra_grains: %zu]\n",
-				sizeof(T), sizeof(SizeT), work.num_elements, Downsweep::SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
+			printf("Work: \t\t[element bytes: %lu, SizeT %lu bytes, num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu]\n",
+				(unsigned long) sizeof(T), (unsigned long) sizeof(SizeT), (unsigned long) work.num_elements, Downsweep::SCHEDULE_GRANULARITY, (unsigned long) work.total_grains, (unsigned long) work.grains_per_cta, (unsigned long) work.extra_grains);
 		} else {
 			printf("Spine: \t\t[threads: %d, tile_elements: %d]\n",
 				Spine::THREADS, Spine::TILE_ELEMENTS);
