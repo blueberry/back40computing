@@ -317,11 +317,11 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
 			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 		if (sweep_grid_size > 1) {
-			printf("Upsweep: \t[sweep_grid_size: %d, threads %d, SizeT %d bytes, workstealing: %s, tile_elements: %d]\n",
+			printf("Upsweep: \t[sweep_grid_size: %d, threads %d, SizeT %zu bytes, workstealing: %s, tile_elements: %d]\n",
 				work.grid_size, Upsweep::THREADS, sizeof(SizeT), Upsweep::WORK_STEALING ? "true" : "false", Upsweep::TILE_ELEMENTS);
 			printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
 				Spine::THREADS, spine_elements, Spine::TILE_ELEMENTS);
-			printf("Work: \t\t[element bytes: %d, num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
+			printf("Work: \t\t[element bytes: %zu, num_elements: %zu, schedule_granularity: %d, total_grains: %zu, grains_per_cta: %zu extra_grains: %zu]\n",
 				sizeof(T), work.num_elements, Upsweep::SCHEDULE_GRANULARITY, work.total_grains, work.grains_per_cta, work.extra_grains);
 		} else {
 			printf("Spine: \t\t[threads: %d, tile_elements: %d]\n",

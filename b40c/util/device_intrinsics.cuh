@@ -116,6 +116,30 @@ __device__ __forceinline__ int WarpVoteAll(int predicate)
 }
 
 
+/**
+ * Wrapper for performing atomic operations on integers of type size_t 
+ */
+template <typename T, int SizeT = sizeof(T)>
+struct AtomicInt;
+
+template <typename T>
+struct AtomicInt<T, 4>
+{
+	static __device__ __forceinline__ T Add(T* ptr, T val)
+	{
+		return atomicAdd((unsigned int *) ptr, (unsigned int) val);
+	}
+};
+
+template <typename T>
+struct AtomicInt<T, 8>
+{
+	static __device__ __forceinline__ T Add(T* ptr, T val)
+	{
+		return atomicAdd((unsigned long long int *) ptr, (unsigned long long int) val);
+	}
+};
+
 
 } // namespace util
 } // namespace b40c
