@@ -252,7 +252,8 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 	// Store normally
 	template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore
 	{
-		__device__ __forceinline__ static void St(const T &val, T* d_ptr, size_t offset) {
+		template <typename SizeT>
+		__device__ __forceinline__ static void St(const T &val, T* d_ptr, SizeT offset) {
 			d_ptr[offset] = val; 
 		}
 	};
@@ -345,19 +346,27 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
 	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
 
+#if __B40C_CUDA_ARCH__ < 200
+	typedef unsigned int DeviceSizeT;
+#else
+	typedef SizeT DeviceSizeT;
+#endif
+
 	// Iterate over vec-elements
 	template <int STORE, int VEC>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			SizeT thread_offset,
-			const SizeT &out_of_bounds)
+			SizeT cta_offset,
+			SizeT out_of_bounds)
 		{
-			if (thread_offset + VEC < out_of_bounds) {
-				ModifiedStore<T, CACHE_MODIFIER>::St(data[STORE][VEC], d_in, thread_offset + VEC);
+			SizeT thread_offset = cta_offset + VEC;
+
+			if (thread_offset < out_of_bounds) {
+				ModifiedStore<T, CACHE_MODIFIER>::St(data[STORE][VEC], d_in, thread_offset);
 			}
-			Iterate<STORE, VEC + 1>::Invoke(data, d_in, thread_offset, out_of_bounds);
+			Iterate<STORE, VEC + 1>::Invoke(data, d_in, cta_offset, out_of_bounds);
 		}
 	};
 
@@ -367,11 +376,11 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			SizeT thread_offset,
-			const SizeT &out_of_bounds)
+			SizeT cta_offset,
+			SizeT out_of_bounds)
 		{
 			Iterate<STORE + 1, 0>::Invoke(
-				data, d_in, thread_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
+				data, d_in, cta_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
 		}
 	};
 	
@@ -381,19 +390,18 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_in,
-			SizeT thread_offset,
-			const SizeT &out_of_bounds) {}
+			SizeT cta_offset,
+			SizeT out_of_bounds) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
-		SizeT cta_offset,
-		const SizeT &out_of_bounds)
+		DeviceSizeT cta_offset,
+		DeviceSizeT out_of_bounds)
 	{
-		SizeT thread_offset = cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE);
-		Iterate<0, 0>::Invoke(data, d_in, thread_offset, out_of_bounds);
+		Iterate<0, 0>::Invoke(data, d_in, cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE), out_of_bounds);
 	} 
 };
 

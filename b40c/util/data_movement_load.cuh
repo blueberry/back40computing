@@ -263,7 +263,8 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	// Load normally
 	template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad
 	{
-		__device__ __forceinline__ static void Ld(T &val, T* d_ptr, size_t offset) {
+		template <typename SizeT>
+		__device__ __forceinline__ static void Ld(T &val, T* d_ptr, SizeT offset) {
 			val = d_ptr[offset]; 
 		}
 	};
@@ -397,6 +398,12 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
 	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
 
+#if __B40C_CUDA_ARCH__ < 200
+	typedef unsigned int DeviceSizeT;
+#else
+	typedef SizeT DeviceSizeT;
+#endif
+
 	// Iterate over vec-elements
 	template <int LOAD, int VEC>
 	struct Iterate 
@@ -405,9 +412,9 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			SizeT cta_offset,
-			const SizeT &out_of_bounds)
+			SizeT out_of_bounds)
 		{
-			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + ((ACTIVE_THREADS * LOAD) << LOG_LOAD_VEC_SIZE) + VEC;
+			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < out_of_bounds) {
 				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset);
@@ -428,10 +435,10 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			SizeT cta_offset,
-			const SizeT &out_of_bounds)
+			SizeT out_of_bounds)
 		{
 			Iterate<LOAD + 1, 0>::Invoke(
-				data, d_in, cta_offset, out_of_bounds);
+				data, d_in, cta_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE), out_of_bounds);
 		}
 	};
 	
@@ -443,15 +450,15 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
 			SizeT cta_offset,
-			const SizeT &out_of_bounds) {}
+			SizeT out_of_bounds) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		SizeT cta_offset,
-		const SizeT &out_of_bounds)
+		DeviceSizeT cta_offset,
+		DeviceSizeT out_of_bounds)
 	{
 		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
 	} 
