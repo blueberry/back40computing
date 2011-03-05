@@ -54,7 +54,9 @@ struct CtaScan :
 	T *d_in;
 	T *d_out;
 
-	
+	// Tile of scan elements
+	T data[CtaScan::LOADS_PER_TILE][CtaScan::LOAD_VEC_SIZE];
+
 	/**
 	 * Process a single tile
 	 */
@@ -63,8 +65,6 @@ struct CtaScan :
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
-		// Tile of scan elements
-		T data[CtaScan::LOADS_PER_TILE][CtaScan::LOAD_VEC_SIZE];
 
 		// Load tile
 		util::LoadTile<T, SizeT, CtaScan::LOG_LOADS_PER_TILE, CtaScan::LOG_LOAD_VEC_SIZE, CtaScan::THREADS, CtaScan::READ_MODIFIER, UNGUARDED_IO>::Invoke(
