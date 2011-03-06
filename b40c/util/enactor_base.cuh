@@ -30,6 +30,9 @@
 #include <b40c/util/cuda_properties.cuh>
 
 namespace b40c {
+namespace util {
+
+
 
 /**
  * Enactor base class
@@ -232,6 +235,6 @@ protected:
 };
 
 
-
+} // namespace util
 } // namespace b40c
 

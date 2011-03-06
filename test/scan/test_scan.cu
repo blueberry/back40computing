@@ -21,7 +21,7 @@
 
 
 /******************************************************************************
- * Simple test driver program for *large-problem* scan.
+ * Simple test driver program for scan.
  ******************************************************************************/
 
 #include <stdio.h> 
@@ -63,7 +63,7 @@ void Usage()
 	printf("\t--i\tPerforms the scan operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
-	printf("\t--n\tThe number of bytes to comprise the sample problem\n");
+	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
 	printf("\n");
 }
@@ -113,7 +113,7 @@ void TestScan(size_t num_elements)
 		printf("\nLARGE config:\t");
 		double large = TimedScan<T, BinaryOp, Identity, scan::LARGE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-/*
+
 		printf("\nSMALL config:\t");
 		double small = TimedScan<T, BinaryOp, Identity, scan::SMALL>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
@@ -121,7 +121,7 @@ void TestScan(size_t num_elements)
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
 		}
-*/
+
 		num_elements -= 4096;
 
 	} while (g_sweep && (num_elements < orig_num_elements ));
@@ -161,7 +161,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
-/*
+
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -174,21 +174,19 @@ int main(int argc, char** argv)
 		typedef Sum<T> BinaryOp;
     	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
-*/	
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
     	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
     	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
-*/
+
 	return 0;
 }
 

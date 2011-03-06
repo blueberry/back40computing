@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include <b40c/reduction_enactor.cuh>
-#include <b40c/arch_dispatch.cuh>
+#include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
+#include <b40c/reduction/reduction_enactor.cuh>
 #include <b40c/reduction/granularity.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/reduction/kernel_spine.cuh>
@@ -41,7 +41,7 @@ namespace b40c {
 /**
  * Tuned reduction enactor class.
  */
-class ReductionEnactorTuned : public ReductionEnactor<ReductionEnactorTuned>
+class ReductionEnactorTuned : public reduction::ReductionEnactor<ReductionEnactorTuned>
 {
 protected:
 
@@ -50,7 +50,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef ReductionEnactor<ReductionEnactorTuned> BaseEnactorType;
+	typedef reduction::ReductionEnactor<ReductionEnactorTuned> BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -359,7 +359,7 @@ cudaError_t ReductionEnactorTuned::Enact(
 	Detail detail(this, max_grid_size);
 	Storage storage(d_dest, d_src, num_elements);
 
-	return ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
+	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
 }
 
 

@@ -130,7 +130,7 @@ DEPS = 			./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for large-problem reduction
+# (make test) Simple test driver for reduction
 #-------------------------------------------------------------------------------
 
 test: bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)

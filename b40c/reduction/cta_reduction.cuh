@@ -57,6 +57,9 @@ struct CtaReduction :
 	T* d_in;
 	T* d_out;
 
+	// Tile of elements
+	T data[ReductionKernelConfig::LOADS_PER_TILE][ReductionKernelConfig::LOAD_VEC_SIZE];
+
 	/**
 	 * Process a single tile
 	 *
@@ -114,8 +117,6 @@ void CtaReduction<ReductionKernelConfig>::ProcessTile(
 	SizeT cta_offset,
 	SizeT out_of_bounds)
 {
-	T data[CtaReduction::LOADS_PER_TILE][CtaReduction::LOAD_VEC_SIZE];
-
 	// Load tile
 	util::LoadTile<
 		T,
@@ -158,7 +159,8 @@ void CtaReduction<ReductionKernelConfig>::LoadTransform(
 template <typename ReductionKernelConfig>
 void CtaReduction<ReductionKernelConfig>::FinalReduction()
 {
-	T total = this->template ReduceTile<1, CtaReduction::BinaryOp>(reinterpret_cast<T (*)[1]>(&carry));
+	T total = this->template ReduceTile<1, CtaReduction::BinaryOp>(
+		reinterpret_cast<T (*)[1]>(&carry));
 
 	// Write output
 	if (threadIdx.x == 0) {

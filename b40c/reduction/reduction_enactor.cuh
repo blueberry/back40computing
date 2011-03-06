@@ -25,13 +25,14 @@
 
 #pragma once
 
-#include <b40c/enactor_base.cuh>
+#include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/reduction/granularity.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/reduction/kernel_spine.cuh>
 
 namespace b40c {
+namespace reduction {
 
 
 /******************************************************************************
@@ -42,7 +43,7 @@ namespace b40c {
  * Basic reduction enactor class.
  */
 template <typename DerivedEnactorType = void>
-class ReductionEnactor : public EnactorBase
+class ReductionEnactor : public util::EnactorBase
 {
 protected:
 
@@ -193,8 +194,6 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
 	util::CtaWorkDistribution<typename ReductionConfig::Upsweep::SizeT> &work,
 	int spine_elements)
 {
-	using namespace reduction;
-
 	typedef typename ReductionConfig::Upsweep::T T;
 
 	cudaError_t retval = cudaSuccess;
@@ -353,6 +352,6 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 }
 
 
-
+}// namespace reduction
 }// namespace b40c
 
