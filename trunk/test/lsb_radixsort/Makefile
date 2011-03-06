@@ -39,7 +39,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20)
+SM_TARGETS = $(GEN_SM13)
 
 #-------------------------------------------------------------------------------
 # Tune arch
@@ -130,46 +130,47 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_scan.h \
+				./test_sort.h \
 				../b40c_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) 
+				$(wildcard ../../b40c/scan/*.cuh) \
+				$(wildcard ../../b40c/sort/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for scan
+# (make test) Simple test driver for sort
 #-------------------------------------------------------------------------------
 
-test: bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_scan.cu $(DEPS)
+bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of scan configuration types
+# (make tune) Evaluates the space of sort configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
+tune: bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_scan.cu $(DEPS)
+bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------
-# (make compare) Compares scan performance against other libraries (e.g., Thrust)
+# (make compare) Compares sort performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+compare: bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
+bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
 #
@@ -177,9 +178,9 @@ bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

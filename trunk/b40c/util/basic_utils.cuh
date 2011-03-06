@@ -154,6 +154,21 @@ struct If<false, ThenType, ElseType>
 };
 
 
+/**
+ * Equals 
+ */
+template <typename A, typename B>
+struct Equals
+{
+	enum { VALUE = false };
+};
+
+template <typename A>
+struct Equals <A, A>
+{
+	enum { VALUE = true };
+};
+
 
 } // namespace util
 } // namespace b40c

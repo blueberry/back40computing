@@ -27,9 +27,9 @@
 #include <stdio.h> 
 
 // Reduction includes
-#include <b40c/arch_dispatch.cuh>
 #include <b40c/reduction/granularity.cuh>
-#include <b40c/reduction_enactor.cuh>
+#include <b40c/reduction/reduction_enactor.cuh>
+#include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>

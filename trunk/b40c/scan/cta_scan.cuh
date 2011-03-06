@@ -55,7 +55,7 @@ struct CtaScan :
 	T *d_out;
 
 	// Tile of scan elements
-	T data[CtaScan::LOADS_PER_TILE][CtaScan::LOAD_VEC_SIZE];
+	T data[ScanKernelConfig::LOADS_PER_TILE][ScanKernelConfig::LOAD_VEC_SIZE];
 
 	/**
 	 * Process a single tile

@@ -30,6 +30,7 @@
 #include <b40c/util/cuda_properties.cuh>
 
 namespace b40c {
+namespace util {
 
 
 /**
@@ -85,5 +86,6 @@ struct ArchDispatch<0, Dispatch>
 
 
 
+} // namespace util
 } // namespace b40c
 

@@ -62,7 +62,7 @@ struct InvalidSrtsGrid
  * Must have as many raking threads as lanes.
  */
 template <
-	typename _T,							// Type of items we will be reducing/scanning
+	typename _T,									// Type of items we will be reducing/scanning
 	int _LOG_ACTIVE_THREADS, 						// Number of threads placing a lane partial (i.e., the number of partials per lane)
 	int _LOG_SCAN_LANES,							// Number of scan lanes
 	int _LOG_RAKING_THREADS, 						// Number of threads used for raking (typically 1 warp)

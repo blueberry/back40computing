@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/enactor_base.cuh>
+#include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/scan/granularity.cuh>
 #include <b40c/scan/kernel_downsweep.cuh>
@@ -33,6 +33,7 @@
 #include <b40c/reduction/kernel_upsweep.cuh>
 
 namespace b40c {
+namespace scan {
 
 
 /******************************************************************************
@@ -43,7 +44,7 @@ namespace b40c {
  * Basic scan enactor class.
  */
 template <typename DerivedEnactorType = void>
-class ScanEnactor : public EnactorBase
+class ScanEnactor : public util::EnactorBase
 {
 protected:
 
@@ -194,7 +195,7 @@ cudaError_t ScanEnactor<DerivedEnactorType>::DispatchSpine(
 	typename KernelConfig::T *d_dest,
 	typename KernelConfig::SizeT num_elements)
 {
-	scan::SpineScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
+	SpineScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
 		d_src, d_dest, num_elements);
 
 	return util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__);
@@ -213,7 +214,7 @@ cudaError_t ScanEnactor<DerivedEnactorType>::DispatchDownsweep(
 	typename KernelConfig::T *d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work)
 {
-	scan::DownsweepScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
+	DownsweepScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
 		d_src, d_dest, d_spine, work);
 
 	return util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor Downsweep failed ", __FILE__, __LINE__);
@@ -288,9 +289,9 @@ cudaError_t ScanEnactor<DerivedEnactorType>::ScanPass(
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, reduction::UpsweepReductionKernel<Upsweep>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, scan::SpineScanKernel<Spine>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineScanKernel<Spine>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, scan::DownsweepScanKernel<Downsweep>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepScanKernel<Downsweep>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -411,6 +412,6 @@ cudaError_t ScanEnactor<DerivedEnactorType>::Enact(
 }
 
 
-
-}// namespace b40c
+} // namespace scan 
+} // namespace b40c
 

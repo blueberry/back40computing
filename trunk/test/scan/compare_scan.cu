@@ -21,7 +21,7 @@
 
 
 /******************************************************************************
- * Simple test driver program for *large-problem* scan.
+ * Simple test driver program for scan.
  ******************************************************************************/
 
 #include <stdio.h> 
@@ -66,7 +66,7 @@ void Usage()
 	printf("\t--i\tPerforms the scan operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
-	printf("\t--n\tThe number of bytes to comprise the sample problem\n");
+	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
 	printf("\n");
 }

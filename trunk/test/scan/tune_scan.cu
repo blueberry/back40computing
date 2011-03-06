@@ -27,9 +27,9 @@
 #include <stdio.h> 
 
 // Scan includes
-#include <b40c/arch_dispatch.cuh>
+#include <b40c/util/arch_dispatch.cuh>
 #include <b40c/scan/granularity.cuh>
-#include <b40c/scan_enactor.cuh>
+#include <b40c/scan/scan_enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
