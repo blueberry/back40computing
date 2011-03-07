@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/cta_reduction.cuh>
+#include <b40c/reduction/reduction_cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -34,28 +34,28 @@ namespace reduction {
 /**
  * Spine reduction pass
  */
-template <typename ReductionKernelConfig>
+template <typename KernelConfig>
 __device__ __forceinline__ void SpineReductionPass(
-	typename ReductionKernelConfig::T 		*d_in,
-	typename ReductionKernelConfig::T 		*d_out,
-	typename ReductionKernelConfig::SizeT 	spine_elements)
+	typename KernelConfig::T 		*d_in,
+	typename KernelConfig::T 		*d_out,
+	typename KernelConfig::SizeT 	spine_elements)
 {
-	typedef CtaReduction<ReductionKernelConfig> CtaReduction;
-	typedef typename CtaReduction::SizeT SizeT;
-	typedef typename CtaReduction::T T;
+	typedef ReductionCta<KernelConfig> ReductionCta;
+	typedef typename ReductionCta::SizeT SizeT;
+	typedef typename ReductionCta::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
 	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS];
+	__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
 	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 	// CTA processing abstraction
-	CtaReduction cta(smem_pool, warpscan, d_in, d_out);
+	ReductionCta cta(smem_pool, warpscan, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (CtaReduction::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -65,7 +65,7 @@ __device__ __forceinline__ void SpineReductionPass(
 	while (cta_offset < cta_guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += CtaReduction::TILE_ELEMENTS;
+		cta_offset += ReductionCta::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -85,27 +85,28 @@ __device__ __forceinline__ void SpineReductionPass(
 /**
  * Spine reduction kernel entry point
  */
-template <typename ReductionKernelConfig>
-__launch_bounds__ (ReductionKernelConfig::THREADS, ReductionKernelConfig::CTA_OCCUPANCY)
+template <typename KernelConfig>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void SpineReductionKernel(
-	typename ReductionKernelConfig::T 		*d_in,
-	typename ReductionKernelConfig::T 		*d_out,
-	typename ReductionKernelConfig::SizeT 	spine_elements)
+	typename KernelConfig::T 		*d_in,
+	typename KernelConfig::T 		*d_out,
+	typename KernelConfig::SizeT 	spine_elements)
 {
-	SpineReductionPass<ReductionKernelConfig>(d_in, d_out, spine_elements);
+	SpineReductionPass<KernelConfig>(d_in, d_out, spine_elements);
 }
 
 
 /**
  * Wrapper stub for arbitrary types to quiet the linker
  */
-template <typename ReductionKernelConfig>
+/*
+template <typename KernelConfig>
 void __wrapper__device_stub_SpineReductionKernel(
-		typename ReductionKernelConfig::T *&,
-		typename ReductionKernelConfig::T *&,
-		typename ReductionKernelConfig::SizeT&) {}
-
+		typename KernelConfig::T *&,
+		typename KernelConfig::T *&,
+		typename KernelConfig::SizeT&) {}
+*/
 
 
 

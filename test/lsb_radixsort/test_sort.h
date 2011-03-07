@@ -29,7 +29,6 @@
 #include <stdio.h> 
 
 // Sort includes
-//#include <b40c/sort/granularity_tuned.cuh>
 //#include <b40c/sort_enactor_tuned.cuh>
 
 // Test utils

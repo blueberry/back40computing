@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding reduction granularity configuration
+ * "Metatype" for guiding reduction granularity configuration
  ******************************************************************************/
 
 #pragma once
@@ -29,41 +29,10 @@
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
+#include <b40c/reduction/problem_type.cuh>
 
 namespace b40c {
 namespace reduction {
-
-
-/**
- * Type of reduction problem
- */
-template <
-	typename _T,
-	typename _SizeT,
-	_T _BinaryOp(const _T&, const _T&),
-	_T _Identity()>
-struct ReductionProblemType
-{
-	// The type of data we are operating upon
-	typedef _T T;
-
-	// The integer type we should use to index into data arrays (e.g., size_t, uint32, uint64, etc)
-	typedef _SizeT SizeT;
-
-	// Wrapper for the binary associative reduction operator
-	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return _BinaryOp(a, b);
-	}
-
-	// Wrapper for the identity operator
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return _Identity();
-	}
-};
-
-
 
 /**
  * Reduction kernel granularity configuration meta-type.  Parameterizations of this
@@ -77,8 +46,8 @@ struct ReductionProblemType
  * types.
  */
 template <
-	// ReductionProblemType type parameters
-	typename ReductionProblemType,
+	// ProblemType type parameters
+	typename ProblemType,
 
 	// Tunable parameters
 	int _CTA_OCCUPANCY,
@@ -91,10 +60,10 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct ReductionKernelConfig : ReductionProblemType
+struct KernelConfig : ProblemType
 {
-	typedef ReductionProblemType ProblemType;
-	typedef typename ReductionProblemType::T T;
+	typedef ProblemType ProblemType;
+	typedef typename ProblemType::T T;
 
 	static const int CTA_OCCUPANCY  						= _CTA_OCCUPANCY;
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;

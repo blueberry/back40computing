@@ -27,7 +27,7 @@
 
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
-#include <b40c/scan/granularity.cuh>
+#include <b40c/scan/problem_config.cuh>
 #include <b40c/scan/kernel_downsweep.cuh>
 #include <b40c/scan/kernel_spine.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>

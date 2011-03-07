@@ -111,6 +111,10 @@ ifeq ($(keep), 1)
     NVCCFLAGS += -keep
 endif
 
+ifeq ($(verbose), 1)
+    NVCCFLAGS += -v
+endif
+
 ifdef maxregisters
     NVCCFLAGS += -maxrregcount $(maxregisters)
 endif

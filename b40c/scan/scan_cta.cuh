@@ -22,30 +22,30 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Derivation of ScanKernelConfig that encapsulates tile-processing routines
+ * Tile-processing functionality for scan kernels
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/reduction/reduction_utils.cuh>
 #include <b40c/scan/scan_utils.cuh>
-#include <b40c/scan/cta_scan_base.cuh>
+#include <b40c/scan/collective_scan.cuh>
 
 namespace b40c {
 namespace scan {
 
 
 /**
- * Derivation of ScanKernelConfig that encapsulates tile-processing
+ * Derivation of KernelConfig that encapsulates tile-processing
  * routines
  */
-template <typename ScanKernelConfig>
-struct CtaScan :
-	ScanKernelConfig,
-	CtaScanBase<typename ScanKernelConfig::SrtsGrid>
+template <typename KernelConfig>
+struct ScanCta :
+	KernelConfig,
+	CollectiveScan<typename KernelConfig::SrtsGrid>
 {
-	typedef typename ScanKernelConfig::T T;
-	typedef typename ScanKernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	// The value we will accumulate (in raking threads only)
 	T carry;
@@ -55,7 +55,7 @@ struct CtaScan :
 	T *d_out;
 
 	// Tile of scan elements
-	T data[ScanKernelConfig::LOADS_PER_TILE][ScanKernelConfig::LOAD_VEC_SIZE];
+	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	/**
 	 * Process a single tile
@@ -67,14 +67,14 @@ struct CtaScan :
 	{
 
 		// Load tile
-		util::LoadTile<T, SizeT, CtaScan::LOG_LOADS_PER_TILE, CtaScan::LOG_LOAD_VEC_SIZE, CtaScan::THREADS, CtaScan::READ_MODIFIER, UNGUARDED_IO>::Invoke(
+		util::LoadTile<T, SizeT, ScanCta::LOG_LOADS_PER_TILE, ScanCta::LOG_LOAD_VEC_SIZE, ScanCta::THREADS, ScanCta::READ_MODIFIER, UNGUARDED_IO>::Invoke(
 			data, d_in, cta_offset, out_of_bounds);
 
 		// Scan tile
-		this->template ScanTileWithCarry<CtaScan::LOAD_VEC_SIZE, CtaScan::BinaryOp>(data, carry);
+		this->template ScanTileWithCarry<ScanCta::LOAD_VEC_SIZE, ScanCta::BinaryOp>(data, carry);
 
 		// Store tile
-		util::StoreTile<T, SizeT, CtaScan::LOG_LOADS_PER_TILE, CtaScan::LOG_LOAD_VEC_SIZE, CtaScan::THREADS, CtaScan::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
+		util::StoreTile<T, SizeT, ScanCta::LOG_LOADS_PER_TILE, ScanCta::LOG_LOAD_VEC_SIZE, ScanCta::THREADS, ScanCta::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
 			data, d_out, cta_offset, out_of_bounds);
 	}
 
@@ -82,18 +82,18 @@ struct CtaScan :
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaScan(
-		uint4 smem_pool[ScanKernelConfig::SMEM_QUADS],
+	__device__ __forceinline__ ScanCta(
+		uint4 smem_pool[KernelConfig::SMEM_QUADS],
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		T *d_in,
 		T *d_out,
-		T spine_partial = CtaScan::Identity()) :
-			CtaScanBase<typename CtaScan::SrtsGrid>(smem_pool, warpscan),
+		T spine_partial = ScanCta::Identity()) :
+			CollectiveScan<typename ScanCta::SrtsGrid>(smem_pool, warpscan),
 			carry(spine_partial),			// Seed carry with spine partial
 			d_in(d_in),
 			d_out(d_out)
 	{
-		this->template Initialize<CtaScan::Identity>();
+		this->template Initialize<ScanCta::Identity>();
 	}
 
 };

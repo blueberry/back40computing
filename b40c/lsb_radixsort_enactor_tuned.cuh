@@ -44,10 +44,10 @@
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
 /*
-#include <b40c/reduction/granularity_tuned.cuh>
+#include <b40c/reduction/config_tuned.cuh>
 #include <b40c/radix_sort/lsb_radix_sort_enactor.cuh>
 #include <b40c/radix_sort/granularity.cuh>
-#include <b40c/radix_sort/granularity_tuned.cuh>
+#include <b40c/radix_sort/config_tuned.cuh>
 */
 
 namespace b40c {

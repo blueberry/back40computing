@@ -346,12 +346,6 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
 	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
 
-#if __B40C_CUDA_ARCH__ < 200
-	typedef unsigned int DeviceSizeT;
-#else
-	typedef SizeT DeviceSizeT;
-#endif
-
 	// Iterate over vec-elements
 	template <int STORE, int VEC>
 	struct Iterate {
@@ -398,8 +392,8 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_in,
-		DeviceSizeT cta_offset,
-		DeviceSizeT out_of_bounds)
+		SizeT cta_offset,
+		SizeT out_of_bounds)
 	{
 		Iterate<0, 0>::Invoke(data, d_in, cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE), out_of_bounds);
 	} 

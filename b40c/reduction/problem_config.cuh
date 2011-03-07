@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- *  Reduction Granularity Configuration
+ * Reduction Problem Granularity Configuration Meta-type
  ******************************************************************************/
 
 #pragma once
@@ -34,7 +34,7 @@ namespace reduction {
 
 
 /**
- * Unified reduction granularity configuration type.
+ * Unified reduction problem granularity configuration type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep and spine kernels, this type includes enactor tuning parameters that
@@ -43,7 +43,7 @@ namespace reduction {
  * reduction pass.
  */
 template <
-	typename ReductionProblemType,
+	typename ProblemType,
 
 	// Common
 	util::ld::CacheModifier READ_MODIFIER,
@@ -66,15 +66,16 @@ template <
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE,
 	int SPINE_LOG_RAKING_THREADS>
-struct ReductionConfig
+
+struct ProblemConfig
 {
 	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
 	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
 	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
 
 	// Kernel config for the upsweep reduction kernel
-	typedef ReductionKernelConfig <
-		ReductionProblemType,
+	typedef KernelConfig <
+		ProblemType,
 		UPSWEEP_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -87,8 +88,8 @@ struct ReductionConfig
 			Upsweep;
 
 	// Kernel config for the spine reduction kernel
-	typedef ReductionKernelConfig <
-		ReductionProblemType,
+	typedef KernelConfig <
+		ProblemType,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,

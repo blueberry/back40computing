@@ -27,7 +27,7 @@
 
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/reduction/cta_reduction.cuh>
+#include <b40c/reduction/reduction_cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -37,26 +37,26 @@ namespace reduction {
 /**
  * Upsweep reduction pass (non-workstealing)
  */
-template <typename ReductionKernelConfig, bool WORK_STEALING>
+template <typename KernelConfig, bool WORK_STEALING>
 struct UpsweepReductionPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename ReductionKernelConfig::T 			*&d_in,
-		typename ReductionKernelConfig::T 			*&d_out,
-		typename ReductionKernelConfig::SizeT 		* __restrict &d_work_progress,
-		util::CtaWorkDistribution<typename ReductionKernelConfig::SizeT> &work_decomposition,
+		typename KernelConfig::T 			*&d_in,
+		typename KernelConfig::T 			*&d_out,
+		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
+		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		const int &progress_selector)
 	{
-		typedef CtaReduction<ReductionKernelConfig> CtaReduction;
-		typedef typename CtaReduction::T T;
-		typedef typename CtaReduction::SizeT SizeT;
+		typedef ReductionCta<KernelConfig> ReductionCta;
+		typedef typename ReductionCta::T T;
+		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS];
+		__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
 		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 		// CTA processing abstraction
-		CtaReduction cta(smem_pool, warpscan, d_in, d_out);
+		ReductionCta cta(smem_pool, warpscan, d_in, d_out);
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -64,7 +64,7 @@ struct UpsweepReductionPass
 		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 		SizeT guarded_elements;		// Number of elements in partially-full tile
 
-		work_decomposition.GetCtaWorkLimits<CtaReduction::LOG_TILE_ELEMENTS, CtaReduction::LOG_SCHEDULE_GRANULARITY>(
+		work_decomposition.GetCtaWorkLimits<ReductionCta::LOG_TILE_ELEMENTS, ReductionCta::LOG_SCHEDULE_GRANULARITY>(
 			cta_offset, cta_elements, guarded_offset, guarded_elements);
 
 		SizeT out_of_bounds = cta_offset + cta_elements;
@@ -73,7 +73,7 @@ struct UpsweepReductionPass
 		while (cta_offset < guarded_offset) {
 
 			cta.ProcessTile<true>(cta_offset, out_of_bounds);
-			cta_offset += CtaReduction::TILE_ELEMENTS;
+			cta_offset += ReductionCta::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
@@ -90,26 +90,26 @@ struct UpsweepReductionPass
 /**
  * Upsweep reduction pass (workstealing)
  */
-template <typename ReductionKernelConfig>
-struct UpsweepReductionPass <ReductionKernelConfig, true>
+template <typename KernelConfig>
+struct UpsweepReductionPass <KernelConfig, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename ReductionKernelConfig::T 			*&d_in,
-		typename ReductionKernelConfig::T 			*&d_out,
-		typename ReductionKernelConfig::SizeT 		* __restrict &d_work_progress,
-		const util::CtaWorkDistribution<typename ReductionKernelConfig::SizeT> &work_decomposition,
+		typename KernelConfig::T 			*&d_in,
+		typename KernelConfig::T 			*&d_out,
+		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
+		const util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		const int &progress_selector)
 	{
-		typedef CtaReduction<ReductionKernelConfig> CtaReduction;
-		typedef typename CtaReduction::T T;
-		typedef typename CtaReduction::SizeT SizeT;
+		typedef ReductionCta<KernelConfig> ReductionCta;
+		typedef typename ReductionCta::T T;
+		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS];
+		__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
 		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 		// CTA processing abstraction
-		CtaReduction cta(smem_pool, warpscan, d_in, d_out);
+		ReductionCta cta(smem_pool, warpscan, d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT cta_offset;
@@ -120,12 +120,12 @@ struct UpsweepReductionPass <ReductionKernelConfig, true>
 		}
 
 		// Steal full-tiles of work, incrementing progress counter
-		SizeT unguarded_elements = work_decomposition.num_elements & (~(CtaReduction::TILE_ELEMENTS - 1));
+		SizeT unguarded_elements = work_decomposition.num_elements & (~(ReductionCta::TILE_ELEMENTS - 1));
 		while (true) {
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = util::AtomicInt<SizeT>::Add(d_work_progress + progress_selector, CtaReduction::TILE_ELEMENTS);
+				cta_offset = util::AtomicInt<SizeT>::Add(d_work_progress + progress_selector, ReductionCta::TILE_ELEMENTS);
 			}
 
 			__syncthreads();		// Protect cta_offset
@@ -156,19 +156,19 @@ struct UpsweepReductionPass <ReductionKernelConfig, true>
 /**
  * Upsweep reduction kernel entry point
  */
-template <typename ReductionKernelConfig>
-__launch_bounds__ (ReductionKernelConfig::THREADS, ReductionKernelConfig::CTA_OCCUPANCY)
+template <typename KernelConfig>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepReductionKernel(
-	typename ReductionKernelConfig::T 			*d_in,
-	typename ReductionKernelConfig::T 			*d_spine,
-	typename ReductionKernelConfig::SizeT 		* __restrict d_work_progress,
-	util::CtaWorkDistribution<typename ReductionKernelConfig::SizeT> work_decomposition,
+	typename KernelConfig::T 			*d_in,
+	typename KernelConfig::T 			*d_spine,
+	typename KernelConfig::SizeT 		* __restrict d_work_progress,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
 	int progress_selector)
 {
-	typename ReductionKernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
+	typename KernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
 
-	UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
+	UpsweepReductionPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine_partial,
 		d_work_progress,
@@ -180,14 +180,15 @@ void UpsweepReductionKernel(
 /**
  * Wrapper stub for arbitrary types to quiet the linker
  */
-template <typename ReductionKernelConfig>
+/*
+template <typename KernelConfig>
 void __wrapper__device_stub_UpsweepReductionKernel(
-	typename ReductionKernelConfig::T 			*&,
-	typename ReductionKernelConfig::T 			*&,
-	typename ReductionKernelConfig::SizeT 		* __restrict &,
-	util::CtaWorkDistribution<typename ReductionKernelConfig::SizeT> &,
+	typename KernelConfig::T 			*&,
+	typename KernelConfig::T 			*&,
+	typename KernelConfig::SizeT 		* __restrict &,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &,
 	int &) {}
-
+*/
 
 
 } // namespace reduction
