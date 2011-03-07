@@ -28,7 +28,7 @@
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
 #include <b40c/reduction/reduction_enactor.cuh>
-#include <b40c/reduction/granularity.cuh>
+#include <b40c/reduction/problem_config_tuned.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/reduction/kernel_spine.cuh>
 
@@ -143,6 +143,7 @@ public:
 		T *d_src,
 		size_t num_bytes,
 		int max_grid_size = 0);
+
 };
 
 
@@ -156,10 +157,10 @@ namespace reduction_enactor_tuned {
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ReductionEnactorTuned, typename ReductionProblemType>
+template <typename ReductionEnactorTuned, typename ProblemType>
 struct Detail
 {
-	typedef ReductionProblemType ProblemType;
+	typedef ProblemType Problem;
 	
 	ReductionEnactorTuned *enactor;
 	int max_grid_size;
@@ -201,7 +202,7 @@ struct ConfigResolver
 	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain tuned granularity type
-		typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef reduction::TunedConfig<typename DetailType::Problem, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Enact<TunedConfig>(
@@ -226,14 +227,14 @@ struct ConfigResolver <reduction::UNKNOWN>
 	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain large tuned granularity type
-		typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, reduction::LARGE> LargeConfig;
+		typedef reduction::TunedConfig<typename DetailType::Problem, CUDA_ARCH, reduction::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS * LargeConfig::Upsweep::CTA_OCCUPANCY * detail.enactor->SmCount();
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef reduction::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, reduction::SMALL> SmallConfig;
+			typedef reduction::TunedConfig<typename DetailType::Problem, CUDA_ARCH, reduction::SMALL> SmallConfig;
 			return detail.enactor->template Enact<SmallConfig>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -264,8 +265,8 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 {
 	using namespace reduction;
 
-	typedef typename TunedConfig::Upsweep::ProblemType ReductionProblemType;
-	typedef typename ReductionProblemType::T T;
+	typedef typename TunedConfig::Upsweep::ProblemType ProblemType;
+	typedef typename ProblemType::T T;
 
 	cudaError_t retval = cudaSuccess;
 
@@ -274,7 +275,7 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 
 			// No need to scan the spine if there's only one CTA in the upsweep grid
 			int dynamic_smem = 0;
-			TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<work.grid_size, TunedConfig::Spine::THREADS, dynamic_smem>>>(
 				d_src, d_dest, work.num_elements);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
@@ -292,9 +293,9 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ReductionEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ReductionEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(upsweep_kernel_attrs.sharedSizeBytes, spine_kernel_attrs.sharedSizeBytes);
@@ -309,13 +310,13 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 			}
 
 			// Upsweep reduction into spine
-			TunedUpsweepReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
-			TunedSpineReductionKernel<ReductionProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) d_spine, d_dest, spine_elements);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
@@ -351,8 +352,8 @@ cudaError_t ReductionEnactorTuned::Enact(
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef reduction::ReductionProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
-	typedef reduction_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
+	typedef reduction::ProblemType<T, SizeT, BinaryOp, Identity> Problem;
+	typedef reduction_enactor_tuned::Detail<BaseEnactorType, Problem> Detail;			// Use base type pointer to ourselves
 	typedef reduction_enactor_tuned::Storage<T, SizeT> Storage;
 	typedef reduction_enactor_tuned::ConfigResolver<PROB_SIZE_GENRE> Resolver;
 

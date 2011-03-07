@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuned Reduction Granularity Types
+ * Tuned Reduction Problem Granularity Configuration Types
  ******************************************************************************/
 
 #pragma once
@@ -31,7 +31,8 @@
 
 #include <b40c/reduction/kernel_spine.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
-#include <b40c/reduction/granularity.cuh>
+#include <b40c/reduction/problem_config.cuh>
+#include <b40c/reduction/problem_type.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -86,11 +87,11 @@ struct ArchFamilyClassifier
  * Granularity parameterization type
  */
 template <
-	typename ReductionProblemType,
+	typename ProblemType,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename T = typename ReductionProblemType::T,
-	int T_SIZE = sizeof(typename ReductionProblemType::T)>
+	typename T = typename ProblemType::T,
+	int T_SIZE = sizeof(typename ProblemType::T)>
 struct TunedConfig;
 
 
@@ -98,9 +99,9 @@ struct TunedConfig;
  * Default, catch-all granularity parameterization type.  Defers to the
  * architecture "family" that we know we have specialization type(s) for below.
  */
-template <typename ReductionProblemType, int CUDA_ARCH, ProbSizeGenre PROB_SIZE_GENRE, typename T, int T_SIZE>
+template <typename ProblemType, int CUDA_ARCH, ProbSizeGenre PROB_SIZE_GENRE, typename T, int T_SIZE>
 struct TunedConfig : TunedConfig<
-	ReductionProblemType,
+	ProblemType,
 	ArchFamilyClassifier<CUDA_ARCH>::FAMILY,
 	PROB_SIZE_GENRE,
 	T,
@@ -112,32 +113,32 @@ struct TunedConfig : TunedConfig<
 //-----------------------------------------------------------------------------
 
 // Large problems, 8B+ data
-template <typename ReductionProblemType, typename T, int T_SIZE>
-struct TunedConfig<ReductionProblemType, SM20, LARGE, T, T_SIZE>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, true, false, true, false, 8, 7, 0, 2, 5, 9, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 // Large problems, 4B data
-template <typename ReductionProblemType, typename T>
-struct TunedConfig<ReductionProblemType, SM20, LARGE, T, 4>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, true, true, false, false, 8, 7, 1, 2, 5, 10, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
 // Large problems, 2B data
-template <typename ReductionProblemType, typename T>
-struct TunedConfig<ReductionProblemType, SM20, LARGE, T, 2>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, true, true, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, true, true, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
 // Large problems, 1B data
-template <typename ReductionProblemType, typename T>
-struct TunedConfig<ReductionProblemType, SM20, LARGE, T, 1>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -145,9 +146,9 @@ struct TunedConfig<ReductionProblemType, SM20, LARGE, T, 1>
 
 
 // Small problems
-template <typename ReductionProblemType, typename T, int T_SIZE>
-struct TunedConfig<ReductionProblemType, SM20, SMALL, T, T_SIZE>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, true, false, false, 8, 5, 2, 1, 5, 8, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -158,33 +159,33 @@ struct TunedConfig<ReductionProblemType, SM20, SMALL, T, T_SIZE>
 //-----------------------------------------------------------------------------
 
 // Large problems, 4B+
-template <typename ReductionProblemType, typename T, int T_SIZE>
-struct TunedConfig<ReductionProblemType, SM13, LARGE, T, T_SIZE>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
 // Large problems, 2B
-template <typename ReductionProblemType, typename T>
-struct TunedConfig<ReductionProblemType, SM13, LARGE, T, 2>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 1, 2, 5, 9, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 1, 2, 5, 9, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
 // Large problems, 1B
-template <typename ReductionProblemType, typename T>
-struct TunedConfig<ReductionProblemType, SM13, LARGE, T, 1>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 4, 8, 2, 2, 5, 12, 8, 0, 1, 5>
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 4, 8, 2, 2, 5, 12, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
 // Small problems
-template <typename ReductionProblemType, typename T, int T_SIZE>
-struct TunedConfig<ReductionProblemType, SM13, SMALL, T, T_SIZE>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 5, 0, 2, 5, 7, 8, 0, 1, 5>
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 5, 0, 2, 5, 7, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -196,9 +197,9 @@ struct TunedConfig<ReductionProblemType, SM13, SMALL, T, T_SIZE>
 //-----------------------------------------------------------------------------
 
 
-template <typename ReductionProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct TunedConfig<ReductionProblemType, SM10, _PROB_SIZE_GENRE, T, T_SIZE>
-	: ReductionConfig<ReductionProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
+template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM10, _PROB_SIZE_GENRE, T, T_SIZE>
+	: ProblemConfig<ProblemType, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 6, 0, 2, 5, 8, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
@@ -219,21 +220,21 @@ struct TunedConfig<ReductionProblemType, SM10, _PROB_SIZE_GENRE, T, T_SIZE>
 /**
  * Tuned upsweep reduction kernel entry point
  */
-template <typename ReductionProblemType, int PROB_SIZE_GENRE>
+template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ReductionConfig::Upsweep::THREADS),
-	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ReductionConfig::Upsweep::CTA_OCCUPANCY))
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepReductionKernel(
-	typename ReductionProblemType::T 			*d_in,
-	typename ReductionProblemType::T 			*d_spine,
-	typename ReductionProblemType::SizeT 		* __restrict d_work_progress,
-	util::CtaWorkDistribution<typename ReductionProblemType::SizeT> work_decomposition,
+	typename ProblemType::T 			*d_in,
+	typename ProblemType::T 			*d_spine,
+	typename ProblemType::SizeT 		* __restrict d_work_progress,
+	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition,
 	int progress_selector)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
+	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
 
-	typename ReductionProblemType::T *d_spine_partial = d_spine + blockIdx.x;
+	typename ProblemType::T *d_spine_partial = d_spine + blockIdx.x;
 
 	UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
 		d_in,
@@ -247,17 +248,17 @@ __global__ void TunedUpsweepReductionKernel(
 /**
  * Tuned spine reduction kernel entry point
  */
-template <typename ReductionProblemType, int PROB_SIZE_GENRE>
+template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ReductionConfig::Spine::THREADS),
-	(TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ReductionConfig::Spine::CTA_OCCUPANCY))
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineReductionKernel(
-	typename ReductionProblemType::T 		*d_spine,
-	typename ReductionProblemType::T 		*d_out,
-	typename ReductionProblemType::SizeT 	spine_elements)
+	typename ProblemType::T 		*d_spine,
+	typename ProblemType::T 		*d_out,
+	typename ProblemType::SizeT 	spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ReductionProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine ReductionKernelConfig;
+	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine ReductionKernelConfig;
 
 	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
 }

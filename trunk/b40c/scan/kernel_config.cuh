@@ -30,24 +30,10 @@
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 #include <b40c/reduction/kernel_config.cuh>
+#include <b40c/scan/problem_type.cuh>
 
 namespace b40c {
 namespace scan {
-
-
-/**
- * Type of scan problem
- */
-template <
-	typename T,
-	typename SizeT,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-struct ScanProblemType : reduction::ReductionProblemType<T, SizeT, BinaryOp, Identity>
-{
-};
-
-
 
 /**
  * Scan kernel granularity configuration meta-type.  Parameterizations of this
@@ -61,8 +47,8 @@ struct ScanProblemType : reduction::ReductionProblemType<T, SizeT, BinaryOp, Ide
  * types.
  */
 template <
-	// ScanProblemType type parameters
-	typename ScanProblemType,
+	// ProblemType type parameters
+	typename ProblemType,
 
 	// Tunable parameters
 	int _CTA_OCCUPANCY,
@@ -74,10 +60,10 @@ template <
 	util::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct ScanKernelConfig : ScanProblemType
+struct KernelConfig : ProblemType
 {
-	typedef ScanProblemType ProblemType;
-	typedef typename ScanProblemType::T T;
+	typedef ProblemType ProblemType;
+	typedef typename ProblemType::T T;
 
 	static const int CTA_OCCUPANCY  						= _CTA_OCCUPANCY;
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;

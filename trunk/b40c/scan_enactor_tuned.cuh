@@ -27,10 +27,9 @@
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/reduction/granularity_tuned.cuh>
+#include <b40c/reduction/problem_config_tuned.cuh>
 #include <b40c/scan/scan_enactor.cuh>
-#include <b40c/scan/granularity.cuh>
-#include <b40c/scan/granularity_tuned.cuh>
+#include <b40c/scan/problem_config_tuned.cuh>
 
 namespace b40c {
 
@@ -156,10 +155,10 @@ namespace scan_enactor_tuned {
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ScanEnactorTuned, typename ScanProblemType>
+template <typename ScanEnactorTuned, typename ProblemType>
 struct Detail
 {
-	typedef ScanProblemType ProblemType;
+	typedef ProblemType Problem;
 	
 	ScanEnactorTuned *enactor;
 	int max_grid_size;
@@ -204,7 +203,7 @@ struct ConfigResolver
 	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain tuned granularity type
-		typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef scan::TunedConfig<typename DetailType::Problem, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Enact<TunedConfig>(
@@ -229,14 +228,14 @@ struct ConfigResolver <scan::UNKNOWN>
 	static cudaError_t Enact(StorageType &storage, DetailType &detail)
 	{
 		// Obtain large tuned granularity type
-		typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, scan::LARGE> LargeConfig;
+		typedef scan::TunedConfig<typename DetailType::Problem, CUDA_ARCH, scan::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS * LargeConfig::Upsweep::CTA_OCCUPANCY * detail.enactor->SmCount();
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef scan::TunedConfig<typename DetailType::ProblemType, CUDA_ARCH, scan::SMALL> SmallConfig;
+			typedef scan::TunedConfig<typename DetailType::Problem, CUDA_ARCH, scan::SMALL> SmallConfig;
 			return detail.enactor->template Enact<SmallConfig>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -267,8 +266,8 @@ cudaError_t ScanEnactorTuned::ScanPass(
 {
 	using namespace scan;
 
-	typedef typename TunedConfig::Downsweep::ProblemType ScanProblemType;
-	typedef typename ScanProblemType::T T;
+	typedef typename TunedConfig::Downsweep::ProblemType ProblemType;
+	typedef typename ProblemType::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -276,7 +275,7 @@ cudaError_t ScanEnactorTuned::ScanPass(
 
 			// No need to upsweep reduce or downsweep scan if there's only one CTA in the sweep grid
 			int dynamic_smem = 0;
-			TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<work.grid_size, TunedConfig::Spine::THREADS, dynamic_smem>>>(
 				d_src, d_dest, work.num_elements);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
@@ -294,11 +293,11 @@ cudaError_t ScanEnactorTuned::ScanPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -316,19 +315,19 @@ cudaError_t ScanEnactorTuned::ScanPass(
 			}
 
 			// Upsweep scan into spine
-			TunedUpsweepReductionKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) d_spine, NULL, work, 0);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
-			TunedSpineScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) d_spine, (T*) d_spine, spine_elements);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
-			TunedDownsweepScanKernel<ScanProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) d_spine, work);
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
@@ -364,8 +363,8 @@ cudaError_t ScanEnactorTuned::Enact(
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef scan::ScanProblemType<T, SizeT, BinaryOp, Identity> ProblemType;
-	typedef scan_enactor_tuned::Detail<BaseEnactorType, ProblemType> Detail;			// Use base type pointer to ourselves
+	typedef scan::ProblemType<T, SizeT, BinaryOp, Identity> Problem;
+	typedef scan_enactor_tuned::Detail<BaseEnactorType, Problem> Detail;			// Use base type pointer to ourselves
 	typedef scan_enactor_tuned::Storage<T, SizeT> Storage;
 	typedef scan_enactor_tuned::ConfigResolver<PROB_SIZE_GENRE> Resolver;
 

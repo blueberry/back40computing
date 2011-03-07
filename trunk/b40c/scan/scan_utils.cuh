@@ -222,7 +222,7 @@ template <
 	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
 __device__ __forceinline__ void WarpRakeAndScan(
 	typename SrtsGrid::T *raking_seg,
-	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
+	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
 {
 	typedef typename SrtsGrid::T T;
 
@@ -252,7 +252,7 @@ template <
 	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
 __device__ __forceinline__ void WarpRakeAndScan(
 	typename SrtsGrid::T *raking_seg,
-	typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
+	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
 	typename SrtsGrid::T &carry)
 {
 	typedef typename SrtsGrid::T T;

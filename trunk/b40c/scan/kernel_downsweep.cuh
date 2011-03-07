@@ -26,7 +26,7 @@
 #pragma once
 
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/scan/cta_scan.cuh>
+#include <b40c/scan/scan_cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -35,26 +35,26 @@ namespace scan {
 /**
  * Downsweep scan pass
  */
-template <typename ScanKernelConfig>
+template <typename KernelConfig>
 __device__ __forceinline__ void DownsweepScanPass(
-	typename ScanKernelConfig::T 			* &d_in,
-	typename ScanKernelConfig::T 			* &d_out,
-	typename ScanKernelConfig::T 			* __restrict &d_spine_partial,
-	util::CtaWorkDistribution<typename ScanKernelConfig::SizeT> &work_decomposition)
+	typename KernelConfig::T 			* &d_in,
+	typename KernelConfig::T 			* &d_out,
+	typename KernelConfig::T 			* __restrict &d_spine_partial,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
-	typedef CtaScan<ScanKernelConfig> CtaScan;
-	typedef typename CtaScan::T T;
-	typedef typename CtaScan::SizeT SizeT;
+	typedef ScanCta<KernelConfig> ScanCta;
+	typedef typename ScanCta::T T;
+	typedef typename ScanCta::SizeT SizeT;
 
 	T spine_partial;
-	util::ModifiedLoad<T, ScanKernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+	util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
 
 	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[ScanKernelConfig::SMEM_QUADS];
+	__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
 	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 	// CTA processing abstraction
-	CtaScan cta(smem_pool, warpscan, d_in, d_out, spine_partial);
+	ScanCta cta(smem_pool, warpscan, d_in, d_out, spine_partial);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -62,7 +62,7 @@ __device__ __forceinline__ void DownsweepScanPass(
 	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 	SizeT guarded_elements;		// Number of elements in partially-full tile
 
-	work_decomposition.GetCtaWorkLimits<CtaScan::LOG_TILE_ELEMENTS, CtaScan::LOG_SCHEDULE_GRANULARITY>(
+	work_decomposition.GetCtaWorkLimits<ScanCta::LOG_TILE_ELEMENTS, ScanCta::LOG_SCHEDULE_GRANULARITY>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 
 	SizeT out_of_bounds = cta_offset + cta_elements;
@@ -71,7 +71,7 @@ __device__ __forceinline__ void DownsweepScanPass(
 	while (cta_offset < guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, out_of_bounds);
-		cta_offset += CtaScan::TILE_ELEMENTS;
+		cta_offset += ScanCta::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -89,30 +89,30 @@ __device__ __forceinline__ void DownsweepScanPass(
 /**
  * Downsweep scan kernel entry point
  */
-template <typename ScanKernelConfig>
-__launch_bounds__ (ScanKernelConfig::THREADS, ScanKernelConfig::CTA_OCCUPANCY)
+template <typename KernelConfig>
+__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void DownsweepScanKernel(
-	typename ScanKernelConfig::T 			* d_in,
-	typename ScanKernelConfig::T 			* d_out,
-	typename ScanKernelConfig::T 			* __restrict d_spine,
-	util::CtaWorkDistribution<typename ScanKernelConfig::SizeT> work_decomposition)
+	typename KernelConfig::T 			* d_in,
+	typename KernelConfig::T 			* d_out,
+	typename KernelConfig::T 			* __restrict d_spine,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
-	typename ScanKernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
+	typename KernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
 
-	DownsweepScanPass<ScanKernelConfig>(d_in, d_out, d_spine_partial, work_decomposition);
+	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine_partial, work_decomposition);
 }
 
 
 /**
  * Wrapper stub for arbitrary types to quiet the linker
  */
-template <typename ScanKernelConfig>
+template <typename KernelConfig>
 void __wrapper__device_stub_DownsweepScanKernel(
-	typename ScanKernelConfig::T 			* &,
-	typename ScanKernelConfig::T 			* &,
-	typename ScanKernelConfig::T 			* __restrict &,
-	util::CtaWorkDistribution<typename ScanKernelConfig::SizeT> &) {}
+	typename KernelConfig::T 			* &,
+	typename KernelConfig::T 			* &,
+	typename KernelConfig::T 			* __restrict &,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &) {}
 
 
 

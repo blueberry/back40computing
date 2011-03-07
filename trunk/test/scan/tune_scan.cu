@@ -28,7 +28,7 @@
 
 // Scan includes
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/scan/granularity.cuh>
+#include <b40c/scan/problem_config.cuh>
 #include <b40c/scan/scan_enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
@@ -162,7 +162,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneProblemDetail : public ScanEnactor<TuneProblemDetail<T, OpType> >
+class TuneProblemDetail : public scan::ScanEnactor<TuneProblemDetail<T, OpType> >
 {
 public:
 
@@ -212,7 +212,8 @@ public:
 	struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
 		enum {
 			MIN = 0,
-			MAX = 1
+			MAX = MIN
+//			MAX = 1
 		};
 	};
 
@@ -258,7 +259,8 @@ public:
 	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+			MAX = MIN
+//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -294,7 +296,8 @@ public:
 	struct Ranges<ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
+			MAX = MIN
+//			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -309,16 +312,16 @@ public:
 	/**
 	 * Timed scan for applying a specific granularity configuration type
 	 */
-	template <typename ScanConfig>
+	template <typename ProblemConfig>
 	void TimedScan()
 	{
 		printf("%lu, ", (unsigned long) sizeof(T));
-		ScanConfig::Print();
+		ProblemConfig::Print();
 		fflush(stdout);
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ScanConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -337,7 +340,7 @@ public:
 			cudaEventRecord(start_event, 0);
 
 			// Call the scan API routine
-			if (this->template Enact<ScanConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 				exit(1);
 			}
 
@@ -390,7 +393,8 @@ public:
 //			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 			0;
 		const int C_UNIFORM_GRID_SIZE =
-			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+//			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 //			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 			0;
@@ -445,14 +449,14 @@ public:
 		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		
 		// Establish the problem type
-		typedef scan::ScanProblemType<
+		typedef scan::ProblemType<
 			T,
 			size_t,
 			OpType::BinaryOp,
-			OpType::Identity> ScanProblemType;
+			OpType::Identity> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef scan::ScanConfig <ScanProblemType,
+		typedef scan::ProblemConfig <ProblemType,
 			(util::ld::CacheModifier) C_READ_MODIFIER,
 			(util::st::CacheModifier) C_WRITE_MODIFIER,
 			C_UNIFORM_SMEM_ALLOCATION,
@@ -475,10 +479,46 @@ public:
 			C_DOWNSWEEP_LOG_THREADS,
 			C_DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 			C_DOWNSWEEP_LOG_LOADS_PER_TILE,
-			C_DOWNSWEEP_LOG_RAKING_THREADS> ScanConfig;
+			C_DOWNSWEEP_LOG_RAKING_THREADS> ProblemConfig;
+
+		// Reestablish the granularity configuration type with occupancy levels adjusted for smem sizes
+		const int UPSWEEP_BYTES = ProblemConfig::Upsweep::SMEM_QUADS * 16;
+		const int C_UPSWEEP_CTA_OCCUPANCY2 = B40C_MAX(1, B40C_MIN(C_UPSWEEP_CTA_OCCUPANCY, (B40C_SMEM_BYTES(TUNE_ARCH) / UPSWEEP_BYTES)));
+
+		if (C_UPSWEEP_CTA_OCCUPANCY2 < C_UPSWEEP_CTA_OCCUPANCY) printf("Downgraded downsweep CTA occupancy from %d to %d\n", C_UPSWEEP_CTA_OCCUPANCY, C_UPSWEEP_CTA_OCCUPANCY2);
+
+		const int DOWNSWEEP_BYTES = ProblemConfig::Downsweep::SMEM_QUADS * 16;
+		const int C_DOWNSWEEP_CTA_OCCUPANCY2 = B40C_MAX(1, B40C_MIN(C_DOWNSWEEP_CTA_OCCUPANCY, (B40C_SMEM_BYTES(TUNE_ARCH) / DOWNSWEEP_BYTES)));
+
+		if (C_DOWNSWEEP_CTA_OCCUPANCY2 < C_DOWNSWEEP_CTA_OCCUPANCY) printf("Downgraded downsweep CTA occupancy from %d to %d\n", C_DOWNSWEEP_CTA_OCCUPANCY, C_DOWNSWEEP_CTA_OCCUPANCY2);
+
+		typedef scan::ProblemConfig <ProblemType,
+			(util::ld::CacheModifier) C_READ_MODIFIER,
+			(util::st::CacheModifier) C_WRITE_MODIFIER,
+			C_UNIFORM_SMEM_ALLOCATION,
+			C_UNIFORM_GRID_SIZE,
+			C_OVERSUBSCRIBED_GRID_SIZE,
+			C_LOG_SCHEDULE_GRANULARITY,
+
+			C_UPSWEEP_CTA_OCCUPANCY2,
+			C_UPSWEEP_LOG_THREADS,
+			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
+			C_UPSWEEP_LOG_LOADS_PER_TILE,
+			C_UPSWEEP_LOG_RAKING_THREADS,
+
+			C_SPINE_LOG_THREADS,
+			C_SPINE_LOG_LOAD_VEC_SIZE,
+			C_SPINE_LOG_LOADS_PER_TILE,
+			C_SPINE_LOG_RAKING_THREADS,
+
+			C_DOWNSWEEP_CTA_OCCUPANCY2,
+			C_DOWNSWEEP_LOG_THREADS,
+			C_DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+			C_DOWNSWEEP_LOG_LOADS_PER_TILE,
+			C_DOWNSWEEP_LOG_RAKING_THREADS> AdjustedConfig;
 
 		// Invoke this config
-		TimedScan<ScanConfig>();
+		TimedScan<AdjustedConfig>();
 	}
 };
 

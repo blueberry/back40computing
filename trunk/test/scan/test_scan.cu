@@ -27,7 +27,6 @@
 #include <stdio.h> 
 
 // Scan includes
-#include <b40c/scan/granularity_tuned.cuh>
 #include <b40c/scan_enactor_tuned.cuh>
 
 // Test utils

@@ -27,7 +27,7 @@
 #include <stdio.h> 
 
 // Reduction includes
-#include <b40c/reduction/granularity.cuh>
+#include <b40c/reduction/problem_config.cuh>
 #include <b40c/reduction/reduction_enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
@@ -267,16 +267,16 @@ public:
 	/**
 	 * Timed scan for applying a specific granularity configuration type
 	 */
-	template <typename ReductionConfig>
+	template <typename ProblemConfig>
 	void TimedReduction()
 	{
 		printf("%lu, ", (unsigned long) sizeof(T));
-		ReductionConfig::Print();
+		ProblemConfig::Print();
 		fflush(stdout);
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ReductionConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -295,7 +295,7 @@ public:
 			cudaEventRecord(start_event, 0);
 
 			// Call the scan API routine
-			if (this->template Enact<ReductionConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 				exit(1);
 			}
 
@@ -376,14 +376,14 @@ public:
 		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
 
 		// Establish the problem type
-		typedef reduction::ReductionProblemType<
+		typedef reduction::ProblemType<
 			T,
 			size_t,
 			OpType::BinaryOp,
-			OpType::Identity> ReductionProblemType;
+			OpType::Identity> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef reduction::ReductionConfig <ReductionProblemType,
+		typedef reduction::ProblemConfig <ProblemType,
 			(util::ld::CacheModifier) C_READ_MODIFIER,
 			(util::st::CacheModifier) C_WRITE_MODIFIER,
 			C_WORK_STEALING,
@@ -401,10 +401,10 @@ public:
 			C_SPINE_LOG_THREADS,
 			C_SPINE_LOG_LOAD_VEC_SIZE,
 			C_SPINE_LOG_LOADS_PER_TILE,
-			C_SPINE_LOG_RAKING_THREADS> ReductionConfig;
+			C_SPINE_LOG_RAKING_THREADS> ProblemConfig;
 
 		// Invoke this config
-		TimedReduction<ReductionConfig>();
+		TimedReduction<ProblemConfig>();
 	}
 };
 

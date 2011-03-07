@@ -134,13 +134,13 @@ DEPS = 			./Makefile \
 				../b40c_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/reduction/*.cuh) \
+				$(wildcard ../../b40c/scan/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for scan
+# (make test) Simple test driver for large-problem scan
 #-------------------------------------------------------------------------------
 
 test: bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)

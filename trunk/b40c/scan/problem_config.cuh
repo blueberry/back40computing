@@ -74,14 +74,14 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ScanConfig
+struct ProblemConfig
 {
 	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
 	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
 	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
 
 	// Kernel config for the upsweep reduction kernel
-	typedef reduction::ReductionKernelConfig <
+	typedef reduction::KernelConfig <
 		ScanProblemType,
 		UPSWEEP_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
@@ -95,7 +95,7 @@ struct ScanConfig
 			Upsweep;
 
 	// Kernel config for the spine scan kernel
-	typedef ScanKernelConfig <
+	typedef KernelConfig <
 		ScanProblemType,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
@@ -107,7 +107,7 @@ struct ScanConfig
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
-	typedef ScanKernelConfig <
+	typedef KernelConfig <
 		ScanProblemType,
 		DOWNSWEEP_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,

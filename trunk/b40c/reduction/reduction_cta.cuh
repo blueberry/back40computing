@@ -22,20 +22,20 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Derivation of ReductionKernelConfig that encapsulates tile-processing routines
+ * Tile-processing functionality for reduction kernels
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/reduction/reduction_utils.cuh>
-#include <b40c/reduction/cta_reduction_base.cuh>
+#include <b40c/reduction/collective_reduction.cuh>
 
 namespace b40c {
 namespace reduction {
 
 
 /******************************************************************************
- * CtaReduction Declaration
+ * ReductionCta Declaration
  ******************************************************************************/
 
 /**
@@ -43,9 +43,9 @@ namespace reduction {
  * routines
  */
 template <typename ReductionKernelConfig>
-struct CtaReduction :
+struct ReductionCta :
 	ReductionKernelConfig,
-	CtaReductionBase<typename ReductionKernelConfig::SrtsGrid>
+	CollectiveReduction<typename ReductionKernelConfig::SrtsGrid>
 {
 	typedef typename ReductionKernelConfig::T T;
 	typedef typename ReductionKernelConfig::SizeT SizeT;
@@ -92,20 +92,20 @@ struct CtaReduction :
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaReduction(
+	__device__ __forceinline__ ReductionCta(
 		uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS],
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		T *d_in,
 		T *d_out) :
-			CtaReductionBase<typename ReductionKernelConfig::SrtsGrid>(smem_pool, warpscan),
-			carry(CtaReduction::Identity()),
+			CollectiveReduction<typename ReductionKernelConfig::SrtsGrid>(smem_pool, warpscan),
+			carry(ReductionCta::Identity()),
 			d_in(d_in),
 			d_out(d_out) {}
 };
 
 
 /******************************************************************************
- * CtaReduction Implementation
+ * ReductionCta Implementation
  ******************************************************************************/
 
 /**
@@ -113,7 +113,7 @@ struct CtaReduction :
  */
 template <typename ReductionKernelConfig>
 template <bool UNGUARDED_IO>
-void CtaReduction<ReductionKernelConfig>::ProcessTile(
+void ReductionCta<ReductionKernelConfig>::ProcessTile(
 	SizeT cta_offset,
 	SizeT out_of_bounds)
 {
@@ -121,15 +121,15 @@ void CtaReduction<ReductionKernelConfig>::ProcessTile(
 	util::LoadTile<
 		T,
 		SizeT,
-		CtaReduction::LOG_LOADS_PER_TILE,
-		CtaReduction::LOG_LOAD_VEC_SIZE,
-		CtaReduction::THREADS,
-		CtaReduction::READ_MODIFIER,
+		ReductionCta::LOG_LOADS_PER_TILE,
+		ReductionCta::LOG_LOAD_VEC_SIZE,
+		ReductionCta::THREADS,
+		ReductionCta::READ_MODIFIER,
 		UNGUARDED_IO,
 		LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 	// Reduce the data we loaded for this tile
-	T tile_partial = SerialReduce<T, CtaReduction::TILE_ELEMENTS_PER_THREAD, CtaReduction::BinaryOp>::Invoke(
+	T tile_partial = SerialReduce<T, ReductionCta::TILE_ELEMENTS_PER_THREAD, ReductionCta::BinaryOp>::Invoke(
 		reinterpret_cast<T*>(data));
 
 	// Reduce into carry
@@ -144,12 +144,12 @@ void CtaReduction<ReductionKernelConfig>::ProcessTile(
  * that are out of range.
  */
 template <typename ReductionKernelConfig>
-void CtaReduction<ReductionKernelConfig>::LoadTransform(
+void ReductionCta<ReductionKernelConfig>::LoadTransform(
 	T &val,
 	bool in_bounds)
 {
 	// Assigns identity value to out-of-bounds loads
-	if (!in_bounds) val = CtaReduction::Identity();
+	if (!in_bounds) val = ReductionCta::Identity();
 }
 
 
@@ -157,14 +157,14 @@ void CtaReduction<ReductionKernelConfig>::LoadTransform(
  * Collective reduction across all threads, stores final reduction to output
  */
 template <typename ReductionKernelConfig>
-void CtaReduction<ReductionKernelConfig>::FinalReduction()
+void ReductionCta<ReductionKernelConfig>::FinalReduction()
 {
-	T total = this->template ReduceTile<1, CtaReduction::BinaryOp>(
+	T total = this->template ReduceTile<1, ReductionCta::BinaryOp>(
 		reinterpret_cast<T (*)[1]>(&carry));
 
 	// Write output
 	if (threadIdx.x == 0) {
-		util::ModifiedStore<T, CtaReduction::WRITE_MODIFIER>::St(total, d_out, 0);
+		util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(total, d_out, 0);
 	}
 }
 

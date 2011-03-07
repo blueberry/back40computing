@@ -29,7 +29,6 @@
 #include <stdio.h> 
 
 // Reduction includes
-#include <b40c/reduction/granularity_tuned.cuh>
 #include <b40c/reduction_enactor_tuned.cuh>
 
 // Test utils

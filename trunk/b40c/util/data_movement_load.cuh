@@ -398,12 +398,6 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
 	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
 
-#if __B40C_CUDA_ARCH__ < 200
-	typedef unsigned int DeviceSizeT;
-#else
-	typedef SizeT DeviceSizeT;
-#endif
-
 	// Iterate over vec-elements
 	template <int LOAD, int VEC>
 	struct Iterate 
@@ -457,8 +451,8 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		DeviceSizeT cta_offset,
-		DeviceSizeT out_of_bounds)
+		SizeT cta_offset,
+		SizeT out_of_bounds)
 	{
 		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
 	} 

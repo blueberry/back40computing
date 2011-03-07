@@ -28,7 +28,7 @@
 #pragma once
 
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/reduction/cta_reduction_base.cuh>
+#include <b40c/reduction/collective_reduction.cuh>
 #include <b40c/scan/scan_utils.cuh>
 
 namespace b40c {
@@ -36,7 +36,7 @@ namespace scan {
 
 
 /******************************************************************************
- * CtaScanBase Declaration
+ * CollectiveScan Declaration
  ******************************************************************************/
 
 /**
@@ -45,7 +45,7 @@ namespace scan {
 template <
 	typename SrtsGrid,
 	typename SecondarySrtsGrid = typename SrtsGrid::SecondaryGrid>
-struct CtaScanBase;
+struct CollectiveScan;
 
 
 /**
@@ -60,17 +60,17 @@ struct ScanVectors;
 
 
 /******************************************************************************
- * CtaScanBase Implementation (specialized for one-level SRTS grid)
+ * CollectiveScan Implementation (specialized for one-level SRTS grid)
  ******************************************************************************/
 
 
 /**
  * Base class for tile-scanning routines (specialized for one-level SRTS grid)
  *
- * Extends CtaReductionBase for one-level SRTS grids
+ * Extends CollectiveReduction for one-level SRTS grids
  */
 template <typename SrtsGrid>
-struct CtaScanBase<SrtsGrid, util::InvalidSrtsGrid> : reduction::CtaReductionBase<SrtsGrid>
+struct CollectiveScan<SrtsGrid, util::InvalidSrtsGrid> : reduction::CollectiveReduction<SrtsGrid>
 {
 	typedef typename SrtsGrid::T T;
 
@@ -128,10 +128,10 @@ struct CtaScanBase<SrtsGrid, util::InvalidSrtsGrid> : reduction::CtaReductionBas
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaScanBase(
+	__device__ __forceinline__ CollectiveScan(
 		uint4 smem_pool[SrtsGrid::SMEM_QUADS],
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)]) :
-			reduction::CtaReductionBase<SrtsGrid>(smem_pool, warpscan) {}
+			reduction::CollectiveReduction<SrtsGrid>(smem_pool, warpscan) {}
 
 
 	/**
@@ -148,17 +148,17 @@ struct CtaScanBase<SrtsGrid, util::InvalidSrtsGrid> : reduction::CtaReductionBas
 };
 
 /******************************************************************************
- * CtaScanBase Implementation (specialized for two-level SRTS grid)
+ * CollectiveScan Implementation (specialized for two-level SRTS grid)
  ******************************************************************************/
 
 
 /**
  * Base class for tile-scanning routines (specialized for two-level SRTS grid)
  *
- * Extends CtaReductionBase for two-level SRTS grids
+ * Extends CollectiveReduction for two-level SRTS grids
  */
 template <typename SrtsGrid, typename SecondarySrtsGrid>
-struct CtaScanBase : reduction::CtaReductionBase<SrtsGrid>
+struct CollectiveScan : reduction::CollectiveReduction<SrtsGrid>
 {
 	typedef typename SrtsGrid::T T;
 
@@ -243,10 +243,10 @@ struct CtaScanBase : reduction::CtaReductionBase<SrtsGrid>
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaScanBase(
+	__device__ __forceinline__ CollectiveScan(
 		uint4 smem_pool[SrtsGrid::SMEM_QUADS],
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)]) :
-			reduction::CtaReductionBase<SrtsGrid>(smem_pool, warpscan) {}
+			reduction::CollectiveReduction<SrtsGrid>(smem_pool, warpscan) {}
 
 
 	/**
