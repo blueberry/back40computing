@@ -44,9 +44,13 @@ namespace scan {
  * scan pass.
  */
 template <
-	typename ScanProblemType,
+	// ProblemType type parameters
+	typename ProblemType,
 
-	// Common
+	// Machine parameters
+	int CUDA_ARCH,
+
+	// Common tunable params
 	util::ld::CacheModifier READ_MODIFIER,
 	util::st::CacheModifier WRITE_MODIFIER,
 	bool _UNIFORM_SMEM_ALLOCATION,
@@ -54,21 +58,21 @@ template <
 	bool _OVERSUBSCRIBED_GRID_SIZE,
 	int LOG_SCHEDULE_GRANULARITY,
 
-	// Upsweep
-	int UPSWEEP_CTA_OCCUPANCY,
+	// Upsweep tunable params
+	int UPSWEEP_MAX_CTA_OCCUPANCY,
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
 	int UPSWEEP_LOG_RAKING_THREADS,
 
-	// Spine
+	// Spine tunable params
 	int SPINE_LOG_THREADS,
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE,
 	int SPINE_LOG_RAKING_THREADS,
 
-	// Downsweep
-	int DOWNSWEEP_CTA_OCCUPANCY,
+	// Downsweep tunable params
+	int DOWNSWEEP_MAX_CTA_OCCUPANCY,
 	int DOWNSWEEP_LOG_THREADS,
 	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
@@ -82,8 +86,9 @@ struct ProblemConfig
 
 	// Kernel config for the upsweep reduction kernel
 	typedef reduction::KernelConfig <
-		ScanProblemType,
-		UPSWEEP_CTA_OCCUPANCY,
+		ProblemType,
+		CUDA_ARCH,
+		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -96,7 +101,8 @@ struct ProblemConfig
 
 	// Kernel config for the spine scan kernel
 	typedef KernelConfig <
-		ScanProblemType,
+		ProblemType,
+		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -108,8 +114,9 @@ struct ProblemConfig
 			Spine;
 
 	typedef KernelConfig <
-		ScanProblemType,
-		DOWNSWEEP_CTA_OCCUPANCY,
+		ProblemType,
+		CUDA_ARCH,
+		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 		DOWNSWEEP_LOG_LOADS_PER_TILE,
@@ -118,6 +125,8 @@ struct ProblemConfig
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
+
+	static const int VALID 						= Upsweep::VALID && Spine::VALID && Downsweep::VALID;
 
 	static void Print()
 	{
@@ -133,7 +142,7 @@ struct ProblemConfig
 			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
 			LOG_SCHEDULE_GRANULARITY,
 
-			UPSWEEP_CTA_OCCUPANCY,
+			UPSWEEP_MAX_CTA_OCCUPANCY,
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,
 			UPSWEEP_LOG_LOADS_PER_TILE,
@@ -144,7 +153,7 @@ struct ProblemConfig
 			SPINE_LOG_LOADS_PER_TILE,
 			SPINE_LOG_RAKING_THREADS,
 
-			DOWNSWEEP_CTA_OCCUPANCY,
+			DOWNSWEEP_MAX_CTA_OCCUPANCY,
 			DOWNSWEEP_LOG_THREADS,
 			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 			DOWNSWEEP_LOG_LOADS_PER_TILE,

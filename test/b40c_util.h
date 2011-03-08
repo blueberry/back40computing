@@ -281,13 +281,13 @@ int CompareResults(T* computed, T* reference, size_t len, bool verbose)
 
 			if (verbose) {
 				printf("\nresult[...");
-				for (size_t j = (i >= 4) ? i - 4 : 0; (j < i + 4) && (j < len); j++) {
+				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
 					PrintValue<T>(computed[j]);
 					printf(", ");
 				}
 				printf("...]");
 				printf("\nreference[...");
-				for (size_t j = (i >= 4) ? i - 4 : 0; (j < i + 4) && (j < len); j++) {
+				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
 					PrintValue<T>(reference[j]);
 					printf(", ");
 				}

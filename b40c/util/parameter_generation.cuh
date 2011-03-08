@@ -37,28 +37,80 @@ namespace util {
  *
  * Can be used to construct types that describe static lists of integer constants.
  */
-template <typename NextTuple, int N, int PARAM>
+template <typename NextTuple, int V, int P, int PREV_SIZE = NextTuple::SIZE>
 struct ParamTuple
 {
-	typedef NextTuple next;
+	typedef typename NextTuple::next next;
+
 	enum {
-		P = PARAM,
-		V = N
+		P0 = (PREV_SIZE > 0) ? NextTuple::P0 : P, 	V0 = (PREV_SIZE > 0) ? NextTuple::V0 : V,
+		P1 = (PREV_SIZE > 1) ? NextTuple::P1 : P, 	V1 = (PREV_SIZE > 1) ? NextTuple::V1 : V,
+		P2 = (PREV_SIZE > 2) ? NextTuple::P2 : P, 	V2 = (PREV_SIZE > 2) ? NextTuple::V2 : V,
+		P3 = (PREV_SIZE > 3) ? NextTuple::P3 : P, 	V3 = (PREV_SIZE > 3) ? NextTuple::V3 : V,
+
+		P4 = (PREV_SIZE > 4) ? NextTuple::P4 : P, 	V4 = (PREV_SIZE > 4) ? NextTuple::V4 : V,
+		P5 = (PREV_SIZE > 5) ? NextTuple::P5 : P, 	V5 = (PREV_SIZE > 5) ? NextTuple::V5 : V,
+		P6 = (PREV_SIZE > 6) ? NextTuple::P6 : P, 	V6 = (PREV_SIZE > 6) ? NextTuple::V6 : V,
+		P7 = P, 									V7 = V,
+
+		SIZE = PREV_SIZE + 1
+	};
+};
+
+// Prev was full: start a new tuple
+template <typename NextTuple, int V, int P>
+struct ParamTuple<NextTuple, V, P, 8>
+{
+	typedef NextTuple next;
+
+	enum {
+		P0 = P, 	V0 = V,
+		P1 = P, 	V1 = V,
+		P2 = P, 	V2 = V,
+		P3 = P, 	V3 = V,
+
+		P4 = P, 	V4 = V,
+		P5 = P, 	V5 = V,
+		P6 = P, 	V6 = V,
+		P7 = P, 	V7 = V,
+
+		SIZE = 1
+	};
+};
+
+// Empty tuple (forces new tuple)
+struct EmptyTuple
+{
+	enum {
+		SIZE = 8
 	};
 };
 
 
-template <typename ParamTuple, int SEARCH_PARAM, int PARAM = ParamTuple::P>
+template <typename ParamList, int SEARCH_PARAM>
 struct Access
 {
-	enum { VALUE = Access<typename ParamTuple::next, SEARCH_PARAM>::VALUE };
+	enum {
+		VALUE = 	(SEARCH_PARAM == ParamList::P0) ?		ParamList::V0 :
+					(SEARCH_PARAM == ParamList::P1) ?		ParamList::V1 :
+					(SEARCH_PARAM == ParamList::P2) ?		ParamList::V2 :
+					(SEARCH_PARAM == ParamList::P3) ?		ParamList::V3 :
+					(SEARCH_PARAM == ParamList::P4) ?		ParamList::V4 :
+					(SEARCH_PARAM == ParamList::P5) ?		ParamList::V5 :
+					(SEARCH_PARAM == ParamList::P6) ?		ParamList::V6 :
+					(SEARCH_PARAM == ParamList::P7) ?		ParamList::V7 :
+															Access<typename ParamList::next, SEARCH_PARAM>::VALUE
+	};
 };
 
-template <typename ParamTuple, int PARAM>
-struct Access<ParamTuple, PARAM, PARAM>
+template <int SEARCH_PARAM>
+struct Access<EmptyTuple, SEARCH_PARAM>
 {
-	enum { VALUE = ParamTuple::V };
+	enum {
+		VALUE = 0
+	};
 };
+
 
 
 /**

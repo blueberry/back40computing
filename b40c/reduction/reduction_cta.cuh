@@ -39,16 +39,16 @@ namespace reduction {
  ******************************************************************************/
 
 /**
- * Derivation of ReductionKernelConfig that encapsulates tile-processing
+ * Derivation of KernelConfig that encapsulates tile-processing
  * routines
  */
-template <typename ReductionKernelConfig>
+template <typename KernelConfig>
 struct ReductionCta :
-	ReductionKernelConfig,
-	CollectiveReduction<typename ReductionKernelConfig::SrtsGrid>
+	KernelConfig,
+	CollectiveReduction<typename KernelConfig::SrtsGrid>
 {
-	typedef typename ReductionKernelConfig::T T;
-	typedef typename ReductionKernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	// The value we will accumulate (in each thread)
 	T carry;
@@ -58,7 +58,7 @@ struct ReductionCta :
 	T* d_out;
 
 	// Tile of elements
-	T data[ReductionKernelConfig::LOADS_PER_TILE][ReductionKernelConfig::LOAD_VEC_SIZE];
+	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	/**
 	 * Process a single tile
@@ -93,11 +93,11 @@ struct ReductionCta :
 	 * Constructor
 	 */
 	__device__ __forceinline__ ReductionCta(
-		uint4 smem_pool[ReductionKernelConfig::SMEM_QUADS],
+		uint4 smem_pool[KernelConfig::SMEM_QUADS],
 		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		T *d_in,
 		T *d_out) :
-			CollectiveReduction<typename ReductionKernelConfig::SrtsGrid>(smem_pool, warpscan),
+			CollectiveReduction<typename KernelConfig::SrtsGrid>(smem_pool, warpscan),
 			carry(ReductionCta::Identity()),
 			d_in(d_in),
 			d_out(d_out) {}
@@ -111,9 +111,9 @@ struct ReductionCta :
 /**
  * Process a single tile
  */
-template <typename ReductionKernelConfig>
+template <typename KernelConfig>
 template <bool UNGUARDED_IO>
-void ReductionCta<ReductionKernelConfig>::ProcessTile(
+void ReductionCta<KernelConfig>::ProcessTile(
 	SizeT cta_offset,
 	SizeT out_of_bounds)
 {
@@ -143,8 +143,8 @@ void ReductionCta<ReductionKernelConfig>::ProcessTile(
  * Load transform function for assigning identity to tile values
  * that are out of range.
  */
-template <typename ReductionKernelConfig>
-void ReductionCta<ReductionKernelConfig>::LoadTransform(
+template <typename KernelConfig>
+void ReductionCta<KernelConfig>::LoadTransform(
 	T &val,
 	bool in_bounds)
 {
@@ -156,8 +156,8 @@ void ReductionCta<ReductionKernelConfig>::LoadTransform(
 /**
  * Collective reduction across all threads, stores final reduction to output
  */
-template <typename ReductionKernelConfig>
-void ReductionCta<ReductionKernelConfig>::FinalReduction()
+template <typename KernelConfig>
+void ReductionCta<KernelConfig>::FinalReduction()
 {
 	T total = this->template ReduceTile<1, ReductionCta::BinaryOp>(
 		reinterpret_cast<T (*)[1]>(&carry));

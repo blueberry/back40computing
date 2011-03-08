@@ -49,8 +49,11 @@ template <
 	// ProblemType type parameters
 	typename ProblemType,
 
+	// Machine parameters
+	int CUDA_ARCH,
+
 	// Tunable parameters
-	int _CTA_OCCUPANCY,
+	int _MAX_CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
@@ -65,34 +68,37 @@ struct KernelConfig : ProblemType
 	typedef ProblemType ProblemType;
 	typedef typename ProblemType::T T;
 
-	static const int CTA_OCCUPANCY  						= _CTA_OCCUPANCY;
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
-	static const bool WORK_STEALING							= _WORK_STEALING;
 
-	static const int LOG_THREADS 					= _LOG_THREADS;
-	static const int THREADS						= 1 << LOG_THREADS;
+	static const bool WORK_STEALING		= _WORK_STEALING;
 
-	static const int LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE;
-	static const int LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE;
+	enum {
 
-	static const int LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE;
-	static const int LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE;
+		LOG_THREADS 					= _LOG_THREADS,
+		THREADS							= 1 << LOG_THREADS,
 
-	static const int LOG_RAKING_THREADS				= _LOG_RAKING_THREADS;
-	static const int RAKING_THREADS					= 1 << LOG_RAKING_THREADS;
+		LOG_LOAD_VEC_SIZE  				= _LOG_LOAD_VEC_SIZE,
+		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
 
-	static const int LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
-	static const int WARPS							= 1 << LOG_WARPS;
+		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
+		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
 
-	static const int LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE;
-	static const int TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD;
+		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
 
-	static const int LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS;
-	static const int TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS;
+		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		WARPS							= 1 << LOG_WARPS,
 
-	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
-	static const int SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY;
+		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+
+		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
+	};
 
 	//
 	// We reduce the elements in registers, and then place that partial
@@ -111,17 +117,28 @@ struct KernelConfig : ProblemType
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane (CTA threads only make one deposit)
 		LOG_RAKING_THREADS,						// Raking threads
-		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),	// Secondary grid type
+		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),	// Secondary grid type
 			util::SrtsGrid<										// Yes secondary grid
 				T,													// Partial type
 				LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
 				0,													// 1 lane (the primary raking threads only make one deposit)
-				B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>,			// Raking threads (1 warp)
+				B40C_LOG_WARP_THREADS(CUDA_ARCH)>,					// Raking threads (1 warp)
 			util::InvalidSrtsGrid>::Type>						// No secondary grid
 		SrtsGrid;
 
-	static const int SMEM_QUADS	= SrtsGrid::SMEM_QUADS;
 
+	enum {
+
+		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
+
+		SMEM_QUADS						= SrtsGrid::SMEM_QUADS + WARPSCAN_QUADS,
+
+		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+	};
+
+	static const bool VALID				= (CTA_OCCUPANCY > 0);
 };
 
 

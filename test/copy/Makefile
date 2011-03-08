@@ -61,16 +61,6 @@ ifeq ($(TUNE_ARCH), 100)
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
 
-#-------------------------------------------------------------------------------
-# Tune size
-#-------------------------------------------------------------------------------
-
-ifdef tunesize
-    TUNE_SIZE = $(tunesize)
-else 
-	TUNE_SIZE = 4
-endif
-
 
 #-------------------------------------------------------------------------------
 # Libs
@@ -113,16 +103,16 @@ endif
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
-	NVCCFLAGS += -Xptxas -abi=no
+	NVCCFLAGS += -Xptxas -abi=no 
 endif
-endif
-
-ifeq ($(verbose), 1)
-    NVCCFLAGS += -v
 endif
 
 ifeq ($(keep), 1)
     NVCCFLAGS += -keep
+endif
+
+ifeq ($(verbose), 1)
+    NVCCFLAGS += -v
 endif
 
 ifdef maxregisters
@@ -134,46 +124,45 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_scan.h \
+				./test_copy.h \
 				../b40c_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) 
+				$(wildcard ../../b40c/copy/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for large-problem scan
+# (make test) Simple test driver for copy
 #-------------------------------------------------------------------------------
 
-test: bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_scan.cu $(DEPS)
+bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_copy.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of scan configuration types
+# (make tune) Evaluates the space of copy configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
+tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
 
-bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_scan.cu $(DEPS)
+bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_copy.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
 
 
 #-------------------------------------------------------------------------------
-# (make compare) Compares scan performance against other libraries (e.g., Thrust)
+# (make compare) Compares copy performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+compare: bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
+bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_copy.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
 #
@@ -181,9 +170,9 @@ bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 
