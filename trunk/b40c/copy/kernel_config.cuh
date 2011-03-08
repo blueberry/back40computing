@@ -20,23 +20,22 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding scan granularity configuration
+ * "Metatype" for guiding copy granularity configuration
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/srts_grid.cuh>
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
-#include <b40c/reduction/kernel_config.cuh>
-#include <b40c/scan/problem_type.cuh>
+#include <b40c/copy/problem_type.cuh>
 
 namespace b40c {
-namespace scan {
+namespace copy {
 
 /**
- * Scan kernel granularity configuration meta-type.  Parameterizations of this
+ * Copy kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -58,9 +57,9 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	int _LOG_RAKING_THREADS,
 	util::ld::CacheModifier _READ_MODIFIER,
 	util::st::CacheModifier _WRITE_MODIFIER,
+	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelConfig : ProblemType
@@ -71,7 +70,10 @@ struct KernelConfig : ProblemType
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
+	static const bool WORK_STEALING		= _WORK_STEALING;
+
 	enum {
+
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -80,9 +82,6 @@ struct KernelConfig : ProblemType
 
 		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
 		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
-
-		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
-		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
 
 		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
@@ -94,51 +93,16 @@ struct KernelConfig : ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
-	};
-
-	//
-	// We reduce the elements in registers, and then place that partial
-	// scan into smem rows for further scan
-	//
-	// Because all lanes are dependent, we need a two-level grid if
-	// (LOG_RAKING_THREADS > LOG_WARP_THREADS) in order cooperate between
-	// multiple raking warps.
-	//
-	// (N.B.: Typically two-level grids are a losing performance proposition)
-	//
-
-	// SRTS grid type
-	typedef util::SrtsGrid<
-		T,										// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
-		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
-		LOG_RAKING_THREADS,						// Raking threads
-		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),	// Secondary grid type
-			util::SrtsGrid<										// Yes secondary grid
-				T,													// Partial type
-				LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
-				0,													// 1 lane (the primary raking threads only make one deposit)
-				B40C_LOG_WARP_THREADS(CUDA_ARCH)>,			// Raking threads (1 warp)
-			util::InvalidSrtsGrid>::Type>						// No secondary grid
-		SrtsGrid;
-
-
-	enum {
-
-		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
-
-		SMEM_QUADS						= SrtsGrid::SMEM_QUADS + WARPSCAN_QUADS,
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY))
 	};
 
 	static const bool VALID				= (CTA_OCCUPANCY > 0);
 };
 
 
-} // namespace scan
+} // namespace copy
 } // namespace b40c
 

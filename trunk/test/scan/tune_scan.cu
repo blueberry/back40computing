@@ -142,8 +142,8 @@ enum TuningParam {
 	DOWNSWEEP_LOG_RAKING_THREADS,
 
 	// Derive these from the others above
-	UPSWEEP_CTA_OCCUPANCY,
-	DOWNSWEEP_CTA_OCCUPANCY,
+	UPSWEEP_MAX_CTA_OCCUPANCY,
+	DOWNSWEEP_MAX_CTA_OCCUPANCY,
 	LOG_SCHEDULE_GRANULARITY,
 
 	// General performance is insensitive to the spine kernel params
@@ -153,7 +153,6 @@ enum TuningParam {
 	SPINE_LOG_LOADS_PER_TILE,
 	SPINE_LOG_RAKING_THREADS
 };
-
 
 
 /**
@@ -182,8 +181,7 @@ public:
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
 			MIN = util::ld::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -192,8 +190,7 @@ public:
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
 			MIN = util::st::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -202,8 +199,7 @@ public:
 	struct Ranges<ParamList, UNIFORM_SMEM_ALLOCATION> {
 		enum {
 			MIN = 0,
-			MAX = MIN
-//			MAX = 1
+			MAX = 1
 		};
 	};
 
@@ -212,8 +208,7 @@ public:
 	struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
 		enum {
 			MIN = 0,
-			MAX = MIN
-//			MAX = 1
+			MAX = 1
 		};
 	};
 
@@ -222,8 +217,7 @@ public:
 	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
 		enum {
 			MIN = 0,
-			MAX = MIN
-//			MAX = 1
+			MAX = 1
 		};
 	};
 
@@ -259,8 +253,7 @@ public:
 	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -296,8 +289,7 @@ public:
 	struct Ranges<ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
+			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -376,6 +368,21 @@ public:
 		fflush(stdout);
 	}
 
+	template <typename ProblemConfig, bool VALID>
+	struct LaunchValidConfig
+	{
+		static void Invoke(TuneProblemDetail *detail)
+		{
+			detail->TimedScan<ProblemConfig>();
+		}
+	};
+
+
+	template <typename ProblemConfig>
+	struct LaunchValidConfig <ProblemConfig, false>
+	{
+		static void Invoke(TuneProblemDetail *detail) {}
+	};
 
 	/**
 	 * Callback invoked by parameter-list generation
@@ -393,8 +400,7 @@ public:
 //			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 			0;
 		const int C_UNIFORM_GRID_SIZE =
-//			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
-			0;
+			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 //			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 			0;
@@ -408,9 +414,9 @@ public:
 		const int C_UPSWEEP_LOG_RAKING_THREADS =
 //			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
 			B40C_LOG_WARP_THREADS(TUNE_ARCH);
-		const int C_UPSWEEP_CTA_OCCUPANCY = B40C_MIN(
-			B40C_SM_CTAS(TUNE_ARCH),
-			(B40C_SM_THREADS(TUNE_ARCH)) >> C_UPSWEEP_LOG_THREADS);
+		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
+//			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
+			B40C_SM_CTAS(TUNE_ARCH);
 
 		const int C_DOWNSWEEP_LOG_THREADS =
 			util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE;
@@ -421,9 +427,9 @@ public:
 		const int C_DOWNSWEEP_LOG_RAKING_THREADS =
 //			util::Access<ParamList, DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
 			B40C_LOG_WARP_THREADS(TUNE_ARCH);
-		const int C_DOWNSWEEP_CTA_OCCUPANCY = B40C_MIN(
-			B40C_SM_CTAS(TUNE_ARCH),
-			(B40C_SM_THREADS(TUNE_ARCH)) >> C_DOWNSWEEP_LOG_THREADS);
+		const int C_DOWNSWEEP_MAX_CTA_OCCUPANCY =
+//			util::Access<ParamList, DOWNSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
+			B40C_SM_CTAS(TUNE_ARCH);
 
 
 		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY =
@@ -456,7 +462,9 @@ public:
 			OpType::Identity> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef scan::ProblemConfig <ProblemType,
+		typedef scan::ProblemConfig <
+			ProblemType,
+			TUNE_ARCH,
 			(util::ld::CacheModifier) C_READ_MODIFIER,
 			(util::st::CacheModifier) C_WRITE_MODIFIER,
 			C_UNIFORM_SMEM_ALLOCATION,
@@ -464,7 +472,7 @@ public:
 			C_OVERSUBSCRIBED_GRID_SIZE,
 			C_LOG_SCHEDULE_GRANULARITY,
 
-			C_UPSWEEP_CTA_OCCUPANCY,
+			C_UPSWEEP_MAX_CTA_OCCUPANCY,
 			C_UPSWEEP_LOG_THREADS,
 			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
 			C_UPSWEEP_LOG_LOADS_PER_TILE,
@@ -475,50 +483,13 @@ public:
 			C_SPINE_LOG_LOADS_PER_TILE, 
 			C_SPINE_LOG_RAKING_THREADS,
 
-			C_DOWNSWEEP_CTA_OCCUPANCY,
+			C_DOWNSWEEP_MAX_CTA_OCCUPANCY,
 			C_DOWNSWEEP_LOG_THREADS,
 			C_DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 			C_DOWNSWEEP_LOG_LOADS_PER_TILE,
 			C_DOWNSWEEP_LOG_RAKING_THREADS> ProblemConfig;
 
-		// Reestablish the granularity configuration type with occupancy levels adjusted for smem sizes
-		const int UPSWEEP_BYTES = ProblemConfig::Upsweep::SMEM_QUADS * 16;
-		const int C_UPSWEEP_CTA_OCCUPANCY2 = B40C_MAX(1, B40C_MIN(C_UPSWEEP_CTA_OCCUPANCY, (B40C_SMEM_BYTES(TUNE_ARCH) / UPSWEEP_BYTES)));
-
-		if (C_UPSWEEP_CTA_OCCUPANCY2 < C_UPSWEEP_CTA_OCCUPANCY) printf("Downgraded downsweep CTA occupancy from %d to %d\n", C_UPSWEEP_CTA_OCCUPANCY, C_UPSWEEP_CTA_OCCUPANCY2);
-
-		const int DOWNSWEEP_BYTES = ProblemConfig::Downsweep::SMEM_QUADS * 16;
-		const int C_DOWNSWEEP_CTA_OCCUPANCY2 = B40C_MAX(1, B40C_MIN(C_DOWNSWEEP_CTA_OCCUPANCY, (B40C_SMEM_BYTES(TUNE_ARCH) / DOWNSWEEP_BYTES)));
-
-		if (C_DOWNSWEEP_CTA_OCCUPANCY2 < C_DOWNSWEEP_CTA_OCCUPANCY) printf("Downgraded downsweep CTA occupancy from %d to %d\n", C_DOWNSWEEP_CTA_OCCUPANCY, C_DOWNSWEEP_CTA_OCCUPANCY2);
-
-		typedef scan::ProblemConfig <ProblemType,
-			(util::ld::CacheModifier) C_READ_MODIFIER,
-			(util::st::CacheModifier) C_WRITE_MODIFIER,
-			C_UNIFORM_SMEM_ALLOCATION,
-			C_UNIFORM_GRID_SIZE,
-			C_OVERSUBSCRIBED_GRID_SIZE,
-			C_LOG_SCHEDULE_GRANULARITY,
-
-			C_UPSWEEP_CTA_OCCUPANCY2,
-			C_UPSWEEP_LOG_THREADS,
-			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
-			C_UPSWEEP_LOG_LOADS_PER_TILE,
-			C_UPSWEEP_LOG_RAKING_THREADS,
-
-			C_SPINE_LOG_THREADS,
-			C_SPINE_LOG_LOAD_VEC_SIZE,
-			C_SPINE_LOG_LOADS_PER_TILE,
-			C_SPINE_LOG_RAKING_THREADS,
-
-			C_DOWNSWEEP_CTA_OCCUPANCY2,
-			C_DOWNSWEEP_LOG_THREADS,
-			C_DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-			C_DOWNSWEEP_LOG_LOADS_PER_TILE,
-			C_DOWNSWEEP_LOG_RAKING_THREADS> AdjustedConfig;
-
-		// Invoke this config
-		TimedScan<AdjustedConfig>();
+		LaunchValidConfig<ProblemConfig, ProblemConfig::VALID>::Invoke(this);
 	}
 };
 
@@ -570,7 +541,7 @@ void TestScan(size_t num_elements)
 		Detail,
 		PARAM_BEGIN + 1,
 		PARAM_END,
-		Detail::template Ranges>::template Invoke<void>(detail);
+		Detail::template Ranges>::template Invoke<util::EmptyTuple>(detail);
 
 	// Free allocated memory
 	if (detail.d_src) cudaFree(detail.d_src);
@@ -615,9 +586,9 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, LOG_SCHEDULE_GRANULARITY, "
-		"UPSWEEP_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, "
+		"UPSWEEP_MAX_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, "
 		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
-		"DOWNSWEEP_CTA_OCCUPANCY, DOWNSWEEP_LOG_THREADS, DOWNSWEEP_LOG_LOAD_VEC_SIZE, DOWNSWEEP_LOG_LOADS_PER_TILE, DOWNSWEEP_LOG_RAKING_THREADS, "
+		"DOWNSWEEP_MAX_CTA_OCCUPANCY, DOWNSWEEP_LOG_THREADS, DOWNSWEEP_LOG_LOAD_VEC_SIZE, DOWNSWEEP_LOG_LOADS_PER_TILE, DOWNSWEEP_LOG_RAKING_THREADS, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)

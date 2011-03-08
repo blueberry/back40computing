@@ -21,14 +21,14 @@
 
 
 /******************************************************************************
- * Tuning tool for establishing optimal reduction granularity configuration types
+ * Tuning tool for establishing optimal copy granularity configuration types
  ******************************************************************************/
 
 #include <stdio.h> 
 
-// Reduction includes
-#include <b40c/reduction/problem_config.cuh>
-#include <b40c/reduction/reduction_enactor.cuh>
+// Copy includes
+#include <b40c/copy/problem_config.cuh>
+#include <b40c/copy/copy_enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
@@ -53,35 +53,6 @@ int g_max_ctas = 0;
 int g_iterations = 0;
 
 
-template <typename T>
-struct Sum
-{
-	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return a + b;
-	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
-	}
-};
-
-template <typename T>
-struct Max
-{
-	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return (a > b) ? a : b;
-	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
-	}
-};
-
-
 
 /******************************************************************************
  * Utility routines
@@ -92,16 +63,15 @@ struct Max
  */
 void Usage()
 {
-	printf("\ntune_reduction [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntune_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
 	printf("\n");
-	printf("\t--i\tPerforms the reduction operation <num-iterations> times\n");
-	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
+	printf("\t--i\tPerforms the copy operation <num-iterations> times\n");
+	printf("\t\t\ton the device. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
-	printf("\t\t\tDefault = 512\n");
 	printf("\n");
 }
 
@@ -115,30 +85,20 @@ enum TuningParam {
 
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		UNIFORM_SMEM_ALLOCATION,
-		UNIFORM_GRID_SIZE,
+		WORK_STEALING,
 		OVERSUBSCRIBED_GRID_SIZE,
 
-		WORK_STEALING,
-		UPSWEEP_LOG_THREADS,
-		UPSWEEP_LOG_LOAD_VEC_SIZE,
-		UPSWEEP_LOG_LOADS_PER_TILE,
-		UPSWEEP_LOG_RAKING_THREADS,
+		LOG_THREADS,
+		LOG_LOAD_VEC_SIZE,
+		LOG_LOADS_PER_TILE,
 
 	PARAM_END,
 
 	// Parameters below here are currently not part of the tuning sweep
 
 	// Derive these from the others above
-	UPSWEEP_MAX_CTA_OCCUPANCY,
+	MAX_CTA_OCCUPANCY,
 	LOG_SCHEDULE_GRANULARITY,
-
-	// General performance is insensitive to the spine kernel params
-	// because it's only a single-CTA: we'll just use reasonable defaults
-	SPINE_LOG_THREADS,
-	SPINE_LOG_LOAD_VEC_SIZE,
-	SPINE_LOG_LOADS_PER_TILE,
-	SPINE_LOG_RAKING_THREADS
 };
 
 
@@ -148,8 +108,8 @@ enum TuningParam {
  * 		- Wrapping problem type and storage
  * 		- Providing call-back for parameter-list generation
  */
-template <typename T, typename OpType>
-class TuneProblemDetail : public reduction::ReductionEnactor<TuneProblemDetail<T, OpType> >
+template <typename T>
+class TuneProblemDetail : public copy::CopyEnactor<TuneProblemDetail<T> >
 {
 public:
 
@@ -169,8 +129,7 @@ public:
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
 			MIN = util::ld::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::CG : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -179,35 +138,7 @@ public:
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
 			MIN = util::st::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
-		};
-	};
-
-	// UNIFORM_SMEM_ALLOCATION
-	template <typename ParamList>
-	struct Ranges<ParamList, UNIFORM_SMEM_ALLOCATION> {
-		enum {
-			MIN = 0,
-			MAX = 1
-		};
-	};
-
-	// UNIFORM_GRID_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 1
-		};
-	};
-
-	// OVERSUBSCRIBED_GRID_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 1
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::CG : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -220,40 +151,39 @@ public:
 		};
 	};
 
-	// UPSWEEP_LOG_THREADS
+	// OVERSUBSCRIBED_GRID_SIZE
 	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_THREADS> {
+	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = !util::Access<ParamList, WORK_STEALING>::VALUE		// Don't oversubscribe if we're workstealing
+		};
+	};
+
+	// LOG_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, LOG_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
 			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
 		};
 	};
 
-	// UPSWEEP_LOG_LOAD_VEC_SIZE
+	// LOG_LOAD_VEC_SIZE
 	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
+	struct Ranges<ParamList, LOG_LOAD_VEC_SIZE> {
 		enum {
 			MIN = 0,
 			MAX = 2
 		};
 	};
 
-	// UPSWEEP_LOG_LOADS_PER_TILE
+	// LOG_LOADS_PER_TILE
 	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
+	struct Ranges<ParamList, LOG_LOADS_PER_TILE> {
 		enum {
 			MIN = 0,
 			MAX = 2
-		};
-	};
-
-	// UPSWEEP_LOG_RAKING_THREADS
-	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
-		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -268,7 +198,7 @@ public:
 	 * Timed scan for applying a specific granularity configuration type
 	 */
 	template <typename ProblemConfig>
-	void TimedReduction()
+	void TimedCopy()
 	{
 		printf("%lu, ", (unsigned long) sizeof(T));
 		ProblemConfig::Print();
@@ -276,7 +206,7 @@ public:
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, 0, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -295,7 +225,7 @@ public:
 			cudaEventRecord(start_event, 0);
 
 			// Call the scan API routine
-			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, 0, g_max_ctas)) {
 				exit(1);
 			}
 
@@ -314,7 +244,7 @@ public:
 		double throughput =  0.0;
 		if (avg_runtime > 0.0) throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
 	    printf(", %f, %f, %f, ",
-			avg_runtime, throughput, throughput * sizeof(T));
+			avg_runtime, throughput, throughput * sizeof(T) * 2);
 	    fflush(stdout);
 
 	    // Clean up events
@@ -322,11 +252,11 @@ public:
 		cudaEventDestroy(stop_event);
 
 	    // Copy out data
-	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * 1, cudaMemcpyDeviceToHost),
-			"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
+			"TimedCopy cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	    // Verify solution
-		CompareResults<T>(h_data, h_reference, 1, true);
+		CompareResults<T>(h_data, h_reference, num_elements, true);
 		printf("\n");
 		fflush(stdout);
 	}
@@ -342,71 +272,45 @@ public:
 			util::Access<ParamList, READ_MODIFIER>::VALUE;
 		const int C_WRITE_MODIFIER =
 			util::Access<ParamList, WRITE_MODIFIER>::VALUE;
-		const int C_UNIFORM_SMEM_ALLOCATION =
-			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
-		const int C_UNIFORM_GRID_SIZE =
-			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+		const int C_WORK_STEALING =
+			util::Access<ParamList, WORK_STEALING>::VALUE;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 
-		const int C_WORK_STEALING =
-			util::Access<ParamList, WORK_STEALING>::VALUE;
-		const int C_UPSWEEP_LOG_THREADS =
-			util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE;
-		const int C_UPSWEEP_LOG_LOAD_VEC_SIZE =
-			util::Access<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
-		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
-			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
-		const int C_UPSWEEP_LOG_RAKING_THREADS =
-			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;
-		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
-//			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
+		const int C_LOG_THREADS =
+			util::Access<ParamList, LOG_THREADS>::VALUE;
+		const int C_LOG_LOAD_VEC_SIZE =
+			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE;
+		const int C_LOG_LOADS_PER_TILE =
+			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE;
+		const int C_MAX_CTA_OCCUPANCY =
+//			util::Access<ParamList, MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);
 
-		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY =
-			C_UPSWEEP_LOG_LOADS_PER_TILE +
-			C_UPSWEEP_LOG_LOAD_VEC_SIZE +
-			C_UPSWEEP_LOG_THREADS;
-
-		// General performance is insensitive to spine config it's only a single-CTA:
-		// simply use reasonable defaults
-		const int C_SPINE_LOG_THREADS = 8;
-		const int C_SPINE_LOG_LOAD_VEC_SIZE = 0;
-		const int C_SPINE_LOG_LOADS_PER_TILE = 1;
-		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
-
-		// Establish the problem type
-		typedef reduction::ProblemType<
-			T,
-			size_t,
-			OpType::BinaryOp,
-			OpType::Identity> ProblemType;
+		const int C_LOG_SCHEDULE_GRANULARITY =
+			C_LOG_LOADS_PER_TILE +
+			C_LOG_LOAD_VEC_SIZE +
+			C_LOG_THREADS;
 
 		// Establish the granularity configuration type
-		typedef reduction::ProblemConfig <
-			ProblemType,
+		typedef copy::ProblemConfig <
+			T,
+			size_t,
 			TUNE_ARCH,
+
 			(util::ld::CacheModifier) C_READ_MODIFIER,
 			(util::st::CacheModifier) C_WRITE_MODIFIER,
 			C_WORK_STEALING,
-			C_UNIFORM_SMEM_ALLOCATION,
-			C_UNIFORM_GRID_SIZE,
 			C_OVERSUBSCRIBED_GRID_SIZE,
 
-			C_UPSWEEP_MAX_CTA_OCCUPANCY,
-			C_UPSWEEP_LOG_THREADS,
-			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
-			C_UPSWEEP_LOG_LOADS_PER_TILE,
-			C_UPSWEEP_LOG_RAKING_THREADS,
-			C_UPSWEEP_LOG_SCHEDULE_GRANULARITY,
-
-			C_SPINE_LOG_THREADS,
-			C_SPINE_LOG_LOAD_VEC_SIZE,
-			C_SPINE_LOG_LOADS_PER_TILE,
-			C_SPINE_LOG_RAKING_THREADS> ProblemConfig;
+			C_MAX_CTA_OCCUPANCY,
+			C_LOG_THREADS,
+			C_LOG_LOAD_VEC_SIZE,
+			C_LOG_LOADS_PER_TILE,
+			C_LOG_SCHEDULE_GRANULARITY> ProblemConfig;
 
 		// Invoke this config
-		TimedReduction<ProblemConfig>();
+		TimedCopy<ProblemConfig>();
 	}
 };
 
@@ -415,38 +319,38 @@ public:
  * Creates an example scan problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T, typename OpType>
-void TestReduction(size_t num_elements)
+template<typename T>
+void TestCopy(size_t num_elements)
 {
 	// Allocate storage and enactor
-	typedef TuneProblemDetail<T, OpType> Detail;
+	typedef TuneProblemDetail<T> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
-		"TimedReduction cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 
-	if (util::B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T) * 1),
-		"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	if ((detail.h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
-	if ((detail.h_reference = (T*) malloc(sizeof(T) * 1)) == NULL) {
+	if ((detail.h_reference = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
 
-	detail.h_reference[0] = OpType::Identity();
 	for (size_t i = 0; i < num_elements; ++i) {
 		// RandomBits<T>(detail.h_data[i], 0);
 		detail.h_data[i] = i;
-		detail.h_reference[0] = OpType::BinaryOp(detail.h_reference[0], detail.h_data[i]);
+		detail.h_reference[i] = detail.h_data[i];
 	}
+
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(detail.d_src, detail.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Run the timing tests
 	util::ParamListSweep<
@@ -493,31 +397,30 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Reduction: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
+	printf("Test Copy: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
-		"UPSWEEP_MAX_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
-		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
+	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, OVERSUBSCRIBED_GRID_SIZE, "
+		"MAX_CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, LOG_SCHEDULE_GRANULARITY, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)
 	{
 		typedef unsigned char T;
-		TestReduction<T, Sum<T> >(num_elements * 4);
+		TestCopy<T>(num_elements * 4);
 	}
 	{
 		typedef unsigned short T;
-		TestReduction<T, Sum<T> >(num_elements * 2);
+		TestCopy<T>(num_elements * 2);
 	}
 	{
 		typedef unsigned int T;
-		TestReduction<T, Sum<T> >(num_elements);
+		TestCopy<T>(num_elements);
 	}
 	{
 		typedef unsigned long long T;
-		TestReduction<T, Sum<T> >(num_elements / 2);
+		TestCopy<T>(num_elements / 2);
 	}
 
 	return 0;

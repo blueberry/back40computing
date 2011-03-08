@@ -43,9 +43,13 @@ namespace reduction {
  * reduction pass.
  */
 template <
+	// ProblemType type parameters
 	typename ProblemType,
 
-	// Common
+	// Machine parameters
+	int CUDA_ARCH,
+
+	// Common tunable params
 	util::ld::CacheModifier READ_MODIFIER,
 	util::st::CacheModifier WRITE_MODIFIER,
 	bool WORK_STEALING,
@@ -53,15 +57,15 @@ template <
 	bool _UNIFORM_GRID_SIZE,
 	bool _OVERSUBSCRIBED_GRID_SIZE,
 
-	// Upsweep
-	int UPSWEEP_CTA_OCCUPANCY,
+	// Upsweep tunable params
+	int UPSWEEP_MAX_CTA_OCCUPANCY,
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
 	int UPSWEEP_LOG_RAKING_THREADS,
 	int UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
-	// Spine
+	// Spine tunable params
 	int SPINE_LOG_THREADS,
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE,
@@ -76,7 +80,8 @@ struct ProblemConfig
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelConfig <
 		ProblemType,
-		UPSWEEP_CTA_OCCUPANCY,
+		CUDA_ARCH,
+		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -90,6 +95,7 @@ struct ProblemConfig
 	// Kernel config for the spine reduction kernel
 	typedef KernelConfig <
 		ProblemType,
+		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -101,6 +107,8 @@ struct ProblemConfig
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
+	static const int VALID 						= Upsweep::VALID && Spine::VALID;
+
 	static void Print()
 	{
 		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
@@ -110,7 +118,7 @@ struct ProblemConfig
 			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
 			(UNIFORM_GRID_SIZE) ? "true" : "false",
 			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
-			UPSWEEP_CTA_OCCUPANCY,
+			UPSWEEP_MAX_CTA_OCCUPANCY,
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,
 			UPSWEEP_LOG_LOADS_PER_TILE,
