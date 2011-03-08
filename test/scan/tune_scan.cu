@@ -161,7 +161,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneProblemDetail : public scan::ScanEnactor<TuneProblemDetail<T, OpType> >
+class TuneEnactor : public scan::ScanEnactor<TuneEnactor<T, OpType> >
 {
 public:
 
@@ -297,7 +297,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	TuneProblemDetail(size_t num_elements) :
+	TuneEnactor(size_t num_elements) :
 		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
@@ -371,7 +371,7 @@ public:
 	template <typename ProblemConfig, bool VALID>
 	struct LaunchValidConfig
 	{
-		static void Invoke(TuneProblemDetail *detail)
+		static void Invoke(TuneEnactor *detail)
 		{
 			detail->TimedScan<ProblemConfig>();
 		}
@@ -381,7 +381,7 @@ public:
 	template <typename ProblemConfig>
 	struct LaunchValidConfig <ProblemConfig, false>
 	{
-		static void Invoke(TuneProblemDetail *detail) {}
+		static void Invoke(TuneEnactor *detail) {}
 	};
 
 	/**
@@ -502,7 +502,7 @@ template<typename T, typename OpType>
 void TestScan(size_t num_elements)
 {
 	// Allocate storage and enactor
-	typedef TuneProblemDetail<T, OpType> Detail;
+	typedef TuneEnactor<T, OpType> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),

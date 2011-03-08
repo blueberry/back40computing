@@ -152,14 +152,6 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 8>
 // SM1.3 specializations(s)
 //-----------------------------------------------------------------------------
 
-// All problems
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct TunedConfig<ProblemType, SM13, _PROB_SIZE_GENRE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
-};
-
 // Large problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
@@ -184,19 +176,68 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
+// All other Large problems
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+
+
+// Small problems, 1B data
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, SMALL, T, 1>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 10, 8, 6, 2, 1, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+// Small problems, 2B data
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, SMALL, T, 2>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, true, false, 9, 8, 6, 1, 2, 5, 8, 0, 1, 5, 8, 5, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+// Small problems, 4B data
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM13, SMALL, T, 4>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 0, 5, 8, 0, 1, 5, 8, 6, 1, 1, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+// All other Small problems
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 6, 8, 5, 0, 1, 5, 8, 0, 1, 5, 8, 5, 1, 0, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
 
 
 //-----------------------------------------------------------------------------
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-
-// All problems
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct TunedConfig<ProblemType, SM10, _PROB_SIZE_GENRE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM10, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
+// All Large problems
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM10, LARGE, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM10, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 0, 1, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+// All Small problems
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM10, SMALL, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM10, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 0, 5, 8, 0, 1, 5, 8, 6, 1, 1, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
 
 
