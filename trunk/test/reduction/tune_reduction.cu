@@ -149,7 +149,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneProblemDetail : public reduction::ReductionEnactor<TuneProblemDetail<T, OpType> >
+class TuneEnactor : public reduction::ReductionEnactor<TuneEnactor<T, OpType> >
 {
 public:
 
@@ -260,7 +260,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	TuneProblemDetail(size_t num_elements) :
+	TuneEnactor(size_t num_elements) :
 		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
@@ -419,7 +419,7 @@ template<typename T, typename OpType>
 void TestReduction(size_t num_elements)
 {
 	// Allocate storage and enactor
-	typedef TuneProblemDetail<T, OpType> Detail;
+	typedef TuneEnactor<T, OpType> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),

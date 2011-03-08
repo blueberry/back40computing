@@ -109,7 +109,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T>
-class TuneProblemDetail : public copy::CopyEnactor<TuneProblemDetail<T> >
+class TuneEnactor : public copy::CopyEnactor<TuneEnactor<T> >
 {
 public:
 
@@ -128,8 +128,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
-			MIN = util::ld::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::CG : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::NONE + 1,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -137,8 +137,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
-			MIN = util::st::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::CG : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::NONE + 1,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -190,7 +190,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	TuneProblemDetail(size_t num_elements) :
+	TuneEnactor(size_t num_elements) :
 		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
@@ -323,7 +323,7 @@ template<typename T>
 void TestCopy(size_t num_elements)
 {
 	// Allocate storage and enactor
-	typedef TuneProblemDetail<T> Detail;
+	typedef TuneEnactor<T> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),

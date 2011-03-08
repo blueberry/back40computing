@@ -239,7 +239,7 @@ cudaError_t CopyEnactor<DerivedEnactorType>::Enact(
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
 			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
-		printf("Sweep: \t[sweep_grid_size: %d, threads %d, SizeT %lu bytes, workstealing: %s, tile_elements: %d]\n",
+		printf("Sweep: \t\t[sweep_grid_size: %d, threads %d, SizeT %lu bytes, workstealing: %s, tile_elements: %d]\n",
 			work.grid_size, Sweep::THREADS, (unsigned long) sizeof(SizeT), Sweep::WORK_STEALING ? "true" : "false", Sweep::TILE_ELEMENTS);
 		printf("Work: \t\t[element bytes: %lu, num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu extra_grains: %lu]\n",
 			(unsigned long) sizeof(T), (unsigned long) work.num_elements, Sweep::SCHEDULE_GRANULARITY, (unsigned long) work.total_grains, (unsigned long) work.grains_per_cta, (unsigned long) work.extra_grains);

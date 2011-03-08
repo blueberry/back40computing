@@ -220,29 +220,29 @@ struct ConfigResolver <copy::UNKNOWN>
 	{
 		// Obtain large tuned granularity type
 		typedef copy::TunedConfig<CUDA_ARCH, copy::LARGE> LargeConfig;
+		typedef typename LargeConfig::Problem::T LargeT;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Sweep::TILE_ELEMENTS * LargeConfig::Sweep::CTA_OCCUPANCY * detail.enactor->SmCount();
-		if (storage.num_bytes < saturating_load) {
+		if (storage.num_bytes < saturating_load * sizeof(LargeT)) {
 
 			// Invoke base class enact with small-problem config type
 
 			typedef copy::TunedConfig<CUDA_ARCH, copy::SMALL> SmallConfig;
-			typedef typename SmallConfig::Problem::T T;
-			size_t num_elements = storage.num_bytes / sizeof(T);
-			size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
+			typedef typename SmallConfig::Problem::T SmallT;
+			size_t num_elements = storage.num_bytes / sizeof(SmallT);
+			size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(SmallT));
 
 			return detail.enactor->template Enact<SmallConfig>(
-				(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
+				(SmallT*) storage.d_dest, (SmallT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 		}
 
 		// Invoke base class enact with large-problem config type
-		typedef typename LargeConfig::Problem::T T;
-		size_t num_elements = storage.num_bytes / sizeof(T);
-		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
+		size_t num_elements = storage.num_bytes / sizeof(LargeT);
+		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(LargeT));
 
 		return detail.enactor->template Enact<LargeConfig>(
-			(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
+			(LargeT*) storage.d_dest, (LargeT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 };
 

@@ -117,8 +117,8 @@ double TimedRuntimeCopy(
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
 	printf("\nRuntime Copy: %d iterations, %lu bytes, ", g_iterations, (unsigned long) num_elements);
-    printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
-		avg_runtime, throughput, throughput * sizeof(T) * 2);
+    printf("%f GPU ms, %f x10^9 B/sec, ",
+		avg_runtime, throughput * sizeof(T) * 2);
 	
     // Clean up events
 	cudaEventDestroy(start_event);

@@ -103,22 +103,42 @@ struct TunedConfig : TunedConfig<
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <ProbSizeGenre _PROB_SIZE_GENRE>
-struct TunedConfig<SM20, _PROB_SIZE_GENRE>
-	: ProblemConfig<unsigned int, size_t, SM20, util::ld::CG, util::st::CG, true, false, 8, 7, 1, 1, 9>
+// Large problems
+template <>
+struct TunedConfig<SM20, LARGE>
+	: ProblemConfig<unsigned long long, size_t, SM20, util::ld::CG, util::st::CG, true, false, 8, 7, 1, 0, 8>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
+
+// Small problems
+template <>
+struct TunedConfig<SM20, SMALL>
+	: ProblemConfig<unsigned long long, size_t, SM20, util::ld::CG, util::st::CS, false, false, 8, 6, 0, 0, 6>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+
 
 //-----------------------------------------------------------------------------
 // SM1.3 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <ProbSizeGenre _PROB_SIZE_GENRE>
-struct TunedConfig<SM13, _PROB_SIZE_GENRE>
-	: ProblemConfig<unsigned int, size_t, SM13, util::ld::NONE, util::st::NONE, true, false, 8, 7, 1, 1, 9>
+// Large problems
+template <>
+struct TunedConfig<SM13, LARGE>
+	: ProblemConfig<unsigned short, size_t, SM13, util::ld::NONE, util::st::NONE, false, false, 8, 7, 2, 0, 9>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+// Small problems
+template <>
+struct TunedConfig<SM13, SMALL>
+	: ProblemConfig<unsigned long long, size_t, SM13, util::ld::NONE, util::st::NONE, false, false, 8, 5, 0, 1, 6>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
 
 
@@ -126,11 +146,20 @@ struct TunedConfig<SM13, _PROB_SIZE_GENRE>
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-template <ProbSizeGenre _PROB_SIZE_GENRE>
-struct TunedConfig<SM10, _PROB_SIZE_GENRE>
-	: ProblemConfig<unsigned int, size_t, SM10, util::ld::NONE, util::st::NONE, true, false, 8, 7, 1, 1, 9>
+// Large problems
+template <>
+struct TunedConfig<SM10, LARGE>
+	: ProblemConfig<unsigned short, size_t, SM10, util::ld::NONE, util::st::NONE, false, false, 8, 7, 2, 0, 9>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+// Small problems
+template <>
+struct TunedConfig<SM10, SMALL>
+	: ProblemConfig<unsigned long long, size_t, SM10, util::ld::NONE, util::st::NONE, false, false, 8, 5, 0, 1, 6>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
 
 
