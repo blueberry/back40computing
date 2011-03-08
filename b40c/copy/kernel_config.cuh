@@ -47,7 +47,7 @@ namespace copy {
  */
 template <
 	// ProblemType type parameters
-	typename ProblemType,
+	typename _ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -62,9 +62,9 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : ProblemType
+struct KernelConfig : _ProblemType
 {
-	typedef ProblemType ProblemType;
+	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::T T;
 
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
