@@ -64,14 +64,14 @@ int g_iterations = 0;
 void Usage()
 {
 	printf("\ntune_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-words>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the copy operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Default = 1\n");
 	printf("\n");
-	printf("\t--n\tThe number of elements to comprise the sample problem\n");
+	printf("\t--n\tThe number of 32-bit words to comprise the sample problem\n");
 	printf("\n");
 }
 
@@ -397,7 +397,7 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Copy: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
+	printf("Test Copy: %d iterations, %lu 32-bit words (%lu bytes)", g_iterations, (unsigned long) num_elements, (unsigned long) num_elements * 4);
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
