@@ -35,7 +35,7 @@
 #include <b40c/util/parameter_generation.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 using namespace b40c;
 
@@ -95,9 +95,9 @@ enum TuningParam {
 	PARAM_END,
 
 	// Parameters below here are currently not part of the tuning sweep
+	MAX_CTA_OCCUPANCY,
 
 	// Derive these from the others above
-	MAX_CTA_OCCUPANCY,
 	LOG_SCHEDULE_GRANULARITY,
 };
 

@@ -131,7 +131,7 @@ endif
 
 DEPS = 			./Makefile \
 				./test_sort.h \
-				../b40c_util.h \
+				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \

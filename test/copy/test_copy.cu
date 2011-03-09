@@ -27,7 +27,7 @@
 #include <stdio.h> 
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 #include "test_copy.h"
 
 using namespace b40c;

@@ -125,7 +125,7 @@ endif
 
 DEPS = 			./Makefile \
 				./test_copy.h \
-				../b40c_util.h \
+				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/copy/*.cuh) 
@@ -144,7 +144,7 @@ bin/simple_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_copy.cu $(DEPS)
 
 
 #-------------------------------------------------------------------------------
-# (make test) test driver for copy
+# (make test) Test driver for copy
 #-------------------------------------------------------------------------------
 
 test: bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)

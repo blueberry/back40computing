@@ -71,7 +71,7 @@ struct ScanCta :
 			data, d_in, cta_offset, out_of_bounds);
 
 		// Scan tile
-		this->template ScanTileWithCarry<ScanCta::LOAD_VEC_SIZE, ScanCta::BinaryOp>(data, carry);
+		this->template ScanTileWithCarry<ScanCta::LOAD_VEC_SIZE, ScanCta::EXCLUSIVE, ScanCta::BinaryOp>(data, carry);
 
 		// Store tile
 		util::StoreTile<T, SizeT, ScanCta::LOG_LOADS_PER_TILE, ScanCta::LOG_LOAD_VEC_SIZE, ScanCta::THREADS, ScanCta::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(

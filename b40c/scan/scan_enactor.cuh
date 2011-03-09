@@ -43,7 +43,6 @@ namespace scan {
 /**
  * Basic scan enactor class.
  */
-template <typename DerivedEnactorType = void>
 class ScanEnactor : public util::EnactorBase
 {
 protected:
@@ -51,11 +50,6 @@ protected:
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
-
-	// Dispatch type (either to self or to derived class as per CRTP -- curiously
-	// recurring template pattern)
-	typedef typename DispatchType<ScanEnactor, DerivedEnactorType>::Type Dispatch;
-	Dispatch *dispatch;
 
 	// Temporary device storage needed for reducing partials produced
 	// by separate CTAs
@@ -72,60 +66,35 @@ protected:
 	/**
 	 * Performs any lazy initialization work needed for this problem type
 	 */
-	template <typename ScanConfig>
+	template <typename ProblemConfig>
 	cudaError_t Setup(int sweep_grid_size, int spine_elements);
 
     /**
 	 * Performs a scan pass
 	 */
-	template <typename ScanConfig>
+	template <typename ProblemConfig>
 	cudaError_t ScanPass(
-		typename ScanConfig::Downsweep::T *d_dest,
-		typename ScanConfig::Downsweep::T *d_src,
-		util::CtaWorkDistribution<typename ScanConfig::Downsweep::SizeT> &work,
-		typename ScanConfig::Spine::SizeT spine_elements);
+		typename ProblemConfig::Downsweep::T *d_dest,
+		typename ProblemConfig::Downsweep::T *d_src,
+		util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+		typename ProblemConfig::Spine::SizeT spine_elements);
 
 	/**
-	 * Dispatches upsweep kernel
+	 * Enacts a scan on the specified device data.
 	 */
-	template <typename KernelConfig>
-	cudaError_t DispatchUpsweep(
-		int grid_size,
-		int dynamic_smem,
-		typename KernelConfig::T *d_src,
-		typename KernelConfig::T *d_dest,
-		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work);
-
-	/**
-	 * Dispatches spine kernel
-	 */
-	template <typename KernelConfig>
-	cudaError_t DispatchSpine(
-		int grid_size,
-		int dynamic_smem,
-		typename KernelConfig::T *d_src,
-		typename KernelConfig::T *d_dest,
-		typename KernelConfig::SizeT num_elements);
-
-	/**
-	 * Dispatches downsweep kernel
-	 */
-	template <typename KernelConfig>
-	cudaError_t DispatchDownsweep(
-		int grid_size,
-		int dynamic_smem,
-		typename KernelConfig::T *d_src,
-		typename KernelConfig::T *d_dest,
-		typename KernelConfig::T *d_spine,
-		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work);
-
+	template <typename ProblemConfig, typename EnactorType>
+	cudaError_t EnactInternal(
+		typename ProblemConfig::Downsweep::T *d_dest,
+		typename ProblemConfig::Downsweep::T *d_src,
+		typename ProblemConfig::Downsweep::SizeT num_elements,
+		int max_grid_size);
 
 public:
 
 	/**
 	 * Constructor
 	 */
-	ScanEnactor();
+	ScanEnactor(): d_spine(NULL), spine_bytes(0) {}
 
 
 	/**
@@ -150,11 +119,11 @@ public:
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	template <typename ScanConfig>
+	template <typename ProblemConfig>
 	cudaError_t Enact(
-		typename ScanConfig::Downsweep::T *d_dest,
-		typename ScanConfig::Downsweep::T *d_src,
-		typename ScanConfig::Downsweep::SizeT num_elements,
+		typename ProblemConfig::Downsweep::T *d_dest,
+		typename ProblemConfig::Downsweep::T *d_src,
+		typename ProblemConfig::Downsweep::SizeT num_elements,
 		int max_grid_size = 0);
 };
 
@@ -165,73 +134,17 @@ public:
  * ScanEnactor Implementation
  ******************************************************************************/
 
-/**
- * Dispatches upsweep kernel
- */
-template <typename DerivedEnactorType>
-template <typename KernelConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::DispatchUpsweep(
-	int grid_size,
-	int dynamic_smem,
-	typename KernelConfig::T *d_src,
-	typename KernelConfig::T *d_dest,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work)
-{
-	reduction::UpsweepReductionKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
-		d_src, d_dest, NULL, work, 0);
-
-	return util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__);
-}
-
-/**
- * Dispatches spine kernel
- */
-template <typename DerivedEnactorType>
-template <typename KernelConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::DispatchSpine(
-	int grid_size,
-	int dynamic_smem,
-	typename KernelConfig::T *d_src,
-	typename KernelConfig::T *d_dest,
-	typename KernelConfig::SizeT num_elements)
-{
-	SpineScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
-		d_src, d_dest, num_elements);
-
-	return util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__);
-}
-
-/**
- * Dispatches downsweep kernel
- */
-template <typename DerivedEnactorType>
-template <typename KernelConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::DispatchDownsweep(
-	int grid_size,
-	int dynamic_smem,
-	typename KernelConfig::T *d_src,
-	typename KernelConfig::T *d_dest,
-	typename KernelConfig::T *d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work)
-{
-	DownsweepScanKernel<KernelConfig><<<grid_size, KernelConfig::THREADS, dynamic_smem>>>(
-		d_src, d_dest, d_spine, work);
-
-	return util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor Downsweep failed ", __FILE__, __LINE__);
-}
-
 
 /**
  * Performs any lazy initialization work needed for this problem type
  */
-template <typename DerivedEnactorType>
-template <typename ScanConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::Setup(int sweep_grid_size, int spine_elements)
+template <typename ProblemConfig>
+cudaError_t ScanEnactor::Setup(int sweep_grid_size, int spine_elements)
 {
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spine is big enough
-		int problem_spine_bytes = spine_elements * sizeof(typename ScanConfig::Downsweep::T);
+		int problem_spine_bytes = spine_elements * sizeof(typename ProblemConfig::Downsweep::T);
 		if (problem_spine_bytes > spine_bytes) {
 			if (d_spine) {
 				if (retval = util::B40CPerror(cudaFree(d_spine),
@@ -252,27 +165,28 @@ cudaError_t ScanEnactor<DerivedEnactorType>::Setup(int sweep_grid_size, int spin
 /**
  * Performs a scan pass
  */
-template <typename DerivedEnactorType>
-template <typename ScanConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::ScanPass(
-	typename ScanConfig::Downsweep::T *d_dest,
-	typename ScanConfig::Downsweep::T *d_src,
-	util::CtaWorkDistribution<typename ScanConfig::Downsweep::SizeT> &work,
-	typename ScanConfig::Spine::SizeT spine_elements)
+template <typename ProblemConfig>
+cudaError_t ScanEnactor::ScanPass(
+	typename ProblemConfig::Downsweep::T *d_dest,
+	typename ProblemConfig::Downsweep::T *d_src,
+	util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+	typename ProblemConfig::Spine::SizeT spine_elements)
 {
-	typedef typename ScanConfig::Upsweep Upsweep;
-	typedef typename ScanConfig::Spine Spine;
-	typedef typename ScanConfig::Downsweep Downsweep;
+	typedef typename ProblemConfig::Upsweep Upsweep;
+	typedef typename ProblemConfig::Spine Spine;
+	typedef typename ProblemConfig::Downsweep Downsweep;
 
 	typedef typename Downsweep::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		if (work.grid_size == 1) {
+		if ((work.num_elements <= Spine::TILE_ELEMENTS) || (work.grid_size == 1)) {
 
-			// No need to upsweep reduce or downsweep scan if there's only one CTA in the sweep grid
-			int dynamic_smem = 0;
-			if (retval = DispatchSpine<Spine>(work.grid_size, dynamic_smem, d_src, d_dest, work.num_elements)) break;
+			// No need to upsweep reduce or downsweep scan if we can do it with a single spine kernel
+			SpineScanKernel<Spine><<<1, Spine::THREADS, 0>>>(
+				d_src, d_dest, work.num_elements);
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
@@ -280,7 +194,7 @@ cudaError_t ScanEnactor<DerivedEnactorType>::ScanPass(
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
 			// Tuning option for dynamic smem allocation
-			if (ScanConfig::UNIFORM_SMEM_ALLOCATION) {
+			if (ProblemConfig::UNIFORM_SMEM_ALLOCATION) {
 
 				// We need to compute dynamic smem allocations to ensure all three
 				// kernels end up allocating the same amount of smem per CTA
@@ -304,18 +218,27 @@ cudaError_t ScanEnactor<DerivedEnactorType>::ScanPass(
 			}
 
 			// Tuning option for spine-scan kernel grid size
-			if (ScanConfig::UNIFORM_GRID_SIZE) {
+			if (ProblemConfig::UNIFORM_GRID_SIZE) {
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
 			// Upsweep scan into spine
-			if (retval = dispatch->template DispatchUpsweep<Upsweep>(grid_size[0], dynamic_smem[0], d_src, (T*) d_spine, work)) break;
+			reduction::UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+				d_src, (T*) d_spine, NULL, work, 0);
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
-			if (retval = dispatch->template DispatchSpine<Spine>(grid_size[1], dynamic_smem[1], (T*) d_spine, (T*) d_spine, spine_elements)) break;
+			SpineScanKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+				(T*) d_spine, (T*) d_spine, spine_elements);
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
-			if (retval = dispatch->template DispatchDownsweep<Downsweep>(grid_size[2], dynamic_smem[2], d_src, d_dest, (T*) d_spine, work)) break;
+			DownsweepScanKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
+				d_src, d_dest, (T*) d_spine, work);
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor DownsweepScanKernel failed ", __FILE__, __LINE__))) break;
 
 		}
 	} while (0);
@@ -325,22 +248,9 @@ cudaError_t ScanEnactor<DerivedEnactorType>::ScanPass(
 
 
 /**
- * Constructor
- */
-template <typename DerivedEnactorType>
-ScanEnactor<DerivedEnactorType>::ScanEnactor() :
-	d_spine(NULL),
-	spine_bytes(0)
-{
-	dispatch = static_cast<Dispatch*>(this);
-}
-
-
-/**
  * Destructor
  */
-template <typename DerivedEnactorType>
-ScanEnactor<DerivedEnactorType>::~ScanEnactor()
+ScanEnactor::~ScanEnactor()
 {
 	if (d_spine) {
 		util::B40CPerror(cudaFree(d_spine), "ScanEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
@@ -351,28 +261,25 @@ ScanEnactor<DerivedEnactorType>::~ScanEnactor()
 /**
  * Enacts a scan on the specified device data.
  */
-template <typename DerivedEnactorType>
-template <typename ScanConfig>
-cudaError_t ScanEnactor<DerivedEnactorType>::Enact(
-	typename ScanConfig::Downsweep::T *d_dest,
-	typename ScanConfig::Downsweep::T *d_src,
-	typename ScanConfig::Downsweep::SizeT num_elements,
+template <typename ProblemConfig, typename EnactorType>
+cudaError_t ScanEnactor::EnactInternal(
+	typename ProblemConfig::Downsweep::T *d_dest,
+	typename ProblemConfig::Downsweep::T *d_src,
+	typename ProblemConfig::Downsweep::SizeT num_elements,
 	int max_grid_size)
 {
-	typedef typename ScanConfig::Upsweep Upsweep;
-	typedef typename ScanConfig::Spine Spine;
-	typedef typename ScanConfig::Downsweep Downsweep;
+	typedef typename ProblemConfig::Upsweep Upsweep;
+	typedef typename ProblemConfig::Spine Spine;
+	typedef typename ProblemConfig::Downsweep Downsweep;
 	typedef typename Downsweep::T T;
 	typedef typename Downsweep::SizeT SizeT;
 
 	// Compute sweep grid size
 	const int MIN_OCCUPANCY = B40C_MIN(Downsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
-	int sweep_grid_size = (num_elements <= Spine::TILE_ELEMENTS) ?
-		1 :
-		(ScanConfig::OVERSUBSCRIBED_GRID_SIZE) ?
-			OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
-			OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
+	int sweep_grid_size = (ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
+		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
+		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
 
 	// Compute spine elements (round up to nearest spine tile_elements)
 	int spine_elements = ((sweep_grid_size + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
@@ -401,14 +308,29 @@ cudaError_t ScanEnactor<DerivedEnactorType>::Enact(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Perform any lazy initialization work
-		if (retval = Setup<ScanConfig>(sweep_grid_size, spine_elements)) break;
+		if (retval = Setup<ProblemConfig>(sweep_grid_size, spine_elements)) break;
 
 		// Invoke scan kernel
-		if (retval = dispatch->template ScanPass<ScanConfig>(d_dest, d_src, work, spine_elements)) break;
+		EnactorType *dipatch = static_cast<EnactorType *>(this);
+		if (retval = dipatch->template ScanPass<ProblemConfig>(d_dest, d_src, work, spine_elements)) break;
 
 	} while (0);
 
 	return retval;
+}
+
+
+/**
+ * Enacts a scan on the specified device data.
+ */
+template <typename ProblemConfig>
+cudaError_t ScanEnactor::Enact(
+	typename ProblemConfig::Downsweep::T *d_dest,
+	typename ProblemConfig::Downsweep::T *d_src,
+	typename ProblemConfig::Downsweep::SizeT num_elements,
+	int max_grid_size)
+{
+	return EnactInternal<ProblemConfig, ScanEnactor>(d_dest, d_src, num_elements, max_grid_size);
 }
 
 

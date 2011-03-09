@@ -35,7 +35,7 @@
 #include <b40c/util/parameter_generation.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 using namespace b40c;
 
@@ -161,7 +161,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneEnactor : public scan::ScanEnactor<TuneEnactor<T, OpType> >
+class TuneEnactor : public scan::ScanEnactor
 {
 public:
 
@@ -455,11 +455,13 @@ public:
 		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		
 		// Establish the problem type
+		const bool EXCLUSIVE = true;
 		typedef scan::ProblemType<
 			T,
 			size_t,
 			OpType::BinaryOp,
-			OpType::Identity> ProblemType;
+			OpType::Identity,
+			EXCLUSIVE> ProblemType;
 
 		// Establish the granularity configuration type
 		typedef scan::ProblemConfig <
@@ -524,11 +526,10 @@ void TestScan(size_t num_elements)
 
 	for (size_t i = 0; i < num_elements; ++i) {
 //		RandomBits<T>(h_data[i], 0);
-//		detail.h_data[i] = i;
-		detail.h_data[i] = 1;
+		detail.h_data[i] = i;
 		detail.h_reference[i] = (i == 0) ?
 			OpType::Identity() :
-			OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i]);
+			OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i - 1]);
 	}
 
 

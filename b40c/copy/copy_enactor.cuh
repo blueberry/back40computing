@@ -93,7 +93,9 @@ public:
 	/**
 	 * Constructor
 	 */
-	CopyEnactor() : d_work_progress(NULL), progress_selector(0) {}
+	CopyEnactor() :
+		d_work_progress(NULL),
+		progress_selector(0) {}
 
 
 	/**
@@ -238,8 +240,10 @@ cudaError_t CopyEnactor::EnactInternal(
 		// Perform any lazy initialization work
 		if (retval = Setup<ProblemConfig>(sweep_grid_size)) break;
 
-		// Invoke copy kernel
-		if (retval = static_cast<EnactorType *>(this)->template CopyPass<ProblemConfig>(d_dest, d_src, work, extra_bytes)) break;
+		// Invoke copy pass
+		EnactorType *dipatch = static_cast<EnactorType *>(this);
+		if (retval = dipatch->template CopyPass<ProblemConfig>(
+			d_dest, d_src, work, extra_bytes)) break;
 
 	} while (0);
 

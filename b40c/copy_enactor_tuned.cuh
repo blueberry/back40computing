@@ -42,16 +42,19 @@ namespace b40c {
  */
 class CopyEnactorTuned : public copy::CopyEnactor
 {
-protected:
+public:
 
 	//---------------------------------------------------------------------
-	// Helper Structures
+	// Helper Structures (need to be public for cudafe)
 	//---------------------------------------------------------------------
 
 	struct Storage;
 	struct Detail;
 	template <copy::ProbSizeGenre PROB_SIZE_GENRE> struct ConfigResolver;	
+
 	
+protected:
+
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
@@ -77,17 +80,6 @@ protected:
 		typename TunedConfig::Sweep::T *d_src,
 		util::CtaWorkDistribution<typename TunedConfig::Sweep::SizeT> &work,
 		int extra_bytes);
-
-
-	//-----------------------------------------------------------------------------
-	// Granularity specialization interface required by ArchDispatch subclass
-	//-----------------------------------------------------------------------------
-
-	/**
-	 * Dispatch call-back with static CUDA_ARCH
-	 */
-	template <int CUDA_ARCH, typename Storage, typename Detail>
-	cudaError_t Enact(Storage &storage, Detail &detail);
 
 
 public:
@@ -284,8 +276,8 @@ cudaError_t CopyEnactorTuned::CopyPass(
 
 	// Sweep copy
 	copy::TunedSweepCopyKernel<TunedConfig::PROB_SIZE_GENRE>
-		<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
-			(void *) d_src, (void *) d_dest, d_work_progress, work, progress_selector, extra_bytes);
+			<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
+		(void *) d_src, (void *) d_dest, d_work_progress, work, progress_selector, extra_bytes);
 
 	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
 

@@ -32,7 +32,7 @@
 #include <b40c/reduction_enactor_tuned.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 /******************************************************************************
  * Test wrappers for binary, associative operations

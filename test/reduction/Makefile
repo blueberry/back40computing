@@ -125,7 +125,7 @@ endif
 
 DEPS = 			./Makefile \
 				./test_reduction.h \
-				../b40c_util.h \
+				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
@@ -134,7 +134,19 @@ DEPS = 			./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for reduction
+# (make simple) Simple example driver for reduction
+#-------------------------------------------------------------------------------
+
+simple: bin/simple_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/simple_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_reduction.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
+
+
+#-------------------------------------------------------------------------------
+# (make test) Test driver for reduction
 #-------------------------------------------------------------------------------
 
 test: bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)

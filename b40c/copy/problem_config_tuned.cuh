@@ -47,8 +47,8 @@ namespace copy {
 enum ProbSizeGenre
 {
 	UNKNOWN = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
-	SMALL,
-	LARGE
+	SMALL,					// Tuned @ 128KB input
+	LARGE					// Tuned @ 128MB input
 };
 
 

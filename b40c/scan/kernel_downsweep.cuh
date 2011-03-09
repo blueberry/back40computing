@@ -39,15 +39,33 @@ template <typename KernelConfig>
 __device__ __forceinline__ void DownsweepScanPass(
 	typename KernelConfig::T 			* &d_in,
 	typename KernelConfig::T 			* &d_out,
-	typename KernelConfig::T 			* __restrict &d_spine_partial,
+	typename KernelConfig::T 			* __restrict &d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
 	typedef ScanCta<KernelConfig> ScanCta;
 	typedef typename ScanCta::T T;
 	typedef typename ScanCta::SizeT SizeT;
 
+	// We need the exclusive partial from our spine, regardless of whether
+	// we're exclusive/inclusive
+
 	T spine_partial;
-	util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+	if (KernelConfig::EXCLUSIVE) {
+
+		// Spine was an exclusive scan
+		T *d_spine_partial = d_spine + blockIdx.x;
+		util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+
+	} else {
+
+		// Spine was in inclusive scan: load exclusive partial
+		if (blockIdx.x == 0) {
+			spine_partial = KernelConfig::Identity();
+		} else {
+			T *d_spine_partial = d_spine + blockIdx.x - 1;
+			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+		}
+	}
 
 	// Shared storage for CTA processing
 	__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
@@ -98,9 +116,7 @@ void DownsweepScanKernel(
 	typename KernelConfig::T 			* __restrict d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
-	typename KernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
-
-	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine_partial, work_decomposition);
+	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
 }
 
 

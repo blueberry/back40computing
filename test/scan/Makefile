@@ -135,7 +135,7 @@ endif
 
 DEPS = 			./Makefile \
 				./test_scan.h \
-				../b40c_util.h \
+				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) \
@@ -144,7 +144,19 @@ DEPS = 			./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for large-problem scan
+# (make simple) Simple example driver for scan
+#-------------------------------------------------------------------------------
+
+simple: bin/simple_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/simple_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_scan.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
+
+
+#-------------------------------------------------------------------------------
+# (make test) Test driver for driver for large-problem scan
 #-------------------------------------------------------------------------------
 
 test: bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)

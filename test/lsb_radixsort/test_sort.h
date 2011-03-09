@@ -32,7 +32,7 @@
 //#include <b40c/sort_enactor_tuned.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 
 /******************************************************************************

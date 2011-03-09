@@ -37,10 +37,12 @@ namespace scan {
 template <
 	typename T,
 	typename SizeT,
+	bool _EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
 struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp, Identity>
 {
+	static const bool EXCLUSIVE = _EXCLUSIVE;
 };
 
 
