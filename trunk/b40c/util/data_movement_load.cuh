@@ -71,25 +71,25 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	/**
 	 * Defines specialized load ops for only the base type 
 	 */
-	#define B40C_DEFINE_BASE_GLOBAL_LOAD(base_type, ptx_type, reg_mod)																								\
-		template <> struct ModifiedLoad<base_type, ld::NONE> {																											\
+	#define B40C_DEFINE_BASE_GLOBAL_LOAD(base_type, ptx_type, reg_mod, cast_type)																					\
+		template <> struct ModifiedLoad<base_type, ld::NONE> {																										\
 			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
 				val = d_ptr[offset];																																\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CG> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CG> {																										\
 			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CS> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CS> {																										\
 			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CA> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CA> {																										\
 			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																								
 
@@ -97,123 +97,133 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	/**
 	 * Defines specialized load ops for both the base type and for its derivative vector types
 	 */
-	#define B40C_DEFINE_GLOBAL_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod)																			\
-		template <> struct ModifiedLoad<base_type, ld::NONE> {																											\
+	#define B40C_DEFINE_GLOBAL_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)																	\
+		template <> struct ModifiedLoad<base_type, ld::NONE> {																										\
 			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
 				val = d_ptr[offset];																																\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CG> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CG> {																										\
 			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CS> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CS> {																										\
 			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<base_type, ld::CA> {																											\
+		template <> struct ModifiedLoad<base_type, ld::CA> {																										\
 			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##1, ld::NONE> {																										\
+		template <> struct ModifiedLoad<short_type##1, ld::NONE> {																									\
 			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
 				val = d_ptr[offset];																																\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##1, ld::CG> {																										\
+		template <> struct ModifiedLoad<short_type##1, ld::CG> {																									\
 			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)) : _B40C_ASM_PTR_(d_ptr + offset));					\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##1, ld::CS> {																										\
+		template <> struct ModifiedLoad<short_type##1, ld::CS> {																									\
 			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)) : _B40C_ASM_PTR_(d_ptr + offset));					\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##1, ld::CA> {																										\
+		template <> struct ModifiedLoad<short_type##1, ld::CA> {																									\
 			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)) : _B40C_ASM_PTR_(d_ptr + offset));					\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##2, ld::NONE> {																										\
+		template <> struct ModifiedLoad<short_type##2, ld::NONE> {																									\
 			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
 				val = d_ptr[offset];																																\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##2, ld::CG> {																										\
+		template <> struct ModifiedLoad<short_type##2, ld::CG> {																									\
 			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.cg.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+				asm("ld.global.cg.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##2, ld::CS> {																										\
+		template <> struct ModifiedLoad<short_type##2, ld::CS> {																									\
 			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.cs.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+				asm("ld.global.cs.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};																																							\
-		template <> struct ModifiedLoad<short_type##2, ld::CA> {																										\
+		template <> struct ModifiedLoad<short_type##2, ld::CA> {																									\
 			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.ca.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+				asm("ld.global.ca.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)) : _B40C_ASM_PTR_(d_ptr + offset));						\
 			}																																						\
 		};
 
 	/**
 	 * Defines specialized load ops for the vec-4 derivative vector types
 	 */
-	#define B40C_DEFINE_GLOBAL_QUAD_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod)																									\
-		template <> struct ModifiedLoad<short_type##4, ld::NONE> {																																	\
+	#define B40C_DEFINE_GLOBAL_QUAD_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)																						\
+		template <> struct ModifiedLoad<short_type##4, ld::NONE> {																																\
 			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
 				val = d_ptr[offset];																																							\
 			}																																													\
 		};																																														\
-		template <> struct ModifiedLoad<short_type##4, ld::CG> {																																	\
+		template <> struct ModifiedLoad<short_type##4, ld::CG> {																																\
 			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.cg.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+				asm("ld.global.cg.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.z)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.w)) : _B40C_ASM_PTR_(d_ptr + offset));	\
 			}																																													\
 		};																																														\
-		template <> struct ModifiedLoad<short_type##4, ld::CS> {																																	\
+		template <> struct ModifiedLoad<short_type##4, ld::CS> {																																\
 			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.cs.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+				asm("ld.global.cs.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.z)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.w)) : _B40C_ASM_PTR_(d_ptr + offset));	\
 			}																																													\
 		};																																														\
-		template <> struct ModifiedLoad<short_type##4, ld::CA> {																																	\
+		template <> struct ModifiedLoad<short_type##4, ld::CA> {																																\
 			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.ca.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+				asm("ld.global.ca.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.z)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.w)) : _B40C_ASM_PTR_(d_ptr + offset));	\
 			}																																													\
 		};
 
 	// Cache-modified loads for built-in structures
-	B40C_DEFINE_GLOBAL_LOAD(char, signed char, char, s8, r)
-	B40C_DEFINE_GLOBAL_LOAD(short, short, short, s16, r)
-	B40C_DEFINE_GLOBAL_LOAD(int, int, int, s32, r)
-	B40C_DEFINE_GLOBAL_LOAD(long, long, long, s64, l)
-	B40C_DEFINE_GLOBAL_LOAD(long long, long long, longlong, s64, l)
-	B40C_DEFINE_GLOBAL_LOAD(unsigned char, unsigned char, uchar, u8, r)
-	B40C_DEFINE_GLOBAL_LOAD(unsigned short, unsigned short, ushort, u16, r)
-	B40C_DEFINE_GLOBAL_LOAD(unsigned int, unsigned int, uint, u32, r)
-	B40C_DEFINE_GLOBAL_LOAD(unsigned long, unsigned long, ulong, u64, l)
-	B40C_DEFINE_GLOBAL_LOAD(unsigned long long, unsigned long long, ulonglong, u64, l)
-	B40C_DEFINE_GLOBAL_LOAD(float, float, float, f32, f)
+	B40C_DEFINE_GLOBAL_LOAD(char, signed char, char, s8, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(short, short, short, s16, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(int, int, int, s32, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(long long, long long, longlong, s64, l, long long)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned char, unsigned char, uchar, u8, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned short, unsigned short, ushort, u16, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned int, unsigned int, uint, u32, r, unsigned int)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned long long, unsigned long long, ulonglong, u64, l, unsigned long long)
+	B40C_DEFINE_GLOBAL_LOAD(float, float, float, f32, f, float)
+	
+#if _B40C_LP64_
+	B40C_DEFINE_GLOBAL_LOAD(long, long, long, s64, l, long)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned long, unsigned long, ulong, u64, l, unsigned long)
+#else 
+	B40C_DEFINE_GLOBAL_LOAD(long, long, long, s32, r, long)
+	B40C_DEFINE_GLOBAL_LOAD(unsigned long, unsigned long, ulong, u32, r, unsigned long)
+#endif
 
 	// Cache-modified quad-loads for all 4-byte (and smaller) structures
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(char, signed char, char, s8, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(short, short, short, s16, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(int, int, int, s32, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(long, long, long, s64, l)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned char, unsigned char, uchar, u8, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned short, unsigned short, ushort, u16, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned int, unsigned int, uint, u32, r)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned long, unsigned long, ulong, u64, l)
-	B40C_DEFINE_GLOBAL_QUAD_LOAD(float, float, float, f32, f)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(char, signed char, char, s8, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(short, short, short, s16, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(int, int, int, s32, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned char, unsigned char, uchar, u8, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned short, unsigned short, ushort, u16, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned int, unsigned int, uint, u32, r, unsigned int)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(float, float, float, f32, f, float)
 
-	B40C_DEFINE_BASE_GLOBAL_LOAD(signed char, s8, r)	// only need to define base: char2,char4, etc already defined from char
+	B40C_DEFINE_BASE_GLOBAL_LOAD(signed char, s8, r, unsigned int)	// only need to define base: char2,char4, etc already defined from char
 
+#if !_B40C_LP64_
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(long, long, long, s32, r, long)
+	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned long, unsigned long, ulong, u32, r, unsigned long)
+#endif
+	
+	
 	// Workaround for the fact that the assembler reports an error when attempting to 
 	// make vector loads of doubles.
 
-	B40C_DEFINE_BASE_GLOBAL_LOAD(double, f64, d)
+	B40C_DEFINE_BASE_GLOBAL_LOAD(double, f64, d, double)
 
 	template <ld::CacheModifier CACHE_MODIFIER>
 	struct ModifiedLoad<double2, CACHE_MODIFIER> {
@@ -249,6 +259,25 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 		}																																							
 	};																																								
 
+#if _B40C_LP64_
+	template <ld::CacheModifier CACHE_MODIFIER>
+	struct ModifiedLoad<long4, CACHE_MODIFIER> {
+		__device__ __forceinline__ static void Ld(long4 &val, long4* d_ptr, size_t offset) {
+			ModifiedLoad<long2, CACHE_MODIFIER>::Ld(*reinterpret_cast<long2*>(&val.x), reinterpret_cast<long2*>(d_ptr + offset), 0);
+			ModifiedLoad<long2, CACHE_MODIFIER>::Ld(*reinterpret_cast<long2*>(&val.z), reinterpret_cast<long2*>(d_ptr + offset), 1);
+		}																																							
+	};																																								
+
+	template <ld::CacheModifier CACHE_MODIFIER>
+	struct ModifiedLoad<ulong4, CACHE_MODIFIER> {
+		__device__ __forceinline__ static void Ld(ulong4 &val, ulong4* d_ptr, size_t offset) {
+			ModifiedLoad<ulong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulong2*>(&val.x), reinterpret_cast<ulong2*>(d_ptr + offset), 0);
+			ModifiedLoad<ulong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulong2*>(&val.z), reinterpret_cast<ulong2*>(d_ptr + offset), 1);
+		}																																							
+	};																																								
+#endif
+	
+	
 	#undef B40C_DEFINE_BASE_GLOBAL_QUAD_LOAD
 	#undef B40C_DEFINE_BASE_GLOBAL_LOAD
 	#undef B40C_DEFINE_GLOBAL_LOAD

@@ -91,14 +91,14 @@ template <typename ParamList, int SEARCH_PARAM>
 struct Access
 {
 	enum {
-		VALUE = 	(SEARCH_PARAM == ParamList::P0) ?		ParamList::V0 :
-					(SEARCH_PARAM == ParamList::P1) ?		ParamList::V1 :
-					(SEARCH_PARAM == ParamList::P2) ?		ParamList::V2 :
-					(SEARCH_PARAM == ParamList::P3) ?		ParamList::V3 :
-					(SEARCH_PARAM == ParamList::P4) ?		ParamList::V4 :
-					(SEARCH_PARAM == ParamList::P5) ?		ParamList::V5 :
-					(SEARCH_PARAM == ParamList::P6) ?		ParamList::V6 :
-					(SEARCH_PARAM == ParamList::P7) ?		ParamList::V7 :
+		VALUE = 	(SEARCH_PARAM == ParamList::P0) ?		(int) ParamList::V0 :
+					(SEARCH_PARAM == ParamList::P1) ?		(int) ParamList::V1 :
+					(SEARCH_PARAM == ParamList::P2) ?		(int) ParamList::V2 :
+					(SEARCH_PARAM == ParamList::P3) ?		(int) ParamList::V3 :
+					(SEARCH_PARAM == ParamList::P4) ?		(int) ParamList::V4 :
+					(SEARCH_PARAM == ParamList::P5) ?		(int) ParamList::V5 :
+					(SEARCH_PARAM == ParamList::P6) ?		(int) ParamList::V6 :
+					(SEARCH_PARAM == ParamList::P7) ?		(int) ParamList::V7 :
 															Access<typename ParamList::next, SEARCH_PARAM>::VALUE
 	};
 };
