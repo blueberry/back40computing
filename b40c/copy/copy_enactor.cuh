@@ -41,7 +41,6 @@ namespace copy {
 /**
  * Basic copy enactor class.
  */
-template <typename DerivedEnactorType = void>
 class CopyEnactor : public util::EnactorBase
 {
 protected:
@@ -49,11 +48,6 @@ protected:
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
-
-	// Dispatch type (either to self or to derived class as per CRTP -- curiously
-	// recurring template pattern)
-	typedef typename DispatchType<CopyEnactor, DerivedEnactorType>::Type Dispatch;
-	Dispatch *dispatch;
 
 	// A pair of counters in global device memory and a selector for
 	// indexing into the pair.  If we perform workstealing passes, the
@@ -83,12 +77,23 @@ protected:
 		util::CtaWorkDistribution<typename ProblemConfig::Sweep::SizeT> &work,
 		int extra_bytes);
 
+	/**
+	 * Enacts a copy on the specified device data.
+	 */
+	template <typename ProblemConfig, typename EnactorType>
+	cudaError_t EnactInternal(
+		typename ProblemConfig::Sweep::T *d_dest,
+		typename ProblemConfig::Sweep::T *d_src,
+		typename ProblemConfig::Sweep::SizeT num_elements,
+		int extra_bytes,
+		int max_grid_size);	
+	
 public:
 
 	/**
 	 * Constructor
 	 */
-	CopyEnactor();
+	CopyEnactor() : d_work_progress(NULL), progress_selector(0) {}
 
 
 	/**
@@ -98,7 +103,8 @@ public:
 
 
 	/**
-	 * Enacts a copy on the specified device data.
+	 * Enacts a copy on the specified device data using the specified 
+	 * granularity configuration
 	 *
 	 * For generating copy kernels having computational granularities in accordance
 	 * with user-supplied granularity-specialization types.  (Useful for auto-tuning.)
@@ -118,7 +124,6 @@ public:
 		typename ProblemConfig::Sweep::T *d_dest,
 		typename ProblemConfig::Sweep::T *d_src,
 		typename ProblemConfig::Sweep::SizeT num_elements,
-		int extra_bytes = 0,
 		int max_grid_size = 0);
 };
 
@@ -131,9 +136,8 @@ public:
 /**
  * Performs any lazy initialization work needed for this problem type
  */
-template <typename DerivedEnactorType>
 template <typename ProblemConfig>
-cudaError_t CopyEnactor<DerivedEnactorType>::Setup(int sweep_grid_size)
+cudaError_t CopyEnactor::Setup(int sweep_grid_size)
 {
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -161,13 +165,11 @@ cudaError_t CopyEnactor<DerivedEnactorType>::Setup(int sweep_grid_size)
 }
 
 
-
 /**
  * Performs a copy pass
  */
-template <typename DerivedEnactorType>
 template <typename ProblemConfig>
-cudaError_t CopyEnactor<DerivedEnactorType>::CopyPass(
+cudaError_t CopyEnactor::CopyPass(
 	typename ProblemConfig::Sweep::T *d_dest,
 	typename ProblemConfig::Sweep::T *d_src,
 	util::CtaWorkDistribution<typename ProblemConfig::Sweep::SizeT> &work,
@@ -189,22 +191,9 @@ cudaError_t CopyEnactor<DerivedEnactorType>::CopyPass(
 
 
 /**
- * Constructor
- */
-template <typename DerivedEnactorType>
-CopyEnactor<DerivedEnactorType>::CopyEnactor() :
-	d_work_progress(NULL),
-	progress_selector(0)
-{
-	dispatch = static_cast<Dispatch*>(this);
-}
-
-
-/**
  * Destructor
  */
-template <typename DerivedEnactorType>
-CopyEnactor<DerivedEnactorType>::~CopyEnactor()
+CopyEnactor::~CopyEnactor()
 {
 	if (d_work_progress) {
 		util::B40CPerror(cudaFree(d_work_progress), "CopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
@@ -215,9 +204,8 @@ CopyEnactor<DerivedEnactorType>::~CopyEnactor()
 /**
  * Enacts a copy on the specified device data.
  */
-template <typename DerivedEnactorType>
-template <typename ProblemConfig>
-cudaError_t CopyEnactor<DerivedEnactorType>::Enact(
+template <typename ProblemConfig, typename EnactorType>
+cudaError_t CopyEnactor::EnactInternal(
 	typename ProblemConfig::Sweep::T *d_dest,
 	typename ProblemConfig::Sweep::T *d_src,
 	typename ProblemConfig::Sweep::SizeT num_elements,
@@ -251,7 +239,7 @@ cudaError_t CopyEnactor<DerivedEnactorType>::Enact(
 		if (retval = Setup<ProblemConfig>(sweep_grid_size)) break;
 
 		// Invoke copy kernel
-		if (retval = dispatch->template CopyPass<ProblemConfig>(d_dest, d_src, work, extra_bytes)) break;
+		if (retval = static_cast<EnactorType *>(this)->template CopyPass<ProblemConfig>(d_dest, d_src, work, extra_bytes)) break;
 
 	} while (0);
 
@@ -266,6 +254,20 @@ cudaError_t CopyEnactor<DerivedEnactorType>::Enact(
 	}
 
 	return retval;
+}
+
+
+/**
+ * Enacts a copy on the specified device data.
+ */
+template <typename ProblemConfig>
+cudaError_t CopyEnactor::Enact(
+	typename ProblemConfig::Sweep::T *d_dest,
+	typename ProblemConfig::Sweep::T *d_src,
+	typename ProblemConfig::Sweep::SizeT num_elements,
+	int max_grid_size)
+{
+	return EnactInternal<ProblemConfig, CopyEnactor>(d_dest, d_src, num_elements, 0, max_grid_size);
 }
 
 
