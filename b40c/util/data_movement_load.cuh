@@ -194,14 +194,14 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	B40C_DEFINE_GLOBAL_LOAD(unsigned int, unsigned int, uint, u32, r, unsigned int)
 	B40C_DEFINE_GLOBAL_LOAD(unsigned long long, unsigned long long, ulonglong, u64, l, unsigned long long)
 	B40C_DEFINE_GLOBAL_LOAD(float, float, float, f32, f, float)
-	
+
 #if _B40C_LP64_
 	B40C_DEFINE_GLOBAL_LOAD(long, long, long, s64, l, long)
 	B40C_DEFINE_GLOBAL_LOAD(unsigned long, unsigned long, ulong, u64, l, unsigned long)
-#else 
+#else 	// _B40C_LP64_
 	B40C_DEFINE_GLOBAL_LOAD(long, long, long, s32, r, long)
 	B40C_DEFINE_GLOBAL_LOAD(unsigned long, unsigned long, ulong, u32, r, unsigned long)
-#endif
+#endif	// _B40C_LP64_
 
 	// Cache-modified quad-loads for all 4-byte (and smaller) structures
 	B40C_DEFINE_GLOBAL_QUAD_LOAD(char, signed char, char, s8, r, unsigned int)
@@ -217,8 +217,8 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 #if !_B40C_LP64_
 	B40C_DEFINE_GLOBAL_QUAD_LOAD(long, long, long, s32, r, long)
 	B40C_DEFINE_GLOBAL_QUAD_LOAD(unsigned long, unsigned long, ulong, u32, r, unsigned long)
-#endif
-	
+#endif	// _B40C_LP64_
+
 	
 	// Workaround for the fact that the assembler reports an error when attempting to 
 	// make vector loads of doubles.
@@ -275,15 +275,15 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 			ModifiedLoad<ulong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulong2*>(&val.z), reinterpret_cast<ulong2*>(d_ptr + offset), 1);
 		}																																							
 	};																																								
-#endif
-	
+#endif	// _B40C_LP64_
+
 	
 	#undef B40C_DEFINE_BASE_GLOBAL_QUAD_LOAD
 	#undef B40C_DEFINE_BASE_GLOBAL_LOAD
 	#undef B40C_DEFINE_GLOBAL_LOAD
 
 
-#else // loads
+#else // __CUDA_ARCH__
 
 	//
 	// Nothing is cached in these architectures
@@ -298,7 +298,7 @@ template <typename T, ld::CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 		}
 	};
 	
-#endif	// loads
+#endif	// __CUDA_ARCH__
 
 
 	

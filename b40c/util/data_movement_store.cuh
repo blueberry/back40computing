@@ -189,11 +189,11 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 #if _B40C_LP64_
 	B40C_DEFINE_GLOBAL_STORE(long, long, long, s64, l, long)
 	B40C_DEFINE_GLOBAL_STORE(unsigned long, unsigned long, ulong, u64, l, unsigned long)
-#else 
+#else	// _B40C_LP64_
 	B40C_DEFINE_GLOBAL_STORE(long, long, long, s32, r, long)
 	B40C_DEFINE_GLOBAL_STORE(unsigned long, unsigned long, ulong, u32, r, unsigned long)
-#endif
-	
+#endif	// _B40C_LP64_
+
 	B40C_DEFINE_GLOBAL_QUAD_STORE(char, signed char, char, s8, r, unsigned int)
 	B40C_DEFINE_GLOBAL_QUAD_STORE(short, short, short, s16, r, unsigned int)
 	B40C_DEFINE_GLOBAL_QUAD_STORE(int, int, int, s32, r, unsigned int)
@@ -203,11 +203,11 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 	B40C_DEFINE_GLOBAL_QUAD_STORE(float, float, float, f32, f, float)
 
 	B40C_DEFINE_BASE_GLOBAL_STORE(signed char, s8, r, unsigned int)			// only need to define base: char2,char4, etc already defined from char
-	
+
 #if !_B40C_LP64_
 	B40C_DEFINE_GLOBAL_QUAD_STORE(long, long, long, s32, r, long)
 	B40C_DEFINE_GLOBAL_QUAD_STORE(unsigned long, unsigned long, ulong, u32, r, unsigned long)
-#endif
+#endif	// _B40C_LP64_
 
 	// Workaround for the fact that the assembler reports an error when attempting to 
 	// make vector stores of doubles.
@@ -247,7 +247,7 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 			ModifiedStore<longlong2, CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(d_ptr + offset), 1);
 		}																																							
 	};
-	
+
 #if _B40C_LP64_
 	template <st::CacheModifier CACHE_MODIFIER>
 	struct ModifiedStore<long4, CACHE_MODIFIER> {
@@ -264,13 +264,13 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 			ModifiedStore<ulong2, CACHE_MODIFIER>::St(*reinterpret_cast<ulong2*>(&val.z), reinterpret_cast<ulong2*>(d_ptr + offset), 1);
 		}																																							
 	};
-#endif
+#endif	// _B40C_LP64_
 
 	#undef B40C_DEFINE_GLOBAL_QUAD_STORE
 	#undef B40C_DEFINE_BASE_GLOBAL_STORE
 	#undef B40C_DEFINE_GLOBAL_STORE
 
-#else	// stores
+#else	// __CUDA_ARCH__
 
 	//
 	// Nothing is cached in these architectures
@@ -285,7 +285,7 @@ template <typename T, st::CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 		}
 	};
 	
-#endif	// stores
+#endif	// __CUDA_ARCH__
 	
 
 /**
