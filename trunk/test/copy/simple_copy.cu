@@ -28,7 +28,9 @@
 #include <b40c/copy_enactor_tuned.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
+
+#pragma warning(disable : 4344)
 
 using namespace b40c;
 
@@ -37,38 +39,6 @@ using namespace b40c;
  * Utility Routines
  ******************************************************************************/
 
-/**
- * Displays the commandline usage for this tool
- */
-void Usage()
-{
-	printf("\nsimple_copy [--device=<device index>]\n");
-}
-
-/**
- * Verify the contents of a device array match those 
- * of a host array
- */
-template<typename T>
-bool Verify(T *h_reference, T *d_data, int num_elements)
-{
-	// Allocate array on host
-	T *h_data = (T*) malloc(num_elements * sizeof(T));
-	
-	// Copy data back
-	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
-	
-	// Check
-	bool retval = true;
-	for (int i = 0; i < num_elements; i++){
-		if (h_data[i] != h_reference[i]) retval = false;
-	}
-	
-	// Cleanup
-	if (h_data) free(h_data);
-	
-	return retval;
-}
 
 /**
  * Example showing syntax for invoking templated member functions from 
@@ -85,7 +55,6 @@ void TemplatedSubroutineCopy(
 }
 
 
-
 /******************************************************************************
  * Main
  ******************************************************************************/
@@ -93,6 +62,13 @@ void TemplatedSubroutineCopy(
 int main(int argc, char** argv)
 {
 	CommandLineArgs args(argc, argv);
+
+	// Usage/help
+    if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
+    	printf("\nsimple_copy [--device=<device index>]\n");
+    	return 0;
+    }
+
 	DeviceInit(args);
 
 	typedef unsigned int T;
@@ -118,7 +94,7 @@ int main(int argc, char** argv)
 	//
 	copy_enactor.Enact(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 	
-	printf("Simple copy: %s\n", Verify(h_src, d_dest, NUM_ELEMENTS) ? "Correct" : "Incorrect");
+	printf("Simple copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 	
 	
 	//
@@ -126,7 +102,7 @@ int main(int argc, char** argv)
 	//
 	copy_enactor.Enact<b40c::copy::LARGE>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 
-	printf("Large copy: %s\n", Verify(h_src, d_dest, NUM_ELEMENTS) ? "Correct" : "Incorrect");
+	printf("Large-tuned copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
 	
 	//
@@ -134,7 +110,7 @@ int main(int argc, char** argv)
 	//
 	copy_enactor.Enact<b40c::copy::SMALL>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 	
-	printf("Small copy: %s\n", Verify(h_src, d_dest, NUM_ELEMENTS) ? "Correct" : "Incorrect");
+	printf("Small-tuned copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
 	
 	//
@@ -142,7 +118,7 @@ int main(int argc, char** argv)
 	//
 	TemplatedSubroutineCopy<T, b40c::copy::SMALL>(copy_enactor, d_dest, d_src, NUM_ELEMENTS);
 	
-	printf("Small copy: %s\n", Verify(h_src, d_dest, NUM_ELEMENTS) ? "Correct" : "Incorrect");
+	printf("Templated subroutine copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
 	
 	//
@@ -150,7 +126,7 @@ int main(int argc, char** argv)
 	//
 	typedef b40c::copy::ProblemConfig<
 		T, 
-		size_t, 
+		size_t,
 		b40c::copy::SM20, 
 		b40c::util::ld::CG, 
 		b40c::util::st::CG, 
@@ -159,10 +135,9 @@ int main(int argc, char** argv)
 		8, 7, 1, 0, 8> CustomConfig;
 	
 	copy_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
-	printf("Custom copy: %s\n", Verify(h_src, d_dest, NUM_ELEMENTS) ? "Correct" : "Incorrect");
+
+	printf("Custom copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
 	return 0;
 }
-
-
 

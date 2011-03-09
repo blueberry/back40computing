@@ -27,7 +27,7 @@
 #include <stdio.h> 
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 #include "test_reduction.h"
 
 #include <thrust/device_vector.h>
@@ -56,7 +56,7 @@ int 	g_iterations  					= 1;
 void Usage() 
 {
 	printf("\ntest_reduction [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -223,13 +223,12 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
-    bool sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	// Execute test(s), optionally sweeping problem size downward
+	// Execute test(s)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;

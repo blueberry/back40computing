@@ -30,7 +30,7 @@
 #include <b40c/scan_enactor_tuned.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 #include "test_scan.h"
 
 using namespace b40c;
@@ -43,6 +43,7 @@ bool 	g_verbose 						= false;
 bool 	g_sweep							= false;
 int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
+bool 	g_inclusive						= false;
 
 
 /******************************************************************************
@@ -55,7 +56,7 @@ int 	g_iterations  					= 1;
 void Usage()
 {
 	printf("\ntest_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--inclusive] [--sweep]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -75,6 +76,7 @@ void Usage()
  */
 template<
 	typename T,
+	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
 void TestScan(size_t num_elements)
@@ -89,16 +91,19 @@ void TestScan(size_t num_elements)
 		exit(1);
 	}
 
-	// Identity
-	h_reference[0] = Identity();
-
 	for (size_t i = 0; i < num_elements; ++i) {
 //		RandomBits<T>(h_data[i], 0);
-//		h_data[i] = i;
-		h_data[i] = 1;
-		h_reference[i] = (i == 0) ?
-			Identity() :
-			BinaryOp(h_reference[i - 1], h_data[i]);
+		h_data[i] = i;
+		if (EXCLUSIVE)
+		{
+			h_reference[i] = (i == 0) ?
+				Identity() :
+				BinaryOp(h_reference[i - 1], h_data[i - 1]);
+		} else {
+			h_reference[i] = (i == 0) ?
+				h_data[i] :
+				BinaryOp(h_reference[i - 1], h_data[i]);
+		}
 	}
 
 	//
@@ -110,11 +115,11 @@ void TestScan(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedScan<T, BinaryOp, Identity, scan::LARGE>(
+		double large = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::LARGE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedScan<T, BinaryOp, Identity, scan::SMALL>(
+		double small = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::SMALL>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
@@ -128,6 +133,24 @@ void TestScan(size_t num_elements)
 	// Free our allocated host memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
+}
+
+
+/**
+ * Creates an example scan problem and then dispatches the problem
+ * to the GPU for the given number of iterations, displaying runtime information.
+ */
+template<
+	typename T,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
+void TestScanVariety(size_t num_elements)
+{
+	if (g_inclusive) {
+		TestScan<T, false, BinaryOp, Identity>(num_elements);
+	} else {
+		TestScan<T, true, BinaryOp, Identity>(num_elements);
+	}
 }
 
 
@@ -155,6 +178,7 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+    g_inclusive = args.CheckCmdLineFlag("inclusive");
     g_sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
@@ -165,25 +189,25 @@ int main(int argc, char** argv)
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		typedef Sum<T> BinaryOp;
-    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		typedef Sum<T> BinaryOp;
-    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
-    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
-    	TestScan<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
 
 	return 0;

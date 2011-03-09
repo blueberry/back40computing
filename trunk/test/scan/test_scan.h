@@ -32,7 +32,7 @@
 #include <b40c/scan_enactor_tuned.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 /******************************************************************************
  * Test wrappers for binary, associative operations
@@ -77,6 +77,7 @@ struct Max
  */
 template <
 	typename T,
+	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity(),
 	b40c::scan::ProbSizeGenre PROB_SIZE_GENRE>
@@ -107,7 +108,7 @@ double TimedScan(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	scan_enactor.DEBUG = true;
-	scan_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
+	scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 		d_dest, d_src, num_elements, max_ctas);
 	scan_enactor.DEBUG = false;
 
@@ -125,7 +126,7 @@ double TimedScan(
 		cudaEventRecord(start_event, 0);
 
 		// Call the scan API routine
-		scan_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
+		scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements, max_ctas);
 
 		// End timing record
@@ -138,7 +139,8 @@ double TimedScan(
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-	printf("\nB40C scan: %d iterations, %lu elements, ", iterations, (unsigned long) num_elements);
+	printf("\nB40C %s scan: %d iterations, %lu elements, ",
+		EXCLUSIVE ? "exclusive" : "inclusive", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T) * 3);
 

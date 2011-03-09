@@ -48,8 +48,8 @@ namespace reduction {
 enum ProbSizeGenre
 {
 	UNKNOWN = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
-	SMALL,
-	LARGE
+	SMALL,					// Tuned @ 128KB input
+	LARGE					// Tuned @ 128MB input
 };
 
 
@@ -138,10 +138,11 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
 // Large problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, true, false, 8, 7, 2, 2, 5, 11, 8, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
+
 
 
 

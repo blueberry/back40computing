@@ -50,8 +50,8 @@ namespace scan {
 enum ProbSizeGenre
 {
 	UNKNOWN = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
-	SMALL,
-	LARGE
+	SMALL,					// Tuned @ 128KB input
+	LARGE					// Tuned @ 128MB input
 };
 
 
@@ -315,9 +315,7 @@ __global__ void TunedDownsweepScanKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelConfig;
 
-	typename ProblemType::T *d_spine_partial = d_spine + blockIdx.x;
-
-	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine_partial, work_decomposition);
+	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
 }
 
 

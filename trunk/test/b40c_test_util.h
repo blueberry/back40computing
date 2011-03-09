@@ -269,7 +269,7 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
  * Compares the equivalence of two arrays
  */
 template <typename T>
-int CompareResults(T* computed, T* reference, size_t len, bool verbose)
+int CompareResults(T* computed, T* reference, size_t len, bool verbose = true)
 {
 	for (size_t i = 0; i < len; i++) {
 
@@ -300,6 +300,29 @@ int CompareResults(T* computed, T* reference, size_t len, bool verbose)
 
 	printf("Correct");
 	return 0;
+}
+
+
+/**
+ * Verify the contents of a device array match those
+ * of a host array
+ */
+template <typename T>
+int CompareDeviceResults(T *h_reference, T *d_data, size_t num_elements, bool verbose = true)
+{
+	// Allocate array on host
+	T *h_data = (T*) malloc(num_elements * sizeof(T));
+
+	// Reduction data back
+	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+	// Check
+	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
+
+	// Cleanup
+	if (h_data) free(h_data);
+
+	return retval;
 }
 
 

@@ -35,7 +35,7 @@
 #include <b40c/util/parameter_generation.cuh>
 
 // Test utils
-#include "b40c_util.h"
+#include "b40c_test_util.h"
 
 using namespace b40c;
 
@@ -113,24 +113,25 @@ enum TuningParam {
 
 	PARAM_BEGIN,
 
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		WORK_STEALING,
+
 		UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE,
 
-		WORK_STEALING,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
-		UPSWEEP_LOG_RAKING_THREADS,
 
 	PARAM_END,
 
 	// Parameters below here are currently not part of the tuning sweep
+	READ_MODIFIER,
+	WRITE_MODIFIER,
+	UPSWEEP_LOG_RAKING_THREADS,
+	UPSWEEP_MAX_CTA_OCCUPANCY,
 
 	// Derive these from the others above
-	UPSWEEP_MAX_CTA_OCCUPANCY,
 	LOG_SCHEDULE_GRANULARITY,
 
 	// General performance is insensitive to the spine kernel params
@@ -149,7 +150,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneEnactor : public reduction::ReductionEnactor<TuneEnactor<T, OpType> >
+class TuneEnactor : public reduction::ReductionEnactor
 {
 public:
 
@@ -169,8 +170,7 @@ public:
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
 			MIN = util::ld::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -179,8 +179,7 @@ public:
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
 			MIN = util::st::NONE,
-			MAX = MIN
-//			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -207,7 +206,7 @@ public:
 	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
 		enum {
 			MIN = 0,
-			MAX = 1
+			MAX = !util::Access<ParamList, WORK_STEALING>::VALUE		// Don't oversubscribe if we're workstealing
 		};
 	};
 
@@ -252,8 +251,7 @@ public:
 	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = MIN
-//			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
 
@@ -339,9 +337,11 @@ public:
 	void Invoke()
 	{
 		const int C_READ_MODIFIER =
-			util::Access<ParamList, READ_MODIFIER>::VALUE;
+//			util::Access<ParamList, READ_MODIFIER>::VALUE;
+			util::ld::NONE;
 		const int C_WRITE_MODIFIER =
-			util::Access<ParamList, WRITE_MODIFIER>::VALUE;
+//			util::Access<ParamList, WRITE_MODIFIER>::VALUE;
+			util::st::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 		const int C_UNIFORM_GRID_SIZE =
@@ -358,7 +358,8 @@ public:
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_UPSWEEP_LOG_RAKING_THREADS =
-			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;
+//			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;
+			B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);

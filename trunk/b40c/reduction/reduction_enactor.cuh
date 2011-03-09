@@ -42,7 +42,6 @@ namespace reduction {
 /**
  * Basic reduction enactor class.
  */
-template <typename DerivedEnactorType = void>
 class ReductionEnactor : public util::EnactorBase
 {
 protected:
@@ -50,11 +49,6 @@ protected:
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
-
-	// Dispatch type (either to self or to derived class as per CRTP -- curiously
-	// recurring template pattern)
-	typedef typename DispatchType<ReductionEnactor, DerivedEnactorType>::Type Dispatch;
-	Dispatch *dispatch;
 
 	// A pair of counters in global device memory and a selector for
 	// indexing into the pair.  If we perform workstealing passes, the
@@ -91,12 +85,26 @@ protected:
 		util::CtaWorkDistribution<typename ProblemConfig::Upsweep::SizeT> &work,
 		int spine_elements);
 
+	/**
+	 * Enacts a reduction on the specified device data.
+	 */
+	template <typename ProblemConfig, typename EnactorType>
+	cudaError_t EnactInternal(
+		typename ProblemConfig::Upsweep::T *d_dest,
+		typename ProblemConfig::Upsweep::T *d_src,
+		typename ProblemConfig::Upsweep::SizeT num_elements,
+		int max_grid_size);
+
 public:
 
 	/**
 	 * Constructor
 	 */
-	ReductionEnactor();
+	ReductionEnactor():
+		d_work_progress(NULL),
+		progress_selector(0),
+		d_spine(NULL),
+		spine_bytes(0) {}
 
 
 	/**
@@ -138,9 +146,8 @@ public:
 /**
  * Performs any lazy initialization work needed for this problem type
  */
-template <typename DerivedEnactorType>
 template <typename ProblemConfig>
-cudaError_t ReductionEnactor<DerivedEnactorType>::Setup(int sweep_grid_size, int spine_elements)
+cudaError_t ReductionEnactor::Setup(int sweep_grid_size, int spine_elements)
 {
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -186,25 +193,25 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Setup(int sweep_grid_size, int
 /**
  * Performs a reduction pass
  */
-template <typename DerivedEnactorType>
 template <typename ProblemConfig>
-cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
+cudaError_t ReductionEnactor::ReductionPass(
 	typename ProblemConfig::Upsweep::T *d_dest,
 	typename ProblemConfig::Upsweep::T *d_src,
 	util::CtaWorkDistribution<typename ProblemConfig::Upsweep::SizeT> &work,
 	int spine_elements)
 {
-	typedef typename ProblemConfig::Upsweep::T T;
+	typedef typename ProblemConfig::Upsweep Upsweep;
+	typedef typename ProblemConfig::Spine Spine;
+	typedef typename Upsweep::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		if (work.grid_size == 1) {
+		if ((work.num_elements <= Spine::TILE_ELEMENTS) || (work.grid_size == 1)) {
 
-			// No need to upsweep reduce if there's only one CTA in the upsweep grid
-			int dynamic_smem = 0;
-			SpineReductionKernel<typename ProblemConfig::Spine>
-					<<<work.grid_size, ProblemConfig::Spine::THREADS, dynamic_smem>>>(
+			// No need to upsweep reduce if we can do it with a single spine kernel
+			SpineReductionKernel<Spine><<<1, Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
+
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
@@ -240,12 +247,14 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
 			UpsweepReductionKernel<typename ProblemConfig::Upsweep>
 					<<<grid_size[0], ProblemConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			SpineReductionKernel<typename ProblemConfig::Spine>
 					<<<grid_size[1], ProblemConfig::Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) d_spine, d_dest, spine_elements);
+
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 		}
 	} while (0);
@@ -255,24 +264,9 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::ReductionPass(
 
 
 /**
- * Constructor
- */
-template <typename DerivedEnactorType>
-ReductionEnactor<DerivedEnactorType>::ReductionEnactor() :
-	d_work_progress(NULL),
-	progress_selector(0),
-	d_spine(NULL),
-	spine_bytes(0)
-{
-	dispatch = static_cast<Dispatch*>(this);
-}
-
-
-/**
  * Destructor
  */
-template <typename DerivedEnactorType>
-ReductionEnactor<DerivedEnactorType>::~ReductionEnactor()
+ReductionEnactor::~ReductionEnactor()
 {
 	if (d_work_progress) {
 		util::B40CPerror(cudaFree(d_work_progress), "ReductionEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
@@ -286,9 +280,8 @@ ReductionEnactor<DerivedEnactorType>::~ReductionEnactor()
 /**
  * Enacts a reduction on the specified device data.
  */
-template <typename DerivedEnactorType>
-template <typename ProblemConfig>
-cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
+template <typename ProblemConfig, typename EnactorType>
+cudaError_t ReductionEnactor::EnactInternal(
 	typename ProblemConfig::Upsweep::T *d_dest,
 	typename ProblemConfig::Upsweep::T *d_src,
 	typename ProblemConfig::Upsweep::SizeT num_elements,
@@ -300,11 +293,9 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 	typedef typename Upsweep::SizeT SizeT;
 
 	// Compute sweep grid size
-	int sweep_grid_size = (num_elements <= Spine::TILE_ELEMENTS) ?
-		1 :
-		(ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
-				OversubscribedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size) :
-				OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size);
+	int sweep_grid_size = (ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
+		OversubscribedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size) :
+		OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(num_elements, max_grid_size);
 
 	// Compute spine elements (round up to nearest spine tile elements)
 	int spine_elements = sweep_grid_size;
@@ -333,8 +324,10 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 		// Perform any lazy initialization work
 		if (retval = Setup<ProblemConfig>(sweep_grid_size, spine_elements)) break;
 
-		// Invoke reduction kernel
-		if (retval = dispatch->template ReductionPass<ProblemConfig>(d_dest, d_src, work, spine_elements)) break;
+		// Invoke reduction pass
+		EnactorType *dipatch = static_cast<EnactorType *>(this);
+		if (retval = dipatch->template ReductionPass<ProblemConfig>(
+			d_dest, d_src, work, spine_elements)) break;
 
 	} while (0);
 
@@ -349,6 +342,20 @@ cudaError_t ReductionEnactor<DerivedEnactorType>::Enact(
 	}
 
 	return retval;
+}
+
+
+/**
+ * Enacts a reduction on the specified device data.
+ */
+template <typename ProblemConfig>
+cudaError_t ReductionEnactor::Enact(
+	typename ProblemConfig::Upsweep::T *d_dest,
+	typename ProblemConfig::Upsweep::T *d_src,
+	typename ProblemConfig::Upsweep::SizeT num_elements,
+	int max_grid_size)
+{
+	return EnactInternal<ProblemConfig, ReductionEnactor>(d_dest, d_src, num_elements, max_grid_size);
 }
 
 
