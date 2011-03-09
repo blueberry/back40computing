@@ -40,16 +40,24 @@ namespace b40c {
 /**
  * Tuned copy enactor class.
  */
-class CopyEnactorTuned : public copy::CopyEnactor<CopyEnactorTuned>
+class CopyEnactorTuned : public copy::CopyEnactor
 {
 protected:
 
 	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
+	struct Storage;
+	struct Detail;
+	template <copy::ProbSizeGenre PROB_SIZE_GENRE> struct ConfigResolver;	
+	
+	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
-	// Typedefs for base classes
-	typedef copy::CopyEnactor<CopyEnactorTuned> BaseEnactorType;
+	// Typedef for base class
+	typedef copy::CopyEnactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -84,12 +92,20 @@ protected:
 
 public:
 
+	
 	/**
 	 * Constructor.
 	 */
-	CopyEnactorTuned();
+	CopyEnactorTuned() : BaseEnactorType::CopyEnactor() {}
 
+	
+	/**
+	 * Enacts a copy on the specified device data using the specified
+	 * granularity configuration
+	 */
+	using BaseEnactorType::Enact;
 
+	
 	/**
 	 * Enacts a copy operation on the specified device data using the
 	 * enumerated tuned granularity configuration
@@ -143,13 +159,10 @@ public:
  * Helper structures
  ******************************************************************************/
 
-namespace copy_enactor_tuned {
-
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename CopyEnactorTuned>
-struct Detail
+struct CopyEnactorTuned::Detail
 {
 	CopyEnactorTuned *enactor;
 	int max_grid_size;
@@ -163,7 +176,7 @@ struct Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-struct Storage
+struct CopyEnactorTuned::Storage
 {
 	void *d_dest;
 	void *d_src;
@@ -181,7 +194,7 @@ struct Storage
  * Default specialization for problem type genres
  */
 template <copy::ProbSizeGenre PROB_SIZE_GENRE>
-struct ConfigResolver
+struct CopyEnactorTuned::ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -197,7 +210,7 @@ struct ConfigResolver
 		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
 
 		// Invoke base class enact with type
-		return detail.enactor->template Enact<TunedConfig>(
+		return detail.enactor->template EnactInternal<TunedConfig, CopyEnactorTuned>(
 			(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 };
@@ -210,7 +223,7 @@ struct ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct ConfigResolver <copy::UNKNOWN>
+struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -223,17 +236,21 @@ struct ConfigResolver <copy::UNKNOWN>
 		typedef typename LargeConfig::Problem::T LargeT;
 
 		// Identity the maximum problem size for which we can saturate loads
-		int saturating_load = LargeConfig::Sweep::TILE_ELEMENTS * LargeConfig::Sweep::CTA_OCCUPANCY * detail.enactor->SmCount();
+		int saturating_load = LargeConfig::Sweep::TILE_ELEMENTS * 
+			LargeConfig::Sweep::CTA_OCCUPANCY * 
+			detail.enactor->SmCount();
+
 		if (storage.num_bytes < saturating_load * sizeof(LargeT)) {
 
 			// Invoke base class enact with small-problem config type
 
 			typedef copy::TunedConfig<CUDA_ARCH, copy::SMALL> SmallConfig;
 			typedef typename SmallConfig::Problem::T SmallT;
+
 			size_t num_elements = storage.num_bytes / sizeof(SmallT);
 			size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(SmallT));
 
-			return detail.enactor->template Enact<SmallConfig>(
+			return detail.enactor->template EnactInternal<SmallConfig, CopyEnactorTuned>(
 				(SmallT*) storage.d_dest, (SmallT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 		}
 
@@ -241,13 +258,10 @@ struct ConfigResolver <copy::UNKNOWN>
 		size_t num_elements = storage.num_bytes / sizeof(LargeT);
 		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(LargeT));
 
-		return detail.enactor->template Enact<LargeConfig>(
+		return detail.enactor->template EnactInternal<LargeConfig, CopyEnactorTuned>(
 			(LargeT*) storage.d_dest, (LargeT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 };
-
-
-} // namespace copy_enactor_tuned
 
 
 /******************************************************************************
@@ -264,31 +278,18 @@ cudaError_t CopyEnactorTuned::CopyPass(
 	util::CtaWorkDistribution<typename TunedConfig::Sweep::SizeT> &work,
 	int extra_bytes)
 {
-	using namespace copy;
-
-	typedef typename TunedConfig::Sweep::ProblemType ProblemType;
-	typedef typename ProblemType::T T;
-
 	cudaError_t retval = cudaSuccess;
 
 	int dynamic_smem = 0;
 
 	// Sweep copy
-	TunedSweepCopyKernel<TunedConfig::PROB_SIZE_GENRE>
-			<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
-		(void *) d_src, (void *) d_dest, d_work_progress, work, progress_selector, extra_bytes);
+	copy::TunedSweepCopyKernel<TunedConfig::PROB_SIZE_GENRE>
+		<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
+			(void *) d_src, (void *) d_dest, d_work_progress, work, progress_selector, extra_bytes);
+
 	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
 
 	return retval;
-}
-
-
-/**
- * Constructor.
- */
-CopyEnactorTuned::CopyEnactorTuned()
-	: BaseEnactorType::CopyEnactor()
-{
 }
 
 
@@ -303,15 +304,11 @@ cudaError_t CopyEnactorTuned::Enact(
 	size_t num_bytes,
 	int max_grid_size)
 {
-	typedef size_t SizeT;
-	typedef copy_enactor_tuned::Detail<BaseEnactorType> Detail;			// Use base type pointer to ourselves
-	typedef copy_enactor_tuned::Storage Storage;
-	typedef copy_enactor_tuned::ConfigResolver<PROB_SIZE_GENRE> Resolver;
-
 	Detail detail(this, max_grid_size);
 	Storage storage(d_dest, d_src, num_bytes);
 
-	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
+	return util::ArchDispatch<__B40C_CUDA_ARCH__, ConfigResolver<PROB_SIZE_GENRE> >::Enact(
+		storage, detail, PtxVersion());
 }
 
 

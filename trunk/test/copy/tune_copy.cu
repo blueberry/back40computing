@@ -109,7 +109,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T>
-class TuneEnactor : public copy::CopyEnactor<TuneEnactor<T> >
+class TuneEnactor : public copy::CopyEnactor
 {
 public:
 
@@ -206,7 +206,7 @@ public:
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, 0, g_max_ctas)) {
+		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -225,7 +225,7 @@ public:
 			cudaEventRecord(start_event, 0);
 
 			// Call the scan API routine
-			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, 0, g_max_ctas)) {
+			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
 				exit(1);
 			}
 

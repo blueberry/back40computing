@@ -133,7 +133,18 @@ DEPS = 			./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for copy
+# (make simple) Simple example driver for copy
+#-------------------------------------------------------------------------------
+
+simple: bin/simple_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/simple_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_copy.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
+
+#-------------------------------------------------------------------------------
+# (make test) test driver for copy
 #-------------------------------------------------------------------------------
 
 test: bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)
