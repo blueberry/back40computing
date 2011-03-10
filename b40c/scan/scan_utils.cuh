@@ -80,7 +80,7 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, BinaryOp>
 	template <int OFFSET_LEFT, int WIDTH>
 	struct Iterate
 	{
-		static __device__ __forceinline__ int Invoke(
+		static __device__ __forceinline__ T Invoke(
 			T partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
 		{
 			warpscan[1][warpscan_tid] = partial;
@@ -95,7 +95,7 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, BinaryOp>
 	template <int WIDTH>
 	struct Iterate<WIDTH, WIDTH>
 	{
-		static __device__ __forceinline__ int Invoke(
+		static __device__ __forceinline__ T Invoke(
 			T partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
 		{
 			return partial;
