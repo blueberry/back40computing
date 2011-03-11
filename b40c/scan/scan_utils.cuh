@@ -33,22 +33,6 @@ namespace b40c {
 namespace scan {
 
 
-namespace defaults {
-
-/**
- * Binary associative operator for addition
- */
-template <typename T>
-T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
-{
-	return a + b;
-}
-
-} // defaults
-
-
-
-
 /**
  * Performs NUM_ELEMENTS steps of a Kogge-Stone style prefix scan.
  *
@@ -60,7 +44,7 @@ template <
 	int LOG_NUM_ELEMENTS,
 	bool EXCLUSIVE = true,
 	int STEPS = LOG_NUM_ELEMENTS,
-	T BinaryOp(const T&, const T&) = defaults::Sum>
+	T ScanOp(const T&, const T&) = reduction::DefaultSum>
 struct WarpScan;
 
 
@@ -71,8 +55,8 @@ template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	T BinaryOp(const T&, const T&)>
-struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, BinaryOp>
+	T ScanOp(const T&, const T&)>
+struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
@@ -81,13 +65,15 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, BinaryOp>
 	struct Iterate
 	{
 		static __device__ __forceinline__ T Invoke(
-			T partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
+			T exclusive_partial,
+			volatile T warpscan[][NUM_ELEMENTS],
+			int warpscan_tid)
 		{
-			warpscan[1][warpscan_tid] = partial;
+			warpscan[1][warpscan_tid] = exclusive_partial;
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			partial = BinaryOp(partial, offset_partial);
+			T inclusive_partial = ScanOp(exclusive_partial, offset_partial);
 
-			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(partial, warpscan, warpscan_tid);
+			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(inclusive_partial, warpscan, warpscan_tid);
 		}
 	};
 
@@ -96,37 +82,37 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, BinaryOp>
 	struct Iterate<WIDTH, WIDTH>
 	{
 		static __device__ __forceinline__ T Invoke(
-			T partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
+			T exclusive_partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
 		{
-			return partial;
+			return exclusive_partial;
 		}
 	};
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,									// Input partial
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		T exclusive_partial,						// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
-		return Iterate<1, WIDTH>::Invoke(partial, warpscan, warpscan_tid);
+		return Iterate<1, WIDTH>::Invoke(exclusive_partial, warpscan, warpscan_tid);
 	}
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,									// Input partial
+		T exclusive_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		partial = Invoke(partial, warpscan, warpscan_tid);
+		T inclusive_partial = Invoke(exclusive_partial, warpscan, warpscan_tid);
 
-		// Everyone set total_reduction from last thread's partial
-		warpscan[1][warpscan_tid] = partial;
+		// Write our inclusive partial and then set total to the last thread's inclusive partial
+		warpscan[1][warpscan_tid] = inclusive_partial;
 		total_reduction = warpscan[1][NUM_ELEMENTS - 1];
 
 		// Return scan partial
-		return partial;
+		return inclusive_partial;
 	}
 
 };
@@ -139,70 +125,48 @@ template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	T BinaryOp(const T&, const T&)>
-struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, BinaryOp>
+	T ScanOp(const T&, const T&)>
+struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
-	// General iteration
-	template <int OFFSET_LEFT, int WIDTH>
-	struct Iterate
-	{
-		static __device__ __forceinline__ void Invoke(
-			T partial,
-			volatile T warpscan[][NUM_ELEMENTS],
-			int warpscan_tid)
-		{
-			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			partial = BinaryOp(partial, offset_partial);
-			warpscan[1][warpscan_tid] = partial;
-
-			Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(partial, warpscan, warpscan_tid);
-		}
-	};
-
-	// Termination
-	template <int WIDTH>
-	struct Iterate<WIDTH, WIDTH>
-	{
-		static __device__ __forceinline__ void Invoke(
-			T partial,
-			volatile T warpscan[][NUM_ELEMENTS],
-			int warpscan_tid) {}
-	};
-
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,									// Input partial
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		T exclusive_partial,						// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		const int WIDTH = 1 << STEPS;
+		// Obtain inclusive partial
+		T inclusive_partial = WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>::Invoke(
+			exclusive_partial, warpscan, warpscan_tid);
 
-		warpscan[1][warpscan_tid] = partial;
-		Iterate<1, WIDTH>::Invoke(partial, warpscan, warpscan_tid);
+		// Write out our inclusive partial
+		warpscan[1][warpscan_tid] = inclusive_partial;
 
-		// Return scan partial
+		// Return exclusive partial
 		return warpscan[1][warpscan_tid - 1];
 	}
 
-
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T partial,									// Input partial
+		T exclusive_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		partial = Invoke(partial, warpscan, warpscan_tid);
+		// Obtain inclusive partial
+		T inclusive_partial = WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>::Invoke(
+			exclusive_partial, warpscan, warpscan_tid);
 
-		// Everyone set total_reduction from last thread's partial
+		// Write our inclusive partial and then set total to the last thread's inclusive partial
+		warpscan[1][warpscan_tid] = inclusive_partial;
 		total_reduction = warpscan[1][NUM_ELEMENTS - 1];
 
-		// Return scan partial
-		return partial;
+		// Return exclusive partial
+		return warpscan[1][warpscan_tid - 1];
 	}
 };
+
 
 
 /**
@@ -211,9 +175,9 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, BinaryOp>
  */
 template <
 	typename T,
-	int LENGTH,
+	int NUM_ELEMENTS,
 	bool EXCLUSIVE = true,
-	T BinaryOp(const T&, const T&) = defaults::Sum>
+	T ScanOp(const T&, const T&) = reduction::DefaultSum>
 struct SerialScan;
 
 
@@ -222,9 +186,9 @@ struct SerialScan;
  */
 template <
 	typename T,
-	int LENGTH,
-	T BinaryOp(const T&, const T&)>
-struct SerialScan <T, LENGTH, false, BinaryOp>
+	int NUM_ELEMENTS,
+	T ScanOp(const T&, const T&)>
+struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
 {
 	// Iterate
 	template <int COUNT, int __dummy = 0>
@@ -232,7 +196,7 @@ struct SerialScan <T, LENGTH, false, BinaryOp>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
 		{
-			T inclusive_partial = BinaryOp(partials[COUNT], exclusive_partial);
+			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
 			results[COUNT] = inclusive_partial;
 			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
 		}
@@ -240,7 +204,7 @@ struct SerialScan <T, LENGTH, false, BinaryOp>
 
 	// Terminate
 	template <int __dummy>
-	struct Iterate<LENGTH, __dummy>
+	struct Iterate<NUM_ELEMENTS, __dummy>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
 		{
@@ -272,9 +236,9 @@ struct SerialScan <T, LENGTH, false, BinaryOp>
  */
 template <
 	typename T,
-	int LENGTH,
-	T BinaryOp(const T&, const T&)>
-struct SerialScan <T, LENGTH, true, BinaryOp>
+	int NUM_ELEMENTS,
+	T ScanOp(const T&, const T&)>
+struct SerialScan <T, NUM_ELEMENTS, true, ScanOp>
 {
 	// Iterate
 	template <int COUNT, int __dummy = 0>
@@ -282,7 +246,7 @@ struct SerialScan <T, LENGTH, true, BinaryOp>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
 		{
-			T inclusive_partial = BinaryOp(partials[COUNT], exclusive_partial);
+			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
 			results[COUNT] = exclusive_partial;
 			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
 		}
@@ -290,7 +254,7 @@ struct SerialScan <T, LENGTH, true, BinaryOp>
 
 	// Terminate
 	template <int __dummy>
-	struct Iterate<LENGTH, __dummy>
+	struct Iterate<NUM_ELEMENTS, __dummy>
 	{
 		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
 		{
@@ -322,26 +286,28 @@ struct SerialScan <T, LENGTH, true, BinaryOp>
  * grid type is at most the size of a warp.  (May be less.)
  */
 template <
-	typename SrtsGrid,
-	bool EXCLUSIVE,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+	typename T,
+	T ScanOp(const T&, const T&),
+	int PARTIALS_PER_SEG,
+	int LOG_RAKING_THREADS,
+	bool EXCLUSIVE>
 __device__ __forceinline__ void WarpRakeAndScan(
-	typename SrtsGrid::T *raking_seg,
-	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
+	T *raking_seg,
+	volatile T warpscan[][1 << LOG_RAKING_THREADS])
 {
-	typedef typename SrtsGrid::T T;
+	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
 
-	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+	if (threadIdx.x < RAKING_THREADS) {
 
 		// Raking reduction
-		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
+		T partial = reduction::SerialReduce<T, PARTIALS_PER_SEG, ScanOp>::Invoke(raking_seg);
 
 		// Warp scan
-		partial = WarpScan<T, SrtsGrid::LOG_RAKING_THREADS, EXCLUSIVE, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
+		partial = WarpScan<T, LOG_RAKING_THREADS, EXCLUSIVE, LOG_RAKING_THREADS, ScanOp>::Invoke(
 			partial, warpscan);
 
 		// Raking scan
-		SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, EXCLUSIVE, BinaryOp>::Invoke(raking_seg, partial);
+		SerialScan<T, PARTIALS_PER_SEG, EXCLUSIVE, ScanOp>::Invoke(raking_seg, partial);
 	}
 }
 
@@ -353,31 +319,33 @@ __device__ __forceinline__ void WarpRakeAndScan(
  * Carry is updated in all raking threads
  */
 template <
-	typename SrtsGrid,
-	bool EXCLUSIVE,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+	typename T,
+	T ScanOp(const T&, const T&),
+	int PARTIALS_PER_SEG,
+	int LOG_RAKING_THREADS,
+	bool EXCLUSIVE>
 __device__ __forceinline__ void WarpRakeAndScan(
-	typename SrtsGrid::T *raking_seg,
-	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
-	typename SrtsGrid::T &carry)
+	T *raking_seg,
+	volatile T warpscan[][1 << LOG_RAKING_THREADS],
+	T &carry)
 {
-	typedef typename SrtsGrid::T T;
+	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
 
-	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+	if (threadIdx.x < RAKING_THREADS) {
 
 		// Raking reduction
-		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
+		T partial = reduction::SerialReduce<T, PARTIALS_PER_SEG, ScanOp>::Invoke(raking_seg);
 
 		// Warp scan
 		T warpscan_total;
-		partial = WarpScan<T, SrtsGrid::LOG_RAKING_THREADS, EXCLUSIVE, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
+		partial = WarpScan<T, LOG_RAKING_THREADS, EXCLUSIVE, LOG_RAKING_THREADS, ScanOp>::Invoke(
 			partial, warpscan_total, warpscan);
-		partial = BinaryOp(partial, carry);
+		partial = ScanOp(partial, carry);
 
 		// Raking scan
-		SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, EXCLUSIVE, BinaryOp>::Invoke(raking_seg, partial);
+		SerialScan<T, PARTIALS_PER_SEG, EXCLUSIVE, ScanOp>::Invoke(raking_seg, partial);
 
-		carry = BinaryOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
+		carry = ScanOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
 	}
 }
 

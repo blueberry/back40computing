@@ -138,7 +138,7 @@ DEPS = 			./Makefile \
 				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) \
+				$(wildcard ../../b40c/reduction/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 
 				 
 
@@ -193,9 +193,7 @@ bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

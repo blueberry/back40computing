@@ -181,9 +181,7 @@ bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_copy.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

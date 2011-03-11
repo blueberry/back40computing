@@ -52,10 +52,12 @@ struct CollectiveScan;
  * Helper structure for scanning each load in registers, seeding from smem partials
  */
 template <
-	typename SrtsGrid,
+	typename T,
+	T ScanOp(const T&, const T&),
+	typename LanePartial,
+	int SCAN_LANES,
 	int VEC_SIZE,
-	bool EXCLUSIVE,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+	bool EXCLUSIVE>
 struct ScanVectors;
 
 
@@ -74,6 +76,7 @@ template <typename SrtsGrid>
 struct CollectiveScan<SrtsGrid, util::InvalidSrtsGrid> : reduction::CollectiveReduction<SrtsGrid>
 {
 	typedef typename SrtsGrid::T T;
+	typedef typename SrtsGrid::LanePartial PrimaryLanePartial;
 
 	/**
 	 * Scan a single tile.  Carry-in/out is seeded/updated only in raking threads (homogeneously)
@@ -81,26 +84,26 @@ struct CollectiveScan<SrtsGrid, util::InvalidSrtsGrid> : reduction::CollectiveRe
 	template <
 		int VEC_SIZE,
 		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&)>
+		T ScanOp(const T&, const T&)>
 	__device__ __forceinline__ void ScanTileWithCarry(
 		T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
 		T &carry)
 	{
 		// Reduce in registers, place partials in smem
-		reduction::ReduceVectors<SrtsGrid, VEC_SIZE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		reduction::ReduceVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE>::Invoke(
+			data, this->primary_lane_partial);
 
 		__syncthreads();
 
 		// Primary rake and scan (guaranteed one warp or fewer raking threads)
-		WarpRakeAndScan<SrtsGrid, true, BinaryOp>(
+		WarpRakeAndScan<T, ScanOp, SrtsGrid::PARTIALS_PER_SEG, SrtsGrid::LOG_RAKING_THREADS, true>(
 			this->primary_raking_seg, this->warpscan, carry);
 
 		__syncthreads();
 
 		// Extract partials from smem, scan in registers
-		ScanVectors<SrtsGrid, VEC_SIZE, EXCLUSIVE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		ScanVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE, EXCLUSIVE>::Invoke(
+			data, this->primary_lane_partial);
 	}
 
 
@@ -110,24 +113,24 @@ struct CollectiveScan<SrtsGrid, util::InvalidSrtsGrid> : reduction::CollectiveRe
 	template <
 		int VEC_SIZE,
 		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&)>
+		T ScanOp(const T&, const T&)>
 	__device__ __forceinline__ T ScanTile(T data[SrtsGrid::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce in registers, place partials in smem
-		reduction::ReduceVectors<SrtsGrid, VEC_SIZE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		reduction::ReduceVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE>::Invoke(
+			data, this->primary_lane_partial);
 
 		__syncthreads();
 
 		// Primary rake and scan (guaranteed one warp or fewer raking threads)
-		WarpRakeAndScan<SrtsGrid, true, BinaryOp>(
+		WarpRakeAndScan<T, ScanOp, SrtsGrid::PARTIALS_PER_SEG, SrtsGrid::LOG_RAKING_THREADS, true>(
 			this->primary_raking_seg, this->warpscan);
 
 		__syncthreads();
 
 		// Extract partials from smem, scan in registers
-		ScanVectors<SrtsGrid, VEC_SIZE, EXCLUSIVE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		ScanVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE, EXCLUSIVE>::Invoke(
+			data, this->primary_lane_partial);
 
 		return this->warpscan[1][SrtsGrid::RAKING_THREADS - 1];
 	}
@@ -169,6 +172,8 @@ template <typename SrtsGrid, typename SecondarySrtsGrid>
 struct CollectiveScan : reduction::CollectiveReduction<SrtsGrid>
 {
 	typedef typename SrtsGrid::T T;
+	typedef typename SrtsGrid::LanePartial PrimaryLanePartial;
+	typedef typename SecondarySrtsGrid::LanePartial SecondaryLanePartial;
 
 	/**
 	 * Scan a single tile.  Carry-in/out is seeded/updated only in raking threads (homogeneously)
@@ -176,44 +181,45 @@ struct CollectiveScan : reduction::CollectiveReduction<SrtsGrid>
 	template <
 		int VEC_SIZE,
 		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&)>
+		T ScanOp(const T&, const T&)>
 	__device__ __forceinline__ void ScanTileWithCarry(
 		T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
 		T &carry)
 	{
 		// Reduce in registers, place partials in smem
-		reduction::ReduceVectors<SrtsGrid, VEC_SIZE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		reduction::ReduceVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE>::Invoke(
+			data, this->primary_lane_partial);
 
 		__syncthreads();
 
 		// Raking reduction in primary grid, place result partial into secondary grid
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
-			T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(
+
+			T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, ScanOp>::Invoke(
 				this->primary_raking_seg);
-			this->secondary_base_partial[0] = partial;
+			this->secondary_lane_partial[0][0] = partial;
 		}
 
 		__syncthreads();
 
 		// Secondary rake and scan (guaranteed one warp or fewer raking threads)
-		WarpRakeAndScan<SecondarySrtsGrid, true, BinaryOp>(
+		WarpRakeAndScan<T, ScanOp, SecondarySrtsGrid::PARTIALS_PER_SEG, SecondarySrtsGrid::LOG_RAKING_THREADS, true>(
 			this->secondary_raking_seg, this->warpscan, carry);
 
 		__syncthreads();
 
 		// Raking scan in primary grid seeded by partial from secondary grid
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
-			T partial = this->secondary_base_partial[0];
-			SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, true, BinaryOp>::Invoke(
+			T partial = this->secondary_lane_partial[0][0];
+			SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
 				this->primary_raking_seg, partial);
 		}
 
 		__syncthreads();
 
 		// Extract partials from smem, scan in registers
-		ScanVectors<SrtsGrid, VEC_SIZE, EXCLUSIVE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		ScanVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE, EXCLUSIVE>::Invoke(
+			data, this->primary_lane_partial);
 	}
 
 
@@ -223,41 +229,43 @@ struct CollectiveScan : reduction::CollectiveReduction<SrtsGrid>
 	template <
 		int VEC_SIZE,
 		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&)>
+		T ScanOp(const T&, const T&)>
 	__device__ __forceinline__ T ScanTile(T data[SrtsGrid::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce in registers, place partials in smem
-		reduction::ReduceVectors<SrtsGrid, VEC_SIZE, BinaryOp>::Invoke(data, this->primary_base_partial);
+		reduction::ReduceVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE>::Invoke(
+			data, this->primary_lane_partial);
 
 		__syncthreads();
 
 		// Raking reduction in primary grid, place result partial into secondary grid
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
-			T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(
+
+			T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, ScanOp>::Invoke(
 				this->primary_raking_seg);
-			this->secondary_base_partial[0] = partial;
+			this->secondary_lane_partial[0][0] = partial;
 		}
 
 		__syncthreads();
 
 		// Secondary rake and scan (guaranteed one warp or fewer raking threads)
-		WarpRakeAndScan<SecondarySrtsGrid, true, BinaryOp>(
+		WarpRakeAndScan<T, ScanOp, SecondarySrtsGrid::PARTIALS_PER_SEG, SecondarySrtsGrid::LOG_RAKING_THREADS, true>(
 			this->secondary_raking_seg, this->warpscan);
 
 		__syncthreads();
 
 		// Raking scan in primary grid seeded by partial from secondary grid
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
-			T partial = this->secondary_base_partial[0];
-			SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, true, BinaryOp>::Invoke(
+			T partial = this->secondary_lane_partial[0][0];
+			SerialScan<T, SrtsGrid::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
 				this->primary_raking_seg, partial);
 		}
 
 		__syncthreads();
 
 		// Extract partials from smem, scan in registers
-		ScanVectors<SrtsGrid, VEC_SIZE, EXCLUSIVE, BinaryOp>::Invoke(
-			data, this->primary_base_partial);
+		ScanVectors<T, ScanOp, PrimaryLanePartial, SrtsGrid::SCAN_LANES, VEC_SIZE, EXCLUSIVE>::Invoke(
+			data, this->primary_lane_partial);
 
 		return this->warpscan[1][SrtsGrid::RAKING_THREADS - 1];
 	}
@@ -294,43 +302,43 @@ struct CollectiveScan : reduction::CollectiveReduction<SrtsGrid>
  * Scan each load in registers, seeding from smem partials
  */
 template <
-	typename SrtsGrid,
+	typename T,
+	T ScanOp(const T&, const T&),
+	typename LanePartial,
+	int SCAN_LANES,
 	int VEC_SIZE,
-	bool EXCLUSIVE,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+	bool EXCLUSIVE>
 struct ScanVectors
 {
-	typedef typename SrtsGrid::T T;
-
-	// Next load
-	template <int LOAD, int TOTAL_LOADS>
+	// Next lane
+	template <int LANE, int TOTAL_LANES>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
-			T *base_partial)
+			T data[SCAN_LANES][VEC_SIZE],
+			LanePartial lane_partial)
 		{
-			T exclusive_partial = base_partial[LOAD * SrtsGrid::LANE_STRIDE];
-			SerialScan<T, VEC_SIZE, EXCLUSIVE, BinaryOp>::Invoke(data[LOAD], exclusive_partial);
+			T exclusive_partial = lane_partial[LANE][0];
+			SerialScan<T, VEC_SIZE, EXCLUSIVE, ScanOp>::Invoke(data[LANE], exclusive_partial);
 
 			// Next load
-			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(data, base_partial);
+			Iterate<LANE + 1, TOTAL_LANES>::Invoke(data, lane_partial);
 		}
 	};
 
 	// Terminate
-	template <int TOTAL_LOADS>
-	struct Iterate<TOTAL_LOADS, TOTAL_LOADS> {
+	template <int TOTAL_LANES>
+	struct Iterate<TOTAL_LANES, TOTAL_LANES> {
 		static __device__ __forceinline__ void Invoke(
-			T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
-			T *base_partial) {}
+			T data[SCAN_LANES][VEC_SIZE],
+			LanePartial lane_partial) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		T data[SrtsGrid::SCAN_LANES][VEC_SIZE],
-		T *base_partial)
+		T data[SCAN_LANES][VEC_SIZE],
+		LanePartial lane_partial)
 	{
-		Iterate<0, SrtsGrid::SCAN_LANES>::Invoke(data, base_partial);
+		Iterate<0, SCAN_LANES>::Invoke(data, lane_partial);
 	}
 };
 
