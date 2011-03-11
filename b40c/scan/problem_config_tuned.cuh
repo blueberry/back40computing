@@ -93,7 +93,7 @@ template <
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE,
 	typename T = typename ProblemType::T,
-	int T_SIZE = sizeof(typename ProblemType::T)>
+	int T_SIZE = 1 << util::Log2<sizeof(typename ProblemType::T)>::VALUE>			// round up to the nearest arch subword
 struct TunedConfig;
 
 
@@ -114,42 +114,68 @@ struct TunedConfig : TunedConfig<
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-// All problems
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct TunedConfig<ProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 6, 8, 7, 1, 0, 5>
+// Large problems, 1B data (today)
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 13, 8, 9, 2, 2, 5, 8, 0, 1, 5, 8, 7, 2, 2, 5>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
-// Large problems, 2B data
+// Large problems, 2B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 6, 8, 6, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
-// Large problems, 4B data
+// Large problems, 4B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 11, 3, 9, 2, 0, 5, 8, 0, 1, 6, 3, 9, 1, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 11, 8, 7, 2, 2, 5, 8, 0, 1, 5, 8, 9, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
 
-// Large problems, 8B data
+// All other large problems (tuned at 8B) (today)
+template <typename ProblemType, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 0, 1, 5, 8, 0, 1, 5, 8, 5, 1, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+};
+
+
+
+// Small problems, 1B data (today)
 template <typename ProblemType, typename T>
-struct TunedConfig<ProblemType, SM20, LARGE, T, 8>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 6, 8, 6, 0, 2, 5>
+struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 9, 8, 5, 2, 2, 5, 8, 0, 1, 5, 8, 6, 2, 1, 5>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
 
-// All Small problems
+// Small problems, 2B data (today)
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, SMALL, T, 2>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 9, 8, 5, 2, 2, 5, 8, 0, 1, 5, 8, 5, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+// Small problems, 4B data (today)
+template <typename ProblemType, typename T>
+struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 1, 5, 8, 0, 1, 5, 8, 5, 2, 1, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+};
+
+// All other small problems (tuned at 8B) (today)
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 11, 3, 9, 2, 0, 5, 8, 0, 1, 6, 3, 9, 1, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 7, 8, 5, 1, 1, 5, 8, 0, 1, 5, 8, 5, 0, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
