@@ -27,24 +27,18 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_store.cuh>
-
 namespace b40c {
 namespace reduction {
 
-
-namespace defaults {
 
 /**
  * Addition binary associative operator
  */
 template <typename T>
-T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
+T __host__ __device__ __forceinline__ DefaultSum(const T &a, const T &b)
 {
 	return a + b;
 }
-
-} // defaults
 
 
 /**
@@ -59,7 +53,7 @@ T __host__ __device__ __forceinline__ Sum(const T &a, const T &b)
 template <
 	typename T,
 	int LOG_NUM_ELEMENTS,
-	T BinaryOp(const T&, const T&) = defaults::Sum>
+	T ReductionOp(const T&, const T&) = DefaultSum>
 struct WarpReduce
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -74,7 +68,7 @@ struct WarpReduce
 			int warpscan_tid)
 		{
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			partial = BinaryOp(partial, offset_partial);
+			partial = ReductionOp(partial, offset_partial);
 			warpscan[1][warpscan_tid] = partial;
 			Iterate<OFFSET_LEFT / 2>::Invoke(partial, warpscan, warpscan_tid);
 		}
@@ -111,8 +105,8 @@ struct WarpReduce
  */
 template <
 	typename T,
-	int LENGTH,
-	T BinaryOp(const T&, const T&) = defaults::Sum >
+	int NUM_ELEMENTS,
+	T ReductionOp(const T&, const T&) = DefaultSum >
 struct SerialReduce
 {
 	// Iterate
@@ -126,7 +120,7 @@ struct SerialReduce
 			T c = partials[TOTAL - (COUNT - 1)];
 
 			// TODO: consider specializing with a video 3-op instructions on SM2.0+, e.g., asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-			return BinaryOp(a, BinaryOp(b, c));
+			return ReductionOp(a, ReductionOp(b, c));
 		}
 	};
 
@@ -136,7 +130,7 @@ struct SerialReduce
 	{
 		static __device__ __forceinline__ T Invoke(T partials[])
 		{
-			return BinaryOp(partials[TOTAL - 2], partials[TOTAL - 1]);
+			return ReductionOp(partials[TOTAL - 2], partials[TOTAL - 1]);
 		}
 	};
 
@@ -153,7 +147,7 @@ struct SerialReduce
 	// Interface
 	static __device__ __forceinline__ T Invoke(T partials[])			
 	{
-		return Iterate<LENGTH, LENGTH>::Invoke(partials);
+		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials);
 	}
 };
 
@@ -165,24 +159,26 @@ struct SerialReduce
  * Carry is updated in all raking threads
  */
 template <
-	typename SrtsGrid,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
+	typename T,
+	T ReductionOp(const T&, const T&),
+	int PARTIALS_PER_SEG,
+	int LOG_RAKING_THREADS>
 __device__ __forceinline__ void WarpRakeAndReduce(
-	typename SrtsGrid::T *raking_seg,
-	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS],
-	typename SrtsGrid::T &carry)
+	T *raking_seg,
+	volatile T warpscan[][1 << LOG_RAKING_THREADS],
+	T &carry)
 {
-	typedef typename SrtsGrid::T T;
+	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
 
-	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+	if (threadIdx.x < RAKING_THREADS) {
 
 		// Raking reduction
-		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
+		T partial = SerialReduce<T, PARTIALS_PER_SEG, ReductionOp>::Invoke(raking_seg);
 
 		// Warp reduction
-		T warpscan_total = WarpReduce<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(
+		T warpscan_total = WarpReduce<T, LOG_RAKING_THREADS, ReductionOp>::Invoke(
 			partial, warpscan);
-		carry = BinaryOp(carry, warpscan_total);
+		carry = ReductionOp(carry, warpscan_total);
 	}
 }
 
@@ -191,29 +187,31 @@ __device__ __forceinline__ void WarpRakeAndReduce(
  * Warp rake and reduce. Must hold that the number of raking threads in the SRTS
  * grid type is at most the size of a warp.  (May be less.)
  *
- * Result is computed in all threads.
+ * Result is returned in all threads.
  */
 template <
-	typename SrtsGrid,
-	typename SrtsGrid::T BinaryOp(const typename SrtsGrid::T&, const typename SrtsGrid::T&)>
-__device__ __forceinline__ typename SrtsGrid::T WarpRakeAndReduce(
-	typename SrtsGrid::T *raking_seg,
-	volatile typename SrtsGrid::T warpscan[][SrtsGrid::RAKING_THREADS])
+	typename T,
+	T ReductionOp(const T&, const T&),
+	int PARTIALS_PER_SEG,
+	int LOG_RAKING_THREADS>
+__device__ __forceinline__ T WarpRakeAndReduce(
+	T *raking_seg,
+	volatile T warpscan[][1 << LOG_RAKING_THREADS])
 {
-	typedef typename SrtsGrid::T T;
+	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
 
-	if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+	if (threadIdx.x < RAKING_THREADS) {
 
 		// Raking reduction
-		T partial = reduction::SerialReduce<T, SrtsGrid::PARTIALS_PER_SEG, BinaryOp>::Invoke(raking_seg);
+		T partial = SerialReduce<T, PARTIALS_PER_SEG, ReductionOp>::Invoke(raking_seg);
 
 		// Warp reduction
-		WarpReduce<T, SrtsGrid::LOG_RAKING_THREADS, BinaryOp>::Invoke(partial, warpscan);
+		WarpReduce<T, LOG_RAKING_THREADS, ReductionOp>::Invoke(partial, warpscan);
 	}
 
 	__syncthreads();
 
-	return warpscan[1][SrtsGrid::RAKING_THREADS - 1];
+	return warpscan[1][RAKING_THREADS - 1];
 }
 
 

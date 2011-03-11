@@ -29,7 +29,6 @@
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
-#include <b40c/reduction/problem_type.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -104,12 +103,6 @@ struct KernelConfig : _ProblemType
 	// We reduce the elements in registers, and then place that partial
 	// scan into smem rows for further reduction
 	//
-	// Because all lanes are dependent, we need a two-level grid if
-	// (LOG_RAKING_THREADS > LOG_WARP_THREADS) in order cooperate between
-	// multiple raking warps.
-	//
-	// (N.B.: Typically two-level grids are a losing performance proposition)
-	//
 
 	// SRTS grid type
 	typedef util::SrtsGrid<
@@ -117,15 +110,8 @@ struct KernelConfig : _ProblemType
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane (CTA threads only make one deposit)
 		LOG_RAKING_THREADS,						// Raking threads
-		typename util::If<(LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),	// Secondary grid type
-			util::SrtsGrid<										// Yes secondary grid
-				T,													// Partial type
-				LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
-				0,													// 1 lane (the primary raking threads only make one deposit)
-				B40C_LOG_WARP_THREADS(CUDA_ARCH)>,					// Raking threads (1 warp)
-			util::InvalidSrtsGrid>::Type>						// No secondary grid
-		SrtsGrid;
-
+		true>									// There are prefix dependences between lanes
+			SrtsGrid;
 
 	enum {
 
@@ -135,7 +121,7 @@ struct KernelConfig : _ProblemType
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
 	};
 
 	static const bool VALID				= (CTA_OCCUPANCY > 0);

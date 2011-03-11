@@ -115,6 +115,12 @@ struct MagnitudeShiftOp<K, magnitude, false>
  ******************************************************************************/
 
 /**
+ * Null type
+ */
+struct NullType {};
+
+
+/**
  * Statically determine log2(N), rounded up, e.g.,
  * 		Log2<8>::VALUE == 3
  * 		Log2<3>::VALUE == 2
@@ -160,13 +166,13 @@ struct If<false, ThenType, ElseType>
 template <typename A, typename B>
 struct Equals
 {
-	enum { VALUE = false };
+	enum { VALUE = 0 };
 };
 
 template <typename A>
 struct Equals <A, A>
 {
-	enum { VALUE = true };
+	enum { VALUE = 1 };
 };
 
 

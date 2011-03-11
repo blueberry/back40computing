@@ -183,9 +183,7 @@ bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DE
 #
 
 clean :
-	rm -f bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

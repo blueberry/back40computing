@@ -39,7 +39,9 @@ namespace util {
  */
 struct InvalidSrtsGrid
 {
-	enum { SMEM_QUADS = 0 };
+	enum {
+		SMEM_QUADS = 0
+	};
 };
 
 
@@ -60,21 +62,26 @@ struct InvalidSrtsGrid
  * results from every raking thread)
  *
  * Must have as many raking threads as lanes.
+ *
+ * If (there are prefix dependences between lanes) AND (more than one warp
+ * of raking threads is specified), a secondary SRTS grid will
+ * be typed-out in order to facilitate communication between warps of raking
+ * threads.
+ *
+ * (N.B.: Typically two-level grids are a losing performance proposition)
  */
 template <
 	typename _T,									// Type of items we will be reducing/scanning
 	int _LOG_ACTIVE_THREADS, 						// Number of threads placing a lane partial (i.e., the number of partials per lane)
 	int _LOG_SCAN_LANES,							// Number of scan lanes
 	int _LOG_RAKING_THREADS, 						// Number of threads used for raking (typically 1 warp)
-	typename SecondarySrtsGrid = InvalidSrtsGrid>	// Whether or not the application calls for a two-level grid (e.g., dependent scan lanes > arch warp threads)
+	bool _DEPENDENT_LANES>							// If there are prefix dependences between lanes (i.e., downsweeping will incorporate aggregates from previous lanes)
+
 struct SrtsGrid
 {
 	// Type of items we will be reducing/scanning
 	typedef _T T;
 	
-	// Secondary SRTS grid type (if specified)
-	typedef SecondarySrtsGrid SecondaryGrid;
-
 	// N.B.: We use an enum type here b/c of a NVCC-win compiler bug where the
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.
@@ -146,10 +153,26 @@ struct SrtsGrid
 		LANE_STRIDE						= (NO_PADDING) ?
 											PARTIALS_PER_LANE :
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
+	};
+
+	// If there are prefix dependences between lanes, a secondary SRTS grid
+	// type will be needed in the event we have more than one warp of raking threads
+
+	typedef typename util::If<_DEPENDENT_LANES && (LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),
+		SrtsGrid<										// Yes secondary grid
+			T,													// Partial type
+			LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
+			0,													// 1 lane (the primary raking threads only make one deposit)
+			B40C_LOG_WARP_THREADS(CUDA_ARCH),					// Raking threads (1 warp)
+			false>,												// There is only one lane, so there are no inter-lane prefix dependences
+		InvalidSrtsGrid>								// No secondary grid
+			::Type SecondaryGrid;
+
+	enum {
 
 		// Total number of quad words (uint4) needed to back the grid
-		SMEM_QUADS						= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)) +
-											SecondarySrtsGrid::SMEM_QUADS
+		PRIMARY_SMEM_QUADS				= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
+		SMEM_QUADS 						= PRIMARY_SMEM_QUADS + SecondaryGrid::SMEM_QUADS
 	};
 	
 
@@ -192,23 +215,26 @@ struct SrtsGrid
 	}
 
 
+	typedef T (*LanePartial)[LANE_STRIDE];
+
+
 	/**
 	 * Returns the location in the smem grid where the calling thread can insert/extract
 	 * its partial for raking reduction/scan into the first lane.  Positions in subsequent
 	 * lanes can be obtained via increments of LANE_STRIDE.
 	 */
-	static __device__ __forceinline__ T* BasePartial(T *smem)
+	static __device__ __forceinline__ LanePartial MyLanePartial(T *smem)
 	{
 		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;		
 		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);			
-		return smem + (row * PADDED_PARTIALS_PER_ROW) + col;
+		return reinterpret_cast<LanePartial>(smem + (row * PADDED_PARTIALS_PER_ROW) + col);
 	}
 	
 	/**
 	 * Returns the location in the smem grid where the calling thread can begin serial
 	 * raking/scanning
 	 */
-	static __device__ __forceinline__ T* RakingSegment(T *smem)
+	static __device__ __forceinline__ T* MyRakingSegment(T *smem)
 	{
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
