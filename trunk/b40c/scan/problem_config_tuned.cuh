@@ -72,7 +72,7 @@ enum ArchFamily
 template <int CUDA_ARCH>
 struct ArchFamilyClassifier
 {
-	static const ArchFamily FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
+	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Currently no tuned configs for SM10-11
 										(CUDA_ARCH < SM20) ? 	SM13 :
 																SM20;
 };
@@ -117,7 +117,9 @@ struct TunedConfig : TunedConfig<
 // Large problems, 1B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 13, 8, 9, 2, 2, 5, 8, 0, 1, 5, 8, 7, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 13, 8, 9, 2, 2, 5,
+	  5, 2, 0, 5,
+	  8, 7, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -125,7 +127,10 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
 // Large problems, 2B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false, 10, 8, 7, 1, 2, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, true, false,
+	  10, 8, 7, 1, 2, 5,
+	  5, 2, 0, 5,
+	  8, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -133,7 +138,10 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
 // Large problems, 4B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 11, 8, 7, 2, 2, 5, 8, 0, 1, 5, 8, 9, 1, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  11, 8, 7, 2, 2, 5,
+	  5, 2, 0, 5,
+	  8, 9, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -141,7 +149,10 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
 // All other large problems (tuned at 8B) (today)
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 0, 1, 5, 8, 0, 1, 5, 8, 5, 1, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 7, 0, 1, 5,
+	  5, 2, 0, 5,
+	  8, 5, 1, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -151,7 +162,10 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
 // Small problems, 1B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 9, 8, 5, 2, 2, 5, 8, 0, 1, 5, 8, 6, 2, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  9, 8, 5, 2, 2, 5,
+	  5, 2, 0, 5,
+	  8, 6, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -159,7 +173,10 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
 // Small problems, 2B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 2>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 9, 8, 5, 2, 2, 5, 8, 0, 1, 5, 8, 5, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  9, 8, 5, 2, 2, 5,
+	  5, 2, 0, 5,
+	  8, 5, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -167,7 +184,10 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 2>
 // Small problems, 4B data (today)
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 1, 5, 8, 0, 1, 5, 8, 5, 2, 1, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 5, 2, 1, 5,
+	  5, 2, 0, 5,
+	  8, 5, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -175,7 +195,10 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
 // All other small problems (tuned at 8B) (today)
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, 7, 8, 5, 1, 1, 5, 8, 0, 1, 5, 8, 5, 0, 2, 5>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  7, 8, 5, 1, 1, 5,
+	  5, 2, 0, 5,
+	  8, 5, 0, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -187,7 +210,10 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
 // Large problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 12, 4, 8, 2, 2, 5, 8, 0, 1, 5, 4, 8, 2, 1, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  12, 4, 8, 2, 2, 5,
+	  6, 2, 0, 5,
+	  4, 8, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -195,7 +221,10 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
 // Large problems, 2B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 10, 8, 7, 1, 1, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  10, 8, 7, 1, 1, 5,
+	  6, 2, 0, 5,
+	  8, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -203,7 +232,10 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
 // Large problems, 4B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 0, 1, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 7, 0, 1, 5,
+	  6, 2, 0, 5,
+	  8, 7, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -211,7 +243,10 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
 // All other Large problems
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 7, 1, 0, 5,
+	  6, 2, 0, 5,
+	  8, 7, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -221,7 +256,10 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
 // Small problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 1>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 10, 8, 6, 2, 1, 5, 8, 0, 1, 5, 8, 6, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  10, 8, 6, 2, 1, 5,
+	  6, 2, 0, 5,
+	  8, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -229,7 +267,10 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, 1>
 // Small problems, 2B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 2>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, true, false, 9, 8, 6, 1, 2, 5, 8, 0, 1, 5, 8, 5, 2, 2, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, true, false,
+	  9, 8, 6, 1, 2, 5,
+	  6, 2, 0, 5,
+	  8, 5, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -237,7 +278,10 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, 2>
 // Small problems, 4B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 4>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 0, 5, 8, 0, 1, 5, 8, 6, 1, 1, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 5, 2, 0, 5,
+	  6, 2, 0, 5,
+	  8, 6, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -245,7 +289,10 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, 4>
 // All other Small problems
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, 6, 8, 5, 0, 1, 5, 8, 0, 1, 5, 8, 5, 1, 0, 5>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  6, 8, 5, 0, 1, 5,
+	  6, 2, 0, 5,
+	  8, 5, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -256,21 +303,6 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-// All Large problems
-template <typename ProblemType, typename T, int T_SIZE>
-struct TunedConfig<ProblemType, SM10, LARGE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM10, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 7, 0, 1, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
-};
-
-// All Small problems
-template <typename ProblemType, typename T, int T_SIZE>
-struct TunedConfig<ProblemType, SM10, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM10, util::ld::NONE, util::st::NONE, false, false, false, 8, 8, 5, 2, 0, 5, 8, 0, 1, 5, 8, 6, 1, 1, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
-};
 
 
 
