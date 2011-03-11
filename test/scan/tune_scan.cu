@@ -28,6 +28,7 @@
 
 // Scan includes
 #include <b40c/util/arch_dispatch.cuh>
+#include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/problem_config.cuh>
 #include <b40c/scan/scan_enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
@@ -459,9 +460,9 @@ public:
 		typedef scan::ProblemType<
 			T,
 			size_t,
+			EXCLUSIVE,
 			OpType::BinaryOp,
-			OpType::Identity,
-			EXCLUSIVE> ProblemType;
+			OpType::Identity> ProblemType;
 
 		// Establish the granularity configuration type
 		typedef scan::ProblemConfig <
