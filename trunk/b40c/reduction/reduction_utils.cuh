@@ -211,6 +211,7 @@ __device__ __forceinline__ T WarpRakeAndReduce(
 
 	__syncthreads();
 
+	// Return last thread's inclusive partial
 	return warpscan[1][RAKING_THREADS - 1];
 }
 

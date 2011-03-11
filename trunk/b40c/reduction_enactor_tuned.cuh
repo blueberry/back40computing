@@ -281,9 +281,8 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 	cudaError_t retval = cudaSuccess;
 
 	do {
-		if ((work.num_elements <= Spine::TILE_ELEMENTS) || (work.grid_size == 1)) {
+		if (work.grid_size == 1) {
 
-			// No need to upsweep reduce if we can do it with a single spine kernel
 			reduction::TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<1, TunedConfig::Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);

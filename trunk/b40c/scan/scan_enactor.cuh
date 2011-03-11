@@ -180,9 +180,8 @@ cudaError_t ScanEnactor::ScanPass(
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		if ((work.num_elements <= Spine::TILE_ELEMENTS) || (work.grid_size == 1)) {
+		if (work.grid_size == 1) {
 
-			// No need to upsweep reduce or downsweep scan if we can do it with a single spine kernel
 			SpineScanKernel<Spine><<<1, Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
@@ -280,6 +279,14 @@ cudaError_t ScanEnactor::EnactInternal(
 	int sweep_grid_size = (ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
+
+	if (num_elements <= Spine::TILE_ELEMENTS * 3) {
+		// No need to upsweep reduce or downsweep scan if we can do it
+		// with a single spine kernel in three or less sequential
+		// tiles (i.e., instead of three back-to-back tiles where we would
+		// do one tile per up/spine/down kernel)
+		sweep_grid_size = 1;
+	}
 
 	// Compute spine elements (round up to nearest spine tile_elements)
 	int spine_elements = ((sweep_grid_size + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
