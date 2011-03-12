@@ -315,11 +315,11 @@ __device__ __forceinline__ void NopLoadTransform(T &val, bool in_bounds) {}
  */
 template <
 	typename T,													// Type to load
-	typename SizeT,											// Integer type for indexing into global arrays
+	typename SizeT,												// Integer type for indexing into global arrays
 	int LOG_LOADS_PER_TILE, 									// Number of vector loads (log)
 	int LOG_LOAD_VEC_SIZE,										// Number of items per vector load (log)
 	int ACTIVE_THREADS,											// Active threads that will be loading
-	ld::CacheModifier CACHE_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+	ld::CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 	bool UNGUARDED_IO,											// Whether or not bounds-checking is to be done
 	void Transform(T&, bool) = NopLoadTransform<T> > 			// Assignment function to transform the loaded value (can be used assign default values for items deemed not in bounds)
 		struct LoadTile;

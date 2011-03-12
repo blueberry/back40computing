@@ -111,9 +111,10 @@ struct KernelConfig : _ProblemType
 
 	enum {
 
+		SRTS_GRID_QUADS					= SrtsGrid::SMEM_QUADS,
 		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
 
-		SMEM_QUADS						= SrtsGrid::SMEM_QUADS + WARPSCAN_QUADS,
+		SMEM_QUADS						= SRTS_GRID_QUADS + WARPSCAN_QUADS,
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),

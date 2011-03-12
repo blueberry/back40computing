@@ -215,6 +215,9 @@ struct SrtsGrid
 	}
 
 
+	/**
+	 * Type of pointer for inserting partials into lanes, e.g., lane_partial[LANE][0] = ...
+	 */
 	typedef T (*LanePartial)[LANE_STRIDE];
 
 

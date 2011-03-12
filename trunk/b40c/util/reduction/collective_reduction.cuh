@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,9 +28,11 @@
 #pragma once
 
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/reduction/reduction_utils.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
+#include <b40c/util/reduction/warp_rake_and_reduce.cuh>
 
 namespace b40c {
+namespace util {
 namespace reduction {
 
 
@@ -301,5 +303,6 @@ struct ReduceVectors
 
 
 } // namespace reduction
+} // namespace util
 } // namespace b40c
 
