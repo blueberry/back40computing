@@ -52,7 +52,7 @@ struct UpsweepReductionPass
 		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
+		__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
 		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 		// CTA processing abstraction
@@ -105,7 +105,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[KernelConfig::SMEM_QUADS];
+		__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
 		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
 
 		// CTA processing abstraction

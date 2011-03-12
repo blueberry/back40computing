@@ -28,7 +28,7 @@
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/reduction/reduction_utils.cuh>
+#include <b40c/util/reduction/warp_reduce.cuh>
 
 namespace b40c {
 namespace util {

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,8 @@
 
 #pragma once
 
-#include <b40c/reduction/reduction_utils.cuh>
-#include <b40c/reduction/collective_reduction.cuh>
+#include <b40c/util/reduction/collective_reduction.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -45,7 +45,7 @@ namespace reduction {
 template <typename KernelConfig>
 struct ReductionCta :
 	KernelConfig,
-	CollectiveReduction<typename KernelConfig::SrtsGrid>
+	util::reduction::CollectiveReduction<typename KernelConfig::SrtsGrid>
 {
 	typedef typename KernelConfig::T T;
 	typedef typename KernelConfig::SizeT SizeT;
@@ -59,6 +59,21 @@ struct ReductionCta :
 
 	// Tile of elements
 	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ ReductionCta(
+		uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS],
+		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		T *d_in,
+		T *d_out) :
+			util::reduction::CollectiveReduction<typename KernelConfig::SrtsGrid>(smem_pool, warpscan),
+			carry(ReductionCta::Identity()),
+			d_in(d_in),
+			d_out(d_out) {}
+
 
 	/**
 	 * Process a single tile
@@ -88,19 +103,6 @@ struct ReductionCta :
 	 */
 	__device__ __forceinline__ void FinalReduction();
 
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ ReductionCta(
-		uint4 smem_pool[KernelConfig::SMEM_QUADS],
-		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
-		T *d_in,
-		T *d_out) :
-			CollectiveReduction<typename KernelConfig::SrtsGrid>(smem_pool, warpscan),
-			carry(ReductionCta::Identity()),
-			d_in(d_in),
-			d_out(d_out) {}
 };
 
 
@@ -129,8 +131,10 @@ void ReductionCta<KernelConfig>::ProcessTile(
 		LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 	// Reduce the data we loaded for this tile
-	T tile_partial = SerialReduce<T, ReductionCta::TILE_ELEMENTS_PER_THREAD, ReductionCta::BinaryOp>::Invoke(
-		reinterpret_cast<T*>(data));
+	T tile_partial = util::reduction::SerialReduce<
+		T,
+		ReductionCta::TILE_ELEMENTS_PER_THREAD,
+		ReductionCta::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
 
 	// Reduce into carry
 	carry = BinaryOp(carry, tile_partial);

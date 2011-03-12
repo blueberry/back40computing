@@ -28,10 +28,12 @@
 #pragma once
 
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/reduction/collective_reduction.cuh>
-#include <b40c/scan/scan_utils.cuh>
+#include <b40c/util/reduction/collective_reduction.cuh>
+#include <b40c/util/scan/serial_scan.cuh>
+#include <b40c/util/scan/warp_rake_and_scan.cuh>
 
 namespace b40c {
+namespace util {
 namespace scan {
 
 
@@ -342,7 +344,7 @@ struct ScanVectors
 	}
 };
 
-
 } // namespace scan
+} // namespace util
 } // namespace b40c
 

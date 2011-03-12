@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,15 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Simple scan utilities
+ * WarpScan
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/reduction/reduction_utils.cuh>
-
 namespace b40c {
+namespace util {
 namespace scan {
+
 
 
 /**
@@ -168,188 +168,7 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 };
 
 
-
-/**
- * Have each thread concurrently perform a serial scan over its
- * specified segment (in place).  Returns the inclusive total_reduction.
- */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	bool EXCLUSIVE = true,
-	T ScanOp(const T&, const T&) = reduction::DefaultSum>
-struct SerialScan;
-
-
-/**
- * Inclusive serial scan
- */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	T ScanOp(const T&, const T&)>
-struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int __dummy = 0>
-	struct Iterate
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
-			results[COUNT] = inclusive_partial;
-			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int __dummy>
-	struct Iterate<NUM_ELEMENTS, __dummy>
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __device__ __forceinline__ T Invoke(
-		T partials[],
-		T exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0>::Invoke(partials, partials, exclusive_partial);
-	}
-
-	// Interface
-	static __device__ __forceinline__ T Invoke(
-		T partials[],
-		T results[],
-		T exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0>::Invoke(partials, results, exclusive_partial);
-	}
-};
-
-
-/**
- * Exclusive serial scan
- */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	T ScanOp(const T&, const T&)>
-struct SerialScan <T, NUM_ELEMENTS, true, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int __dummy = 0>
-	struct Iterate
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
-			results[COUNT] = exclusive_partial;
-			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int __dummy>
-	struct Iterate<NUM_ELEMENTS, __dummy>
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __device__ __forceinline__ T Invoke(
-		T partials[],
-		T exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0>::Invoke(partials, partials, exclusive_partial);
-	}
-
-	// Interface
-	static __device__ __forceinline__ T Invoke(
-		T partials[],
-		T results[],
-		T exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0>::Invoke(partials, results, exclusive_partial);
-	}
-};
-
-
-/**
- * Warp rake and scan. Must hold that the number of raking threads in the SRTS
- * grid type is at most the size of a warp.  (May be less.)
- */
-template <
-	typename T,
-	T ScanOp(const T&, const T&),
-	int PARTIALS_PER_SEG,
-	int LOG_RAKING_THREADS,
-	bool EXCLUSIVE>
-__device__ __forceinline__ void WarpRakeAndScan(
-	T *raking_seg,
-	volatile T warpscan[][1 << LOG_RAKING_THREADS])
-{
-	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
-
-	if (threadIdx.x < RAKING_THREADS) {
-
-		// Raking reduction
-		T partial = reduction::SerialReduce<T, PARTIALS_PER_SEG, ScanOp>::Invoke(raking_seg);
-
-		// Warp scan
-		partial = WarpScan<T, LOG_RAKING_THREADS, EXCLUSIVE, LOG_RAKING_THREADS, ScanOp>::Invoke(
-			partial, warpscan);
-
-		// Raking scan
-		SerialScan<T, PARTIALS_PER_SEG, EXCLUSIVE, ScanOp>::Invoke(raking_seg, partial);
-	}
-}
-
-
-/**
- * Warp rake and scan. Must hold that the number of raking threads in the SRTS
- * grid type is at most the size of a warp.  (May be less.)
- *
- * Carry is updated in all raking threads
- */
-template <
-	typename T,
-	T ScanOp(const T&, const T&),
-	int PARTIALS_PER_SEG,
-	int LOG_RAKING_THREADS,
-	bool EXCLUSIVE>
-__device__ __forceinline__ void WarpRakeAndScan(
-	T *raking_seg,
-	volatile T warpscan[][1 << LOG_RAKING_THREADS],
-	T &carry)
-{
-	const int RAKING_THREADS = 1 << LOG_RAKING_THREADS;
-
-	if (threadIdx.x < RAKING_THREADS) {
-
-		// Raking reduction
-		T partial = reduction::SerialReduce<T, PARTIALS_PER_SEG, ScanOp>::Invoke(raking_seg);
-
-		// Warp scan
-		T warpscan_total;
-		partial = WarpScan<T, LOG_RAKING_THREADS, EXCLUSIVE, LOG_RAKING_THREADS, ScanOp>::Invoke(
-			partial, warpscan_total, warpscan);
-		partial = ScanOp(partial, carry);
-
-		// Raking scan
-		SerialScan<T, PARTIALS_PER_SEG, EXCLUSIVE, ScanOp>::Invoke(raking_seg, partial);
-
-		carry = ScanOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
-	}
-}
-
-
 } // namespace scan
+} // namespace util
 } // namespace b40c
 
