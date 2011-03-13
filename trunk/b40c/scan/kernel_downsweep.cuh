@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/util/work_distribution.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/scan/scan_cta.cuh>
 
 namespace b40c {
@@ -42,6 +43,7 @@ __device__ __forceinline__ void DownsweepScanPass(
 	typename KernelConfig::T 			* __restrict &d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ScanCta<KernelConfig> ScanCta;
 	typedef typename ScanCta::T T;
 	typedef typename ScanCta::SizeT SizeT;
@@ -69,10 +71,18 @@ __device__ __forceinline__ void DownsweepScanPass(
 
 	// Shared storage for CTA processing
 	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+	// Initialize warpscan
+	if (threadIdx.x < B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)) {
+		warpscan[0][threadIdx.x] = KernelConfig::Identity();
+	}
+
+	// SRTS grid details
+	SrtsDetails srts_detail(smem_pool, warpscan);
 
 	// CTA processing abstraction
-	ScanCta cta(smem_pool, warpscan, d_in, d_out, spine_partial);
+	ScanCta cta(srts_detail, d_in, d_out, spine_partial);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -118,18 +128,6 @@ void DownsweepScanKernel(
 {
 	DownsweepScanPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-template <typename KernelConfig>
-void __wrapper__device_stub_DownsweepScanKernel(
-	typename KernelConfig::T 			* &,
-	typename KernelConfig::T 			* &,
-	typename KernelConfig::T 			* __restrict &,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &) {}
-
 
 
 } // namespace scan

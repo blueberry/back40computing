@@ -121,6 +121,16 @@ struct NullType {};
 
 
 /**
+ * Int2Type
+ */
+template <int N>
+struct Int2Type
+{
+	enum {VALUE = N};
+};
+
+
+/**
  * Statically determine log2(N), rounded up, e.g.,
  * 		Log2<8>::VALUE == 3
  * 		Log2<3>::VALUE == 2

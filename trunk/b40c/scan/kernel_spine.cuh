@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/scan/scan_cta.cuh>
+#include <b40c/util/srts_details.cuh>
 
 namespace b40c {
 namespace scan {
@@ -40,6 +41,7 @@ __device__ __forceinline__ void SpineScanPass(
 	typename KernelConfig::T 		*d_out,
 	typename KernelConfig::SizeT 	spine_elements)
 {
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ScanCta<KernelConfig> ScanCta;
 	typedef typename ScanCta::SizeT SizeT;
 	typedef typename ScanCta::T T;
@@ -49,10 +51,18 @@ __device__ __forceinline__ void SpineScanPass(
 
 	// Shared storage for CTA processing
 	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+	// Initialize warpscan
+	if (threadIdx.x < B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)) {
+		warpscan[0][threadIdx.x] = KernelConfig::Identity();
+	}
+
+	// SRTS grid details
+	SrtsDetails srts_detail(smem_pool, warpscan);
 
 	// CTA processing abstraction
-	ScanCta cta(smem_pool, warpscan, d_in, d_out);
+	ScanCta cta(srts_detail, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
@@ -92,18 +102,6 @@ void SpineScanKernel(
 {
 	SpineScanPass<KernelConfig>(d_in, d_out, spine_elements);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-template <typename KernelConfig>
-void __wrapper__device_stub_SpineScanKernel(
-		typename KernelConfig::T *&,
-		typename KernelConfig::T *&,
-		typename KernelConfig::SizeT&) {}
-
-
 
 
 } // namespace scan

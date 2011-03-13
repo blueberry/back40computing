@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/util/device_intrinsics.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/work_distribution.cuh>
 #include <b40c/reduction/reduction_cta.cuh>
 
@@ -47,16 +48,20 @@ struct UpsweepReductionPass
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		const int &progress_selector)
 	{
+		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
 		typedef typename ReductionCta::T T;
 		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
 		__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+		__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+		// SRTS grid details
+		SrtsDetails srts_detail(smem_pool, warpscan);
 
 		// CTA processing abstraction
-		ReductionCta cta(smem_pool, warpscan, d_in, d_out);
+		ReductionCta cta(srts_detail, d_in, d_out);
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -100,16 +105,20 @@ struct UpsweepReductionPass <KernelConfig, true>
 		const util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		const int &progress_selector)
 	{
+		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
 		typedef typename ReductionCta::T T;
 		typedef typename ReductionCta::SizeT SizeT;
 
 		// Shared storage for CTA processing
 		__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-		__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+		__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+		// SRTS grid details
+		SrtsDetails srts_detail(smem_pool, warpscan);
 
 		// CTA processing abstraction
-		ReductionCta cta(smem_pool, warpscan, d_in, d_out);
+		ReductionCta cta(srts_detail, d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT cta_offset;
@@ -175,20 +184,6 @@ void UpsweepReductionKernel(
 		work_decomposition,
 		progress_selector);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-/*
-template <typename KernelConfig>
-void __wrapper__device_stub_UpsweepReductionKernel(
-	typename KernelConfig::T 			*&,
-	typename KernelConfig::T 			*&,
-	typename KernelConfig::SizeT 		* __restrict &,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &,
-	int &) {}
-*/
 
 
 } // namespace reduction

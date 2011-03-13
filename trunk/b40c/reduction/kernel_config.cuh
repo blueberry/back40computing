@@ -27,6 +27,7 @@
 
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/srts_grid.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
@@ -106,6 +107,7 @@ struct KernelConfig : _ProblemType
 
 	// SRTS grid type
 	typedef util::SrtsGrid<
+		CUDA_ARCH,
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane (CTA threads only make one deposit)
@@ -113,9 +115,12 @@ struct KernelConfig : _ProblemType
 		true>									// There are prefix dependences between lanes
 			SrtsGrid;
 
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+
 	enum {
 
-		SRTS_GRID_QUADS					= SrtsGrid::SMEM_QUADS,
+		SRTS_GRID_QUADS					= util::TotalQuads<SrtsGrid>::VALUE,
 		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
 
 		SMEM_QUADS						= SRTS_GRID_QUADS + WARPSCAN_QUADS,

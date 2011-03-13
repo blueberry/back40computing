@@ -93,7 +93,7 @@ template <
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE,
 	typename T = typename ProblemType::T,
-	int T_SIZE = 1 << util::Log2<sizeof(typename ProblemType::T)>::VALUE>			// round up to the nearest arch subword
+	int T_SIZE = 1 << util::Log2<sizeof(typename ProblemType::T)>::VALUE>		// Round up to the nearest arch subword
 struct TunedConfig;
 
 

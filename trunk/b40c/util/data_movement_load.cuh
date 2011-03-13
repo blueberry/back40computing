@@ -488,6 +488,56 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 };
 
 
+/**
+ * Initialize a tile of items
+ */
+template <
+	typename T,
+	int LOG_LOADS_PER_TILE,
+	int LOG_LOAD_VEC_SIZE,
+	T Default()>
+struct InitializeTile
+{
+	static const int LOADS_PER_TILE = 1 << LOG_LOADS_PER_TILE;
+	static const int LOAD_VEC_SIZE = 1 << LOG_LOAD_VEC_SIZE;
+
+	// Iterate over vec-elements
+	template <int LOAD, int VEC>
+	struct Iterate
+	{
+		static __device__ __forceinline__ void Invoke(T data[][LOAD_VEC_SIZE])
+		{
+			data[LOAD][VEC] = Default();
+			Iterate<LOAD, VEC + 1>::Invoke(data);
+		}
+	};
+
+	// Iterate over loads
+	template <int LOAD>
+	struct Iterate<LOAD, LOAD_VEC_SIZE>
+	{
+		static __device__ __forceinline__ void Invoke(T data[][LOAD_VEC_SIZE])
+		{
+			Iterate<LOAD + 1, 0>::Invoke(data);
+		}
+	};
+
+	// Terminate
+	template <int VEC>
+	struct Iterate<LOADS_PER_TILE, VEC>
+	{
+		static __device__ __forceinline__ void Invoke(T data[][LOAD_VEC_SIZE]) {}
+	};
+
+	// Interface
+	static __device__ __forceinline__ void Invoke(T data[][LOAD_VEC_SIZE])
+	{
+		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
+	}
+};
+
+
+
 } // namespace util
 } // namespace b40c
 

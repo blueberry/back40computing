@@ -102,6 +102,7 @@ struct KernelConfig : _ProblemType
 
 	// SRTS grid type
 	typedef util::SrtsGrid<
+		CUDA_ARCH,
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
@@ -109,9 +110,12 @@ struct KernelConfig : _ProblemType
 		true>									// There are prefix dependences between lanes
 			SrtsGrid;
 
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+
 	enum {
 
-		SRTS_GRID_QUADS					= SrtsGrid::SMEM_QUADS,
+		SRTS_GRID_QUADS					= util::TotalQuads<SrtsGrid>::VALUE,
 		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
 
 		SMEM_QUADS						= SRTS_GRID_QUADS + WARPSCAN_QUADS,

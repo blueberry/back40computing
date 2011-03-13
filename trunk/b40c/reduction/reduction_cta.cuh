@@ -27,28 +27,22 @@
 
 #pragma once
 
-#include <b40c/util/reduction/collective_reduction.cuh>
+#include <b40c/util/reduction/cooperative_reduction.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
 
 namespace b40c {
 namespace reduction {
 
 
-/******************************************************************************
- * ReductionCta Declaration
- ******************************************************************************/
-
 /**
- * Derivation of KernelConfig that encapsulates tile-processing
- * routines
+ * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig>
-struct ReductionCta :
-	KernelConfig,
-	util::reduction::CollectiveReduction<typename KernelConfig::SrtsGrid>
+struct ReductionCta : KernelConfig
 {
 	typedef typename KernelConfig::T T;
 	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	// The value we will accumulate (in each thread)
 	T carry;
@@ -60,19 +54,34 @@ struct ReductionCta :
 	// Tile of elements
 	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
+	// Operational details for SRTS grid
+	SrtsDetails srts_details;
+
 
 	/**
 	 * Constructor
 	 */
 	__device__ __forceinline__ ReductionCta(
-		uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS],
-		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		const SrtsDetails &srts_details,
 		T *d_in,
 		T *d_out) :
-			util::reduction::CollectiveReduction<typename KernelConfig::SrtsGrid>(smem_pool, warpscan),
-			carry(ReductionCta::Identity()),
+			srts_details(srts_details),
 			d_in(d_in),
-			d_out(d_out) {}
+			d_out(d_out),
+			carry(ReductionCta::Identity()) {}
+
+
+	/**
+	 * Load transform function for assigning identity to tile values
+	 * that are out of range.
+	 */
+	static __device__ __forceinline__ void LoadTransform(
+		T &val,
+		bool in_bounds)
+	{
+		// Assigns identity value to out-of-bounds loads
+		if (!in_bounds) val = ReductionCta::Identity();
+	}
 
 
 	/**
@@ -83,16 +92,30 @@ struct ReductionCta :
 	template <bool UNGUARDED_IO>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds);
+		SizeT out_of_bounds)
+	{
+		// Load tile
+		util::LoadTile<
+			T,
+			SizeT,
+			ReductionCta::LOG_LOADS_PER_TILE,
+			ReductionCta::LOG_LOAD_VEC_SIZE,
+			ReductionCta::THREADS,
+			ReductionCta::READ_MODIFIER,
+			UNGUARDED_IO,
+			LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
+		// Reduce the data we loaded for this tile
+		T tile_partial = util::reduction::SerialReduce<
+			T,
+			ReductionCta::TILE_ELEMENTS_PER_THREAD,
+			ReductionCta::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
 
-	/**
-	 * Load transform function for assigning identity to tile values
-	 * that are out of range.
-	 */
-	static __device__ __forceinline__ void LoadTransform(
-		T &val,
-		bool in_bounds);
+		// Reduce into carry
+		carry = BinaryOp(carry, tile_partial);
+
+		__syncthreads();
+	}
 
 
 	/**
@@ -101,76 +124,21 @@ struct ReductionCta :
 	 * Used to collectively reduce each thread's aggregate after striding through
 	 * the input.
 	 */
-	__device__ __forceinline__ void FinalReduction();
+	__device__ __forceinline__ void FinalReduction()
+	{
+		T total = util::reduction::CooperativeTileReduction<
+			SrtsDetails,
+			1,
+			ReductionCta::BinaryOp>::ReduceTile(srts_details, reinterpret_cast<T (*)[1]>(&carry));
+
+		// Write output
+		if (threadIdx.x == 0) {
+			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(total, d_out, 0);
+		}
+	}
 
 };
 
-
-/******************************************************************************
- * ReductionCta Implementation
- ******************************************************************************/
-
-/**
- * Process a single tile
- */
-template <typename KernelConfig>
-template <bool UNGUARDED_IO>
-void ReductionCta<KernelConfig>::ProcessTile(
-	SizeT cta_offset,
-	SizeT out_of_bounds)
-{
-	// Load tile
-	util::LoadTile<
-		T,
-		SizeT,
-		ReductionCta::LOG_LOADS_PER_TILE,
-		ReductionCta::LOG_LOAD_VEC_SIZE,
-		ReductionCta::THREADS,
-		ReductionCta::READ_MODIFIER,
-		UNGUARDED_IO,
-		LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
-
-	// Reduce the data we loaded for this tile
-	T tile_partial = util::reduction::SerialReduce<
-		T,
-		ReductionCta::TILE_ELEMENTS_PER_THREAD,
-		ReductionCta::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
-
-	// Reduce into carry
-	carry = BinaryOp(carry, tile_partial);
-
-	__syncthreads();
-}
-
-
-/**
- * Load transform function for assigning identity to tile values
- * that are out of range.
- */
-template <typename KernelConfig>
-void ReductionCta<KernelConfig>::LoadTransform(
-	T &val,
-	bool in_bounds)
-{
-	// Assigns identity value to out-of-bounds loads
-	if (!in_bounds) val = ReductionCta::Identity();
-}
-
-
-/**
- * Collective reduction across all threads, stores final reduction to output
- */
-template <typename KernelConfig>
-void ReductionCta<KernelConfig>::FinalReduction()
-{
-	T total = this->template ReduceTile<1, ReductionCta::BinaryOp>(
-		reinterpret_cast<T (*)[1]>(&carry));
-
-	// Write output
-	if (threadIdx.x == 0) {
-		util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(total, d_out, 0);
-	}
-}
 
 
 } // namespace reduction

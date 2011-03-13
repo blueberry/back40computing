@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include <b40c/util/scan/collective_scan.cuh>
+#include <b40c/util/scan/cooperative_scan.cuh>
 
 namespace b40c {
 namespace scan {
@@ -38,12 +38,11 @@ namespace scan {
  * routines
  */
 template <typename KernelConfig>
-struct ScanCta :
-	KernelConfig,
-	util::scan::CollectiveScan<typename KernelConfig::SrtsGrid>
+struct ScanCta : KernelConfig
 {
 	typedef typename KernelConfig::T T;
 	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	// The value we will accumulate (in raking threads only)
 	T carry;
@@ -55,24 +54,22 @@ struct ScanCta :
 	// Tile of scan elements
 	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
+	// Operational details for SRTS grid
+	SrtsDetails srts_details;
+
 
 	/**
 	 * Constructor
 	 */
 	__device__ __forceinline__ ScanCta(
-		uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS],
-		T warpscan[][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		const SrtsDetails &srts_details,
 		T *d_in,
 		T *d_out,
 		T spine_partial = ScanCta::Identity()) :
-
-		util::scan::CollectiveScan<typename ScanCta::SrtsGrid>(smem_pool, warpscan),
 			carry(spine_partial),			// Seed carry with spine partial
+			srts_details(srts_details),
 			d_in(d_in),
-			d_out(d_out)
-	{
-		this->template Initialize<ScanCta::Identity>();
-	}
+			d_out(d_out) {}
 
 
 	/**
@@ -83,17 +80,32 @@ struct ScanCta :
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
-
 		// Load tile
-		util::LoadTile<T, SizeT, ScanCta::LOG_LOADS_PER_TILE, ScanCta::LOG_LOAD_VEC_SIZE, ScanCta::THREADS, ScanCta::READ_MODIFIER, UNGUARDED_IO>::Invoke(
-			data, d_in, cta_offset, out_of_bounds);
+		util::LoadTile<
+			T,
+			SizeT,
+			ScanCta::LOG_LOADS_PER_TILE,
+			ScanCta::LOG_LOAD_VEC_SIZE,
+			ScanCta::THREADS,
+			ScanCta::READ_MODIFIER,
+			UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 		// Scan tile
-		this->template ScanTileWithCarry<ScanCta::LOAD_VEC_SIZE, ScanCta::EXCLUSIVE, ScanCta::BinaryOp>(data, carry);
+		util::scan::CooperativeTileScan<
+			SrtsDetails,
+			ScanCta::LOAD_VEC_SIZE,
+			ScanCta::EXCLUSIVE,
+			ScanCta::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
 
 		// Store tile
-		util::StoreTile<T, SizeT, ScanCta::LOG_LOADS_PER_TILE, ScanCta::LOG_LOAD_VEC_SIZE, ScanCta::THREADS, ScanCta::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
-			data, d_out, cta_offset, out_of_bounds);
+		util::StoreTile<
+			T,
+			SizeT,
+			ScanCta::LOG_LOADS_PER_TILE,
+			ScanCta::LOG_LOAD_VEC_SIZE,
+			ScanCta::THREADS,
+			ScanCta::WRITE_MODIFIER,
+			UNGUARDED_IO>::Invoke(data, d_out, cta_offset, out_of_bounds);
 	}
 };
 
