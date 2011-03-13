@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/reduction/reduction_cta.cuh>
+#include <b40c/util/srts_details.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -40,6 +41,7 @@ __device__ __forceinline__ void SpineReductionPass(
 	typename KernelConfig::T 		*d_out,
 	typename KernelConfig::SizeT 	spine_elements)
 {
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ReductionCta<KernelConfig> ReductionCta;
 	typedef typename ReductionCta::SizeT SizeT;
 	typedef typename ReductionCta::T T;
@@ -49,10 +51,13 @@ __device__ __forceinline__ void SpineReductionPass(
 
 	// Shared storage for CTA processing
 	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+	// SRTS grid details
+	SrtsDetails srts_detail(smem_pool, warpscan);
 
 	// CTA processing abstraction
-	ReductionCta cta(smem_pool, warpscan, d_in, d_out);
+	ReductionCta cta(srts_detail, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
@@ -95,19 +100,6 @@ void SpineReductionKernel(
 {
 	SpineReductionPass<KernelConfig>(d_in, d_out, spine_elements);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-/*
-template <typename KernelConfig>
-void __wrapper__device_stub_SpineReductionKernel(
-		typename KernelConfig::T *&,
-		typename KernelConfig::T *&,
-		typename KernelConfig::SizeT&) {}
-*/
-
 
 
 } // namespace reduction

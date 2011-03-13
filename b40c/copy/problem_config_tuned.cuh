@@ -69,7 +69,7 @@ enum ArchFamily
 template <int CUDA_ARCH>
 struct ArchFamilyClassifier
 {
-	static const ArchFamily FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
+	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
 										(CUDA_ARCH < SM20) ? 	SM13 :
 																SM20;
 };
@@ -146,21 +146,8 @@ struct TunedConfig<SM13, SMALL>
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-// Large problems
-template <>
-struct TunedConfig<SM10, LARGE>
-	: ProblemConfig<unsigned short, size_t, SM10, util::ld::NONE, util::st::NONE, false, false, 8, 7, 2, 0, 9>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
-};
 
-// Small problems
-template <>
-struct TunedConfig<SM10, SMALL>
-	: ProblemConfig<unsigned long long, size_t, SM10, util::ld::NONE, util::st::NONE, false, false, 8, 5, 0, 1, 6>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
-};
+
 
 
 
