@@ -109,7 +109,7 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
-		return Iterate<1, WIDTH>::Invoke(current_partial, warpscan, warpscan_tid);
+		return Iterate<1, WIDTH>::Invoke(current_partial, warpscan_partials, warpscan_tid);
 	}
 
 	// Interface
@@ -120,7 +120,7 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial
-		Tuple inclusive_partial = Invoke(current_partial, warpscan, warpscan_tid);
+		Tuple inclusive_partial = Invoke(current_partial, warpscan_partials, warpscan_tid);
 
 		// Write our inclusive partial
 		warpscan_partials.template Set<1>(inclusive_partial, warpscan_tid);
@@ -159,7 +159,7 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 			LOG_NUM_ELEMENTS,
 			false,
 			STEPS,
-			ScanOp>::Invoke(current_partial, warpscan, warpscan_tid);
+			ScanOp>::Invoke(current_partial, warpscan_partials, warpscan_tid);
 
 		// Write our inclusive partial
 		warpscan_partials.template Set<1>(inclusive_partial, warpscan_tid);
@@ -182,7 +182,7 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 			LOG_NUM_ELEMENTS,
 			false,
 			STEPS,
-			ScanOp>::Invoke(current_partial, warpscan, warpscan_tid);
+			ScanOp>::Invoke(current_partial, warpscan_partials, warpscan_tid);
 
 		// Write our inclusive partial
 		warpscan_partials.template Set<1>(inclusive_partial, warpscan_tid);
