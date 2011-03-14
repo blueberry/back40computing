@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Scan kernel
+ * Spine scan kernel
  ******************************************************************************/
 
 #pragma once
@@ -37,9 +37,9 @@ namespace scan {
  */
 template <typename KernelConfig>
 __device__ __forceinline__ void SpineScanPass(
-	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_out,
-	typename KernelConfig::SizeT 	spine_elements)
+	typename KernelConfig::T 		*&d_in,
+	typename KernelConfig::T 		*&d_out,
+	typename KernelConfig::SizeT 	&spine_elements)
 {
 	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ScanCta<KernelConfig> ScanCta;

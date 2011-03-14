@@ -93,6 +93,8 @@ struct CooperativeTileReduction
 	/**
 	 * Reduce a single tile.  Carry is computed (or updated if REDUCE_CARRY is set)
 	 * only in last raking thread
+	 *
+	 * Caution: Post-synchronization is needed before srts_details reuse.
 	 */
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
@@ -112,7 +114,9 @@ struct CooperativeTileReduction
 	}
 
 	/**
-	 * Reduce a single tile.  Result is computed in all threads.
+	 * Reduce a single tile.  Result is computed and returned in all threads.
+	 *
+	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ T ReduceTile(
 		const SrtsDetails &srts_details,
@@ -168,8 +172,6 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 				ReductionOp(carry, warpscan_total) : 	// Update carry
 				warpscan_total;
 		}
-
-		__syncthreads();
 	}
 
 

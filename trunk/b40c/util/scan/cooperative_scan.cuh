@@ -89,7 +89,10 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 
 
 	/**
-	 * Scan a single tile.  Carry-in/out is updated only in raking threads (homogeneously)
+	 * Scan a single tile where carry is updated with the total aggregate only
+	 * in raking threads (homogeneously).
+	 *
+	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		const SrtsDetails &srts_details,
@@ -113,7 +116,9 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 
 
 	/**
-	 * Scan a single tile.  Result is computed in all threads.
+	 * Scan a single tile.  Total aggregate is computed and returned in all threads.
+	 *
+	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ T ScanTile(
 		const SrtsDetails &srts_details,

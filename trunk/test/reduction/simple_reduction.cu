@@ -86,7 +86,7 @@ int main(int argc, char** argv)
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
-    	printf("\nsimple_copy [--device=<device index>]\n");
+    	printf("\nsimple_reduction [--device=<device index>]\n");
     	return 0;
     }
 

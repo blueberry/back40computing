@@ -308,13 +308,33 @@ int CompareResults(T* computed, T* reference, size_t len, bool verbose = true)
  * of a host array
  */
 template <typename T>
-int CompareDeviceResults(T *h_reference, T *d_data, size_t num_elements, bool verbose = true)
+int CompareDeviceResults(
+	T *h_reference,
+	T *d_data,
+	size_t num_elements,
+	bool verbose = true,
+	bool display_data = false)
 {
 	// Allocate array on host
 	T *h_data = (T*) malloc(num_elements * sizeof(T));
 
 	// Reduction data back
 	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+	// Display data
+	if (display_data) {
+		printf("Reference:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_reference[i]);
+			printf(", ");
+		}
+		printf("\n\nData:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+	}
 
 	// Check
 	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
