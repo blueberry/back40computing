@@ -20,47 +20,59 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction spine kernel
+ * Segmented scan spine kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/reduction/reduction_cta.cuh>
-#include <b40c/util/srts_details.cuh>
+#include <b40c/scan/scan_cta.cuh>
+#include <b40c/segmented_scan/scan_cta.cuh>
 
 namespace b40c {
-namespace reduction {
+namespace segmented_scan {
 
 
 /**
- * Spine reduction pass
+ * Segmented scan spine pass
  */
 template <typename KernelConfig>
-__device__ __forceinline__ void SpineReductionPass(
-	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_out,
-	typename KernelConfig::SizeT 	spine_elements)
+__device__ __forceinline__ void SpineScanPass(
+	typename KernelConfig::T 		*&d_partials_in,
+	typename KernelConfig::Flag		*&d_flags_in,
+	typename KernelConfig::T 		*&d_partials_out,
+	typename KernelConfig::SizeT 	&spine_elements)
 {
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
-	typedef ReductionCta<KernelConfig> ReductionCta;
-	typedef typename ReductionCta::SizeT SizeT;
-	typedef typename ReductionCta::T T;
+	typedef ScanCta<KernelConfig> ScanCta;
+	typedef typename ScanCta::T T;
+	typedef typename ScanCta::Flag Flag;
+	typedef typename ScanCta::SizeT SizeT;
+	typedef typename ScanCta::SrtsSoaDetails SrtsSoaDetails;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+	// Shared SRTS grid storage
+	__shared__ uint4 partial_smem_pool[KernelConfig::PARTIALS_SRTS_GRID_QUADS];
+	__shared__ uint4 flag_smem_pool[KernelConfig::FLAGS_SRTS_GRID_QUADS];
+
+	// Shared SRTS warpscan storage
+	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+	__shared__ Flag flags_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
 	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
+	SrtsSoaDetails srts_soa_details(
+		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
+		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan));
 
 	// CTA processing abstraction
-	ReductionCta cta(srts_detail, d_in, d_out);
+	ScanCta cta(
+		srts_soa_details,
+		d_partials_in,
+		d_flags_in,
+		d_partials_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -70,38 +82,37 @@ __device__ __forceinline__ void SpineReductionPass(
 	while (cta_offset < cta_guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += ReductionCta::TILE_ELEMENTS;
+		cta_offset += ScanCta::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
 		cta.ProcessTile<false>(cta_offset, spine_elements);
 	}
-
-	// Collectively reduce accumulated carry from each thread
-	cta.FinalReduction();
 }
 
 
 /******************************************************************************
- * Spine Reduction Kernel Entry-point
+ * Spine Scan Kernel Entry-point
  ******************************************************************************/
 
 /**
- * Spine reduction kernel entry point
+ * Spine scan kernel entry point
  */
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
-void SpineReductionKernel(
-	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_out,
+void SpineScanKernel(
+	typename KernelConfig::T 		*d_partials_in,
+	typename KernelConfig::Flag		*d_flags_in,
+	typename KernelConfig::T 		*d_partials_out,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	SpineReductionPass<KernelConfig>(d_in, d_out, spine_elements);
+	SpineScanPass<KernelConfig>(
+		d_partials_in, d_flags_in, d_partials_out, spine_elements);
 }
 
 
-} // namespace reduction
+} // namespace segmented_scan
 } // namespace b40c
 

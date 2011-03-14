@@ -212,9 +212,9 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
 	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
-	  12, 4, 8, 2, 2, 5,
+	  12, 8, 8, 2, 2, 5,
 	  6, 2, 0, 5,
-	  4, 8, 2, 1, 5>
+	  8, 8, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };

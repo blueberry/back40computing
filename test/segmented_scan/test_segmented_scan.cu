@@ -184,7 +184,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
-/*
+
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -197,21 +197,19 @@ int main(int argc, char** argv)
 		typedef Sum<T> BinaryOp;
 		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
-*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
 		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
 		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
-*/
+
 	return 0;
 }
 
