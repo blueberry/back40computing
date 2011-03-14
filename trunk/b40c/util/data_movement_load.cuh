@@ -532,7 +532,7 @@ struct InitializeTile
 	// Interface
 	static __device__ __forceinline__ void Invoke(T data[][LOAD_VEC_SIZE])
 	{
-		Iterate<0, 0>::Invoke(data, d_in, cta_offset, out_of_bounds);
+		Iterate<0, 0>::Invoke(data);
 	}
 };
 

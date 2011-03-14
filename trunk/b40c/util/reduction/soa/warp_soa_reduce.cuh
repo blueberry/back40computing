@@ -100,7 +100,7 @@ struct WarpSoaReduce
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		Tuple inclusive_partial = Iterate<NUM_ELEMENTS / 2>::Invoke(
-			current_partial, warpscan, warpscan_tid);
+			current_partial, warpscan_partials, warpscan_tid);
 
 		// Write our inclusive partial
 		warpscan_partials.template Set<1>(inclusive_partial, warpscan_tid);
@@ -115,7 +115,7 @@ struct WarpSoaReduce
 		WarpscanSoa &warpscan_partials,			// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Iterate<NUM_ELEMENTS / 2>::Invoke(exclusive_partial, warpscan, warpscan_tid);
+		return Iterate<NUM_ELEMENTS / 2>::Invoke(exclusive_partial, warpscan_partials, warpscan_tid);
 	}
 
 };
