@@ -27,6 +27,7 @@
 
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/work_distribution.cuh>
+#include <b40c/util/work_progress.cuh>
 #include <b40c/copy/copy_cta.cuh>
 
 namespace b40c {
@@ -39,12 +40,11 @@ template <typename KernelConfig, bool WORK_STEALING>
 struct SweepCopyPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelConfig::T 			*&d_in,
-		typename KernelConfig::T 			*&d_out,
-		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
-		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-		const int 							&progress_selector,
-		const int 							&extra_bytes)
+		typename KernelConfig::T 									*&d_in,
+		typename KernelConfig::T 									*&d_out,
+		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
+		const util::WorkProgress 									&work_progress,
+		const int 													&extra_bytes)
 	{
 		typedef CopyCta<KernelConfig> CopyCta;
 		typedef typename CopyCta::T T;
@@ -98,12 +98,11 @@ template <typename KernelConfig>
 struct SweepCopyPass <KernelConfig, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelConfig::T 			*&d_in,
-		typename KernelConfig::T 			*&d_out,
-		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
-		const util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-		const int 							&progress_selector,
-		const int 							&extra_bytes)
+		typename KernelConfig::T 									*&d_in,
+		typename KernelConfig::T 									*&d_out,
+		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
+		const util::WorkProgress 									&work_progress,
+		const int 													&extra_bytes)
 	{
 		typedef CopyCta<KernelConfig> CopyCta;
 		typedef typename CopyCta::T T;
@@ -117,7 +116,7 @@ struct SweepCopyPass <KernelConfig, true>
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
-			d_work_progress[progress_selector ^ 1] = 0;
+			work_progress.PrepareNext();
 		}
 
 		// Steal full-tiles of work, incrementing progress counter
@@ -126,7 +125,7 @@ struct SweepCopyPass <KernelConfig, true>
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = util::AtomicInt<SizeT>::Add(d_work_progress + progress_selector, CopyCta::TILE_ELEMENTS);
+				cta_offset = work_progress.Steal<CopyCta::TILE_ELEMENTS>();
 			}
 
 			__syncthreads();		// Protect cta_offset
@@ -170,36 +169,19 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepCopyKernel(
-	typename KernelConfig::T 			*d_in,
-	typename KernelConfig::T 			*d_out,
-	typename KernelConfig::SizeT 		* __restrict d_work_progress,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
-	int 								progress_selector,
-	int 								extra_bytes)
+	typename KernelConfig::T 									*d_in,
+	typename KernelConfig::T 									*d_out,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition,
+	util::WorkProgress 											work_progress,
+	int 														extra_bytes)
 {
 	SweepCopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_out,
-		d_work_progress,
 		work_decomposition,
-		progress_selector,
+		work_progress,
 		extra_bytes);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-/*
-template <typename KernelConfig>
-void __wrapper__device_stub_SweepCopyKernel(
-	typename KernelConfig::T 			*&,
-	typename KernelConfig::T 			*&,
-	typename KernelConfig::SizeT 		* __restrict &,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &,
-	int 								&,
-	int 								&) {}
-*/
 
 
 } // namespace copy

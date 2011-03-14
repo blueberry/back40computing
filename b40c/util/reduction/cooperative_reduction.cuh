@@ -41,7 +41,9 @@ namespace reduction {
  */
 template <
 	typename SrtsDetails,
-	typename SrtsDetails::T ReductionOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&),
+	typename SrtsDetails::T ReductionOp(
+		const typename SrtsDetails::T&,
+		const typename SrtsDetails::T&),
 	typename SecondarySrtsDetails = typename SrtsDetails::SecondarySrtsDetails>
 struct CooperativeGridReduction;
 
@@ -52,7 +54,9 @@ struct CooperativeGridReduction;
 template <
 	typename SrtsDetails,
 	int VEC_SIZE,
-	typename SrtsDetails::T ReductionOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&)>
+	typename SrtsDetails::T ReductionOp(
+		const typename SrtsDetails::T&,
+		const typename SrtsDetails::T&)>
 struct CooperativeTileReduction
 {
 	typedef typename SrtsDetails::T T;
@@ -87,8 +91,10 @@ struct CooperativeTileReduction
 
 
 	/**
-	 * Reduce a single tile.  Carry-in/out is updated only in raking threads (homogeneously)
+	 * Reduce a single tile.  Carry is computed (or updated if REDUCE_CARRY is set)
+	 * only in last raking thread
 	 */
+	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		const SrtsDetails &srts_details,
 		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
@@ -99,8 +105,10 @@ struct CooperativeTileReduction
 
 		__syncthreads();
 
-		CooperativeGridReduction<SrtsDetails, ReductionOp>::ReduceTileWithCarry(
-			srts_details, carry);
+		CooperativeGridReduction<
+			SrtsDetails,
+			ReductionOp>::template ReduceTileWithCarry<REDUCE_CARRY>(
+				srts_details, carry);
 	}
 
 	/**
@@ -138,8 +146,10 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 	typedef typename SrtsDetails::T T;
 
 	/**
-	 * Reduction in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
+	 * Reduction in last-level SRTS grid.  Carry is computed (or updated if REDUCE_CARRY is set)
+	 * only in last raking thread
 	 */
+	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		const SrtsDetails &srts_details,
 		T &carry)
@@ -151,11 +161,12 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 				srts_details.raking_segment);
 
 			// Warp reduction
-			T warpscan_total = WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::Invoke(
+			T warpscan_total = WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::InvokeSingle(
 				partial, srts_details.warpscan);
 
-			// Update carry
-			carry = ReductionOp(carry, warpscan_total);
+			carry = (REDUCE_CARRY) ?
+				ReductionOp(carry, warpscan_total) : 	// Update carry
+				warpscan_total;
 		}
 
 		__syncthreads();
@@ -174,7 +185,7 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 				srts_details.raking_segment);
 
 			// Warp reduction
-			WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::Invoke(
+			WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::InvokeSingle(
 				partial, srts_details.warpscan);
 		}
 
@@ -200,6 +211,7 @@ struct CooperativeGridReduction
 	/**
 	 * Reduction in SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
+	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		const SrtsDetails &srts_details,
 		T &carry)
@@ -217,8 +229,10 @@ struct CooperativeGridReduction
 		__syncthreads();
 
 		// Collectively reduce in next grid
-		CooperativeGridReduction<SecondarySrtsDetails, ReductionOp>::ReduceTileWithCarry(
-			srts_details.secondary_details, carry);
+		CooperativeGridReduction<
+			SecondarySrtsDetails,
+			ReductionOp>::template ReduceTileWithCarry<REDUCE_CARRY>(
+					srts_details.secondary_details, carry);
 	}
 
 

@@ -48,6 +48,13 @@ __device__ __forceinline__ void DownsweepScanPass(
 	typedef typename ScanCta::T T;
 	typedef typename ScanCta::SizeT SizeT;
 
+	// Shared storage for CTA processing
+	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
+	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+
+	// SRTS grid details
+	SrtsDetails srts_detail(smem_pool, warpscan);
+
 	// We need the exclusive partial from our spine, regardless of whether
 	// we're exclusive/inclusive
 
@@ -68,18 +75,6 @@ __device__ __forceinline__ void DownsweepScanPass(
 			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
 		}
 	}
-
-	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-	// Initialize warpscan
-	if (threadIdx.x < B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)) {
-		warpscan[0][threadIdx.x] = KernelConfig::Identity();
-	}
-
-	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
 
 	// CTA processing abstraction
 	ScanCta cta(srts_detail, d_in, d_out, spine_partial);

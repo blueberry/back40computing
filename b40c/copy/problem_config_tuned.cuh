@@ -28,6 +28,7 @@
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/work_progress.cuh>
 
 #include <b40c/copy/kernel_sweep.cuh>
 #include <b40c/copy/problem_config.cuh>
@@ -171,9 +172,8 @@ __launch_bounds__ (
 __global__ void TunedSweepCopyKernel(
 	void 								*d_in,
 	void 								*d_out,
-	size_t 								* __restrict d_work_progress,
 	util::CtaWorkDistribution<size_t> 	work_decomposition,
-	int									progress_selector,
+	util::WorkProgress					work_progress,
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
@@ -186,9 +186,8 @@ __global__ void TunedSweepCopyKernel(
 	SweepCopyPass<CopyKernelConfig, CopyKernelConfig::WORK_STEALING>::Invoke(
 		in,
 		out,
-		d_work_progress,
 		work_decomposition,
-		progress_selector,
+		work_progress,
 		extra_bytes);
 }
 

@@ -36,6 +36,7 @@ namespace util {
  */
 template <
 	typename SrtsGrid,
+	typename SrtsGrid::T Identity(),
 	typename SecondarySrtsGrid = typename SrtsGrid::SecondaryGrid>
 struct SrtsDetails;
 
@@ -43,16 +44,23 @@ struct SrtsDetails;
 /**
  * Operational details for threads working in an SRTS grid (specialized for one-level SRTS grid)
  */
-template <typename SrtsGrid>
-struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
+template <
+	typename SrtsGrid,
+	typename SrtsGrid::T Identity()>
+struct SrtsDetails<SrtsGrid, Identity, NullType> : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
+	typedef T WarpscanStorage [2][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
 	typedef NullType SecondarySrtsDetails;
+
+	enum {
+		CUMULATIVE_THREAD 				= SrtsGrid::RAKING_THREADS - 1
+	};
 
 	/**
 	 * Warpscan storage
 	 */
-	T (*warpscan)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
+	WarpscanStorage &warpscan;
 
 	/**
 	 * The location in the smem grid where the calling thread can insert/extract
@@ -69,13 +77,20 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	/**
 	 * Constructor
 	 */
-	SrtsDetails(
+	__host__ __device__ __forceinline__ SrtsDetails(
 		uint4 *smem_pool,
-		T warpscan[][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)]) :
+		WarpscanStorage &warpscan) :
 			warpscan(warpscan),
-			lane_partial(SrtsGrid::MyLanePartial(smem_pool))
+			lane_partial(SrtsGrid::MyLanePartial(smem_pool))						// set lane partial pointer
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+
+			if (Identity != NULL) {
+				// Initialize first half of warpscan storage to identity
+				warpscan[0][threadIdx.x] = Identity();
+			}
+
+			// Set raking segment pointer
 			raking_segment = SrtsGrid::MyRakingSegment(smem_pool);
 		}
 	}
@@ -85,7 +100,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	 */
 	__device__ __forceinline__ T CumulativePartial() const
 	{
-		return warpscan[1][SrtsGrid::RAKING_THREADS - 1];
+		return warpscan[1][CUMULATIVE_THREAD];
 	}
 };
 
@@ -95,11 +110,17 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
  */
 template <
 	typename SrtsGrid,
+	typename SrtsGrid::T Identity(),
 	typename SecondarySrtsGrid>
 struct SrtsDetails : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
-	typedef SrtsDetails<SecondarySrtsGrid> SecondarySrtsDetails;
+	typedef T WarpscanStorage [2][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
+	typedef SrtsDetails<SecondarySrtsGrid, Identity> SecondarySrtsDetails;
+
+	enum {
+		CUMULATIVE_THREAD = SecondarySrtsDetails::CUMULATIVE_THREAD
+	};
 
 	/**
 	 * The location in the smem grid where the calling thread can insert/extract
@@ -121,13 +142,14 @@ struct SrtsDetails : SrtsGrid
 	/**
 	 * Constructor
 	 */
-	SrtsDetails(
+	__host__ __device__ __forceinline__ SrtsDetails(
 		uint4 *smem_pool,
-		T warpscan[][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)]) :
-			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),
+		WarpscanStorage &warpscan) :
+			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS, warpscan)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+			// Set raking segment pointer
 			raking_segment = SrtsGrid::MyRakingSegment(smem_pool);
 		}
 	}

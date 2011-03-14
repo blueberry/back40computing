@@ -53,11 +53,6 @@ __device__ __forceinline__ void SpineScanPass(
 	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
 	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
-	// Initialize warpscan
-	if (threadIdx.x < B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)) {
-		warpscan[0][threadIdx.x] = KernelConfig::Identity();
-	}
-
 	// SRTS grid details
 	SrtsDetails srts_detail(smem_pool, warpscan);
 

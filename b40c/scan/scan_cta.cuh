@@ -34,15 +34,23 @@ namespace scan {
 
 
 /**
- * Derivation of KernelConfig that encapsulates tile-processing
- * routines
+ * Derivation of KernelConfig that encapsulates downsweep scan tile-processing
+ * routines state and routines
  */
 template <typename KernelConfig>
 struct ScanCta : KernelConfig
 {
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef typename ScanCta::T T;
+	typedef typename ScanCta::SizeT SizeT;
+	typedef typename ScanCta::SrtsDetails SrtsDetails;
+
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
 
 	// The value we will accumulate (in raking threads only)
 	T carry;
@@ -52,11 +60,15 @@ struct ScanCta : KernelConfig
 	T *d_out;
 
 	// Tile of scan elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	T data[ScanCta::LOADS_PER_TILE][ScanCta::LOAD_VEC_SIZE];
 
 	// Operational details for SRTS grid
 	SrtsDetails srts_details;
 
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 	/**
 	 * Constructor
@@ -66,10 +78,11 @@ struct ScanCta : KernelConfig
 		T *d_in,
 		T *d_out,
 		T spine_partial = ScanCta::Identity()) :
-			carry(spine_partial),			// Seed carry with spine partial
+
 			srts_details(srts_details),
 			d_in(d_in),
-			d_out(d_out) {}
+			d_out(d_out),
+			carry(spine_partial) {}			// Seed carry with spine partial
 
 
 	/**
@@ -90,7 +103,7 @@ struct ScanCta : KernelConfig
 			ScanCta::READ_MODIFIER,
 			UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
-		// Scan tile
+		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
 			SrtsDetails,
 			ScanCta::LOAD_VEC_SIZE,

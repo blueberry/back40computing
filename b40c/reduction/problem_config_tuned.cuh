@@ -28,6 +28,7 @@
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/work_progress.cuh>
 
 #include <b40c/reduction/kernel_spine.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
@@ -238,23 +239,24 @@ __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepReductionKernel(
-	typename ProblemType::T 			*d_in,
-	typename ProblemType::T 			*d_spine,
-	typename ProblemType::SizeT 		* __restrict d_work_progress,
-	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition,
-	int progress_selector)
+	typename ProblemType::T 								*d_in,
+	typename ProblemType::T 								*d_spine,
+	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
+	util::WorkProgress										work_progress)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
+	typedef typename TunedConfig<
+		ProblemType,
+		__B40C_CUDA_ARCH__,
+		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
 
 	typename ProblemType::T *d_spine_partial = d_spine + blockIdx.x;
 
 	UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine_partial,
-		d_work_progress,
 		work_decomposition,
-		progress_selector);
+		work_progress);
 }
 
 
@@ -271,7 +273,10 @@ __global__ void TunedSpineReductionKernel(
 	typename ProblemType::SizeT 	spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine ReductionKernelConfig;
+	typedef typename TunedConfig<
+		ProblemType,
+		__B40C_CUDA_ARCH__,
+		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine ReductionKernelConfig;
 
 	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
 }

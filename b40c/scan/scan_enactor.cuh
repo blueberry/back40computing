@@ -27,6 +27,7 @@
 
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/spine.cuh>
 #include <b40c/scan/problem_config.cuh>
 #include <b40c/scan/kernel_downsweep.cuh>
 #include <b40c/scan/kernel_spine.cuh>
@@ -53,10 +54,7 @@ protected:
 
 	// Temporary device storage needed for reducing partials produced
 	// by separate CTAs
-	void *d_spine;
-
-	// Number of bytes backed by d_spine
-	int spine_bytes;
+	util::Spine spine;
 
 
 	//-----------------------------------------------------------------------------
@@ -64,7 +62,7 @@ protected:
 	//-----------------------------------------------------------------------------
 
 	/**
-	 * Performs any lazy initialization work needed for this problem type
+	 * Performs any lazy per-pass initialization work needed for this problem type
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Setup(int sweep_grid_size, int spine_elements);
@@ -94,13 +92,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	ScanEnactor(): d_spine(NULL), spine_bytes(0) {}
-
-
-	/**
-     * Destructor
-     */
-    virtual ~ScanEnactor();
+	ScanEnactor() {}
 
 
 	/**
@@ -110,9 +102,9 @@ public:
 	 * with user-supplied granularity-specialization types.  (Useful for auto-tuning.)
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be scanned
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
 	 * 		Number of elements to scan
 	 * @param max_grid_size
@@ -141,24 +133,10 @@ public:
 template <typename ProblemConfig>
 cudaError_t ScanEnactor::Setup(int sweep_grid_size, int spine_elements)
 {
-	cudaError_t retval = cudaSuccess;
-	do {
-		// Make sure our spine is big enough
-		int problem_spine_bytes = spine_elements * sizeof(typename ProblemConfig::Downsweep::T);
-		if (problem_spine_bytes > spine_bytes) {
-			if (d_spine) {
-				if (retval = util::B40CPerror(cudaFree(d_spine),
-					"ScanEnactor cudaFree d_spine failed", __FILE__, __LINE__)) break;
-			}
+	typedef typename ProblemConfig::Upsweep::T T;
 
-			spine_bytes = problem_spine_bytes;
-
-			if (retval = util::B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
-				"ScanEnactor cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
-		}
-	} while (0);
-
-	return retval;
+	// Make sure our spine is big enough
+	return spine.Setup<T>(sweep_grid_size, spine_elements);
 }
 
 
@@ -223,19 +201,19 @@ cudaError_t ScanEnactor::ScanPass(
 
 			// Upsweep scan into spine
 			reduction::UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) d_spine, NULL, work, 0);
+				d_src, (T*) spine.Get(), work, util::WorkProgress());
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineScanKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) d_spine, (T*) d_spine, spine_elements);
+				(T*) spine.Get(), (T*) spine.Get(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
 			DownsweepScanKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (T*) d_spine, work);
+				d_src, d_dest, (T*) spine.Get(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor DownsweepScanKernel failed ", __FILE__, __LINE__))) break;
 
@@ -243,17 +221,6 @@ cudaError_t ScanEnactor::ScanPass(
 	} while (0);
 
 	return retval;
-}
-
-
-/**
- * Destructor
- */
-ScanEnactor::~ScanEnactor()
-{
-	if (d_spine) {
-		util::B40CPerror(cudaFree(d_spine), "ScanEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
-	}
 }
 
     
@@ -337,7 +304,8 @@ cudaError_t ScanEnactor::Enact(
 	typename ProblemConfig::Downsweep::SizeT num_elements,
 	int max_grid_size)
 {
-	return EnactInternal<ProblemConfig, ScanEnactor>(d_dest, d_src, num_elements, max_grid_size);
+	return EnactInternal<ProblemConfig, ScanEnactor>(
+		d_dest, d_src, num_elements, max_grid_size);
 }
 
 

@@ -90,22 +90,22 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T exclusive_partial,						// Input partial
+		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
-		return Iterate<1, WIDTH>::Invoke(exclusive_partial, warpscan, warpscan_tid);
+		return Iterate<1, WIDTH>::Invoke(current_partial, warpscan, warpscan_tid);
 	}
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T exclusive_partial,						// Input partial
+		T current_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		T inclusive_partial = Invoke(exclusive_partial, warpscan, warpscan_tid);
+		T inclusive_partial = Invoke(current_partial, warpscan, warpscan_tid);
 
 		// Write our inclusive partial and then set total to the last thread's inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
@@ -132,13 +132,13 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T exclusive_partial,						// Input partial
+		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial
 		T inclusive_partial = WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>::Invoke(
-			exclusive_partial, warpscan, warpscan_tid);
+			current_partial, warpscan, warpscan_tid);
 
 		// Write out our inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
@@ -149,14 +149,14 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
-		T exclusive_partial,						// Input partial
+		T current_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial
 		T inclusive_partial = WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>::Invoke(
-			exclusive_partial, warpscan, warpscan_tid);
+			current_partial, warpscan, warpscan_tid);
 
 		// Write our inclusive partial and then set total to the last thread's inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
