@@ -40,7 +40,7 @@ template <
 	bool _EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp, Identity>
+struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp, Identity>	// Inherit from reduction problem type
 {
 	static const bool EXCLUSIVE = _EXCLUSIVE;
 };

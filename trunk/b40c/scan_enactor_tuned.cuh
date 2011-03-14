@@ -101,9 +101,9 @@ public:
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be scanned
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
 	 * 		Number of elements to scan
 	 * @param max_grid_size
@@ -130,9 +130,9 @@ public:
 	 * problem size.
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be scanned
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
 	 * 		Number of elements to scan
 	 * @param max_grid_size
@@ -325,21 +325,21 @@ cudaError_t ScanEnactorTuned::ScanPass(
 			// Upsweep scan into spine
 			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) d_spine, NULL, work, 0);
+				d_src, (T*) spine.Get(), work, util::WorkProgress());
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) d_spine, (T*) d_spine, spine_elements);
+				(T*) spine.Get(), (T*) spine.Get(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
 			TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (T*) d_spine, work);
+				d_src, d_dest, (T*) spine.Get(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
 		}

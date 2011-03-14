@@ -116,7 +116,9 @@ struct KernelConfig : _ProblemType
 			SrtsGrid;
 
 	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	typedef util::SrtsDetails<
+		SrtsGrid,
+		NULL> SrtsDetails;
 
 	enum {
 

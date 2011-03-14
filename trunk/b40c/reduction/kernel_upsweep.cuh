@@ -25,9 +25,9 @@
 
 #pragma once
 
-#include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/srts_details.cuh>
 #include <b40c/util/work_distribution.cuh>
+#include <b40c/util/work_progress.cuh>
 #include <b40c/reduction/reduction_cta.cuh>
 
 namespace b40c {
@@ -42,11 +42,10 @@ template <typename KernelConfig, bool WORK_STEALING>
 struct UpsweepReductionPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelConfig::T 			*&d_in,
-		typename KernelConfig::T 			*&d_out,
-		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
-		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-		const int &progress_selector)
+		typename KernelConfig::T 									*&d_in,
+		typename KernelConfig::T 									*&d_out,
+		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
+		const util::WorkProgress 									&work_progress)
 	{
 		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
@@ -99,11 +98,10 @@ template <typename KernelConfig>
 struct UpsweepReductionPass <KernelConfig, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelConfig::T 			*&d_in,
-		typename KernelConfig::T 			*&d_out,
-		typename KernelConfig::SizeT 		* __restrict &d_work_progress,
-		const util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-		const int &progress_selector)
+		typename KernelConfig::T 									*&d_in,
+		typename KernelConfig::T 									*&d_out,
+		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
+		const util::WorkProgress 									&work_progress)
 	{
 		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
@@ -125,7 +123,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
-			d_work_progress[progress_selector ^ 1] = 0;
+			work_progress.PrepareNext();
 		}
 
 		// Steal full-tiles of work, incrementing progress counter
@@ -134,7 +132,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = util::AtomicInt<SizeT>::Add(d_work_progress + progress_selector, ReductionCta::TILE_ELEMENTS);
+				cta_offset = work_progress.Steal<ReductionCta::TILE_ELEMENTS>();
 			}
 
 			__syncthreads();		// Protect cta_offset
@@ -171,18 +169,16 @@ __global__
 void UpsweepReductionKernel(
 	typename KernelConfig::T 			*d_in,
 	typename KernelConfig::T 			*d_spine,
-	typename KernelConfig::SizeT 		* __restrict d_work_progress,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
-	int progress_selector)
+	util::WorkProgress					work_progress)
 {
 	typename KernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
 
 	UpsweepReductionPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine_partial,
-		d_work_progress,
 		work_decomposition,
-		progress_selector);
+		work_progress);
 }
 
 

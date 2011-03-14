@@ -40,9 +40,17 @@ namespace reduction {
 template <typename KernelConfig>
 struct ReductionCta : KernelConfig
 {
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef typename ReductionCta::T T;
+	typedef typename ReductionCta::SizeT SizeT;
+	typedef typename ReductionCta::SrtsDetails SrtsDetails;
+
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
 
 	// The value we will accumulate (in each thread)
 	T carry;
@@ -52,10 +60,14 @@ struct ReductionCta : KernelConfig
 	T* d_out;
 
 	// Tile of elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	T data[ReductionCta::LOADS_PER_TILE][ReductionCta::LOAD_VEC_SIZE];
 
 	// Operational details for SRTS grid
 	SrtsDetails srts_details;
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 
 	/**
@@ -65,6 +77,7 @@ struct ReductionCta : KernelConfig
 		const SrtsDetails &srts_details,
 		T *d_in,
 		T *d_out) :
+
 			srts_details(srts_details),
 			d_in(d_in),
 			d_out(d_out),
@@ -126,14 +139,17 @@ struct ReductionCta : KernelConfig
 	 */
 	__device__ __forceinline__ void FinalReduction()
 	{
-		T total = util::reduction::CooperativeTileReduction<
+		util::reduction::CooperativeTileReduction<
 			SrtsDetails,
 			1,
-			ReductionCta::BinaryOp>::ReduceTile(srts_details, reinterpret_cast<T (*)[1]>(&carry));
+			ReductionCta::BinaryOp>::ReduceTileWithCarry<false>(
+				srts_details,
+				reinterpret_cast<T (*)[1]>(&carry),
+				carry);
 
 		// Write output
-		if (threadIdx.x == 0) {
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(total, d_out, 0);
+		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
+			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry, d_out, 0);
 		}
 	}
 

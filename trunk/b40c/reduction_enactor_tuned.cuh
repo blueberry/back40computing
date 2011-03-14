@@ -102,9 +102,9 @@ public:
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be reduced
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
 	 * @param max_grid_size
@@ -130,9 +130,9 @@ public:
 	 * problem size.
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be reduced
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
 	 * @param max_grid_size
@@ -321,14 +321,14 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 			// Upsweep reduction into spine
 			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+				d_src, (T*) spine.Get(), work, work_progress);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) d_spine, d_dest, spine_elements);
+				(T*) spine.Get(), d_dest, spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 		}

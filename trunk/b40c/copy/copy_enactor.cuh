@@ -27,6 +27,7 @@
 
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/work_progress.cuh>
 #include <b40c/copy/problem_config.cuh>
 #include <b40c/copy/kernel_sweep.cuh>
 
@@ -49,12 +50,9 @@ protected:
 	// Members
 	//---------------------------------------------------------------------
 
-	// A pair of counters in global device memory and a selector for
-	// indexing into the pair.  If we perform workstealing passes, the
-	// current counter can provide an atomic reference of progress.  One pass
-	// resets the counter for the next
-	size_t*	d_work_progress;
-	int 	progress_selector;
+	// Temporary device storage needed for managing work-stealing progress
+	// within a kernel invocation.
+	util::WorkProgressLifetime work_progress;
 
 
 	//-----------------------------------------------------------------------------
@@ -62,7 +60,7 @@ protected:
 	//-----------------------------------------------------------------------------
 
 	/**
-	 * Performs any lazy initialization work needed for this problem type
+	 * Performs any lazy per-pass initialization work needed for this problem type
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Setup(int sweep_grid_size);
@@ -93,15 +91,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	CopyEnactor() :
-		d_work_progress(NULL),
-		progress_selector(0) {}
-
-
-	/**
-     * Destructor
-     */
-    virtual ~CopyEnactor();
+	CopyEnactor() {}
 
 
 	/**
@@ -141,29 +131,13 @@ public:
 template <typename ProblemConfig>
 cudaError_t CopyEnactor::Setup(int sweep_grid_size)
 {
-	cudaError_t retval = cudaSuccess;
-	do {
-		// Optional setup for workstealing passes
-		if (ProblemConfig::Sweep::WORK_STEALING) {
-
-			// Make sure that our progress counters are allocated
-			if (d_work_progress == NULL) {
-				// Allocate
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
-					"CopyEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
-
-				// Initialize
-				size_t h_work_progress[2] = {0, 0};
-				if (retval = util::B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
-					"CopyEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
-			}
-
-			// Update our progress counter selector to index the next progress counter
-			progress_selector ^= 1;
-		}
-	} while (0);
-
-	return retval;
+	// If we're work-stealing, make sure our work progress is set up
+	// for the next pass
+	if (ProblemConfig::Sweep::WORK_STEALING) {
+		return work_progress.Setup();
+	} else {
+		return cudaSuccess;
+	}
 }
 
 
@@ -185,21 +159,10 @@ cudaError_t CopyEnactor::CopyPass(
 	// Sweep copy
 	SweepCopyKernel<typename ProblemConfig::Sweep>
 			<<<work.grid_size, ProblemConfig::Sweep::THREADS, dynamic_smem>>>(
-		d_src, d_dest, d_work_progress, work, progress_selector, extra_bytes);
+		d_src, d_dest, work, work_progress, extra_bytes);
 	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
 
 	return retval;
-}
-
-
-/**
- * Destructor
- */
-CopyEnactor::~CopyEnactor()
-{
-	if (d_work_progress) {
-		util::B40CPerror(cudaFree(d_work_progress), "CopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-	}
 }
 
     
@@ -251,10 +214,7 @@ cudaError_t CopyEnactor::EnactInternal(
 	if (retval) {
 		// We had an error, which means that the device counters may not be
 		// properly initialized for the next pass: reset them.
-		if (d_work_progress) {
-			util::B40CPerror(cudaFree(d_work_progress), "CopyEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-			d_work_progress = NULL;
-		}
+		work_progress.HostReset();
 	}
 
 	return retval;
@@ -271,7 +231,8 @@ cudaError_t CopyEnactor::Enact(
 	typename ProblemConfig::Sweep::SizeT num_elements,
 	int max_grid_size)
 {
-	return EnactInternal<ProblemConfig, CopyEnactor>(d_dest, d_src, num_elements, 0, max_grid_size);
+	return EnactInternal<ProblemConfig, CopyEnactor>(
+		d_dest, d_src, num_elements, 0, max_grid_size);
 }
 
 

@@ -38,17 +38,34 @@ namespace copy {
 template <typename KernelConfig>
 struct CopyCta : KernelConfig
 {
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
 
+	typedef typename CopyCta::T T;
+	typedef typename CopyCta::SizeT SizeT;
+
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
 
 	// Input and output device pointers
 	T* d_in;
 	T* d_out;
 
-
 	// Tile of elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	T data[CopyCta::LOADS_PER_TILE][CopyCta::LOAD_VEC_SIZE];
+
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ CopyCta(T *d_in, T *d_out) :
+		d_in(d_in), d_out(d_out) {}
 
 
 	/**
@@ -71,13 +88,6 @@ struct CopyCta : KernelConfig
 		util::StoreTile<T, SizeT, CopyCta::LOG_LOADS_PER_TILE, CopyCta::LOG_LOAD_VEC_SIZE, CopyCta::THREADS, CopyCta::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
 			data, d_out, cta_offset, out_of_bounds);
 	}
-
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ CopyCta(T *d_in, T *d_out) :
-		d_in(d_in), d_out(d_out) {}
 };
 
 

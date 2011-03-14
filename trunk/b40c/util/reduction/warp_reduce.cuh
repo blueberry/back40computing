@@ -55,15 +55,22 @@ struct WarpReduce
 	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
-		static __device__ __forceinline__ void Invoke(
-			T partial,
+		static __device__ __forceinline__ T Invoke(
+			T exclusive_partial,
 			volatile T warpscan[][NUM_ELEMENTS],
 			int warpscan_tid)
 		{
-			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			partial = ReductionOp(partial, offset_partial);
-			warpscan[1][warpscan_tid] = partial;
-			Iterate<OFFSET_LEFT / 2>::Invoke(partial, warpscan, warpscan_tid);
+			// Store exclusive partial
+			warpscan[1][warpscan_tid] = exclusive_partial;
+
+			// Load current partial
+			T current_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
+
+			// Compute inclusive partial
+			T inclusive_partial = ReductionOp(exclusive_partial, current_partial);
+
+			// Recurse
+			return Iterate<OFFSET_LEFT / 2>::Invoke(inclusive_partial, warpscan, warpscan_tid);
 		}
 	};
 	
@@ -71,23 +78,37 @@ struct WarpReduce
 	template <int __dummy>
 	struct Iterate<0, __dummy>
 	{
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ T Invoke(
 			T partial,
 			volatile T warpscan[][NUM_ELEMENTS],
-			int warpscan_tid) {}
+			int warpscan_tid)
+		{
+			return partial;
+		}
 	};
 
-	// Interface
+	// Interface (result is returned in all warpscan threads)
 	static __device__ __forceinline__ T Invoke(
+		T current_partial,						// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
+	{
+		T inclusive_partial = Iterate<NUM_ELEMENTS / 2>::Invoke(current_partial, warpscan, warpscan_tid);
+
+		// Write our inclusive partial
+		warpscan[1][warpscan_tid] = inclusive_partial;
+
+		// Return last thread's inclusive partial
+		return warpscan[1][NUM_ELEMENTS - 1];
+	}
+
+	// Interface (result is returned in last warpscan thread)
+	static __device__ __forceinline__ T InvokeSingle(
 		T partial,								// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		warpscan[1][warpscan_tid] = partial;
-		Iterate<NUM_ELEMENTS / 2>::Invoke(partial, warpscan, warpscan_tid);
-
-		// Return aggregate reduction
-		return warpscan[1][NUM_ELEMENTS - 1];
+		return Iterate<NUM_ELEMENTS / 2>::Invoke(partial, warpscan, warpscan_tid);
 	}
 };
 

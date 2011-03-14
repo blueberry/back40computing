@@ -103,9 +103,9 @@ public:
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of bytes to be copied
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of bytes to be copied
 	 * @param num_bytes
 	 * 		Number of bytes to copy
 	 * @param max_grid_size
@@ -127,9 +127,9 @@ public:
 	 * problem size.
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of bytes to be copied
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of bytes to be copied
 	 * @param num_bytes
 	 * 		Number of bytes to copy
 	 * @param max_grid_size
@@ -277,7 +277,7 @@ cudaError_t CopyEnactorTuned::CopyPass(
 	// Sweep copy
 	copy::TunedSweepCopyKernel<TunedConfig::PROB_SIZE_GENRE>
 			<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
-		(void *) d_src, (void *) d_dest, d_work_progress, work, progress_selector, extra_bytes);
+		(void *) d_src, (void *) d_dest, work, work_progress, extra_bytes);
 
 	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
 

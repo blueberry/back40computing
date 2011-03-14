@@ -27,6 +27,8 @@
 
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/spine.cuh>
+#include <b40c/util/work_progress.cuh>
 #include <b40c/reduction/problem_config.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/reduction/kernel_spine.cuh>
@@ -50,19 +52,13 @@ protected:
 	// Members
 	//---------------------------------------------------------------------
 
-	// A pair of counters in global device memory and a selector for
-	// indexing into the pair.  If we perform workstealing passes, the
-	// current counter can provide an atomic reference of progress.  One pass
-	// resets the counter for the next
-	size_t*	d_work_progress;
-	int 	progress_selector;
+	// Temporary device storage needed for managing work-stealing progress
+	// within a kernel invocation.
+	util::WorkProgressLifetime work_progress;
 
 	// Temporary device storage needed for reducing partials produced
 	// by separate CTAs
-	void *d_spine;
-
-	// Number of bytes backed by d_spine
-	int spine_bytes;
+	util::Spine spine;
 
 
 	//-----------------------------------------------------------------------------
@@ -70,7 +66,7 @@ protected:
 	//-----------------------------------------------------------------------------
 
 	/**
-	 * Performs any lazy initialization work needed for this problem type
+	 * Performs any lazy per-pass initialization work needed for this problem type
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Setup(int sweep_grid_size, int spine_elements);
@@ -100,17 +96,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	ReductionEnactor():
-		d_work_progress(NULL),
-		progress_selector(0),
-		d_spine(NULL),
-		spine_bytes(0) {}
-
-
-	/**
-     * Destructor
-     */
-    virtual ~ReductionEnactor();
+	ReductionEnactor() {}
 
 
 	/**
@@ -120,9 +106,9 @@ public:
 	 * with user-supplied granularity-specialization types.  (Useful for auto-tuning.)
 	 *
 	 * @param d_dest
-	 * 		Pointer to array of elements to be reduced
-	 * @param d_src
 	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
 	 * @param max_grid_size
@@ -149,39 +135,17 @@ public:
 template <typename ProblemConfig>
 cudaError_t ReductionEnactor::Setup(int sweep_grid_size, int spine_elements)
 {
+	typedef typename ProblemConfig::Upsweep::T T;
+
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spine is big enough
-		int problem_spine_bytes = spine_elements * sizeof(typename ProblemConfig::Upsweep::T);
-		if (problem_spine_bytes > spine_bytes) {
-			if (d_spine) {
-				if (retval = util::B40CPerror(cudaFree(d_spine),
-					"ReductionEnactor cudaFree d_spine failed", __FILE__, __LINE__)) break;
-			}
+		if (retval = spine.Setup<T>(sweep_grid_size, spine_elements)) break;
 
-			spine_bytes = problem_spine_bytes;
-
-			if (retval = util::B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
-				"ReductionEnactor cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
-		}
-
-		// Optional setup for workstealing passes
+		// If we're work-stealing, make sure our work progress is set up
+		// for the next pass
 		if (ProblemConfig::Upsweep::WORK_STEALING) {
-
-			// Make sure that our progress counters are allocated
-			if (d_work_progress == NULL) {
-				// Allocate
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_work_progress, sizeof(size_t) * 2),
-					"ReductionEnactor cudaMalloc d_work_progress failed", __FILE__, __LINE__)) break;
-
-				// Initialize
-				size_t h_work_progress[2] = {0, 0};
-				if (retval = util::B40CPerror(cudaMemcpy(d_work_progress, h_work_progress, sizeof(size_t) * 2, cudaMemcpyHostToDevice),
-					"ReductionEnactor cudaMemcpy d_work_progress failed", __FILE__, __LINE__)) break;
-			}
-
-			// Update our progress counter selector to index the next progress counter
-			progress_selector ^= 1;
+			if (retval = work_progress.Setup()) break;
 		}
 	} while (0);
 
@@ -245,14 +209,14 @@ cudaError_t ReductionEnactor::ReductionPass(
 			// Upsweep reduction into spine
 			UpsweepReductionKernel<typename ProblemConfig::Upsweep>
 					<<<grid_size[0], ProblemConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) d_spine, d_work_progress, work, progress_selector);
+				d_src, (T*) spine.Get(), work, work_progress);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			SpineReductionKernel<typename ProblemConfig::Spine>
 					<<<grid_size[1], ProblemConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) d_spine, d_dest, spine_elements);
+				(T*) spine.Get(), d_dest, spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -262,20 +226,6 @@ cudaError_t ReductionEnactor::ReductionPass(
 }
 
 
-/**
- * Destructor
- */
-ReductionEnactor::~ReductionEnactor()
-{
-	if (d_work_progress) {
-		util::B40CPerror(cudaFree(d_work_progress), "ReductionEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-	}
-	if (d_spine) {
-		util::B40CPerror(cudaFree(d_spine), "ReductionEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
-	}
-}
-
-    
 /**
  * Enacts a reduction on the specified device data.
  */
@@ -341,10 +291,7 @@ cudaError_t ReductionEnactor::EnactInternal(
 	if (retval) {
 		// We had an error, which means that the device counters may not be
 		// properly initialized for the next pass: reset them.
-		if (d_work_progress) {
-			util::B40CPerror(cudaFree(d_work_progress), "ReductionEnactor cudaFree d_work_progress failed: ", __FILE__, __LINE__);
-			d_work_progress = NULL;
-		}
+		work_progress.HostReset();
 	}
 
 	return retval;
