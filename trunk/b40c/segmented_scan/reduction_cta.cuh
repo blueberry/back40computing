@@ -45,14 +45,14 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ReductionCta::T T;
-	typedef typename ReductionCta::Flag Flag;
-	typedef typename ReductionCta::SizeT SizeT;
-	typedef typename ReductionCta::SrtsSoaDetails SrtsSoaDetails;
-	typedef typename ReductionCta::SoaTuple SoaTuple;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::Flag Flag;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
+	typedef typename KernelConfig::SoaTuple SoaTuple;
 
-	typedef T PartialsTile[ReductionCta::LOADS_PER_TILE][ReductionCta::LOAD_VEC_SIZE];
-	typedef Flag FlagsTile[ReductionCta::LOADS_PER_TILE][ReductionCta::LOAD_VEC_SIZE];
+	typedef T PartialsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	typedef Flag FlagsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	typedef util::Tuple<PartialsTile&, FlagsTile&> DataSoa;
 
@@ -91,7 +91,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	 * Constructor
 	 */
 	__device__ __forceinline__ ReductionCta(
-		const SrtsSoaDetails &srts_soa_details,
+		SrtsSoaDetails srts_soa_details,
 		T 		*d_partials_in,
 		Flag 	*d_flags_in,
 		T 		*d_spine_partial,
@@ -103,7 +103,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 			d_spine_partial(d_spine_partial),
 			d_spine_flag(d_spine_flag),
 			data_soa(partials, flags),
-			carry(ReductionCta::SoaIdentity()) {}
+			carry(KernelConfig::SoaIdentity()) {}
 
 
 	/**
@@ -115,7 +115,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		bool in_bounds)
 	{
 		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = ReductionCta::Identity();
+		if (!in_bounds) val = KernelConfig::Identity();
 	}
 
 
@@ -128,7 +128,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		bool in_bounds)
 	{
 		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = ReductionCta::FlagIdentity();
+		if (!in_bounds) val = KernelConfig::FlagIdentity();
 	}
 
 
@@ -144,10 +144,10 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		util::LoadTile<
 			T,
 			SizeT,
-			ReductionCta::LOG_LOADS_PER_TILE,
-			ReductionCta::LOG_LOAD_VEC_SIZE,
-			ReductionCta::THREADS,
-			ReductionCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO,
 			LoadTransformT>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
 
@@ -155,19 +155,19 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		util::LoadTile<
 			T,
 			SizeT,
-			ReductionCta::LOG_LOADS_PER_TILE,
-			ReductionCta::LOG_LOAD_VEC_SIZE,
-			ReductionCta::THREADS,
-			ReductionCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO,
 			LoadTransformFlag>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
 
 		// Reduce tile with carry
 		util::reduction::soa::CooperativeSoaTileReduction<
 			SrtsSoaDetails,
-			ReductionCta::LOAD_VEC_SIZE,
-			ReductionCta::SoaScanOp>::template ReduceTileWithCarry<DataSoa>(
-				srts_soa_details, data_soa);
+			KernelConfig::LOAD_VEC_SIZE,
+			KernelConfig::SoaReductionOp>::template ReduceTileWithCarry<DataSoa>(
+				srts_soa_details, data_soa, carry);
 
 		// Barrier to protect srts_soa_details before next tile
 		__syncthreads();
@@ -181,8 +181,8 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	{
 		// Write output
 		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry.t0, d_spine_partial, 0);
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry.t1, d_spine_flag, 0);
+			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry.t0, d_spine_partial, 0);
+			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry.t1, d_spine_flag, 0);
 		}
 	}
 

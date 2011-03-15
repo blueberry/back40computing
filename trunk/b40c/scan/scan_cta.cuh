@@ -44,9 +44,9 @@ struct ScanCta : KernelConfig
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ScanCta::T T;
-	typedef typename ScanCta::SizeT SizeT;
-	typedef typename ScanCta::SrtsDetails SrtsDetails;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -60,7 +60,7 @@ struct ScanCta : KernelConfig
 	T *d_out;
 
 	// Tile of scan elements
-	T data[ScanCta::LOADS_PER_TILE][ScanCta::LOAD_VEC_SIZE];
+	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	// Operational details for SRTS grid
 	SrtsDetails srts_details;
@@ -77,7 +77,7 @@ struct ScanCta : KernelConfig
 		const SrtsDetails &srts_details,
 		T *d_in,
 		T *d_out,
-		T spine_partial = ScanCta::Identity()) :
+		T spine_partial = KernelConfig::Identity()) :
 
 			srts_details(srts_details),
 			d_in(d_in),
@@ -97,27 +97,27 @@ struct ScanCta : KernelConfig
 		util::LoadTile<
 			T,
 			SizeT,
-			ScanCta::LOG_LOADS_PER_TILE,
-			ScanCta::LOG_LOAD_VEC_SIZE,
-			ScanCta::THREADS,
-			ScanCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
 			SrtsDetails,
-			ScanCta::LOAD_VEC_SIZE,
-			ScanCta::EXCLUSIVE,
-			ScanCta::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
+			KernelConfig::LOAD_VEC_SIZE,
+			KernelConfig::EXCLUSIVE,
+			KernelConfig::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
 
 		// Store tile
 		util::StoreTile<
 			T,
 			SizeT,
-			ScanCta::LOG_LOADS_PER_TILE,
-			ScanCta::LOG_LOAD_VEC_SIZE,
-			ScanCta::THREADS,
-			ScanCta::WRITE_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER,
 			UNGUARDED_IO>::Invoke(data, d_out, cta_offset, out_of_bounds);
 	}
 };

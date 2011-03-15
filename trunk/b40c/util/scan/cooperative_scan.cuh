@@ -179,7 +179,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 					inclusive_partial, warpscan_total, srts_details.warpscan);
 
 			// Seed exclusive partial with carry-in
-			exclusive_partial = ScanOp(exclusive_partial, carry);
+			exclusive_partial = ScanOp(carry, exclusive_partial);
 
 			// Exclusive raking scan
 			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(

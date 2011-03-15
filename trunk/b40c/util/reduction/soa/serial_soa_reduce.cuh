@@ -43,7 +43,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(const Tuple&, const Tuple&)>
+	Tuple ReductionOp(Tuple&, Tuple&)>
 struct SerialSoaReduce
 {
 	// Iterate
@@ -51,8 +51,8 @@ struct SerialSoaReduce
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const RakingSoa &raking_partials,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
@@ -70,8 +70,8 @@ struct SerialSoaReduce
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const RakingSoa &raking_partials,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -79,7 +79,7 @@ struct SerialSoaReduce
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const RakingSoa &raking_partials)
+		RakingSoa raking_partials)
 	{
 		// Get first partial
 		Tuple inclusive_partial = raking_partials.template Get<Tuple>(0);
@@ -95,10 +95,10 @@ struct SerialSoaReduce
  */
 template <
 	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
+	typename RakingSoa,					// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(const Tuple&, const Tuple&)>
+	Tuple ReductionOp(Tuple&, Tuple&)>
 struct SerialSoaReduceLane
 {
 	// Iterate
@@ -106,8 +106,8 @@ struct SerialSoaReduceLane
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const RakingSoa &raking_partials,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial =	raking_partials.template Get<LANE, Tuple>(COUNT);
@@ -126,8 +126,8 @@ struct SerialSoaReduceLane
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const RakingSoa &raking_partials,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -135,7 +135,7 @@ struct SerialSoaReduceLane
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const RakingSoa &raking_partials)
+		RakingSoa raking_partials)
 	{
 		// Get first partial
 		Tuple inclusive_partial = raking_partials.template Get<LANE, Tuple>(0);

@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <b40c/scan/scan_cta.cuh>
 #include <b40c/segmented_scan/scan_cta.cuh>
 
 namespace b40c {
