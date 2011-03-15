@@ -76,9 +76,9 @@ protected:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t ReductionPass(
-		typename ProblemConfig::Upsweep::T *d_dest,
-		typename ProblemConfig::Upsweep::T *d_src,
-		util::CtaWorkDistribution<typename ProblemConfig::Upsweep::SizeT> &work,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 		int spine_elements);
 
 	/**
@@ -86,9 +86,9 @@ protected:
 	 */
 	template <typename ProblemConfig, typename EnactorType>
 	cudaError_t EnactInternal(
-		typename ProblemConfig::Upsweep::T *d_dest,
-		typename ProblemConfig::Upsweep::T *d_src,
-		typename ProblemConfig::Upsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size);
 
 public:
@@ -117,9 +117,9 @@ public:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Enact(
-		typename ProblemConfig::Upsweep::T *d_dest,
-		typename ProblemConfig::Upsweep::T *d_src,
-		typename ProblemConfig::Upsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size = 0);
 };
 
@@ -135,7 +135,7 @@ public:
 template <typename ProblemConfig>
 cudaError_t ReductionEnactor::Setup(int sweep_grid_size, int spine_elements)
 {
-	typedef typename ProblemConfig::Upsweep::T T;
+	typedef typename ProblemConfig::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -159,9 +159,9 @@ cudaError_t ReductionEnactor::Setup(int sweep_grid_size, int spine_elements)
  */
 template <typename ProblemConfig>
 cudaError_t ReductionEnactor::ReductionPass(
-	typename ProblemConfig::Upsweep::T *d_dest,
-	typename ProblemConfig::Upsweep::T *d_src,
-	util::CtaWorkDistribution<typename ProblemConfig::Upsweep::SizeT> &work,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 	int spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -231,9 +231,9 @@ cudaError_t ReductionEnactor::ReductionPass(
  */
 template <typename ProblemConfig, typename EnactorType>
 cudaError_t ReductionEnactor::EnactInternal(
-	typename ProblemConfig::Upsweep::T *d_dest,
-	typename ProblemConfig::Upsweep::T *d_src,
-	typename ProblemConfig::Upsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -303,9 +303,9 @@ cudaError_t ReductionEnactor::EnactInternal(
  */
 template <typename ProblemConfig>
 cudaError_t ReductionEnactor::Enact(
-	typename ProblemConfig::Upsweep::T *d_dest,
-	typename ProblemConfig::Upsweep::T *d_src,
-	typename ProblemConfig::Upsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	return EnactInternal<ProblemConfig, ReductionEnactor>(d_dest, d_src, num_elements, max_grid_size);

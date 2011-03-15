@@ -113,6 +113,18 @@ struct TunedConfig : TunedConfig<
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
+
+template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 7, 0, 1, 5,
+	  5, 2, 0, 5,
+	  8, 5, 1, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+};
+
+
 /*
 // Large problems, 1B data
 template <typename ProblemType, typename T>
@@ -146,7 +158,7 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
-*/
+
 // All other large problems (tuned at 8B)
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
@@ -159,7 +171,6 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
 };
 
 
-/*
 // Small problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
@@ -192,7 +203,7 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
-*/
+
 // All other small problems (tuned at 8B)
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
@@ -203,10 +214,24 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
+*/
 
 //-----------------------------------------------------------------------------
 // SM1.3 specializations(s)
 //-----------------------------------------------------------------------------
+
+
+template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
+struct TunedConfig<ProblemType, SM13, _PROB_SIZE_GENRE, T, T_SIZE>
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false,
+	  8, 8, 7, 1, 0, 5,
+	  6, 2, 0, 5,
+	  8, 7, 1, 0, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
+};
+
+
 /*
 // Large problems, 1B data
 template <typename ProblemType, typename T>
@@ -240,7 +265,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
-*/
+
 // All other Large problems
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
@@ -253,7 +278,6 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
 };
 
 
-/*
 // Small problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 1>
@@ -389,6 +413,25 @@ __global__ void TunedDownsweepScanKernel(
 		work_decomposition);
 }
 
+/**
+ * Tuned single segmented scan kernel entry point
+ */
+template <typename ProblemType, int PROB_SIZE_GENRE>
+__launch_bounds__ (
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
+__global__ void TunedSpineScanSingleKernel(
+	typename ProblemType::T 		*d_partials_in,
+	typename ProblemType::Flag		*d_flags_in,
+	typename ProblemType::T 		*d_partials_out,
+	typename ProblemType::SizeT 	spine_elements)
+{
+	// Load the tuned granularity type identified by the enum for this architecture
+	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelConfig;
+
+	SpineScanPass<KernelConfig>(
+		d_partials_in, d_flags_in, d_partials_out, spine_elements);
+}
 
 
 

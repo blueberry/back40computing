@@ -74,10 +74,10 @@ protected:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t ScanPass(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		typename ProblemConfig::Downsweep::Flag *d_flag_src,
-		util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::Flag *d_flag_src,
+		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 		typename ProblemConfig::Spine::SizeT spine_elements);
 
 	/**
@@ -85,10 +85,10 @@ protected:
 	 */
 	template <typename ProblemConfig, typename EnactorType>
 	cudaError_t EnactInternal(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		typename ProblemConfig::Downsweep::Flag *d_flag_src,
-		typename ProblemConfig::Downsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::Flag *d_flag_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size);
 
 public:
@@ -119,10 +119,10 @@ public:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Enact(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		typename ProblemConfig::Downsweep::Flag *d_flag_src,
-		typename ProblemConfig::Downsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::Flag *d_flag_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size = 0);
 };
 
@@ -160,10 +160,10 @@ cudaError_t SegmentedScanEnactor::Setup(int sweep_grid_size, int spine_elements)
  */
 template <typename ProblemConfig>
 cudaError_t SegmentedScanEnactor::ScanPass(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	typename ProblemConfig::Downsweep::Flag *d_flag_src,
-	util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::Flag *d_flag_src,
+	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 	typename ProblemConfig::Spine::SizeT spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -246,10 +246,10 @@ cudaError_t SegmentedScanEnactor::ScanPass(
  */
 template <typename ProblemConfig, typename EnactorType>
 cudaError_t SegmentedScanEnactor::EnactInternal(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	typename ProblemConfig::Downsweep::Flag *d_flag_src,
-	typename ProblemConfig::Downsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::Flag *d_flag_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -266,7 +266,6 @@ cudaError_t SegmentedScanEnactor::EnactInternal(
 	int sweep_grid_size = (ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
-/* mooch
 
 	if (num_elements <= Spine::TILE_ELEMENTS * 3) {
 		// No need to upsweep reduce or downsweep segmented scan if we can do it
@@ -275,7 +274,7 @@ cudaError_t SegmentedScanEnactor::EnactInternal(
 		// do one tile per up/spine/down kernel)
 		sweep_grid_size = 1;
 	}
-*/
+
 	// Compute spine elements (round up to nearest spine tile_elements)
 	int spine_elements = ((sweep_grid_size + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
 
@@ -325,10 +324,10 @@ cudaError_t SegmentedScanEnactor::EnactInternal(
  */
 template <typename ProblemConfig>
 cudaError_t SegmentedScanEnactor::Enact(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	typename ProblemConfig::Downsweep::Flag *d_flag_src,
-	typename ProblemConfig::Downsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::Flag *d_flag_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	return EnactInternal<ProblemConfig, SegmentedScanEnactor>(

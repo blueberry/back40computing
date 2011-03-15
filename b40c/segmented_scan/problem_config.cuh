@@ -77,7 +77,7 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig
+struct ProblemConfig : ProblemType
 {
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelConfig <
@@ -142,7 +142,7 @@ struct ProblemConfig
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID,
+		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID
 	};
 
 	static void Print()
