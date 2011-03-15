@@ -42,7 +42,7 @@ template <typename KernelConfig>
 struct ScanCta : KernelConfig						// Derive from our config
 {
 	//---------------------------------------------------------------------
-	// Typedefs
+	// Typedefs and constants
 	//---------------------------------------------------------------------
 
 	typedef typename KernelConfig::T T;
@@ -51,12 +51,13 @@ struct ScanCta : KernelConfig						// Derive from our config
 	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
 	typedef typename KernelConfig::SoaTuple SoaTuple;
 
-	typedef T PartialsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-	typedef Flag FlagsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
 	typedef util::Tuple<
 		T (*)[KernelConfig::LOAD_VEC_SIZE],
 		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> DataSoa;
+
+	// This kernel can only operate in inclusive scan mode if the it's the final kernel
+	// in the scan pass
+	static const bool KERNEL_EXCLUSIVE = (!KernelConfig::FINAL_KERNEL || KernelConfig::EXCLUSIVE);
 
 	//---------------------------------------------------------------------
 	// Members
@@ -76,13 +77,10 @@ struct ScanCta : KernelConfig						// Derive from our config
 	T 				*d_partials_out;
 
 	// Tile of segmented scan elements
-	PartialsTile	partials;
+	T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	// Tile of flags
-	FlagsTile		flags;
-
-	// Soa reference to tiles
-	DataSoa			data_soa;
+	Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -96,15 +94,15 @@ struct ScanCta : KernelConfig						// Derive from our config
 		T 		*d_partials_in,
 		Flag 	*d_flags_in,
 		T 		*d_partials_out,
-		T 		spine_partial = KernelConfig::Identity(),
-		Flag 	spine_flag = KernelConfig::FlagIdentity()) :
+		T 		spine_partial = KernelConfig::Identity()) :
 
 			srts_soa_details(srts_soa_details),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_partials_out(d_partials_out),
-			data_soa(partials, flags),
-			carry(spine_partial, spine_flag) {}			// Seed carry with spine partial & flag
+			carry(												// Seed carry with spine partial & flag
+				spine_partial,
+				KernelConfig::FlagIdentity()) {}
 
 
 	/**
@@ -139,10 +137,11 @@ struct ScanCta : KernelConfig						// Derive from our config
 		util::scan::soa::CooperativeSoaTileScan<
 			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
-			EXCLUSIVE,									// Always inclusive: we handle the exclusive/inclusive details in our reduction/scan ops
-			KernelConfig::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
+			KERNEL_EXCLUSIVE,
+			KernelConfig::SoaScanOp,
+			KernelConfig::FinalSoaScanOp>::template ScanTileWithCarry<DataSoa>(
 				srts_soa_details,
-				data_soa,
+				DataSoa(partials, flags),
 				carry);
 
 		// Store tile of partials

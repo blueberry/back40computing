@@ -80,7 +80,7 @@ public :
 	/**
 	 * Getter
 	 */
-	void* Get()
+	void* operator()()
 	{
 		return d_spine;
 	}

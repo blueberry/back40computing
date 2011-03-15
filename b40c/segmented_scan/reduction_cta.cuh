@@ -51,37 +51,33 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
 	typedef typename KernelConfig::SoaTuple SoaTuple;
 
-	typedef T PartialsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-	typedef Flag FlagsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
-	typedef util::Tuple<PartialsTile&, FlagsTile&> DataSoa;
+	typedef util::Tuple<
+		T (*)[KernelConfig::LOAD_VEC_SIZE],
+		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> DataSoa;
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// Operational details for SRTS grid
-	SrtsSoaDetails srts_soa_details;
+	SrtsSoaDetails 	srts_soa_details;
 
 	// The tuple value we will accumulate (in SrtsDetails::CUMULATIVE_THREAD thread only)
-	SoaTuple carry;
+	SoaTuple 		carry;
 
 	// Input device pointers
-	T 		*d_partials_in;
-	Flag 	*d_flags_in;
+	T 				*d_partials_in;
+	Flag 			*d_flags_in;
 
 	// Spine output device pointers
-	T 		*d_spine_partial;
-	Flag 	*d_spine_flag;
+	T 				*d_spine_partial;
+	Flag 			*d_spine_flag;
 
 	// Tile of segmented scan elements
-	PartialsTile	partials;
+	T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	// Tile of flags
-	FlagsTile		flags;
-
-	// Soa reference to tiles
-	DataSoa			data_soa;
+	Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -91,19 +87,18 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	 * Constructor
 	 */
 	__device__ __forceinline__ ReductionCta(
-		SrtsSoaDetails srts_soa_details,
-		T 		*d_partials_in,
-		Flag 	*d_flags_in,
-		T 		*d_spine_partial,
-		Flag 	*d_spine_flag) :
+		SrtsSoaDetails 	srts_soa_details,
+		T 				*d_partials_in,
+		Flag 			*d_flags_in,
+		T 				*d_spine_partial,
+		Flag 			*d_spine_flag) :
 
 			srts_soa_details(srts_soa_details),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_spine_partial(d_spine_partial),
 			d_spine_flag(d_spine_flag),
-			data_soa(partials, flags),
-			carry(KernelConfig::SoaIdentity()) {}
+			carry(KernelConfig::SoaTupleIdentity()) {}
 
 
 	/**
@@ -153,7 +148,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 
 		// Load tile of flags
 		util::LoadTile<
-			T,
+			Flag,
 			SizeT,
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
@@ -166,8 +161,10 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		util::reduction::soa::CooperativeSoaTileReduction<
 			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
-			KernelConfig::SoaReductionOp>::template ReduceTileWithCarry<DataSoa>(
-				srts_soa_details, data_soa, carry);
+			KernelConfig::SoaScanOp>::template ReduceTileWithCarry<DataSoa>(
+				srts_soa_details,
+				DataSoa(partials, flags),
+				carry);
 
 		// Barrier to protect srts_soa_details before next tile
 		__syncthreads();
@@ -180,12 +177,11 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	__device__ __forceinline__ void OutputToSpine()
 	{
 		// Write output
-		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
+		if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
 			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry.t0, d_spine_partial, 0);
-			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry.t1, d_spine_flag, 0);
+			util::ModifiedStore<Flag, KernelConfig::WRITE_MODIFIER>::St(carry.t1, d_spine_flag, 0);
 		}
 	}
-
 };
 
 

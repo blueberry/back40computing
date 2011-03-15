@@ -27,9 +27,8 @@
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/reduction/problem_config_tuned.cuh>
-#include <b40c/scan/scan_enactor.cuh>
-#include <b40c/scan/problem_config_tuned.cuh>
+#include <b40c/segmented_scan/segmented_scan_enactor.cuh>
+#include <b40c/segmented_scan/problem_config_tuned.cuh>
 
 namespace b40c {
 
@@ -38,9 +37,9 @@ namespace b40c {
  ******************************************************************************/
 
 /**
- * Tuned scan enactor class.
+ * Tuned segmented scan enactor class.
  */
-class ScanEnactorTuned : public scan::ScanEnactor
+class ScanEnactorTuned : public segmented_scan::ScanEnactor
 {
 public:
 
@@ -48,9 +47,9 @@ public:
 	// Helper Structures (need to be public for cudafe)
 	//---------------------------------------------------------------------
 
-	template <typename T, typename SizeT> 					struct Storage;
-	template <typename ProblemType> 						struct Detail;
-	template <scan::ProbSizeGenre PROB_SIZE_GENRE> 			struct ConfigResolver;
+	template <typename T, typename SizeT> 						struct Storage;
+	template <typename ProblemType> 							struct Detail;
+	template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE> 	struct ConfigResolver;
 
 protected:
 
@@ -59,7 +58,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef scan::ScanEnactor BaseEnactorType;
+	typedef segmented_scan::ScanEnactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -71,7 +70,7 @@ protected:
 	//-----------------------------------------------------------------------------
 
     /**
-	 * Performs a scan pass
+	 * Performs a segmented scan pass
 	 */
 	template <typename TunedConfig>
 	cudaError_t ScanPass(
@@ -90,14 +89,14 @@ public:
 
 
 	/**
-	 * Enacts a scan on the specified device data using the specified
+	 * Enacts a segmented scan on the specified device data using the specified
 	 * granularity configuration  (ScanEnactor::Enact)
 	 */
 	using BaseEnactorType::Enact;
 
 
 	/**
-	 * Enacts a scan operation on the specified device data using the
+	 * Enacts a segmented scan operation on the specified device data using the
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
@@ -105,7 +104,7 @@ public:
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
-	 * 		Number of elements to scan
+	 * 		Number of elements to segmented scan
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -116,7 +115,7 @@ public:
 		bool EXCLUSIVE,
 		T BinaryOp(const T&, const T&),
 		T Identity(),
-		scan::ProbSizeGenre PROB_SIZE_GENRE>
+		segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
@@ -125,7 +124,7 @@ public:
 
 
 	/**
-	 * Enacts a scan operation on the specified device data using
+	 * Enacts a segmented scan operation on the specified device data using
 	 * a heuristic for selecting granularity configuration based upon
 	 * problem size.
 	 *
@@ -134,7 +133,7 @@ public:
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
-	 * 		Number of elements to scan
+	 * 		Number of elements to segmented scan
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -196,7 +195,7 @@ struct ScanEnactorTuned::Storage
  *
  * Default specialization for problem type genres
  */
-template <scan::ProbSizeGenre PROB_SIZE_GENRE>
+template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
 struct ScanEnactorTuned::ConfigResolver
 {
 	/**
@@ -208,7 +207,7 @@ struct ScanEnactorTuned::ConfigResolver
 		typedef typename DetailType::Problem ProblemType;
 
 		// Obtain tuned granularity type
-		typedef scan::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
 		return detail.enactor->template EnactInternal<TunedConfig, ScanEnactorTuned>(
@@ -224,7 +223,7 @@ struct ScanEnactorTuned::ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct ScanEnactorTuned::ConfigResolver <scan::UNKNOWN>
+struct ScanEnactorTuned::ConfigResolver <segmented_scan::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -235,7 +234,7 @@ struct ScanEnactorTuned::ConfigResolver <scan::UNKNOWN>
 		typedef typename DetailType::Problem ProblemType;
 
 		// Obtain large tuned granularity type
-		typedef scan::TunedConfig<ProblemType, CUDA_ARCH, scan::LARGE> LargeConfig;
+		typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, segmented_scan::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS *
@@ -245,7 +244,7 @@ struct ScanEnactorTuned::ConfigResolver <scan::UNKNOWN>
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef scan::TunedConfig<ProblemType, CUDA_ARCH, scan::SMALL> SmallConfig;
+			typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, segmented_scan::SMALL> SmallConfig;
 			return detail.enactor->template EnactInternal<SmallConfig, ScanEnactorTuned>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
@@ -262,7 +261,7 @@ struct ScanEnactorTuned::ConfigResolver <scan::UNKNOWN>
  ******************************************************************************/
 
 /**
- * Performs a scan pass
+ * Performs a segmented scan pass
  *
  * TODO: Section can be removed if CUDA Runtime is fixed to
  * properly support template specialization around kernel call sites.
@@ -274,7 +273,7 @@ cudaError_t ScanEnactorTuned::ScanPass(
 	util::CtaWorkDistribution<typename TunedConfig::Upsweep::SizeT> &work,
 	int spine_elements)
 {
-	using namespace scan;
+	using namespace segmented_scan;
 
 	typedef typename TunedConfig::Spine Spine;
 	typedef typename TunedConfig::Downsweep Downsweep;
@@ -325,21 +324,21 @@ cudaError_t ScanEnactorTuned::ScanPass(
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
-			// Upsweep scan into spine
+			// Upsweep segmented scan into spine
 			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) spine(), work, util::WorkProgress());
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
-			// Spine scan
+			// Spine segmented scan
 			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) spine(), (T*) spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
 
-			// Downsweep scan into spine
+			// Downsweep segmented scan into spine
 			TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) spine(), work);
@@ -353,7 +352,7 @@ cudaError_t ScanEnactorTuned::ScanPass(
 
 
 /**
- * Enacts a scan operation on the specified device data using the
+ * Enacts a segmented scan operation on the specified device data using the
  * enumerated tuned granularity configuration
  */
 template <
@@ -361,7 +360,7 @@ template <
 	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity(),
-	scan::ProbSizeGenre PROB_SIZE_GENRE>
+	segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
 cudaError_t ScanEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
@@ -369,7 +368,7 @@ cudaError_t ScanEnactorTuned::Enact(
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
+	typedef segmented_scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
 	typedef Detail<Problem> Detail;
 	typedef Storage<T, SizeT> Storage;
 	typedef ConfigResolver<PROB_SIZE_GENRE> Resolver;
@@ -382,7 +381,7 @@ cudaError_t ScanEnactorTuned::Enact(
 
 
 /**
- * Enacts a scan operation on the specified device data using the
+ * Enacts a segmented scan operation on the specified device data using the
  * LARGE granularity configuration
  */
 template <
@@ -396,7 +395,7 @@ cudaError_t ScanEnactorTuned::Enact(
 	size_t num_elements,
 	int max_grid_size)
 {
-	return Enact<T, EXCLUSIVE, BinaryOp, Identity, scan::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
+	return Enact<T, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
 }
 
 

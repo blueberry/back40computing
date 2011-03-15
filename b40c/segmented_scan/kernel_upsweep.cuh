@@ -38,15 +38,15 @@ template <typename KernelConfig>
 __device__ __forceinline__ void UpsweepReductionPass(
 	typename KernelConfig::T 			*&d_partials_in,
 	typename KernelConfig::Flag			*&d_flags_in,
-	typename KernelConfig::T 			*&d_spine_partial,
-	typename KernelConfig::Flag			*&d_flag_partial,
+	typename KernelConfig::T 			*&d_spine_partials,
+	typename KernelConfig::Flag			*&d_spine_flags,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
 	typedef ReductionCta<KernelConfig> ReductionCta;
 	typedef typename ReductionCta::T T;
 	typedef typename ReductionCta::Flag Flag;
 	typedef typename ReductionCta::SizeT SizeT;
-	typedef typename ReductionSta::SrtsSoaDetails SrtsSoaDetails;
+	typedef typename ReductionCta::SrtsSoaDetails SrtsSoaDetails;
 
 	// Shared SRTS grid storage
 	__shared__ uint4 partial_smem_pool[KernelConfig::PARTIALS_SRTS_GRID_QUADS];
@@ -58,16 +58,16 @@ __device__ __forceinline__ void UpsweepReductionPass(
 
 	// SRTS grid details
 	SrtsSoaDetails srts_soa_details(
-		util::Tuple(partial_smem_pool, flag_smem_pool),
-		util::Tuple(partials_warpscan, flags_warpscan));
+		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
+		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan));
 
 	// CTA processing abstraction
 	ReductionCta cta(
 		srts_soa_details,
 		d_partials_in,
 		d_flags_in,
-		d_spine_partial,
-		d_spine_flag);
+		d_spine_partials + blockIdx.x,
+		d_spine_flags + blockIdx.x);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -111,17 +111,14 @@ void UpsweepReductionKernel(
 	typename KernelConfig::T 			*d_partials_in,
 	typename KernelConfig::Flag			*d_flags_in,
 	typename KernelConfig::T 			*d_spine_partials,
-	typename KernelConfig::Flag			*d_flag_partials,
+	typename KernelConfig::Flag			*d_spine_flags,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
-	typename KernelConfig::T *d_spine_partial = d_spine_partial + blockIdx.x;
-	typename KernelConfig::Flag *d_spine_flag = d_flag_partial + blockIdx.x;
-
 	UpsweepReductionPass<KernelConfig>(
 		d_partials_in,
 		d_flags_in,
-		d_spine_partial,
-		d_spine_flag,
+		d_spine_partials,
+		d_spine_flags,
 		work_decomposition);
 }
 

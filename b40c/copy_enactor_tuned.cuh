@@ -262,6 +262,9 @@ struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
 
 /**
  * Performs a copy pass
+ *
+ * TODO: Section can be removed if CUDA Runtime is fixed to
+ * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
 cudaError_t CopyEnactorTuned::CopyPass(
