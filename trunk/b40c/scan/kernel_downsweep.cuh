@@ -40,7 +40,7 @@ template <typename KernelConfig>
 __device__ __forceinline__ void DownsweepScanPass(
 	typename KernelConfig::T 			* &d_in,
 	typename KernelConfig::T 			* &d_out,
-	typename KernelConfig::T 			* __restrict &d_spine,
+	typename KernelConfig::T 			* &d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
 	typedef typename KernelConfig::SrtsDetails SrtsDetails;
@@ -62,8 +62,8 @@ __device__ __forceinline__ void DownsweepScanPass(
 	if (KernelConfig::EXCLUSIVE) {
 
 		// Spine was an exclusive scan
-		T *d_spine_partial = d_spine + blockIdx.x;
-		util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+		util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
+			spine_partial, d_spine, blockIdx.x);
 
 	} else {
 
@@ -71,8 +71,8 @@ __device__ __forceinline__ void DownsweepScanPass(
 		if (blockIdx.x == 0) {
 			spine_partial = KernelConfig::Identity();
 		} else {
-			T *d_spine_partial = d_spine + blockIdx.x - 1;
-			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
+			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
+				spine_partial, d_spine, blockIdx.x - 1);
 		}
 	}
 

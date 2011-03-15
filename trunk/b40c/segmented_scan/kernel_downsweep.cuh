@@ -37,48 +37,43 @@ namespace segmented_scan {
  */
 template <typename KernelConfig>
 __device__ __forceinline__ void DownsweepScanPass(
-	typename KernelConfig::T 			* &d_partials_in,
-	typename KernelConfig::Flag			* &d_flags_in,
-	typename KernelConfig::T 			* &d_partials_out,
-	typename KernelConfig::T 			* &d_spine,
-	typename KernelConfig::T 			* &d_flags_spine,
+	typename KernelConfig::T 			*&d_partials_in,
+	typename KernelConfig::Flag			*&d_flags_in,
+	typename KernelConfig::T 			*&d_partials_out,
+	typename KernelConfig::T 			*&d_spine_partials,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ScanCta<KernelConfig> ScanCta;
 	typedef typename ScanCta::T T;
+	typedef typename ScanCta::Flag Flag;
 	typedef typename ScanCta::SizeT SizeT;
+	typedef typename ScanCta::SrtsSoaDetails SrtsSoaDetails;
 
-	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SRTS_GRID_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+	// Shared SRTS grid storage
+	__shared__ uint4 partial_smem_pool[KernelConfig::PARTIALS_SRTS_GRID_QUADS];
+	__shared__ uint4 flag_smem_pool[KernelConfig::FLAGS_SRTS_GRID_QUADS];
+
+	// Shared SRTS warpscan storage
+	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
+	__shared__ Flag flags_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
 	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
+	SrtsSoaDetails srts_soa_details(
+		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
+		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan));
 
-	// We need the exclusive partial from our spine, regardless of whether
-	// we're exclusive/inclusive
-
+	// Read the exclusive partial from our spine
 	T spine_partial;
-	if (KernelConfig::EXCLUSIVE) {
-
-		// Spine was an exclusive scan
-		T *d_spine_partial = d_spine + blockIdx.x;
-		util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
-
-	} else {
-
-		// Spine was in inclusive scan: load exclusive partial
-		if (blockIdx.x == 0) {
-			spine_partial = KernelConfig::Identity();
-		} else {
-			T *d_spine_partial = d_spine + blockIdx.x - 1;
-			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(spine_partial, d_spine_partial, 0);
-		}
-	}
+	util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
+		spine_partial, d_spine_partials, blockIdx.x);
 
 	// CTA processing abstraction
-	ScanCta cta(srts_detail, d_partials_in, d_partials_out, spine_partial);
+	ScanCta cta(
+		srts_soa_details,
+		d_partials_in,
+		d_flags_in,
+		d_partials_out,
+		spine_partial);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -117,12 +112,18 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void DownsweepScanKernel(
-	typename KernelConfig::T 			* d_partials_in,
-	typename KernelConfig::T 			* d_partials_out,
-	typename KernelConfig::T 			* __restrict d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
+	typename KernelConfig::T 									*d_partials_in,
+	typename KernelConfig::Flag									*d_flags_in,
+	typename KernelConfig::T 									*d_partials_out,
+	typename KernelConfig::T 									*d_spine_partials,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
 {
-	DownsweepScanPass<KernelConfig>(d_partials_in, d_partials_out, d_spine, work_decomposition);
+	DownsweepScanPass<KernelConfig>(
+		d_partials_in,
+		d_flags_in,
+		d_partials_out,
+		d_spine_partials,
+		work_decomposition);
 }
 
 

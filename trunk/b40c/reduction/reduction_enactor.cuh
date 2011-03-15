@@ -209,14 +209,14 @@ cudaError_t ReductionEnactor::ReductionPass(
 			// Upsweep reduction into spine
 			UpsweepReductionKernel<typename ProblemConfig::Upsweep>
 					<<<grid_size[0], ProblemConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine.Get(), work, work_progress);
+				d_src, (T*) spine(), work, work_progress);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			SpineReductionKernel<typename ProblemConfig::Spine>
 					<<<grid_size[1], ProblemConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine.Get(), d_dest, spine_elements);
+				(T*) spine(), d_dest, spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 		}

@@ -80,10 +80,6 @@ template <
 
 struct ProblemConfig
 {
-	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
-	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
-	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
-
 	// Kernel config for the upsweep reduction kernel
 	typedef reduction::KernelConfig <
 		ProblemType,
@@ -126,7 +122,12 @@ struct ProblemConfig
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
 
-	static const int VALID 						= Upsweep::VALID && Spine::VALID && Downsweep::VALID;
+	enum {
+		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
+		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
+		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID,
+	};
 
 	static void Print()
 	{

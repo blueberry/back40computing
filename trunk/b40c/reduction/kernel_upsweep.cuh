@@ -60,7 +60,10 @@ struct UpsweepReductionPass
 		SrtsDetails srts_detail(smem_pool, warpscan);
 
 		// CTA processing abstraction
-		ReductionCta cta(srts_detail, d_in, d_out);
+		ReductionCta cta(
+			srts_detail,
+			d_in,
+			d_out + blockIdx.x);
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -116,7 +119,10 @@ struct UpsweepReductionPass <KernelConfig, true>
 		SrtsDetails srts_detail(smem_pool, warpscan);
 
 		// CTA processing abstraction
-		ReductionCta cta(srts_detail, d_in, d_out);
+		ReductionCta cta(
+			srts_detail,
+			d_in,
+			d_out + blockIdx.x);
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT cta_offset;
@@ -167,16 +173,14 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepReductionKernel(
-	typename KernelConfig::T 			*d_in,
-	typename KernelConfig::T 			*d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition,
-	util::WorkProgress					work_progress)
+	typename KernelConfig::T 									*d_in,
+	typename KernelConfig::T 									*d_spine,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition,
+	util::WorkProgress											work_progress)
 {
-	typename KernelConfig::T *d_spine_partial = d_spine + blockIdx.x;
-
 	UpsweepReductionPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
-		d_spine_partial,
+		d_spine,
 		work_decomposition,
 		work_progress);
 }

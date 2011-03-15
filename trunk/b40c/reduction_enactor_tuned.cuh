@@ -263,6 +263,9 @@ struct ReductionEnactorTuned::ConfigResolver <reduction::UNKNOWN>
 
 /**
  * Performs a reduction pass
+ *
+ * TODO: Section can be removed if CUDA Runtime is fixed to
+ * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
 cudaError_t ReductionEnactorTuned::ReductionPass(
@@ -321,14 +324,14 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 			// Upsweep reduction into spine
 			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine.Get(), work, work_progress);
+				d_src, (T*) spine(), work, work_progress);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			TunedSpineReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine.Get(), d_dest, spine_elements);
+				(T*) spine(), d_dest, spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
 		}

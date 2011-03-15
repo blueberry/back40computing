@@ -48,6 +48,7 @@ namespace segmented_scan {
 template <
 	// ProblemType type parameters
 	typename _ProblemType,
+	bool _FINAL_KERNEL,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -73,6 +74,8 @@ struct KernelConfig : _ProblemType
 	static const util::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 	enum {
+		FINAL_KERNEL					= _FINAL_KERNEL,
+
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -123,17 +126,6 @@ struct KernelConfig : _ProblemType
 		true>									// There are prefix dependences between lanes
 			FlagsSrtsGrid;
 
-	// Tuple type of SRTS grid types
-	typedef util::Tuple<				// Derive from collective tuple scanning base class
-			typename KernelConfig::PartialsSrtsGrid,
-			typename KernelConfig::FlagsSrtsGrid> SrtsGridTuple;
-
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
-		typename KernelConfig::SoaTuple,
-		SrtsGridTuple,
-		KernelConfig::SoaTupleIdentity> SrtsSoaDetails;
-
 	enum {
 
 		PARTIALS_SRTS_GRID_QUADS		= util::TotalQuads<PartialsSrtsGrid>::VALUE,
@@ -147,10 +139,83 @@ struct KernelConfig : _ProblemType
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+
+		VALID 							= (CTA_OCCUPANCY > 0)
 	};
 
-	static const bool VALID				= (CTA_OCCUPANCY > 0);
+
+	// Tuple of partial-flag type
+	typedef util::Tuple<T, Flag> SoaTuple;
+
+
+	/**
+	 * SOA scan operator
+	 */
+	static __device__ __forceinline__ SoaTuple SoaScanOp(
+		SoaTuple &first,
+		SoaTuple &second)
+	{
+		return (second.t1) ?
+			second :
+			SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
+	}
+
+
+	/**
+	 * Final (last-level) SOA scan operator
+	 */
+	static __device__ __forceinline__ SoaTuple FinalSoaScanOp(
+		SoaTuple &first,
+		SoaTuple &second)
+	{
+		if (!FINAL_KERNEL) {
+
+			return SoaScanOp(first, second);
+
+		} else if (second.t1) {
+
+			if (EXCLUSIVE) {
+				first.t0 = Identity();
+			}
+			return second;
+		}
+		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
+	}
+
+
+	/**
+	 * Identity operator for flag types
+	 */
+	static __host__ __device__ __forceinline__ Flag FlagIdentity()
+	{
+		return 0;
+	}
+
+
+	/**
+	 * Identity operator for partial-flag tuples
+	 */
+	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
+	{
+		return SoaTuple(
+			Identity(),							// Tuple Identity
+			FlagIdentity());					// Flag Identity
+	}
+
+
+	// Tuple type of SRTS grid types
+	typedef util::Tuple<
+		PartialsSrtsGrid,
+		FlagsSrtsGrid> SrtsGridTuple;
+
+
+	// Operational details type for SRTS grid type
+	typedef util::SrtsSoaDetails<
+		SoaTuple,
+		SrtsGridTuple,
+		SoaTupleIdentity> SrtsSoaDetails;
+
 };
 
 

@@ -27,11 +27,18 @@
 #include <stdio.h> 
 
 #include <b40c/segmented_scan/problem_type.cuh>
+#include <b40c/segmented_scan/problem_config.cuh>
 #include <b40c/segmented_scan/kernel_config.cuh>
+#include <b40c/segmented_scan/problem_config_tuned.cuh>
+
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
 #include <b40c/segmented_scan/kernel_spine.cuh>
+#include <b40c/scan/kernel_spine.cuh>
+#include <b40c/reduction/kernel_spine.cuh>
+
+#include <b40c/segmented_scan/segmented_scan_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -87,8 +94,8 @@ int main(int argc, char** argv)
 	typedef unsigned int T;
 	typedef unsigned char Flag;
 
-	const int NUM_ELEMENTS = 10;
-	const bool EXCLUSIVE_SCAN = true;
+	const int NUM_ELEMENTS = 512;
+	const bool EXCLUSIVE_SCAN = false;
 
 	// Allocate and initialize host problem data and host reference solution
 	T h_src[NUM_ELEMENTS];
@@ -97,8 +104,7 @@ int main(int argc, char** argv)
 
 	for (size_t i = 0; i < NUM_ELEMENTS; ++i) {
 		h_src[i] = 1;
-//		h_flags[i] = (i & 3) == 0;
-		h_flags[i] = 0;
+		h_flags[i] = (i % 11) == 0;
 	}
 
 	printf("Flags:\n");
@@ -130,22 +136,32 @@ int main(int argc, char** argv)
 	cudaMalloc((void**) &d_dest, sizeof(T) * NUM_ELEMENTS);
 
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_flags, h_flags, sizeof(Flag) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Exclusive segmented scan
 
 	typedef b40c::segmented_scan::ProblemType<
 		T, Flag, size_t, EXCLUSIVE_SCAN, Sum, SumId> ProblemType;
 
-	typedef b40c::segmented_scan::KernelConfig<
-		ProblemType, 200,
-		8, 7, 0, 0, 5,
+	typedef b40c::segmented_scan::ProblemConfig<
+		ProblemType,
+		b40c::segmented_scan::SM20,
 		b40c::util::ld::NONE,
 		b40c::util::st::NONE,
-		7> KernelConfig;
+		false,
+		false,
+		false,
+		7, 8, 5, 1, 1, 5,
+		      5, 1, 1, 5,
+		   8, 5, 1, 1, 5> CustomConfig;
 
+	segmented_scan::SegmentedScanEnactor segmented_scan_enactor;
+	segmented_scan_enactor.DEBUG = true;
+	segmented_scan_enactor.Enact<CustomConfig>(
+		d_dest, d_src, d_flags, NUM_ELEMENTS);
 
-
+	// Flushes any stdio from the GPU
+	cudaThreadSynchronize();
 
 	CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS, true, true);
 	printf("\n");

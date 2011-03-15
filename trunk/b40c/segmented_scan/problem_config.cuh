@@ -79,13 +79,10 @@ template <
 
 struct ProblemConfig
 {
-	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
-	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
-	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
-
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelConfig <
 		ProblemType,
+		false,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
@@ -100,6 +97,7 @@ struct ProblemConfig
 	// Kernel config for the spine scan kernel
 	typedef KernelConfig <
 		ProblemType,
+		false,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
@@ -113,6 +111,7 @@ struct ProblemConfig
 
 	typedef KernelConfig <
 		ProblemType,
+		true,
 		CUDA_ARCH,
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
@@ -124,7 +123,27 @@ struct ProblemConfig
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
 
-	static const int VALID 						= Upsweep::VALID && Spine::VALID && Downsweep::VALID;
+	// Kernel config for a one-level pass using the spine scan kernel
+	typedef KernelConfig <
+		ProblemType,
+		true,
+		CUDA_ARCH,
+		1,									// Only a single-CTA grid
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		SPINE_LOG_RAKING_THREADS,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
+			Single;
+
+	enum {
+		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
+		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
+		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID,
+	};
 
 	static void Print()
 	{

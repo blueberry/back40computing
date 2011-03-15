@@ -45,48 +45,6 @@ struct ProblemType : scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity>	
 {
 	// The type of flag we're using
 	typedef _Flag Flag;
-
-
-	// Tuple of partial-flag type
-	typedef util::Tuple<T, Flag> SoaTuple;
-
-
-	/**
-	 * Scan operator for segmented scan
-	 */
-	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		SoaTuple &first,
-		SoaTuple &second)
-	{
-		if (second.t1) {
-			if (EXCLUSIVE) {
-				first.t0 = Identity();
-			}
-			return second;
-		}
-
-		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
-	}
-
-
-	/**
-	 * Identity operator for flag types
-	 */
-	static __host__ __device__ __forceinline__ Flag FlagIdentity()
-	{
-		return 0;
-	}
-
-
-	/**
-	 * Identity operator for partial-flag tuples
-	 */
-	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
-	{
-		return SoaTuple(
-			Identity(),							// Tuple Identity
-			FlagIdentity());					// Flag Identity
-	}
 };
 
 

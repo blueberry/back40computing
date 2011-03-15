@@ -22,7 +22,10 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Simple reduction utilities
+ * WarpSoaReduce
+ *
+ * Does not support commutative operators.  (Suggested to use a warpscan
+ * instead for those scenarios)
  ******************************************************************************/
 
 #pragma once
@@ -33,11 +36,6 @@ namespace b40c {
 namespace util {
 namespace reduction {
 namespace soa {
-
-
-/******************************************************************************
- * WarpSoaReduce
- ******************************************************************************/
 
 /**
  * Perform NUM_ELEMENTS of warp-synchronous reduction.

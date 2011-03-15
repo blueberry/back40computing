@@ -23,6 +23,9 @@
 
 /******************************************************************************
  * WarpReduce
+ *
+ * Does not support commutative operators.  (Suggested to use a warpscan
+ * instead for those scenarios
  ******************************************************************************/
 
 #pragma once

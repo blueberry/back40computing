@@ -201,19 +201,19 @@ cudaError_t ScanEnactor::ScanPass(
 
 			// Upsweep scan into spine
 			reduction::UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine.Get(), work, util::WorkProgress());
+				d_src, (T*) spine(), work, util::WorkProgress());
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineScanKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine.Get(), (T*) spine.Get(), spine_elements);
+				(T*) spine(), (T*) spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
 			DownsweepScanKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (T*) spine.Get(), work);
+				d_src, d_dest, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor DownsweepScanKernel failed ", __FILE__, __LINE__))) break;
 

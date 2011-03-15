@@ -29,7 +29,7 @@
 
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/reduction/soa/serial_soa_reduce.cuh>
-#include <b40c/util/reduction/soa/warp_soa_reduce.cuh>
+#include <b40c/util/scan/soa/warp_soa_scan.cuh>
 
 namespace b40c {
 namespace util {
@@ -110,7 +110,7 @@ struct CooperativeSoaTileReduction
 
 		__syncthreads();
 
-		CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp>::ReduceTileWithCarry(
+		CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp>::template ReduceTileWithCarry<true>(
 			srts_soa_details, carry);
 	}
 
@@ -172,13 +172,17 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 				SrtsSoaDetails::PARTIALS_PER_SEG,
 				ReductionOp>::Invoke(srts_soa_details.raking_segments);
 
-			// Warp reduction
-			SoaTuple warpscan_total = WarpSoaReduce<
+			// Inclusive warp scan that sets warpscan total in all
+			// raking threads
+			SoaTuple warpscan_total;
+			scan::soa::WarpSoaScan<
 				SoaTuple,
 				typename SrtsSoaDetails::WarpscanSoa,
 				SrtsSoaDetails::LOG_RAKING_THREADS,
-				ReductionOp>::InvokeSingle(
-					inclusive_partial, srts_soa_details.warpscan_partials);
+				false,
+				SrtsSoaDetails::LOG_RAKING_THREADS,
+				ReductionOp>::Invoke(
+					inclusive_partial, warpscan_total, srts_soa_details.warpscan_partials);
 
 			carry = (REDUCE_CARRY) ?
 				ReductionOp(carry, warpscan_total) : 	// Update carry
@@ -202,13 +206,17 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 				SrtsSoaDetails::PARTIALS_PER_SEG,
 				ReductionOp>::Invoke(srts_soa_details.raking_segments);
 
-			// Warp reduction
-			WarpSoaReduce<
+			// Inclusive warp scan that sets warpscan total in all
+			// raking threads
+			SoaTuple warpscan_total;
+			scan::soa::WarpSoaScan<
 				SoaTuple,
 				typename SrtsSoaDetails::WarpscanSoa,
 				SrtsSoaDetails::LOG_RAKING_THREADS,
-				ReductionOp>::InvokeSingle(
-					inclusive_partial, srts_soa_details.warpscan_partials);
+				false,
+				SrtsSoaDetails::LOG_RAKING_THREADS,
+				ReductionOp>::Invoke(
+					inclusive_partial, warpscan_total, srts_soa_details.warpscan_partials);
 		}
 
 		__syncthreads();
