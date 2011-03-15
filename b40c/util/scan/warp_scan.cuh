@@ -71,7 +71,7 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 		{
 			warpscan[1][warpscan_tid] = exclusive_partial;
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			T inclusive_partial = ScanOp(exclusive_partial, offset_partial);
+			T inclusive_partial = ScanOp(offset_partial, exclusive_partial);
 
 			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(inclusive_partial, warpscan, warpscan_tid);
 		}

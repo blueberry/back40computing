@@ -26,7 +26,6 @@
 #pragma once
 
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/util/soa_tuple.cuh>
 #include <b40c/segmented_scan/reduction_cta.cuh>
 
 namespace b40c {

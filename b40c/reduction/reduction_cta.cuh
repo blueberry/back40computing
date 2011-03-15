@@ -44,9 +44,9 @@ struct ReductionCta : KernelConfig
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ReductionCta::T T;
-	typedef typename ReductionCta::SizeT SizeT;
-	typedef typename ReductionCta::SrtsDetails SrtsDetails;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -60,7 +60,7 @@ struct ReductionCta : KernelConfig
 	T* d_out;
 
 	// Tile of elements
-	T data[ReductionCta::LOADS_PER_TILE][ReductionCta::LOAD_VEC_SIZE];
+	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	// Operational details for SRTS grid
 	SrtsDetails srts_details;
@@ -81,7 +81,7 @@ struct ReductionCta : KernelConfig
 			srts_details(srts_details),
 			d_in(d_in),
 			d_out(d_out),
-			carry(ReductionCta::Identity()) {}
+			carry(KernelConfig::Identity()) {}
 
 
 	/**
@@ -93,7 +93,7 @@ struct ReductionCta : KernelConfig
 		bool in_bounds)
 	{
 		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = ReductionCta::Identity();
+		if (!in_bounds) val = KernelConfig::Identity();
 	}
 
 
@@ -111,18 +111,18 @@ struct ReductionCta : KernelConfig
 		util::LoadTile<
 			T,
 			SizeT,
-			ReductionCta::LOG_LOADS_PER_TILE,
-			ReductionCta::LOG_LOAD_VEC_SIZE,
-			ReductionCta::THREADS,
-			ReductionCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO,
 			LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<
 			T,
-			ReductionCta::TILE_ELEMENTS_PER_THREAD,
-			ReductionCta::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
 
 		// Reduce into carry
 		carry = BinaryOp(carry, tile_partial);
@@ -142,14 +142,14 @@ struct ReductionCta : KernelConfig
 		util::reduction::CooperativeTileReduction<
 			SrtsDetails,
 			1,
-			ReductionCta::BinaryOp>::ReduceTileWithCarry<false>(
+			KernelConfig::BinaryOp>::ReduceTileWithCarry<false>(
 				srts_details,
 				reinterpret_cast<T (*)[1]>(&carry),
 				carry);
 
 		// Write output
 		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry, d_out, 0);
+			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry, d_out, 0);
 		}
 	}
 

@@ -47,7 +47,7 @@ template <
 	int LOG_NUM_ELEMENTS,
 	bool EXCLUSIVE,
 	int STEPS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct WarpSoaScan;
 
 
@@ -59,7 +59,7 @@ template <
 	typename WarpscanSoa,				// Tuple of SOA warpscan segments
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -69,8 +69,8 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const Tuple &exclusive_partial,
-			WarpscanSoa &warpscan_partials,
+			Tuple exclusive_partial,
+			WarpscanSoa warpscan_partials,
 			int warpscan_tid)
 		{
 			// Store exclusive partial
@@ -81,7 +81,7 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 				warpscan_tid - OFFSET_LEFT);
 
 			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ScanOp(exclusive_partial, current_partial);
+			Tuple inclusive_partial = ScanOp(current_partial, exclusive_partial);
 
 			// Recurse
 			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(
@@ -94,8 +94,8 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 	struct Iterate<WIDTH, WIDTH>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			const Tuple &exclusive_partial,
-			WarpscanSoa &warpscan_partials,
+			Tuple exclusive_partial,
+			WarpscanSoa warpscan_partials,
 			int warpscan_tid)
 		{
 			return exclusive_partial;
@@ -104,8 +104,8 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const Tuple &current_partial,				// Input partial
-		WarpscanSoa &warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		Tuple current_partial,						// Input partial
+		WarpscanSoa warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
@@ -114,9 +114,9 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const Tuple &current_partial,				// Input partial
+		Tuple current_partial,						// Input partial
 		Tuple &total_reduction,						// Total reduction (out param)
-		WarpscanSoa &warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		WarpscanSoa warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial
@@ -141,15 +141,15 @@ template <
 	typename WarpscanSoa,				// Tuple of SOA warpscan segments
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const Tuple &current_partial,				// Input partial
-		WarpscanSoa &warpscan_partials,				// SOA of tuples in smem for warpscanning.  Each array contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		Tuple current_partial,						// Input partial
+		WarpscanSoa warpscan_partials,				// SOA of tuples in smem for warpscanning.  Each array contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial
@@ -170,9 +170,9 @@ struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		const Tuple &current_partial,				// Input partial
+		Tuple current_partial,						// Input partial
 		Tuple &total_reduction,						// Total reduction (out param)
-		WarpscanSoa &warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		WarpscanSoa warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		// Obtain inclusive partial

@@ -60,7 +60,7 @@ namespace util {
  * (N.B.: Typically two-level grids are a losing performance proposition)
  */
 template <
-	int CUDA_ARCH,
+	int _CUDA_ARCH,
 	typename _T,									// Type of items we will be reducing/scanning
 	int _LOG_ACTIVE_THREADS, 						// Number of threads placing a lane partial (i.e., the number of partials per lane)
 	int _LOG_SCAN_LANES,							// Number of scan lanes
@@ -76,6 +76,8 @@ struct SrtsGrid
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.
 	enum {
+
+		CUDA_ARCH						= _CUDA_ARCH,
 
 		// Number of scan lanes
 		LOG_SCAN_LANES					= _LOG_SCAN_LANES,

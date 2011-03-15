@@ -56,7 +56,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridT
 {
 	enum {
 		CUMULATIVE_THREAD 	= SrtsSoaDetails::RAKING_THREADS - 1,
-		WARP_THREADS 		= SrtsSoaDetails::CUDA_ARCH
+		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
 	};
 
 	typedef _SoaTuple SoaTuple;
@@ -64,8 +64,8 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridT
 	typedef Tuple<uint4*, uint4*> GridStorageSoa;
 
 	typedef Tuple<
-		volatile typename SoaTuple::T0 (*)[B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)],
-		volatile typename SoaTuple::T1 (*)[B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)]> WarpscanSoa;
+		volatile typename SoaTuple::T0 (*)[WARP_THREADS],
+		volatile typename SoaTuple::T1 (*)[WARP_THREADS]> WarpscanSoa;
 
 	typedef Tuple<
 		typename SrtsGridTuple::T0::LanePartial,
@@ -103,8 +103,8 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridT
 	 * Constructor
 	 */
 	__host__ __device__ __forceinline__ SrtsSoaDetails(
-		const GridStorageSoa &smem_pools,
-		const WarpscanSoa &warpscan_partials) :
+		GridStorageSoa &smem_pools,
+		WarpscanSoa &warpscan_partials) :
 
 			warpscan_partials(warpscan_partials),
 			lane_partials(												// set lane partial pointer

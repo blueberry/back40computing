@@ -26,8 +26,7 @@
 #pragma once
 
 #include <b40c/util/work_distribution.cuh>
-#include <b40c/util/srts_details.cuh>
-#include <b40c/scan/scan_cta.cuh>
+#include <b40c/segmented_scan/scan_cta.cuh>
 
 namespace b40c {
 namespace segmented_scan {

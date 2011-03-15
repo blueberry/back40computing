@@ -55,14 +55,17 @@ struct ProblemType : scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity>	
 	 * Scan operator for segmented scan
 	 */
 	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		const SoaTuple &first,
-		const SoaTuple &second)
+		SoaTuple &first,
+		SoaTuple &second)
 	{
-		return SoaTuple(
-			(second.t1) ?
-				second.t0 :											// Reset
-				BinaryOp(first.t0, second.t0),						// Reduction
-			second.t1);												// Retain second item's flag
+		if (second.t1) {
+			if (EXCLUSIVE) {
+				first.t0 = Identity();
+			}
+			return second;
+		}
+
+		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
 	}
 
 

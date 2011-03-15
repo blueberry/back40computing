@@ -45,16 +45,18 @@ struct ScanCta : KernelConfig						// Derive from our config
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ScanCta::T T;
-	typedef typename ScanCta::Flag Flag;
-	typedef typename ScanCta::SizeT SizeT;
-	typedef typename ScanCta::SrtsSoaDetails SrtsSoaDetails;
-	typedef typename ScanCta::SoaTuple SoaTuple;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::Flag Flag;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
+	typedef typename KernelConfig::SoaTuple SoaTuple;
 
-	typedef T PartialsTile[ScanCta::LOADS_PER_TILE][ScanCta::LOAD_VEC_SIZE];
-	typedef Flag FlagsTile[ScanCta::LOADS_PER_TILE][ScanCta::LOAD_VEC_SIZE];
+	typedef T PartialsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	typedef Flag FlagsTile[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
-	typedef util::Tuple<PartialsTile&, FlagsTile&> DataSoa;
+	typedef util::Tuple<
+		T (*)[KernelConfig::LOAD_VEC_SIZE],
+		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> DataSoa;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -90,12 +92,12 @@ struct ScanCta : KernelConfig						// Derive from our config
 	 * Constructor
 	 */
 	__device__ __forceinline__ ScanCta(
-		const SrtsSoaDetails &srts_soa_details,
+		SrtsSoaDetails srts_soa_details,
 		T 		*d_partials_in,
 		Flag 	*d_flags_in,
 		T 		*d_partials_out,
-		T 		spine_partial = ScanCta::Identity(),
-		Flag 	spine_flag = ScanCta::FlagIdentity()) :
+		T 		spine_partial = KernelConfig::Identity(),
+		Flag 	spine_flag = KernelConfig::FlagIdentity()) :
 
 			srts_soa_details(srts_soa_details),
 			d_partials_in(d_partials_in),
@@ -117,40 +119,41 @@ struct ScanCta : KernelConfig						// Derive from our config
 		util::LoadTile<
 			T,
 			SizeT,
-			ScanCta::LOG_LOADS_PER_TILE,
-			ScanCta::LOG_LOAD_VEC_SIZE,
-			ScanCta::THREADS,
-			ScanCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
-/*
+
 		// Load tile of flags
 		util::LoadTile<
-			T,
+			Flag,
 			SizeT,
-			ScanCta::LOG_LOADS_PER_TILE,
-			ScanCta::LOG_LOAD_VEC_SIZE,
-			ScanCta::THREADS,
-			ScanCta::READ_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
 			UNGUARDED_IO>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
 
 		// Scan tile with carry update in raking threads
 		util::scan::soa::CooperativeSoaTileScan<
 			SrtsSoaDetails,
-			ScanCta::LOAD_VEC_SIZE,
-			ScanCta::EXCLUSIVE,
-			ScanCta::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
-				srts_soa_details, data_soa);
+			KernelConfig::LOAD_VEC_SIZE,
+			EXCLUSIVE,									// Always inclusive: we handle the exclusive/inclusive details in our reduction/scan ops
+			KernelConfig::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
+				srts_soa_details,
+				data_soa,
+				carry);
 
 		// Store tile of partials
 		util::StoreTile<
 			T,
 			SizeT,
-			ScanCta::LOG_LOADS_PER_TILE,
-			ScanCta::LOG_LOAD_VEC_SIZE,
-			ScanCta::THREADS,
-			ScanCta::WRITE_MODIFIER,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER,
 			UNGUARDED_IO>::Invoke(partials, d_partials_out, cta_offset, out_of_bounds);
-*/
 	}
 };
 

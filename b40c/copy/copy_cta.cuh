@@ -42,8 +42,8 @@ struct CopyCta : KernelConfig
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename CopyCta::T T;
-	typedef typename CopyCta::SizeT SizeT;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -54,7 +54,7 @@ struct CopyCta : KernelConfig
 	T* d_out;
 
 	// Tile of elements
-	T data[CopyCta::LOADS_PER_TILE][CopyCta::LOAD_VEC_SIZE];
+	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 
 	//---------------------------------------------------------------------
@@ -79,14 +79,26 @@ struct CopyCta : KernelConfig
 		SizeT out_of_bounds)
 	{
 		// Load tile
-		util::LoadTile<T, SizeT, CopyCta::LOG_LOADS_PER_TILE, CopyCta::LOG_LOAD_VEC_SIZE, CopyCta::THREADS, CopyCta::READ_MODIFIER, UNGUARDED_IO>::Invoke(
-			data, d_in, cta_offset, out_of_bounds);
+		util::LoadTile<
+			T,
+			SizeT,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER,
+			UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 		__syncthreads();
 
 		// Store tile
-		util::StoreTile<T, SizeT, CopyCta::LOG_LOADS_PER_TILE, CopyCta::LOG_LOAD_VEC_SIZE, CopyCta::THREADS, CopyCta::WRITE_MODIFIER, UNGUARDED_IO>::Invoke(
-			data, d_out, cta_offset, out_of_bounds);
+		util::StoreTile<
+			T,
+			SizeT,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER,
+			UNGUARDED_IO>::Invoke(data, d_out, cta_offset, out_of_bounds);
 	}
 };
 

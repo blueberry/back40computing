@@ -43,8 +43,8 @@ namespace soa {
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&),
+		typename SrtsSoaDetails::SoaTuple&,
+		typename SrtsSoaDetails::SoaTuple&),
 	typename SecondarySrtsSoaDetails = typename SrtsSoaDetails::SecondarySrtsSoaDetails>
 struct CooperativeSoaGridReduction;
 
@@ -56,8 +56,8 @@ template <
 	typename SrtsSoaDetails,
 	int VEC_SIZE,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&)>
+		typename SrtsSoaDetails::SoaTuple&,
+		typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaTileReduction
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
@@ -67,8 +67,8 @@ struct CooperativeSoaTileReduction
 	struct ReduceLane
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsSoaDetails &srts_soa_details,
-			const DataSoa &data_soa)
+			SrtsSoaDetails srts_soa_details,
+			DataSoa data_soa)
 		{
 			// Reduce the partials in this lane/load
 			SoaTuple partial_reduction = SerialSoaReduceLane<
@@ -87,8 +87,8 @@ struct CooperativeSoaTileReduction
 	struct ReduceLane<TOTAL_LANES, TOTAL_LANES, DataSoa>
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsSoaDetails &srts_soa_details,
-			const DataSoa &data_soa) {}
+			SrtsSoaDetails srts_soa_details,
+			DataSoa data_soa) {}
 	};
 
 
@@ -100,8 +100,8 @@ struct CooperativeSoaTileReduction
 	 */
 	template <typename DataSoa>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsSoaDetails &srts_soa_details,
-		DataSoa &data_soa,
+		SrtsSoaDetails srts_soa_details,
+		DataSoa data_soa,
 		SoaTuple &carry)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
@@ -121,8 +121,8 @@ struct CooperativeSoaTileReduction
 	 */
 	template <typename DataSoa>
 	static __device__ __forceinline__ SoaTuple ReduceTile(
-		const SrtsSoaDetails &srts_soa_details,
-		DataSoa &data_soa)
+		SrtsSoaDetails srts_soa_details,
+		DataSoa data_soa)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
 		ReduceLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
@@ -148,8 +148,8 @@ struct CooperativeSoaTileReduction
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&)>
+		typename SrtsSoaDetails::SoaTuple&,
+		typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
@@ -160,7 +160,7 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 	 */
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsSoaDetails &srts_soa_details,
+		SrtsSoaDetails srts_soa_details,
 		SoaTuple &carry)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
@@ -168,7 +168,7 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 			// Raking reduction
 			SoaTuple inclusive_partial = SerialSoaReduce<
 				SoaTuple,
-				typename SrtsSoaDetails::LaneSoa,
+				typename SrtsSoaDetails::RakingSoa,
 				SrtsSoaDetails::PARTIALS_PER_SEG,
 				ReductionOp>::Invoke(srts_soa_details.raking_segments);
 
@@ -191,14 +191,14 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 	 * Reduction in last-level SRTS grid.  Result is computed in all threads.
 	 */
 	static __device__ __forceinline__ SoaTuple ReduceTile(
-		const SrtsSoaDetails &srts_soa_details)
+		SrtsSoaDetails srts_soa_details)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
 
 			// Raking reduction
 			SoaTuple inclusive_partial = SerialSoaReduce<
 				SoaTuple,
-				typename SrtsSoaDetails::LaneSoa,
+				typename SrtsSoaDetails::RakingSoa,
 				SrtsSoaDetails::PARTIALS_PER_SEG,
 				ReductionOp>::Invoke(srts_soa_details.raking_segments);
 
@@ -224,7 +224,7 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
  * /
 template <
 	typename SrtsSoaDetails,
-	typename SrtsSoaDetails::SoaTuple ReductionOp(const typename SrtsSoaDetails::SoaTuple&, const typename SrtsSoaDetails::SoaTuple&),
+	typename SrtsSoaDetails::SoaTuple ReductionOp(typename SrtsSoaDetails::SoaTuple&, typename SrtsSoaDetails::SoaTuple&),
 	typename SecondarySrtsSoaDetails>
 struct CooperativeSoaGridReduction
 {
@@ -236,7 +236,7 @@ struct CooperativeSoaGridReduction
 	 * /
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsSoaDetails &srts_soa_details,
+		SrtsSoaDetails &srts_soa_details,
 		SoaTuple &carry)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
@@ -260,7 +260,7 @@ struct CooperativeSoaGridReduction
 	/ **
 	 * Reduction in SRTS grid.  Result is computed in all threads.
 	 * /
-	static __device__ __forceinline__ SoaTuple ReduceTile(const SrtsSoaDetails &srts_soa_details)
+	static __device__ __forceinline__ SoaTuple ReduceTile(SrtsSoaDetails &srts_soa_details)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
 

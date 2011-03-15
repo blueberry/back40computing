@@ -44,7 +44,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
 	bool EXCLUSIVE,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScan;
 
 
@@ -55,7 +55,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 {
 	// Iterate
@@ -63,9 +63,9 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
@@ -87,9 +87,9 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -97,17 +97,17 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
 	}
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		RakingSoa &raking_results,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		RakingSoa raking_results,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
 	}
@@ -121,7 +121,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
 {
 	// Iterate
@@ -129,9 +129,9 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
@@ -153,9 +153,9 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -163,17 +163,17 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
 	}
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		RakingSoa &raking_results,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		RakingSoa raking_results,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
 	}
@@ -191,7 +191,7 @@ template <
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
 	bool EXCLUSIVE,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScanLane;
 
 
@@ -203,7 +203,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
 {
 	// Iterate
@@ -211,9 +211,9 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial = raking_partials.template Get<LANE, Tuple>(COUNT);
@@ -235,9 +235,9 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -245,17 +245,17 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
 	}
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		RakingSoa &raking_results,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		RakingSoa raking_results,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
 	}
@@ -270,7 +270,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
+	Tuple ScanOp(Tuple&, Tuple&)>
 struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
 {
 	// Iterate
@@ -278,9 +278,9 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
 	struct Iterate
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			// Load current partial
 			Tuple current_partial = raking_partials.template Get<LANE, Tuple>(COUNT);
@@ -301,9 +301,9 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
 	struct Iterate<TOTAL, TOTAL>
 	{
 		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa &raking_partials,
-			RakingSoa &raking_results,
-			const Tuple &exclusive_partial)
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial)
 		{
 			return exclusive_partial;
 		}
@@ -311,17 +311,17 @@ struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
 	}
 
 	// Interface
 	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa &raking_partials,
-		RakingSoa &raking_results,
-		const Tuple &exclusive_partial)			// Exclusive partial to seed with
+		RakingSoa raking_partials,
+		RakingSoa raking_results,
+		Tuple exclusive_partial)			// Exclusive partial to seed with
 	{
 		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
 	}
