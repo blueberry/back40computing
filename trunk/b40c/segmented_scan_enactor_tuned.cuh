@@ -33,13 +33,13 @@
 namespace b40c {
 
 /******************************************************************************
- * ScanEnactorTuned Declaration
+ * SegmentedScanEnactorTuned Declaration
  ******************************************************************************/
 
 /**
  * Tuned segmented scan enactor class.
  */
-class ScanEnactorTuned : public segmented_scan::ScanEnactor
+class SegmentedScanEnactorTuned : public segmented_scan::SegmentedScanEnactor
 {
 public:
 
@@ -47,7 +47,7 @@ public:
 	// Helper Structures (need to be public for cudafe)
 	//---------------------------------------------------------------------
 
-	template <typename T, typename SizeT> 						struct Storage;
+	template <typename T, typename Flag, typename SizeT> 		struct Storage;
 	template <typename ProblemType> 							struct Detail;
 	template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE> 	struct ConfigResolver;
 
@@ -58,7 +58,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef segmented_scan::ScanEnactor BaseEnactorType;
+	typedef segmented_scan::SegmentedScanEnactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -74,9 +74,10 @@ protected:
 	 */
 	template <typename TunedConfig>
 	cudaError_t ScanPass(
-		typename TunedConfig::Upsweep::T *d_dest,
-		typename TunedConfig::Upsweep::T *d_src,
-		util::CtaWorkDistribution<typename TunedConfig::Upsweep::SizeT> &work,
+		typename TunedConfig::T *d_dest,
+		typename TunedConfig::T *d_src,
+		typename TunedConfig::Downsweep::Flag *d_flag_src,
+		util::CtaWorkDistribution<typename TunedConfig::Downsweep::SizeT> &work,
 		int spine_elements);
 
 
@@ -85,7 +86,7 @@ public:
 	/**
 	 * Constructor.
 	 */
-	ScanEnactorTuned() : BaseEnactorType::ScanEnactor() {}
+	SegmentedScanEnactorTuned() : BaseEnactorType::SegmentedScanEnactor() {}
 
 
 	/**
@@ -103,6 +104,8 @@ public:
 	 * 		Pointer to result location
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
+	 * @param d_flag_src
+	 * 		Pointer to array of "head flags" that demarcate independent scan segments
 	 * @param num_elements
 	 * 		Number of elements to segmented scan
 	 * @param max_grid_size
@@ -112,6 +115,7 @@ public:
 	 */
 	template <
 		typename T,
+		typename Flag,
 		bool EXCLUSIVE,
 		T BinaryOp(const T&, const T&),
 		T Identity(),
@@ -119,6 +123,7 @@ public:
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
+		Flag *d_flag_src,
 		size_t num_elements,
 		int max_grid_size = 0);
 
@@ -132,6 +137,8 @@ public:
 	 * 		Pointer to result location
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
+	 * @param d_flag_src
+	 * 		Pointer to array of "head flags" that demarcate independent scan segments
 	 * @param num_elements
 	 * 		Number of elements to segmented scan
 	 * @param max_grid_size
@@ -141,12 +148,14 @@ public:
 	 */
 	template <
 		typename T,
+		typename Flag,
 		bool EXCLUSIVE,
 		T BinaryOp(const T&, const T&),
 		T Identity()>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
+		Flag *d_flag_src,
 		size_t num_bytes,
 		int max_grid_size = 0);
 };
@@ -161,15 +170,15 @@ public:
  * Type for encapsulating operational details regarding an invocation
  */
 template <typename ProblemType>
-struct ScanEnactorTuned::Detail
+struct SegmentedScanEnactorTuned::Detail
 {
 	typedef ProblemType Problem;
 	
-	ScanEnactorTuned *enactor;
+	SegmentedScanEnactorTuned *enactor;
 	int max_grid_size;
 
 	// Constructor
-	Detail(ScanEnactorTuned *enactor, int max_grid_size = 0) :
+	Detail(SegmentedScanEnactorTuned *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
 };
 
@@ -177,16 +186,17 @@ struct ScanEnactorTuned::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-template <typename T, typename SizeT>
-struct ScanEnactorTuned::Storage
+template <typename T, typename Flag, typename SizeT>
+struct SegmentedScanEnactorTuned::Storage
 {
 	T *d_dest;
 	T *d_src;
+	Flag *d_flag_src;
 	SizeT num_elements;
 
 	// Constructor
-	Storage(T *d_dest, T *d_src, SizeT num_elements) :
-		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
+	Storage(T *d_dest, T *d_src, Flag *d_flag_src, SizeT num_elements) :
+		d_dest(d_dest), d_src(d_src), d_flag_src(d_flag_src), num_elements(num_elements) {}
 };
 
 
@@ -196,7 +206,7 @@ struct ScanEnactorTuned::Storage
  * Default specialization for problem type genres
  */
 template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
-struct ScanEnactorTuned::ConfigResolver
+struct SegmentedScanEnactorTuned::ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -210,8 +220,12 @@ struct ScanEnactorTuned::ConfigResolver
 		typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<TunedConfig, ScanEnactorTuned>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+		return detail.enactor->template EnactInternal<TunedConfig, SegmentedScanEnactorTuned>(
+			storage.d_dest,
+			storage.d_src,
+			storage.d_flag_src,
+			storage.num_elements,
+			detail.max_grid_size);
 	}
 };
 
@@ -223,7 +237,7 @@ struct ScanEnactorTuned::ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct ScanEnactorTuned::ConfigResolver <segmented_scan::UNKNOWN>
+struct SegmentedScanEnactorTuned::ConfigResolver <segmented_scan::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -245,19 +259,27 @@ struct ScanEnactorTuned::ConfigResolver <segmented_scan::UNKNOWN>
 
 			// Invoke base class enact with small-problem config type
 			typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, segmented_scan::SMALL> SmallConfig;
-			return detail.enactor->template EnactInternal<SmallConfig, ScanEnactorTuned>(
-				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+			return detail.enactor->template EnactInternal<SmallConfig, SegmentedScanEnactorTuned>(
+				storage.d_dest,
+				storage.d_src,
+				storage.d_flag_src,
+				storage.num_elements,
+				detail.max_grid_size);
 		}
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<LargeConfig, ScanEnactorTuned>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+		return detail.enactor->template EnactInternal<LargeConfig, SegmentedScanEnactorTuned>(
+			storage.d_dest,
+			storage.d_src,
+			storage.d_flag_src,
+			storage.num_elements,
+			detail.max_grid_size);
 	}
 };
 
 
 /******************************************************************************
- * ScanEnactorTuned Implementation
+ * SegmentedScanEnactorTuned Implementation
  ******************************************************************************/
 
 /**
@@ -267,26 +289,29 @@ struct ScanEnactorTuned::ConfigResolver <segmented_scan::UNKNOWN>
  * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
-cudaError_t ScanEnactorTuned::ScanPass(
-	typename TunedConfig::Upsweep::T *d_dest,
-	typename TunedConfig::Upsweep::T *d_src,
-	util::CtaWorkDistribution<typename TunedConfig::Upsweep::SizeT> &work,
+cudaError_t SegmentedScanEnactorTuned::ScanPass(
+	typename TunedConfig::T *d_dest,
+	typename TunedConfig::T *d_src,
+	typename TunedConfig::Downsweep::Flag *d_flag_src,
+	util::CtaWorkDistribution<typename TunedConfig::Downsweep::SizeT> &work,
 	int spine_elements)
 {
 	using namespace segmented_scan;
 
+	typedef typename TunedConfig::T T;
+	typedef typename TunedConfig::Flag Flag;
+	typedef typename TunedConfig::Upsweep Upsweep;
 	typedef typename TunedConfig::Spine Spine;
 	typedef typename TunedConfig::Downsweep Downsweep;
-	typedef typename Downsweep::ProblemType ProblemType;
-	typedef typename Downsweep::T T;
+	typedef typename TunedConfig::Single Single;
 
 	cudaError_t retval = cudaSuccess;
 	do {
 		if (work.grid_size == 1) {
 
-			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<1, TunedConfig::Spine::THREADS, 0>>>(
-				d_src, d_dest, work.num_elements);
+			TunedSpineScanSingleKernel<Single::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+					<<<1, Spine::THREADS, 0>>>(
+				d_src, d_flag_src, d_dest, work.num_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
@@ -303,11 +328,11 @@ cudaError_t ScanEnactorTuned::ScanPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineScanKernel<Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepScanKernel<Downsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -325,23 +350,23 @@ cudaError_t ScanEnactorTuned::ScanPass(
 			}
 
 			// Upsweep segmented scan into spine
-			TunedUpsweepReductionKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine(), work, util::WorkProgress());
+			TunedUpsweepReductionKernel<Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+				<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+					d_src, d_flag_src, (T*) partial_spine(), (Flag*) flag_spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine segmented scan
-			TunedSpineScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine(), (T*) spine(), spine_elements);
+			TunedSpineScanKernel<Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+				<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+					(T*) partial_spine(), (Flag*) flag_spine(), (T*) partial_spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep segmented scan into spine
-			TunedDownsweepScanKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (T*) spine(), work);
+			TunedDownsweepScanKernel<Downsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+				<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
+					d_src, d_flag_src, d_dest, (T*) partial_spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -357,24 +382,26 @@ cudaError_t ScanEnactorTuned::ScanPass(
  */
 template <
 	typename T,
+	typename Flag,
 	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity(),
 	segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
-cudaError_t ScanEnactorTuned::Enact(
+cudaError_t SegmentedScanEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
+	Flag *d_flag_src,
 	size_t num_elements,
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef segmented_scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
+	typedef segmented_scan::ProblemType<T, Flag, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
 	typedef Detail<Problem> Detail;
-	typedef Storage<T, SizeT> Storage;
+	typedef Storage<T, Flag, SizeT> Storage;
 	typedef ConfigResolver<PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
-	Storage storage(d_dest, d_src, num_elements);
+	Storage storage(d_dest, d_src, d_flag_src, num_elements);
 
 	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
 }
@@ -386,16 +413,19 @@ cudaError_t ScanEnactorTuned::Enact(
  */
 template <
 	typename T,
+	typename Flag,
 	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity()>
-cudaError_t ScanEnactorTuned::Enact(
+cudaError_t SegmentedScanEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
+	Flag *d_flag_src,
 	size_t num_elements,
 	int max_grid_size)
 {
-	return Enact<T, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
+	return Enact<T, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN>(
+		d_dest, d_src, d_flag_src, num_elements, max_grid_size);
 }
 
 

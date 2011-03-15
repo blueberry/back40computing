@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/srts_soa_details.cuh>
 #include <b40c/util/data_movement_load.cuh>

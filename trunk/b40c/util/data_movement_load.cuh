@@ -48,7 +48,7 @@ enum CacheModifier {
 };
 } // namespace ld
 
-// Mooch
+
 #define CacheModifierToString(modifier)	(	(modifier == b40c::util::ld::NONE) ? 	"NONE" :	\
 											(modifier == b40c::util::ld::CG) ? 		"CG" :		\
 											(modifier == b40c::util::ld::CA) ? 		"CA" :		\

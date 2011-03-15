@@ -72,9 +72,9 @@ protected:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t ScanPass(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 		typename ProblemConfig::Spine::SizeT spine_elements);
 
 	/**
@@ -82,9 +82,9 @@ protected:
 	 */
 	template <typename ProblemConfig, typename EnactorType>
 	cudaError_t EnactInternal(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		typename ProblemConfig::Downsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size);
 
 public:
@@ -113,9 +113,9 @@ public:
 	 */
 	template <typename ProblemConfig>
 	cudaError_t Enact(
-		typename ProblemConfig::Downsweep::T *d_dest,
-		typename ProblemConfig::Downsweep::T *d_src,
-		typename ProblemConfig::Downsweep::SizeT num_elements,
+		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::T *d_src,
+		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size = 0);
 };
 
@@ -145,9 +145,9 @@ cudaError_t ScanEnactor::Setup(int sweep_grid_size, int spine_elements)
  */
 template <typename ProblemConfig>
 cudaError_t ScanEnactor::ScanPass(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	util::CtaWorkDistribution<typename ProblemConfig::Downsweep::SizeT> &work,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 	typename ProblemConfig::Spine::SizeT spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -229,9 +229,9 @@ cudaError_t ScanEnactor::ScanPass(
  */
 template <typename ProblemConfig, typename EnactorType>
 cudaError_t ScanEnactor::EnactInternal(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	typename ProblemConfig::Downsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
@@ -299,9 +299,9 @@ cudaError_t ScanEnactor::EnactInternal(
  */
 template <typename ProblemConfig>
 cudaError_t ScanEnactor::Enact(
-	typename ProblemConfig::Downsweep::T *d_dest,
-	typename ProblemConfig::Downsweep::T *d_src,
-	typename ProblemConfig::Downsweep::SizeT num_elements,
+	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::T *d_src,
+	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	return EnactInternal<ProblemConfig, ScanEnactor>(

@@ -71,12 +71,8 @@ template <
 	int SPINE_LOG_LOADS_PER_TILE,
 	int SPINE_LOG_RAKING_THREADS>
 
-struct ProblemConfig
+struct ProblemConfig : ProblemType
 {
-	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
-	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
-	static const bool OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE;
-
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelConfig <
 		ProblemType,
@@ -107,8 +103,12 @@ struct ProblemConfig
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
-	static const int VALID 						= Upsweep::VALID && Spine::VALID;
-
+	enum {
+		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
+		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
+		VALID 						= Upsweep::VALID & Spine::VALID
+	};
 	static void Print()
 	{
 		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
