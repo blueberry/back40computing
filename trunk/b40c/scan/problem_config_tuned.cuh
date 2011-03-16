@@ -370,7 +370,7 @@ __launch_bounds__ (
 __global__ void TunedDownsweepScanKernel(
 	typename ProblemType::T 			* d_in,
 	typename ProblemType::T 			* d_out,
-	typename ProblemType::T 			* __restrict d_spine,
+	typename ProblemType::T 			* d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
