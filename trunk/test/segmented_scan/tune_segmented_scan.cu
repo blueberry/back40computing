@@ -21,16 +21,16 @@
 
 
 /******************************************************************************
- * Tuning tool for establishing optimal scan granularity configuration types
+ * Tuning tool for establishing optimal segmented scan granularity configuration types
  ******************************************************************************/
 
 #include <stdio.h> 
 
-// Scan includes
+// SegmentedScan includes
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/problem_config.cuh>
-#include <b40c/scan/scan_enactor.cuh>
+#include <b40c/segmented_scan/problem_type.cuh>
+#include <b40c/segmented_scan/problem_config.cuh>
+#include <b40c/segmented_scan/segmented_scan_enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
@@ -96,12 +96,12 @@ struct Max
  */
 void Usage()
 {
-	printf("\ntune_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntune_segmented_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
 	printf("\n");
-	printf("\t--i\tPerforms the scan operation <num-iterations> times\n");
+	printf("\t--i\tPerforms the segmented scan operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
@@ -161,15 +161,17 @@ enum TuningParam {
  * 		- Wrapping problem type and storage
  * 		- Providing call-back for parameter-list generation
  */
-template <typename T, typename OpType>
-class TuneEnactor : public scan::ScanEnactor
+template <typename T, typename Flag, typename OpType, bool EXCLUSIVE>
+class TuneEnactor : public segmented_scan::SegmentedScanEnactor
 {
 public:
 
 	T *d_dest;
 	T *d_src;
+	Flag *d_flag_src;
 	T *h_data;
 	T *h_reference;
+	Flag *h_flag_data;
 	size_t num_elements;
 
 	/**
@@ -299,14 +301,14 @@ public:
 	 * Constructor
 	 */
 	TuneEnactor(size_t num_elements) :
-		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+		d_dest(NULL), d_src(NULL), d_flag_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
 	/**
-	 * Timed scan for applying a specific granularity configuration type
+	 * Timed segmented scan for applying a specific granularity configuration type
 	 */
 	template <typename ProblemConfig>
-	void TimedScan()
+	void TimedSegmentedScan()
 	{
 		printf("%lu, ", (unsigned long) sizeof(T));
 		ProblemConfig::Print();
@@ -314,7 +316,7 @@ public:
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+		if (this->template Enact<ProblemConfig>(d_dest, d_src, d_flag_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -332,8 +334,8 @@ public:
 			// Start cuda timing record
 			cudaEventRecord(start_event, 0);
 
-			// Call the scan API routine
-			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			// Call the segmented scan API routine
+			if (this->template Enact<ProblemConfig>(d_dest, d_src, d_flag_src, num_elements, g_max_ctas)) {
 				exit(1);
 			}
 
@@ -352,7 +354,7 @@ public:
 		double throughput =  0.0;
 		if (avg_runtime > 0.0) throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
 	    printf(", %f, %f, %f, ",
-			avg_runtime, throughput, throughput * sizeof(T) * 3);
+			avg_runtime, throughput, throughput * ((sizeof(T) * 3) + (sizeof(Flag) * 2)));
 	    fflush(stdout);
 
 	    // Clean up events
@@ -361,7 +363,7 @@ public:
 
 	    // Copy out data
 	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-			"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+			"TimedSegmentedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	    // Verify solution
 		CompareResults<T>(h_data, h_reference, num_elements, true);
@@ -374,7 +376,7 @@ public:
 	{
 		static void Invoke(TuneEnactor *detail)
 		{
-			detail->TimedScan<ProblemConfig>();
+			detail->TimedSegmentedScan<ProblemConfig>();
 		}
 	};
 
@@ -402,6 +404,7 @@ public:
 			0;
 		const int C_UNIFORM_GRID_SIZE =
 			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+//			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 //			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 			0;
@@ -456,16 +459,16 @@ public:
 		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		
 		// Establish the problem type
-		const bool EXCLUSIVE = true;
-		typedef scan::ProblemType<
+		typedef segmented_scan::ProblemType<
 			T,
+			Flag,
 			size_t,
 			EXCLUSIVE,
 			OpType::BinaryOp,
 			OpType::Identity> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef scan::ProblemConfig <
+		typedef segmented_scan::ProblemConfig <
 			ProblemType,
 			TUNE_ARCH,
 			(util::ld::CacheModifier) C_READ_MODIFIER,
@@ -498,21 +501,24 @@ public:
 
 
 /**
- * Creates an example scan problem and then dispatches the problem
+ * Creates an example segmented scan problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T, typename OpType>
-void TestScan(size_t num_elements)
+template<typename T, typename Flag, typename OpType>
+void TestSegmentedScan(size_t num_elements)
 {
+	const bool EXCLUSIVE = true;
+
 	// Allocate storage and enactor
-	typedef TuneEnactor<T, OpType> Detail;
+	typedef TuneEnactor<T, Flag, OpType, EXCLUSIVE> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-
+		"TimedSegmentedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_dest, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedSegmentedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &detail.d_flag_src, sizeof(Flag) * num_elements),
+		"TimedSegmentedScan cudaMalloc d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	if ((detail.h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
@@ -522,21 +528,37 @@ void TestScan(size_t num_elements)
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
-
-	detail.h_reference[0] = OpType::Identity();
-
-	for (size_t i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
-		detail.h_data[i] = i;
-		detail.h_reference[i] = (i == 0) ?
-			OpType::Identity() :
-			OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i - 1]);
+	if ((detail.h_flag_data = (Flag*) malloc(sizeof(Flag) * num_elements)) == NULL) {
+		fprintf(stderr, "Host malloc of problem data failed\n");
+		exit(1);
 	}
 
+	for (size_t i = 0; i < num_elements; ++i) {
+//		RandomBits<T>(detail.h_data[i], 0);
+//		RandomBits<Flag>(detail.h_flag_data[i], 0);
+		detail.h_data[i] = 1;
+		detail.h_flag_data[i] = (i % 11) == 0;
+	}
+
+	for (size_t i = 0; i < num_elements; ++i) {
+		if (EXCLUSIVE)
+		{
+			detail.h_reference[i] = ((i == 0) || (detail.h_flag_data[i])) ?
+				OpType::Identity() :
+				OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i - 1]);
+		} else {
+			detail.h_reference[i] = ((i == 0) || (detail.h_flag_data[i])) ?
+				detail.h_data[i] :
+				OpType::BinaryOp(detail.h_reference[i - 1], detail.h_data[i]);
+		}
+	}
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(detail.d_src, detail.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+		"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+	// Move a fresh copy of the problem into device storage
+	if (util::B40CPerror(cudaMemcpy(detail.d_flag_src, detail.h_flag_data, sizeof(Flag) * num_elements, cudaMemcpyHostToDevice),
+		"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Run the timing tests
 	util::ParamListSweep<
@@ -548,10 +570,12 @@ void TestScan(size_t num_elements)
 	// Free allocated memory
 	if (detail.d_src) cudaFree(detail.d_src);
 	if (detail.d_dest) cudaFree(detail.d_dest);
+	if (detail.d_flag_src) cudaFree(detail.d_flag_src);
 
 	// Free our allocated host memory
 	if (detail.h_data) free(detail.h_data);
 	if (detail.h_reference) free(detail.h_reference);
+	if (detail.h_flag_data) free(detail.h_flag_data);
 }
 
 
@@ -583,7 +607,7 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Scan: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
+	printf("Test SegmentedScan: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
@@ -593,19 +617,21 @@ int main(int argc, char** argv)
 		"DOWNSWEEP_MAX_CTA_OCCUPANCY, DOWNSWEEP_LOG_THREADS, DOWNSWEEP_LOG_LOAD_VEC_SIZE, DOWNSWEEP_LOG_LOADS_PER_TILE, DOWNSWEEP_LOG_RAKING_THREADS, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
+	typedef unsigned char Flag;
+
 	// Execute test(s)
 #if TUNE_SIZE == 1
 	typedef unsigned char T;
-	TestScan<T, Sum<T> >(num_elements * 4);
+	TestSegmentedScan<T, Flag, Sum<T> >(num_elements * 4);
 #elif TUNE_SIZE == 2
 	typedef unsigned short T;
-	TestScan<T, Sum<T> >(num_elements * 2);
+	TestSegmentedScan<T, Flag, Sum<T> >(num_elements * 2);
 #elif TUNE_SIZE == 4
 	typedef unsigned int T;
-	TestScan<T, Sum<T> >(num_elements);
+	TestSegmentedScan<T, Flag, Sum<T> >(num_elements);
 #elif TUNE_SIZE == 8
 	typedef unsigned long long T;
-	TestScan<T, Sum<T> >(num_elements / 2);
+	TestSegmentedScan<T, Flag, Sum<T> >(num_elements / 2);
 #endif
 
 	return 0;

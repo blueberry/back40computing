@@ -129,14 +129,7 @@ struct KernelConfig : _ProblemType
 
 	enum {
 
-		PARTIALS_SRTS_GRID_QUADS		= util::TotalQuads<PartialsSrtsGrid>::VALUE,
-		PARTIALS_WARPSCAN_QUADS			= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
-
-		FLAGS_SRTS_GRID_QUADS 			= util::TotalQuads<FlagsSrtsGrid>::VALUE,
-		FLAGS_WARPSCAN_QUADS			= ((sizeof(Flag) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
-
-		SMEM_QUADS						= PARTIALS_SRTS_GRID_QUADS + PARTIALS_WARPSCAN_QUADS +
-											FLAGS_SRTS_GRID_QUADS + FLAGS_WARPSCAN_QUADS,
+		SMEM_QUADS						= PartialsSrtsGrid::SMEM_QUADS + FlagsSrtsGrid::SMEM_QUADS,
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
