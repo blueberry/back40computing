@@ -83,7 +83,17 @@ struct SerialSoaReduce
 	{
 		// Get first partial
 		Tuple inclusive_partial = raking_partials.template Get<Tuple>(0);
+		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
+	}
 
+	// Interface
+	static __host__ __device__ __forceinline__ Tuple Invoke(
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)
+	{
+		// Get first partial
+		Tuple current_partial = raking_partials.template Get<Tuple>(0);
+		Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
 		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
 	}
 };
@@ -142,6 +152,18 @@ struct SerialSoaReduceLane
 
 		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
 	}
+
+	// Interface
+	static __host__ __device__ __forceinline__ Tuple Invoke(
+		RakingSoa raking_partials,
+		Tuple exclusive_partial)
+	{
+		// Get first partial
+		Tuple current_partial = raking_partials.template Get<LANE, Tuple>(0);
+		Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
+		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
+	}
+
 };
 
 

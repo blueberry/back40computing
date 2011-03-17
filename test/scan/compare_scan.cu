@@ -139,8 +139,8 @@ double TimedThrustScan(
 	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
 	printf("\nThrust Scan: %d iterations, %lu elements, ", g_iterations, (unsigned long) num_elements);
-    printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
-		avg_runtime, throughput, throughput * sizeof(T) * 3);
+    printf("%f GPU ms, %f x10^9 elts/sec",
+		avg_runtime, throughput);
 	
     // Clean up events
 	cudaEventDestroy(start_event);

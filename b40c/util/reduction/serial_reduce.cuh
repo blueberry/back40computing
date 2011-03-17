@@ -46,7 +46,7 @@ struct SerialReduce
 	template <int COUNT, int TOTAL>
 	struct Iterate 
 	{
-		static __device__ __forceinline__ T Invoke(T partials[]) 
+		static __device__ __forceinline__ T Invoke(T *partials)
 		{
 			T a = Iterate<COUNT - 2, TOTAL>::Invoke(partials);
 			T b = partials[TOTAL - COUNT];
@@ -61,7 +61,7 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<2, TOTAL>
 	{
-		static __device__ __forceinline__ T Invoke(T partials[])
+		static __device__ __forceinline__ T Invoke(T *partials)
 		{
 			return ReductionOp(partials[TOTAL - 2], partials[TOTAL - 1]);
 		}
@@ -71,16 +71,24 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<1, TOTAL>
 	{
-		static __device__ __forceinline__ T Invoke(T partials[]) 
+		static __device__ __forceinline__ T Invoke(T *partials)
 		{
 			return partials[TOTAL - 1];
 		}
 	};
 	
 	// Interface
-	static __device__ __forceinline__ T Invoke(T partials[])			
+	static __device__ __forceinline__ T Invoke(T *partials)
 	{
 		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials);
+	}
+
+	// Interface
+	static __device__ __forceinline__ T Invoke(T *partials, T exclusive_partial)
+	{
+		return ReductionOp(
+			exclusive_partial,
+			Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials));
 	}
 };
 

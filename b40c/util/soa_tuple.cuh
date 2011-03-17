@@ -54,10 +54,8 @@ struct Tuple<_T0, NullType, NullType, NullType>
 	// Fields
 	T0 t0;
 
-	// Default constructor
+	// Constructors
 	__host__ __device__ __forceinline__ Tuple() {}
-
-	// Constructor
 	__host__ __device__ __forceinline__ Tuple(T0 t0) : t0(t0) {}
 
 	// Manipulators
@@ -106,10 +104,10 @@ struct Tuple<_T0, _T1, NullType, NullType>
 	T0 t0;
 	T1 t1;
 
-	// Default constructor
-	__host__ __device__ __forceinline__ Tuple() {}
 
-	// Constructor
+	// Constructors
+	__host__ __device__ __forceinline__ Tuple() {}
+	__host__ __device__ __forceinline__ Tuple(T0 t0) : t0(t0) {}
 	__host__ __device__ __forceinline__ Tuple(T0 t0, T1 t1) : t0(t0), t1(t1) {}
 
 	// Manipulators

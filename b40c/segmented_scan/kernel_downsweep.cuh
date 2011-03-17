@@ -50,8 +50,8 @@ __device__ __forceinline__ void DownsweepScanPass(
 	typedef typename ScanCta::SrtsSoaDetails SrtsSoaDetails;
 
 	// Shared SRTS grid storage
-	__shared__ uint4 partial_smem_pool[KernelConfig::PARTIALS_SRTS_GRID_QUADS];
-	__shared__ uint4 flag_smem_pool[KernelConfig::FLAGS_SRTS_GRID_QUADS];
+	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::SMEM_QUADS];
+	__shared__ uint4 flag_smem_pool[KernelConfig::FlagsSrtsGrid::SMEM_QUADS];
 
 	// Shared SRTS warpscan storage
 	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];

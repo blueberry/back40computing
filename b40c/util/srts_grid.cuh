@@ -148,6 +148,9 @@ struct SrtsGrid
 
 		// Number of quad words (uint4) needed to back this grid
 		PRIMARY_SMEM_QUADS				= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
+
+		// Number of quads words needed to back warpscan storage
+		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
 	};
 
 	// If there are prefix dependences between lanes, a secondary SRTS grid
@@ -163,6 +166,27 @@ struct SrtsGrid
 			false>,												// There is only one lane, so there are no inter-lane prefix dependences
 		NullType>										// No secondary grid
 			::Type SecondaryGrid;
+
+
+	/**
+	 * Utility class for totaling the SMEM quads needed for an SRTS grid hierarchy
+	 */
+	template <typename SrtsGrid, int __dummy = 0>
+	struct TotalQuads
+	{
+		enum { VALUE = SrtsGrid::PRIMARY_SMEM_QUADS + SrtsGrid::WARPSCAN_QUADS + TotalQuads<typename SrtsGrid::SecondaryGrid>::VALUE };
+	};
+	template <int __dummy>
+	struct TotalQuads<NullType, __dummy>
+	{
+		enum { VALUE = 0 };
+	};
+
+
+	enum {
+		// Total number of smem quads needed back this SRTS grid and warpscan
+		SMEM_QUADS = TotalQuads<SrtsGrid>::VALUE,
+	};
 
 
 	static __host__ __device__ __forceinline__ void Print()
@@ -183,7 +207,7 @@ struct SrtsGrid
 				"ROWS: %d\n"
 				"ROWS_PER_LANE: %d\n"
 				"LANE_STRIDE: %d\n"
-				"PRIMARY_SMEM_QUADS: %d\n",
+				"SMEM_QUADS: %d\n",
 			SCAN_LANES,
 			PARTIALS_PER_LANE,
 			RAKING_THREADS,
@@ -200,7 +224,7 @@ struct SrtsGrid
 			ROWS,
 			ROWS_PER_LANE,
 			LANE_STRIDE,
-			PRIMARY_SMEM_QUADS);
+			SMEM_QUADS);
 	}
 
 
@@ -248,20 +272,7 @@ struct SrtsGrid
 
 
 
-/**
- * Utility class for totaling the SMEM quads needed for an SRTS grid hierarchy
- */
-template <typename SrtsGrid>
-struct TotalQuads
-{
-	enum { VALUE = SrtsGrid::PRIMARY_SMEM_QUADS + TotalQuads<typename SrtsGrid::SecondaryGrid>::VALUE };
-};
 
-template <>
-struct TotalQuads<NullType>
-{
-	enum { VALUE = 0 };
-};
 
 
 

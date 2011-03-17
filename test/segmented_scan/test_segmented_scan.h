@@ -71,18 +71,29 @@ struct Max
  * Utility Routines
  ******************************************************************************/
 
+template <
+	typename T,
+	typename Flag,
+	bool EXCLUSIVE,
+	T BinaryOp(const T&, const T&),
+	T Identity(),
+	b40c::segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
+double TimedSegmentedScan2() {return 0;}
+
 /**
  * Timed segmented scan.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  */
 template <
 	typename T,
+	typename Flag,
 	bool EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
 	T Identity(),
 	b40c::segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
 double TimedSegmentedScan(
 	T *h_data,
+	Flag *h_flag_data,
 	T *h_reference,
 	size_t num_elements,
 	int max_ctas,
@@ -93,10 +104,13 @@ double TimedSegmentedScan(
 
 	// Allocate device storage
 	T *d_src, *d_dest;
+	Flag *d_flag_src;
 	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
 		"TimedSegmentedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
 		"TimedSegmentedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_flag_src, sizeof(Flag) * num_elements),
+		"TimedSegmentedScan cudaMalloc d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
 	SegmentedScanEnactorTuned segmented_scan_enactor;
@@ -104,12 +118,14 @@ double TimedSegmentedScan(
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMemcpy(d_flag_src, h_flag_data, sizeof(Flag) * num_elements, cudaMemcpyHostToDevice),
+		"TimedSegmentedScan cudaMemcpy d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	segmented_scan_enactor.DEBUG = true;
-	segmented_scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, max_ctas);
+	segmented_scan_enactor.template Enact<T, Flag, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+		d_dest, d_src, d_flag_src, num_elements, max_ctas);
 	segmented_scan_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -126,8 +142,8 @@ double TimedSegmentedScan(
 		cudaEventRecord(start_event, 0);
 
 		// Call the segmented scan API routine
-		segmented_scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, max_ctas);
+		segmented_scan_enactor.template Enact<T, Flag, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+			d_dest, d_src, d_flag_src, num_elements, max_ctas);
 
 		// End timing record
 		cudaEventRecord(stop_event, 0);
@@ -142,40 +158,24 @@ double TimedSegmentedScan(
 	printf("\nB40C %s segmented scan: %d iterations, %lu elements, ",
 		EXCLUSIVE ? "exclusive" : "inclusive", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
-		avg_runtime, throughput, throughput * sizeof(T) * 3);
+		avg_runtime, throughput, throughput * ((sizeof(T) * 3) + (sizeof(Flag) * 2)));
 
     // Clean up events
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
 
-    // Copy out data
-	T *h_dest = (T*) malloc(num_elements * sizeof(T));
-    if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-		"TimedSegmentedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	// Flushes any stdio from the GPU
+	cudaThreadSynchronize();
+
+    // Verify solution
+	CompareDeviceResults(h_reference, d_dest, num_elements, verbose, verbose);
+	printf("\n");
+	fflush(stdout);
 
     // Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
-
-	// Flushes any stdio from the GPU
-	cudaThreadSynchronize();
-
-	// Display copied data
-	if (verbose) {
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue<T>(h_dest[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}
-
-    // Verify solution
-	CompareResults(h_dest, h_reference, num_elements, true);
-	printf("\n");
-	fflush(stdout);
-
-	if (h_dest) free(h_dest);
+    if (d_flag_src) cudaFree(d_src);
 
 	return throughput;
 }
