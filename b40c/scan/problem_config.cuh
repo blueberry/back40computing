@@ -130,7 +130,7 @@ struct ProblemConfig : ProblemType
 	static void Print()
 	{
 		printf("%s, %s, %s, %s, %s, %d, "
-				"%d, %d, %d, %d, %d, "
+				"%d, %d, %d, %d, "
 				"%d, %d, %d, %d, "
 				"%d, %d, %d, %d, %d",
 
@@ -145,7 +145,6 @@ struct ProblemConfig : ProblemType
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,
 			UPSWEEP_LOG_LOADS_PER_TILE,
-			UPSWEEP_LOG_RAKING_THREADS,
 
 			SPINE_LOG_THREADS,
 			SPINE_LOG_LOAD_VEC_SIZE,
