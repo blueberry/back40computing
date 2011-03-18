@@ -35,8 +35,7 @@ namespace reduction {
 template <
 	typename _T,
 	typename _SizeT,
-	_T _BinaryOp(const _T&, const _T&),
-	_T _Identity()>
+	_T _BinaryOp(const _T&, const _T&)>
 struct ProblemType
 {
 	// The type of data we are operating upon
@@ -49,12 +48,6 @@ struct ProblemType
 	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
 	{
 		return _BinaryOp(a, b);
-	}
-
-	// Wrapper for the identity operator
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return _Identity();
 	}
 };
 		

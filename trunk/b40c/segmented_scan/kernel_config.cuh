@@ -207,8 +207,7 @@ struct KernelConfig : _ProblemType
 	// Operational details type for SRTS grid type
 	typedef util::SrtsSoaDetails<
 		SoaTuple,
-		SrtsGridTuple,
-		SoaTupleIdentity> SrtsSoaDetails;
+		SrtsGridTuple> SrtsSoaDetails;
 
 };
 

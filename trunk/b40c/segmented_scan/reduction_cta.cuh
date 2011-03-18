@@ -161,7 +161,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		util::reduction::soa::CooperativeSoaTileReduction<
 			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
-			KernelConfig::SoaScanOp>::template ReduceTileWithCarry<DataSoa>(
+			KernelConfig::SoaScanOp>::template ReduceTileWithCarry<true, DataSoa>(
 				srts_soa_details,
 				DataSoa(partials, flags),
 				carry);

@@ -346,4 +346,34 @@ int CompareDeviceResults(
 }
 
 
+/**
+ * Verify the contents of a device array match those
+ * of a host array
+ */
+template <typename T>
+void DisplayDeviceResults(
+	T *d_data,
+	size_t num_elements)
+{
+	// Allocate array on host
+	T *h_data = (T*) malloc(num_elements * sizeof(T));
+
+	// Reduction data back
+	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+	// Display data
+	if (display_data) {
+		printf("\n\nData:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+	}
+
+	// Cleanup
+	if (h_data) free(h_data);
+}
+
+
 }// namespace b40c

@@ -40,7 +40,6 @@ namespace util {
 template <
 	typename SoaTuple,
 	typename SrtsGridTuple,
-	SoaTuple SoaTupleIdentity(),
 	int Grids = SrtsGridTuple::NUM_FIELDS>
 struct SrtsSoaDetails;
 
@@ -50,9 +49,8 @@ struct SrtsSoaDetails;
  */
 template <
 	typename _SoaTuple,
-	typename SrtsGridTuple,
-	_SoaTuple SoaTupleIdentity()>
-struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridTuple::T0
+	typename SrtsGridTuple>
+struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 {
 	enum {
 		CUMULATIVE_THREAD 	= SrtsSoaDetails::RAKING_THREADS - 1,
@@ -81,7 +79,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridT
 
 	typedef typename If<Equals<NullType, typename SecondarySrtsGridTuple::T0>::VALUE,
 		NullType,
-		SrtsSoaDetails<SoaTuple, SecondarySrtsGridTuple, SoaTupleIdentity> >::Type SecondarySrtsSoaDetails;
+		SrtsSoaDetails<SoaTuple, SecondarySrtsGridTuple> >::Type SecondarySrtsSoaDetails;
 
 	/**
 	 * Warpscan storages
@@ -117,9 +115,32 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, SoaTupleIdentity, 2> : SrtsGridT
 			raking_segments = RakingSoa(
 				SrtsGridTuple::T0::MyRakingSegment(smem_pools.t0),
 				SrtsGridTuple::T1::MyRakingSegment(smem_pools.t1));
+		}
+	}
+
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ SrtsSoaDetails(
+		GridStorageSoa &smem_pools,
+		WarpscanSoa &warpscan_partials,
+		SoaTuple soa_tuple_identity) :
+
+			warpscan_partials(warpscan_partials),
+			lane_partials(												// set lane partial pointer
+				SrtsGridTuple::T0::MyLanePartial(smem_pools.t0),
+				SrtsGridTuple::T1::MyLanePartial(smem_pools.t1))
+	{
+		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+
+			// Set raking segment pointers
+			raking_segments = RakingSoa(
+				SrtsGridTuple::T0::MyRakingSegment(smem_pools.t0),
+				SrtsGridTuple::T1::MyRakingSegment(smem_pools.t1));
 
 			// Initialize first half of warpscan storages to identity
-			warpscan_partials.Set<0>(SoaTupleIdentity(), threadIdx.x);
+			warpscan_partials.Set<0>(soa_tuple_identity, threadIdx.x);
 		}
 	}
 

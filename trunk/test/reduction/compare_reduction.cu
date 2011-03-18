@@ -75,8 +75,7 @@ void Usage()
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	T BinaryOp(const T&, const T&)>
 double TimedThrustReduction(
 	T *h_data,
 	T *h_reference,
@@ -163,8 +162,7 @@ double TimedThrustReduction(
  */
 template<
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	T BinaryOp(const T&, const T&)>
 void TestReduction(size_t num_elements)
 {
     // Allocate the reduction problem on the host and fill the keys with random bytes
@@ -177,20 +175,19 @@ void TestReduction(size_t num_elements)
 		exit(1);
 	}
 
-	// Identity
-	h_reference[0] = Identity();
-
 	for (size_t i = 0; i < num_elements; ++i) {
 		// RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
-		h_reference[0] = BinaryOp(h_reference[0], h_data[i]);
+		h_reference[0] = (i == 0) ?
+			h_data[i] :
+			BinaryOp(h_reference[0], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedReduction<T, BinaryOp, Identity, reduction::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-	double thrust = TimedThrustReduction<T, BinaryOp, Identity>(h_data, h_reference, num_elements);
+	double b40c = TimedReduction<T, BinaryOp, reduction::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+	double thrust = TimedThrustReduction<T, BinaryOp>(h_data, h_reference, num_elements);
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 
 	// Free our allocated host memory 
@@ -233,25 +230,25 @@ int main(int argc, char** argv)
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		TestReduction<T, BinaryOp::Op>(num_elements * 4);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		TestReduction<T, BinaryOp::Op>(num_elements * 2);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		TestReduction<T, BinaryOp::Op>(num_elements);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		TestReduction<T, BinaryOp::Op>(num_elements / 2);
 	}
 
 	return 0;

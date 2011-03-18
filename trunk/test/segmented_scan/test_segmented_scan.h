@@ -175,7 +175,7 @@ double TimedSegmentedScan(
     // Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
-    if (d_flag_src) cudaFree(d_src);
+    if (d_flag_src) cudaFree(d_flag_src);
 
 	return throughput;
 }

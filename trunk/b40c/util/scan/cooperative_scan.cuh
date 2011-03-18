@@ -64,7 +64,7 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	struct ScanLane
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsDetails &srts_details,
+			SrtsDetails srts_details,
 			T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
 		{
 			// Retrieve partial reduction from SRTS grid
@@ -83,7 +83,7 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	struct ScanLane<TOTAL_LANES, TOTAL_LANES>
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsDetails &srts_details,
+			SrtsDetails srts_details,
 			T data[SrtsDetails::SCAN_LANES][VEC_SIZE]) {}
 	};
 
@@ -95,7 +95,7 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ void ScanTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
 		T &carry)
 	{
@@ -121,7 +121,7 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ T ScanTile(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
@@ -164,7 +164,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
 	static __device__ __forceinline__ void ScanTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T &carry)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
@@ -194,7 +194,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 	/**
 	 * Scan in last-level SRTS grid.
 	 */
-	static __device__ __forceinline__ void ScanTile(const SrtsDetails &srts_details)
+	static __device__ __forceinline__ void ScanTile(SrtsDetails srts_details)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
@@ -230,7 +230,7 @@ struct CooperativeGridScan
 	 * Scan in SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
 	static __device__ __forceinline__ void ScanTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T &carry)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
@@ -266,7 +266,7 @@ struct CooperativeGridScan
 	/**
 	 * Scan in SRTS grid.
 	 */
-	static __device__ __forceinline__ void ScanTile(const SrtsDetails &srts_details)
+	static __device__ __forceinline__ void ScanTile(SrtsDetails srts_details)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 

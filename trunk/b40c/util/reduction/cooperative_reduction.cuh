@@ -66,7 +66,7 @@ struct CooperativeTileReduction
 	struct ReduceLane
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsDetails &srts_details,
+			SrtsDetails srts_details,
 			T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
 		{
 			// Reduce the partials in this lane/load
@@ -85,7 +85,7 @@ struct CooperativeTileReduction
 	struct ReduceLane<TOTAL_LANES, TOTAL_LANES>
 	{
 		static __device__ __forceinline__ void Invoke(
-			const SrtsDetails &srts_details,
+			SrtsDetails srts_details,
 			T data[SrtsDetails::SCAN_LANES][VEC_SIZE]) {}
 	};
 
@@ -98,7 +98,7 @@ struct CooperativeTileReduction
 	 */
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
 		T &carry)
 	{
@@ -119,7 +119,7 @@ struct CooperativeTileReduction
 	 * No post-synchronization needed before srts_details reuse.
 	 */
 	static __device__ __forceinline__ T ReduceTile(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
@@ -155,7 +155,7 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 	 */
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T &carry)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
@@ -178,7 +178,7 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 	/**
 	 * Reduction in last-level SRTS grid.  Result is computed in all threads.
 	 */
-	static __device__ __forceinline__ T ReduceTile(const SrtsDetails &srts_details)
+	static __device__ __forceinline__ T ReduceTile(SrtsDetails srts_details)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
@@ -215,7 +215,7 @@ struct CooperativeGridReduction
 	 */
 	template <bool REDUCE_CARRY>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T &carry)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
@@ -241,7 +241,7 @@ struct CooperativeGridReduction
 	/**
 	 * Reduction in SRTS grid.  Result is computed in all threads.
 	 */
-	static __device__ __forceinline__ T ReduceTile(const SrtsDetails &srts_details)
+	static __device__ __forceinline__ T ReduceTile(SrtsDetails srts_details)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 

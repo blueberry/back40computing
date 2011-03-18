@@ -63,7 +63,6 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
-	int UPSWEEP_LOG_RAKING_THREADS,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
@@ -88,7 +87,6 @@ struct ProblemConfig : ProblemType
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
-		UPSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		false,								// No workstealing: upsweep and downsweep CTAs need to process the same tiles

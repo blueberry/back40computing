@@ -49,30 +49,19 @@ __host__ __device__ __forceinline__ T Max(const T &a, const T &b)
 
 
 /**
- * Identity for max operator for unsigned integer types (i.e., max(a, identity) == a)
- */
-template <typename T>
-__host__ __device__ __forceinline__ T MaxId()
-{
-	return 0;
-}
-
-
-/**
  * Example showing syntax for invoking templated member functions from 
  * a templated function
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	T BinaryOp(const T&, const T&)>
 void TemplatedSubroutineReduction(
 	b40c::ReductionEnactorTuned &reduction_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
 {
-	reduction_enactor.template Enact<T, BinaryOp, Identity>(d_dest, d_src, num_elements);
+	reduction_enactor.template Enact<T, BinaryOp>(d_dest, d_src, num_elements);
 }
 
 
@@ -96,18 +85,20 @@ int main(int argc, char** argv)
 	const int NUM_ELEMENTS = 10;
 
 	// Allocate and initialize host problem data and host reference solution
-	T h_src[NUM_ELEMENTS];
-	T h_reference = MaxId<T>();
+	T h_data[NUM_ELEMENTS];
+	T h_reference[1];
 	for (int i = 0; i < NUM_ELEMENTS; i++) {
-		h_src[i] = i;
-		h_reference = Max(h_src[i], h_reference);
+		h_data[i] = i;
+		h_reference[0] = (i == 0) ?
+			h_data[i] :
+			Max(h_reference[0], h_data[i]);
 	}
 	
 	// Allocate and initialize device data
 	T *d_src, *d_dest;
 	cudaMalloc((void**) &d_src, sizeof(T) * NUM_ELEMENTS);
 	cudaMalloc((void**) &d_dest, sizeof(T) * NUM_ELEMENTS);
-	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_src, h_data, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a reduction enactor
 	b40c::ReductionEnactorTuned reduction_enactor;
@@ -116,42 +107,42 @@ int main(int argc, char** argv)
 	//
 	// Example 1: Enact simple reduction using internal tuning heuristics
 	//
-	reduction_enactor.Enact<T, Max, MaxId>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Enact<T, Max>(d_dest, d_src, NUM_ELEMENTS);
 	
-	printf("Simple reduction: "); CompareDeviceResults(&h_reference, d_dest, 1); printf("\n");
+	printf("Simple reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 	
 	
 	//
 	// Example 2: Enact simple reduction using "large problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, MaxId, b40c::reduction::LARGE>(
+	reduction_enactor.Enact<T, Max, b40c::reduction::LARGE>(
 		d_dest, d_src, NUM_ELEMENTS);
 
-	printf("Large-tuned reduction: "); CompareDeviceResults(&h_reference, d_dest, 1); printf("\n");
+	printf("Large-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 	
 	//
 	// Example 3: Enact simple reduction using "small problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, MaxId, b40c::reduction::SMALL>(
+	reduction_enactor.Enact<T, Max, b40c::reduction::SMALL>(
 		d_dest, d_src, NUM_ELEMENTS);
 	
-	printf("Small-tuned reduction: "); CompareDeviceResults(&h_reference, d_dest, 1); printf("\n");
+	printf("Small-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 
 	//
 	// Example 4: Enact simple reduction using a templated subroutine function
 	//
-	TemplatedSubroutineReduction<T, Max, MaxId>(reduction_enactor, d_dest, d_src, NUM_ELEMENTS);
+	TemplatedSubroutineReduction<T, Max>(reduction_enactor, d_dest, d_src, NUM_ELEMENTS);
 	
-	printf("Templated subroutine reduction: "); CompareDeviceResults(&h_reference, d_dest, 1); printf("\n");
+	printf("Templated subroutine reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 
 	//
 	// Example 5: Enact simple reduction using custom tuning configuration (base reduction enactor)
 	//
 
-	typedef b40c::reduction::ProblemType<T, size_t, Max, MaxId> ProblemType;
+	typedef b40c::reduction::ProblemType<T, size_t, Max> ProblemType;
 	typedef b40c::reduction::ProblemConfig<
 		ProblemType,
 		b40c::reduction::SM20,
@@ -161,11 +152,12 @@ int main(int argc, char** argv)
 		false,
 		true, 
 		false, 
-		8, 7, 0, 2, 5, 9, 8, 0, 1, 5> CustomConfig;
+		8, 7, 0, 2, 9,
+		8, 0, 1> CustomConfig;
 	
 	reduction_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
 
-	printf("Custom reduction: "); CompareDeviceResults(&h_reference, d_dest, 1); printf("\n");
+	printf("Custom reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 	return 0;
 }

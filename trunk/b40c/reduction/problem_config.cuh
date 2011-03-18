@@ -62,14 +62,12 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
-	int UPSWEEP_LOG_RAKING_THREADS,
 	int UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
 	int SPINE_LOG_LOAD_VEC_SIZE,
-	int SPINE_LOG_LOADS_PER_TILE,
-	int SPINE_LOG_RAKING_THREADS>
+	int SPINE_LOG_LOADS_PER_TILE>
 
 struct ProblemConfig : ProblemType
 {
@@ -81,7 +79,6 @@ struct ProblemConfig : ProblemType
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
-		UPSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		WORK_STEALING,
@@ -96,7 +93,6 @@ struct ProblemConfig : ProblemType
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
-		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		false,								// Workstealing makes no sense in a single-CTA grid
@@ -111,7 +107,7 @@ struct ProblemConfig : ProblemType
 	};
 	static void Print()
 	{
-		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d, %d, %d",
+		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d",
 			CacheModifierToString((int) READ_MODIFIER),
 			CacheModifierToString((int) WRITE_MODIFIER),
 			(WORK_STEALING) ? "true" : "false",
@@ -122,12 +118,10 @@ struct ProblemConfig : ProblemType
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,
 			UPSWEEP_LOG_LOADS_PER_TILE,
-			UPSWEEP_LOG_RAKING_THREADS,
 			UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 			SPINE_LOG_THREADS,
 			SPINE_LOG_LOAD_VEC_SIZE,
-			SPINE_LOG_LOADS_PER_TILE,
-			SPINE_LOG_RAKING_THREADS);
+			SPINE_LOG_LOADS_PER_TILE);
 	}
 };
 		
