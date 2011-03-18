@@ -31,7 +31,7 @@
 #include <b40c/scan/problem_config.cuh>
 #include <b40c/scan/kernel_downsweep.cuh>
 #include <b40c/scan/kernel_spine.cuh>
-#include <b40c/reduction/kernel_upsweep.cuh>
+#include <b40c/scan/kernel_upsweep.cuh>
 
 namespace b40c {
 namespace scan {
@@ -178,7 +178,7 @@ cudaError_t ScanEnactor::ScanPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, reduction::UpsweepReductionKernel<Upsweep>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepReductionKernel<Upsweep>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineScanKernel<Spine>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
@@ -200,8 +200,8 @@ cudaError_t ScanEnactor::ScanPass(
 			}
 
 			// Upsweep scan into spine
-			reduction::UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine(), work, util::WorkProgress());
+			UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+				d_src, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 

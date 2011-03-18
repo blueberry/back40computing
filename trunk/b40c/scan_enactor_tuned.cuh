@@ -328,7 +328,7 @@ cudaError_t ScanEnactorTuned::ScanPass(
 			// Upsweep scan into spine
 			TunedUpsweepReductionKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine(), work, util::WorkProgress());
+				d_src, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
 

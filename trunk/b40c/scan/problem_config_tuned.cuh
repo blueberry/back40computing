@@ -29,7 +29,7 @@
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
-#include <b40c/reduction/kernel_upsweep.cuh>
+#include <b40c/scan/kernel_upsweep.cuh>
 #include <b40c/scan/kernel_spine.cuh>
 #include <b40c/scan/kernel_downsweep.cuh>
 #include <b40c/scan/problem_config.cuh>
@@ -328,17 +328,12 @@ __launch_bounds__ (
 __global__ void TunedUpsweepReductionKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
-	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
-	util::WorkProgress										work_progress)
+	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
 
-	reduction::UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
-		d_in,
-		d_spine,
-		work_decomposition,
-		work_progress);
+	UpsweepReductionPass<ReductionKernelConfig>(d_in, d_spine, work_decomposition);
 }
 
 /**
