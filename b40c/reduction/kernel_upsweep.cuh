@@ -47,8 +47,8 @@ struct UpsweepReductionPass
 		const util::WorkProgress 									&work_progress)
 	{
 		typedef ReductionCta<KernelConfig> ReductionCta;
-		typedef typename ReductionCta::T T;
-		typedef typename ReductionCta::SizeT SizeT;
+		typedef typename KernelConfig::T T;
+		typedef typename KernelConfig::SizeT SizeT;
 
 		// Shared SRTS grid storage
 		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
@@ -62,7 +62,7 @@ struct UpsweepReductionPass
 		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 		SizeT guarded_elements;		// Number of elements in partially-full tile
 
-		work_decomposition.GetCtaWorkLimits<ReductionCta::LOG_TILE_ELEMENTS, ReductionCta::LOG_SCHEDULE_GRANULARITY>(
+		work_decomposition.template GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 			cta_offset, cta_elements, guarded_offset, guarded_elements);
 
 		SizeT out_of_bounds = cta_offset + cta_elements;
@@ -72,12 +72,12 @@ struct UpsweepReductionPass
 			// Process at least one full tile of tile_elements
 
 			cta.template ProcessFullTile<true>(cta_offset, out_of_bounds);
-			cta_offset += ReductionCta::TILE_ELEMENTS;
+			cta_offset += KernelConfig::TILE_ELEMENTS;
 
 			while (cta_offset < guarded_offset) {
 
-				cta.ProcessFullTile<false>(cta_offset, out_of_bounds);
-				cta_offset += ReductionCta::TILE_ELEMENTS;
+				cta.template ProcessFullTile<false>(cta_offset, out_of_bounds);
+				cta_offset += KernelConfig::TILE_ELEMENTS;
 			}
 
 			// Clean up last partial tile with guarded-io (not first tile)
@@ -92,7 +92,7 @@ struct UpsweepReductionPass
 		} else {
 
 			// Clean up last partial tile with guarded-io (first tile)
-			cta.ProcessPartialTile<true>(cta_offset, out_of_bounds);
+			cta.template ProcessPartialTile<true>(cta_offset, out_of_bounds);
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
@@ -133,8 +133,8 @@ struct UpsweepReductionPass <KernelConfig, true>
 		const util::WorkProgress 									&work_progress)
 	{
 		typedef ReductionCta<KernelConfig> ReductionCta;
-		typedef typename ReductionCta::T T;
-		typedef typename ReductionCta::SizeT SizeT;
+		typedef typename KernelConfig::T T;
+		typedef typename KernelConfig::SizeT SizeT;
 
 		// Shared SRTS grid storage
 		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
@@ -151,7 +151,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 		}
 
 		// Total number of elements in full tiles
-		SizeT unguarded_elements = work_decomposition.num_elements & (~(ReductionCta::TILE_ELEMENTS - 1));
+		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelConfig::TILE_ELEMENTS - 1));
 
 		// Each CTA needs to process at least one partial block of
 		// input (otherwise our spine scan will be invalid)
