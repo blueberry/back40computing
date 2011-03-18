@@ -362,14 +362,12 @@ void DisplayDeviceResults(
 	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
 
 	// Display data
-	if (display_data) {
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
-		}
-		printf("\n\n");
+	printf("\n\nData:\n");
+	for (int i = 0; i < num_elements; i++) {
+		PrintValue(h_data[i]);
+		printf(", ");
 	}
+	printf("\n\n");
 
 	// Cleanup
 	if (h_data) free(h_data);
