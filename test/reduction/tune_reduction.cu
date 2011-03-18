@@ -351,26 +351,26 @@ public:
 			util::st::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
-			0;
+//			0;
 		const int C_UNIFORM_GRID_SIZE =
 			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
-			0;
+//			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
-			0;
+//			0;
 
 		const int C_WORK_STEALING =
 			util::Access<ParamList, WORK_STEALING>::VALUE;
-			0;
+//			0;
 		const int C_UPSWEEP_LOG_THREADS =
 			util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE;
-			5;//
+//			5;//
 		const int C_UPSWEEP_LOG_LOAD_VEC_SIZE =
 			util::Access<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
-			0;
+//			0;
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
-			0;
+//			0;
 		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);
