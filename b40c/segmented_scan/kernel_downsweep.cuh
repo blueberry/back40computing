@@ -60,7 +60,8 @@ __device__ __forceinline__ void DownsweepScanPass(
 	// SRTS grid details
 	SrtsSoaDetails srts_soa_details(
 		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
-		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan));
+		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan),
+		ScanCta::SoaTupleIdentity());
 
 	// Read the exclusive partial from our spine
 	T spine_partial;

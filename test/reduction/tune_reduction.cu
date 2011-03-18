@@ -27,6 +27,7 @@
 #include <stdio.h> 
 
 // Reduction includes
+#include <b40c/reduction/problem_type.cuh>
 #include <b40c/reduction/problem_config.cuh>
 #include <b40c/reduction/reduction_enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
@@ -60,11 +61,6 @@ struct Sum
 	{
 		return a + b;
 	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
-	}
 };
 
 template <typename T>
@@ -73,11 +69,6 @@ struct Max
 	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
-	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
 	}
 };
 
@@ -128,7 +119,6 @@ enum TuningParam {
 	// Parameters below here are currently not part of the tuning sweep
 	READ_MODIFIER,
 	WRITE_MODIFIER,
-	UPSWEEP_LOG_RAKING_THREADS,
 	UPSWEEP_MAX_CTA_OCCUPANCY,
 
 	// Derive these from the others above
@@ -139,7 +129,6 @@ enum TuningParam {
 	SPINE_LOG_THREADS,
 	SPINE_LOG_LOAD_VEC_SIZE,
 	SPINE_LOG_LOADS_PER_TILE,
-	SPINE_LOG_RAKING_THREADS
 };
 
 
@@ -246,12 +235,30 @@ public:
 		};
 	};
 
-	// UPSWEEP_LOG_RAKING_THREADS
+	// SPINE_LOG_THREADS
 	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
+	struct Ranges<ParamList, SPINE_LOG_THREADS> {
 		enum {
 			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
+			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+		};
+	};
+
+	// SPINE_LOG_LOAD_VEC_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, SPINE_LOG_LOAD_VEC_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// SPINE_LOG_LOADS_PER_TILE
+	template <typename ParamList>
+	struct Ranges<ParamList, SPINE_LOG_LOADS_PER_TILE> {
+		enum {
+			MIN = 0,
+			MAX = 2
 		};
 	};
 
@@ -344,22 +351,26 @@ public:
 			util::st::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
+			0;
 		const int C_UNIFORM_GRID_SIZE =
 			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
+			0;
 
 		const int C_WORK_STEALING =
 			util::Access<ParamList, WORK_STEALING>::VALUE;
+			0;
 		const int C_UPSWEEP_LOG_THREADS =
 			util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE;
+			5;//
 		const int C_UPSWEEP_LOG_LOAD_VEC_SIZE =
 			util::Access<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
+			0;
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
-		const int C_UPSWEEP_LOG_RAKING_THREADS =
-//			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;
-			B40C_LOG_WARP_THREADS(TUNE_ARCH);
+			0;
 		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);
@@ -371,17 +382,21 @@ public:
 
 		// General performance is insensitive to spine config it's only a single-CTA:
 		// simply use reasonable defaults
-		const int C_SPINE_LOG_THREADS = 8;
-		const int C_SPINE_LOG_LOAD_VEC_SIZE = 0;
-		const int C_SPINE_LOG_LOADS_PER_TILE = 1;
-		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
+		const int C_SPINE_LOG_THREADS =
+//			util::Access<ParamList, SPINE_LOG_THREADS>::VALUE;
+			8;
+		const int C_SPINE_LOG_LOAD_VEC_SIZE =
+//			util::Access<ParamList, SPINE_LOG_LOAD_VEC_SIZE>::VALUE;
+			0;
+		const int C_SPINE_LOG_LOADS_PER_TILE =
+//			util::Access<ParamList, SPINE_LOG_LOADS_PER_TILE>::VALUE;
+			1;
 
 		// Establish the problem type
 		typedef reduction::ProblemType<
 			T,
 			size_t,
-			OpType::BinaryOp,
-			OpType::Identity> ProblemType;
+			OpType::BinaryOp> ProblemType;
 
 		// Establish the granularity configuration type
 		typedef reduction::ProblemConfig <
@@ -398,13 +413,11 @@ public:
 			C_UPSWEEP_LOG_THREADS,
 			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
 			C_UPSWEEP_LOG_LOADS_PER_TILE,
-			C_UPSWEEP_LOG_RAKING_THREADS,
 			C_UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
 			C_SPINE_LOG_THREADS,
 			C_SPINE_LOG_LOAD_VEC_SIZE,
-			C_SPINE_LOG_LOADS_PER_TILE,
-			C_SPINE_LOG_RAKING_THREADS> ProblemConfig;
+			C_SPINE_LOG_LOADS_PER_TILE> ProblemConfig;
 
 		// Invoke this config
 		TimedReduction<ProblemConfig>();
@@ -438,11 +451,12 @@ void TestReduction(size_t num_elements)
 		exit(1);
 	}
 
-	detail.h_reference[0] = OpType::Identity();
 	for (size_t i = 0; i < num_elements; ++i) {
 		// RandomBits<T>(detail.h_data[i], 0);
 		detail.h_data[i] = i;
-		detail.h_reference[0] = OpType::BinaryOp(detail.h_reference[0], detail.h_data[i]);
+		detail.h_reference[0] = (i == 0) ?
+			detail.h_data[i] :
+			OpType::BinaryOp(detail.h_reference[0], detail.h_data[i]);
 	}
 
 	// Move a fresh copy of the problem into device storage
@@ -499,8 +513,8 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, "
-		"UPSWEEP_MAX_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
-		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
+		"UPSWEEP_MAX_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_SCHEDULE_GRANULARITY, "
+		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)

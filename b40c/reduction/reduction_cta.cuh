@@ -28,7 +28,9 @@
 #pragma once
 
 #include <b40c/util/reduction/cooperative_reduction.cuh>
+#include <b40c/util/scan/cooperative_scan.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
+#include <b40c/util/reduction/tree_reduce.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -46,7 +48,6 @@ struct ReductionCta : KernelConfig
 
 	typedef typename KernelConfig::T T;
 	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -62,8 +63,9 @@ struct ReductionCta : KernelConfig
 	// Tile of elements
 	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
-	// Operational details for SRTS grid
-	SrtsDetails srts_details;
+	// Smem storage for reduction tree
+	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -74,36 +76,22 @@ struct ReductionCta : KernelConfig
 	 * Constructor
 	 */
 	__device__ __forceinline__ ReductionCta(
-		const SrtsDetails &srts_details,
+		uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS],
 		T *d_in,
 		T *d_out) :
 
-			srts_details(srts_details),
+			reduction_tree(reduction_tree),
 			d_in(d_in),
-			d_out(d_out),
-			carry(KernelConfig::Identity()) {}
+			d_out(d_out) {}
 
 
 	/**
-	 * Load transform function for assigning identity to tile values
-	 * that are out of range.
-	 */
-	static __device__ __forceinline__ void LoadTransform(
-		T &val,
-		bool in_bounds)
-	{
-		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = KernelConfig::Identity();
-	}
-
-
-	/**
-	 * Process a single tile
+	 * Process a single, full tile
 	 *
 	 * Each thread reduces only the strided values it loads.
 	 */
-	template <bool UNGUARDED_IO>
-	__device__ __forceinline__ void ProcessTile(
+	template <bool FIRST_TILE>
+	__device__ __forceinline__ void ProcessFullTile(
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
@@ -115,8 +103,7 @@ struct ReductionCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO,
-			LoadTransform>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			true>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<
@@ -125,9 +112,42 @@ struct ReductionCta : KernelConfig
 			KernelConfig::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
 
 		// Reduce into carry
-		carry = BinaryOp(carry, tile_partial);
+		if (FIRST_TILE) {
+			carry = tile_partial;
+		} else {
+			carry = BinaryOp(carry, tile_partial);
+		}
 
 		__syncthreads();
+	}
+
+
+	/**
+	 * Process a single, partial tile
+	 *
+	 * Each thread reduces only the strided values it loads.
+	 */
+	template <bool FIRST_TILE>
+	__device__ __forceinline__ void ProcessPartialTile(
+		SizeT cta_offset,
+		SizeT out_of_bounds)
+	{
+		T datum;
+		cta_offset += threadIdx.x;
+
+		if (FIRST_TILE) {
+			if (cta_offset < out_of_bounds) {
+				util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(carry, d_in, cta_offset);
+				cta_offset += KernelConfig::THREADS;
+			}
+		}
+
+		// Process loads singly
+		while (cta_offset < out_of_bounds) {
+			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(datum, d_in, cta_offset);
+			carry = KernelConfig::BinaryOp(carry, datum);
+			cta_offset += KernelConfig::THREADS;
+		}
 	}
 
 
@@ -137,22 +157,24 @@ struct ReductionCta : KernelConfig
 	 * Used to collectively reduce each thread's aggregate after striding through
 	 * the input.
 	 */
-	__device__ __forceinline__ void FinalReduction()
+	template <bool ALL_VALID>
+	__device__ __forceinline__ void FinalReduction(int num_elements)
 	{
-		util::reduction::CooperativeTileReduction<
-			SrtsDetails,
-			1,
-			KernelConfig::BinaryOp>::ReduceTileWithCarry<false>(
-				srts_details,
-				reinterpret_cast<T (*)[1]>(&carry),
-				carry);
+		carry = util::reduction::TreeReduce<
+			T,
+			KernelConfig::LOG_THREADS,
+			KernelConfig::BinaryOp,
+			false,
+			ALL_VALID>::Invoke(
+				carry,
+				reinterpret_cast<T*>(reduction_tree),
+				num_elements);
 
 		// Write output
-		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
-			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry, d_out, 0);
+		if (threadIdx.x == 0) {
+			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry, d_out, blockIdx.x);
 		}
 	}
-
 };
 
 

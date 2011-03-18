@@ -218,6 +218,7 @@ double TimedThrustSegmentedScan(
     // Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
+    if (d_flag_src) cudaFree(d_flag_src);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
@@ -260,7 +261,7 @@ void TestSegmentedScan(size_t num_elements)
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
 	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
-	Flag *h_flag_data	= (Flag*) malloc(num_elements * sizeof(T));
+	Flag *h_flag_data	= (Flag*) malloc(num_elements * sizeof(Flag));
 
 	if ((h_data == NULL) || (h_reference == NULL) || (h_flag_data == NULL)){
 		fprintf(stderr, "Host malloc of problem data failed\n");

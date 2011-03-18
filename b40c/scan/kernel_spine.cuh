@@ -53,7 +53,7 @@ __device__ __forceinline__ void SpineScanPass(
 	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
 	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
+	SrtsDetails srts_detail(smem_pool, warpscan, KernelConfig::Identity());
 
 	// CTA processing abstraction
 	ScanCta cta(srts_detail, d_in, d_out);

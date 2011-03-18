@@ -83,7 +83,7 @@ void TestSegmentedScan(size_t num_elements)
 
 	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
 	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
-	Flag *h_flag_data	= (Flag*) malloc(num_elements * sizeof(T));
+	Flag *h_flag_data	= (Flag*) malloc(num_elements * sizeof(Flag));
 
 	if ((h_data == NULL) || (h_reference == NULL) || (h_flag_data == NULL)){
 		fprintf(stderr, "Host malloc of problem data failed\n");
@@ -194,7 +194,7 @@ int main(int argc, char** argv)
 
 	typedef unsigned char Flag;
 
-/*
+
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -207,21 +207,19 @@ int main(int argc, char** argv)
 		typedef Sum<T> BinaryOp;
 		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
-*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
 		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
 		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
-*/
+
 	return 0;
 }
 

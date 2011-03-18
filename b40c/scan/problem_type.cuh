@@ -39,10 +39,17 @@ template <
 	typename SizeT,
 	bool _EXCLUSIVE,
 	T BinaryOp(const T&, const T&),
-	T Identity()>
-struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp, Identity>	// Inherit from reduction problem type
+	T _Identity()>
+struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp>	// Inherit from reduction problem type
 {
 	static const bool EXCLUSIVE = _EXCLUSIVE;
+
+	// Wrapper for the identity operator
+	static __host__ __device__ __forceinline__ T Identity()
+	{
+		return _Identity();
+	}
+
 };
 
 

@@ -36,7 +36,6 @@ namespace util {
  */
 template <
 	typename SrtsGrid,
-	typename SrtsGrid::T Identity(),
 	typename SecondarySrtsGrid = typename SrtsGrid::SecondaryGrid>
 struct SrtsDetails;
 
@@ -44,10 +43,8 @@ struct SrtsDetails;
 /**
  * Operational details for threads working in an SRTS grid (specialized for one-level SRTS grid)
  */
-template <
-	typename SrtsGrid,
-	typename SrtsGrid::T Identity()>
-struct SrtsDetails<SrtsGrid, Identity, NullType> : SrtsGrid
+template <typename SrtsGrid>
+struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
 	typedef T WarpscanStorage [2][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
@@ -56,6 +53,11 @@ struct SrtsDetails<SrtsGrid, Identity, NullType> : SrtsGrid
 	enum {
 		CUMULATIVE_THREAD 				= SrtsGrid::RAKING_THREADS - 1
 	};
+
+	/**
+	 * Smem pool backing SRTS grid lanes
+	 */
+	uint4 *smem_pool;
 
 	/**
 	 * Warpscan storage
@@ -80,27 +82,55 @@ struct SrtsDetails<SrtsGrid, Identity, NullType> : SrtsGrid
 	__host__ __device__ __forceinline__ SrtsDetails(
 		uint4 *smem_pool,
 		WarpscanStorage &warpscan) :
+			smem_pool(smem_pool),
 			warpscan(warpscan),
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool))						// set lane partial pointer
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
-
-			if (Identity != NULL) {
-				// Initialize first half of warpscan storage to identity
-				warpscan[0][threadIdx.x] = Identity();
-			}
 
 			// Set raking segment pointer
 			raking_segment = SrtsGrid::MyRakingSegment(smem_pool);
 		}
 	}
 
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ SrtsDetails(
+		uint4 *smem_pool,
+		WarpscanStorage &warpscan,
+		T warpscan_identity) :
+			smem_pool(smem_pool),
+			warpscan(warpscan),
+			lane_partial(SrtsGrid::MyLanePartial(smem_pool))						// set lane partial pointer
+	{
+		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+
+			// Initialize first half of warpscan storage to identity
+			warpscan[0][threadIdx.x] = warpscan_identity;
+
+			// Set raking segment pointer
+			raking_segment = SrtsGrid::MyRakingSegment(smem_pool);
+		}
+	}
+
+
 	/**
 	 * Return the cumulative partial left in the final warpscan cell
 	 */
-	__device__ __forceinline__ T CumulativePartial() const
+	__device__ __forceinline__ T CumulativePartial()
 	{
 		return warpscan[1][CUMULATIVE_THREAD];
+	}
+
+
+	/**
+	 *
+	 */
+	__device__ __forceinline__ uint4 * SmemPool()
+	{
+		return smem_pool;
 	}
 };
 
@@ -110,13 +140,12 @@ struct SrtsDetails<SrtsGrid, Identity, NullType> : SrtsGrid
  */
 template <
 	typename SrtsGrid,
-	typename SrtsGrid::T Identity(),
 	typename SecondarySrtsGrid>
 struct SrtsDetails : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
 	typedef T WarpscanStorage [2][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
-	typedef SrtsDetails<SecondarySrtsGrid, Identity> SecondarySrtsDetails;
+	typedef SrtsDetails<SecondarySrtsGrid> SecondarySrtsDetails;
 
 	enum {
 		CUMULATIVE_THREAD = SecondarySrtsDetails::CUMULATIVE_THREAD
@@ -146,7 +175,9 @@ struct SrtsDetails : SrtsGrid
 		uint4 *smem_pool,
 		WarpscanStorage &warpscan) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
-			secondary_details(smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS, warpscan)
+			secondary_details(
+				smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS,
+				warpscan)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 			// Set raking segment pointer
@@ -154,12 +185,41 @@ struct SrtsDetails : SrtsGrid
 		}
 	}
 
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ SrtsDetails(
+		uint4 *smem_pool,
+		WarpscanStorage &warpscan,
+		T warpscan_identity) :
+			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
+			secondary_details(
+				smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS,
+				warpscan,
+				warpscan_identity)
+	{
+		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
+			// Set raking segment pointer
+			raking_segment = SrtsGrid::MyRakingSegment(smem_pool);
+		}
+	}
+
+
 	/**
 	 * Return the cumulative partial left in the final warpscan cell
 	 */
 	__device__ __forceinline__ T CumulativePartial() const
 	{
 		return secondary_details.CumulativePartial();
+	}
+
+	/**
+	 *
+	 */
+	__device__ __forceinline__ uint4 * SmemPool()
+	{
+		return secondary_details.SmemPool();
 	}
 };
 

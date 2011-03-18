@@ -45,11 +45,6 @@ struct Sum
 	{
 		return a + b;
 	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
-	}
 };
 
 template <typename T>
@@ -58,11 +53,6 @@ struct Max
 	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
-	}
-
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return 0;
 	}
 };
 
@@ -78,7 +68,6 @@ struct Max
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
-	T Identity(),
 	b40c::reduction::ProbSizeGenre PROB_SIZE_GENRE>
 double TimedReduction(
 	T *h_data,
@@ -106,7 +95,7 @@ double TimedReduction(
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	reduction_enactor.DEBUG = true;
-	reduction_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
+	reduction_enactor.template Enact<T, BinaryOp, PROB_SIZE_GENRE>(
 		d_dest, d_src, num_elements, max_ctas);
 	reduction_enactor.DEBUG = false;
 
@@ -124,7 +113,7 @@ double TimedReduction(
 		cudaEventRecord(start_event, 0);
 
 		// Call the reduction API routine
-		reduction_enactor.template Enact<T, BinaryOp, Identity, PROB_SIZE_GENRE>(
+		reduction_enactor.template Enact<T, BinaryOp, PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements, max_ctas);
 
 		// End timing record

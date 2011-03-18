@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <b40c/util/srts_details.cuh>
 #include <b40c/util/work_distribution.cuh>
 #include <b40c/util/work_progress.cuh>
 #include <b40c/reduction/reduction_cta.cuh>
@@ -47,23 +46,15 @@ struct UpsweepReductionPass
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
 		const util::WorkProgress 									&work_progress)
 	{
-		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
 		typedef typename ReductionCta::T T;
 		typedef typename ReductionCta::SizeT SizeT;
 
-		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::SMEM_QUADS];
-		__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-		// SRTS grid details
-		SrtsDetails srts_detail(smem_pool, warpscan);
+		// Shared SRTS grid storage
+		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 		// CTA processing abstraction
-		ReductionCta cta(
-			srts_detail,
-			d_in,
-			d_out + blockIdx.x);
+		ReductionCta cta(reduction_tree, d_in, d_out);
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -76,22 +67,57 @@ struct UpsweepReductionPass
 
 		SizeT out_of_bounds = cta_offset + cta_elements;
 
-		// Process full tiles of tile_elements
-		while (cta_offset < guarded_offset) {
+		if (cta_offset < guarded_offset) {
 
-			cta.ProcessTile<true>(cta_offset, out_of_bounds);
+			// Process at least one full tile of tile_elements
+
+			cta.template ProcessFullTile<true>(cta_offset, out_of_bounds);
 			cta_offset += ReductionCta::TILE_ELEMENTS;
+
+			while (cta_offset < guarded_offset) {
+
+				cta.ProcessFullTile<false>(cta_offset, out_of_bounds);
+				cta_offset += ReductionCta::TILE_ELEMENTS;
+			}
+
+			// Clean up last partial tile with guarded-io (not first tile)
+			if (guarded_elements) {
+				cta.template ProcessPartialTile<false>(cta_offset, out_of_bounds);
+			}
+
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (all thread have valid reduction partials)
+			cta.template FinalReduction<true>(KernelConfig::THREADS);
+
+		} else {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			cta.ProcessPartialTile<true>(cta_offset, out_of_bounds);
+
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (not every thread may have a valid reduction partial)
+			cta.template FinalReduction<false>(cta_elements);
 		}
 
-		// Clean up last partial tile with guarded-io
-		if (guarded_elements) {
-			cta.ProcessTile<false>(cta_offset, out_of_bounds);
-		}
-
-		// Collectively reduce accumulated carry from each thread into output destination
-		cta.FinalReduction();
 	}
 };
+
+
+template <int TILE_ELEMENTS, typename SizeT>
+__device__ __forceinline__ SizeT StealWork(
+	const util::WorkProgress &work_progress,
+	SizeT &s_cta_offset)		// reference to shared memory
+{
+	// Thread zero atomically steals work from the progress counter
+	if (threadIdx.x == 0) {
+		s_cta_offset = work_progress.Steal<TILE_ELEMENTS>();
+	}
+
+	__syncthreads();		// Protect cta_offset
+
+	return s_cta_offset;
+}
+
 
 
 /**
@@ -106,58 +132,64 @@ struct UpsweepReductionPass <KernelConfig, true>
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
 		const util::WorkProgress 									&work_progress)
 	{
-		typedef typename KernelConfig::SrtsDetails SrtsDetails;
 		typedef ReductionCta<KernelConfig> ReductionCta;
 		typedef typename ReductionCta::T T;
 		typedef typename ReductionCta::SizeT SizeT;
 
-		// Shared storage for CTA processing
-		__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::SMEM_QUADS];
-		__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-		// SRTS grid details
-		SrtsDetails srts_detail(smem_pool, warpscan);
+		// Shared SRTS grid storage
+		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 		// CTA processing abstraction
-		ReductionCta cta(
-			srts_detail,
-			d_in,
-			d_out + blockIdx.x);
+		ReductionCta cta(reduction_tree, d_in, d_out);
 
-		// The offset at which this CTA performs tile processing
-		__shared__ SizeT cta_offset;
+		__shared__ SizeT 	s_cta_offset;		// The offset at which this CTA performs tile processing, shared by all
+		SizeT 				cta_offset;			// Thread's copy of s_cta_offset
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
 			work_progress.PrepareNext();
 		}
 
-		// Steal full-tiles of work, incrementing progress counter
+		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(ReductionCta::TILE_ELEMENTS - 1));
-		while (true) {
 
-			// Thread zero atomically steals work from the progress counter
-			if (threadIdx.x == 0) {
-				cta_offset = work_progress.Steal<ReductionCta::TILE_ELEMENTS>();
+		// Each CTA needs to process at least one partial block of
+		// input (otherwise our spine scan will be invalid)
+
+		cta_offset = blockIdx.x << KernelConfig::LOG_TILE_ELEMENTS;
+
+		if (cta_offset < unguarded_elements) {
+
+			// Process our one full tile (first tile seen)
+			cta.template ProcessFullTile<true>(cta_offset, unguarded_elements);
+
+			// Determine the swath we just did
+			SizeT swath = work_decomposition.grid_size << KernelConfig::LOG_TILE_ELEMENTS;
+
+			// Worksteal subsequent full tiles, if any
+			while ((cta_offset = StealWork<KernelConfig::TILE_ELEMENTS>(work_progress, s_cta_offset) + swath) < unguarded_elements) {
+				cta.template ProcessFullTile<false>(cta_offset, unguarded_elements);
 			}
 
-			__syncthreads();		// Protect cta_offset
-
-			if (cta_offset >= unguarded_elements) {
-				// All done
-				break;
+			// If the problem is big enough for the last CTA to be in this if-then-block,
+			// have it do the remaining guarded work (not first tile)
+			if (blockIdx.x == gridDim.x - 1) {
+				cta.template ProcessPartialTile<false>(unguarded_elements, work_decomposition.num_elements);
 			}
 
-			cta.ProcessTile<true>(cta_offset, unguarded_elements);
-		}
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (all thread have valid reduction partials)
+			cta.template FinalReduction<true>(KernelConfig::THREADS);
 
-		// Last CTA does any extra, guarded work
-		if (blockIdx.x == gridDim.x - 1) {
-			cta.ProcessTile<false>(unguarded_elements, work_decomposition.num_elements);
-		}
+		} else {
 
-		// Collectively reduce accumulated carry from each thread into output destination
-		cta.FinalReduction();
+			// Last CTA does any extra, guarded work (first tile seen)
+			cta.template ProcessPartialTile<true>(unguarded_elements, work_decomposition.num_elements);
+
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (not every thread may have a valid reduction partial)
+			cta.template FinalReduction<false>(work_decomposition.num_elements - unguarded_elements);
+		}
 	}
 };
 

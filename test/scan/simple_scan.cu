@@ -174,7 +174,10 @@ int main(int argc, char** argv)
 		false, 
 		false,
 		false,
-		8, 8, 7, 1, 0, 5, 8, 0, 1, 5, 8, 7, 1, 0, 5> CustomConfig;
+		8,
+		8, 7, 1, 0,
+		8, 0, 1, 5,
+		8, 7, 1, 0, 5> CustomConfig;
 	
 	scan_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
 

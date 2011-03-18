@@ -27,6 +27,7 @@
 
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/srts_grid.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
@@ -112,8 +113,7 @@ struct KernelConfig : _ProblemType
 
 	// Operational details type for SRTS grid type
 	typedef util::SrtsDetails<
-		SrtsGrid,
-		KernelConfig::Identity> SrtsDetails;
+		SrtsGrid> SrtsDetails;
 
 	enum {
 

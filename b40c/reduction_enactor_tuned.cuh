@@ -115,7 +115,6 @@ public:
 	template <
 		typename T,
 		T BinaryOp(const T&, const T&),
-		T Identity(),
 		reduction::ProbSizeGenre PROB_SIZE_GENRE>
 	cudaError_t Enact(
 		T *d_dest,
@@ -142,8 +141,7 @@ public:
 	 */
 	template <
 		typename T,
-		T BinaryOp(const T&, const T&),
-		T Identity()>
+		T BinaryOp(const T&, const T&)>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
@@ -237,7 +235,7 @@ struct ReductionEnactorTuned::ConfigResolver <reduction::UNKNOWN>
 		// Obtain large tuned granularity type
 		typedef reduction::TunedConfig<ProblemType, CUDA_ARCH, reduction::LARGE> LargeConfig;
 
-		// Identity the maximum problem size for which we can saturate loads
+		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS *
 			LargeConfig::Upsweep::CTA_OCCUPANCY *
 			detail.enactor->SmCount();
@@ -347,7 +345,6 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
-	T Identity(),
 	reduction::ProbSizeGenre PROB_SIZE_GENRE>
 cudaError_t ReductionEnactorTuned::Enact(
 	T *d_dest,
@@ -356,7 +353,7 @@ cudaError_t ReductionEnactorTuned::Enact(
 	int max_grid_size)
 {
 	typedef size_t SizeT;
-	typedef reduction::ProblemType<T, SizeT, BinaryOp, Identity> Problem;
+	typedef reduction::ProblemType<T, SizeT, BinaryOp> Problem;
 	typedef Detail<Problem> Detail;
 	typedef Storage<T, SizeT> Storage;
 	typedef ConfigResolver<PROB_SIZE_GENRE> Resolver;
@@ -374,15 +371,14 @@ cudaError_t ReductionEnactorTuned::Enact(
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	T BinaryOp(const T&, const T&)>
 cudaError_t ReductionEnactorTuned::Enact(
 	T *d_dest,
 	T *d_src,
 	size_t num_elements,
 	int max_grid_size)
 {
-	return Enact<T, BinaryOp, Identity, reduction::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
+	return Enact<T, BinaryOp, reduction::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
 }
 
 

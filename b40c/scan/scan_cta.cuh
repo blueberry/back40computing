@@ -74,7 +74,7 @@ struct ScanCta : KernelConfig
 	 * Constructor
 	 */
 	__device__ __forceinline__ ScanCta(
-		const SrtsDetails &srts_details,
+		SrtsDetails srts_details,
 		T *d_in,
 		T *d_out,
 		T spine_partial = KernelConfig::Identity()) :

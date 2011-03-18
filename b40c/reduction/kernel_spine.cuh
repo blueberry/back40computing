@@ -26,7 +26,6 @@
 #pragma once
 
 #include <b40c/reduction/reduction_cta.cuh>
-#include <b40c/util/srts_details.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -41,45 +40,59 @@ __device__ __forceinline__ void SpineReductionPass(
 	typename KernelConfig::T 		*d_out,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 	typedef ReductionCta<KernelConfig> ReductionCta;
-	typedef typename ReductionCta::SizeT SizeT;
 	typedef typename ReductionCta::T T;
+	typedef typename ReductionCta::SizeT SizeT;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::SMEM_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
+	// Shared SRTS grid storage
+	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 	// CTA processing abstraction
-	ReductionCta cta(srts_detail, d_in, d_out);
+	ReductionCta cta(reduction_tree, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
+	SizeT guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
-	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
+	SizeT guarded_offset = spine_elements - guarded_elements;
 
-	// Process full tiles of tile_elements
+	// Process tiles of tile_elements
 	SizeT cta_offset = 0;
-	while (cta_offset < cta_guarded_offset) {
+	if (cta_offset < guarded_offset) {
 
-		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
+		// Process at least one full tile of tile_elements
+
+		cta.ProcessFullTile<true>(cta_offset, spine_elements);
 		cta_offset += ReductionCta::TILE_ELEMENTS;
+
+		while (cta_offset < guarded_offset) {
+
+			cta.ProcessFullTile<false>(cta_offset, spine_elements);
+			cta_offset += ReductionCta::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (guarded_elements) {
+			cta.ProcessPartialTile<false>(cta_offset, spine_elements);
+		}
+
+		// Collectively reduce accumulated carry from each thread into output
+		// destination (all thread have valid reduction partials)
+		cta.template FinalReduction<true>(KernelConfig::THREADS);
+
+	} else {
+
+		// Clean up last partial tile with guarded-io
+		cta.ProcessPartialTile<true>(cta_offset, spine_elements);
+
+		// Collectively reduce accumulated carry from each thread into output
+		// destination (not every thread may have a valid reduction partial)
+		cta.template FinalReduction<false>(spine_elements);
 	}
 
-	// Clean up last partial tile with guarded-io
-	if (cta_guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, spine_elements);
-	}
-
-	// Collectively reduce accumulated carry from each thread
-	cta.FinalReduction();
 }
 
 

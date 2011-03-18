@@ -61,7 +61,8 @@ __device__ __forceinline__ void SpineScanPass(
 	// SRTS grid details
 	SrtsSoaDetails srts_soa_details(
 		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
-		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan));
+		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan),
+		ScanCta::SoaTupleIdentity());
 
 	// CTA processing abstraction
 	ScanCta cta(

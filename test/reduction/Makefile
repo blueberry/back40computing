@@ -129,6 +129,7 @@ DEPS = 			./Makefile \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/util/reduction/*.cuh) \
+				$(wildcard ../../b40c/util/reduction/soa/*.cuh) \
 				$(wildcard ../../b40c/util/scan/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 

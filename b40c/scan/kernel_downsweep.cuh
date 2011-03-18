@@ -53,7 +53,7 @@ __device__ __forceinline__ void DownsweepScanPass(
 	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
 	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan);
+	SrtsDetails srts_detail(smem_pool, warpscan, KernelConfig::Identity());
 
 	// We need the exclusive partial from our spine, regardless of whether
 	// we're exclusive/inclusive

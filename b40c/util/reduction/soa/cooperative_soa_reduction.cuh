@@ -98,7 +98,7 @@ struct CooperativeSoaTileReduction
 	 *
 	 * Caution: Post-synchronization is needed before srts_details reuse.
 	 */
-	template <typename DataSoa>
+	template <bool REDUCE_CARRY, typename DataSoa>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		SrtsSoaDetails srts_soa_details,
 		DataSoa data_soa,
@@ -110,7 +110,7 @@ struct CooperativeSoaTileReduction
 
 		__syncthreads();
 
-		CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp>::template ReduceTileWithCarry<true>(
+		CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp>::template ReduceTileWithCarry<REDUCE_CARRY>(
 			srts_soa_details, carry);
 	}
 

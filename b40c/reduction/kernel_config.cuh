@@ -25,9 +25,8 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_details.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
@@ -57,7 +56,6 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	int _LOG_RAKING_THREADS,
 	util::ld::CacheModifier _READ_MODIFIER,
 	util::st::CacheModifier _WRITE_MODIFIER,
 	bool _WORK_STEALING,
@@ -84,9 +82,6 @@ struct KernelConfig : _ProblemType
 		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
 		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
 
-		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
-		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
-
 		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
@@ -97,39 +92,17 @@ struct KernelConfig : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
-	};
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-	//
-	// We reduce the elements in registers, and then place that partial
-	// scan into smem rows for further reduction
-	//
-
-	// SRTS grid type
-	typedef util::SrtsGrid<
-		CUDA_ARCH,
-		T,										// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
-		0,										// 1 lane (CTA threads only make one deposit)
-		LOG_RAKING_THREADS,						// Raking threads
-		true>									// There are prefix dependences between lanes
-			SrtsGrid;
-
-	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<
-		SrtsGrid,
-		ProblemType::Identity> SrtsDetails;
-
-	enum {
-
-		SMEM_QUADS						= SrtsGrid::SMEM_QUADS,
+		// Amount of storage (in quads) for a reduction tree of partials the size of the CTA
+		SMEM_QUADS						= ((THREADS * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
-	};
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-	static const bool VALID				= (CTA_OCCUPANCY > 0);
+		VALID 							= (CTA_OCCUPANCY > 0)
+	};
 };
 
 
