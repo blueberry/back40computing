@@ -70,8 +70,8 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	Flag 			*d_flags_in;
 
 	// Spine output device pointers
-	T 				*d_spine_partial;
-	Flag 			*d_spine_flag;
+	T 				*d_spine_partials;
+	Flag 			*d_spine_flags;
 
 	// Tile of segmented scan elements
 	T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -90,14 +90,14 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		SrtsSoaDetails 	srts_soa_details,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
-		T 				*d_spine_partial,
-		Flag 			*d_spine_flag) :
+		T 				*d_spine_partials,
+		Flag 			*d_spine_flags) :
 
 			srts_soa_details(srts_soa_details),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
-			d_spine_partial(d_spine_partial),
-			d_spine_flag(d_spine_flag),
+			d_spine_partials(d_spine_partials),
+			d_spine_flags(d_spine_flags),
 			carry(KernelConfig::SoaTupleIdentity()) {}
 
 
@@ -128,10 +128,9 @@ struct ReductionCta : KernelConfig						// Derive from our config
 
 
 	/**
-	 * Process a single tile
+	 * Process a single, full tile
 	 */
-	template <bool UNGUARDED_IO>
-	__device__ __forceinline__ void ProcessTile(
+	__device__ __forceinline__ void ProcessFullTile(
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
@@ -143,7 +142,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO,
+			true,									// unguarded I/O
 			LoadTransformT>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
 
 		// Load tile of flags
@@ -154,10 +153,10 @@ struct ReductionCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO,
+			true,									// unguarded I/O
 			LoadTransformFlag>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
 
-		// Reduce tile with carry
+		// Reduce tile with carry maintained by thread SrtsSoaDetails::CUMULATIVE_THREAD
 		util::reduction::soa::CooperativeSoaTileReduction<
 			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
@@ -178,8 +177,12 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	{
 		// Write output
 		if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
-			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry.t0, d_spine_partial, 0);
-			util::ModifiedStore<Flag, KernelConfig::WRITE_MODIFIER>::St(carry.t1, d_spine_flag, 0);
+
+			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(
+				carry.t0, d_spine_partials, blockIdx.x);
+
+			util::ModifiedStore<Flag, KernelConfig::WRITE_MODIFIER>::St(
+				carry.t1, d_spine_flags, blockIdx.x);
 		}
 	}
 };

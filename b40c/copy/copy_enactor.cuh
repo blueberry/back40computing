@@ -27,7 +27,7 @@
 
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
-#include <b40c/util/work_progress.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 #include <b40c/copy/problem_config.cuh>
 #include <b40c/copy/kernel_sweep.cuh>
 

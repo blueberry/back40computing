@@ -26,8 +26,8 @@
 #pragma once
 
 #include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/work_distribution.cuh>
-#include <b40c/util/work_progress.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 #include <b40c/copy/copy_cta.cuh>
 
 namespace b40c {

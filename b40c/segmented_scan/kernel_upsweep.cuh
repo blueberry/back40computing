@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/util/work_distribution.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/segmented_scan/reduction_cta.cuh>
 
 namespace b40c {
@@ -56,6 +56,11 @@ __device__ __forceinline__ void UpsweepReductionPass(
 	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 	__shared__ Flag flags_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
+	// Quit if we're the last threadblock (no need for it in upsweep)
+	if (blockIdx.x == gridDim.x - 1) {
+		return;
+	}
+
 	// SRTS grid details
 	SrtsSoaDetails srts_soa_details(
 		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
@@ -67,8 +72,8 @@ __device__ __forceinline__ void UpsweepReductionPass(
 		srts_soa_details,
 		d_partials_in,
 		d_flags_in,
-		d_spine_partials + blockIdx.x,
-		d_spine_flags + blockIdx.x);
+		d_spine_partials,
+		d_spine_flags);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -79,18 +84,11 @@ __device__ __forceinline__ void UpsweepReductionPass(
 	work_decomposition.GetCtaWorkLimits<ReductionCta::LOG_TILE_ELEMENTS, ReductionCta::LOG_SCHEDULE_GRANULARITY>(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 
-	SizeT out_of_bounds = cta_offset + cta_elements;
-
 	// Process full tiles of tile_elements
 	while (cta_offset < guarded_offset) {
 
-		cta.ProcessTile<true>(cta_offset, out_of_bounds);
+		cta.ProcessFullTile(cta_offset, guarded_offset);
 		cta_offset += ReductionCta::TILE_ELEMENTS;
-	}
-
-	// Clean up last partial tile with guarded-io
-	if (guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, out_of_bounds);
 	}
 
 	// Produce output in spine

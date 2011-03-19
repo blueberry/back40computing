@@ -28,7 +28,7 @@
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/util/work_progress.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 #include <b40c/reduction/problem_config.cuh>
 #include <b40c/reduction/kernel_upsweep.cuh>
 #include <b40c/reduction/kernel_spine.cuh>

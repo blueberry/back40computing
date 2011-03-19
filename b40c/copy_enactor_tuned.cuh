@@ -26,7 +26,7 @@
 #pragma once
 
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/util/work_distribution.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/copy/copy_enactor.cuh>
 #include <b40c/copy/problem_config_tuned.cuh>
 #include <b40c/copy/kernel_sweep.cuh>

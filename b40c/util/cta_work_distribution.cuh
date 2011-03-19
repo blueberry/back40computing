@@ -111,6 +111,21 @@ struct CtaWorkDistribution
 		// less than a full tile)
 		guarded_offset = cta_offset + cta_elements - cta_guarded_elements;
 	}
+
+
+	/**
+	 * Print to stdout
+	 */
+	__host__ __device__ __forceinline__ void Print()
+	{
+		printf("num_elements: %lu, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu, grid_size: %lu\n",
+			(unsigned long) num_elements,
+			(unsigned long) total_grains,
+			(unsigned long) grains_per_cta,
+			(unsigned long) extra_grains,
+			(unsigned long) grid_size);
+
+	}
 };
 
 
