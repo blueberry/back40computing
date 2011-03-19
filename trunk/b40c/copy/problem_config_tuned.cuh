@@ -28,7 +28,7 @@
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
-#include <b40c/util/work_progress.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 
 #include <b40c/copy/kernel_sweep.cuh>
 #include <b40c/copy/problem_config.cuh>

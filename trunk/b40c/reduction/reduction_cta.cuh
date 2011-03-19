@@ -158,14 +158,14 @@ struct ReductionCta : KernelConfig
 	 * the input.
 	 */
 	template <bool ALL_VALID>
-	__device__ __forceinline__ void FinalReduction(int num_elements)
+	__device__ __forceinline__ void OutputToSpine(int num_elements)
 	{
 		carry = util::reduction::TreeReduce<
 			T,
 			KernelConfig::LOG_THREADS,
 			KernelConfig::BinaryOp,
-			false,
-			ALL_VALID>::Invoke(
+			false,											// No need to return aggregate reduction in all threads
+			ALL_VALID>::Invoke(								// Whether or not all carry values are valid (i.e., they have been assigned at least once)
 				carry,
 				reinterpret_cast<T*>(reduction_tree),
 				num_elements);

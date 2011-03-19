@@ -20,17 +20,16 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Upsweep reduction kernel for scan
+ * Upsweep reduction kernel for consecutive removal
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/reduction_cta.cuh>
+#include <b40c/consecutive_removal/reduction_cta.cuh>
 
 namespace b40c {
-namespace scan {
+namespace consecutive_removal {
 
 
 /**
@@ -39,7 +38,7 @@ namespace scan {
 template <typename KernelConfig>
 __device__ __forceinline__ void UpsweepReductionPass(
 	typename KernelConfig::T 									*&d_in,
-	typename KernelConfig::T 									*&d_out,
+	typename KernelConfig::SizeT 								*&d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition)
 {
 	typedef reduction::ReductionCta<KernelConfig> ReductionCta;
@@ -49,13 +48,14 @@ __device__ __forceinline__ void UpsweepReductionPass(
 	// Shared SRTS grid storage
 	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
-	// Quit if we're the last threadblock (no need for it in upsweep)
+	// Quit if we're the last threadblock (no need for it in upsweep).  All other
+	// threadblocks process full tiles only.
 	if (blockIdx.x == gridDim.x - 1) {
 		return;
 	}
 
 	// CTA processing abstraction
-	ReductionCta cta(reduction_tree, d_in, d_out);
+	ReductionCta cta(reduction_tree, d_in, d_spine);
 
 	// Determine our threadblock's work range
 	SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -67,19 +67,19 @@ __device__ __forceinline__ void UpsweepReductionPass(
 		cta_offset, cta_elements, guarded_offset, guarded_elements);
 
 	// Since we're not the last block: process at least one full tile of tile_elements
-	cta.template ProcessFullTile<true>(cta_offset, 0);
+	cta.template ProcessFullTile<true>(cta_offset);
 	cta_offset += ReductionCta::TILE_ELEMENTS;
 
 	// Process any other full tiles
 	while (cta_offset < guarded_offset) {
 
-		cta.ProcessFullTile<false>(cta_offset, 0);
+		cta.ProcessFullTile<false>(cta_offset);
 		cta_offset += ReductionCta::TILE_ELEMENTS;
 	}
 
 	// Collectively reduce accumulated carry from each thread into output
 	// destination (all thread have valid reduction partials)
-	cta.template OutputToSpine<true>(KernelConfig::THREADS);
+	cta.OutputToSpine(KernelConfig::THREADS);
 }
 
 
@@ -95,13 +95,13 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepReductionKernel(
 	typename KernelConfig::T 									*d_in,
-	typename KernelConfig::T 									*d_spine,
+	typename KernelConfig::SizeT 								*d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
 {
 	UpsweepReductionPass<KernelConfig>(d_in, d_spine, work_decomposition);
 }
 
 
-} // namespace scan
+} // namespace consecutive_removal
 } // namespace b40c
 

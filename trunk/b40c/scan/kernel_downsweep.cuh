@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/util/work_distribution.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/srts_details.cuh>
 #include <b40c/scan/scan_cta.cuh>
 

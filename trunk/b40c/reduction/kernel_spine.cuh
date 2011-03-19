@@ -37,7 +37,7 @@ namespace reduction {
 template <typename KernelConfig>
 __device__ __forceinline__ void SpineReductionPass(
 	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_out,
+	typename KernelConfig::T 		*d_spine,
 	typename KernelConfig::SizeT 	spine_elements)
 {
 	typedef ReductionCta<KernelConfig> ReductionCta;
@@ -51,7 +51,7 @@ __device__ __forceinline__ void SpineReductionPass(
 	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 	// CTA processing abstraction
-	ReductionCta cta(reduction_tree, d_in, d_out);
+	ReductionCta cta(reduction_tree, d_in, d_spine);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
@@ -81,7 +81,7 @@ __device__ __forceinline__ void SpineReductionPass(
 
 		// Collectively reduce accumulated carry from each thread into output
 		// destination (all thread have valid reduction partials)
-		cta.template FinalReduction<true>(KernelConfig::THREADS);
+		cta.template OutputToSpine<true>(KernelConfig::THREADS);
 
 	} else {
 
@@ -90,7 +90,7 @@ __device__ __forceinline__ void SpineReductionPass(
 
 		// Collectively reduce accumulated carry from each thread into output
 		// destination (not every thread may have a valid reduction partial)
-		cta.template FinalReduction<false>(spine_elements);
+		cta.template OutputToSpine<false>(spine_elements);
 	}
 
 }
@@ -108,10 +108,10 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void SpineReductionKernel(
 	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_out,
+	typename KernelConfig::T 		*d_spine,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	SpineReductionPass<KernelConfig>(d_in, d_out, spine_elements);
+	SpineReductionPass<KernelConfig>(d_in, d_spine, spine_elements);
 }
 
 

@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include <b40c/util/work_distribution.cuh>
-#include <b40c/util/work_progress.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 #include <b40c/reduction/reduction_cta.cuh>
 
 namespace b40c {
@@ -87,7 +87,7 @@ struct UpsweepReductionPass
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (all thread have valid reduction partials)
-			cta.template FinalReduction<true>(KernelConfig::THREADS);
+			cta.template OutputToSpine<true>(KernelConfig::THREADS);
 
 		} else {
 
@@ -96,7 +96,7 @@ struct UpsweepReductionPass
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			cta.template FinalReduction<false>(cta_elements);
+			cta.template OutputToSpine<false>(cta_elements);
 		}
 
 	}
@@ -179,7 +179,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (all thread have valid reduction partials)
-			cta.template FinalReduction<true>(KernelConfig::THREADS);
+			cta.template OutputToSpine<true>(KernelConfig::THREADS);
 
 		} else {
 
@@ -188,7 +188,7 @@ struct UpsweepReductionPass <KernelConfig, true>
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			cta.template FinalReduction<false>(work_decomposition.num_elements - unguarded_elements);
+			cta.template OutputToSpine<false>(work_decomposition.num_elements - unguarded_elements);
 		}
 	}
 };

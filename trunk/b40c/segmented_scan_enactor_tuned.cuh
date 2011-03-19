@@ -26,7 +26,7 @@
 #pragma once
 
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/util/work_distribution.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/segmented_scan/segmented_scan_enactor.cuh>
 #include <b40c/segmented_scan/problem_config_tuned.cuh>
 
