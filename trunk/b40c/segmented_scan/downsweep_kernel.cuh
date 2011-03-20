@@ -20,35 +20,34 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Segmented scan spine kernel
+ * Scan kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/segmented_scan/scan_cta.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/segmented_scan/downsweep_cta.cuh>
 
 namespace b40c {
 namespace segmented_scan {
 
 
 /**
- * Segmented scan spine pass
+ * Downsweep scan pass
  */
 template <typename KernelConfig>
-__device__ __forceinline__ void SpineScanPass(
-	typename KernelConfig::T 		*&d_partials_in,
-	typename KernelConfig::Flag		*&d_flags_in,
-	typename KernelConfig::T 		*&d_partials_out,
-	typename KernelConfig::SizeT 	&spine_elements)
+__device__ __forceinline__ void DownsweepPass(
+	typename KernelConfig::T 			*&d_partials_in,
+	typename KernelConfig::Flag			*&d_flags_in,
+	typename KernelConfig::T 			*&d_partials_out,
+	typename KernelConfig::T 			*&d_spine_partials,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
-	typedef ScanCta<KernelConfig> ScanCta;
-	typedef typename ScanCta::T T;
-	typedef typename ScanCta::Flag Flag;
-	typedef typename ScanCta::SizeT SizeT;
-	typedef typename ScanCta::SrtsSoaDetails SrtsSoaDetails;
-
-	// Exit if we're not the first CTA
-	if (blockIdx.x > 0) return;
+	typedef DownsweepCta<KernelConfig> DownsweepCta;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::Flag Flag;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
 
 	// Shared SRTS grid storage
 	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::SMEM_QUADS];
@@ -62,54 +61,70 @@ __device__ __forceinline__ void SpineScanPass(
 	SrtsSoaDetails srts_soa_details(
 		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
 		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan),
-		ScanCta::SoaTupleIdentity());
+		KernelConfig::SoaTupleIdentity());
+
+	// Read the exclusive partial from our spine
+	T spine_partial;
+	util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
+		spine_partial, d_spine_partials, blockIdx.x);
 
 	// CTA processing abstraction
-	ScanCta cta(
+	DownsweepCta cta(
 		srts_soa_details,
 		d_partials_in,
 		d_flags_in,
-		d_partials_out);
+		d_partials_out,
+		spine_partial);
 
-	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
+	// Determine our threadblock's work range
+	SizeT cta_offset;			// Offset at which this CTA begins processing
+	SizeT cta_elements;			// Total number of elements for this CTA to process
+	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
+	SizeT guarded_elements;		// Number of elements in partially-full tile
 
-	// Offset of final, partially-full tile (requires guarded loads)
-	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
+	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+		cta_offset, cta_elements, guarded_offset, guarded_elements);
+
+	SizeT out_of_bounds = cta_offset + cta_elements;
 
 	// Process full tiles of tile_elements
-	SizeT cta_offset = 0;
-	while (cta_offset < cta_guarded_offset) {
+	while (cta_offset < guarded_offset) {
 
-		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += ScanCta::TILE_ELEMENTS;
+		cta.ProcessTile<true>(cta_offset, out_of_bounds);
+		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
-	if (cta_guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, spine_elements);
+	if (guarded_elements) {
+		cta.ProcessTile<false>(cta_offset, out_of_bounds);
 	}
 }
 
 
+
 /******************************************************************************
- * Spine Scan Kernel Entry-point
+ * Downsweep Scan Kernel Entrypoint
  ******************************************************************************/
 
 /**
- * Spine scan kernel entry point
+ * Downsweep scan kernel entry point
  */
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
-__global__ 
-void SpineScanKernel(
-	typename KernelConfig::T 		*d_partials_in,
-	typename KernelConfig::Flag		*d_flags_in,
-	typename KernelConfig::T 		*d_partials_out,
-	typename KernelConfig::SizeT 	spine_elements)
+__global__
+void DownsweepKernel(
+	typename KernelConfig::T 									*d_partials_in,
+	typename KernelConfig::Flag									*d_flags_in,
+	typename KernelConfig::T 									*d_partials_out,
+	typename KernelConfig::T 									*d_spine_partials,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
 {
-	SpineScanPass<KernelConfig>(
-		d_partials_in, d_flags_in, d_partials_out, spine_elements);
+	DownsweepPass<KernelConfig>(
+		d_partials_in,
+		d_flags_in,
+		d_partials_out,
+		d_spine_partials,
+		work_decomposition);
 }
 
 

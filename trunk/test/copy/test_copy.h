@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // Copy includes
-#include <b40c/copy_enactor_tuned.cuh>
+#include <b40c/copy_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -61,7 +61,7 @@ double TimedCopy(
 		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	CopyEnactorTuned copy_enactor;
+	CopyEnactor copy_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),

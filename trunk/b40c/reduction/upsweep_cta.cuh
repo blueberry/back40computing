@@ -27,8 +27,9 @@
 
 #pragma once
 
-#include <b40c/util/reduction/cooperative_reduction.cuh>
-#include <b40c/util/scan/cooperative_scan.cuh>
+#include <b40c/util/data_movement_load.cuh>
+#include <b40c/util/data_movement_store.cuh>
+
 #include <b40c/util/reduction/serial_reduce.cuh>
 #include <b40c/util/reduction/tree_reduce.cuh>
 
@@ -40,7 +41,7 @@ namespace reduction {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig>
-struct ReductionCta : KernelConfig
+struct UpsweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -60,9 +61,6 @@ struct ReductionCta : KernelConfig
 	T* d_in;
 	T* d_out;
 
-	// Tile of elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
 	// Smem storage for reduction tree
 	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
 
@@ -75,7 +73,7 @@ struct ReductionCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ ReductionCta(
+	__device__ __forceinline__ UpsweepCta(
 		uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS],
 		T *d_in,
 		T *d_out) :
@@ -95,6 +93,9 @@ struct ReductionCta : KernelConfig
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
+		// Tile of elements
+		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
 		// Load tile
 		util::LoadTile<
 			T,
@@ -172,7 +173,7 @@ struct ReductionCta : KernelConfig
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(carry, d_out, blockIdx.x);
+			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry, d_out, blockIdx.x);
 		}
 	}
 };

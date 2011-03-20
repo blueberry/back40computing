@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/reduction_enactor_tuned.cuh>
+#include <b40c/reduction_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -56,7 +56,7 @@ template <
 	typename T,
 	T BinaryOp(const T&, const T&)>
 void TemplatedSubroutineReduction(
-	b40c::ReductionEnactorTuned &reduction_enactor,
+	b40c::ReductionEnactor &reduction_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
@@ -101,7 +101,7 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_data, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a reduction enactor
-	b40c::ReductionEnactorTuned reduction_enactor;
+	b40c::ReductionEnactor reduction_enactor;
 	
 
 	//

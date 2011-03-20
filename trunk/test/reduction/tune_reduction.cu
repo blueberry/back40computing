@@ -29,7 +29,7 @@
 // Reduction includes
 #include <b40c/reduction/problem_type.cuh>
 #include <b40c/reduction/problem_config.cuh>
-#include <b40c/reduction/reduction_enactor.cuh>
+#include <b40c/reduction/enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
@@ -139,7 +139,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneEnactor : public reduction::ReductionEnactor
+class TuneEnactor : public reduction::Enactor
 {
 public:
 
@@ -266,7 +266,7 @@ public:
 	 * Constructor
 	 */
 	TuneEnactor(size_t num_elements) :
-		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+		reduction::Enactor(), d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
 	/**

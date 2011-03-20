@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/scan_enactor_tuned.cuh>
+#include <b40c/scan_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -68,7 +68,7 @@ template <
 	T BinaryOp(const T&, const T&),
 	T Identity()>
 void TemplatedSubroutineScan(
-	b40c::ScanEnactorTuned &scan_enactor,
+	b40c::ScanEnactor &scan_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a scan enactor
-	b40c::ScanEnactorTuned scan_enactor;
+	b40c::ScanEnactor scan_enactor;
 	
 
 	//

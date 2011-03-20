@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // SegmentedScan includes
-#include <b40c/segmented_scan_enactor_tuned.cuh>
+#include <b40c/segmented_scan_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -71,15 +71,6 @@ struct Max
  * Utility Routines
  ******************************************************************************/
 
-template <
-	typename T,
-	typename Flag,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
-	b40c::segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
-double TimedSegmentedScan2() {return 0;}
-
 /**
  * Timed segmented scan.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
@@ -113,7 +104,7 @@ double TimedSegmentedScan(
 		"TimedSegmentedScan cudaMalloc d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	SegmentedScanEnactorTuned segmented_scan_enactor;
+	SegmentedScanEnactor segmented_scan_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),

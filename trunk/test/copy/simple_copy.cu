@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/copy_enactor_tuned.cuh>
+#include <b40c/copy_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -46,7 +46,7 @@ using namespace b40c;
  */
 template <typename T, b40c::copy::ProbSizeGenre PROBLEM_SIZE_GENRE>
 void TemplatedSubroutineCopy(
-	b40c::CopyEnactorTuned &copy_enactor,
+	b40c::CopyEnactor &copy_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a copy enactor
-	b40c::CopyEnactorTuned copy_enactor;
+	b40c::CopyEnactor copy_enactor;
 	
 	//
 	// Example 1: Enact simple copy using internal tuning heuristics

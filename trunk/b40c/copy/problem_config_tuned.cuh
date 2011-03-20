@@ -30,9 +30,8 @@
 #include <b40c/util/data_movement_store.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 
-#include <b40c/copy/kernel_sweep.cuh>
+#include <b40c/copy/sweep_kernel.cuh>
 #include <b40c/copy/problem_config.cuh>
-#include <b40c/copy/problem_type.cuh>
 
 namespace b40c {
 namespace copy {
@@ -169,7 +168,7 @@ template <int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Sweep::THREADS),
 	(TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Sweep::CTA_OCCUPANCY))
-__global__ void TunedSweepCopyKernel(
+__global__ void TunedSweepKernel(
 	void 								*d_in,
 	void 								*d_out,
 	util::CtaWorkDistribution<size_t> 	work_decomposition,
@@ -177,13 +176,13 @@ __global__ void TunedSweepCopyKernel(
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Sweep CopyKernelConfig;
-	typedef typename CopyKernelConfig::T T;
+	typedef typename TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Sweep KernelConfig;
+	typedef typename KernelConfig::T T;
 
 	T* out = (T*)(d_out);
 	T* in = (T*)(d_in);
 
-	SweepCopyPass<CopyKernelConfig, CopyKernelConfig::WORK_STEALING>::Invoke(
+	SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		in,
 		out,
 		work_decomposition,

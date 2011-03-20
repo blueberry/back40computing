@@ -20,22 +20,21 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding scan granularity configuration
+ * "Metatype" for guiding consecutive removal granularity configuration
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_details.cuh>
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
 namespace b40c {
-namespace scan {
+namespace consecutive_removal {
 
 /**
- * Scan kernel granularity configuration meta-type.  Parameterizations of this
+ * Consecutive removal kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -57,20 +56,22 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	int _LOG_RAKING_THREADS,
 	util::ld::CacheModifier _READ_MODIFIER,
 	util::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : _ProblemType
+struct UpsweepKernelConfig : _ProblemType
 {
 	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::T T;
+	typedef typename ProblemType::SizeT 	SizeT;
+	typedef typename ProblemType::T 		T;
+	typedef typename ProblemType::SizeT 	FlagCount;			// Type for discontinuity counts
 
 	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 	enum {
+
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -83,9 +84,6 @@ struct KernelConfig : _ProblemType
 		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
 		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
 
-		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
-		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
-
 		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
@@ -96,41 +94,20 @@ struct KernelConfig : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
-	};
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-	//
-	// We reduce the elements in registers, and then place that partial
-	// scan into smem rows for further scan
-	//
-
-	// SRTS grid type
-	typedef util::SrtsGrid<
-		CUDA_ARCH,
-		T,										// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
-		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
-		LOG_RAKING_THREADS,						// Raking threads
-		true>									// There are prefix dependences between lanes
-			SrtsGrid;
-
-	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<
-		SrtsGrid> SrtsDetails;
-
-	enum {
-
-		SMEM_QUADS						= SrtsGrid::SMEM_QUADS,
+		// Amount of storage (in quads) for a reduction tree of discontinuity counts the size of the CTA
+		SMEM_QUADS						= ((THREADS * sizeof(FlagCount)) + sizeof(uint4) - 1) / sizeof(uint4),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
-	};
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-	static const bool VALID				= (CTA_OCCUPANCY > 0);
+		VALID 							= (CTA_OCCUPANCY > 0)
+	};
 };
 
 
-} // namespace scan
+} // namespace consecutive_removal
 } // namespace b40c
 

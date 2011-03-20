@@ -27,20 +27,20 @@
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/copy/copy_enactor.cuh>
+#include <b40c/copy/enactor.cuh>
 #include <b40c/copy/problem_config_tuned.cuh>
-#include <b40c/copy/kernel_sweep.cuh>
+#include <b40c/copy/sweep_kernel.cuh>
 
 namespace b40c {
 
 /******************************************************************************
- * CopyEnactorTuned Declaration
+ * CopyEnactor Declaration
  ******************************************************************************/
 
 /**
  * Tuned copy enactor class.
  */
-class CopyEnactorTuned : public copy::CopyEnactor
+class CopyEnactor : public copy::Enactor
 {
 public:
 
@@ -60,7 +60,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedef for base class
-	typedef copy::CopyEnactor BaseEnactorType;
+	typedef copy::Enactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -75,7 +75,7 @@ protected:
 	 * Performs a copy pass
 	 */
 	template <typename TunedConfig>
-	cudaError_t CopyPass(
+	cudaError_t EnactPass(
 		typename TunedConfig::Sweep::T *d_dest,
 		typename TunedConfig::Sweep::T *d_src,
 		util::CtaWorkDistribution<typename TunedConfig::Sweep::SizeT> &work,
@@ -88,7 +88,7 @@ public:
 	/**
 	 * Constructor.
 	 */
-	CopyEnactorTuned() : BaseEnactorType::CopyEnactor() {}
+	CopyEnactor() : BaseEnactorType::Enactor() {}
 
 	
 	/**
@@ -154,13 +154,13 @@ public:
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-struct CopyEnactorTuned::Detail
+struct CopyEnactor::Detail
 {
-	CopyEnactorTuned *enactor;
+	CopyEnactor *enactor;
 	int max_grid_size;
 
 	// Constructor
-	Detail(CopyEnactorTuned *enactor, int max_grid_size = 0) :
+	Detail(CopyEnactor *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
 };
 
@@ -168,7 +168,7 @@ struct CopyEnactorTuned::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-struct CopyEnactorTuned::Storage
+struct CopyEnactor::Storage
 {
 	void *d_dest;
 	void *d_src;
@@ -186,7 +186,7 @@ struct CopyEnactorTuned::Storage
  * Default specialization for problem type genres
  */
 template <copy::ProbSizeGenre PROB_SIZE_GENRE>
-struct CopyEnactorTuned::ConfigResolver
+struct CopyEnactor::ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -202,7 +202,7 @@ struct CopyEnactorTuned::ConfigResolver
 		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(T));
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<TunedConfig, CopyEnactorTuned>(
+		return detail.enactor->template EnactInternal<TunedConfig, CopyEnactor>(
 			(T*) storage.d_dest, (T*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 };
@@ -215,7 +215,7 @@ struct CopyEnactorTuned::ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
+struct CopyEnactor::ConfigResolver <copy::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -242,7 +242,7 @@ struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
 			size_t num_elements = storage.num_bytes / sizeof(SmallT);
 			size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(SmallT));
 
-			return detail.enactor->template EnactInternal<SmallConfig, CopyEnactorTuned>(
+			return detail.enactor->template EnactInternal<SmallConfig, CopyEnactor>(
 				(SmallT*) storage.d_dest, (SmallT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 		}
 
@@ -250,14 +250,14 @@ struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
 		size_t num_elements = storage.num_bytes / sizeof(LargeT);
 		size_t extra_bytes = storage.num_bytes - (num_elements * sizeof(LargeT));
 
-		return detail.enactor->template EnactInternal<LargeConfig, CopyEnactorTuned>(
+		return detail.enactor->template EnactInternal<LargeConfig, CopyEnactor>(
 			(LargeT*) storage.d_dest, (LargeT*) storage.d_src, num_elements, extra_bytes, detail.max_grid_size);
 	}
 };
 
 
 /******************************************************************************
- * CopyEnactorTuned Implementation
+ * CopyEnactor Implementation
  ******************************************************************************/
 
 /**
@@ -267,7 +267,7 @@ struct CopyEnactorTuned::ConfigResolver <copy::UNKNOWN>
  * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
-cudaError_t CopyEnactorTuned::CopyPass(
+cudaError_t CopyEnactor::EnactPass(
 	typename TunedConfig::Sweep::T *d_dest,
 	typename TunedConfig::Sweep::T *d_src,
 	util::CtaWorkDistribution<typename TunedConfig::Sweep::SizeT> &work,
@@ -278,11 +278,11 @@ cudaError_t CopyEnactorTuned::CopyPass(
 	int dynamic_smem = 0;
 
 	// Sweep copy
-	copy::TunedSweepCopyKernel<TunedConfig::PROB_SIZE_GENRE>
+	copy::TunedSweepKernel<TunedConfig::PROB_SIZE_GENRE>
 			<<<work.grid_size, TunedConfig::Sweep::THREADS, dynamic_smem>>>(
 		(void *) d_src, (void *) d_dest, work, work_progress, extra_bytes);
 
-	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
+	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepKernel failed ", __FILE__, __LINE__);
 
 	return retval;
 }
@@ -293,7 +293,7 @@ cudaError_t CopyEnactorTuned::CopyPass(
  * enumerated tuned granularity configuration
  */
 template <copy::ProbSizeGenre PROB_SIZE_GENRE>
-cudaError_t CopyEnactorTuned::Enact(
+cudaError_t CopyEnactor::Enact(
 	void *d_dest,
 	void *d_src,
 	size_t num_bytes,
@@ -312,7 +312,7 @@ cudaError_t CopyEnactorTuned::Enact(
  * a heuristic for selecting granularity configuration based upon
  * problem size.
  */
-cudaError_t CopyEnactorTuned::Enact(
+cudaError_t CopyEnactor::Enact(
 	void *d_dest,
 	void *d_src,
 	size_t num_bytes,

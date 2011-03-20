@@ -27,6 +27,9 @@
 
 #pragma once
 
+#include <b40c/util/data_movement_load.cuh>
+#include <b40c/util/data_movement_store.cuh>
+
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/reduction/soa/cooperative_soa_reduction.cuh>
 
@@ -39,7 +42,7 @@ namespace segmented_scan {
  * reduction tile-processing state and routines
  */
 template <typename KernelConfig>
-struct ReductionCta : KernelConfig						// Derive from our config
+struct UpsweepCta : KernelConfig						// Derive from our config
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -73,12 +76,6 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	T 				*d_spine_partials;
 	Flag 			*d_spine_flags;
 
-	// Tile of segmented scan elements
-	T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
-	// Tile of flags
-	Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -86,7 +83,7 @@ struct ReductionCta : KernelConfig						// Derive from our config
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ ReductionCta(
+	__device__ __forceinline__ UpsweepCta(
 		SrtsSoaDetails 	srts_soa_details,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
@@ -134,6 +131,10 @@ struct ReductionCta : KernelConfig						// Derive from our config
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
+		// Tiles of segmented scan elements and flags
+		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
 		// Load tile of partials
 		util::LoadTile<
 			T,

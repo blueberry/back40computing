@@ -34,11 +34,7 @@
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
-#include <b40c/segmented_scan/kernel_spine.cuh>
-#include <b40c/scan/kernel_spine.cuh>
-#include <b40c/reduction/kernel_spine.cuh>
-
-#include <b40c/segmented_scan/segmented_scan_enactor.cuh>
+#include <b40c/segmented_scan/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -155,7 +151,7 @@ int main(int argc, char** argv)
 		      5, 1, 1, 5,
 		   8, 5, 1, 1, 5> CustomConfig;
 
-	segmented_scan::SegmentedScanEnactor segmented_scan_enactor;
+	segmented_scan::Enactor segmented_scan_enactor;
 	segmented_scan_enactor.DEBUG = true;
 	segmented_scan_enactor.Enact<CustomConfig>(
 		d_dest, d_src, d_flags, NUM_ELEMENTS);

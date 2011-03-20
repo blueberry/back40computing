@@ -109,6 +109,7 @@ struct ProblemConfig : ProblemType
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
+	// Kernel config for downsweep scan kernel
 	typedef KernelConfig <
 		ProblemType,
 		true,

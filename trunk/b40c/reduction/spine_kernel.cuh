@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/reduction_cta.cuh>
+#include <b40c/reduction/upsweep_cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -35,14 +35,14 @@ namespace reduction {
  * Spine reduction pass
  */
 template <typename KernelConfig>
-__device__ __forceinline__ void SpineReductionPass(
+__device__ __forceinline__ void SpinePass(
 	typename KernelConfig::T 		*d_in,
 	typename KernelConfig::T 		*d_spine,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	typedef ReductionCta<KernelConfig> ReductionCta;
-	typedef typename ReductionCta::T T;
-	typedef typename ReductionCta::SizeT SizeT;
+	typedef UpsweepCta<KernelConfig> UpsweepCta;
+	typedef typename KernelConfig::T T;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -51,10 +51,10 @@ __device__ __forceinline__ void SpineReductionPass(
 	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 	// CTA processing abstraction
-	ReductionCta cta(reduction_tree, d_in, d_spine);
+	UpsweepCta cta(reduction_tree, d_in, d_spine);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT guarded_elements = spine_elements & (ReductionCta::TILE_ELEMENTS - 1);
+	SizeT guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT guarded_offset = spine_elements - guarded_elements;
@@ -66,12 +66,12 @@ __device__ __forceinline__ void SpineReductionPass(
 		// Process at least one full tile of tile_elements
 
 		cta.ProcessFullTile<true>(cta_offset, spine_elements);
-		cta_offset += ReductionCta::TILE_ELEMENTS;
+		cta_offset += KernelConfig::TILE_ELEMENTS;
 
 		while (cta_offset < guarded_offset) {
 
 			cta.ProcessFullTile<false>(cta_offset, spine_elements);
-			cta_offset += ReductionCta::TILE_ELEMENTS;
+			cta_offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
@@ -106,12 +106,12 @@ __device__ __forceinline__ void SpineReductionPass(
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
-void SpineReductionKernel(
+void SpineKernel(
 	typename KernelConfig::T 		*d_in,
 	typename KernelConfig::T 		*d_spine,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	SpineReductionPass<KernelConfig>(d_in, d_spine, spine_elements);
+	SpinePass<KernelConfig>(d_in, d_spine, spine_elements);
 }
 
 

@@ -28,23 +28,22 @@
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/segmented_scan/problem_config.cuh>
-#include <b40c/segmented_scan/kernel_downsweep.cuh>
-#include <b40c/segmented_scan/kernel_spine.cuh>
-#include <b40c/segmented_scan/kernel_upsweep.cuh>
+#include <b40c/segmented_scan/downsweep_kernel.cuh>
+#include <b40c/segmented_scan/spine_kernel.cuh>
+#include <b40c/segmented_scan/upsweep_kernel.cuh>
 
 namespace b40c {
 namespace segmented_scan {
 
 
 /******************************************************************************
- * SegmentedScanEnactor Declaration
+ * Enactor Declaration
  ******************************************************************************/
 
 /**
  * Basic segmented scan enactor class.
  */
-class SegmentedScanEnactor : public util::EnactorBase
+class Enactor : public util::EnactorBase
 {
 protected:
 
@@ -73,7 +72,7 @@ protected:
 	 * Performs a segmented scan pass
 	 */
 	template <typename ProblemConfig>
-	cudaError_t ScanPass(
+	cudaError_t EnactPass(
 		typename ProblemConfig::T *d_dest,
 		typename ProblemConfig::T *d_src,
 		typename ProblemConfig::Flag *d_flag_src,
@@ -96,7 +95,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	SegmentedScanEnactor() {}
+	Enactor() {}
 
 
 	/**
@@ -130,7 +129,7 @@ public:
 
 
 /******************************************************************************
- * SegmentedScanEnactor Implementation
+ * Enactor Implementation
  ******************************************************************************/
 
 
@@ -138,7 +137,7 @@ public:
  * Performs any lazy initialization work needed for this problem type
  */
 template <typename ProblemConfig>
-cudaError_t SegmentedScanEnactor::Setup(int sweep_grid_size, int spine_elements)
+cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep::T T;
 	typedef typename ProblemConfig::Upsweep::Flag Flag;
@@ -159,7 +158,7 @@ cudaError_t SegmentedScanEnactor::Setup(int sweep_grid_size, int spine_elements)
  * Performs a segmented scan pass
  */
 template <typename ProblemConfig>
-cudaError_t SegmentedScanEnactor::ScanPass(
+cudaError_t Enactor::EnactPass(
 	typename ProblemConfig::T *d_dest,
 	typename ProblemConfig::T *d_src,
 	typename ProblemConfig::Flag *d_flag_src,
@@ -178,10 +177,10 @@ cudaError_t SegmentedScanEnactor::ScanPass(
 	do {
 		if (work.grid_size == 1) {
 
-			SpineScanKernel<Single><<<1, Single::THREADS, 0>>>(
+			SpineKernel<Single><<<1, Single::THREADS, 0>>>(
 				d_src, d_flag_src, d_dest, work.num_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "SegmentedScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
@@ -196,12 +195,12 @@ cudaError_t SegmentedScanEnactor::ScanPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepReductionKernel<Upsweep>),
-					"SegmentedScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineScanKernel<Spine>),
-					"SegmentedScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepScanKernel<Downsweep>),
-					"SegmentedScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel<Upsweep>),
+					"Enactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel<Spine>),
+					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel<Downsweep>),
+					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
 					upsweep_kernel_attrs.sharedSizeBytes,
@@ -218,22 +217,22 @@ cudaError_t SegmentedScanEnactor::ScanPass(
 			}
 
 			// Upsweep segmented scan into spine
-			UpsweepReductionKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+			UpsweepKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, d_flag_src, (T*) partial_spine(), (Flag*) flag_spine(), work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "SegmentedScanEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine segmented scan
-			SpineScanKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+			SpineKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) partial_spine(), (Flag*) flag_spine(), (T*) partial_spine(), spine_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "SegmentedScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep segmented scan into spine
-			DownsweepScanKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
+			DownsweepKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_flag_src, d_dest, (T*) partial_spine(), work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "SegmentedScanEnactor DownsweepScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
 	} while (0);
 
@@ -245,7 +244,7 @@ cudaError_t SegmentedScanEnactor::ScanPass(
  * Enacts a segmented scan on the specified device data.
  */
 template <typename ProblemConfig, typename EnactorType>
-cudaError_t SegmentedScanEnactor::EnactInternal(
+cudaError_t Enactor::EnactInternal(
 	typename ProblemConfig::T *d_dest,
 	typename ProblemConfig::T *d_src,
 	typename ProblemConfig::Flag *d_flag_src,
@@ -306,7 +305,7 @@ cudaError_t SegmentedScanEnactor::EnactInternal(
 
 		// Invoke segmented scan kernel
 		EnactorType *dipatch = static_cast<EnactorType *>(this);
-		if (retval = dipatch->template ScanPass<ProblemConfig>(
+		if (retval = dipatch->template EnactPass<ProblemConfig>(
 			d_dest,
 			d_src,
 			d_flag_src,
@@ -323,14 +322,14 @@ cudaError_t SegmentedScanEnactor::EnactInternal(
  * Enacts a segmented scan on the specified device data.
  */
 template <typename ProblemConfig>
-cudaError_t SegmentedScanEnactor::Enact(
+cudaError_t Enactor::Enact(
 	typename ProblemConfig::T *d_dest,
 	typename ProblemConfig::T *d_src,
 	typename ProblemConfig::Flag *d_flag_src,
 	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
-	return EnactInternal<ProblemConfig, SegmentedScanEnactor>(
+	return EnactInternal<ProblemConfig, Enactor>(
 		d_dest,
 		d_src,
 		d_flag_src,
