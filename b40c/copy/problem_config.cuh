@@ -27,7 +27,7 @@
 
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
-#include <b40c/copy/kernel_config.cuh>
+#include <b40c/copy/sweep_kernel_config.cuh>
 
 namespace b40c {
 namespace copy {
@@ -70,7 +70,7 @@ struct ProblemConfig
 	typedef ProblemType<T, SizeT> Problem;
 
 	// Kernel config for the sweep copy kernel
-	typedef KernelConfig <
+	typedef SweepKernelConfig <
 		Problem,
 		CUDA_ARCH,
 		MAX_CTA_OCCUPANCY,

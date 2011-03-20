@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/scan/scan_cta.cuh>
+#include <b40c/scan/downsweep_cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -35,15 +35,15 @@ namespace scan {
  * Spine scan pass
  */
 template <typename KernelConfig>
-__device__ __forceinline__ void SpineScanPass(
+__device__ __forceinline__ void SpinePass(
 	typename KernelConfig::T 		*&d_in,
 	typename KernelConfig::T 		*&d_out,
 	typename KernelConfig::SizeT 	&spine_elements)
 {
 	typedef typename KernelConfig::SrtsDetails SrtsDetails;
-	typedef ScanCta<KernelConfig> ScanCta;
-	typedef typename ScanCta::SizeT SizeT;
-	typedef typename ScanCta::T T;
+	typedef DownsweepCta<KernelConfig> DownsweepCta;
+	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::T T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -56,10 +56,10 @@ __device__ __forceinline__ void SpineScanPass(
 	SrtsDetails srts_detail(smem_pool, warpscan, KernelConfig::Identity());
 
 	// CTA processing abstraction
-	ScanCta cta(srts_detail, d_in, d_out);
+	DownsweepCta cta(srts_detail, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (ScanCta::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -69,7 +69,7 @@ __device__ __forceinline__ void SpineScanPass(
 	while (cta_offset < cta_guarded_offset) {
 
 		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
-		cta_offset += ScanCta::TILE_ELEMENTS;
+		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -89,12 +89,12 @@ __device__ __forceinline__ void SpineScanPass(
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
-void SpineScanKernel(
+void SpineKernel(
 	typename KernelConfig::T			*d_in,
 	typename KernelConfig::T			*d_out,
 	typename KernelConfig::SizeT 		spine_elements)
 {
-	SpineScanPass<KernelConfig>(d_in, d_out, spine_elements);
+	SpinePass<KernelConfig>(d_in, d_out, spine_elements);
 }
 
 

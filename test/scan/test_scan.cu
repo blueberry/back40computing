@@ -26,9 +26,6 @@
 
 #include <stdio.h> 
 
-// Scan includes
-#include <b40c/scan_enactor_tuned.cuh>
-
 // Test utils
 #include "b40c_test_util.h"
 #include "test_scan.h"

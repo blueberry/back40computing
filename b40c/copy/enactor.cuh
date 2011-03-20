@@ -28,21 +28,20 @@
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/copy/problem_config.cuh>
-#include <b40c/copy/kernel_sweep.cuh>
+#include <b40c/copy/sweep_kernel.cuh>
 
 namespace b40c {
 namespace copy {
 
 
 /******************************************************************************
- * CopyEnactor Declaration
+ * Enactor Declaration
  ******************************************************************************/
 
 /**
  * Basic copy enactor class.
  */
-class CopyEnactor : public util::EnactorBase
+class Enactor : public util::EnactorBase
 {
 protected:
 
@@ -69,7 +68,7 @@ protected:
 	 * Performs a copy pass
 	 */
 	template <typename ProblemConfig>
-	cudaError_t CopyPass(
+	cudaError_t EnactPass(
 		typename ProblemConfig::Sweep::T *d_dest,
 		typename ProblemConfig::Sweep::T *d_src,
 		util::CtaWorkDistribution<typename ProblemConfig::Sweep::SizeT> &work,
@@ -91,7 +90,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	CopyEnactor() {}
+	Enactor() {}
 
 
 	/**
@@ -122,14 +121,14 @@ public:
 
 
 /******************************************************************************
- * CopyEnactor Implementation
+ * Enactor Implementation
  ******************************************************************************/
 
 /**
  * Performs any lazy initialization work needed for this problem type
  */
 template <typename ProblemConfig>
-cudaError_t CopyEnactor::Setup(int sweep_grid_size)
+cudaError_t Enactor::Setup(int sweep_grid_size)
 {
 	// If we're work-stealing, make sure our work progress is set up
 	// for the next pass
@@ -145,7 +144,7 @@ cudaError_t CopyEnactor::Setup(int sweep_grid_size)
  * Performs a copy pass
  */
 template <typename ProblemConfig>
-cudaError_t CopyEnactor::CopyPass(
+cudaError_t Enactor::EnactPass(
 	typename ProblemConfig::Sweep::T *d_dest,
 	typename ProblemConfig::Sweep::T *d_src,
 	util::CtaWorkDistribution<typename ProblemConfig::Sweep::SizeT> &work,
@@ -157,10 +156,10 @@ cudaError_t CopyEnactor::CopyPass(
 	int dynamic_smem = 0;
 
 	// Sweep copy
-	SweepCopyKernel<typename ProblemConfig::Sweep>
+	SweepKernel<typename ProblemConfig::Sweep>
 			<<<work.grid_size, ProblemConfig::Sweep::THREADS, dynamic_smem>>>(
 		d_src, d_dest, work, work_progress, extra_bytes);
-	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "CopyEnactor SweepCopyKernel failed ", __FILE__, __LINE__);
+	if (DEBUG) retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SweepCopyKernel failed ", __FILE__, __LINE__);
 
 	return retval;
 }
@@ -170,7 +169,7 @@ cudaError_t CopyEnactor::CopyPass(
  * Enacts a copy on the specified device data.
  */
 template <typename ProblemConfig, typename EnactorType>
-cudaError_t CopyEnactor::EnactInternal(
+cudaError_t Enactor::EnactInternal(
 	typename ProblemConfig::Sweep::T *d_dest,
 	typename ProblemConfig::Sweep::T *d_src,
 	typename ProblemConfig::Sweep::SizeT num_elements,
@@ -205,7 +204,7 @@ cudaError_t CopyEnactor::EnactInternal(
 
 		// Invoke copy pass
 		EnactorType *dipatch = static_cast<EnactorType *>(this);
-		if (retval = dipatch->template CopyPass<ProblemConfig>(
+		if (retval = dipatch->template EnactPass<ProblemConfig>(
 			d_dest, d_src, work, extra_bytes)) break;
 
 	} while (0);
@@ -225,13 +224,13 @@ cudaError_t CopyEnactor::EnactInternal(
  * Enacts a copy on the specified device data.
  */
 template <typename ProblemConfig>
-cudaError_t CopyEnactor::Enact(
+cudaError_t Enactor::Enact(
 	typename ProblemConfig::Sweep::T *d_dest,
 	typename ProblemConfig::Sweep::T *d_src,
 	typename ProblemConfig::Sweep::SizeT num_elements,
 	int max_grid_size)
 {
-	return EnactInternal<ProblemConfig, CopyEnactor>(
+	return EnactInternal<ProblemConfig, Enactor>(
 		d_dest, d_src, num_elements, 0, max_grid_size);
 }
 

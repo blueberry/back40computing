@@ -30,7 +30,7 @@
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/problem_config.cuh>
-#include <b40c/scan/scan_enactor.cuh>
+#include <b40c/scan/enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
@@ -161,7 +161,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename OpType>
-class TuneEnactor : public scan::ScanEnactor
+class TuneEnactor : public scan::Enactor
 {
 public:
 
@@ -289,7 +289,7 @@ public:
 	 * Constructor
 	 */
 	TuneEnactor(size_t num_elements) :
-		d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+		scan::Enactor(), d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
 	/**
@@ -402,7 +402,6 @@ public:
 			util::Access<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_UPSWEEP_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
-			B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);

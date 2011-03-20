@@ -30,10 +30,9 @@
 #include <b40c/util/data_movement_store.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 
-#include <b40c/reduction/kernel_spine.cuh>
-#include <b40c/reduction/kernel_upsweep.cuh>
+#include <b40c/reduction/spine_kernel.cuh>
+#include <b40c/reduction/upsweep_kernel.cuh>
 #include <b40c/reduction/problem_config.cuh>
-#include <b40c/reduction/problem_type.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -215,7 +214,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
 // Large problems, 4B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, true,
 	  8, 6, 0, 2, 8,
 	  6, 0, 0>
 {
@@ -225,7 +224,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
 // Large problems, 2B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, true,
 	  8, 6, 1, 2, 9,
 	  6, 0, 0>
 {
@@ -236,7 +235,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
 	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
-	  4, 8, 2, 2, 12,
+	  8, 7, 2, 2, 11,
 	  6, 0, 0>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
@@ -312,7 +311,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::CTA_OCCUPANCY))
-__global__ void TunedUpsweepReductionKernel(
+__global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
@@ -322,9 +321,9 @@ __global__ void TunedUpsweepReductionKernel(
 	typedef typename TunedConfig<
 		ProblemType,
 		__B40C_CUDA_ARCH__,
-		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep ReductionKernelConfig;
+		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelConfig;
 
-	UpsweepReductionPass<ReductionKernelConfig, ReductionKernelConfig::WORK_STEALING>::Invoke(
+	UpsweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine,
 		work_decomposition,
@@ -339,7 +338,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
-__global__ void TunedSpineReductionKernel(
+__global__ void TunedSpineKernel(
 	typename ProblemType::T 		*d_spine,
 	typename ProblemType::T 		*d_out,
 	typename ProblemType::SizeT 	spine_elements)
@@ -348,9 +347,9 @@ __global__ void TunedSpineReductionKernel(
 	typedef typename TunedConfig<
 		ProblemType,
 		__B40C_CUDA_ARCH__,
-		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine ReductionKernelConfig;
+		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelConfig;
 
-	SpineReductionPass<ReductionKernelConfig>(d_spine, d_out, spine_elements);
+	SpinePass<KernelConfig>(d_spine, d_out, spine_elements);
 }
 
 

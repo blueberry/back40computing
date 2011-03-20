@@ -27,6 +27,9 @@
 
 #pragma once
 
+#include <b40c/util/data_movement_load.cuh>
+#include <b40c/util/data_movement_store.cuh>
+
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
 
@@ -39,7 +42,7 @@ namespace segmented_scan {
  * reduction tile-processing state and routines
  */
 template <typename KernelConfig>
-struct ScanCta : KernelConfig						// Derive from our config
+struct DownsweepCta : KernelConfig						// Derive from our config
 {
 	//---------------------------------------------------------------------
 	// Typedefs and constants
@@ -76,12 +79,6 @@ struct ScanCta : KernelConfig						// Derive from our config
 	// Output device pointer
 	T 				*d_partials_out;
 
-	// Tile of segmented scan elements
-	T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
-	// Tile of flags
-	Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -89,7 +86,7 @@ struct ScanCta : KernelConfig						// Derive from our config
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ ScanCta(
+	__device__ __forceinline__ DownsweepCta(
 		SrtsSoaDetails srts_soa_details,
 		T 		*d_partials_in,
 		Flag 	*d_flags_in,
@@ -108,11 +105,15 @@ struct ScanCta : KernelConfig						// Derive from our config
 	/**
 	 * Process a single tile
 	 */
-	template <bool UNGUARDED_IO>
+	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
+		// Tiles of segmented scan elements and flags
+		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
 		// Load tile of partials
 		util::LoadTile<
 			T,
@@ -121,7 +122,7 @@ struct ScanCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
 
 		// Load tile of flags
 		util::LoadTile<
@@ -131,7 +132,7 @@ struct ScanCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
 
 		// Scan tile with carry update in raking threads
 		util::scan::soa::CooperativeSoaTileScan<
@@ -152,7 +153,7 @@ struct ScanCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			UNGUARDED_IO>::Invoke(partials, d_partials_out, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(partials, d_partials_out, cta_offset, out_of_bounds);
 	}
 };
 

@@ -29,11 +29,10 @@
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
 
-#include <b40c/segmented_scan/kernel_upsweep.cuh>
-#include <b40c/segmented_scan/kernel_spine.cuh>
-#include <b40c/segmented_scan/kernel_downsweep.cuh>
+#include <b40c/segmented_scan/upsweep_kernel.cuh>
+#include <b40c/segmented_scan/spine_kernel.cuh>
+#include <b40c/segmented_scan/downsweep_kernel.cuh>
 #include <b40c/segmented_scan/problem_config.cuh>
-#include <b40c/segmented_scan/problem_type.cuh>
 
 
 namespace b40c {
@@ -378,7 +377,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Upsweep::CTA_OCCUPANCY))
-__global__ void TunedUpsweepReductionKernel(
+__global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_partials_in,
 	typename ProblemType::Flag								*d_flags_in,
 	typename ProblemType::T 								*d_spine_partials,
@@ -388,7 +387,7 @@ __global__ void TunedUpsweepReductionKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelConfig;
 
-	UpsweepReductionPass<KernelConfig>(
+	UpsweepPass<KernelConfig>(
 		d_partials_in,
 		d_flags_in,
 		d_spine_partials,
@@ -403,7 +402,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
-__global__ void TunedSpineScanKernel(
+__global__ void TunedSpineKernel(
 	typename ProblemType::T 		*d_partials_in,
 	typename ProblemType::Flag		*d_flags_in,
 	typename ProblemType::T 		*d_partials_out,
@@ -412,7 +411,7 @@ __global__ void TunedSpineScanKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelConfig;
 
-	SpineScanPass<KernelConfig>(
+	SpinePass<KernelConfig>(
 		d_partials_in, d_flags_in, d_partials_out, spine_elements);
 }
 
@@ -424,7 +423,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Downsweep::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Downsweep::CTA_OCCUPANCY))
-__global__ void TunedDownsweepScanKernel(
+__global__ void TunedDownsweepKernel(
 	typename ProblemType::T 								*d_partials_in,
 	typename ProblemType::Flag								*d_flags_in,
 	typename ProblemType::T 								*d_partials_out,
@@ -434,7 +433,7 @@ __global__ void TunedDownsweepScanKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelConfig;
 
-	DownsweepScanPass<KernelConfig>(
+	DownsweepPass<KernelConfig>(
 		d_partials_in,
 		d_flags_in,
 		d_partials_out,
@@ -449,7 +448,7 @@ template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
-__global__ void TunedSpineScanSingleKernel(
+__global__ void TunedSingleKernel(
 	typename ProblemType::T 		*d_partials_in,
 	typename ProblemType::Flag		*d_flags_in,
 	typename ProblemType::T 		*d_partials_out,
@@ -458,7 +457,7 @@ __global__ void TunedSpineScanSingleKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelConfig;
 
-	SpineScanPass<KernelConfig>(
+	SpinePass<KernelConfig>(
 		d_partials_in, d_flags_in, d_partials_out, spine_elements);
 }
 

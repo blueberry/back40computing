@@ -27,21 +27,20 @@
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/reduction/reduction_enactor.cuh>
+#include <b40c/reduction/enactor.cuh>
 #include <b40c/reduction/problem_config_tuned.cuh>
-#include <b40c/reduction/kernel_upsweep.cuh>
-#include <b40c/reduction/kernel_spine.cuh>
+#include <b40c/reduction/problem_type.cuh>
 
 namespace b40c {
 
 /******************************************************************************
- * ReductionEnactorTuned Declaration
+ * ReductionEnactor Declaration
  ******************************************************************************/
 
 /**
  * Tuned reduction enactor class.
  */
-class ReductionEnactorTuned : public reduction::ReductionEnactor
+class ReductionEnactor : public reduction::Enactor
 {
 public:
 
@@ -60,7 +59,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef reduction::ReductionEnactor BaseEnactorType;
+	typedef reduction::Enactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -75,7 +74,7 @@ protected:
 	 * Performs a reduction pass
 	 */
 	template <typename TunedConfig>
-	cudaError_t ReductionPass(
+	cudaError_t EnactPass(
 		typename TunedConfig::T *d_dest,
 		typename TunedConfig::T *d_src,
 		util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
@@ -87,12 +86,12 @@ public:
 	/**
 	 * Constructor.
 	 */
-	ReductionEnactorTuned() : BaseEnactorType::ReductionEnactor() {}
+	ReductionEnactor() : BaseEnactorType::Enactor() {}
 
 
 	/**
 	 * Enacts a reduction on the specified device data using the specified
-	 * granularity configuration (ReductionEnactor::Enact)
+	 * granularity configuration (Enactor::Enact)
 	 */
 	using BaseEnactorType::Enact;
 
@@ -115,11 +114,12 @@ public:
 	template <
 		typename T,
 		T BinaryOp(const T&, const T&),
-		reduction::ProbSizeGenre PROB_SIZE_GENRE>
+		reduction::ProbSizeGenre PROB_SIZE_GENRE,
+		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
-		size_t num_elements,
+		SizeT num_elements,
 		int max_grid_size = 0);
 
 
@@ -141,11 +141,12 @@ public:
 	 */
 	template <
 		typename T,
-		T BinaryOp(const T&, const T&)>
+		T BinaryOp(const T&, const T&),
+		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
-		size_t num_bytes,
+		SizeT num_elements,
 		int max_grid_size = 0);
 
 };
@@ -160,15 +161,15 @@ public:
  * Type for encapsulating operational details regarding an invocation
  */
 template <typename ProblemType>
-struct ReductionEnactorTuned::Detail
+struct ReductionEnactor::Detail
 {
 	typedef ProblemType Problem;
 	
-	ReductionEnactorTuned *enactor;
+	ReductionEnactor *enactor;
 	int max_grid_size;
 
 	// Constructor
-	Detail(ReductionEnactorTuned *enactor, int max_grid_size = 0) :
+	Detail(ReductionEnactor *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
 };
 
@@ -177,7 +178,7 @@ struct ReductionEnactorTuned::Detail
  * Type for encapsulating storage details regarding an invocation
  */
 template <typename T, typename SizeT>
-struct ReductionEnactorTuned::Storage
+struct ReductionEnactor::Storage
 {
 	T *d_dest;
 	T *d_src;
@@ -195,7 +196,7 @@ struct ReductionEnactorTuned::Storage
  * Default specialization for problem type genres
  */
 template <reduction::ProbSizeGenre PROB_SIZE_GENRE>
-struct ReductionEnactorTuned::ConfigResolver
+struct ReductionEnactor::ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -209,7 +210,7 @@ struct ReductionEnactorTuned::ConfigResolver
 		typedef reduction::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<TunedConfig, ReductionEnactorTuned>(
+		return detail.enactor->template EnactInternal<TunedConfig, ReductionEnactor>(
 			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
@@ -222,7 +223,7 @@ struct ReductionEnactorTuned::ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct ReductionEnactorTuned::ConfigResolver <reduction::UNKNOWN>
+struct ReductionEnactor::ConfigResolver <reduction::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -244,19 +245,19 @@ struct ReductionEnactorTuned::ConfigResolver <reduction::UNKNOWN>
 
 			// Invoke base class enact with small-problem config type
 			typedef reduction::TunedConfig<ProblemType, CUDA_ARCH, reduction::SMALL> SmallConfig;
-			return detail.enactor->template EnactInternal<SmallConfig, ReductionEnactorTuned>(
+			return detail.enactor->template EnactInternal<SmallConfig, ReductionEnactor>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
 
 		// Invoke base class enact with large-problem config type
-		return detail.enactor->template EnactInternal<LargeConfig, ReductionEnactorTuned>(
+		return detail.enactor->template EnactInternal<LargeConfig, ReductionEnactor>(
 			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
 
 
 /******************************************************************************
- * ReductionEnactorTuned Implementation
+ * ReductionEnactor Implementation
  ******************************************************************************/
 
 /**
@@ -266,7 +267,7 @@ struct ReductionEnactorTuned::ConfigResolver <reduction::UNKNOWN>
  * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
-cudaError_t ReductionEnactorTuned::ReductionPass(
+cudaError_t ReductionEnactor::EnactPass(
 	typename TunedConfig::T *d_dest,
 	typename TunedConfig::T *d_src,
 	util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
@@ -283,11 +284,11 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 	do {
 		if (work.grid_size == 1) {
 
-			reduction::TunedSpineReductionKernel<typename TunedConfig::Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+			reduction::TunedSpineKernel<typename TunedConfig::Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<1, TunedConfig::Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
@@ -302,10 +303,10 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepReductionKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ReductionEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineReductionKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ReductionEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+					"Enactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(upsweep_kernel_attrs.sharedSizeBytes, spine_kernel_attrs.sharedSizeBytes);
 
@@ -319,18 +320,18 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 			}
 
 			// Upsweep reduction into spine
-			TunedUpsweepReductionKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedUpsweepKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) spine(), work, work_progress);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
-			TunedSpineReductionKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) spine(), d_dest, spine_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ReductionEnactor SpineKernel failed ", __FILE__, __LINE__))) break;
 		}
 	} while (0);
 
@@ -345,14 +346,14 @@ cudaError_t ReductionEnactorTuned::ReductionPass(
 template <
 	typename T,
 	T BinaryOp(const T&, const T&),
-	reduction::ProbSizeGenre PROB_SIZE_GENRE>
-cudaError_t ReductionEnactorTuned::Enact(
+	reduction::ProbSizeGenre PROB_SIZE_GENRE,
+	typename SizeT>
+cudaError_t ReductionEnactor::Enact(
 	T *d_dest,
 	T *d_src,
-	size_t num_elements,
+	SizeT num_elements,
 	int max_grid_size)
 {
-	typedef size_t SizeT;
 	typedef reduction::ProblemType<T, SizeT, BinaryOp> Problem;
 	typedef Detail<Problem> Detail;
 	typedef Storage<T, SizeT> Storage;
@@ -371,14 +372,16 @@ cudaError_t ReductionEnactorTuned::Enact(
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&)>
-cudaError_t ReductionEnactorTuned::Enact(
+	T BinaryOp(const T&, const T&),
+	typename SizeT>
+cudaError_t ReductionEnactor::Enact(
 	T *d_dest,
 	T *d_src,
-	size_t num_elements,
+	SizeT num_elements,
 	int max_grid_size)
 {
-	return Enact<T, BinaryOp, reduction::UNKNOWN>(d_dest, d_src, num_elements, max_grid_size);
+	return Enact<T, BinaryOp, reduction::UNKNOWN>(
+		d_dest, d_src, num_elements, max_grid_size);
 }
 
 

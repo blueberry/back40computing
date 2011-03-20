@@ -27,8 +27,8 @@
 
 #include <b40c/util/data_movement_load.cuh>
 #include <b40c/util/data_movement_store.cuh>
-#include <b40c/reduction/kernel_config.cuh>
-#include <b40c/scan/kernel_config.cuh>
+#include <b40c/reduction/upsweep_kernel_config.cuh>
+#include <b40c/scan/downsweep_kernel_config.cuh>
 
 namespace b40c {
 namespace scan {
@@ -80,7 +80,7 @@ template <
 struct ProblemConfig : ProblemType
 {
 	// Kernel config for the upsweep reduction kernel
-	typedef reduction::KernelConfig <
+	typedef reduction::UpsweepKernelConfig <
 		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -94,7 +94,7 @@ struct ProblemConfig : ProblemType
 			Upsweep;
 
 	// Kernel config for the spine scan kernel
-	typedef KernelConfig <
+	typedef DownsweepKernelConfig <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
@@ -107,7 +107,8 @@ struct ProblemConfig : ProblemType
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
-	typedef KernelConfig <
+	// Kernel config for the downsweep scan kernel
+	typedef DownsweepKernelConfig <
 		ProblemType,
 		CUDA_ARCH,
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,

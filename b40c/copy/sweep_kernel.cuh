@@ -28,7 +28,7 @@
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/copy/copy_cta.cuh>
+#include <b40c/copy/sweep_cta.cuh>
 
 namespace b40c {
 namespace copy {
@@ -37,7 +37,7 @@ namespace copy {
  * Copy pass (non-workstealing)
  */
 template <typename KernelConfig, bool WORK_STEALING>
-struct SweepCopyPass
+struct SweepPass
 {
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::T 									*&d_in,
@@ -46,12 +46,12 @@ struct SweepCopyPass
 		const util::WorkProgress 									&work_progress,
 		const int 													&extra_bytes)
 	{
-		typedef CopyCta<KernelConfig> CopyCta;
-		typedef typename CopyCta::T T;
-		typedef typename CopyCta::SizeT SizeT;
+		typedef SweepCta<KernelConfig> SweepCta;
+		typedef typename KernelConfig::T T;
+		typedef typename KernelConfig::SizeT SizeT;
 
 		// CTA processing abstraction
-		CopyCta cta(d_in, d_out);
+		SweepCta cta(d_in, d_out);
 
 		// Determine our threadblock's work range
 		SizeT cta_offset;			// Offset at which this CTA begins processing
@@ -59,7 +59,7 @@ struct SweepCopyPass
 		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
 		SizeT guarded_elements;		// Number of elements in partially-full tile
 
-		work_decomposition.GetCtaWorkLimits<CopyCta::LOG_TILE_ELEMENTS, CopyCta::LOG_SCHEDULE_GRANULARITY>(
+		work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 			cta_offset, cta_elements, guarded_offset, guarded_elements);
 
 		SizeT out_of_bounds = cta_offset + cta_elements;
@@ -68,7 +68,7 @@ struct SweepCopyPass
 		while (cta_offset < guarded_offset) {
 
 			cta.ProcessTile<true>(cta_offset, out_of_bounds);
-			cta_offset += CopyCta::TILE_ELEMENTS;
+			cta_offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
@@ -95,7 +95,7 @@ struct SweepCopyPass
  * Copy pass (workstealing)
  */
 template <typename KernelConfig>
-struct SweepCopyPass <KernelConfig, true>
+struct SweepPass <KernelConfig, true>
 {
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::T 									*&d_in,
@@ -104,12 +104,12 @@ struct SweepCopyPass <KernelConfig, true>
 		const util::WorkProgress 									&work_progress,
 		const int 													&extra_bytes)
 	{
-		typedef CopyCta<KernelConfig> CopyCta;
-		typedef typename CopyCta::T T;
-		typedef typename CopyCta::SizeT SizeT;
+		typedef SweepCta<KernelConfig> SweepCta;
+		typedef typename KernelConfig::T T;
+		typedef typename KernelConfig::SizeT SizeT;
 
 		// CTA processing abstraction
-		CopyCta cta(d_in, d_out);
+		SweepCta cta(d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT cta_offset;
@@ -120,12 +120,12 @@ struct SweepCopyPass <KernelConfig, true>
 		}
 
 		// Steal full-tiles of work, incrementing progress counter
-		SizeT unguarded_elements = work_decomposition.num_elements & (~(CopyCta::TILE_ELEMENTS - 1));
+		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelConfig::TILE_ELEMENTS - 1));
 		while (true) {
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = work_progress.Steal<CopyCta::TILE_ELEMENTS>();
+				cta_offset = work_progress.Steal<KernelConfig::TILE_ELEMENTS>();
 			}
 
 			__syncthreads();		// Protect cta_offset
@@ -163,19 +163,19 @@ struct SweepCopyPass <KernelConfig, true>
  ******************************************************************************/
 
 /**
- *  copy kernel entry point
+ *  Copy kernel entry point
  */
 template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
-void SweepCopyKernel(
+void SweepKernel(
 	typename KernelConfig::T 									*d_in,
 	typename KernelConfig::T 									*d_out,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition,
 	util::WorkProgress 											work_progress,
 	int 														extra_bytes)
 {
-	SweepCopyPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
+	SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_out,
 		work_decomposition,

@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // Scan includes
-#include <b40c/scan_enactor_tuned.cuh>
+#include <b40c/scan_enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -99,7 +99,7 @@ double TimedScan(
 		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	ScanEnactorTuned scan_enactor;
+	ScanEnactor scan_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),

@@ -30,7 +30,7 @@
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/segmented_scan/problem_type.cuh>
 #include <b40c/segmented_scan/problem_config.cuh>
-#include <b40c/segmented_scan/segmented_scan_enactor.cuh>
+#include <b40c/segmented_scan/enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
@@ -120,8 +120,6 @@ enum TuningParam {
 
 	PARAM_BEGIN,
 
-		UNIFORM_GRID_SIZE,
-
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -135,6 +133,7 @@ enum TuningParam {
 	// Parameters below here are currently not part of the tuning sweep
 
 	// These can be tuned, but we're currently not compelled to
+	UNIFORM_GRID_SIZE,
 	UNIFORM_SMEM_ALLOCATION,
 	OVERSUBSCRIBED_GRID_SIZE,
 	READ_MODIFIER,
@@ -162,7 +161,7 @@ enum TuningParam {
  * 		- Providing call-back for parameter-list generation
  */
 template <typename T, typename Flag, typename OpType, bool EXCLUSIVE>
-class TuneEnactor : public segmented_scan::SegmentedScanEnactor
+class TuneEnactor : public segmented_scan::Enactor
 {
 public:
 
@@ -301,7 +300,7 @@ public:
 	 * Constructor
 	 */
 	TuneEnactor(size_t num_elements) :
-		d_dest(NULL), d_src(NULL), d_flag_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+		segmented_scan::Enactor(), d_dest(NULL), d_src(NULL), d_flag_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
 
 
 	/**
@@ -403,8 +402,8 @@ public:
 //			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 			0;
 		const int C_UNIFORM_GRID_SIZE =
-			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
-//			0;
+//			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 //			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 			0;

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,23 +22,24 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for scan kernels
+ * SweepCta tile-processing functionality for copy kernels
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/scan/cooperative_scan.cuh>
+#include <b40c/util/data_movement_load.cuh>
+#include <b40c/util/data_movement_store.cuh>
 
 namespace b40c {
-namespace scan {
+namespace copy {
 
 
 /**
- * Derivation of KernelConfig that encapsulates downsweep scan tile-processing
- * routines state and routines
+ * Derivation of KernelConfig that encapsulates tile-processing
+ * routines
  */
 template <typename KernelConfig>
-struct ScanCta : KernelConfig
+struct SweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -46,25 +47,14 @@ struct ScanCta : KernelConfig
 
 	typedef typename KernelConfig::T T;
 	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
-	// The value we will accumulate (in raking threads only)
-	T carry;
-
 	// Input and output device pointers
-	T *d_in;
-	T *d_out;
-
-	// Tile of scan elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-
-	// Operational details for SRTS grid
-	SrtsDetails srts_details;
-
+	T* d_in;
+	T* d_out;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -73,26 +63,23 @@ struct ScanCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ ScanCta(
-		SrtsDetails srts_details,
-		T *d_in,
-		T *d_out,
-		T spine_partial = KernelConfig::Identity()) :
-
-			srts_details(srts_details),
-			d_in(d_in),
-			d_out(d_out),
-			carry(spine_partial) {}			// Seed carry with spine partial
+	__device__ __forceinline__ SweepCta(T *d_in, T *d_out) :
+		d_in(d_in), d_out(d_out) {}
 
 
 	/**
 	 * Process a single tile
+	 *
+	 * Each thread copys only the strided values it loads.
 	 */
-	template <bool UNGUARDED_IO>
+	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
 		SizeT out_of_bounds)
 	{
+		// Tile of elements
+		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
 		// Load tile
 		util::LoadTile<
 			T,
@@ -101,14 +88,9 @@ struct ScanCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			UNGUARDED_IO>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_in, cta_offset, out_of_bounds);
 
-		// Scan tile with carry update in raking threads
-		util::scan::CooperativeTileScan<
-			SrtsDetails,
-			KernelConfig::LOAD_VEC_SIZE,
-			KernelConfig::EXCLUSIVE,
-			KernelConfig::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
+		__syncthreads();
 
 		// Store tile
 		util::StoreTile<
@@ -118,12 +100,12 @@ struct ScanCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			UNGUARDED_IO>::Invoke(data, d_out, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_out, cta_offset, out_of_bounds);
 	}
 };
 
 
 
-} // namespace scan
+} // namespace copy
 } // namespace b40c
 

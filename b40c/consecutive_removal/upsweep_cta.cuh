@@ -41,20 +41,21 @@ namespace reduction {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig>
-struct ReductionCta : KernelConfig
+struct UpsweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T T;							// Input type for detecting consecutive discontinuities
-	typedef typename KernelConfig::SizeT SizeT;					// Type for counting discontinuities
+	typedef typename KernelConfig::SizeT 		SizeT;
+	typedef typename KernelConfig::T 			T;					// Input type for detecting consecutive discontinuities
+	typedef typename KernelConfig::FlagCount 	FlagCount;			// Type for counting discontinuities
 
 	// Tuple of (input, discontinuity-count)
-	typedef typename util::Tuple<T, SizeT> SoaTuple;
+	typedef typename util::Tuple<T, FlagCount> SoaTuple;
 
 	// SOA of (input) tuples
-	typedef util::Tuple<T (*)[KernelConfig::LOAD_VEC_SIZE]> DataSoa;
+	typedef util::Tuple<T (*)[KernelConfig::LOAD_VEC_SIZE]> DataTileSoa;
 
 
 	//---------------------------------------------------------------------
@@ -62,16 +63,13 @@ struct ReductionCta : KernelConfig
 	//---------------------------------------------------------------------
 
 	// Accumulator for the number of discontinuities observed (in each thread)
-	SizeT carry;
+	FlagCount carry;
 
 	// Input device pointer
 	T* d_in;
 
 	// Output spine pointer
-	SizeT* d_spine;
-
-	// Tile of elements
-	T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+	FlagCount* d_spine;
 
 	// Smem storage for discontinuity-count reduction tree
 	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
@@ -93,15 +91,19 @@ struct ReductionCta : KernelConfig
 			SoaTuple(second.t0, first.t1 + 1);		// Inputs are different: keep second's value with first's count incremented
 	}
 
+	/**
+	 * Aggregates the number of discontinuities for each thread's tile data
+	 */
 	template <bool FIRST_TILE>
-	struct ReduceHeadFlags
+	struct ReduceTileDiscontinuities
 	{
 		// Next load
 		template <int LOAD, int TOTAL_LOADS>
 		struct Iterate
 		{
 			static __device__ __forceinline__ void Invoke(
-				ReductionCta *reduction_cta,
+				UpsweepCta *cta,
+				DataTileSoa data_tile_soa,
 				SizeT cta_offset)
 			{
 				// Compute the exclusive discontinuity-tuple to use for reducing
@@ -113,32 +115,33 @@ struct ReductionCta : KernelConfig
 					// Retrieve previous thread's last vector element
 					util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
 						discontinuity_tuple.t0,
-						reduction_cta->d_in,
+						cta->d_in,
 						cta_offset + (LOAD * LOAD_STRIDE) + (threadIdx.x << KernelConfig::LOG_LOAD_VEC_SIZE) - 1);
 
-					discontinuity_tuple.t1 = reduction_cta->carry;
+					discontinuity_tuple.t1 = cta->carry;
 
 				} else {
 
 					// First load of first tile of first CTA: use same value as our first vec-element
-					discontinuity_tuple.t0 = reduction_cta->data[0][0];
+					discontinuity_tuple.t0 = data_tile_soa.t0[0][0];
 					discontinuity_tuple.t1 = 1;				// The first value counts as a discontinuity
 				}
 
 				// Reduce discontinuities into carry
 				discontinuity_tuple = util::reduction::soa::SerialSoaReduceLane<
 					SoaTuple,
-					DataSoa,
+					DataTileSoa,
 					LOAD,
 					KernelConfig::LOAD_VEC_SIZE,
 					SoaReductionOp>::Invoke(
-						DataSoa(reduction_cta->data),
+						data_tile_soa,
 						discontinuity_tuple);
 
-				reduction_cta->carry = discontinuity_tuple.t1;
+				cta->carry = discontinuity_tuple.t1;
 
 				// Next load
-				Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(reduction_cta, cta_offset);
+				Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(
+					cta, data_tile_soa, cta_offset);
 			}
 		};
 
@@ -147,16 +150,19 @@ struct ReductionCta : KernelConfig
 		struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
 		{
 			static __device__ __forceinline__ void Invoke(
-				ReductionCta *reduction_cta,
+				UpsweepCta *cta,
+				DataTileSoa data_tile_soa,
 				SizeT cta_offset) {}
 		};
 
 		// Interface
 		static __device__ __forceinline__ void Invoke(
-			ReductionCta *reduction_cta,
+			UpsweepCta *cta,
+			DataTileSoa data_tile_soa,
 			SizeT cta_offset)
 		{
-			Iterate<0, KernelConfig::LOADS_PER_TILE>::Invoke(reduction_cta, cta_offset);
+			Iterate<0, KernelConfig::LOADS_PER_TILE>::Invoke(
+				cta, data_tile_soa, cta_offset);
 		}
 	};
 
@@ -169,10 +175,10 @@ struct ReductionCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ ReductionCta(
+	__device__ __forceinline__ UpsweepCta(
 		uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS],
 		T *d_in,
-		SizeT *d_spine) :
+		FlagCount *d_spine) :
 
 			reduction_tree(reduction_tree),
 			d_in(d_in),
@@ -188,6 +194,9 @@ struct ReductionCta : KernelConfig
 	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
 	{
+		// Tile of elements
+		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+
 		// Load tile
 		util::LoadTile<
 			T,
@@ -198,7 +207,7 @@ struct ReductionCta : KernelConfig
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(data, d_in, cta_offset, 0);
 
-		ReduceHeadFlags<FIRST_TILE>::Invoke(this, cta_offset);
+		ReduceTileDiscontinuities<FIRST_TILE>::Invoke(this, DataTileSoa(data), cta_offset);
 
 		__syncthreads();
 	}
@@ -215,7 +224,7 @@ struct ReductionCta : KernelConfig
 		carry = util::reduction::TreeReduce<
 			T,
 			KernelConfig::LOG_THREADS,
-			util::reduction::DefaultSum<SizeT>,
+			util::reduction::DefaultSum<FlagCount>,
 			false,											// No need to return aggregate reduction in all threads
 			true>::Invoke(									// All carry values are valid (i.e., they have been assigned at least once)
 				carry,
@@ -225,7 +234,7 @@ struct ReductionCta : KernelConfig
 		// Write output
 		if (threadIdx.x == 0) {
 			printf("Reduced %d discontinuities\n", carry);
-			util::ModifiedStore<T, ReductionCta::WRITE_MODIFIER>::St(
+			util::ModifiedStore<T, UpsweepCta::WRITE_MODIFIER>::St(
 				carry, d_spine, blockIdx.x);
 		}
 	}
