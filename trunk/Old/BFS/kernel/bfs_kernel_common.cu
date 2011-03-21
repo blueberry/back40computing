@@ -161,7 +161,7 @@ int LocalScan(
 /**
  * Perform a local prefix sum to rank the specified partial_reductions
  * vector, storing the results in the corresponding local_ranks vector.
- * Also performs an atomic-increment at the d_queue_length address with the 
+ * Also performs an atomic-increment at the d_enqueue_length address with the
  * aggregate, storing the previous value in s_enqueue_offset.  Returns the 
  * aggregate.  
  * 
@@ -177,7 +177,7 @@ int LocalScanWithAtomicReservation(
 	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 	int partial_reductions[LOAD_VEC_SIZE],
 	int local_ranks[LOAD_VEC_SIZE],
-	int *d_queue_length,
+	int *d_enqueue_length,
 	int &s_enqueue_offset)
 {
 	// Reduce in registers, placing the result into our smem cell for raking
@@ -198,7 +198,7 @@ int LocalScanWithAtomicReservation(
 		
 		// Atomic-increment the global counter with our cycle's allocation
 		if (threadIdx.x == 0) {
-			s_enqueue_offset = atomicAdd(d_queue_length, warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1]);
+			s_enqueue_offset = atomicAdd(d_enqueue_length, warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1]);
 		}
 		
 		// Serial scan (rake) in smem
@@ -553,7 +553,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		IndexType *d_column_indices,
 		IndexType *d_row_offsets,
 		IndexType *d_source_dist,
-		int *d_queue_length,
+		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
@@ -618,7 +618,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			warpscan, 
 			row_length, 
 			local_rank, 
-			d_queue_length, 
+			d_enqueue_length,
 			s_enqueue_offset);
 
 		__syncthreads();
@@ -697,7 +697,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 		IndexType *d_column_indices,
 		IndexType *d_row_offsets,
 		IndexType *d_source_dist,
-		int *d_queue_length,
+		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
@@ -804,7 +804,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			// the outgoing queue at s_enqueue_offset
 			int neighbor_local_rank;
 			int enqueue_count = LocalScanWithAtomicReservation<1, PARTIALS_PER_SEG>(
-				base_partial, raking_segment, warpscan, &unvisited, &neighbor_local_rank, d_queue_length, s_enqueue_offset);
+				base_partial, raking_segment, warpscan, &unvisited, &neighbor_local_rank, d_enqueue_length, s_enqueue_offset);
 
 			if (unvisited) {
 				d_out_queue[s_enqueue_offset + neighbor_local_rank] = neighbor_node;
@@ -868,7 +868,7 @@ void BfsIteration(
 	IndexType *d_column_indices,
 	IndexType *d_row_offsets,
 	IndexType *d_source_dist,
-	int *d_queue_length,
+	int *d_enqueue_length,
 	int &s_enqueue_offset,
 	int cta_offset, 
 	int cta_extra_elements,
@@ -891,7 +891,7 @@ void BfsIteration(
 			d_column_indices,
 			d_row_offsets,
 			d_source_dist,
-			d_queue_length,
+			d_enqueue_length,
 			s_enqueue_offset,
 			TILE_ELEMENTS);
 
@@ -915,7 +915,7 @@ void BfsIteration(
 			d_column_indices,
 			d_row_offsets,
 			d_source_dist,
-			d_queue_length,
+			d_enqueue_length,
 			s_enqueue_offset,
 			cta_extra_elements); 
 	}

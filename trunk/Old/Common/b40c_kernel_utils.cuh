@@ -314,7 +314,9 @@ struct SrtsGrid
 		LANE_STRIDE						= ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
 		// Total number of quad words (uint4) needed to back the grid
-		SMEM_QUADS						= ((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4)
+		SMEM_QUADS						= ((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4),
+
+		SMEM_BYTES						= SMEM_QUADS * sizeof(uint4)
 	};
 	
 	
