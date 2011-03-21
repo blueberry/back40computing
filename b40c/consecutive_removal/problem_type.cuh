@@ -37,8 +37,10 @@ template <
 	typename _SizeT>
 struct ProblemType
 {
-	typedef _T T;
-	typedef _SizeT SizeT;
+	typedef _T 				T;
+	typedef _SizeT 			SizeT;
+	typedef _SizeT 			FlagCount;			// Type for discontinuity counts
+
 };
 
 

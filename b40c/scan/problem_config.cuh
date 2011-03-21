@@ -45,7 +45,7 @@ namespace scan {
  */
 template <
 	// ProblemType type parameters
-	typename ProblemType,
+	typename _ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -77,8 +77,10 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig : ProblemType
+struct ProblemConfig : _ProblemType
 {
+	typedef _ProblemType ProblemType;
+
 	// Kernel config for the upsweep reduction kernel
 	typedef reduction::UpsweepKernelConfig <
 		ProblemType,

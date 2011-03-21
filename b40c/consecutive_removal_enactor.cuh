@@ -20,27 +20,27 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuned Scan Enactor
+ * Tuned ConsecutiveRemoval Enactor
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/segmented_scan/enactor.cuh>
-#include <b40c/segmented_scan/problem_config_tuned.cuh>
-#include <b40c/segmented_scan/problem_type.cuh>
+#include <b40c/consecutive_removal/enactor.cuh>
+#include <b40c/consecutive_removal/problem_config_tuned.cuh>
+#include <b40c/consecutive_removal/problem_type.cuh>
 
 namespace b40c {
 
 /******************************************************************************
- * SegmentedScanEnactor Declaration
+ * ConsecutiveRemovalEnactor Declaration
  ******************************************************************************/
 
 /**
- * Tuned segmented scan enactor class.
+ * Tuned consecutive removal enactor class.
  */
-class SegmentedScanEnactor : public segmented_scan::Enactor
+class ConsecutiveRemovalEnactor : public consecutive_removal::Enactor
 {
 public:
 
@@ -48,9 +48,9 @@ public:
 	// Helper Structures (need to be public for cudafe)
 	//---------------------------------------------------------------------
 
-	template <typename T, typename Flag, typename SizeT> 		struct Storage;
-	template <typename ProblemType> 							struct Detail;
-	template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE> 	struct ConfigResolver;
+	template <typename T, typename SizeT> 							struct Storage;
+	template <typename ProblemType> 								struct Detail;
+	template <consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE> 	struct ConfigResolver;
 
 protected:
 
@@ -59,7 +59,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Typedefs for base classes
-	typedef segmented_scan::Enactor BaseEnactorType;
+	typedef consecutive_removal::Enactor BaseEnactorType;
 
 	// Befriend our base types: they need to call back into a
 	// protected methods (which are templated, and therefore can't be virtual)
@@ -67,17 +67,16 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
-	// Scan Operation
+	// ConsecutiveRemoval Operation
 	//-----------------------------------------------------------------------------
 
     /**
-	 * Performs a segmented scan pass
+	 * Performs a consecutive removal pass
 	 */
 	template <typename TunedConfig>
 	cudaError_t EnactPass(
 		typename TunedConfig::T *d_dest,
 		typename TunedConfig::T *d_src,
-		typename TunedConfig::Flag *d_flag_src,
 		util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
 		int spine_elements);
 
@@ -87,62 +86,53 @@ public:
 	/**
 	 * Constructor.
 	 */
-	SegmentedScanEnactor() : BaseEnactorType::Enactor() {}
+	ConsecutiveRemovalEnactor() : BaseEnactorType::Enactor() {}
 
 
 	/**
-	 * Enacts a segmented scan on the specified device data using the specified
-	 * granularity configuration  (ScanEnactor::Enact)
+	 * Enacts a consecutive removal on the specified device data using the specified
+	 * granularity configuration  (Enactor::Enact)
 	 */
 	using BaseEnactorType::Enact;
 
 
 	/**
-	 * Enacts a segmented scan operation on the specified device data using the
+	 * Enacts a consecutive removal operation on the specified device data using the
 	 * enumerated tuned granularity configuration
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
 	 * @param d_src
-	 * 		Pointer to array of elements to be scanned
-	 * @param d_flag_src
-	 * 		Pointer to array of "head flags" that demarcate independent scan segments
+	 * 		Pointer to array of elements to be compacted
 	 * @param num_elements
-	 * 		Number of elements to segmented scan
+	 * 		Number of elements to compact
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
+		consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE,
 		typename T,
-		typename Flag,
-		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&),
-		T Identity(),
-		segmented_scan::ProbSizeGenre PROB_SIZE_GENRE,
 		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
-		Flag *d_flag_src,
 		SizeT num_elements,
 		int max_grid_size = 0);
 
 
 	/**
-	 * Enacts a segmented scan operation on the specified device data using
+	 * Enacts a consecutive removal operation on the specified device data using
 	 * a heuristic for selecting granularity configuration based upon
 	 * problem size.
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
 	 * @param d_src
-	 * 		Pointer to array of elements to be scanned
-	 * @param d_flag_src
-	 * 		Pointer to array of "head flags" that demarcate independent scan segments
+	 * 		Pointer to array of elements to be compacted
 	 * @param num_elements
-	 * 		Number of elements to segmented scan
+	 * 		Number of elements to compact
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -150,17 +140,13 @@ public:
 	 */
 	template <
 		typename T,
-		typename Flag,
-		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&),
-		T Identity(),
 		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
 		T *d_src,
-		Flag *d_flag_src,
 		SizeT num_elements,
 		int max_grid_size = 0);
+
 };
 
 
@@ -173,15 +159,15 @@ public:
  * Type for encapsulating operational details regarding an invocation
  */
 template <typename ProblemType>
-struct SegmentedScanEnactor::Detail
+struct ConsecutiveRemovalEnactor::Detail
 {
 	typedef ProblemType Problem;
 	
-	SegmentedScanEnactor *enactor;
+	ConsecutiveRemovalEnactor *enactor;
 	int max_grid_size;
 
 	// Constructor
-	Detail(SegmentedScanEnactor *enactor, int max_grid_size = 0) :
+	Detail(ConsecutiveRemovalEnactor *enactor, int max_grid_size = 0) :
 		enactor(enactor), max_grid_size(max_grid_size) {}
 };
 
@@ -189,17 +175,16 @@ struct SegmentedScanEnactor::Detail
 /**
  * Type for encapsulating storage details regarding an invocation
  */
-template <typename T, typename Flag, typename SizeT>
-struct SegmentedScanEnactor::Storage
+template <typename T, typename SizeT>
+struct ConsecutiveRemovalEnactor::Storage
 {
 	T *d_dest;
 	T *d_src;
-	Flag *d_flag_src;
 	SizeT num_elements;
 
 	// Constructor
-	Storage(T *d_dest, T *d_src, Flag *d_flag_src, SizeT num_elements) :
-		d_dest(d_dest), d_src(d_src), d_flag_src(d_flag_src), num_elements(num_elements) {}
+	Storage(T *d_dest, T *d_src, SizeT num_elements) :
+		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
 };
 
 
@@ -208,8 +193,8 @@ struct SegmentedScanEnactor::Storage
  *
  * Default specialization for problem type genres
  */
-template <segmented_scan::ProbSizeGenre PROB_SIZE_GENRE>
-struct SegmentedScanEnactor::ConfigResolver
+template <consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE>
+struct ConsecutiveRemovalEnactor::ConfigResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -220,15 +205,11 @@ struct SegmentedScanEnactor::ConfigResolver
 		typedef typename DetailType::Problem ProblemType;
 
 		// Obtain tuned granularity type
-		typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
+		typedef consecutive_removal::TunedConfig<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> TunedConfig;
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<TunedConfig, SegmentedScanEnactor>(
-			storage.d_dest,
-			storage.d_src,
-			storage.d_flag_src,
-			storage.num_elements,
-			detail.max_grid_size);
+		return detail.enactor->template EnactInternal<TunedConfig, ConsecutiveRemovalEnactor>(
+			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
 
@@ -240,7 +221,7 @@ struct SegmentedScanEnactor::ConfigResolver
  * based upon problem size, etc.
  */
 template <>
-struct SegmentedScanEnactor::ConfigResolver <segmented_scan::UNKNOWN>
+struct ConsecutiveRemovalEnactor::ConfigResolver <consecutive_removal::UNKNOWN>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
@@ -251,7 +232,7 @@ struct SegmentedScanEnactor::ConfigResolver <segmented_scan::UNKNOWN>
 		typedef typename DetailType::Problem ProblemType;
 
 		// Obtain large tuned granularity type
-		typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, segmented_scan::LARGE> LargeConfig;
+		typedef consecutive_removal::TunedConfig<ProblemType, CUDA_ARCH, consecutive_removal::LARGE> LargeConfig;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargeConfig::Upsweep::TILE_ELEMENTS *
@@ -261,55 +242,46 @@ struct SegmentedScanEnactor::ConfigResolver <segmented_scan::UNKNOWN>
 		if (storage.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef segmented_scan::TunedConfig<ProblemType, CUDA_ARCH, segmented_scan::SMALL> SmallConfig;
-			return detail.enactor->template EnactInternal<SmallConfig, SegmentedScanEnactor>(
-				storage.d_dest,
-				storage.d_src,
-				storage.d_flag_src,
-				storage.num_elements,
-				detail.max_grid_size);
+			typedef consecutive_removal::TunedConfig<ProblemType, CUDA_ARCH, consecutive_removal::SMALL> SmallConfig;
+			return detail.enactor->template EnactInternal<SmallConfig, ConsecutiveRemovalEnactor>(
+				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactInternal<LargeConfig, SegmentedScanEnactor>(
-			storage.d_dest,
-			storage.d_src,
-			storage.d_flag_src,
-			storage.num_elements,
-			detail.max_grid_size);
+		return detail.enactor->template EnactInternal<LargeConfig, ConsecutiveRemovalEnactor>(
+			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
 
 
 /******************************************************************************
- * SegmentedScanEnactor Implementation
+ * ConsecutiveRemovalEnactor Implementation
  ******************************************************************************/
 
 /**
- * Performs a segmented scan pass
+ * Performs a consecutive removal pass
  *
  * TODO: Section can be removed if CUDA Runtime is fixed to
  * properly support template specialization around kernel call sites.
  */
 template <typename TunedConfig>
-cudaError_t SegmentedScanEnactor::EnactPass(
+cudaError_t ConsecutiveRemovalEnactor::EnactPass(
 	typename TunedConfig::T *d_dest,
 	typename TunedConfig::T *d_src,
-	typename TunedConfig::Flag *d_flag_src,
 	util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
 	int spine_elements)
 {
-	using namespace segmented_scan;
+	using namespace consecutive_removal;
 
 	// Common problem type that can be used to reconstruct the same TunedConfig on the device
 	typedef typename TunedConfig::ProblemType ProblemType;
 
-	typedef typename TunedConfig::T T;
-	typedef typename TunedConfig::Flag Flag;
 	typedef typename TunedConfig::Upsweep Upsweep;
 	typedef typename TunedConfig::Spine Spine;
 	typedef typename TunedConfig::Downsweep Downsweep;
 	typedef typename TunedConfig::Single Single;
+	typedef typename TunedConfig::T T;
+	typedef typename TunedConfig::FlagCount FlagCount;
 
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -317,9 +289,9 @@ cudaError_t SegmentedScanEnactor::EnactPass(
 
 			TunedSingleKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<1, Single::THREADS, 0>>>(
-				d_src, d_flag_src, d_dest, work.num_elements);
+				d_src, d_dest, NULL, work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor SpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
@@ -335,11 +307,11 @@ cudaError_t SegmentedScanEnactor::EnactPass(
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+					"ConsecutiveRemovalEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+					"ConsecutiveRemovalEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+					"ConsecutiveRemovalEnactor cudaFuncGetAttributes downsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
 					upsweep_kernel_attrs.sharedSizeBytes,
@@ -355,26 +327,26 @@ cudaError_t SegmentedScanEnactor::EnactPass(
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
-			// Upsweep segmented scan into spine
+			// Upsweep scan into spine
 			TunedUpsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-				<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-					d_src, d_flag_src, (T*) partial_spine(), (Flag*) flag_spine(), work);
+					<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+				d_src, (FlagCount*) spine(), work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepReductionKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor TunedUpsweepKernel failed ", __FILE__, __LINE__))) break;
 
-			// Spine segmented scan
+			// Spine scan
 			TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-				<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-					(T*) partial_spine(), (Flag*) flag_spine(), (T*) partial_spine(), spine_elements);
+					<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+				(FlagCount*) spine(), (FlagCount*) spine(), spine_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor TunedSpineKernel failed ", __FILE__, __LINE__))) break;
 
-			// Downsweep segmented scan into spine
+			// Downsweep scan into spine
 			TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
-				<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-					d_src, d_flag_src, d_dest, (T*) partial_spine(), work);
+					<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
+				d_src, d_dest, (FlagCount*) spine(), work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
 	} while (0);
 
@@ -383,57 +355,46 @@ cudaError_t SegmentedScanEnactor::EnactPass(
 
 
 /**
- * Enacts a segmented scan operation on the specified device data using the
+ * Enacts a consecutive removal operation on the specified device data using the
  * enumerated tuned granularity configuration
  */
 template <
+	consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
-	typename Flag,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
-	segmented_scan::ProbSizeGenre PROB_SIZE_GENRE,
 	typename SizeT>
-cudaError_t SegmentedScanEnactor::Enact(
+cudaError_t ConsecutiveRemovalEnactor::Enact(
 	T *d_dest,
 	T *d_src,
-	Flag *d_flag_src,
 	SizeT num_elements,
 	int max_grid_size)
 {
-	typedef size_t SizeT;
-	typedef segmented_scan::ProblemType<T, Flag, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
+	typedef consecutive_removal::ProblemType<T, SizeT> Problem;
 	typedef Detail<Problem> Detail;
-	typedef Storage<T, Flag, SizeT> Storage;
+	typedef Storage<T, SizeT> Storage;
 	typedef ConfigResolver<PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
-	Storage storage(d_dest, d_src, d_flag_src, num_elements);
+	Storage storage(d_dest, d_src, num_elements);
 
 	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
 }
 
 
 /**
- * Enacts a segmented scan operation on the specified device data using the
+ * Enacts a consecutive removal operation on the specified device data using the
  * LARGE granularity configuration
  */
 template <
 	typename T,
-	typename Flag,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
 	typename SizeT>
-cudaError_t SegmentedScanEnactor::Enact(
+cudaError_t ConsecutiveRemovalEnactor::Enact(
 	T *d_dest,
 	T *d_src,
-	Flag *d_flag_src,
 	SizeT num_elements,
 	int max_grid_size)
 {
-	return Enact<T, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN>(
-		d_dest, d_src, d_flag_src, num_elements, max_grid_size);
+	return Enact<consecutive_removal::UNKNOWN>(
+		d_dest, d_src, num_elements, max_grid_size);
 }
 
 

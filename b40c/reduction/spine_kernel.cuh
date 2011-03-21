@@ -81,7 +81,7 @@ __device__ __forceinline__ void SpinePass(
 
 		// Collectively reduce accumulated carry from each thread into output
 		// destination (all thread have valid reduction partials)
-		cta.template OutputToSpine<true>(KernelConfig::THREADS);
+		cta.OutputToSpine();
 
 	} else {
 
@@ -90,7 +90,7 @@ __device__ __forceinline__ void SpinePass(
 
 		// Collectively reduce accumulated carry from each thread into output
 		// destination (not every thread may have a valid reduction partial)
-		cta.template OutputToSpine<false>(spine_elements);
+		cta.OutputToSpine(spine_elements);
 	}
 
 }

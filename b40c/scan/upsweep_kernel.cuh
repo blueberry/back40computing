@@ -79,7 +79,7 @@ __device__ __forceinline__ void UpsweepPass(
 
 	// Collectively reduce accumulated carry from each thread into output
 	// destination (all thread have valid reduction partials)
-	cta.template OutputToSpine<true>(KernelConfig::THREADS);
+	cta.OutputToSpine();
 }
 
 

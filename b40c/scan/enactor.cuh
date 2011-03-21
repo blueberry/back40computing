@@ -74,7 +74,7 @@ protected:
 		typename ProblemConfig::T *d_dest,
 		typename ProblemConfig::T *d_src,
 		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
-		typename ProblemConfig::Spine::SizeT spine_elements);
+		typename ProblemConfig::SizeT spine_elements);
 
 	/**
 	 * Enacts a scan on the specified device data.
@@ -132,7 +132,7 @@ public:
 template <typename ProblemConfig>
 cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
 {
-	typedef typename ProblemConfig::Upsweep::T T;
+	typedef typename ProblemConfig::T T;
 
 	// Make sure our spine is big enough
 	return spine.Setup<T>(sweep_grid_size, spine_elements);
@@ -147,13 +147,12 @@ cudaError_t Enactor::EnactPass(
 	typename ProblemConfig::T *d_dest,
 	typename ProblemConfig::T *d_src,
 	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
-	typename ProblemConfig::Spine::SizeT spine_elements)
+	typename ProblemConfig::SizeT spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep Upsweep;
 	typedef typename ProblemConfig::Spine Spine;
 	typedef typename ProblemConfig::Downsweep Downsweep;
-
-	typedef typename Downsweep::T T;
+	typedef typename ProblemConfig::T T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
@@ -236,8 +235,8 @@ cudaError_t Enactor::EnactInternal(
 	typedef typename ProblemConfig::Upsweep Upsweep;
 	typedef typename ProblemConfig::Spine Spine;
 	typedef typename ProblemConfig::Downsweep Downsweep;
-	typedef typename Downsweep::T T;
-	typedef typename Downsweep::SizeT SizeT;
+	typedef typename ProblemConfig::T T;
+	typedef typename ProblemConfig::SizeT SizeT;
 
 	// Compute sweep grid size
 	const int MIN_OCCUPANCY = B40C_MIN(Downsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);

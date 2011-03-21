@@ -279,6 +279,9 @@ cudaError_t ScanEnactor::EnactPass(
 {
 	using namespace scan;
 
+	// Common problem type that can be used to reconstruct the same TunedConfig on the device
+	typedef typename TunedConfig::ProblemType ProblemType;
+
 	typedef typename TunedConfig::T T;
 	typedef typename TunedConfig::Upsweep Upsweep;
 	typedef typename TunedConfig::Spine Spine;
@@ -288,7 +291,7 @@ cudaError_t ScanEnactor::EnactPass(
 	do {
 		if (work.grid_size == 1) {
 
-			TunedSpineKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
+			TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<1, TunedConfig::Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
@@ -307,11 +310,11 @@ cudaError_t ScanEnactor::EnactPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepKernel<typename Downsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -329,22 +332,22 @@ cudaError_t ScanEnactor::EnactPass(
 			}
 
 			// Upsweep scan into spine
-			TunedUpsweepKernel<typename Upsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[0], TunedConfig::Upsweep::THREADS, dynamic_smem[0]>>>(
+			TunedUpsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
+					<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedUpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
-			TunedSpineKernel<typename Spine::ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[1], TunedConfig::Spine::THREADS, dynamic_smem[1]>>>(
+			TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
+					<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) spine(), (T*) spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedSpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
-			TunedDownsweepKernel<typename Downsweep::ProblemType, TunedConfig::PROB_SIZE_GENRE>
-					<<<grid_size[2], TunedConfig::Downsweep::THREADS, dynamic_smem[2]>>>(
+			TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
+					<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ScanEnactor TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;

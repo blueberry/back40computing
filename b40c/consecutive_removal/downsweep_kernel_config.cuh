@@ -67,7 +67,7 @@ struct DownsweepKernelConfig : _ProblemType
 	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::SizeT 	SizeT;
 	typedef typename ProblemType::T 		T;					// Type of input data
-	typedef typename ProblemType::SizeT 	FlagCount;			// Type for discontinuity counts
+	typedef typename ProblemType::FlagCount	FlagCount;			// Type for discontinuity counts
 	typedef int								LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS)
 
 

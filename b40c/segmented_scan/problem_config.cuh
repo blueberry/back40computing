@@ -44,7 +44,7 @@ namespace segmented_scan {
  */
 template <
 	// ProblemType type parameters
-	typename ProblemType,
+	typename _ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -77,8 +77,10 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig : ProblemType
+struct ProblemConfig : _ProblemType
 {
+	typedef _ProblemType ProblemType;
+
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelConfig <
 		ProblemType,
@@ -136,7 +138,7 @@ struct ProblemConfig : ProblemType
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
+		LOG_SCHEDULE_GRANULARITY>
 			Single;
 
 	enum {
