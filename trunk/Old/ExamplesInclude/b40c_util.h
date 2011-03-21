@@ -84,6 +84,11 @@ public:
 	template <typename T>
 	void GetCmdLineArgument(const char *arg_name, T &val);
 
+	int ParsedArgc()
+	{
+		return pairs.size();
+	}
+
 };
 
 template <typename T>

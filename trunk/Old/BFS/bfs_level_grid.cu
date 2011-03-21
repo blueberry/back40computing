@@ -25,12 +25,11 @@
 
 #pragma once
 
-#include <b40c_error_synchronize.cu>
-
 #include <bfs_base.cu>
 #include <bfs_level_grid_kernel.cu>
 
-#include <radixsort_early_exit.cu>		// Sorting includes
+#include <radixsort_api_enactor_tuned.cuh>		// Sorting includes
+#include <radixsort_api_storage.cuh>			// Sorting includes
 
 namespace b40c {
 
@@ -47,7 +46,7 @@ private:
 	typedef BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> > Base; 
 	
 	// Sorting enactor
-	EarlyExitRadixSortingEnactor<IndexType> sorting_enactor;
+	LsbSortEnactorTuned sorting_enactor;
 
 protected:	
 
@@ -147,7 +146,7 @@ public:
 
 
 		// Create 
-		MultiCtaRadixSortStorage<IndexType> sorting_problem;
+		MultiCtaSortStorage<IndexType> sorting_problem;
 		sorting_problem.d_keys[0] = this->d_queue[0];
 		sorting_problem.d_keys[1] = this->d_queue[1];
 		sorting_problem.selector = 0;

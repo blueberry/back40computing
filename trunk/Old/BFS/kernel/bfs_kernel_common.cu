@@ -27,8 +27,8 @@
 
 #pragma once
 
-#include <b40c_kernel_utils.cu>
-#include <b40c_vector_types.cu>
+#include <b40c_kernel_utils.cuh>
+#include <b40c_vector_types.cuh>
 
 namespace b40c {
 
@@ -119,40 +119,42 @@ enum BfsStrategy {
  * 
  * Needs a subsequent syncthreads for safety of further scratch_pool usage
  * 
- * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
+ * Currently only supports RAKING_THREADS = B40C_WARP_THREADS(__B40C_CUDA_ARCH__).
  */
 template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
 __device__ __forceinline__ 
 int LocalScan(
 	int *base_partial,
 	int *raking_segment,
-	int warpscan[2][B40C_WARP_THREADS],
+	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 	int partial_reductions[LOAD_VEC_SIZE],
 	int local_ranks[LOAD_VEC_SIZE])
 {
 	// Reduce in registers, placing the result into our smem cell for raking
-	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>(partial_reductions);
+	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
 
 	__syncthreads();
 
 	// Rake-reduce, warpscan, and rake-scan.
-	if (threadIdx.x < B40C_WARP_THREADS) {
+	if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 
 		// Serial reduce (rake) in smem
-		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>(raking_segment);
+		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 		// Warpscan
-		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, raked_reduction);
+		int total;
+		int seed = WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
+			raked_reduction, total, warpscan);
 		
 		// Serial scan (rake) in smem
-		SerialScan<int, PARTIALS_PER_SEG>(raking_segment, seed);
+		SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
 	}
 
 	__syncthreads();
 
-	SerialScan<int, LOAD_VEC_SIZE>(partial_reductions, local_ranks, base_partial[0]);
+	SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
 	
-	return warpscan[1][B40C_WARP_THREADS - 1];
+	return warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1];
 }
 
 
@@ -165,47 +167,49 @@ int LocalScan(
  * 
  * Needs a subsequent syncthreads for safety of further scratch_pool usage
  * 
- * Currently only supports RAKING_THREADS = B40C_WARP_THREADS.
+ * Currently only supports RAKING_THREADS = B40C_WARP_THREADS(__B40C_CUDA_ARCH__).
  */
 template <int LOAD_VEC_SIZE, int PARTIALS_PER_SEG>
 __device__ __forceinline__ 
 int LocalScanWithAtomicReservation(
 	int *base_partial,
 	int *raking_segment,
-	int warpscan[2][B40C_WARP_THREADS],
+	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 	int partial_reductions[LOAD_VEC_SIZE],
 	int local_ranks[LOAD_VEC_SIZE],
 	int *d_queue_length,
 	int &s_enqueue_offset)
 {
 	// Reduce in registers, placing the result into our smem cell for raking
-	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>(partial_reductions);
+	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
 
 	__syncthreads();
 
 	// Rake-reduce, warpscan, and rake-scan.
-	if (threadIdx.x < B40C_WARP_THREADS) {
+	if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 
 		// Serial reduce (rake) in smem
-		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>(raking_segment);
+		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 		// Warpscan
-		int seed = WarpScan<B40C_WARP_THREADS, false>(warpscan, raked_reduction);
+		int total;
+		int seed = WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
+			raked_reduction, total, warpscan);
 		
 		// Atomic-increment the global counter with our cycle's allocation
 		if (threadIdx.x == 0) {
-			s_enqueue_offset = atomicAdd(d_queue_length, warpscan[1][B40C_WARP_THREADS - 1]);
+			s_enqueue_offset = atomicAdd(d_queue_length, warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1]);
 		}
 		
 		// Serial scan (rake) in smem
-		SerialScan<int, PARTIALS_PER_SEG>(raking_segment, seed);
+		SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
 	}
 
 	__syncthreads();
 
-	SerialScan<int, LOAD_VEC_SIZE>(partial_reductions, local_ranks, base_partial[0]);
+	SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
 	
-	return warpscan[1][B40C_WARP_THREADS - 1];
+	return warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1];
 }
 
 
@@ -543,7 +547,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		IndexType *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
-		int warpscan[2][B40C_WARP_THREADS],
+		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		IndexType *d_in_queue, 
 		IndexType *d_out_queue,
 		IndexType *d_column_indices,
@@ -687,7 +691,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 		IndexType *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
-		int warpscan[2][B40C_WARP_THREADS],
+		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 		IndexType *d_in_queue, 
 		IndexType *d_out_queue,
 		IndexType *d_column_indices,
@@ -858,7 +862,7 @@ void BfsIteration(
 	IndexType *scratch_pool,
 	int *base_partial,
 	int *raking_segment,
-	int warpscan[2][B40C_WARP_THREADS],
+	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
 	IndexType *d_in_queue, 
 	IndexType *d_out_queue,
 	IndexType *d_column_indices,

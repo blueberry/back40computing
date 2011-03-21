@@ -24,8 +24,12 @@
 # Build script for project
 #-------------------------------------------------------------------------------
 
-NVCC = $(shell which nvcc)
+NVCC = "$(shell which nvcc)"
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
+
+# detect OS
+OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
+
 
 #-------------------------------------------------------------------------------
 # Gen targets
@@ -46,7 +50,7 @@ CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib
 # Includes
 #-------------------------------------------------------------------------------
 
-CUDA_INC = $(shell dirname $(NVCC))/../include
+CUDA_INC = "$(shell dirname $(NVCC))/../include"
 INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude
 
 #-------------------------------------------------------------------------------
@@ -55,6 +59,10 @@ INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude
 
 DEFINES = 
 
+
+#-------------------------------------------------------------------------------
+# Compiler Flags
+#-------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------
 # Compiler Flags
@@ -69,17 +77,25 @@ else
 	ARCH = -m64
 endif
 
-NVCCFLAGS = -Xptxas -v
+NVCCFLAGS = -Xptxas -v -Xcudafe -\#
+
+ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
+	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
+endif
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
-	NVCCFLAGS += -Xptxas -abi=no
+	NVCCFLAGS += -Xptxas -abi=no 
 endif
 endif
 
 ifeq ($(keep), 1)
     NVCCFLAGS += -keep
+endif
+
+ifeq ($(verbose), 1)
+    NVCCFLAGS += -v
 endif
 
 ifdef maxregisters
@@ -90,11 +106,7 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-BFS_DEPS = 		../../Common/b40c_cuda_properties.cu \
-				../../Common/b40c_error_synchronize.cu \
-				../../Common/b40c_kernel_data_movement.cu \
-				../../Common/b40c_kernel_utils.cu \
-				../../Common/b40c_vector_types.cu \
+BFS_DEPS = 		$(wildcard ../../Common/*.cuh) \
 				../kernel/bfs_kernel_common.cu \
 				../kernel/bfs_single_grid_kernel.cu \
 				../bfs_base.cu \
