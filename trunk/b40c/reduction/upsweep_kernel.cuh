@@ -87,7 +87,7 @@ struct UpsweepPass
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (all thread have valid reduction partials)
-			cta.template OutputToSpine<true>(KernelConfig::THREADS);
+			cta.OutputToSpine();
 
 		} else {
 
@@ -96,7 +96,7 @@ struct UpsweepPass
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			cta.template OutputToSpine<false>(cta_elements);
+			cta.OutputToSpine(cta_elements);
 		}
 
 	}
@@ -179,7 +179,7 @@ struct UpsweepPass <KernelConfig, true>
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (all thread have valid reduction partials)
-			cta.template OutputToSpine<true>(KernelConfig::THREADS);
+			cta.OutputToSpine();
 
 		} else {
 
@@ -188,7 +188,7 @@ struct UpsweepPass <KernelConfig, true>
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			cta.template OutputToSpine<false>(work_decomposition.num_elements - unguarded_elements);
+			cta.OutputToSpine(work_decomposition.num_elements - unguarded_elements);
 		}
 	}
 };

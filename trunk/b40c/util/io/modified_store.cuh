@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <cuda.h>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/vector_types.cuh>
 
@@ -159,16 +160,23 @@ void ModifiedStore<st::NONE>::St(T &val, T *ptr)
 		B40C_STORE_VEC4(short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 
-	/**
+#if __CUDA_VERSION >= 4000
+	#define B40C_CAST_SELECT(v3, v4) v4
+#else
+	#define B40C_CAST_SELECT(v3, v4) v3
+#endif
+
+
+/**
 	 * Define cache-modified stores for all 4-byte (and smaller) structures
 	 */
-	B40C_STORE_BASE_ONE_TWO_FOUR(char, 				signed char, 	char, 	s8, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(int, 				int, 			int, 	s32, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned int, 		unsigned int, 	uint,	u32, 	r, unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, float)
+	B40C_STORE_BASE_ONE_TWO_FOUR(char, 				signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(int, 				int, 			int, 	s32, 	r, B40C_CAST_SELECT(int, int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, B40C_CAST_SELECT(unsigned char, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned int, 		unsigned int, 	uint,	u32, 	r, B40C_CAST_SELECT(unsigned int, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, B40C_CAST_SELECT(float, float))
 
 	#if !defined(_B40C_LP64_) || (_B40C_LP64_ == 0)
 	B40C_STORE_BASE_ONE_TWO_FOUR(long, 				long, 			long, 	s32, 	r, long)
@@ -200,6 +208,7 @@ void ModifiedStore<st::NONE>::St(T &val, T *ptr)
 	#undef B40C_STORE_BASE
 	#undef B40C_STORE_BASE_ONE_TWO
 	#undef B40C_STORE_BASE_ONE_TWO_FOUR
+	#undef B40C_CAST_SELECT
 
 
 #endif //__CUDA_ARCH__

@@ -315,7 +315,7 @@ struct LoadTile <
 
 
 /**
- * Load of a tile of items using unguarded loads and initialize discontinuity flags
+ * Load of a tile of items using guarded loads and initialize discontinuity flags
  */
 template <
 	int LOG_LOADS_PER_TILE, 
@@ -599,11 +599,12 @@ struct LoadTile <
 		const SizeT &cta_offset,
 		const SizeT &out_of_bounds)
 	{
+		SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
 		Iterate<FIRST_TILE, 0, 0>::Invoke(
 			data,
 			flags,
 			d_in,
-			cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE),
+			thread_offset,
 			out_of_bounds);
 	} 
 };

@@ -152,29 +152,53 @@ struct UpsweepCta : KernelConfig
 
 
 	/**
-	 * Collective reduction across all threads, stores final reduction to output
+	 * Unguarded collective reduction across all threads, stores final reduction
+	 * to output.  Used to collectively reduce each thread's aggregate after
+	 * striding through the input.
 	 *
-	 * Used to collectively reduce each thread's aggregate after striding through
-	 * the input.
+	 * All threads assumed to have valid carry data.
 	 */
-	template <bool ALL_VALID>
+	__device__ __forceinline__ void OutputToSpine()
+	{
+		carry = util::reduction::TreeReduce<
+			T,
+			KernelConfig::LOG_THREADS,
+			KernelConfig::BinaryOp>::Invoke<false>( 		// No need to return aggregate reduction in all threads
+				carry,
+				(T*) reduction_tree);
+
+		// Write output
+		if (threadIdx.x == 0) {
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+				carry, d_out + blockIdx.x);
+		}
+	}
+
+	/**
+	 * Guarded ollective reduction across all threads, stores final reduction
+	 * to output. Used to collectively reduce each thread's aggregate after striding through
+	 * the input.
+	 *
+	 * Only threads with ranks less than num_elements are assumed to have valid
+	 * carry data.
+	 */
 	__device__ __forceinline__ void OutputToSpine(int num_elements)
 	{
 		carry = util::reduction::TreeReduce<
 			T,
 			KernelConfig::LOG_THREADS,
-			KernelConfig::BinaryOp,
-			false,											// No need to return aggregate reduction in all threads
-			ALL_VALID>::Invoke(								// Whether or not all carry values are valid (i.e., they have been assigned at least once)
+			KernelConfig::BinaryOp>::Invoke<false>(			// No need to return aggregate reduction in all threads
 				carry,
-				reinterpret_cast<T*>(reduction_tree),
+				(T*) reduction_tree,
 				num_elements);
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(carry, d_out + blockIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+				carry, d_out + blockIdx.x);
 		}
 	}
+
 };
 
 

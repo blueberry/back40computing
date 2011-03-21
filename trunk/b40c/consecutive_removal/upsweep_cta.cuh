@@ -29,7 +29,7 @@
 #pragma once
 
 #include <b40c/util/soa_tuple.cuh>
-#include <b40c/util/reduction/soa/serial_soa_reduce.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
 #include <b40c/util/reduction/tree_reduce.cuh>
 #include <b40c/util/operators.cuh>
 #include <b40c/util/io/load_tile.cuh>
@@ -51,6 +51,7 @@ struct UpsweepCta : KernelConfig
 	typedef typename KernelConfig::SizeT 		SizeT;
 	typedef typename KernelConfig::T 			T;					// Input type for detecting consecutive discontinuities
 	typedef typename KernelConfig::FlagCount 	FlagCount;			// Type for counting discontinuities
+	typedef int 								LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS_PER_THREAD)
 
 	//---------------------------------------------------------------------
 	// Members
@@ -67,115 +68,6 @@ struct UpsweepCta : KernelConfig
 
 	// Smem storage for discontinuity-count reduction tree
 	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
-
-
-	//---------------------------------------------------------------------
-	// Helper Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Reduces the discontinuity flags
-	 */
-	template <bool FIRST_TILE>
-	struct ReduceFlags
-	{
-		// Next vector
-		template <int LOAD, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
-		struct IterateVecElement
-		{
-			static __device__ __forceinline__ FlagCount Invoke(
-				T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE],
-				T previous,
-				FlagCount carry)
-			{
-				T current = data[LOAD][VEC_ELEMENT];
-				carry += (previous == current);
-
-				return IterateVecElement<LOAD, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
-					data, current, carry);
-			}
-		};
-
-		// Terminate
-		template <int LOAD, int TOTAL_VEC_ELEMENTS>
-		struct IterateVecElement<LOAD, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
-		{
-			static __device__ __forceinline__ FlagCount Invoke(
-				T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE],
-				T previous,
-				FlagCount carry)
-			{
-				return carry;
-			}
-		};
-
-		// Next load
-		template <int LOAD, int TOTAL_LOADS>
-		struct IterateLoad
-		{
-			static __device__ __forceinline__ FlagCount Invoke(
-				T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE],
-				T* d_in,
-				SizeT cta_offset,
-				FlagCount carry)
-			{
-				SizeT thread_offset = cta_offset + (LOAD * LOAD_STRIDE) +
-					(threadIdx.x << KernelConfig::LOG_LOAD_VEC_SIZE) - 1;
-
-				// Initialize rank of first vector element
-				T current = data[LOAD][0];
-				if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
-
-					// First load of first tile of first CTA: discontinuity
-					carry++;
-
-				} else {
-
-					// Retrieve previous thread's last vector element
-					T previous;
-					util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
-						previous,
-						d_in + thread_offset);
-
-					carry += (previous == current);
-				}
-
-				// Initialize flags for remaining vector elements in this load
-				IterateVecElement<LOAD, 1, KernelConfig::LOAD_VEC_SIZE>::Invoke(
-					data, current, carry);
-
-				// Next load
-				return IterateLoad<LOAD + 1, TOTAL_LOADS>::Invoke(
-					data, d_in, cta_offset, carry);
-			}
-		};
-
-		// Terminate
-		template <int TOTAL_LOADS>
-		struct IterateLoad<TOTAL_LOADS, TOTAL_LOADS>
-		{
-			static __device__ __forceinline__ FlagCount Invoke(
-				T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE],
-				T* d_in,
-				SizeT cta_offset,
-				FlagCount carry)
-			{
-				return carry;
-			}
-		};
-
-		// Interface
-		static __device__ __forceinline__ FlagCount Invoke(
-			T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE],
-			T* d_in,
-			SizeT cta_offset,
-			FlagCount carry)
-		{
-			return IterateLoad<0, KernelConfig::LOADS_PER_TILE>::Invoke(
-				data, d_in, cta_offset, carry);
-		}
-	};
-
 
 
 	//---------------------------------------------------------------------
@@ -205,18 +97,23 @@ struct UpsweepCta : KernelConfig
 	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
 	{
-		// Tile of elements
-		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
-		// Load tile
+		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];					// Tile of elements
+		LocalFlagCount flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of discontinuity flags
+
+		// Load data tile, initializing discontinuity flags
 		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			true>::Invoke(data, d_in, cta_offset, 0);
+			true>::template Invoke<FIRST_TILE>(							// Full-tile == unguarded loads
+				data, flags, d_in, cta_offset);
 
-		carry = ReduceFlags<FIRST_TILE>::Invoke(data, d_in, cta_offset, carry);
+		// Reduce flags, accumulate in carry
+		carry += util::reduction::SerialReduce<
+			LocalFlagCount,
+			KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke((LocalFlagCount*) flags);
 
 		__syncthreads();
 	}
@@ -228,21 +125,18 @@ struct UpsweepCta : KernelConfig
 	 * Used to collectively reduce each thread's aggregate after striding through
 	 * the input.
 	 */
-	__device__ __forceinline__ void OutputToSpine(int num_elements)
+	__device__ __forceinline__ void OutputToSpine()
 	{
+		// Cooperatively reduce the carries in each thread (thread-0 gets the result)
 		carry = util::reduction::TreeReduce<
-			T,
+			LocalFlagCount,
 			KernelConfig::LOG_THREADS,
-			util::DefaultSum<FlagCount>,
-			false,											// No need to return aggregate reduction in all threads
-			true>::Invoke(									// All carry values are valid (i.e., they have been assigned at least once)
+			util::DefaultSum>::Invoke<false>(				// No need to return aggregate reduction in all threads
 				carry,
-				reinterpret_cast<T*>(reduction_tree),
-				num_elements);
+				(LocalFlagCount*) reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {
-//			printf("Reduced %d discontinuities\n", carry);
 			util::io::ModifiedStore<UpsweepCta::WRITE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);
 		}

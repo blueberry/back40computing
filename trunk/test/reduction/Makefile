@@ -155,7 +155,7 @@ bin/simple_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_reduction.cu $(DEPS
 
 test: bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_reduction.cu $(DEPS)
+bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_reduction.cu $(DEPS) test_reduction.h
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
@@ -177,7 +177,7 @@ bin/tune_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_reductio
 
 compare: bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DEPS)
+bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_reduction.cu $(DEPS) test_reduction.h
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 

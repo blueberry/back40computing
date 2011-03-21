@@ -446,8 +446,8 @@ __global__ void TunedDownsweepKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::THREADS),
-	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Spine::CTA_OCCUPANCY))
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Single::THREADS),
+	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Single::CTA_OCCUPANCY))
 __global__ void TunedSingleKernel(
 	typename ProblemType::T 		*d_partials_in,
 	typename ProblemType::Flag		*d_flags_in,

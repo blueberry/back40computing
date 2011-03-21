@@ -69,6 +69,7 @@ struct DownsweepCta : KernelConfig
 	T *d_in;
 	T *d_out;
 
+	// Pool of storage for compacting a tile of values
 	T *smem_pool;
 
 	// Operational details for SRTS scan grid

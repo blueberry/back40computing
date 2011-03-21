@@ -65,7 +65,7 @@ struct UpsweepKernelConfig : _ProblemType
 	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::SizeT 	SizeT;
 	typedef typename ProblemType::T 		T;
-	typedef typename ProblemType::SizeT 	FlagCount;			// Type for discontinuity counts
+	typedef typename ProblemType::FlagCount	FlagCount;			// Type for discontinuity counts
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
