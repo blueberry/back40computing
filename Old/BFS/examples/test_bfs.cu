@@ -39,6 +39,7 @@
 
 // BFS includes
 #include <bfs_single_grid.cu>
+#include <bfs_level_grid.cu>
 
 using namespace b40c;
 
@@ -369,10 +370,16 @@ void RunTests(
 	IndexType* reference_source_dist 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 	IndexType* h_source_dist 			= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 
+/*
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	SingleGridBfsEnactor<IndexType, INSTRUMENT> bfs_sg_enactor(
 		(queue_size > 0) ? queue_size : csr_graph.edges, 
 		max_grid_size);
+*/
+	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges,
+		max_grid_size);
+
 	bfs_sg_enactor.BFS_DEBUG = g_verbose;
 
 	// Allocate problem on GPU
