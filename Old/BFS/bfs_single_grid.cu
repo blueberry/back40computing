@@ -25,8 +25,6 @@
 
 #pragma once
 
-#include <b40c_error_synchronize.cu>
-
 #include <bfs_base.cu>
 #include <bfs_single_grid_kernel.cu>
 

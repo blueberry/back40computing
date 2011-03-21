@@ -66,12 +66,12 @@ namespace b40c {
 
 // Number of raking threads.  Params: SM sm_version, strategy			
 // (N.B: currently supported up to 1 warp)
-#define B40C_BFS_SG_SM20_LOG_RAKING_THREADS()					(B40C_LOG_WARP_THREADS + 0)		// 1 raking warps on GF100
-#define B40C_BFS_SG_SM12_LOG_RAKING_THREADS()					(B40C_LOG_WARP_THREADS + 0)		// 1 raking warps on GT200
-#define B40C_BFS_SG_SM10_LOG_RAKING_THREADS()					(B40C_LOG_WARP_THREADS + 0)		// 1 raking warps on G80
-#define B40C_BFS_SG_LOG_RAKING_THREADS(sm_version, strategy)	((sm_version >= 200) ? B40C_BFS_SG_SM20_LOG_RAKING_THREADS() : 	\
-																 (sm_version >= 120) ? B40C_BFS_SG_SM12_LOG_RAKING_THREADS() : 	\
-																					   B40C_BFS_SG_SM10_LOG_RAKING_THREADS())		
+#define B40C_BFS_SG_SM20_LOG_RAKING_THREADS(sm_version)			(B40C_LOG_WARP_THREADS(sm_version) + 0)		// 1 raking warps on GF100
+#define B40C_BFS_SG_SM12_LOG_RAKING_THREADS(sm_version)			(B40C_LOG_WARP_THREADS(sm_version) + 0)		// 1 raking warps on GT200
+#define B40C_BFS_SG_SM10_LOG_RAKING_THREADS(sm_version)			(B40C_LOG_WARP_THREADS(sm_version) + 0)		// 1 raking warps on G80
+#define B40C_BFS_SG_LOG_RAKING_THREADS(sm_version, strategy)	((sm_version >= 200) ? B40C_BFS_SG_SM20_LOG_RAKING_THREADS(sm_version) : 	\
+																 (sm_version >= 120) ? B40C_BFS_SG_SM12_LOG_RAKING_THREADS(sm_version) : 	\
+																					   B40C_BFS_SG_SM10_LOG_RAKING_THREADS(sm_version))
 
 // Size of sractch space (in bytes).  Params: SM sm_version, strategy
 #define B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy)				(45 * 1024 / B40C_BFS_SG_SM20_OCCUPANCY()) 
@@ -119,8 +119,8 @@ template <
 	int STRATEGY,			// Should be of type "BfsStrategy": NVBUGS 768132
 	bool INSTRUMENTED> 						 
 __launch_bounds__ (
-	1 << B40C_BFS_SG_LOG_CTA_THREADS(__CUDA_ARCH__, STRATEGY), 
-	B40C_BFS_SG_OCCUPANCY(__CUDA_ARCH__))
+	1 << B40C_BFS_SG_LOG_CTA_THREADS(__B40C_CUDA_ARCH__, STRATEGY),
+	B40C_BFS_SG_OCCUPANCY(__B40C_CUDA_ARCH__))
 __global__ void BfsSingleGridKernel(
 	IndexType src,										// Source node for the first iteration
 	IndexType *d_in_queue,								// Queue of node-IDs to consume
@@ -132,28 +132,28 @@ __global__ void BfsSingleGridKernel(
 	int *d_sync,										// Array of global synchronization counters, one for each threadblock
 	unsigned long long *d_barrier_time)					// Time (in clocks) spent by each threadblock in software global barrier
 {
-	const int LOG_CTA_THREADS			= B40C_BFS_SG_LOG_CTA_THREADS(__CUDA_ARCH__, STRATEGY);
+	const int LOG_CTA_THREADS			= B40C_BFS_SG_LOG_CTA_THREADS(__B40C_CUDA_ARCH__, STRATEGY);
 	const int CTA_THREADS				= 1 << LOG_CTA_THREADS;
 	
-	const int TILE_ELEMENTS 			= 1 << B40C_BFS_SG_LOG_TILE_ELEMENTS(__CUDA_ARCH__, STRATEGY);
+	const int TILE_ELEMENTS 			= 1 << B40C_BFS_SG_LOG_TILE_ELEMENTS(__B40C_CUDA_ARCH__, STRATEGY);
 
 	const int LOG_SUBTILE_ELEMENTS		= B40C_BFS_SG_LOG_SUBTILE_ELEMENTS(STRATEGY);
 	const int SUBTILE_ELEMENTS			= 1 << LOG_SUBTILE_ELEMENTS;		
 	
-	const int SCRATCH_SPACE				= B40C_BFS_SG_SCRATCH_SPACE(__CUDA_ARCH__, STRATEGY) / sizeof(IndexType);
-	const int LOAD_VEC_SIZE				= 1 << B40C_BFS_SG_LOG_LOAD_VEC_SIZE(__CUDA_ARCH__, STRATEGY);
-	const int RAKING_THREADS			= 1 << B40C_BFS_SG_LOG_RAKING_THREADS(__CUDA_ARCH__, STRATEGY);
+	const int SCRATCH_SPACE				= B40C_BFS_SG_SCRATCH_SPACE(__B40C_CUDA_ARCH__, STRATEGY) / sizeof(IndexType);
+	const int LOAD_VEC_SIZE				= 1 << B40C_BFS_SG_LOG_LOAD_VEC_SIZE(__B40C_CUDA_ARCH__, STRATEGY);
+	const int RAKING_THREADS			= 1 << B40C_BFS_SG_LOG_RAKING_THREADS(__B40C_CUDA_ARCH__, STRATEGY);
 	
 	// Number of scan partials for a tile
 	const int LOG_SCAN_PARTIALS 		= LOG_CTA_THREADS;			// One partial per thread
 	const int SCAN_PARTIALS				= 1 << LOG_SCAN_PARTIALS;
 
 	// Number of scan partials per raking segment
-	const int LOG_PARTIALS_PER_SEG		= LOG_SCAN_PARTIALS - B40C_LOG_WARP_THREADS;					
+	const int LOG_PARTIALS_PER_SEG		= LOG_SCAN_PARTIALS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
 	const int PARTIALS_PER_SEG			= 1 << LOG_PARTIALS_PER_SEG;
 	
 	// Number of scan partials per scratch_pool row
-	const int LOG_PARTIALS_PER_ROW		= B40C_MAX(B40C_LOG_MEM_BANKS(__CUDA_ARCH__), LOG_PARTIALS_PER_SEG); 	// Floor of MEM_BANKS partials per row
+	const int LOG_PARTIALS_PER_ROW		= B40C_MAX(B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__), LOG_PARTIALS_PER_SEG); 	// Floor of MEM_BANKS partials per row
 	const int PARTIALS_PER_ROW			= 1 << LOG_PARTIALS_PER_ROW;
 	const int PADDED_PARTIALS_PER_ROW 	= PARTIALS_PER_ROW + 1;
 	const int SCAN_ROWS 				= SCAN_PARTIALS / PARTIALS_PER_ROW;		// Number of scratch_pool rows for scan 
@@ -186,7 +186,7 @@ __global__ void BfsSingleGridKernel(
 	
 	
 	__shared__ int4 aligned_smem_pool[SHARED_INT4S];	// Smem for: (i) raking prefix sum; and (ii) hashing/compaction scratch space
-	__shared__ int warpscan[2][B40C_WARP_THREADS];		// Smem for cappping off the local prefix sum
+	__shared__ int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)];		// Smem for cappping off the local prefix sum
 	__shared__ int s_enqueue_offset;					// Current tile's offset into the output queue for the next iteration 
 
 	int* 		scan_pool = reinterpret_cast<int*>(aligned_smem_pool);				// The smem pool for (i) above
@@ -216,7 +216,7 @@ __global__ void BfsSingleGridKernel(
 	}
 	
 	// Set identity into first half of warpscan 
-	if (threadIdx.x < B40C_WARP_THREADS) {
+	if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 		warpscan[0][threadIdx.x] = 0;
 	}
 	

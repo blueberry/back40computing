@@ -35,7 +35,6 @@
 #include <string>
 
 #include <test_utils.cu>				// Utilities and correctness-checking
-#include <cutil.h>						// Utilities for commandline parsing
 #include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 
 // BFS includes
@@ -300,10 +299,11 @@ float SimpleReferenceBfs(
 	IndexType *source_dist,
 	IndexType src)
 {
+/*
 	// Create timer
 	unsigned int timer;
 	cutCreateTimer(&timer);
-
+*/
 	// (Re)initialize distances
 	for (IndexType i = 0; i < csr_graph.nodes; i++) {
 		source_dist[i] = -1;
@@ -318,7 +318,7 @@ float SimpleReferenceBfs(
 	// Perform BFS 
 	//
 	
-	cutStartTimer(timer);
+//	cutStartTimer(timer);
 	while (!frontier.empty()) {
 		
 		// Dequeue node from frontier
@@ -340,6 +340,7 @@ float SimpleReferenceBfs(
 			}
 		}
 	}
+/*
 	cutStopTimer(timer);
 	
 	// Cleanup
@@ -347,6 +348,8 @@ float SimpleReferenceBfs(
 	cutDeleteTimer(timer);
 	
 	return elapsed;
+*/
+	return 99999.0;
 }
 
 
@@ -463,7 +466,9 @@ int main( int argc, char** argv)
 	int max_grid_size 		= 0;				// Default: leave it up the enactor
 	int queue_size			= -1;				// Default: the size of the edge list
 
-	CUT_DEVICE_INIT(argc, argv);
+	CommandLineArgs args(argc, argv);
+	DeviceInit(args);
+
 	srand(0);									// Presently deterministic
 	//srand(time(NULL));	
 
@@ -472,12 +477,12 @@ int main( int argc, char** argv)
 	// Check command line arguments
 	// 
 	
-	if (cutCheckCmdLineFlag( argc, (const char**) argv, "help")) {
+	if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 1;
 	}
-	instrumented = cutCheckCmdLineFlag( argc, (const char**) argv, "instrumented");
-	cutGetCmdLineArgumentstr( argc, (const char**) argv, "src", &src_str);
+	instrumented = args.CheckCmdLineFlag("instrumented");
+	args.GetCmdLineArgument("src", src_str);
 	if (src_str != NULL) {
 		if (strcmp(src_str, "randomize") == 0) {
 			randomized_src = true;
@@ -485,16 +490,16 @@ int main( int argc, char** argv)
 			src = atoi(src_str);
 		}
 	}
-	g_undirected = cutCheckCmdLineFlag( argc, (const char**) argv, "undirected");
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "i", &test_iterations);
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "max-ctas", &max_grid_size);
-	cutGetCmdLineArgumenti( argc, (const char**) argv, "queue-size", &queue_size);
-	if (g_verbose2 = cutCheckCmdLineFlag( argc, (const char**) argv, "v2")) {
+	g_undirected = args.CheckCmdLineFlag("undirected");
+	args.GetCmdLineArgument("i", test_iterations);
+	args.GetCmdLineArgument("max-ctas", max_grid_size);
+	args.GetCmdLineArgument("queue-size", queue_size);
+	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
 	} else {
-		g_verbose = cutCheckCmdLineFlag( argc, (const char**) argv, "v");
+		g_verbose = args.CheckCmdLineFlag("v");
 	}
-	int flags = CmdArgReader::getParsedArgc();
+	int flags = args.ParsedArgc();
 	int graph_args = argc - flags - 1;
 	
 	

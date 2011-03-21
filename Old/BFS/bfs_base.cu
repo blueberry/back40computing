@@ -25,10 +25,65 @@
 
 #pragma once
 
-#include <b40c_error_synchronize.cu>
 #include <bfs_kernel_common.cu>
 
 namespace b40c {
+
+
+
+/******************************************************************************
+ * Error utils
+ ******************************************************************************/
+
+
+/**
+ * Block on the previous stream action (e.g., kernel launch), report error-status
+ * and kernel-stdout if present
+ */
+void perror_exit(const char *message, const char *filename, int line)
+{
+	cudaError_t error = cudaPeekAtLastError();
+	if (error) {
+		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+		exit(1);
+	}
+}
+
+
+/**
+ * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
+ */
+void dbg_perror_exit(const char *message, const char *filename, int line)
+{
+#if defined(__B40C_ERROR_CHECKING__)
+	perror_exit(message, filename, line);
+#endif
+}
+
+
+/**
+ * Block on the previous stream action (e.g., kernel launch), report error-status
+ * and kernel-stdout if present
+ */
+void sync_perror_exit(const char *message, const char *filename, int line)
+{
+	cudaError_t error = cudaThreadSynchronize();
+	if (error) {
+		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+		exit(1);
+	}
+}
+
+
+/**
+ * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
+ */
+void dbg_sync_perror_exit(const char *message, const char *filename, int line)
+{
+#if defined(__B40C_ERROR_CHECKING__)
+	sync_perror_exit(message, filename, line);
+#endif
+}
 
 
 /******************************************************************************
@@ -148,6 +203,58 @@ protected:
 	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_queue[1] failed: ", __FILE__, __LINE__);
 	}
 
+
+	/**
+	 * Block on the previous stream action (e.g., kernel launch), report error-status
+	 * and kernel-stdout if present
+	 */
+	void perror_exit(const char *message, const char *filename, int line)
+	{
+		cudaError_t error = cudaPeekAtLastError();
+		if (error) {
+			fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+
+	/**
+	 * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
+	 */
+	void dbg_perror_exit(const char *message, const char *filename, int line)
+	{
+	#if defined(__B40C_ERROR_CHECKING__)
+		perror_exit(message, filename, line);
+	#endif
+	}
+
+
+	/**
+	 * Block on the previous stream action (e.g., kernel launch), report error-status
+	 * and kernel-stdout if present
+	 */
+	void sync_perror_exit(const char *message, const char *filename, int line)
+	{
+		cudaError_t error = cudaThreadSynchronize();
+		if (error) {
+			fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+			exit(1);
+		}
+	}
+
+
+	/**
+	 * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
+	 */
+	void dbg_sync_perror_exit(const char *message, const char *filename, int line)
+	{
+	#if defined(__B40C_ERROR_CHECKING__)
+		sync_perror_exit(message, filename, line);
+	#endif
+	}
+
+
+
 public:
 
 	/**
@@ -170,6 +277,8 @@ public:
 		BfsStrategy strategy) = 0;	
     
 };
+
+
 
 
 

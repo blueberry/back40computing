@@ -38,6 +38,13 @@ namespace b40c {
  ******************************************************************************/
 
 /**
+ * Supress warnings for unused constants
+ */
+template <typename T>
+__host__ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
+
+
+/**
  * Displays error message in accordance with debug mode
  */
 cudaError_t B40CPerror(cudaError_t error, const char *message, const char *filename, int line)
