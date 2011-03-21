@@ -49,7 +49,7 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::SMEM_QUADS];
+	__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::TOTAL_RAKING_QUADS];
 	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
 
 	// SRTS grid details

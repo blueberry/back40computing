@@ -27,8 +27,10 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/store_tile.cuh>
 
 namespace b40c {
 namespace copy {
@@ -81,9 +83,7 @@ struct SweepCta : KernelConfig
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 		// Load tile
-		util::LoadTile<
-			T,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
@@ -93,9 +93,7 @@ struct SweepCta : KernelConfig
 		__syncthreads();
 
 		// Store tile
-		util::StoreTile<
-			T,
-			SizeT,
+		util::io::StoreTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,

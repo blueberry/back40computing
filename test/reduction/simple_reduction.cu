@@ -146,8 +146,8 @@ int main(int argc, char** argv)
 	typedef b40c::reduction::ProblemConfig<
 		ProblemType,
 		b40c::reduction::SM20,
-		b40c::util::ld::CG,
-		b40c::util::st::CG,
+		b40c::util::io::ld::cg,
+		b40c::util::io::st::cg,
 		true,
 		false,
 		true, 

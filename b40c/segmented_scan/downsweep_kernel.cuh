@@ -50,8 +50,8 @@ __device__ __forceinline__ void DownsweepPass(
 	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
 
 	// Shared SRTS grid storage
-	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::SMEM_QUADS];
-	__shared__ uint4 flag_smem_pool[KernelConfig::FlagsSrtsGrid::SMEM_QUADS];
+	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::TOTAL_RAKING_QUADS];
+	__shared__ uint4 flag_smem_pool[KernelConfig::FlagsSrtsGrid::TOTAL_RAKING_QUADS];
 
 	// Shared SRTS warpscan storage
 	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
@@ -65,8 +65,8 @@ __device__ __forceinline__ void DownsweepPass(
 
 	// Read the exclusive partial from our spine
 	T spine_partial;
-	util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(
-		spine_partial, d_spine_partials, blockIdx.x);
+	util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
+		spine_partial, d_spine_partials + blockIdx.x);
 
 	// CTA processing abstraction
 	DownsweepCta cta(

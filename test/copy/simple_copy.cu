@@ -128,8 +128,8 @@ int main(int argc, char** argv)
 		T, 
 		size_t,
 		b40c::copy::SM20, 
-		b40c::util::ld::CG, 
-		b40c::util::st::CG, 
+		b40c::util::io::ld::cg,
+		b40c::util::io::st::cs,
 		true, 
 		false, 
 		8, 7, 1, 0, 8> CustomConfig;

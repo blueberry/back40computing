@@ -298,8 +298,8 @@ public:
 			size_t,
 			TUNE_ARCH,
 
-			(util::ld::CacheModifier) C_READ_MODIFIER,
-			(util::st::CacheModifier) C_WRITE_MODIFIER,
+			(util::io::ld::CacheModifier) C_READ_MODIFIER,
+			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
 			C_WORK_STEALING,
 			C_OVERSUBSCRIBED_GRID_SIZE,
 

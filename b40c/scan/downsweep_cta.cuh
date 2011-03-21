@@ -27,8 +27,10 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/store_tile.cuh>
 
 #include <b40c/util/scan/cooperative_scan.cuh>
 
@@ -98,9 +100,7 @@ struct DownsweepCta : KernelConfig
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 		// Load tile
-		util::LoadTile<
-			T,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
@@ -115,9 +115,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
 
 		// Store tile
-		util::StoreTile<
-			T,
-			SizeT,
+		util::io::StoreTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,

@@ -25,8 +25,8 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 #include <b40c/reduction/upsweep_kernel_config.cuh>
 #include <b40c/scan/downsweep_kernel_config.cuh>
 
@@ -51,8 +51,8 @@ template <
 	int CUDA_ARCH,
 
 	// Common tunable params
-	util::ld::CacheModifier READ_MODIFIER,
-	util::st::CacheModifier WRITE_MODIFIER,
+	util::io::ld::CacheModifier READ_MODIFIER,
+	util::io::st::CacheModifier WRITE_MODIFIER,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
 	bool _OVERSUBSCRIBED_GRID_SIZE,

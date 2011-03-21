@@ -146,8 +146,8 @@ struct SrtsGrid
 											PARTIALS_PER_LANE :
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
-		// Number of quad words (uint4) needed to back this grid
-		PRIMARY_SMEM_QUADS				= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
+		// Number of quad words (uint4) needed to back this level of the SRTS grid
+		RAKING_QUADS					= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
 
 		// Number of quads words needed to back warpscan storage
 		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
@@ -169,23 +169,30 @@ struct SrtsGrid
 
 
 	/**
-	 * Utility class for totaling the SMEM quads needed for an SRTS grid hierarchy
+	 * Utility class for totaling the SMEM raking quads needed for an SRTS grid hierarchy
 	 */
 	template <typename SrtsGrid, int __dummy = 0>
-	struct TotalQuads
+	struct TotalRakingQuads
 	{
-		enum { VALUE = SrtsGrid::PRIMARY_SMEM_QUADS + SrtsGrid::WARPSCAN_QUADS + TotalQuads<typename SrtsGrid::SecondaryGrid>::VALUE };
+		// Recurse
+		enum { VALUE = SrtsGrid::RAKING_QUADS + TotalRakingQuads<typename SrtsGrid::SecondaryGrid>::VALUE };
 	};
 	template <int __dummy>
-	struct TotalQuads<NullType, __dummy>
+	struct TotalRakingQuads<NullType, __dummy>
 	{
+		// Terminate
 		enum { VALUE = 0 };
 	};
 
 
 	enum {
-		// Total number of smem quads needed back this SRTS grid and warpscan
-		SMEM_QUADS = TotalQuads<SrtsGrid>::VALUE,
+
+		// Total number of smem raking quads needed back this hierarchy
+		// of SRTS grids (may be reused for other purposes)
+		TOTAL_RAKING_QUADS = TotalRakingQuads<SrtsGrid>::VALUE,
+
+		// Total number of smem quads needed to back this hierarchy of SRTS grids
+		SMEM_QUADS = TOTAL_RAKING_QUADS + WARPSCAN_QUADS
 	};
 
 

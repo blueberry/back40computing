@@ -27,8 +27,10 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/store_tile.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
@@ -115,9 +117,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 		Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 		// Load tile of partials
-		util::LoadTile<
-			T,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
@@ -125,9 +125,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 			FULL_TILE>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
 
 		// Load tile of flags
-		util::LoadTile<
-			Flag,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
@@ -146,9 +144,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 				carry);
 
 		// Store tile of partials
-		util::StoreTile<
-			T,
-			SizeT,
+		util::io::StoreTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,

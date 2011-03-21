@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
+#include <b40c/util/io/modified_load.cuh>
 
 namespace b40c {
 namespace util {
@@ -39,7 +39,7 @@ namespace util {
 __device__ __forceinline__ int LoadCG(int* d_ptr) 
 {
 	int retval;
-	ModifiedLoad<int, CG>::Ld(retval, d_ptr, 0);
+	ModifiedLoad<util::io::ld::cg>::Ld(retval, d_ptr);
 	return retval;
 }
 

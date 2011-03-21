@@ -26,9 +26,9 @@
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
 #include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/copy/sweep_kernel.cuh>
 #include <b40c/copy/problem_config.cuh>
@@ -106,7 +106,8 @@ struct TunedConfig : TunedConfig<
 // Large problems
 template <>
 struct TunedConfig<SM20, LARGE>
-	: ProblemConfig<unsigned long long, size_t, SM20, util::ld::CG, util::st::CG, true, false, 8, 7, 1, 0, 8>
+	: ProblemConfig<unsigned long long, size_t, SM20, util::io::ld::cg, util::io::st::cg, true, false,
+	  8, 7, 1, 0, 8>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -114,7 +115,8 @@ struct TunedConfig<SM20, LARGE>
 // Small problems
 template <>
 struct TunedConfig<SM20, SMALL>
-	: ProblemConfig<unsigned long long, size_t, SM20, util::ld::CG, util::st::CS, false, false, 8, 6, 0, 0, 6>
+	: ProblemConfig<unsigned long long, size_t, SM20, util::io::ld::cg, util::io::st::cs, false, false,
+	  8, 6, 0, 0, 6>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };
@@ -128,7 +130,8 @@ struct TunedConfig<SM20, SMALL>
 // Large problems
 template <>
 struct TunedConfig<SM13, LARGE>
-	: ProblemConfig<unsigned short, size_t, SM13, util::ld::NONE, util::st::NONE, false, false, 8, 7, 2, 0, 9>
+	: ProblemConfig<unsigned short, size_t, SM13, util::io::ld::NONE, util::io::st::NONE, false, false,
+	  8, 7, 2, 0, 9>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
 };
@@ -136,7 +139,8 @@ struct TunedConfig<SM13, LARGE>
 // Small problems
 template <>
 struct TunedConfig<SM13, SMALL>
-	: ProblemConfig<unsigned long long, size_t, SM13, util::ld::NONE, util::st::NONE, false, false, 8, 5, 0, 1, 6>
+	: ProblemConfig<unsigned long long, size_t, SM13, util::io::ld::NONE, util::io::st::NONE, false, false,
+	  8, 5, 0, 1, 6>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
 };

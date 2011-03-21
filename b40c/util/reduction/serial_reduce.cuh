@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include <b40c/util/reduction/operators.cuh>
+#include <b40c/util/operators.cuh>
 
 namespace b40c {
 namespace util {
