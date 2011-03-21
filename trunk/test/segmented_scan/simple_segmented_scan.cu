@@ -31,8 +31,8 @@
 #include <b40c/segmented_scan/kernel_config.cuh>
 #include <b40c/segmented_scan/problem_config_tuned.cuh>
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/segmented_scan/enactor.cuh>
 
@@ -142,8 +142,8 @@ int main(int argc, char** argv)
 	typedef b40c::segmented_scan::ProblemConfig<
 		ProblemType,
 		b40c::segmented_scan::SM20,
-		b40c::util::ld::NONE,
-		b40c::util::st::NONE,
+		b40c::util::io::ld::cg,
+		b40c::util::io::st::cg,
 		false,
 		false,
 		false,

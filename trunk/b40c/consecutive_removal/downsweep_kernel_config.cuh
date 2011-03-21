@@ -20,23 +20,22 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding segmented scan granularity configuration
+ * "Metatypes" for guiding consecutive removal granularity configuration
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_soa_details.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
-namespace segmented_scan {
+namespace consecutive_removal {
 
 /**
- * Segmented scan kernel granularity configuration meta-type.  Parameterizations of this
+ * Consecutive removal kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -49,7 +48,6 @@ namespace segmented_scan {
 template <
 	// ProblemType type parameters
 	typename _ProblemType,
-	bool _FINAL_KERNEL,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -64,19 +62,19 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : _ProblemType
+struct DownsweepKernelConfig : _ProblemType
 {
 	typedef _ProblemType ProblemType;
+	typedef typename ProblemType::SizeT 	SizeT;
+	typedef typename ProblemType::T 		T;					// Type of input data
+	typedef typename ProblemType::SizeT 	FlagCount;			// Type for discontinuity counts
+	typedef int								LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS)
 
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::Flag Flag;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 	enum {
-		FINAL_KERNEL					= _FINAL_KERNEL,
-
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -107,114 +105,43 @@ struct KernelConfig : _ProblemType
 
 	//
 	// We reduce the elements in registers, and then place that partial
-	// scan into smem rows for further scan
+	// consecutive removal into smem rows for further consecutive removal
 	//
 
-	// SRTS grid type for partials
+	// SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		T,										// Partial type
+		LocalFlagCount,							// Partial type (discontinuity counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			PartialsSrtsGrid;
+			SrtsGrid;
 
-	// SRTS grid type for flags
-	typedef util::SrtsGrid<
-		CUDA_ARCH,
-		Flag,									// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
-		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
-		LOG_RAKING_THREADS,						// Raking threads
-		true>									// There are prefix dependences between lanes
-			FlagsSrtsGrid;
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<
+		SrtsGrid> SrtsDetails;
 
 	enum {
 
-		SMEM_QUADS						= PartialsSrtsGrid::SMEM_QUADS + FlagsSrtsGrid::SMEM_QUADS,
+		// Number of quads needed to back a reshuffling of all tile elements between threads
+		EXCHANGE_QUADS					= ((TILE_ELEMENTS * sizeof(T))+ sizeof(uint4) - 1) / sizeof(uint4),
+
+		// Number of quads needed to back a re-purposable space that can be used for SRTS raking or element-exchange
+		SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, EXCHANGE_QUADS),
+
+		// Total number of smem quads needed by this kernel (including non-repurposable warpscan quads)
+		SMEM_QUADS						= B40C_MAX(SrtsGrid::SMEM_QUADS, SMEM_POOL_QUADS),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
-
-		VALID 							= (CTA_OCCUPANCY > 0)
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
 	};
 
-
-	// Tuple of partial-flag type
-	typedef util::Tuple<T, Flag> SoaTuple;
-
-
-	/**
-	 * SOA scan operator
-	 */
-	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		SoaTuple &first,
-		SoaTuple &second)
-	{
-		return (second.t1) ?
-			second :
-			SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
-	}
-
-
-	/**
-	 * Final (last-level) SOA scan operator
-	 */
-	static __device__ __forceinline__ SoaTuple FinalSoaScanOp(
-		SoaTuple &first,
-		SoaTuple &second)
-	{
-		if (!FINAL_KERNEL) {
-
-			return SoaScanOp(first, second);
-
-		} else if (second.t1) {
-
-			if (EXCLUSIVE) {
-				first.t0 = Identity();
-			}
-			return second;
-		}
-		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
-	}
-
-
-	/**
-	 * Identity operator for flag types
-	 */
-	static __host__ __device__ __forceinline__ Flag FlagIdentity()
-	{
-		return 0;
-	}
-
-
-	/**
-	 * Identity operator for partial-flag tuples
-	 */
-	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
-	{
-		return SoaTuple(
-			Identity(),							// Tuple Identity
-			FlagIdentity());					// Flag Identity
-	}
-
-
-	// Tuple type of SRTS grid types
-	typedef util::Tuple<
-		PartialsSrtsGrid,
-		FlagsSrtsGrid> SrtsGridTuple;
-
-
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
-		SoaTuple,
-		SrtsGridTuple> SrtsSoaDetails;
-
+	static const bool VALID				= (CTA_OCCUPANCY > 0);
 };
 
 
-} // namespace segmented_scan
+} // namespace consecutive_removal
 } // namespace b40c
 

@@ -44,7 +44,7 @@ template <
 	int LOG_NUM_ELEMENTS,
 	bool EXCLUSIVE = true,
 	int STEPS = LOG_NUM_ELEMENTS,
-	T ScanOp(const T&, const T&) = reduction::DefaultSum>
+	T ScanOp(const T&, const T&) = DefaultSum>
 struct WarpScan;
 
 

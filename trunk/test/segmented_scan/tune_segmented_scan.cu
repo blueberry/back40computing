@@ -470,8 +470,8 @@ public:
 		typedef segmented_scan::ProblemConfig <
 			ProblemType,
 			TUNE_ARCH,
-			(util::ld::CacheModifier) C_READ_MODIFIER,
-			(util::st::CacheModifier) C_WRITE_MODIFIER,
+			(util::io::ld::CacheModifier) C_READ_MODIFIER,
+			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
 			C_UNIFORM_SMEM_ALLOCATION,
 			C_UNIFORM_GRID_SIZE,
 			C_OVERSUBSCRIBED_GRID_SIZE,

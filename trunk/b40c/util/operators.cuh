@@ -29,7 +29,19 @@
 
 namespace b40c {
 namespace util {
-namespace reduction {
+
+
+/**
+ * Empty default transform function (leaves non-in_bounds values as they were)
+ */
+template <typename T>
+__device__ __forceinline__ void NopLdTransform(T &val, bool in_range) {}
+
+/**
+ * Empty default transform function (leaves non-in_bounds values as they were)
+ */
+template <typename T>
+__device__ __forceinline__ void NopStTransform(T &val) {}
 
 /**
  * Addition binary associative operator
@@ -41,7 +53,6 @@ T __host__ __device__ __forceinline__ DefaultSum(const T &a, const T &b)
 }
 
 
-} // namespace reduction
 } // namespace util
 } // namespace b40c
 

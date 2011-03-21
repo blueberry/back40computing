@@ -27,8 +27,9 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
 
 #include <b40c/util/reduction/serial_reduce.cuh>
 #include <b40c/util/reduction/tree_reduce.cuh>
@@ -97,9 +98,7 @@ struct UpsweepCta : KernelConfig
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 		// Load tile
-		util::LoadTile<
-			T,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
@@ -138,14 +137,14 @@ struct UpsweepCta : KernelConfig
 
 		if (FIRST_TILE) {
 			if (cta_offset < out_of_bounds) {
-				util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(carry, d_in, cta_offset);
+				util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(carry, d_in + cta_offset);
 				cta_offset += KernelConfig::THREADS;
 			}
 		}
 
 		// Process loads singly
 		while (cta_offset < out_of_bounds) {
-			util::ModifiedLoad<T, KernelConfig::READ_MODIFIER>::Ld(datum, d_in, cta_offset);
+			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
 			carry = KernelConfig::BinaryOp(carry, datum);
 			cta_offset += KernelConfig::THREADS;
 		}
@@ -173,7 +172,7 @@ struct UpsweepCta : KernelConfig
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(carry, d_out, blockIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(carry, d_out + blockIdx.x);
 		}
 	}
 };

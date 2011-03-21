@@ -27,8 +27,9 @@
 
 #pragma once
 
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/reduction/soa/cooperative_soa_reduction.cuh>
@@ -97,33 +98,6 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 			d_spine_flags(d_spine_flags),
 			carry(KernelConfig::SoaTupleIdentity()) {}
 
-
-	/**
-	 * Load transform function for assigning identity to partial values
-	 * that are out of range.
-	 */
-	static __device__ __forceinline__ void LoadTransformT(
-		T &val,
-		bool in_bounds)
-	{
-		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = KernelConfig::Identity();
-	}
-
-
-	/**
-	 * Load transform function for assigning identity to flag values
-	 * that are out of range.
-	 */
-	static __device__ __forceinline__ void LoadTransformFlag(
-		Flag &val,
-		bool in_bounds)
-	{
-		// Assigns identity value to out-of-bounds loads
-		if (!in_bounds) val = KernelConfig::FlagIdentity();
-	}
-
-
 	/**
 	 * Process a single, full tile
 	 */
@@ -136,26 +110,22 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 		Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 		// Load tile of partials
-		util::LoadTile<
-			T,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			true,									// unguarded I/O
-			LoadTransformT>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
+			true>::Invoke(						// unguarded I/O
+				partials, d_partials_in, cta_offset, out_of_bounds);
 
 		// Load tile of flags
-		util::LoadTile<
-			Flag,
-			SizeT,
+		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			true,									// unguarded I/O
-			LoadTransformFlag>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
+			true>::Invoke(						// unguarded I/O
+				flags, d_flags_in, cta_offset, out_of_bounds);
 
 		// Reduce tile with carry maintained by thread SrtsSoaDetails::CUMULATIVE_THREAD
 		util::reduction::soa::CooperativeSoaTileReduction<
@@ -179,11 +149,11 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 		// Write output
 		if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
 
-			util::ModifiedStore<T, KernelConfig::WRITE_MODIFIER>::St(
-				carry.t0, d_spine_partials, blockIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+				carry.t0, d_spine_partials + blockIdx.x);
 
-			util::ModifiedStore<Flag, KernelConfig::WRITE_MODIFIER>::St(
-				carry.t1, d_spine_flags, blockIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+				carry.t1, d_spine_flags + blockIdx.x);
 		}
 	}
 };

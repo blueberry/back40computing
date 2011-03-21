@@ -27,8 +27,8 @@
 
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -56,8 +56,8 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	util::ld::CacheModifier _READ_MODIFIER,
-	util::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _READ_MODIFIER,
+	util::io::st::CacheModifier _WRITE_MODIFIER,
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
@@ -66,8 +66,8 @@ struct UpsweepKernelConfig : _ProblemType
 	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::T T;
 
-	static const util::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 	static const bool WORK_STEALING		= _WORK_STEALING;
 

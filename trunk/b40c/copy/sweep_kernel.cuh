@@ -83,8 +83,8 @@ struct SweepPass
 			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + out_of_bounds);
 			unsigned char extra_byte;
 
-			util::ModifiedLoad<unsigned char, KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes, threadIdx.x);
-			util::ModifiedStore<unsigned char, KernelConfig::WRITE_MODIFIER>::St(extra_byte, d_out_bytes, threadIdx.x);
+			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(extra_byte, d_out_bytes + threadIdx.x);
 		}
 
 	}
@@ -150,8 +150,8 @@ struct SweepPass <KernelConfig, true>
 				unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + work_decomposition.num_elements);
 				unsigned char extra_byte;
 
-				util::ModifiedLoad<unsigned char, KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes, threadIdx.x);
-				util::ModifiedStore<unsigned char, KernelConfig::WRITE_MODIFIER>::St(extra_byte, d_out_bytes, threadIdx.x);
+				util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);
+				util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(extra_byte, d_out_bytes + threadIdx.x);
 			}
 		}
 	}

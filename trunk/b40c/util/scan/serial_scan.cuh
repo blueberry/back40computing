@@ -39,7 +39,7 @@ template <
 	typename T,
 	int NUM_ELEMENTS,
 	bool EXCLUSIVE = true,
-	T ScanOp(const T&, const T&) = reduction::DefaultSum>
+	T ScanOp(const T&, const T&) = DefaultSum>
 struct SerialScan;
 
 

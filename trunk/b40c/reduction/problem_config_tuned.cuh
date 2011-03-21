@@ -26,9 +26,9 @@
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/data_movement_load.cuh>
-#include <b40c/util/data_movement_store.cuh>
 #include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/reduction/spine_kernel.cuh>
 #include <b40c/reduction/upsweep_kernel.cuh>
@@ -115,7 +115,7 @@ struct TunedConfig : TunedConfig<
 // Large problems, 8B+ data
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, true, false, true, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, true, false, true, false,
 	  8, 7, 0, 2, 9,
 	  5, 0, 0>
 {
@@ -125,7 +125,7 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, T_SIZE>
 // Large problems, 4B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, true, true, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, true, true, false, false,
 	  8, 7, 1, 2, 10,
 	  7, 0, 0>
 {
@@ -135,7 +135,7 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 4>
 // Large problems, 2B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, true, true, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, true, true, false, false,
 	  8, 7, 2, 2, 11,
 	  7, 0, 0>
 {
@@ -145,7 +145,7 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 2>
 // Large problems, 1B data
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, true, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, false,
 	  8, 7, 2, 2, 11,
 	  6, 0, 0>
 {
@@ -158,7 +158,7 @@ struct TunedConfig<ProblemType, SM20, LARGE, T, 1>
 // Small problems 8B+
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 7, 1, 1, 9,
 	  5, 0, 0>
 {
@@ -168,7 +168,7 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, T_SIZE>
 // Small problems, 4B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 5, 1, 1, 7,
 	  7, 0, 0>
 {
@@ -178,7 +178,7 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 4>
 // Small problems, 2B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 2>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 5, 2, 1, 8,
 	  7, 0, 0>
 {
@@ -188,7 +188,7 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 2>
 // Small problems, 1B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
-	: ProblemConfig<ProblemType, SM20, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 5, 2, 2, 9,
 	  6, 0, 0>
 {
@@ -204,7 +204,7 @@ struct TunedConfig<ProblemType, SM20, SMALL, T, 1>
 // Large problems, 8B+
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 6, 0, 2, 8,
 	  6, 0, 0>
 {
@@ -214,7 +214,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, T_SIZE>
 // Large problems, 4B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, true,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, true,
 	  8, 6, 0, 2, 8,
 	  6, 0, 0>
 {
@@ -224,7 +224,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 4>
 // Large problems, 2B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, true,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, true,
 	  8, 6, 1, 2, 9,
 	  6, 0, 0>
 {
@@ -234,7 +234,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 2>
 // Large problems, 1B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 7, 2, 2, 11,
 	  6, 0, 0>
 {
@@ -246,7 +246,7 @@ struct TunedConfig<ProblemType, SM13, LARGE, T, 1>
 // Small problems 8B+
 template <typename ProblemType, typename T, int T_SIZE>
 struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 5, 0, 2, 7,
 	  6, 0, 0>
 {
@@ -256,7 +256,7 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, T_SIZE>
 // Small problems, 4B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 4>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 5, 1, 2, 8,
 	  6, 0, 0>
 {
@@ -266,7 +266,7 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, 4>
 // Small problems, 2B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 2>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 6, 1, 2, 9,
 	  6, 0, 0>
 {
@@ -276,7 +276,7 @@ struct TunedConfig<ProblemType, SM13, SMALL, T, 2>
 // Small problems, 1B
 template <typename ProblemType, typename T>
 struct TunedConfig<ProblemType, SM13, SMALL, T, 1>
-	: ProblemConfig<ProblemType, SM13, util::ld::NONE, util::st::NONE, false, false, false, false,
+	: ProblemConfig<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false,
 	  8, 6, 2, 2, 10,
 	  6, 0, 0>
 {
