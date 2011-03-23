@@ -77,8 +77,10 @@ struct ModifiedLoad
 	 * Load operation we will provide specializations for
 	 */
 	template <typename T>
-	__device__ __forceinline__ static void Ld(T &val, T *ptr);
-
+	__device__ __forceinline__ static void Ld(T &val, T *ptr)
+	{
+		val = *ptr;
+	}
 
 	/**
 	 * Vec-4 loads for 64-bit types are implemented as two vec-2 loads
@@ -103,16 +105,6 @@ struct ModifiedLoad
 };
 
 
-
-/**
- * Load operations specialized for ld::NONE modifier
- */
-template <>
-template <typename T>
-void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
-{
-	val = *ptr;
-}
 
 
 #if __CUDA_ARCH__ >= 200
@@ -173,7 +165,7 @@ void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
 		B40C_LOAD_VEC4(short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 
-#if __CUDA_VERSION >= 4000
+#if CUDA_VERSION >= 4000
 	#define B40C_CAST_SELECT(v3, v4) v4
 #else
 	#define B40C_CAST_SELECT(v3, v4) v3
