@@ -64,7 +64,10 @@ struct ModifiedStore
 	 * Store operation we will provide specializations for
 	 */
 	template <typename T>
-	__device__ __forceinline__ static void St(T &val, T *ptr);
+	__device__ __forceinline__ static void St(T &val, T *ptr)
+	{
+		*ptr = val;
+	}
 
 
 	/**
@@ -89,17 +92,6 @@ struct ModifiedStore
 	}
 };
 
-
-
-/**
- * Store operations specialized for st::NONE modifier
- */
-template <>
-template <typename T>
-void ModifiedStore<st::NONE>::St(T &val, T *ptr)
-{
-	*ptr = val;
-}
 
 
 #if __CUDA_ARCH__ >= 200
@@ -160,7 +152,7 @@ void ModifiedStore<st::NONE>::St(T &val, T *ptr)
 		B40C_STORE_VEC4(short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 
-#if __CUDA_VERSION >= 4000
+#if CUDA_VERSION >= 4000
 	#define B40C_CAST_SELECT(v3, v4) v4
 #else
 	#define B40C_CAST_SELECT(v3, v4) v3
