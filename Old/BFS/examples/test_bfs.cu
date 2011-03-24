@@ -414,7 +414,7 @@ void RunTests(
 			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-
+/*
 		// Perform expand-contract GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);	
@@ -422,7 +422,7 @@ void RunTests(
 			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-		
+*/
 		// Perform contract-expand GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);		
