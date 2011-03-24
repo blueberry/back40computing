@@ -209,6 +209,7 @@ __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Downsweep::CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
 	typename ProblemType::T 			* d_in,
+	typename ProblemType::SizeT			* d_num_compacted,
 	typename ProblemType::T 			* d_out,
 	typename ProblemType::FlagCount		* d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
@@ -216,7 +217,7 @@ __global__ void TunedDownsweepKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelConfig;
 
-	DownsweepPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
+	DownsweepPass<KernelConfig>(d_in, d_num_compacted, d_out, d_spine, work_decomposition);
 }
 
 
@@ -229,6 +230,7 @@ __launch_bounds__ (
 	(TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Single::CTA_OCCUPANCY))
 __global__ void TunedSingleKernel(
 		typename ProblemType::T 			* d_in,
+		typename ProblemType::SizeT			* d_num_compacted,
 		typename ProblemType::T 			* d_out,
 		typename ProblemType::FlagCount		* d_spine,
 		util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
@@ -236,7 +238,7 @@ __global__ void TunedSingleKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelConfig;
 
-	DownsweepPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
+	DownsweepPass<KernelConfig>(d_in, d_num_compacted, d_out, d_spine, work_decomposition);
 }
 
 

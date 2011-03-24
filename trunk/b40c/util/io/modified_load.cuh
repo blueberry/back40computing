@@ -183,7 +183,7 @@ struct ModifiedLoad
 	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned int, 	unsigned int, 	uint,	u32, 	r, B40C_CAST_SELECT(unsigned int, unsigned int))
 	B40C_LOAD_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, B40C_CAST_SELECT(float, float))
 
-	#if !defined(_B40C_LP64_) || (_B40C_LP64_ == 0)
+	#if !defined(__B40C_LP64__) || (__B40C_LP64__ == 0)
 	B40C_LOAD_BASE_ONE_TWO_FOUR(long, 			long, 			long, 	s32, 	r, long)
 	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned long, 	unsigned long, 	ulong, 	u32, 	r, unsigned long)
 	#endif
@@ -198,7 +198,7 @@ struct ModifiedLoad
 	B40C_LOAD_BASE_ONE_TWO(long long, 			long long, 				longlong, 	s64, l, long long)
 	B40C_LOAD_BASE_ONE_TWO(double, 				double, 				double, 	s64, l, long long)				// Cast to 64-bit long long a workaround for the fact that the 3.x assembler has no register constraint for doubles
 
-	#if _B40C_LP64_ > 0
+	#if __B40C_LP64__ > 0
 	B40C_LOAD_BASE_ONE_TWO(long, 				long, 					long, 		s64, l, long)
 	B40C_LOAD_BASE_ONE_TWO(unsigned long, 		unsigned long, 			ulong, 		u64, l, unsigned long)
 	#endif

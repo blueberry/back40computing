@@ -99,11 +99,11 @@ namespace util {
 
 // Register modifier for pointer-types (for inlining PTX assembly)
 #if defined(_WIN64) || defined(__LP64__)
-	#define _B40C_LP64_ 1
+	#define __B40C_LP64__ 1
 	// 64-bit register modifier for inlined asm
 	#define _B40C_ASM_PTR_ "l"
 #else
-	#define _B40C_LP64_ 0
+	#define __B40C_LP64__ 0
 	// 32-bit register modifier for inlined asm
 	#define _B40C_ASM_PTR_ "r"
 #endif

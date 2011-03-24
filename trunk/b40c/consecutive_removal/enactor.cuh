@@ -72,6 +72,7 @@ protected:
 	template <typename ProblemConfig>
 	cudaError_t EnactPass(
 		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::SizeT *d_num_elements_compacted,
 		typename ProblemConfig::T *d_src,
 		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 		typename ProblemConfig::Spine::SizeT spine_elements);
@@ -82,6 +83,7 @@ protected:
 	template <typename ProblemConfig, typename EnactorType>
 	cudaError_t EnactInternal(
 		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::SizeT *d_num_elements_compacted,
 		typename ProblemConfig::T *d_src,
 		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size);
@@ -102,6 +104,8 @@ public:
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
+	 * @param d_elements_compacted
+	 * 		Pointer to result count
 	 * @param d_src
 	 * 		Pointer to array of elements to be trimmed
 	 * @param num_elements
@@ -113,6 +117,7 @@ public:
 	template <typename ProblemConfig>
 	cudaError_t Enact(
 		typename ProblemConfig::T *d_dest,
+		typename ProblemConfig::SizeT *d_num_elements_compacted,
 		typename ProblemConfig::T *d_src,
 		typename ProblemConfig::SizeT num_elements,
 		int max_grid_size = 0);
@@ -145,6 +150,7 @@ cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
 template <typename ProblemConfig>
 cudaError_t Enactor::EnactPass(
 	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::SizeT *d_num_elements_compacted,
 	typename ProblemConfig::T *d_src,
 	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
 	typename ProblemConfig::Spine::SizeT spine_elements)
@@ -162,7 +168,7 @@ cudaError_t Enactor::EnactPass(
 		if (work.grid_size == 1) {
 
 			DownsweepKernel<Single><<<1, Single::THREADS, 0>>>(
-				d_src, d_dest, NULL, work);
+				d_src, d_num_compacted, d_dest, NULL, work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
@@ -214,7 +220,7 @@ cudaError_t Enactor::EnactPass(
 
 			// Downsweep consecutive removal into spine
 			DownsweepKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (FlagCount*) spine(), work);
+				d_src, d_num_compacted, d_dest, (FlagCount*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
@@ -231,6 +237,7 @@ cudaError_t Enactor::EnactPass(
 template <typename ProblemConfig, typename EnactorType>
 cudaError_t Enactor::EnactInternal(
 	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::SizeT *d_num_elements_compacted,
 	typename ProblemConfig::T *d_src,
 	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
@@ -287,7 +294,8 @@ cudaError_t Enactor::EnactInternal(
 
 		// Invoke consecutive removal kernel
 		EnactorType *dipatch = static_cast<EnactorType *>(this);
-		if (retval = dipatch->template EnactPass<ProblemConfig>(d_dest, d_src, work, spine_elements)) break;
+		if (retval = dipatch->template EnactPass<ProblemConfig>(
+			d_dest, d_num_elements_compacted, d_src, work, spine_elements)) break;
 
 	} while (0);
 
@@ -301,12 +309,13 @@ cudaError_t Enactor::EnactInternal(
 template <typename ProblemConfig>
 cudaError_t Enactor::Enact(
 	typename ProblemConfig::T *d_dest,
+	typename ProblemConfig::SizeT *d_num_elements_compacted,
 	typename ProblemConfig::T *d_src,
 	typename ProblemConfig::SizeT num_elements,
 	int max_grid_size)
 {
 	return EnactInternal<ProblemConfig, Enactor>(
-		d_dest, d_src, num_elements, max_grid_size);
+		d_dest, d_num_elements_compacted, d_src, num_elements, max_grid_size);
 }
 
 
