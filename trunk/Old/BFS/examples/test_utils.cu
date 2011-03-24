@@ -22,6 +22,11 @@
 #pragma once
 
 #include <time.h>
+#include <stdio.h>
+
+#include <string>
+#include <sstream>
+#include <iostream>
 
 #include <fstream>
 #include <deque>
@@ -365,7 +370,7 @@ int BuildGrid3dGraph(
  */
 template<typename IndexType, typename ValueType>
 int ReadDimacsStream(
-	std::istream& in,
+	FILE *f_in,
 	CsrGraph<IndexType, ValueType> &csr_graph,
 	bool undirected)
 {
@@ -381,26 +386,27 @@ int ReadDimacsStream(
 	printf("  Parsing DIMACS COO format ");
 	fflush(stdout);
 
-	char op;
-	std::string line;
-	std::string problem_type;
-	while(in.good()) {
+	char line[1024];
+	char problem_type[1024];
 
-		// Read and decode line
-		in >> op;
-		
-		if (!in.good()) {
+	while(true) {
+
+		if (fscanf(f_in, "%[^\n]\n", line) <= 0) {
 			break;
 		}
-		
-		switch (op) {
+
+		switch (line[0]) {
 		case 'p':
-			
+		{
 			// Problem description (nodes is nodes, edges is edges)
-			in >> problem_type >> nodes >> edges;
+			long long ll_nodes, ll_edges;
+			sscanf(line, "p %s %lld %lld", &problem_type, &ll_nodes, &ll_edges);
+			nodes = ll_nodes;
+			edges = ll_edges;
+
 			directed_edges = (undirected) ? edges * 2 : edges;
-			printf(" (%llu nodes, %llu %s edges)... ", 
-				(unsigned long long) nodes, (unsigned long long) edges,
+			printf(" (%lld nodes, %lld %s edges)... ",
+				(unsigned long long) ll_nodes, (unsigned long long) ll_edges,
 				(undirected) ? "undirected" : "directed");
 			fflush(stdout);
 			
@@ -408,9 +414,9 @@ int ReadDimacsStream(
 			coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
 
 			break;
-
+		}
 		case 'a':
-
+		{
 			// Edge description (v -> w) with value val
 			if (!coo) {
 				fprintf(stderr, "Error parsing DIMACS graph: invalid format\n");
@@ -422,23 +428,26 @@ int ReadDimacsStream(
 				return -1;
 			}
 
-			in >> coo[nread].row >> coo[nread].col >> coo[nread].val;
-			coo[nread].row -= 1;	// zero-based array
-			coo[nread].col -= 1;	// zero-based array
-			
+			long long ll_row, ll_col, ll_val;
+			sscanf(line, "a %d %d %d", &ll_row, &ll_col, &ll_val);
+
+			coo[nread].row = ll_row - 1;	// zero-based array
+			coo[nread].col = ll_col - 1;	// zero-based array
+			coo[nread].val = ll_val;
+
 			if (undirected) {
 				// Reverse edge
 				coo[edges + nread].row = coo[nread].col;
 				coo[edges + nread].col = coo[nread].row;
 				coo[edges + nread].val = coo[nread].val;
 			}
-			
+
 			nread++;
 			break;
+		}
 		
 		default:
 			// read remainder of line
-			std::getline(in, line);
 			break;
 		}
 	}
@@ -493,24 +502,24 @@ int BuildDimacsGraph(
 	bool undirected)
 { 
 	if (dimacs_filename == NULL) {
-	
+
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadDimacsStream(std::cin, csr_graph, undirected) != 0) {
+		if (ReadDimacsStream(stdin, csr_graph, undirected) != 0) {
 			return -1;
 		}
-		
+
 	} else {
 	
 		// Read from file
-		std::ifstream dimacs_file(dimacs_filename);
-		if (dimacs_file.is_open()) {
+		FILE *f_in = fopen(dimacs_filename, "r");
+		if (f_in) {
 			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadDimacsStream(dimacs_file, csr_graph, undirected) != 0) {
-				dimacs_file.close();
+			if (ReadDimacsStream(f_in, csr_graph, undirected) != 0) {
+				fclose(f_in);
 				return -1;
 			}
-			dimacs_file.close();
+			fclose(f_in);
 		} else {
 			perror("Unable to open file");
 			return -1;
