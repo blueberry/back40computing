@@ -45,13 +45,14 @@
  * number of iterations, displaying runtime information.
  */
 template <
+	b40c::consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
-	b40c::consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE>
+	typename SizeT>
 double TimedConsecutiveRemoval(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements,
-	size_t compacted_elements,
+	SizeT num_elements,
+	SizeT compacted_elements,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -60,10 +61,13 @@ double TimedConsecutiveRemoval(
 
 	// Allocate device storage
 	T *d_src, *d_dest;
+	SizeT *d_num_compacted;
 	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
 		"TimedConsecutiveRemoval cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
 	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
 		"TimedConsecutiveRemoval cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_num_compacted, sizeof(SizeT) * 1),
+		"TimedConsecutiveRemoval cudaMalloc d_num_compacted failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
 	ConsecutiveRemovalEnactor consecutive_removal_enactor;
@@ -76,7 +80,7 @@ double TimedConsecutiveRemoval(
 	printf("\n");
 	consecutive_removal_enactor.DEBUG = true;
 	consecutive_removal_enactor.template Enact<PROB_SIZE_GENRE, T>(
-		d_dest, d_src, num_elements, max_ctas);
+		d_dest, d_num_compacted, d_src, num_elements, max_ctas);
 	consecutive_removal_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -94,7 +98,7 @@ double TimedConsecutiveRemoval(
 
 		// Call the consecutive removal API routine
 		consecutive_removal_enactor.template Enact<PROB_SIZE_GENRE, T>(
-			d_dest, d_src, num_elements, max_ctas);
+			d_dest, d_num_compacted, d_src, num_elements, max_ctas);
 
 		// End timing record
 		cudaEventRecord(stop_event, 0);
@@ -124,6 +128,7 @@ double TimedConsecutiveRemoval(
     // Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
+    if (d_num_compacted) cudaFree(d_num_compacted);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();

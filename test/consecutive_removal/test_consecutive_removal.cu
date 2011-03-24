@@ -108,11 +108,11 @@ void TestConsecutiveRemoval(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedConsecutiveRemoval<T, consecutive_removal::LARGE>(
+		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE>(
 			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedConsecutiveRemoval<T, consecutive_removal::SMALL>(
+		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL>(
 			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {

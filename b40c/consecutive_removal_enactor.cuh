@@ -76,6 +76,7 @@ protected:
 	template <typename TunedConfig>
 	cudaError_t EnactPass(
 		typename TunedConfig::T *d_dest,
+		typename TunedConfig::SizeT *d_num_compacted,
 		typename TunedConfig::T *d_src,
 		util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
 		int spine_elements);
@@ -102,6 +103,8 @@ public:
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
+	 * @param d_elements_compacted
+	 * 		Pointer to result count
 	 * @param d_src
 	 * 		Pointer to array of elements to be compacted
 	 * @param num_elements
@@ -117,6 +120,7 @@ public:
 		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
+		SizeT *d_num_compacted,
 		T *d_src,
 		SizeT num_elements,
 		int max_grid_size = 0);
@@ -131,6 +135,8 @@ public:
 	 * 		Pointer to result location
 	 * @param d_src
 	 * 		Pointer to array of elements to be compacted
+	 * @param d_elements_compacted
+	 * 		Pointer to result count
 	 * @param num_elements
 	 * 		Number of elements to compact
 	 * @param max_grid_size
@@ -143,6 +149,7 @@ public:
 		typename SizeT>
 	cudaError_t Enact(
 		T *d_dest,
+		SizeT *d_num_compacted,
 		T *d_src,
 		SizeT num_elements,
 		int max_grid_size = 0);
@@ -179,12 +186,20 @@ template <typename T, typename SizeT>
 struct ConsecutiveRemovalEnactor::Storage
 {
 	T *d_dest;
+	SizeT *d_num_compacted;
 	T *d_src;
 	SizeT num_elements;
 
 	// Constructor
-	Storage(T *d_dest, T *d_src, SizeT num_elements) :
-		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
+	Storage(
+		T *d_dest,
+		SizeT *d_num_compacted,
+		T *d_src,
+		SizeT num_elements) :
+			d_dest(d_dest),
+			d_num_compacted(d_num_compacted),
+			d_src(d_src),
+			num_elements(num_elements) {}
 };
 
 
@@ -209,7 +224,11 @@ struct ConsecutiveRemovalEnactor::ConfigResolver
 
 		// Invoke base class enact with type
 		return detail.enactor->template EnactInternal<TunedConfig, ConsecutiveRemovalEnactor>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+			storage.d_dest,
+			storage.d_num_compacted,
+			storage.d_src,
+			storage.num_elements,
+			detail.max_grid_size);
 	}
 };
 
@@ -244,12 +263,20 @@ struct ConsecutiveRemovalEnactor::ConfigResolver <consecutive_removal::UNKNOWN>
 			// Invoke base class enact with small-problem config type
 			typedef consecutive_removal::TunedConfig<ProblemType, CUDA_ARCH, consecutive_removal::SMALL> SmallConfig;
 			return detail.enactor->template EnactInternal<SmallConfig, ConsecutiveRemovalEnactor>(
-				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+				storage.d_dest,
+				storage.d_num_compacted,
+				storage.d_src,
+				storage.num_elements,
+				detail.max_grid_size);
 		}
 
 		// Invoke base class enact with type
 		return detail.enactor->template EnactInternal<LargeConfig, ConsecutiveRemovalEnactor>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+			storage.d_dest,
+			storage.d_num_compacted,
+			storage.d_src,
+			storage.num_elements,
+			detail.max_grid_size);
 	}
 };
 
@@ -267,6 +294,7 @@ struct ConsecutiveRemovalEnactor::ConfigResolver <consecutive_removal::UNKNOWN>
 template <typename TunedConfig>
 cudaError_t ConsecutiveRemovalEnactor::EnactPass(
 	typename TunedConfig::T *d_dest,
+	typename TunedConfig::SizeT *d_num_compacted,
 	typename TunedConfig::T *d_src,
 	util::CtaWorkDistribution<typename TunedConfig::SizeT> &work,
 	int spine_elements)
@@ -289,7 +317,7 @@ cudaError_t ConsecutiveRemovalEnactor::EnactPass(
 
 			TunedSingleKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<1, Single::THREADS, 0>>>(
-				d_src, d_dest, NULL, work);
+				d_src, d_num_compacted, d_dest, NULL, work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
@@ -344,7 +372,7 @@ cudaError_t ConsecutiveRemovalEnactor::EnactPass(
 			// Downsweep scan into spine
 			TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>
 					<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (FlagCount*) spine(), work);
+				d_src, d_num_compacted, d_dest, (FlagCount*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "ConsecutiveRemovalEnactor TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -364,6 +392,7 @@ template <
 	typename SizeT>
 cudaError_t ConsecutiveRemovalEnactor::Enact(
 	T *d_dest,
+	SizeT *d_num_compacted,
 	T *d_src,
 	SizeT num_elements,
 	int max_grid_size)
@@ -374,7 +403,7 @@ cudaError_t ConsecutiveRemovalEnactor::Enact(
 	typedef ConfigResolver<PROB_SIZE_GENRE> Resolver;
 
 	Detail detail(this, max_grid_size);
-	Storage storage(d_dest, d_src, num_elements);
+	Storage storage(d_dest, d_num_compacted, d_src, num_elements);
 
 	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
 }
@@ -389,12 +418,13 @@ template <
 	typename SizeT>
 cudaError_t ConsecutiveRemovalEnactor::Enact(
 	T *d_dest,
+	SizeT *d_num_compacted,
 	T *d_src,
 	SizeT num_elements,
 	int max_grid_size)
 {
 	return Enact<consecutive_removal::UNKNOWN>(
-		d_dest, d_src, num_elements, max_grid_size);
+		d_dest, d_num_compacted, d_src, num_elements, max_grid_size);
 }
 
 

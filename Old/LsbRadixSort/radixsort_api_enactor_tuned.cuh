@@ -326,6 +326,26 @@ public:
 			problem_storage, max_grid_size);
 	}
 	
+	/**
+	 * Enacts a radix sorting operation on the specified device data using the
+	 * LARGE_PROBLEM granularity configuration (i.e., tuned for large-problem sorting)
+	 *
+	 * @param problem_storage
+	 * 		Instance of MultiCtaSortStorage type describing the details of the
+	 * 		problem to sort.
+	 * @param max_grid_size
+	 * 		Upper limit on the size of the grid of threadblocks that can be launched
+	 * 		per kernel.  (0 == use default)
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <TunedGranularityEnum GRANULARITY_ENUM, typename Storage>
+	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0)
+	{
+		return EnactSort<Storage, 0, sizeof(typename Storage::KeyType) * 8, GRANULARITY_ENUM>(
+			problem_storage, max_grid_size);
+	}
+
 };
 
 

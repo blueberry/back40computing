@@ -39,6 +39,7 @@ namespace consecutive_removal {
 template <typename KernelConfig>
 __device__ __forceinline__ void DownsweepPass(
 	typename KernelConfig::T 			* &d_in,
+	typename KernelConfig::SizeT		* &d_num_compacted,
 	typename KernelConfig::T 			* &d_out,
 	typename KernelConfig::FlagCount	* &d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
@@ -108,6 +109,11 @@ __device__ __forceinline__ void DownsweepPass(
 		// Clean up last partial tile with guarded-io (first tile)
 		cta.template ProcessTile<false, true>(cta_offset, out_of_bounds);
 	}
+
+	if ((blockIdx.x == gridDim.x - 1) && (threadIdx.x == 0)) {
+		util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+			cta.carry, d_num_compacted);
+	}
 }
 
 
@@ -123,11 +129,12 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void DownsweepKernel(
 	typename KernelConfig::T 			* d_in,
+	typename KernelConfig::SizeT		* d_num_compacted,
 	typename KernelConfig::T 			* d_out,
 	typename KernelConfig::FlagCount	* d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
-	DownsweepPass<KernelConfig>(d_in, d_out, d_spine, work_decomposition);
+	DownsweepPass<KernelConfig>(d_in, d_num_compacted, d_out, d_spine, work_decomposition);
 }
 
 
