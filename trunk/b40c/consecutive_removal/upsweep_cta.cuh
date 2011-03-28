@@ -28,7 +28,6 @@
 
 #pragma once
 
-#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
 #include <b40c/util/reduction/tree_reduce.cuh>
 #include <b40c/util/operators.cuh>
