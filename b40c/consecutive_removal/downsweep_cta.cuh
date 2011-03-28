@@ -28,7 +28,6 @@
 
 #pragma once
 
-#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/scan/cooperative_scan.cuh>
 #include <b40c/util/operators.cuh>
 #include <b40c/util/io/initialize_tile.cuh>
