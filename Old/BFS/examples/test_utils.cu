@@ -21,6 +21,7 @@
 
 #pragma once
 
+#include <math.h>
 #include <time.h>
 #include <stdio.h>
 
@@ -140,7 +141,26 @@ struct CsrGraph {
 		for (int row = prev_row + 1; row <= nodes; row++) {
 			row_offsets[row] = edges;
 		}
-		
+
+		int log_counts[32];
+		for (int i = 0; i < 32; i++) {
+			log_counts[i] = 0;
+		}
+		int max_bin = 0;
+		for (int i = 0; i < nodes; i++) {
+			double length = row_offsets[i + 1] - row_offsets[i];
+			double log_length = log2(length);
+			int bin = (int) log_length;
+			if (bin > max_bin) {
+				max_bin = bin;
+			}
+			log_counts[(int) log_length]++;
+		}
+		printf("\nDegree Histogram:\n");
+		for (int i = 0; i < max_bin; i++) {
+			printf("\tDegree 2^%i: %d (%.2f%%)\n", i, log_counts[i], (float) log_counts[i] * 100.0 / nodes);
+		}
+		printf("\n");
 	}
 	
 	void Free() {
