@@ -51,6 +51,7 @@
 #include <float.h>
 #include <algorithm>
 
+
 // Sorting includes
 #include "shrinksort_api_enactor_tuned.cuh"
 #include "shrinksort_api_storage.cuh"
@@ -122,6 +123,9 @@ void TimedSort(
 {
 	typename Storage::KeyType K;
 
+	fflush(stdout);
+	fflush(stderr);
+
 	// Create sorting enactor
 	ShrinkSortEnactorTuned sorting_enactor;
 
@@ -160,6 +164,11 @@ void TimedSort(
 		cudaEventElapsedTime(&duration, start_event, stop_event);
 		elapsed += (double) duration;		
 	}
+
+	// Flushes any stdio from the GPU
+	cudaThreadSynchronize();
+	fflush(stdout);
+	fflush(stderr);
 
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
@@ -206,7 +215,7 @@ void TestSort(
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
 		RandomBits<K>(h_keys[i], 0);
-//		h_keys[i] = h_keys[i] % (num_elements / 8);
+		h_keys[i] = h_keys[i] % (num_elements / 8);
 		h_reference_keys[i] = h_keys[i];
 	}
 
@@ -216,11 +225,11 @@ void TestSort(
 		printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 
 		// Allocate device storage
-		MultiCtaSortStorage<K> device_storage(num_elements);
+		ShrinkSortStorage<K> device_storage(num_elements);
 		if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort<MultiCtaSortStorage<K> >(device_storage, h_keys, iterations);
+		TimedSort<ShrinkSortStorage<K> >(device_storage, h_keys, iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -231,13 +240,13 @@ void TestSort(
 		printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 
 		// Allocate device storage
-		MultiCtaSortStorage<K, V> device_storage(num_elements);
+		ShrinkSortStorage<K, V> device_storage(num_elements);
 		if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 		if (B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort<MultiCtaSortStorage<K, V> >(device_storage, h_keys, iterations);
+		TimedSort<ShrinkSortStorage<K, V> >(device_storage, h_keys, iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -246,9 +255,6 @@ void TestSort(
 	    if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 	}
 */
-
-	// Flushes any stdio from the GPU
-	cudaThreadSynchronize();
     
 	// Display sorted key data
 	if (g_verbose) {

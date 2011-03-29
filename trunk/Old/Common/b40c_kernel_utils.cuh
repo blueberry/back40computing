@@ -640,7 +640,7 @@ struct SerialScan
 __device__ __forceinline__ int LoadCG(int* d_ptr) 
 {
 	int retval;
-	ModifiedLoad<int, CG>::Ld(retval, d_ptr, 0);
+	ModifiedLoad<int, CG>::Ld(retval, d_ptr);
 	return retval;
 }
 

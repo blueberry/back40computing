@@ -31,6 +31,8 @@
 #include <radixsort_api_enactor_tuned.cuh>		// Sorting includes
 #include <radixsort_api_storage.cuh>			// Sorting includes
 
+#include <b40c/consecutive_removal_enactor.cuh>
+
 namespace b40c {
 
 /**
@@ -47,6 +49,7 @@ private:
 	
 	// Sorting enactor
 	LsbSortEnactorTuned sorting_enactor;
+	ConsecutiveRemovalEnactor removal_enactor;
 
 protected:	
 
@@ -57,6 +60,8 @@ protected:
 	 */
 	int *d_queue_lengths;
 	
+	int *d_keep;
+
 protected:
 	
 	/**
@@ -91,6 +96,7 @@ public:
 		
 		// Allocate 
 		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
+		cudaMalloc((void**) &d_keep, sizeof(char) * this->max_queue_size);
 		
 		// Initialize 
 		MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
@@ -104,11 +110,39 @@ public:
 public:
 
 	/**
+	 * Verify the contents of a device array match those
+	 * of a host array
+	 */
+	template <typename T>
+	void DisplayDeviceResults(
+		T *d_data,
+		size_t num_elements)
+	{
+		// Allocate array on host
+		T *h_data = (T*) malloc(num_elements * sizeof(T));
+
+		// Reduction data back
+		cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+		// Display data
+		printf("\n\nData:\n");
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+
+		// Cleanup
+		if (h_data) free(h_data);
+	}
+
+	/**
      * Destructor
      */
     virtual ~LevelGridBfsEnactor() 
     {
 		if (d_queue_lengths) cudaFree(d_queue_lengths);
+		if (d_keep) cudaFree(d_keep);
     }
     
     /**
@@ -130,7 +164,7 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	virtual cudaError_t EnactSearch(
-		BfsCsrProblem<IndexType> &problem_storage, 
+		BfsCsrProblem<IndexType> &bfs_problem,
 		IndexType src, 
 		BfsStrategy strategy) 
 	{
@@ -146,73 +180,93 @@ public:
 
 
 		// Create 
-		MultiCtaSortStorage<IndexType> sorting_problem;
-		sorting_problem.d_keys[0] = this->d_queue[0];
-		sorting_problem.d_keys[1] = this->d_queue[1];
+		MultiCtaSortStorage<unsigned int> sorting_problem;
+		sorting_problem.d_keys[0] = (unsigned int *) this->d_queue[0];
+		sorting_problem.d_keys[1] = (unsigned int *) this->d_queue[1];
 		sorting_problem.selector = 0;
+		sorting_problem.num_elements = 1;
 		
 		int iteration = 0;
 		while (true) {
-		
-			switch (strategy) {
-	
-			case CONTRACT_EXPAND:
-	
-				// Contract-expand strategy
-				BfsLevelGridKernel<IndexType, CONTRACT_EXPAND><<<this->max_grid_size, cta_threads>>>(
-					src,
-					this->d_queue[sorting_problem.selector],								
-					this->d_queue[sorting_problem.selector ^ 1],								
-					problem_storage.d_column_indices,				
-					problem_storage.d_row_offsets,					 
-					problem_storage.d_source_dist,					
-					this->d_queue_lengths,							
-					iteration);
-				dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
-	
-				break;
-				
-			case EXPAND_CONTRACT:
-				
-				// Expand-contract strategy
-				BfsLevelGridKernel<IndexType, EXPAND_CONTRACT><<<this->max_grid_size, cta_threads>>>(
-					src,
-					this->d_queue[sorting_problem.selector],								
-					this->d_queue[sorting_problem.selector ^ 1],								
-					problem_storage.d_column_indices,				
-					problem_storage.d_row_offsets,					 
-					problem_storage.d_source_dist,					
-					this->d_queue_lengths,
-					iteration);
-				dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
-				
-				break;
-	
+/*
+			MemsetKernel<char><<<128, 128>>>(sorting_problem.d_keep, 1, max_queue_size * sizeof(char));
+
+			// Contract-expand strategy
+			BfsLevelGridKernel<IndexType, CULL><<<this->max_grid_size, cta_threads>>>(
+				src,
+				sorting_problem.d_collision_cache,
+				sorting_problem.d_keep,
+				this->d_queue[sorting_problem.selector],
+				this->d_queue[sorting_problem.selector ^ 1],
+				bfs_problem.d_column_indices,
+				bfs_problem.d_row_offsets,
+				bfs_problem.d_source_dist,
+				this->d_queue_lengths,
+				iteration);
+			dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
+
+			// mooch
+			char *keep = (char *) malloc(sorting_problem.num_elements);
+			cudaMemcpy(keep,sorting_problem.d_keep, sizeof(char) * sorting_problem.num_elements, cudaMemcpyDeviceToHost);
+			int sum = 0;
+			for (int i = 0; i < sorting_problem.num_elements; i++) {
+				sum += keep[i];
 			}
-			
-			// Retrieve out-queue length
-			int outgoing_queue_length;
-			int outgoing_queue_length_idx = (iteration + 1) & 0x3; 				
-			cudaMemcpy(&outgoing_queue_length, d_queue_lengths + outgoing_queue_length_idx, 
+			printf("    Iteration %d input reduced to %d\n", iteration, sum);
+			free(keep);
+*/
+
+
+			// Contract-expand strategy
+			BfsLevelGridKernel<IndexType, CONTRACT_EXPAND><<<this->max_grid_size, cta_threads>>>(
+				src,
+				bfs_problem.d_collision_cache,
+				NULL,
+				this->d_queue[sorting_problem.selector],
+				this->d_queue[sorting_problem.selector ^ 1],
+				bfs_problem.d_column_indices,
+				bfs_problem.d_row_offsets,
+				bfs_problem.d_source_dist,
+				this->d_queue_lengths,
+				iteration);
+			dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
+
+			// Update out-queue length
+			int outgoing_queue_length_idx = (iteration + 1) & 0x3;
+			cudaMemcpy(&sorting_problem.num_elements, d_queue_lengths + outgoing_queue_length_idx,
 				1 * sizeof(int), cudaMemcpyDeviceToHost);
-			
-			if (outgoing_queue_length == 0) {
+
+			if (sorting_problem.num_elements == 0) {
 				// No more work, all done.
 				break;
 			}
-
-			printf("Iteration %d queued %d nodes\n", iteration, outgoing_queue_length);
+			printf("Iteration %d output queued %d nodes\n", iteration, sorting_problem.num_elements);
 
 			// Update incoming-queue selector
 			sorting_problem.selector ^= 1;
-			
+
+/*
 			// Sort outgoing queue
-			sorting_problem.num_elements = outgoing_queue_length;
+			sorting_problem.num_elements = sorting_problem.num_elements;
 			sorting_enactor.EnactSort(sorting_problem);
-			
+
+			removal_enactor.Enact(
+				sorting_problem.d_keys[sorting_problem.selector ^ 1],
+				d_queue_lengths + outgoing_queue_length_idx,
+				sorting_problem.d_keys[sorting_problem.selector],
+				sorting_problem.num_elements);
+
+			// Update incoming-queue selector
+			sorting_problem.selector ^= 1;
+
+			cudaMemcpy(&sorting_problem.num_elements, d_queue_lengths + outgoing_queue_length_idx,
+				1 * sizeof(int), cudaMemcpyDeviceToHost);
+
+			printf("Iteration %d reduced to %d nodes\n", iteration, sorting_problem.num_elements);
+*/
 			iteration++;
 		}
-		
+
 		return cudaSuccess;
 	}
     

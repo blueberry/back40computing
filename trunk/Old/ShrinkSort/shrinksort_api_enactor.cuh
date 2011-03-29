@@ -131,7 +131,6 @@ protected:
 				if (retval = B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
 					"ShrinkSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__)) break;
 			}
-
 			// If necessary, allocate device memory for temporary storage in the problem structure
 			if (problem_storage.d_keys[0] == NULL) {
 				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType)),
@@ -150,10 +149,6 @@ protected:
 					if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType)),
 						"ShrinkSortEnactor cudaMalloc problem_storage.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
-			}
-			if (problem_storage.d_keep == NULL) {
-				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keep, problem_storage.num_elements * sizeof(char)),
-					"ShrinkSortEnactor cudaMalloc problem_storage.d_keep failed", __FILE__, __LINE__)) break;
 			}
 
 			// Make sure our spine is big enough
@@ -204,6 +199,23 @@ protected:
 
 			} while (0);
 		}
+
+/*
+		int *d_valid_count;
+		cudaMalloc((void**) &d_valid_count, sizeof(int) * 1);
+		ConsecutiveRemovalEnactor removal_enactor;
+
+		removal_enactor.Enact(
+			problem_storage.d_keys[problem_storage.selector ^ 1],
+			d_valid_count,
+			problem_storage.d_keys[problem_storage.selector],
+			problem_storage.num_elements);
+
+		int h_valid_count;
+		cudaMemcpy(&h_valid_count, d_valid_count, sizeof(int) * 1, cudaMemcpyDeviceToHost);
+		printf("After consecutive removal: %d\n", h_valid_count);
+		cudaFree(d_valid_count);
+*/
 
 		return retval;
     }
@@ -279,6 +291,7 @@ protected:
 			// Invoke upsweep reduction kernel
 			UpsweepKernel<UpsweepKernelConfigType>
 				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
+					d_collision_cache,
 					d_selectors,
 					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],

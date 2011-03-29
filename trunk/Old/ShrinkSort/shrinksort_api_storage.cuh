@@ -62,7 +62,7 @@ namespace b40c {
  * contains valid data (i.e., the data to-be-sorted, or the valid-sorted data 
  * after a sorting operation). 
  * 
- * E.g., consider a MultiCtaSortStorage "device_storage".  The valid data 
+ * E.g., consider a ShrinkSortStorage "device_storage".  The valid data
  * should always be accessible by: 
  * 
  * 		device_storage.d_keys[device_storage.selector];
@@ -78,7 +78,7 @@ namespace b40c {
  * 
  */
 template <typename _KeyType, typename _ValueType, typename _SizeT>
-class MultiCtaSortStorageBase
+class ShrinkSortStorageBase
 {
 public:	
 	
@@ -95,6 +95,8 @@ public:
 	// Keep bytes for keys
 	char *d_keep;
 
+	char *d_collision_cache;
+
 	// Number of elements for sorting in the above vectors 
 	SizeT num_elements;
 	
@@ -105,13 +107,14 @@ public:
 protected:	
 	
 	// Constructor
-	MultiCtaSortStorageBase() 
+	ShrinkSortStorageBase()
 	{
 		num_elements = 0;
 		selector = 0;
 		d_keys[0] = NULL;
 		d_keys[1] = NULL;
 		d_keep = NULL;
+		d_collision_cache = NULL;
 		d_values[0] = NULL;
 		d_values[1] = NULL;
 	}
@@ -124,27 +127,27 @@ protected:
  * For use in sorting up to 2^31 elements.   
  */
 template <typename KeyType, typename ValueType = KeysOnly> 
-struct MultiCtaSortStorage : 
-	public MultiCtaSortStorageBase<KeyType, ValueType, int>
+struct ShrinkSortStorage :
+	public ShrinkSortStorageBase<KeyType, ValueType, int>
 {
 public:
 	// Typedef for base class
-	typedef MultiCtaSortStorageBase<KeyType, ValueType, int> Base;
+	typedef ShrinkSortStorageBase<KeyType, ValueType, int> Base;
 		
 	// Constructor
-	MultiCtaSortStorage() : Base::MultiCtaSortStorageBase() {}
+	ShrinkSortStorage() : Base::ShrinkSortStorageBase() {}
 	
 	// Constructor
-	MultiCtaSortStorage(int num_elements) : Base::MultiCtaSortStorageBase() 
+	ShrinkSortStorage(int num_elements) : Base::ShrinkSortStorageBase()
 	{
 		this->num_elements = num_elements;
 	}
 
 	// Constructor
-	MultiCtaSortStorage(
+	ShrinkSortStorage(
 		int num_elements, 
 		KeyType* keys, 
-		ValueType* values = NULL) : Base::MultiCtaSortStorageBase()
+		ValueType* values = NULL) : Base::ShrinkSortStorageBase()
 	{
 		this->num_elements = num_elements;
 		this->d_keys[0] = keys;
@@ -157,32 +160,32 @@ public:
  * 64-bit sorting storage wrapper and problem descriptor.  
  *
  * For use in sorting up to 2^63 elements.  May exhibit lower performance
- * than the (32-bit) MultiCtaSortStorage wrapper due to increased 
+ * than the (32-bit) ShrinkSortStorage wrapper due to increased
  * register pressure and memory workloads.
  */
 template <typename KeyType, typename ValueType = KeysOnly> 
-struct MultiCtaSortStorage64 : 
-	public MultiCtaSortStorageBase<KeyType, ValueType, long long>
+struct ShrinkSortStorage64 :
+	public ShrinkSortStorageBase<KeyType, ValueType, long long>
 {
 		
 public:
 	// Typedef for base class
-	typedef MultiCtaSortStorageBase<KeyType, ValueType, long long> Base;
+	typedef ShrinkSortStorageBase<KeyType, ValueType, long long> Base;
 		
 	// Constructor
-	MultiCtaSortStorage64() : Base::MultiCtaSortStorageBase() {}
+	ShrinkSortStorage64() : Base::ShrinkSortStorageBase() {}
 	
 	// Constructor
-	MultiCtaSortStorage64(long long num_elements) : Base::MultiCtaSortStorageBase() 
+	ShrinkSortStorage64(long long num_elements) : Base::ShrinkSortStorageBase()
 	{
 		this->num_elements = num_elements;
 	}
 
 	// Constructor
-	MultiCtaSortStorage64(
+	ShrinkSortStorage64(
 		long long num_elements, 
 		KeyType* keys, 
-		ValueType* values = NULL) : Base::MultiCtaSortStorageBase()
+		ValueType* values = NULL) : Base::ShrinkSortStorageBase()
 	{
 		this->num_elements = num_elements;
 		this->d_keys[0] = keys;

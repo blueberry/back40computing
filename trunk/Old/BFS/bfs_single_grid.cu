@@ -63,7 +63,9 @@ protected:
 	 * Can be used to measure load imbalance.
 	 */
 	unsigned long long *d_barrier_time;
-	
+
+	char *d_keep;
+
 protected:
 	
 	/**
@@ -100,7 +102,7 @@ public:
 		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
 		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
 		cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size);
-		
+
 		// Initialize 
 		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(			// to zero
 			d_sync, 0, this->max_grid_size);
@@ -165,7 +167,7 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	virtual cudaError_t EnactSearch(
-		BfsCsrProblem<IndexType> &problem_storage, 
+		BfsCsrProblem<IndexType> &bfs_problem,
 		IndexType src, 
 		BfsStrategy strategy) 
 	{
@@ -186,11 +188,13 @@ public:
 			// Contract-expand strategy
     		BfsSingleGridKernel<IndexType, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
+				bfs_problem.d_collision_cache,
+				NULL,
 				this->d_queue[0],								
 				this->d_queue[1],								
-				problem_storage.d_column_indices,				
-				problem_storage.d_row_offsets,					 
-				problem_storage.d_source_dist,					
+				bfs_problem.d_column_indices,
+				bfs_problem.d_row_offsets,
+				bfs_problem.d_source_dist,
 				this->d_queue_lengths,							
 				this->d_sync,
 				this->d_barrier_time);
@@ -204,11 +208,13 @@ public:
 			// Expand-contract strategy
 			BfsSingleGridKernel<IndexType, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
+				bfs_problem.d_collision_cache,
+				NULL,
 				this->d_queue[0],								
 				this->d_queue[1],								
-				problem_storage.d_column_indices,				
-				problem_storage.d_row_offsets,					 
-				problem_storage.d_source_dist,					
+				bfs_problem.d_column_indices,
+				bfs_problem.d_row_offsets,
+				bfs_problem.d_source_dist,
 				this->d_queue_lengths,							
 				this->d_sync,
 				this->d_barrier_time);

@@ -79,7 +79,7 @@ SM_TARGETS = $(GEN_SM20)
 #-------------------------------------------------------------------------------
 
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../..
 
 #-------------------------------------------------------------------------------
 # Defines

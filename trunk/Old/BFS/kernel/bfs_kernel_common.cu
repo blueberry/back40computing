@@ -91,7 +91,7 @@ enum BfsStrategy {
 	 *      iteration, and enqueued into the outgoing frontier for processing by 
 	 *      the next iteration.
 	 */
-	EXPAND_CONTRACT
+	EXPAND_CONTRACT,
 	
 	/**
 	 * Footnotes:
@@ -106,6 +106,8 @@ enum BfsStrategy {
 	 *      particularly effective for lattice-like graphs: nodes are often 
 	 *      discoverable at a given iteration via multiple indicent edges.  
 	 */
+
+	CULL
 };
 
 
@@ -227,7 +229,7 @@ void GuardedLoadAndHash(
 	int out_of_bounds)							 
 {
 	if (load_offset < out_of_bounds) {
-		ModifiedLoad<IndexType, LIST_MODIFIER>::Ld(node_id, node_id_list, load_offset);
+		ModifiedLoad<IndexType, LIST_MODIFIER>::Ld(node_id, node_id_list + load_offset);
 		hash = node_id % SCRATCH_SPACE;
 	} else {
 		node_id = -1;
@@ -263,7 +265,7 @@ void LoadAndHash(
 
 		VectorType *node_id_list_vec = (VectorType *) node_id_list;
 		VectorType *vector_alias = (VectorType *) node_id;
-		ModifiedLoad<VectorType, LIST_MODIFIER>::Ld(*vector_alias, node_id_list_vec, threadIdx.x);
+		ModifiedLoad<VectorType, LIST_MODIFIER>::Ld(*vector_alias, node_id_list_vec + threadIdx.x);
 
 		// Compute hash-IDs
 		#pragma unroll
@@ -307,22 +309,24 @@ __device__ __forceinline__
 void CullDuplicates(
 	IndexType node_id[LOAD_VEC_SIZE],
 	int hash[LOAD_VEC_SIZE],
-	bool duplicate[LOAD_VEC_SIZE],			// out param
-	IndexType *scratch_pool)						 
+	IndexType *scratch_pool)
 {
+	int hashed_node_id[LOAD_VEC_SIZE];
+	bool duplicate[LOAD_VEC_SIZE];
+
 	// Hash the node-IDs into smem scratch
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
+		duplicate[COMPONENT] = 0;
 		if (node_id[COMPONENT] != -1) {
 			scratch_pool[hash[COMPONENT]] = node_id[COMPONENT];
 		}
 	}
-	
+
 	__syncthreads();
 	
 	// Retrieve what node-IDs "won" at those locations
-	int hashed_node_id[LOAD_VEC_SIZE];	
-	
+
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 
@@ -331,9 +335,9 @@ void CullDuplicates(
 		hashed_node_id[COMPONENT] = scratch_pool[hash[COMPONENT]];
 		duplicate[COMPONENT] = (hashed_node_id[COMPONENT] == node_id[COMPONENT]);
 	}
-	
+
 	__syncthreads();
-	
+
 	// For the winners, hash in thread-IDs to select one of the threads
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
@@ -341,15 +345,18 @@ void CullDuplicates(
 			scratch_pool[hash[COMPONENT]] = threadIdx.x;
 		}
 	}
-	
+
 	__syncthreads();
-	
+
 	// See if our thread won out amongst everyone with similar node-IDs 
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 		if (hashed_node_id[COMPONENT] == node_id[COMPONENT]) {
 			// If not equal to our tid, we are not an authoritative (non-duplicate) thread for this node-ID
 			duplicate[COMPONENT] = (scratch_pool[hash[COMPONENT]] != threadIdx.x);
+		}
+		if (duplicate[COMPONENT]) {
+			node_id[COMPONENT] = -1;
 		}
 	}
 }
@@ -380,19 +387,19 @@ void InspectAndUpdate(
 
 	// Load source distance of node
 	IndexType source_dist;
-	ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist, node_id);
+	ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + node_id);
 
 	if (source_dist == -1) {
 		// Node is previously unvisited.  Load neighbor row range from d_row_offsets
 		IndexTypeVec2 row_range;
 		if (node_id & 1) {
 			// Misaligned
-			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
-			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
+			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
+			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
 		} else {
 			// Aligned
 			IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
-			ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
+			ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 		}
 		// Compute row offset and length
 		row_offset = row_range.x;
@@ -420,7 +427,6 @@ template <
 __device__ __forceinline__
 void InspectAndUpdate(
 	IndexType node_id[LOAD_VEC_SIZE],
-	bool duplicate[LOAD_VEC_SIZE],
 	IndexType row_offset[LOAD_VEC_SIZE],				// out param
 	int row_length[LOAD_VEC_SIZE],					// out param
 	IndexType *d_source_dist,
@@ -431,25 +437,25 @@ void InspectAndUpdate(
 	// in a pragma-unroll.
 
 	if (LOAD_VEC_SIZE > 0) {
-		if ((!duplicate[0]) && (UNGUARDED_IO || (node_id[0] != -1))) {
+		if (node_id[0] != -1) {
 			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 1) {
-		if ((!duplicate[1]) && (UNGUARDED_IO || (node_id[1] != -1))) {
+		if (node_id[1] != -1) {
 			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 2) {
-		if ((!duplicate[2]) && (UNGUARDED_IO || (node_id[2] != -1))) {
+		if (node_id[2] != -1) {
 			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 3) {
-		if ((!duplicate[3]) && (UNGUARDED_IO || (node_id[3] != -1))) {
+		if (node_id[3] != -1) {
 			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
 		}
@@ -523,6 +529,94 @@ void ExpandNeighborGatherOffsets(
 template <BfsStrategy STRATEGY> struct BfsTile;
 
 
+
+/**
+ * Illustrates culling of duplicate tile of work from the current incoming frontier queue
+ */
+template <> struct BfsTile<CULL>
+{
+	template <
+		typename IndexType,
+		int CTA_THREADS,
+		int PARTIALS_PER_SEG,
+		int SCRATCH_SPACE,
+		int LOAD_VEC_SIZE,
+		CacheModifier QUEUE_MODIFIER,
+		CacheModifier COLUMN_INDICES_MODIFIER,
+		CacheModifier SOURCE_DIST_MODIFIER,
+		CacheModifier ROW_OFFSETS_MODIFIER,
+		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
+		bool UNGUARDED_IO>
+	__device__ __forceinline__
+	static void ProcessTile(
+		IndexType iteration,
+		int num_incoming_nodes,
+		IndexType *scratch_pool,
+		int *base_partial,
+		int *raking_segment,
+		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		char *d_collision_cache,
+		char *d_keep,
+		IndexType *d_in_queue,
+		IndexType *d_out_queue,
+		IndexType *d_column_indices,
+		IndexType *d_row_offsets,
+		IndexType *d_source_dist,
+		int *d_enqueue_length,
+		int &s_enqueue_offset,
+		int cta_out_of_bounds)
+	{
+		IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
+		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID
+
+		//
+		// Dequeue a tile of incident node-IDs to explore and use a heuristic for
+		// culling duplicates
+		//
+
+		LoadAndHash<IndexType, CTA_THREADS, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
+			dequeued_node_id,			// out param
+			hash,						// out param
+			d_in_queue,
+			cta_out_of_bounds);
+/*
+		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+			dequeued_node_id,
+			hash,
+			scratch_pool);
+*/
+
+		if (dequeued_node_id[0] >= 0) {
+
+			signed char hash_byte;
+			unsigned int hash = dequeued_node_id[0] >> 3;
+			ModifiedLoad<signed char , CG>::Ld(hash_byte, ((signed char *) d_collision_cache) + hash);
+			signed char bit = 1 << (dequeued_node_id[0] & 7);
+
+			if (bit & hash_byte) {
+
+				dequeued_node_id[0] = -1;
+
+			} else {
+
+				// set best effort
+				hash_byte |= bit;
+				ModifiedStore<signed char , CG>::St(hash_byte, ((signed char *) d_collision_cache) + hash);
+			}
+		}
+
+
+		d_keep[threadIdx.x] = (dequeued_node_id[0] > 0);
+
+		__syncthreads();
+
+	}
+};
+
+
+
+
+
 /**
  * Uses the contract-expand strategy for processing a single tile of work from 
  * the current incoming frontier queue
@@ -544,10 +638,13 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 	__device__ __forceinline__ 
 	static void ProcessTile(
 		IndexType iteration,
+		int num_incoming_nodes,
 		IndexType *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
 		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		char *d_collision_cache,
+		char *d_keep,
 		IndexType *d_in_queue, 
 		IndexType *d_out_queue,
 		IndexType *d_column_indices,
@@ -557,9 +654,14 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
+		typedef typename VecType<IndexType, 2>::Type IndexTypeVec2;
+
+		__shared__ volatile int gang[CTA_THREADS / 32];
+		__shared__ volatile int gang2[CTA_THREADS / 32];
+		__shared__ volatile int gang3[CTA_THREADS / 32];
+
 		IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
 		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID		
-		bool duplicate[LOAD_VEC_SIZE];				// Whether or not the node-ID is a guaranteed duplicate
 		IndexType row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
 		int row_length[LOAD_VEC_SIZE];				// Number of adjacent neighbors
 		int local_rank[LOAD_VEC_SIZE];				// Prefix sum of row-lengths, i.e., local rank for where to plop down neighbor list into scratch 
@@ -582,29 +684,176 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			dequeued_node_id,			// out param
 			hash,						// out param
 			d_in_queue,
-			cta_out_of_bounds);	
-		
-		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
-			dequeued_node_id,
-			hash,					
-			duplicate,			// out param
-			scratch_pool);	
+			cta_out_of_bounds);
 
-		__syncthreads();
+
+//		if (num_incoming_nodes < CTA_THREADS * LOAD_VEC_SIZE * gridDim.x) {
+//		if (cta_out_of_bounds >= CTA_THREADS * LOAD_VEC_SIZE) {
+		if (iteration > 15) {
+
+			// This path will likely go away once we have compaction
+
+			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+				dequeued_node_id,
+				hash,
+				scratch_pool);
+
+			__syncthreads();
+
+			//
+			// Inspect visitation status of incident node-IDs, acquiring row offsets
+			// and lengths for previously-undiscovered node-IDs
+			//
+
+			InspectAndUpdate<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, UNGUARDED_IO>(
+				dequeued_node_id,
+				row_offset,			// out param
+				row_length, 		// out param
+				d_source_dist,
+				d_row_offsets,
+				iteration);
+
+		} else if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
+
+			signed char hash_byte;
+			unsigned int hash = dequeued_node_id[0] >> 3;
+			ModifiedLoad<signed char , CG>::Ld(hash_byte, ((signed char *) d_collision_cache) + hash);
+			signed char bit = 1 << (dequeued_node_id[0] & 7);
+
+			if (!(bit & hash_byte)) {
+
+				// set best effort
+				hash_byte |= bit;
+				ModifiedStore<signed char , CG>::St(hash_byte, ((signed char *) d_collision_cache) + hash);
+
+				// Load source distance of node
+				IndexType source_dist;
+				ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
+
+				// Node is previously unvisited.  Load neighbor row range from d_row_offsets
+				IndexTypeVec2 row_range;
+				if (dequeued_node_id[0] & 1) {
+					// Misaligned
+					ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + dequeued_node_id[0]);
+					ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + dequeued_node_id[0] + 1);
+				} else {
+					// Aligned
+					IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + dequeued_node_id[0]);
+					ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
+				}
+				if (source_dist == -1) {
+					// Compute row offset and length
+					row_offset[0] = row_range.x;
+					row_length[0] = row_range.y - row_range.x;
+
+					// Update distance with current iteration
+					ModifiedStore<IndexType , CG>::St(iteration, d_source_dist + dequeued_node_id[0]);
+				}
+			}
+		}
+
 
 		//
-		// Inspect visitation status of incident node-IDs, acquiring row offsets 
-		// and lengths for previously-undiscovered node-IDs
+		// Bulk expansion/loading
 		//
 
-		InspectAndUpdate<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, UNGUARDED_IO>(
-			dequeued_node_id, 
-			duplicate, 
-			row_offset,			// out param 
-			row_length, 		// out param
-			d_source_dist, 
-			d_row_offsets, 
-			iteration);
+		int bulk_length[1];
+		bulk_length[0] = row_length[0] & ~31;
+
+		if (__syncthreads_or(bulk_length[0])) {
+
+			LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
+				base_partial,
+				raking_segment,
+				warpscan,
+				bulk_length,
+				local_rank,
+				d_enqueue_length,
+				s_enqueue_offset);
+
+			int warp_idx = threadIdx.x >> 5;
+			int warp_tid = threadIdx.x & 31;
+
+			while (__any(bulk_length[0])) {
+
+				if (bulk_length[0]) {
+					gang[warp_idx] = warp_tid;
+				}
+				if (warp_tid == gang[warp_idx]) {
+
+					// mine
+					gang[warp_idx] = row_offset[0];
+					gang2[warp_idx] = local_rank[0];
+
+					row_offset[0] += bulk_length[0];
+					row_length[0] -= bulk_length[0];
+					bulk_length[0] = 0;
+
+					gang3[warp_idx] = row_offset[0];
+				}
+				int coop_offset = gang[warp_idx];
+				int coop_rank = gang2[warp_idx];
+				int coop_oob = gang3[warp_idx];
+
+				// Gather
+				IndexType node_id;
+				while (coop_offset < coop_oob) {
+
+					ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+						node_id, d_column_indices + coop_offset + warp_tid);
+
+					// Scatter
+					d_out_queue[s_enqueue_offset + coop_rank + warp_tid] = node_id;
+
+					coop_offset += 32;
+					coop_rank += 32;
+				}
+			}
+		}
+/*
+
+		int bulk_length[1];
+		bulk_length[0] = row_length[0] & ~31;
+
+		while (__any(bulk_length[0])) {
+
+			int warp_idx = threadIdx.x >> 5;
+			int warp_tid = threadIdx.x & 31;
+
+			if (bulk_length[0]) {
+				gang[warp_idx] = warp_tid;
+			}
+			if (gang[warp_idx] == warp_tid) {
+
+				// mine
+				gang[warp_idx] = row_offset[0];
+				gang2[warp_idx] = atomicAdd(d_enqueue_length, bulk_length[0]);
+
+				row_offset[0] += bulk_length[0];
+				row_length[0] -= bulk_length[0];
+				bulk_length[0] = 0;
+
+				gang3[warp_idx] = row_offset[0];
+			}
+			int coop_offset = gang[warp_idx];
+			int coop_rank = gang2[warp_idx];
+			int coop_oob = gang3[warp_idx];
+
+			// Gather
+			IndexType node_id;
+			while (coop_offset < coop_oob) {
+
+				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+					node_id, d_column_indices + coop_offset + warp_tid);
+
+				// Scatter
+				d_out_queue[coop_rank + warp_tid] = node_id;
+
+				coop_rank += 32;
+				coop_offset += 32;
+			}
+		}
+*/
 
 
 		//
@@ -616,7 +865,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			base_partial, 
 			raking_segment, 
 			warpscan, 
-			row_length, 
+			row_length,
 			local_rank, 
 			d_enqueue_length,
 			s_enqueue_offset);
@@ -653,7 +902,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				// Gather
 				IndexType node_id;
 				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
-					node_id, d_column_indices, scratch_pool[scratch_offset]);
+					node_id, d_column_indices + scratch_pool[scratch_offset]);
 				
 				// Scatter
 				d_out_queue[s_enqueue_offset + cta_progress + scratch_offset] = node_id;
@@ -688,10 +937,13 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 	__device__ __forceinline__ 
 	static void ProcessTile(
 		IndexType iteration,
+		int num_incoming_nodes,
 		IndexType *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
 		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+		char *d_collision_cache,
+		char *d_keep,
 		IndexType *d_in_queue, 
 		IndexType *d_out_queue,
 		IndexType *d_column_indices,
@@ -715,17 +967,17 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 		if ((UNGUARDED_IO) || (threadIdx.x < cta_out_of_bounds)) {
 
 			IndexType node_id;		// incoming node to process for this tile
-			ModifiedLoad<IndexType, QUEUE_MODIFIER>::Ld(node_id, d_in_queue, threadIdx.x);
+			ModifiedLoad<IndexType, QUEUE_MODIFIER>::Ld(node_id, d_in_queue + threadIdx.x);
 
 			IndexTypeVec2 row_range;
 			if (node_id & 1) {
 				// Misaligned
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets, node_id);
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets, node_id + 1);
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
 			} else {
 				// Aligned
 				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
-				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2, 0);
+				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 			}
 			// Compute row offset and length
 			row_offset = row_range.x;
@@ -770,7 +1022,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			IndexType neighbor_node;
 			if (threadIdx.x < remainder) {
 				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
-					neighbor_node, d_column_indices, scratch_pool[threadIdx.x]);
+					neighbor_node, d_column_indices + scratch_pool[threadIdx.x]);
 				hash = neighbor_node % SCRATCH_SPACE;
 			} else { 
 				neighbor_node = -1;
@@ -780,20 +1032,18 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			__syncthreads();
 
 			// Cull duplicate neighbor node-Ids
-			bool duplicate;
 			CullDuplicates<IndexType, 1>(
 				&neighbor_node,
 				&hash,					
-				&duplicate,					// out param
-				scratch_pool);	
+				scratch_pool);
 
 			__syncthreads();
 			
 			// Cull previously-visited neighbor node-Ids
 			int unvisited = 0;
-			if ((!duplicate) && (neighbor_node != -1)) {
+			if (neighbor_node != -1) {
 				IndexType source_dist;
-				ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist, neighbor_node);
+				ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + neighbor_node);
 				if (source_dist == -1) {
 					d_source_dist[neighbor_node] = iteration + 1;
 					unvisited = 1;
@@ -859,10 +1109,13 @@ template <
 __device__ __forceinline__ 
 void BfsIteration(
 	IndexType iteration,
+	int num_incoming_nodes,
 	IndexType *scratch_pool,
 	int *base_partial,
 	int *raking_segment,
 	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
+	char *d_collision_cache,
+	char *d_keep,
 	IndexType *d_in_queue, 
 	IndexType *d_out_queue,
 	IndexType *d_column_indices,
@@ -882,10 +1135,13 @@ void BfsIteration(
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, true>( 
 			iteration,
+			num_incoming_nodes,
 			scratch_pool,
 			base_partial,
 			raking_segment,
 			warpscan,
+			d_collision_cache,
+			d_keep + cta_offset,
 			d_in_queue + cta_offset, 
 			d_out_queue,
 			d_column_indices,
@@ -906,10 +1162,13 @@ void BfsIteration(
 				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, false>( 
 			iteration,
+			num_incoming_nodes,
 			scratch_pool,
 			base_partial,
 			raking_segment,
 			warpscan,
+			d_collision_cache,
+			d_keep + cta_offset,
 			d_in_queue + cta_offset, 
 			d_out_queue,
 			d_column_indices,

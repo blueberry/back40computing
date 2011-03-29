@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <b40c/util/operators.cuh>
+
 namespace b40c {
 namespace util {
 namespace scan {
@@ -60,6 +62,11 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
+
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
 	// General iteration
 	template <int OFFSET_LEFT, int WIDTH>
 	struct Iterate
@@ -88,9 +95,16 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 		}
 	};
 
+
+	//---------------------------------------------------------------------
 	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Returns inclusive partial
+	 */
 	static __device__ __forceinline__ T Invoke(
-		T current_partial,						// Input partial
+		T current_partial,							// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
@@ -98,7 +112,9 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 		return Iterate<1, WIDTH>::Invoke(current_partial, warpscan, warpscan_tid);
 	}
 
-	// Interface
+	/**
+	 * Returns inclusive partial and cumulative reduction
+	 */
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)
@@ -130,7 +146,13 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
 
+	//---------------------------------------------------------------------
 	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Returns exclusive partial
+	 */
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
@@ -147,7 +169,9 @@ struct WarpScan<T, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 		return warpscan[1][warpscan_tid - 1];
 	}
 
-	// Interface
+	/**
+	 * Returns exclusive partial and cumulative reduction
+	 */
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,						// Input partial
 		T &total_reduction,							// Total reduction (out param)

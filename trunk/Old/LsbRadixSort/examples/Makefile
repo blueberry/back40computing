@@ -149,27 +149,16 @@ SORTING_DEPS = 	./Makefile \
 
 
 #-------------------------------------------------------------------------------
-# (make large) Simple test driver for large-problem sorting
+# (make test) Simple test driver for large-problem sorting
 #-------------------------------------------------------------------------------
 
-large: bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sorting.cu $(SORTING_DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sorting_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sorting.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
 
 
-
-#-------------------------------------------------------------------------------
-# (make advanced) Advanced test driver (this can take quite some time to compile as it generates
-# kernels for a wide variety of key and value type combinations
-#-------------------------------------------------------------------------------
-
-advanced: bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort_advanced.cu $(SORTING_DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_advanced_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort_advanced.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3 
 
 
 

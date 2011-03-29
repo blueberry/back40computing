@@ -74,7 +74,7 @@ namespace b40c {
 																					   B40C_BFS_SG_SM10_LOG_RAKING_THREADS(sm_version))
 
 // Size of sractch space (in bytes).  Params: SM sm_version, strategy
-#define B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy)				(45 * 1024 / B40C_BFS_SG_SM20_OCCUPANCY()) 
+#define B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy)				(45 * 1024 / B40C_BFS_SG_SM20_OCCUPANCY())
 #define B40C_BFS_SG_SM12_SCRATCH_SPACE(strategy)				(15 * 1024 / B40C_BFS_SG_SM12_OCCUPANCY())
 #define B40C_BFS_SG_SM10_SCRATCH_SPACE(strategy)				(7  * 1024 / B40C_BFS_SG_SM10_OCCUPANCY())
 #define B40C_BFS_SG_SCRATCH_SPACE(sm_version, strategy)			((sm_version >= 200) ? B40C_BFS_SG_SM20_SCRATCH_SPACE(strategy) : 	\
@@ -123,6 +123,8 @@ __launch_bounds__ (
 	B40C_BFS_SG_OCCUPANCY(__B40C_CUDA_ARCH__))
 __global__ void BfsSingleGridKernel(
 	IndexType src,										// Source node for the first iteration
+	char *d_collision_cache,
+	char *d_keep,
 	IndexType *d_in_queue,								// Queue of node-IDs to consume
 	IndexType *d_out_queue,								// Queue of node-IDs to produce
 	IndexType *d_column_indices,						// CSR column indices
@@ -206,6 +208,10 @@ __global__ void BfsSingleGridKernel(
 	// Initialize structures
 	//
 
+	for (int i = threadIdx.x; i < SCRATCH_SPACE; i += CTA_THREADS) {
+		scratch_pool[i] = -1;
+	}
+
 	// Raking threads determine their scan_pool segment to sequentially rake for smem reduction/scan
 	int *raking_segment;						 
 	if (threadIdx.x < RAKING_THREADS) {
@@ -272,8 +278,8 @@ __global__ void BfsSingleGridKernel(
 			BfsIteration<(BfsStrategy) STRATEGY, IndexType, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE, 
 					LOAD_VEC_SIZE, QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				iteration, scratch_pool, base_partial, raking_segment, warpscan, 
-				d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
+				d_collision_cache, d_keep, d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 
 		} else {
@@ -282,8 +288,8 @@ __global__ void BfsSingleGridKernel(
 			BfsIteration<(BfsStrategy) STRATEGY, IndexType, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE, 
 					LOAD_VEC_SIZE, QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				iteration, scratch_pool, base_partial, raking_segment, warpscan, 
-				d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
+				d_collision_cache, d_keep, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 		}
 
@@ -327,7 +333,7 @@ __global__ void BfsSingleGridKernel(
 			// Load the size of the incoming frontier queue
 			int num_incoming_nodes;
 			int incoming_queue_length_idx = (iteration + 0) & 0x3;	// Index of incoming queue length
-			ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths, incoming_queue_length_idx);
+			ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths + incoming_queue_length_idx);
 			total_queued += num_incoming_nodes;
 	
 			//

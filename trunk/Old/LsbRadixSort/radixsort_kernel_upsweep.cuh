@@ -524,7 +524,7 @@ __device__ __forceinline__ void ReductionPass(
 	// Process (potentially-partial) loads singly
 	while (cta_offset + threadIdx.x < out_of_bounds) {
 		KeyType key;
-		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys, cta_offset + threadIdx.x);
+		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
 		Bucket<Config>(key, composite_column);
 		cta_offset += Config::THREADS;
 	}

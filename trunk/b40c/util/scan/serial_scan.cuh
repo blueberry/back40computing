@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <b40c/util/operators.cuh>
+
 namespace b40c {
 namespace util {
 namespace scan {

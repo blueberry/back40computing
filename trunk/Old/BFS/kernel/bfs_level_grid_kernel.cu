@@ -123,6 +123,8 @@ __launch_bounds__ (
 	B40C_BFS_LEVEL_OCCUPANCY(__B40C_CUDA_ARCH__))
 __global__ void BfsLevelGridKernel(
 	IndexType src,										// Source node for the first iteration
+	char *d_collision_cache,
+	char *d_keep,
 	IndexType *d_in_queue,								// Queue of node-IDs to consume
 	IndexType *d_out_queue,								// Queue of node-IDs to produce
 	IndexType *d_column_indices,						// CSR column indices
@@ -191,6 +193,7 @@ __global__ void BfsLevelGridKernel(
 	int* 		scan_pool = reinterpret_cast<int*>(aligned_smem_pool);				// The smem pool for (i) above
 	IndexType* 	scratch_pool = reinterpret_cast<IndexType*>(aligned_smem_pool);		// The smem pool for (ii) above
 	
+	__shared__ int s_num_incoming_nodes;
 	__shared__ int s_cta_offset;			// Offset in the incoming frontier queue for this CTA to begin raking its tiles
 	__shared__ int s_cta_extra_elements;	// Number of elements in a last, partially-full tile (needing guarded loads)   
 	__shared__ int s_cta_out_of_bounds;		// The offset in the incoming frontier for this CTA to stop raking full tiles
@@ -249,6 +252,7 @@ __global__ void BfsLevelGridKernel(
 				// No work for all other CTAs
 				s_cta_extra_elements = 0;
 			}
+			s_num_incoming_nodes = 1;
 			
 		} else {
 			
@@ -263,7 +267,7 @@ __global__ void BfsLevelGridKernel(
 			// Load the size of the incoming frontier queue
 			int num_incoming_nodes;
 			int incoming_queue_length_idx = (iteration + 0) & 0x3;	// Index of incoming queue length
-			ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths, incoming_queue_length_idx);
+			ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths + incoming_queue_length_idx);
 	
 			//
 			// Although work is done in "tile"-sized blocks, work is assigned 
@@ -314,7 +318,7 @@ __global__ void BfsLevelGridKernel(
 			s_cta_offset = cta_offset;
 			s_cta_out_of_bounds = cta_out_of_bounds;
 			s_cta_extra_elements = cta_extra_elements;
-
+			s_num_incoming_nodes = num_incoming_nodes;
 		}
 	}
 	
@@ -327,8 +331,8 @@ __global__ void BfsLevelGridKernel(
 	BfsIteration<(BfsStrategy) STRATEGY, IndexType, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE, 
 			LOAD_VEC_SIZE, QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER,
 			ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-		iteration, scratch_pool, base_partial, raking_segment, warpscan, 
-		d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+		iteration, s_num_incoming_nodes, scratch_pool, base_partial, raking_segment, warpscan,
+		d_collision_cache, d_keep, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 		s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 } 
 
