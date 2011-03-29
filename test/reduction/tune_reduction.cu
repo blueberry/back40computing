@@ -158,8 +158,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
-			MIN = util::ld::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::ld::NONE,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -167,8 +167,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
-			MIN = util::st::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::st::NONE,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -345,10 +345,10 @@ public:
 	{
 		const int C_READ_MODIFIER =
 //			util::Access<ParamList, READ_MODIFIER>::VALUE;
-			util::ld::NONE;
+			util::io::ld::NONE;
 		const int C_WRITE_MODIFIER =
 //			util::Access<ParamList, WRITE_MODIFIER>::VALUE;
-			util::st::NONE;
+			util::io::st::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 //			0;
