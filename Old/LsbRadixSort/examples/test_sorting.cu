@@ -129,7 +129,8 @@ void TimedSort(
 	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
 		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 	sorting_enactor.DEBUG = true;
-	sorting_enactor.EnactSort(device_storage, g_max_ctas);
+	sorting_enactor.template EnactSort<LARGE_PROBLEM>(device_storage, g_max_ctas);
+//	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 	sorting_enactor.DEBUG = false;
 
 	// Perform the timed number of sorting iterations
@@ -150,7 +151,8 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.EnactSort(device_storage, g_max_ctas);
+		sorting_enactor.template EnactSort<LARGE_PROBLEM>(device_storage, g_max_ctas);
+//		sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 		// End cuda timing record
 		cudaEventRecord(stop_event, 0);
@@ -208,7 +210,7 @@ void TestSort(
 	}
 
     // Run the timing test
-	if (keys_only) {
+//	if (keys_only) {
 
 		printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 
@@ -222,7 +224,7 @@ void TestSort(
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
 	    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
-
+/*
 	} else {
 
 		printf("Key-values, %d iterations, %d elements", iterations, num_elements);
@@ -242,7 +244,7 @@ void TestSort(
 	    if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
 	    if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 	}
-
+*/
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
     

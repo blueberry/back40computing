@@ -166,8 +166,9 @@ struct UpsweepKernelConfig : UpsweepConfigType
 		SMEM_BYTES 							= B40C_MAX(COMPOSITE_COUNTER_BYTES, PARTIALS_BYTES),
 
 
-		HASH_POOL_LOG_ELEMENTS				= 9, //(B40C_SMEM_BYTES(__B40C_CUDA_ARCH__) / UpsweepConfigType::CTA_OCCUPANCY) - SMEM_BYTES - 1024,
-		HASH_POOL_ELEMENTS					= 1 << HASH_POOL_LOG_ELEMENTS,
+//		HASH_POOL_LOG_ELEMENTS				= 9,
+//		HASH_POOL_ELEMENTS					= 1 << HASH_POOL_LOG_ELEMENTS,
+		HASH_POOL_ELEMENTS					= (B40C_SMEM_BYTES(__B40C_CUDA_ARCH__) / UpsweepConfigType::CTA_OCCUPANCY) - SMEM_BYTES - 512,
 	};
 };
 
@@ -319,9 +320,7 @@ struct BucketTileKeys
 			int *composite_column)
 		{
 			// Bucket
-//			if (keep[LOAD][VEC_ELEMENT]) {
-				Bucket<Config>(keys[LOAD][VEC_ELEMENT], composite_column);
-//			}
+			Bucket<Config>(keys[LOAD][VEC_ELEMENT], composite_column);
 
 			// Iterate
 			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
@@ -363,179 +362,126 @@ struct BucketTileKeys
 };
 
 
+
 // Hash and cull a tile of keys
 template <typename Config>
 struct HashAndCullTileKeys
 {
 	typedef typename Config::KeyType KeyType;
 
-
-	template <int LOAD, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
-	struct IterateVec
+	// Iterate over vec elements
+	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
+	struct Iterate
 	{
-		static __device__ __forceinline__ void HashIn(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool)
+		static __device__ __forceinline__ void Hash(
+			char		*d_collision_cache,
+			KeyType 	keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			char 		keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			KeyType 	*hash_pool,
+			char 		*hash_counters)
 		{
+			keep[LOAD][VEC_ELEMENT] = 1;
+
+/*
+			// Global
+			signed char hash_byte;
+			ModifiedLoad<signed char , CG>::Ld(hash_byte, (signed char *) d_collision_cache + (keys[LOAD][VEC_ELEMENT] >> 3));
+			signed char bit = keys[LOAD][VEC_ELEMENT] & 7;
+			if (bit & hash_byte) {
+				keep[LOAD][VEC_ELEMENT] = 0;
+				// Already set
+			} else {
+				keep[LOAD][VEC_ELEMENT] = 1;
+				// set best effort
+				hash_byte |= bit;
+				ModifiedStore<signed char , CG>::St(hash_byte, (signed char *) d_collision_cache + (keys[LOAD][VEC_ELEMENT] >> 3));
+			}
+*/
+/*
+			// Local
+
 			// Compute hash id
-			hash[VEC_ELEMENT] = keys[LOAD][VEC_ELEMENT] & (Config::HASH_POOL_ELEMENTS - 1);
-
 			// Hash into smem pool
-			hash_pool[hash[VEC_ELEMENT]] = keys[LOAD][VEC_ELEMENT];
+			int hash = keys[LOAD][VEC_ELEMENT] % Config::HASH_POOL_ELEMENTS;
+			KeyType hashed_key = hash_pool[hash];
+			bool prev_keep = (hashed_key != keys[LOAD][VEC_ELEMENT]);
 
-			IterateVec<LOAD, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::HashIn(
-				keys, keep, hash, hashed_key, hash_pool);
-		}
+			if (prev_keep) {
+				hash_pool[hash] = keys[LOAD][VEC_ELEMENT];
+			}
 
-		static __device__ __forceinline__ void HashOut(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool)
-		{
+			__syncthreads();
+
 			// If a different key beat us to this hash cell; we must assume
 			// that we may not be a duplicate
-			hashed_key[VEC_ELEMENT] = hash_pool[hash[VEC_ELEMENT]];
-			keep[LOAD][VEC_ELEMENT] = (hashed_key[VEC_ELEMENT] != keys[LOAD][VEC_ELEMENT]);
-
-			IterateVec<LOAD, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::HashOut(
-				keys, keep, hash, hashed_key, hash_pool);
-		}
-
-		static __device__ __forceinline__ void HashIn2(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool)
-		{
-			if (hashed_key[VEC_ELEMENT] == keys[LOAD][VEC_ELEMENT]) {
-				hash_pool[hash[VEC_ELEMENT]] = threadIdx.x;
+			hashed_key = hash_pool[hash];
+			bool current_keep = true;
+			if (prev_keep) {
+				current_keep = (hashed_key != keys[LOAD][VEC_ELEMENT]);
 			}
 
-			IterateVec<LOAD, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::HashIn2(
-				keys, keep, hash, hashed_key, hash_pool);
-		}
+			__syncthreads();
 
-		static __device__ __forceinline__ void HashOut2(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool)
-		{
-			if (!keep[LOAD][VEC_ELEMENT]) {
+			if (!current_keep) {
+				hash_pool[hash] = threadIdx.x;
+			}
+
+			__syncthreads();
+
+			if (!current_keep) {
 				// If not equal to our tid, we are not an authoritative (non-duplicate) thread for this key
-				keep[LOAD][VEC_ELEMENT] = (hash_pool[hash[VEC_ELEMENT]] == threadIdx.x);
+				current_keep = (hash_pool[hash] == threadIdx.x);
 			}
 
-			IterateVec<LOAD, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::HashOut2(
-				keys, keep, hash, hashed_key, hash_pool);
+			keep[LOAD][VEC_ELEMENT] = current_keep & prev_keep;
+
+			__syncthreads();
+*/
+
+			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Hash(
+				d_collision_cache, keys, keep, hash_pool, hash_counters);
 		}
-
-
-	};
-
-	template <int LOAD, int TOTAL_VEC_ELEMENTS>
-	struct IterateVec<LOAD, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
-	{
-		static __device__ __forceinline__ void HashIn(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool) {}
-
-		static __device__ __forceinline__ void HashOut(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool) {}
-
-		static __device__ __forceinline__ void HashIn2(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool) {}
-
-		static __device__ __forceinline__ void HashOut2(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			int hash[Config::LOAD_VEC_SIZE],
-			int hashed_key[Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool) {}
-
 	};
 
 	// Iterate over loads
-	template <int LOAD, int TOTAL_LOADS>
-	struct Iterate
+	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
-		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool)
+		static __device__ __forceinline__ void Hash(
+			char		*d_collision_cache,
+			KeyType 	keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			char 		keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			KeyType 	*hash_pool,
+			char 		*hash_counters)
 		{
-			// Compute keep
-
-			// Retrieve what keys "won" at those locations
-			int hash[Config::LOAD_VEC_SIZE];
-			int hashed_key[Config::LOAD_VEC_SIZE];
-
-			// Hash the keys into smem scratch
-			IterateVec<LOAD, 0, Config::LOAD_VEC_SIZE>::HashIn(
-				keys, keep, hash, hashed_key, hash_pool);
-
-
-			__syncthreads();
-
-			// If a different key beat us to this hash cell; we must assume
-			// that we may not be a duplicate
-			IterateVec<LOAD, 0, Config::LOAD_VEC_SIZE>::HashOut(
-				keys, keep, hash, hashed_key, hash_pool);
-
-			__syncthreads();
-
-			// For the winners, hash in thread-IDs to select one of the threads
-			IterateVec<LOAD, 0, Config::LOAD_VEC_SIZE>::HashIn2(
-				keys, keep, hash, hashed_key, hash_pool);
-
-			__syncthreads();
-
-			// See if our thread won out amongst everyone with similar keys
-			IterateVec<LOAD, 0, Config::LOAD_VEC_SIZE>::HashOut2(
-				keys, keep, hash, hashed_key, hash_pool);
-
-			__syncthreads();
-
-			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(
-				keys, keep, hash_pool);
+			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Hash(
+				d_collision_cache, keys, keep, hash_pool, hash_counters);
 		}
 	};
 
 	// Terminate
-	template <int TOTAL_LOADS>
-	struct Iterate<TOTAL_LOADS, TOTAL_LOADS> {
-		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-			KeyType *hash_pool) {}
+	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
+	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
+	{
+		static __device__ __forceinline__ void Hash(
+			char		*d_collision_cache,
+			KeyType 	keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			char 		keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+			KeyType 	*hash_pool,
+			char 		*hash_counters) {}
 	};
+
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-		char keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
-		KeyType *hash_pool)
+		char		*d_collision_cache,
+		KeyType 	keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+		char 		keep[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE],
+		KeyType 	*hash_pool,
+		char 		*hash_counters)
 	{
-		Iterate<0, Config::LOADS_PER_TILE>::Invoke(
-			keys, keep, hash_pool);
+		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Hash(
+			d_collision_cache, keys, keep, hash_pool, hash_counters);
 	}
 };
 
@@ -545,11 +491,13 @@ struct HashAndCullTileKeys
 // Process one tile of keys
 template <typename Config>
 __device__ __forceinline__ void ProcessTile(
+	char						*d_collision_cache,
 	typename Config::KeyType 	*d_in_keys,
 	char 						*d_out_keep,
 	typename Config::SizeT 		cta_offset,
 	int 						*composite_column,
-	typename Config::KeyType 	*hash_pool)
+	typename Config::KeyType 	*hash_pool,
+	char 						*hash_counters)
 {
 	typedef typename Config::KeyType KeyType;
 	typedef typename Config::SizeT SizeT;
@@ -568,7 +516,10 @@ __device__ __forceinline__ void ProcessTile(
 		true>::Invoke(keys, d_in_keys, cta_offset, 0);
 
 	HashAndCullTileKeys<Config>::Invoke(
-		keys, keep, hash_pool);
+		d_collision_cache, keys, keep, hash_pool, hash_counters);
+//		keys, keep, hash_pool);
+
+	__syncthreads();
 
 	// Store keep bytes
 	StoreTile<
@@ -599,16 +550,18 @@ struct UnrollTiles
 	template <int UNROLL_COUNT, int __dummy = 0>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			KeyType *d_in_keys, 
-			char *d_out_keep,
-			SizeT cta_offset,
-			int *composite_column,
-			typename Config::KeyType *hash_pool)
+			char						*d_collision_cache,
+			KeyType 					*d_in_keys,
+			char 						*d_out_keep,
+			SizeT 						cta_offset,
+			int 						*composite_column,
+			typename Config::KeyType 	*hash_pool,
+			char 						*hash_counters)
 		{
 			Iterate<UNROLL_COUNT / 2>::Invoke(
-				d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool);
+				d_collision_cache, d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool, hash_counters);
 			Iterate<UNROLL_COUNT / 2>::Invoke(
-				d_in_keys, d_out_keep, cta_offset + (Config::TILE_ELEMENTS * UNROLL_COUNT / 2), composite_column, hash_pool);
+				d_collision_cache, d_in_keys, d_out_keep, cta_offset + (Config::TILE_ELEMENTS * UNROLL_COUNT / 2), composite_column, hash_pool, hash_counters);
 		}
 	};
 
@@ -616,13 +569,15 @@ struct UnrollTiles
 	template <int __dummy>
 	struct Iterate<1, __dummy> {
 		static __device__ __forceinline__ void Invoke(
-			KeyType *d_in_keys, 
-			char *d_out_keep,
-			SizeT cta_offset,
-			int *composite_column,
-			typename Config::KeyType *hash_pool)
+			char						*d_collision_cache,
+			KeyType 					*d_in_keys,
+			char 						*d_out_keep,
+			SizeT 						cta_offset,
+			int 						*composite_column,
+			typename Config::KeyType 	*hash_pool,
+			char 						*hash_counters)
 		{
-			ProcessTile<Config>(d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool);
+			ProcessTile<Config>(d_collision_cache, d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool, hash_counters);
 		}
 	};
 };
@@ -632,6 +587,7 @@ struct UnrollTiles
 // occasional partial-reduction to avoid overflow.
 template <typename Config, int UNROLL_COUNT, bool REDUCE_AFTERWARD>
 __device__ __forceinline__ void UnrollTileBatches(
+	char						*d_collision_cache,
 	typename Config::KeyType 	*d_in_keys,
 	char 						*d_out_keep,
 	typename Config::SizeT 		&cta_offset,
@@ -641,14 +597,15 @@ __device__ __forceinline__ void UnrollTileBatches(
 	typename Config::SizeT 		local_counts[Config::LANES_PER_WARP][4],
 	int 						warp_id,
 	int 						warp_idx,
-	typename Config::KeyType 	*hash_pool)
+	typename Config::KeyType 	*hash_pool,
+	char 						*hash_counters)
 {
 	const int UNROLLED_ELEMENTS = UNROLL_COUNT * Config::TILE_ELEMENTS;
 	
 	while (cta_offset + UNROLLED_ELEMENTS < out_of_bounds) {
 	
 		UnrollTiles<Config>::template Iterate<UNROLL_COUNT>::Invoke(
-			d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool);
+			d_collision_cache, d_in_keys, d_out_keep, cta_offset, composite_column, hash_pool, hash_counters);
 
 		cta_offset += UNROLLED_ELEMENTS;
 
@@ -677,6 +634,7 @@ struct FullTiles
 	typedef typename Config::SizeT SizeT;
 	
 	__device__ __forceinline__ static void Reduce(
+		char						*d_collision_cache,
 		KeyType 					*d_in_keys,
 		char 						*d_out_keep,
 		SizeT 						&cta_offset,
@@ -686,21 +644,23 @@ struct FullTiles
 		SizeT  						local_counts[Config::LANES_PER_WARP][4],
 		int  						warp_id,
 		int  						warp_idx,
-		typename Config::KeyType 	*hash_pool)
+		typename Config::KeyType 	*hash_pool,
+		char 						*hash_counters)
 	{
 		// Loop over tile-batches of 64 keys per thread, aggregating after each batch
-		UnrollTileBatches<Config, 16 / Config::TILE_ELEMENTS_PER_THREAD, true>(
-			d_in_keys, d_out_keep, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx, hash_pool);
+		UnrollTileBatches<Config, 64 / Config::TILE_ELEMENTS_PER_THREAD, true>(
+			d_collision_cache, d_in_keys, d_out_keep, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx, hash_pool, hash_counters);
 
 		// Loop over tiles one at a time
 		UnrollTileBatches<Config, 1, false>(
-			d_in_keys, d_out_keep, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx, hash_pool);
+			d_collision_cache, d_in_keys, d_out_keep, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx, hash_pool, hash_counters);
 	}
 };
 
 
 template <typename Config>
 __device__ __forceinline__ void ReductionPass(
+	char						* __restrict d_collision_cache,
 	typename Config::KeyType 	* __restrict d_in_keys,
 	typename Config::SizeT 		* __restrict d_spine,
 	char 						* __restrict d_out_keep,
@@ -708,7 +668,8 @@ __device__ __forceinline__ void ReductionPass(
 	int* 						composite_column,
 	typename Config::SizeT 		cta_offset,
 	typename Config::SizeT 		out_of_bounds,
-	typename Config::KeyType 	*hash_pool)
+	typename Config::KeyType 	*hash_pool,
+	char 						*hash_counters)
 {
 	typedef typename Config::KeyType KeyType; 
 	typedef typename Config::SizeT SizeT;
@@ -734,6 +695,7 @@ __device__ __forceinline__ void ReductionPass(
 	// Process loads in bulk (if applicable), making sure to leave
 	// enough headroom for one more (partial) tile before rollover  
 	FullTiles<Config>::Reduce(
+		d_collision_cache,
 		d_in_keys,
 		d_out_keep,
 		cta_offset,
@@ -743,12 +705,13 @@ __device__ __forceinline__ void ReductionPass(
 		local_counts, 
 		warp_id,
 		warp_idx,
-		hash_pool);
+		hash_pool,
+		hash_counters);
 
 	// Process (potentially-partial) loads singly
 	while (cta_offset + threadIdx.x < out_of_bounds) {
 		KeyType key;
-		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys, cta_offset + threadIdx.x);
+		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
 		Bucket<Config>(key, composite_column);
 		cta_offset += Config::THREADS;
 	}
@@ -812,6 +775,7 @@ __device__ __forceinline__ void ReductionPass(
  */
 template <typename Config>
 __device__ __forceinline__ void LsbUpsweep(
+	char							* __restrict &d_collision_cache,
 	int 							* __restrict &d_selectors,
 	typename Config::SizeT 			* __restrict &d_spine,
 	typename Config::KeyType 		* __restrict &d_in_keys,
@@ -819,11 +783,19 @@ __device__ __forceinline__ void LsbUpsweep(
 	char 							* __restrict &d_out_keep,
 	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
 {
+	typedef typename Config::KeyType KeyType;
 	typedef typename Config::SizeT SizeT;
 	
 	// Shared memory pool
-	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
-	__shared__ typename Config::KeyType hash_pool[Config::HASH_POOL_ELEMENTS];
+	__shared__ unsigned char 				smem_pool[Config::SMEM_BYTES];
+	__shared__ KeyType						hash_pool[Config::HASH_POOL_ELEMENTS];
+//	__shared__ char 						hash_counters[Config::HASH_POOL_ELEMENTS];
+	char 									*hash_counters = NULL;
+
+	for (int i = threadIdx.x; i < Config::HASH_POOL_ELEMENTS; i += Config::THREADS) {
+//		hash_counters[i] = 0;
+		hash_pool[i] = (KeyType) -1;
+	}
 	
 	// The smem column in composite lanes for each thread 
 	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
@@ -849,6 +821,7 @@ __device__ __forceinline__ void LsbUpsweep(
 		
 	// Perform reduction pass over work range
 	ReductionPass<Config>(
+		d_collision_cache,
 		d_in_keys,
 		d_spine,
 		d_out_keep,
@@ -856,7 +829,8 @@ __device__ __forceinline__ void LsbUpsweep(
 		composite_column,
 		cta_offset,
 		cta_offset + cta_elements,
-		reinterpret_cast<typename Config::KeyType*>(hash_pool));
+		hash_pool,
+		hash_counters);
 } 
 
 
@@ -867,6 +841,7 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void UpsweepKernel(
+	char								* __restrict d_collision_cache,
 	int 								* __restrict d_selectors,
 	typename KernelConfig::SizeT 		* __restrict d_spine,
 	typename KernelConfig::KeyType 		* __restrict d_in_keys,

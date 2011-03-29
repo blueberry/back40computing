@@ -39,7 +39,7 @@ GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
-SM_TARGETS = $(GEN_SM20) $(GEN_SM13)
+SM_TARGETS = $(GEN_SM20) 
 
 #-------------------------------------------------------------------------------
 # Tune arch
@@ -117,6 +117,10 @@ ifneq ($(abi), 1)
 endif
 endif
 
+ifeq ($(verbose), 1)
+    NVCCFLAGS += -v
+endif
+
 ifeq ($(keep), 1)
     NVCCFLAGS += -keep
 endif
@@ -130,47 +134,60 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_sort.h \
+				./test_radixsort.h \
 				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/reduction/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) \
-				$(wildcard ../../b40c/sort/*.cuh) 
+				$(wildcard ../../b40c/util/io/*.cuh) \
+				$(wildcard ../../b40c/util/reduction/*.cuh) \
+				$(wildcard ../../b40c/util/radixsort/*.cuh) \
+				$(wildcard ../../b40c/radixsort/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make test) Simple test driver for sort
+# (make simple) Simple example driver for radixsort
 #-------------------------------------------------------------------------------
 
-test: bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+simple: bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sort.cu $(DEPS)
+bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_radixsort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
+
+
+#-------------------------------------------------------------------------------
+# (make test) Test driver for radixsort
+#-------------------------------------------------------------------------------
+
+test: bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radixsort.cu $(DEPS) test_radixsort.h
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of sort configuration types
+# (make tune) Evaluates the space of radixsort configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
+tune: bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_sort.cu $(DEPS)
+bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_radixsort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------
-# (make compare) Compares sort performance against other libraries (e.g., Thrust)
+# (make compare) Compares radixsort performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+compare: bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_sort.cu $(DEPS)
+bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_radixsort.cu $(DEPS) test_radixsort.h
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
 #
@@ -178,9 +195,7 @@ bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_sort.cu $(DEPS)
 #
 
 clean :
-	rm -f bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/tune_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
-	rm -f bin/compare_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

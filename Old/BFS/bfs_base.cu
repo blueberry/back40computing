@@ -105,6 +105,7 @@ struct BfsCsrProblem
 	IndexType *d_column_indices;
 	IndexType *d_row_offsets;
 	IndexType *d_source_dist;
+	char *d_collision_cache;
 	
 	BfsCsrProblem() : nodes(0), d_column_indices(NULL), d_row_offsets(NULL), d_source_dist(NULL) {}
  
@@ -112,11 +113,13 @@ struct BfsCsrProblem
 		IndexType nodes,
 		IndexType *d_column_indices, 
 		IndexType *d_row_offsets, 
-		IndexType *d_source_dist) : 
+		IndexType *d_source_dist,
+		char *d_collision_cache) :
 			nodes(nodes), 
 			d_column_indices(d_column_indices), 
 			d_row_offsets(d_row_offsets), 
-			d_source_dist(d_source_dist) {}
+			d_source_dist(d_source_dist),
+			d_collision_cache(d_collision_cache) {}
 	
 	BfsCsrProblem(
 		IndexType nodes,
@@ -131,6 +134,10 @@ struct BfsCsrProblem
 		cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType));
 	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_source_dist failed: ", __FILE__, __LINE__);
 
+		unsigned int bitmask_bytes = ((nodes * sizeof(char)) + 8 - 1) / 8;
+		cudaMalloc((void**) &d_collision_cache, bitmask_bytes);
+	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_collision_cache failed: ", __FILE__, __LINE__);
+
 		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(IndexType), cudaMemcpyHostToDevice);
 		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(IndexType), cudaMemcpyHostToDevice);
 		
@@ -144,6 +151,9 @@ struct BfsCsrProblem
 	{
 		int max_grid_size = B40C_MIN(1024 * 32, (nodes + 128 - 1) / 128);
 		MemsetKernel<IndexType><<<max_grid_size, 128>>>(d_source_dist, -1, nodes);
+
+		unsigned int bitmask_bytes = ((nodes * sizeof(char)) + 8 - 1) / 8;
+		MemsetKernel<char><<<128, 128>>>(d_collision_cache, 0, bitmask_bytes);
 	}
 	
 	void Free() 
@@ -151,6 +161,7 @@ struct BfsCsrProblem
 		if (d_column_indices) { cudaFree(d_column_indices); d_column_indices = NULL; }
 		if (d_row_offsets) { cudaFree(d_row_offsets); d_row_offsets = NULL; }
 		if (d_source_dist) { cudaFree(d_source_dist); d_source_dist = NULL; }
+		if (d_collision_cache) { cudaFree(d_collision_cache); d_collision_cache = NULL; }
 	}
 };
 

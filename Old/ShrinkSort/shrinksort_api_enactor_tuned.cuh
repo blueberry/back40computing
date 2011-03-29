@@ -84,7 +84,7 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_OCCUPANCY))
-__global__ void TunedUpsweepKernel(int * __restrict d_selectors, SizeT * __restrict d_spine, ConvertedKeyType * __restrict d_in_keys, ConvertedKeyType * __restrict d_out_keys, char * __restrict d_out_keep, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedUpsweepKernel(	char * __restrict d_collision_cache, int * __restrict d_selectors, SizeT * __restrict d_spine, ConvertedKeyType * __restrict d_in_keys, ConvertedKeyType * __restrict d_out_keys, char * __restrict d_out_keep, CtaWorkDistribution<SizeT> work_decomposition);
 
 // SpineScan
 template <typename KeyType, typename ValueType, typename SizeT, int GRANULARITY_ENUM>
@@ -170,6 +170,8 @@ protected:
 		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
 		int threads[3] = {1 << SortingConfig::Upsweep::LOG_THREADS, 1 << SortingConfig::SpineScan::LOG_THREADS, 1 << SortingConfig::Downsweep::LOG_THREADS};
 
+		MemsetKernel<char><<<128, 128>>>(work.problem_storage->d_keep, 1, work.num_elements);
+
 		cudaError_t retval = cudaSuccess;
 		do {
 			// Tuning option for dynamic smem allocation
@@ -207,6 +209,7 @@ protected:
 			// Invoke upsweep reduction kernel
 			TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
 				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
+					work.problem_storage->d_collision_cache,
 					this->d_selectors,
 					(SizeT *) this->d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -237,6 +240,17 @@ protected:
 			if (this->DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
 				"ShrinkSortEnactorTuned:: TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
 
+/*
+			// mooch
+			char *keep = (char *) malloc(work.num_elements);
+			cudaMemcpy(keep, work.problem_storage->d_keep, sizeof(char) * work.num_elements, cudaMemcpyDeviceToHost);
+			int sum = 0;
+			for (int i = 0; i < work.num_elements; i++) {
+				sum += keep[i];
+			}
+			printf("Pass %d reduced to %d\n", CURRENT_PASS, sum);
+			free(keep);
+*/
 		} while (0);
 
 		return retval;
@@ -407,6 +421,7 @@ struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, SizeT>
 // Upsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename SizeT, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 void TunedUpsweepKernel(
+	char						* __restrict d_collision_cache,
 	int 						* __restrict d_selectors,
 	SizeT 						* __restrict d_spine,
 	ConvertedKeyType 			* __restrict d_in_keys,
@@ -420,7 +435,7 @@ void TunedUpsweepKernel(
 	typedef UpsweepKernelConfig<typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
 
 	// Invoke the wrapped kernel logic
-	LsbUpsweep<KernelConfig>(d_selectors, d_spine, d_in_keys, d_out_keys, d_out_keep, work_decomposition);
+	LsbUpsweep<KernelConfig>(d_collision_cache, d_selectors, d_spine, d_in_keys, d_out_keys, d_out_keep, work_decomposition);
 }
 
 // SpineScan

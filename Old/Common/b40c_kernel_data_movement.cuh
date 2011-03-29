@@ -71,23 +71,23 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	 */
 	#define B40C_DEFINE_BASE_GLOBAL_LOAD(base_type, ptx_type, reg_mod)																								\
 		template <> struct ModifiedLoad<base_type, NONE> {																											\
-			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				val = d_ptr[offset];																																\
+			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr) {															\
+				val = *d_ptr;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CG> {																											\
-			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr) {															\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CS> {																											\
-			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr) {															\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CA> {																											\
-			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(base_type &val, base_type* d_ptr) {															\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																								
 
@@ -97,63 +97,63 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	 */
 	#define B40C_DEFINE_GLOBAL_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod)																			\
 		template <> struct ModifiedLoad<base_type, NONE> {																											\
-			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				val = d_ptr[offset];																																\
+			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr) {															\
+				val = *d_ptr;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CG> {																											\
-			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr) {															\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CS> {																											\
-			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr) {															\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<base_type, CA> {																											\
-			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr, size_t offset) {															\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr + offset));														\
+			__device__ __forceinline__ static void Ld(dest_type &val, base_type* d_ptr) {															\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val) : _B40C_ASM_PTR_(d_ptr));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, NONE> {																										\
-			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				val = d_ptr[offset];																																\
+			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr) {													\
+				val = *d_ptr;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CG> {																										\
-			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr) {													\
+				asm("ld.global.cg."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr));													\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CS> {																										\
-			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr) {													\
+				asm("ld.global.cs."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr));													\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##1, CA> {																										\
-			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr, size_t offset) {													\
-				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr + offset));													\
+			__device__ __forceinline__ static void Ld(short_type##1 &val, short_type##1* d_ptr) {													\
+				asm("ld.global.ca."#ptx_type" %0, [%1];" : "="#reg_mod(val.x) : _B40C_ASM_PTR_(d_ptr));													\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##2, NONE> {																										\
-			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				val = d_ptr[offset];																																\
+			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr) {													\
+				val = *d_ptr;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##2, CG> {																										\
-			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.cg.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr) {													\
+				asm("ld.global.cg.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr));						\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##2, CS> {																										\
-			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.cs.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr) {													\
+				asm("ld.global.cs.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr));						\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedLoad<short_type##2, CA> {																										\
-			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr, size_t offset) {													\
-				asm("ld.global.ca.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr + offset));						\
+			__device__ __forceinline__ static void Ld(short_type##2 &val, short_type##2* d_ptr) {													\
+				asm("ld.global.ca.v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(val.x), "="#reg_mod(val.y) : _B40C_ASM_PTR_(d_ptr));						\
 			}																																						\
 		};
 
@@ -162,23 +162,23 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	 */
 	#define B40C_DEFINE_GLOBAL_QUAD_LOAD(base_type, dest_type, short_type, ptx_type, reg_mod)																									\
 		template <> struct ModifiedLoad<short_type##4, NONE> {																																	\
-			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				val = d_ptr[offset];																																							\
+			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr) {																				\
+				val = *d_ptr;																																							\
 			}																																													\
 		};																																														\
 		template <> struct ModifiedLoad<short_type##4, CG> {																																	\
-			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.cg.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr) {																				\
+				asm("ld.global.cg.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr));	\
 			}																																													\
 		};																																														\
 		template <> struct ModifiedLoad<short_type##4, CS> {																																	\
-			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.cs.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr) {																				\
+				asm("ld.global.cs.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr));	\
 			}																																													\
 		};																																														\
 		template <> struct ModifiedLoad<short_type##4, CA> {																																	\
-			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr, size_t offset) {																				\
-				asm("ld.global.ca.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr + offset));	\
+			__device__ __forceinline__ static void Ld(short_type##4 &val, short_type##4* d_ptr) {																				\
+				asm("ld.global.ca.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(val.x), "="#reg_mod(val.y), "="#reg_mod(val.z), "="#reg_mod(val.w) : _B40C_ASM_PTR_(d_ptr));	\
 			}																																													\
 		};
 
@@ -215,9 +215,9 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedLoad<double2, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void Ld(double2 &val, double2* d_ptr, size_t offset) {
-			ModifiedLoad<double, CACHE_MODIFIER>::Ld(val.x, reinterpret_cast<double*>(d_ptr + offset), 0);
-			ModifiedLoad<double, CACHE_MODIFIER>::Ld(val.y, reinterpret_cast<double*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void Ld(double2 &val, double2* d_ptr) {
+			ModifiedLoad<double, CACHE_MODIFIER>::Ld(val.x, reinterpret_cast<double*>(d_ptr), 0);
+			ModifiedLoad<double, CACHE_MODIFIER>::Ld(val.y, reinterpret_cast<double*>(d_ptr), 1);
 		}
 	};
 
@@ -225,25 +225,25 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedLoad<double4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void Ld(double4 &val, double4* d_ptr, size_t offset) {
-			ModifiedLoad<double2, CACHE_MODIFIER>::Ld(*reinterpret_cast<double2*>(&val.x), reinterpret_cast<double2*>(d_ptr + offset), 0);
-			ModifiedLoad<double2, CACHE_MODIFIER>::Ld(*reinterpret_cast<double2*>(&val.z), reinterpret_cast<double2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void Ld(double4 &val, double4* d_ptr) {
+			ModifiedLoad<double2, CACHE_MODIFIER>::Ld(*reinterpret_cast<double2*>(&val.x), reinterpret_cast<double2*>(d_ptr), 0);
+			ModifiedLoad<double2, CACHE_MODIFIER>::Ld(*reinterpret_cast<double2*>(&val.z), reinterpret_cast<double2*>(d_ptr), 1);
 		}																																							
 	};																																								
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedLoad<ulonglong4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void Ld(ulonglong4 &val, ulonglong4* d_ptr, size_t offset) {
-			ModifiedLoad<ulonglong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulonglong2*>(&val.x), reinterpret_cast<ulonglong2*>(d_ptr + offset), 0);
-			ModifiedLoad<ulonglong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulonglong2*>(&val.z), reinterpret_cast<ulonglong2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void Ld(ulonglong4 &val, ulonglong4* d_ptr) {
+			ModifiedLoad<ulonglong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulonglong2*>(&val.x), reinterpret_cast<ulonglong2*>(d_ptr), 0);
+			ModifiedLoad<ulonglong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<ulonglong2*>(&val.z), reinterpret_cast<ulonglong2*>(d_ptr), 1);
 		}
 	};
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedLoad<longlong4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void Ld(longlong4 &val, longlong4* d_ptr, size_t offset) {
-			ModifiedLoad<longlong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<longlong2*>(&val.x), reinterpret_cast<longlong2*>(d_ptr + offset), 0);
-			ModifiedLoad<longlong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void Ld(longlong4 &val, longlong4* d_ptr) {
+			ModifiedLoad<longlong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<longlong2*>(&val.x), reinterpret_cast<longlong2*>(d_ptr), 0);
+			ModifiedLoad<longlong2, CACHE_MODIFIER>::Ld(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(d_ptr), 1);
 		}																																							
 	};																																								
 
@@ -261,8 +261,8 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad;
 	// Load normally
 	template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedLoad
 	{
-		__device__ __forceinline__ static void Ld(T &val, T* d_ptr, size_t offset) {
-			val = d_ptr[offset]; 
+		__device__ __forceinline__ static void Ld(T &val, T* d_ptr) {
+			val = *d_ptr;
 		}
 	};
 	
@@ -335,7 +335,7 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 			VectorType vectors[], 
 			VectorType *d_in_vectors) 
 		{
-			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors, (LOAD * ACTIVE_THREADS));
+			ModifiedLoad<VectorType, CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors + (LOAD * ACTIVE_THREADS));
 			Transform(data[LOAD][0], true);		// Apply transform function with in_bounds = true 
 			Iterate<LOAD, 1>::Invoke(data, vectors, d_in_vectors);
 		}
@@ -408,7 +408,7 @@ struct LoadTile <T, SizeT, LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE, ACTIVE_THREADS
 			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + ((ACTIVE_THREADS * LOAD) << LOG_LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < out_of_bounds) {
-				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in, thread_offset);
+				ModifiedLoad<T, CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
 				Transform(data[LOAD][VEC], true);
 			} else {
 				Transform(data[LOAD][VEC], false);	// !in_bounds
@@ -476,23 +476,23 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 
 	#define B40C_DEFINE_BASE_GLOBAL_STORE(base_type, ptx_type, reg_mod)																								\
 		template <> struct ModifiedStore<base_type, NONE> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				d_ptr[offset] = val;																																\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				*d_ptr = val;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, CG> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, CS> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, WB> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																								
 
@@ -502,63 +502,63 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 	 */
 	#define B40C_DEFINE_GLOBAL_STORE(base_type, dest_type, short_type, ptx_type, reg_mod)																			\
 		template <> struct ModifiedStore<base_type, NONE> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				d_ptr[offset] = val;																																\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				*d_ptr = val;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, CG> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, CS> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<base_type, WB> {																											\
-			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr, size_t offset) {														\
-				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val));														\
+			__device__ __forceinline__ static void St(const base_type &val, base_type* d_ptr) {														\
+				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##1, NONE> {																										\
-			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr, size_t offset) {												\
-				d_ptr[offset] = val;																																\
+			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr) {												\
+				*d_ptr = val;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##1, CG> {																										\
-			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr, size_t offset) {												\
-				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x));														\
+			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr) {												\
+				asm("st.global.cg."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##1, CS> {																										\
-			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr, size_t offset) {												\
-				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x));														\
+			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr) {												\
+				asm("st.global.cs."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##1, WB> {																										\
-			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr, size_t offset) {												\
-				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x));														\
+			__device__ __forceinline__ static void St(const short_type##1 &val, short_type##1* d_ptr) {												\
+				asm("st.global.wb."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x));														\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##2, NONE> {																										\
-			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr, size_t offset) {												\
-				d_ptr[offset] = val;																																\
+			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr) {												\
+				*d_ptr = val;																																\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##2, CG> {																										\
-			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr, size_t offset) {												\
-				asm("st.global.cg.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y));							\
+			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr) {												\
+				asm("st.global.cg.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y));							\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##2, CS> {																										\
-			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr, size_t offset) {												\
-				asm("st.global.cs.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y));							\
+			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr) {												\
+				asm("st.global.cs.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y));							\
 			}																																						\
 		};																																							\
 		template <> struct ModifiedStore<short_type##2, WB> {																										\
-			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr, size_t offset) {												\
-				asm("st.global.wb.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y));							\
+			__device__ __forceinline__ static void St(const short_type##2 &val, short_type##2* d_ptr) {												\
+				asm("st.global.wb.v2."#ptx_type" [%0], {%1, %2};" : :  _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y));							\
 			}																																						\
 		};
 
@@ -567,23 +567,23 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 	 */
 	#define B40C_DEFINE_GLOBAL_QUAD_STORE(base_type, dest_type, short_type, ptx_type, reg_mod)																							\
 		template <> struct ModifiedStore<short_type##4, NONE> {																															\
-			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr, size_t offset) {																	\
-				d_ptr[offset] = val;																																					\
+			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr) {																	\
+				*d_ptr = val;																																					\
 			}																																											\
 		};																																												\
 		template <> struct ModifiedStore<short_type##4, CG> {																															\
-			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr, size_t offset) {																	\
-				asm("st.global.cg.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
+			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr) {																	\
+				asm("st.global.cg.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
 			}																																											\
 		};																																												\
 		template <> struct ModifiedStore<short_type##4, CS> {																															\
-			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr, size_t offset) {																	\
-				asm("st.global.cs.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
+			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr) {																	\
+				asm("st.global.cs.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
 			}																																											\
 		};																																												\
 		template <> struct ModifiedStore<short_type##4, WB> {																															\
-			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr, size_t offset) {																	\
-				asm("st.global.wb.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr + offset), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
+			__device__ __forceinline__ static void St(const short_type##4 &val, short_type##4* d_ptr) {																	\
+				asm("st.global.wb.v4."#ptx_type"  [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(d_ptr), #reg_mod(val.x), #reg_mod(val.y), #reg_mod(val.z), #reg_mod(val.w));		\
 			}																																											\
 		};
 
@@ -618,9 +618,9 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedStore<double2, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void St(double2 &val, double2* d_ptr, size_t offset) {
-			ModifiedStore<double, CACHE_MODIFIER>::St(val.x, reinterpret_cast<double*>(d_ptr + offset), 0);
-			ModifiedStore<double, CACHE_MODIFIER>::St(val.y, reinterpret_cast<double*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void St(double2 &val, double2* d_ptr) {
+			ModifiedStore<double, CACHE_MODIFIER>::St(val.x, reinterpret_cast<double*>(d_ptr), 0);
+			ModifiedStore<double, CACHE_MODIFIER>::St(val.y, reinterpret_cast<double*>(d_ptr), 1);
 		}
 	};
 
@@ -628,25 +628,25 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedStore<double4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void St(double4 &val, double4* d_ptr, size_t offset) {
-			ModifiedStore<double2, CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.x), reinterpret_cast<double2*>(d_ptr + offset), 0);
-			ModifiedStore<double2, CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.z), reinterpret_cast<double2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void St(double4 &val, double4* d_ptr) {
+			ModifiedStore<double2, CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.x), reinterpret_cast<double2*>(d_ptr), 0);
+			ModifiedStore<double2, CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.z), reinterpret_cast<double2*>(d_ptr), 1);
 		}																																							
 	};																																								
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedStore<ulonglong4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void St(ulonglong4 &val, ulonglong4* d_ptr, size_t offset) {
-			ModifiedStore<ulonglong2, CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.x), reinterpret_cast<ulonglong2*>(d_ptr + offset), 0);
-			ModifiedStore<ulonglong2, CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.z), reinterpret_cast<ulonglong2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void St(ulonglong4 &val, ulonglong4* d_ptr) {
+			ModifiedStore<ulonglong2, CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.x), reinterpret_cast<ulonglong2*>(d_ptr), 0);
+			ModifiedStore<ulonglong2, CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.z), reinterpret_cast<ulonglong2*>(d_ptr), 1);
 		}
 	};
 
 	template <CacheModifier CACHE_MODIFIER>
 	struct ModifiedStore<longlong4, CACHE_MODIFIER> {
-		__device__ __forceinline__ static void St(longlong4 &val, longlong4* d_ptr, size_t offset) {
-			ModifiedStore<longlong2, CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.x), reinterpret_cast<longlong2*>(d_ptr + offset), 0);
-			ModifiedStore<longlong2, CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(d_ptr + offset), 1);
+		__device__ __forceinline__ static void St(longlong4 &val, longlong4* d_ptr) {
+			ModifiedStore<longlong2, CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.x), reinterpret_cast<longlong2*>(d_ptr), 0);
+			ModifiedStore<longlong2, CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(d_ptr), 1);
 		}																																							
 	};
 	
@@ -664,8 +664,8 @@ template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore;
 	// Store normally
 	template <typename T, CacheModifier CACHE_MODIFIER> struct ModifiedStore
 	{
-		__device__ __forceinline__ static void St(const T &val, T* d_ptr, size_t offset) {
-			d_ptr[offset] = val; 
+		__device__ __forceinline__ static void St(const T &val, T* d_ptr) {
+			*d_ptr = val;
 		}
 	};
 	
@@ -712,7 +712,7 @@ struct StoreTile <T, SizeT, LOG_STORES_PER_TILE, LOG_STORE_VEC_SIZE, ACTIVE_THRE
 			VectorType *d_in_vectors) 
 		{
 			ModifiedStore<VectorType, CACHE_MODIFIER>::St(
-				vectors[STORE], d_in_vectors, threadIdx.x);
+				vectors[STORE], d_in_vectors + threadIdx.x);
 			
 			Iterate<STORE + 1>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
 		}
@@ -843,7 +843,7 @@ struct Scatter
 		{
 			if (UNGUARDED_IO || ((ACTIVE_THREADS * LOAD) + threadIdx.x < guarded_elements)) {
 				Transform(src[LOAD]);
-				ModifiedStore<T, CACHE_MODIFIER>::St(src[LOAD], dest, scatter_offsets[LOAD]);
+				ModifiedStore<T, CACHE_MODIFIER>::St(src[LOAD], dest + scatter_offsets[LOAD]);
 			}
 
 			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(dest, src, scatter_offsets, guarded_elements);

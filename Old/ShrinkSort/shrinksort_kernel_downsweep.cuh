@@ -1136,7 +1136,7 @@ __device__ __forceinline__ void DigitPass(
 		// Read digit_carry in parallel 
 		SizeT my_digit_carry;
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-		ModifiedLoad<SizeT, KernelConfig::CACHE_MODIFIER>::Ld(my_digit_carry, d_spine, spine_digit_offset);
+		ModifiedLoad<SizeT, KernelConfig::CACHE_MODIFIER>::Ld(my_digit_carry, d_spine + spine_digit_offset);
 		digit_carry[threadIdx.x] = my_digit_carry;
 	}
 
