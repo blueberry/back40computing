@@ -699,7 +699,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				scratch_pool);
 
 			__syncthreads();
-*/
+
 			//
 			// Inspect visitation status of incident node-IDs, acquiring row offsets
 			// and lengths for previously-undiscovered node-IDs
@@ -712,8 +712,10 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				d_source_dist,
 				d_row_offsets,
 				iteration);
-/*
-		} else if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
+
+		} else
+*/
+		if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
 
 			signed char hash_byte;
 			unsigned int hash = dequeued_node_id[0] >> 3;
@@ -751,12 +753,11 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				}
 			}
 		}
-*/
 
 		//
 		// Bulk expansion/loading
 		//
-
+/*
 		int bulk_length[1];
 		bulk_length[0] = row_length[0] & ~31;
 
@@ -810,7 +811,8 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				}
 			}
 		}
-/*
+*/
+
 
 		int bulk_length[1];
 		bulk_length[0] = row_length[0] & ~31;
@@ -853,7 +855,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				coop_offset += 32;
 			}
 		}
-*/
+
 
 
 		//
