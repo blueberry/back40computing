@@ -168,7 +168,7 @@ cudaError_t Enactor::EnactPass(
 		if (work.grid_size == 1) {
 
 			DownsweepKernel<Single><<<1, Single::THREADS, 0>>>(
-				d_src, d_num_compacted, d_dest, NULL, work);
+				d_src, d_num_elements_compacted, d_dest, NULL, work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
@@ -220,7 +220,7 @@ cudaError_t Enactor::EnactPass(
 
 			// Downsweep consecutive removal into spine
 			DownsweepKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_num_compacted, d_dest, (FlagCount*) spine(), work);
+				d_src, d_num_elements_compacted, d_dest, (FlagCount*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
