@@ -686,7 +686,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			d_in_queue,
 			cta_out_of_bounds);
 
-
+/*
 //		if (num_incoming_nodes < CTA_THREADS * LOAD_VEC_SIZE * gridDim.x) {
 //		if (cta_out_of_bounds >= CTA_THREADS * LOAD_VEC_SIZE) {
 		if (iteration > 15) {
@@ -699,7 +699,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				scratch_pool);
 
 			__syncthreads();
-
+*/
 			//
 			// Inspect visitation status of incident node-IDs, acquiring row offsets
 			// and lengths for previously-undiscovered node-IDs
@@ -712,7 +712,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				d_source_dist,
 				d_row_offsets,
 				iteration);
-
+/*
 		} else if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
 
 			signed char hash_byte;
@@ -751,7 +751,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				}
 			}
 		}
-
+*/
 
 		//
 		// Bulk expansion/loading

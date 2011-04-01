@@ -229,11 +229,11 @@ void DisplayStats(
 			stats.passes.mean, passes_stddev, passes_stddev / stats.passes.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
-		if (redundant_work != 0) printf(	"\t\t[redundant work %]: u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (redundant_work != 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n", 
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
 		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update(avg_barrier_wait / elapsed * 100));
-		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %]:        u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %%]:        u: %.2f, s: %.2f, cv: %.4f\n", 
 			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));

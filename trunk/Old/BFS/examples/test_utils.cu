@@ -420,7 +420,7 @@ int ReadDimacsStream(
 		{
 			// Problem description (nodes is nodes, edges is edges)
 			long long ll_nodes, ll_edges;
-			sscanf(line, "p %s %lld %lld", &problem_type, &ll_nodes, &ll_edges);
+			sscanf(line, "p %s %lld %lld", problem_type, &ll_nodes, &ll_edges);
 			nodes = ll_nodes;
 			edges = ll_edges;
 
@@ -449,7 +449,7 @@ int ReadDimacsStream(
 			}
 
 			long long ll_row, ll_col, ll_val;
-			sscanf(line, "a %d %d %d", &ll_row, &ll_col, &ll_val);
+			sscanf(line, "a %lld %lld %lld", &ll_row, &ll_col, &ll_val);
 
 			coo[nread].row = ll_row - 1;	// zero-based array
 			coo[nread].col = ll_col - 1;	// zero-based array
@@ -484,14 +484,14 @@ int ReadDimacsStream(
 	}
 	
 	time_t mark1 = time(NULL);
-	printf("Done parsing (%ds).\n  Sorting COO format... ", mark1 - mark0);
+	printf("Done parsing (%ds).\n  Sorting COO format... ", (int) (mark1 - mark0));
 	fflush(stdout);
 	
 	// Sort COO by row, then by col
 	std::sort(coo, coo + directed_edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
-	printf("Done sorting (%ds).\n  Converting to CSR format... ", mark2 - mark1);
+	printf("Done sorting (%ds).\n  Converting to CSR format... ", (int) (mark2 - mark1));
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
@@ -499,7 +499,7 @@ int ReadDimacsStream(
 	free(coo);
 
 	time_t mark3 = time(NULL);
-	printf("Done converting (%ds).\n", mark3 - mark2);
+	printf("Done converting (%ds).\n", (int) (mark3 - mark2));
 
 	fflush(stdout);
 	
@@ -610,14 +610,14 @@ int BuildRandomGraph(
 	}
 
 	time_t mark1 = time(NULL);
-	printf("Done selecting (%ds).\n  Sorting COO format... ", mark1 - mark0);
+	printf("Done selecting (%ds).\n  Sorting COO format... ", (int) (mark1 - mark0));
 	fflush(stdout);
 	
 	// Sort COO by row, then by col
 	std::sort(coo, coo + directed_edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
-	printf("Done sorting (%ds).\n  Converting to CSR format... ", mark2 - mark1);
+	printf("Done sorting (%ds).\n  Converting to CSR format... ", (int) (mark2 - mark1));
 	fflush(stdout);
 
 	// Convert sorted COO to CSR
@@ -625,7 +625,7 @@ int BuildRandomGraph(
 	free(coo);
 
 	time_t mark3 = time(NULL);
-	printf("Done converting (%ds).\n", mark3 - mark2);
+	printf("Done converting (%ds).\n", (int) (mark3 - mark2));
 	
 	// If unspecified, assign default source.  Otherwise verify source range.
 	if (src == -1) {
