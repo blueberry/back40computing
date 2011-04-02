@@ -155,6 +155,7 @@ struct CsrGraph {
 		// Scan
 		int max_log_length = -1;
 		for (int i = 0; i < nodes; i++) {
+			
 			int length = row_offsets[i + 1] - row_offsets[i];
 			int log_length = -1;
 			while (length > 0) {
@@ -164,10 +165,11 @@ struct CsrGraph {
 			if (log_length > max_log_length) {
 				max_log_length = log_length;
 			}
+			
 			log_counts[log_length + 1]++;
 		}
 		printf("\nDegree Histogram:\n");
-		for (int i = -1; i < max_log_length; i++) {
+		for (int i = -1; i < max_log_length + 1; i++) {
 			printf("\tDegree 2^%i: %d (%.2f%%)\n", i, log_counts[i + 1], (float) log_counts[i + 1] * 100.0 / nodes);
 		}
 		printf("\n");
@@ -568,6 +570,199 @@ int BuildDimacsGraph(
 	
 	return 0;
 }
+
+
+/******************************************************************************
+ * METIS Graph Construction Routines
+ ******************************************************************************/
+
+/**
+ * Reads a DIMACS graph from an input-stream into a CSR sparse format 
+ */
+template<typename IndexType, typename ValueType>
+int ReadMetisStream(
+	FILE *f_in,
+	CsrGraph<IndexType, ValueType> &csr_graph)
+{
+	typedef CooEdgeTuple<IndexType, ValueType> EdgeTupleType;
+	
+	IndexType nread = 0;
+	IndexType nodes = 0;
+	IndexType edges = 0;
+	EdgeTupleType *coo = NULL;		// read in COO format
+	
+	time_t mark0 = time(NULL);
+	printf("  Parsing METIS COO format ");
+	fflush(stdout);
+
+	char line[1024];
+	int c;
+
+	IndexType current_node = 0;
+	long long ll_edge;
+	
+	while ((c = fgetc(f_in)) != EOF) {
+
+		// Try and match the blank line
+		switch (c) {
+		
+		case '%':
+			// Comment: consume up to and including newline
+			while ((c = fgetc(f_in)) != EOF) {
+				if (c == '\n') break;
+			}
+			break;
+
+		case '\n':
+			// End of line: begin processing next current_node
+			current_node++;
+			break;
+		
+		default:
+			
+			// Data still in line: put char back
+			ungetc(c, f_in);
+
+			if (current_node == 0) {
+
+				// First line: problem description
+				long long ll_nodes, ll_edges;
+				if (fscanf(f_in, "%lld %lld%[^\n]", &ll_nodes, &ll_edges, line) > 0) {
+					nodes = ll_nodes;
+					edges = ll_edges * 2;
+					
+					printf("%d nodes, %d directed edges\n", nodes, edges);
+					fflush(stdout);
+					
+					// Allocate coo graph
+					coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * edges);
+					
+				} else {
+					fprintf(stderr, "Error parsing METIS graph: invalid format\n");
+					return -1;
+				}
+
+			} else {
+			
+				// Continue processing next edge in edge list
+				if (fscanf(f_in, "%lld", &ll_edge) > 0) {
+
+					if (!coo) {
+						fprintf(stderr, "Error parsing METIS graph: invalid format\n");
+						return -1;
+					}			
+					if (nread >= edges) {
+						fprintf(stderr, "Error parsing METIS graph: encountered more than %d edges\n", edges);
+						if (coo) free(coo);
+						return -1;
+					}
+
+					coo[nread].row = current_node - 1;	// zero-based array
+					coo[nread].col = ll_edge - 1;	// zero-based array
+
+					nread++;
+					
+				} else {
+					fprintf(stderr, "Error parsing METIS graph: invalid format\n");
+					if (coo) free(coo);
+					return -1;
+				}
+			}
+		};
+	}
+	
+
+	if (current_node - 1 != nodes) {
+		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d nodes read\n", current_node - 1, nodes);
+		if (coo) free(coo);
+		return -1;
+	}
+	if (nread != edges) {
+		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d edges read\n", nread, edges);
+		if (coo) free(coo);
+		return -1;
+	}
+	
+	if (coo == NULL) {
+		fprintf(stderr, "No graph found\n");
+		return -1;
+	}
+	
+	time_t mark1 = time(NULL);
+	printf("Done parsing (%ds).\n  Sorting COO format... ", (int) (mark1 - mark0));
+	fflush(stdout);
+	
+	// Sort COO by row, then by col
+	std::sort(coo, coo + edges, DimacsTupleCompare<IndexType, ValueType>);
+
+	time_t mark2 = time(NULL);
+	printf("Done sorting (%ds).\n  Converting to CSR format... ", (int) (mark2 - mark1));
+	fflush(stdout);
+	
+	// Convert sorted COO to CSR
+	csr_graph.FromCoo(coo, nodes, edges);
+	free(coo);
+
+	time_t mark3 = time(NULL);
+	printf("Done converting (%ds).\n", (int) (mark3 - mark2));
+
+	fflush(stdout);
+	
+	return 0;
+}
+
+
+/**
+ * Loads a METIS-formatted CSR graph from the specified file.  If 
+ * dimacs_filename == NULL, then it is loaded from stdin.
+ * 
+ * If src == -1, it is assigned a random node.  Otherwise it is verified 
+ * to be in range of the constructed graph.
+ */
+template<typename IndexType, typename ValueType>
+int BuildMetisGraph(
+	char *metis_filename, 
+	IndexType &src,
+	CsrGraph<IndexType, ValueType> &csr_graph)
+{ 
+	if (metis_filename == NULL) {
+
+		// Read from stdin
+		printf("Reading from stdin:\n");
+		if (ReadMetisStream(stdin, csr_graph) != 0) {
+			return -1;
+		}
+
+	} else {
+	
+		// Read from file
+		FILE *f_in = fopen(metis_filename, "r");
+		if (f_in) {
+			printf("Reading from %s:\n", metis_filename);
+			if (ReadMetisStream(f_in, csr_graph) != 0) {
+				fclose(f_in);
+				return -1;
+			}
+			fclose(f_in);
+		} else {
+			perror("Unable to open file");
+			return -1;
+		}
+	}
+	
+	// If unspecified, assign default source.  Otherwise verify source range.
+	if (src == -1) {
+		// Random source
+		src = RandomNode(csr_graph.nodes);
+	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
+		fprintf(stderr, "Invalid src: %d", src);
+		csr_graph.Free();
+		return -1;
+	}
+	
+	return 0;
+}
+
 
 /******************************************************************************
  * Random Graph Construction Routines

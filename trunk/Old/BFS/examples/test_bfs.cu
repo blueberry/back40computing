@@ -78,6 +78,9 @@ void Usage()
 			"\tdimacs [<file>]\n"
 			"\t\tReads a DIMACS-formatted graph of directed edges from stdin (or \n"
 			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
+			"\tmetis [<file>]\n"
+			"\t\tReads a METIS-formatted graph of directed edges from stdin (or \n"
+			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
 			"\trandom <n> <m>\n"			
 			"\t\tA random graph generator that adds <m> edges to <n> nodes by randomly \n"
 			"\t\tchoosing a pair of nodes for each edge.  There are possibilities of \n"
@@ -542,6 +545,14 @@ int main( int argc, char** argv)
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
 		if (BuildDimacsGraph(dimacs_filename, src, csr_graph, g_undirected) != 0) {
+			return 1;
+		}
+		
+	} else if (graph_type == "metis") {
+		// METIS-formatted graph file
+		if (graph_args < 1) { Usage(); return 1; }
+		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
+		if (BuildMetisGraph(metis_filename, src, csr_graph) != 0) {
 			return 1;
 		}
 		
