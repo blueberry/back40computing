@@ -372,17 +372,17 @@ void RunTests(
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	IndexType* reference_source_dist 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 	IndexType* h_source_dist 			= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
-
+/*
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	SingleGridBfsEnactor<IndexType, INSTRUMENT> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges * 3 / 2, 
-		max_grid_size);
-
-/*
-	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
 		(queue_size > 0) ? queue_size : csr_graph.edges * 3 / 2,
 		max_grid_size);
 */
+
+	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 2,
+		max_grid_size);
+
 	bfs_sg_enactor.BFS_DEBUG = g_verbose;
 
 	// Allocate problem on GPU
@@ -417,7 +417,7 @@ void RunTests(
 			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-
+/*
 		// Perform expand-contract GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);	
@@ -425,7 +425,7 @@ void RunTests(
 			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-
+*/
 		// Perform contract-expand GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);		
@@ -478,6 +478,8 @@ int main( int argc, char** argv)
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
+	cudaSetDeviceFlags(cudaDeviceMapHost);
+
 
 	srand(0);									// Presently deterministic
 	//srand(time(NULL));	

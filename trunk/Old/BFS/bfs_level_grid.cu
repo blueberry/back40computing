@@ -48,8 +48,8 @@ private:
 	typedef BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> > Base; 
 	
 	// Sorting enactor
-	LsbSortEnactorTuned sorting_enactor;
-	ConsecutiveRemovalEnactor removal_enactor;
+//	LsbSortEnactorTuned sorting_enactor;
+//	ConsecutiveRemovalEnactor removal_enactor;
 
 protected:	
 
@@ -60,7 +60,7 @@ protected:
 	 */
 	int *d_queue_lengths;
 	
-	int *d_keep;
+	char *d_keep;
 
 protected:
 	
@@ -185,17 +185,18 @@ public:
 		sorting_problem.d_keys[1] = (unsigned int *) this->d_queue[1];
 		sorting_problem.selector = 0;
 		sorting_problem.num_elements = 1;
-		
+
 		int iteration = 0;
+
 		while (true) {
 /*
-			MemsetKernel<char><<<128, 128>>>(sorting_problem.d_keep, 1, max_queue_size * sizeof(char));
+			MemsetKernel<char><<<128, 128>>>(d_keep, 1, max_queue_size * sizeof(char));
 
 			// Contract-expand strategy
 			BfsLevelGridKernel<IndexType, CULL><<<this->max_grid_size, cta_threads>>>(
 				src,
-				sorting_problem.d_collision_cache,
-				sorting_problem.d_keep,
+				bfs_problem.d_collision_cache,
+				d_keep,
 				this->d_queue[sorting_problem.selector],
 				this->d_queue[sorting_problem.selector ^ 1],
 				bfs_problem.d_column_indices,
@@ -207,7 +208,7 @@ public:
 
 			// mooch
 			char *keep = (char *) malloc(sorting_problem.num_elements);
-			cudaMemcpy(keep,sorting_problem.d_keep, sizeof(char) * sorting_problem.num_elements, cudaMemcpyDeviceToHost);
+			cudaMemcpy(keep, d_keep, sizeof(char) * sorting_problem.num_elements, cudaMemcpyDeviceToHost);
 			int sum = 0;
 			for (int i = 0; i < sorting_problem.num_elements; i++) {
 				sum += keep[i];
@@ -215,8 +216,6 @@ public:
 			printf("    Iteration %d input reduced to %d\n", iteration, sum);
 			free(keep);
 */
-
-
 			// Contract-expand strategy
 			BfsLevelGridKernel<IndexType, CONTRACT_EXPAND><<<this->max_grid_size, cta_threads>>>(
 				src,

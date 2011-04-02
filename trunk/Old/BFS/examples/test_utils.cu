@@ -613,6 +613,11 @@ int ReadMetisStream(
 			}
 			break;
 
+		case ' ':
+		case '\t':
+			// whitespace
+			break;
+
 		case '\n':
 			// End of line: begin processing next current_node
 			current_node++;
@@ -629,7 +634,7 @@ int ReadMetisStream(
 				long long ll_nodes, ll_edges;
 				if (fscanf(f_in, "%lld %lld%[^\n]", &ll_nodes, &ll_edges, line) > 0) {
 					nodes = ll_nodes;
-					edges = ll_edges * 2;
+					edges = ll_edges * 2;		// just to be safe: we know there are issues with some of the test files having half the undirected edge count (directed vs. undirected)
 					
 					printf("%d nodes, %d directed edges\n", nodes, edges);
 					fflush(stdout);
@@ -656,6 +661,11 @@ int ReadMetisStream(
 						if (coo) free(coo);
 						return -1;
 					}
+					if (ll_edge > nodes) {
+						fprintf(stderr, "Error parsing METIS graph: edge to %lld is larger than vertices in graph\n", ll_edge);
+						if (coo) free(coo);
+						return -1;
+					}
 
 					coo[nread].row = current_node - 1;	// zero-based array
 					coo[nread].col = ll_edge - 1;	// zero-based array
@@ -670,14 +680,12 @@ int ReadMetisStream(
 			}
 		};
 	}
-	
 
-	if (current_node - 1 != nodes) {
-		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d nodes read\n", current_node - 1, nodes);
-		if (coo) free(coo);
-		return -1;
-	}
-	if (nread != edges) {
+
+	if (nread * 2 == edges) {
+		printf("Actual edges: %d\n", nread);
+		edges = nread;
+	} else if (nread != edges) {
 		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d edges read\n", nread, edges);
 		if (coo) free(coo);
 		return -1;
@@ -696,7 +704,7 @@ int ReadMetisStream(
 	std::sort(coo, coo + edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
-	printf("Done sorting (%ds).\n  Converting to CSR format... ", (int) (mark2 - mark1));
+	printf("Done sorting (%ds).\n  Converting to CSR format (n: %d, m: %d)... ", (int) (mark2 - mark1), nodes, edges);
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
@@ -822,7 +830,7 @@ int BuildRandomGraph(
 	std::sort(coo, coo + directed_edges, DimacsTupleCompare<IndexType, ValueType>);
 
 	time_t mark2 = time(NULL);
-	printf("Done sorting (%ds).\n  Converting to CSR format... ", (int) (mark2 - mark1));
+	printf("Done sorting (%ds).\n  Converting to CSR format (n: %d, m: %d)... ", (int) (mark2 - mark1), nodes, directed_edges);
 	fflush(stdout);
 
 	// Convert sorted COO to CSR
