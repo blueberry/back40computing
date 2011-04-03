@@ -34,7 +34,7 @@
 #include <b40c/util/io/load_tile.cuh>
 
 namespace b40c {
-namespace reduction {
+namespace consecutive_removal {
 
 
 /**
@@ -144,6 +144,6 @@ struct UpsweepCta : KernelConfig
 
 
 
-} // namespace reduction
+} // namespace consecutive_removal
 } // namespace b40c
 
