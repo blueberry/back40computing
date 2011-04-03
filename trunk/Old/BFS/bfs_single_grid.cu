@@ -99,9 +99,18 @@ public:
 		const int QUEUE_LENGTHS_SIZE = 4 + 2;
 		
 		// Allocate 
-		cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size);
-		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
-		cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size);
+		if (cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size)) {
+			printf("BfsCsrProblem:: cudaMalloc d_sync failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+		if (cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE)) {
+			printf("BfsCsrProblem:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+		if (cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size)) {
+			printf("BfsCsrProblem:: cudaMalloc d_barrier_time failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
 
 		// Initialize 
 		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(			// to zero

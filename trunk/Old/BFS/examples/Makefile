@@ -107,11 +107,11 @@ endif
 #-------------------------------------------------------------------------------
 
 BFS_DEPS = 		./Makefile \
+				$(wildcard *.cu) \
 				$(wildcard ../../Common/*.cuh) \
 				$(wildcard ../kernel/*.cu) \
 				$(wildcard ../*.cu) \
-				$(wildcard ../../ShrinkSort/*.cuh) 
-#				$(wildcard ../../LsbRadixSort/*.cuh) \
+				$(wildcard ../../LsbRadixSort/*.cuh) 
 				 
 
 

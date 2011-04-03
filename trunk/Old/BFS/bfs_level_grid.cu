@@ -89,15 +89,24 @@ public:
 		int max_queue_size,
 		int max_grid_size = 0,
 		const CudaProperties &props = CudaProperties()) :
-			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props)
+			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props),
+			d_queue_lengths(NULL),
+			d_keep(NULL)
 	{
 		// Size of 4-element rotating vector of queue lengths (and statistics)   
 		const int QUEUE_LENGTHS_SIZE = 4;
 		
 		// Allocate 
-		cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE);
-		cudaMalloc((void**) &d_keep, sizeof(char) * this->max_queue_size);
-		
+		if (cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE)) {
+			printf("BfsCsrProblem:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+/*
+		if (cudaMalloc((void**) &d_keep, sizeof(char) * this->max_queue_size)) {
+			printf("BfsCsrProblem:: cudaMalloc d_keep failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+*/
 		// Initialize 
 		MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
 			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
@@ -189,6 +198,12 @@ public:
 		int iteration = 0;
 
 		while (true) {
+
+			if (iteration > 6000) {
+				printf("Aborted.\n");
+				break;
+			}
+
 /*
 			MemsetKernel<char><<<128, 128>>>(d_keep, 1, max_queue_size * sizeof(char));
 
