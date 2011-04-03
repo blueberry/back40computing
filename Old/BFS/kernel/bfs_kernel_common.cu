@@ -716,13 +716,13 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			hash,
 			scratch_pool);
 
-		if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
+		if (dequeued_node_id[0] >= 0) {
 
 			// Load source distance of node
 			IndexType source_dist;
 			ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
 
-			// Node is previously unvisited.  Load neighbor row range from d_row_offsets
+			// Load neighbor row range from d_row_offsets
 			IndexTypeVec2 row_range;
 			if (dequeued_node_id[0] & 1) {
 				// Misaligned
@@ -733,7 +733,11 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + dequeued_node_id[0]);
 				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 			}
+
 			if (source_dist == -1) {
+
+				// Node is previously unvisited.
+
 				// Compute row offset and length
 				row_offset[0] = row_range.x;
 				row_length[0] = row_range.y - row_range.x;
