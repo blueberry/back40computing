@@ -28,14 +28,20 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <math.h>
-
-#include <iostream>
-#include <fstream>
 #include <string>
 
-#include <test_utils.cu>				// Utilities and correctness-checking
+// Utilities and correctness-checking
+#include <test_utils.cu>
+
+// Graph utils
 #include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
+#include <dimacs.cu>
+#include <grid2d.cu>
+#include <grid3d.cu>
+#include <market.cu>
+#include <metis.cu>
+#include <random.cu>
+#include <rr.cu>
 
 // BFS includes
 #include <bfs_single_grid.cu>
@@ -81,6 +87,9 @@ void Usage()
 			"\tmetis [<file>]\n"
 			"\t\tReads a METIS-formatted graph of directed edges from stdin (or \n"
 			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
+			"\tmarket [<file>]\n"
+			"\t\tReads a Matrix-Market coordinate-formatted graph of directed edges from stdin (or \n"
+			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n"
 			"\trandom <n> <m>\n"			
 			"\t\tA random graph generator that adds <m> edges to <n> nodes by randomly \n"
 			"\t\tchoosing a pair of nodes for each edge.  There are possibilities of \n"
@@ -372,16 +381,16 @@ void RunTests(
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	IndexType* reference_source_dist 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
 	IndexType* h_source_dist 			= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
-/*
+
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	SingleGridBfsEnactor<IndexType, INSTRUMENT> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges * 3 / 2,
+		(queue_size > 0) ? queue_size : csr_graph.edges,
+		max_grid_size);
+/*
+	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges,
 		max_grid_size);
 */
-
-	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 2,
-		max_grid_size);
 
 	bfs_sg_enactor.BFS_DEBUG = g_verbose;
 
@@ -417,7 +426,7 @@ void RunTests(
 			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-/*
+
 		// Perform expand-contract GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);	
@@ -425,7 +434,7 @@ void RunTests(
 			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-*/
+
 		// Perform contract-expand GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);		
@@ -558,6 +567,14 @@ int main( int argc, char** argv)
 			return 1;
 		}
 		
+	} else if (graph_type == "market") {
+		// Matrix-market coordinate-formatted graph file
+		if (graph_args < 1) { Usage(); return 1; }
+		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
+		if (BuildMarketGraph(market_filename, src, csr_graph) != 0) {
+			return 1;
+		}
+
 	} else if (graph_type == "random") {
 		// Random graph of n nodes and m edges
 		if (graph_args < 3) { Usage(); return 1; }
@@ -585,10 +602,12 @@ int main( int argc, char** argv)
 	// Optionally display graph
 	if (g_verbose2) {
 		printf("\n");
-		DisplayGraph(csr_graph);
+		csr_graph.DisplayGraph();
 		printf("\n");
 	}
+	csr_graph.PrintHistogram();
 
+	// Run tests
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
 		RunTests<IndexType, ValueType, true>(

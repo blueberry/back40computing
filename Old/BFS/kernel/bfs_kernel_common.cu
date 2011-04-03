@@ -330,10 +330,12 @@ void CullDuplicates(
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
 
-		// If a different node beat us to this hash cell; we must assume 
+		// If a different node beat us to this hash cell; we must assume
 		// that we may not be a duplicate
-		hashed_node_id[COMPONENT] = scratch_pool[hash[COMPONENT]];
-		duplicate[COMPONENT] = (hashed_node_id[COMPONENT] == node_id[COMPONENT]);
+		if (node_id[COMPONENT] != -1) {
+			hashed_node_id[COMPONENT] = scratch_pool[hash[COMPONENT]];
+			duplicate[COMPONENT] = (hashed_node_id[COMPONENT] == node_id[COMPONENT]);
+		}
 	}
 
 	__syncthreads();
@@ -341,7 +343,7 @@ void CullDuplicates(
 	// For the winners, hash in thread-IDs to select one of the threads
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
-		if (hashed_node_id[COMPONENT] == node_id[COMPONENT]) {
+		if (duplicate[COMPONENT]) {
 			scratch_pool[hash[COMPONENT]] = threadIdx.x;
 		}
 	}
@@ -351,14 +353,15 @@ void CullDuplicates(
 	// See if our thread won out amongst everyone with similar node-IDs 
 	#pragma unroll
 	for (int COMPONENT = 0; COMPONENT < LOAD_VEC_SIZE; COMPONENT++) {
-		if (hashed_node_id[COMPONENT] == node_id[COMPONENT]) {
-			// If not equal to our tid, we are not an authoritative (non-duplicate) thread for this node-ID
-			duplicate[COMPONENT] = (scratch_pool[hash[COMPONENT]] != threadIdx.x);
-		}
 		if (duplicate[COMPONENT]) {
-			node_id[COMPONENT] = -1;
+			// If not equal to our tid, we are not an authoritative (non-duplicate) thread for this node-ID
+			if (scratch_pool[hash[COMPONENT]] != threadIdx.x) {
+				node_id[COMPONENT] = -1;
+			}
 		}
 	}
+
+	__syncthreads();
 }
 	
 
@@ -588,20 +591,20 @@ template <> struct BfsTile<CULL>
 
 		if (dequeued_node_id[0] >= 0) {
 
-			signed char hash_byte;
+			signed char mask_byte;
 			unsigned int hash = dequeued_node_id[0] >> 3;
-			ModifiedLoad<signed char , CG>::Ld(hash_byte, ((signed char *) d_collision_cache) + hash);
-			signed char bit = 1 << (dequeued_node_id[0] & 7);
+			ModifiedLoad<signed char , CG>::Ld(mask_byte, ((signed char *) d_collision_cache) + hash);
+			signed char mask_bit = 1 << (dequeued_node_id[0] & 7);
 
-			if (bit & hash_byte) {
+			if (mask_bit & mask_byte) {
 
 				dequeued_node_id[0] = -1;
 
 			} else {
 
 				// set best effort
-				hash_byte |= bit;
-				ModifiedStore<signed char , CG>::St(hash_byte, ((signed char *) d_collision_cache) + hash);
+				mask_byte |= mask_bit;
+				ModifiedStore<signed char , CG>::St(mask_byte, ((signed char *) d_collision_cache) + hash);
 			}
 		}
 
@@ -685,48 +688,160 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			hash,						// out param
 			d_in_queue,
 			cta_out_of_bounds);
-/*
-		if (iteration > 30) {
 
-			// Not small-world
 
-			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
-				dequeued_node_id,
-				hash,
-				scratch_pool);
+		if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
 
-			__syncthreads();
+			signed char mask_byte;
+			signed char mask_bit;
+			unsigned int mask_byte_offset = dequeued_node_id[0] >> 3;
 
+			ModifiedLoad<signed char , CG>::Ld(mask_byte, ((signed char *) d_collision_cache) + mask_byte_offset);
+			mask_bit = 1 << (dequeued_node_id[0] & 7);
+
+			if (mask_bit & mask_byte) {
+
+				dequeued_node_id[0] = -1;
+
+			} else {
+
+				// set best effort
+				mask_byte |= mask_bit;
+				ModifiedStore<signed char , CG>::St(mask_byte, ((signed char *) d_collision_cache) + mask_byte_offset);
+			}
+		}
+
+		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+			dequeued_node_id,
+			hash,
+			scratch_pool);
+
+		if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
+
+			// Load source distance of node
+			IndexType source_dist;
+			ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
+
+			// Node is previously unvisited.  Load neighbor row range from d_row_offsets
+			IndexTypeVec2 row_range;
+			if (dequeued_node_id[0] & 1) {
+				// Misaligned
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + dequeued_node_id[0]);
+				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + dequeued_node_id[0] + 1);
+			} else {
+				// Aligned
+				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + dequeued_node_id[0]);
+				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
+			}
+			if (source_dist == -1) {
+				// Compute row offset and length
+				row_offset[0] = row_range.x;
+				row_length[0] = row_range.y - row_range.x;
+
+				// Update distance with current iteration
+				ModifiedStore<IndexType , CG>::St(iteration, d_source_dist + dequeued_node_id[0]);
+			}
+		}
+
+		int enqueue_count = LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
+			base_partial,
+			raking_segment,
+			warpscan,
+			row_length,
+			local_rank,
+			d_enqueue_length,
+			s_enqueue_offset);
+
+		if (iteration < 30) {
 
 			//
-			// Inspect visitation status of incident node-IDs, acquiring row offsets
-			// and lengths for previously-undiscovered node-IDs
+			// CTA-based expansion/loading
 			//
 
-			InspectAndUpdate<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, UNGUARDED_IO>(
-				dequeued_node_id,
-				row_offset,			// out param
-				row_length, 		// out param
-				d_source_dist,
-				d_row_offsets,
-				iteration);
+			while (__syncthreads_or(row_length[0] > CTA_THREADS)) {
+
+				if (row_length[0] > CTA_THREADS) {
+					// Vie for control of the warp
+					gang[0] = threadIdx.x;
+				}
+
+				__syncthreads();
+
+				if (threadIdx.x == gang[0]) {
+
+					// Got control of the warp
+					gang[0] = row_offset[0];						// start
+					gang2[0] = local_rank[0];						// queue rank
+					gang3[0] = row_offset[0] + row_length[0];		// oob
+
+					row_length[0] = 0;
+				}
+
+				__syncthreads();
+
+				int coop_offset = gang[0] + threadIdx.x;
+				int coop_rank = gang2[0] + threadIdx.x;
+				int coop_oob = gang3[0];
+
+				// Gather
+				IndexType node_id;
+				while (coop_offset < coop_oob) {
+
+					ModifiedLoad<IndexType, NONE>::Ld(
+						node_id, d_column_indices + coop_offset);
+
+					// Scatter
+					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
+						node_id, d_out_queue + s_enqueue_offset + coop_rank);
+
+					coop_offset += CTA_THREADS;
+					coop_rank += CTA_THREADS;
+				}
+			}
 
 			//
-			// Perform local scan of neighbor-counts and reserve a spot for them in
-			// the outgoing queue at s_enqueue_offset
+			// Warp-based expansion/loading
 			//
 
-			int enqueue_count = LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
-				base_partial,
-				raking_segment,
-				warpscan,
-				row_length,
-				local_rank,
-				d_enqueue_length,
-				s_enqueue_offset);
+			int warp_idx = threadIdx.x >> 5;
+			int warp_tid = threadIdx.x & 31;
 
-			__syncthreads();
+			while (__any(row_length[0])) {
 
+				if (row_length[0]) {
+					// Vie for control of the warp
+					gang[warp_idx] = warp_tid;
+				}
+				if (warp_tid == gang[warp_idx]) {
+
+					// Got control of the warp
+					gang[warp_idx] = row_offset[0];						// start
+					gang2[warp_idx] = local_rank[0];					// queue rank
+					gang3[warp_idx] = row_offset[0] + row_length[0];	// oob
+
+					row_length[0] = 0;
+				}
+				int coop_offset = gang[warp_idx] + warp_tid;
+				int coop_rank = gang2[warp_idx] + warp_tid;
+				int coop_oob = gang3[warp_idx];
+
+				// Gather
+				IndexType node_id;
+				while (coop_offset < coop_oob) {
+
+					ModifiedLoad<IndexType, NONE>::Ld(
+						node_id, d_column_indices + coop_offset);
+
+					// Scatter
+					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
+						node_id, d_out_queue + s_enqueue_offset + coop_rank);
+
+					coop_offset += 32;
+					coop_rank += 32;
+				}
+			}
+
+		} else {
 
 			//
 			// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
@@ -734,6 +849,8 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			// having the entire CTA use them to copy adjacency lists from
 			// column_indices to the outgoing frontier queue.
 			//
+
+			__syncthreads();
 
 			while (cta_progress < enqueue_count) {
 
@@ -769,111 +886,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 
 				__syncthreads();
 			}
-
-		} else {
-*/
-			// Small world: large edge factors, sparse singletons
-/*
-			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
-				dequeued_node_id,
-				hash,
-				scratch_pool);
-
-			__syncthreads();
-*/
-
-//			if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
-			if (dequeued_node_id[0] >= 0) {
-
-				signed char hash_byte;
-				unsigned int hash = dequeued_node_id[0] >> 3;
-				ModifiedLoad<signed char , CG>::Ld(hash_byte, ((signed char *) d_collision_cache) + hash);
-				signed char bit = 1 << (dequeued_node_id[0] & 7);
-
-				if (!(bit & hash_byte)) {
-
-					// set best effort
-					hash_byte |= bit;
-					ModifiedStore<signed char , CG>::St(hash_byte, ((signed char *) d_collision_cache) + hash);
-
-					// Load source distance of node
-					IndexType source_dist;
-					ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
-
-					// Node is previously unvisited.  Load neighbor row range from d_row_offsets
-					IndexTypeVec2 row_range;
-					if (dequeued_node_id[0] & 1) {
-						// Misaligned
-						ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + dequeued_node_id[0]);
-						ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + dequeued_node_id[0] + 1);
-					} else {
-						// Aligned
-						IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + dequeued_node_id[0]);
-						ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
-					}
-					if (source_dist == -1) {
-						// Compute row offset and length
-						row_offset[0] = row_range.x;
-						row_length[0] = row_range.y - row_range.x;
-
-						// Update distance with current iteration
-						ModifiedStore<IndexType , CG>::St(iteration, d_source_dist + dequeued_node_id[0]);
-					}
-				}
-			}
-
-
-			//
-			// Warp-based expansion/loading
-			//
-
-			LocalScanWithAtomicReservation<LOAD_VEC_SIZE, PARTIALS_PER_SEG>(
-				base_partial,
-				raking_segment,
-				warpscan,
-				row_length,
-				local_rank,
-				d_enqueue_length,
-				s_enqueue_offset);
-
-			int warp_idx = threadIdx.x >> 5;
-			int warp_tid = threadIdx.x & 31;
-
-			while (__any(row_length[0])) {
-
-				if (row_length[0]) {
-					// Vie for control of the warp
-					gang[warp_idx] = warp_tid;
-				}
-				if (warp_tid == gang[warp_idx]) {
-
-					// Got control of the warp
-					gang[warp_idx] = row_offset[0];						// start
-					gang2[warp_idx] = local_rank[0];					// queue rank
-					gang3[warp_idx] = row_offset[0] + row_length[0];	// oob
-
-					row_length[0] = 0;
-				}
-				int coop_offset = gang[warp_idx] + warp_tid;
-				int coop_rank = gang2[warp_idx] + warp_tid;
-				int coop_oob = gang3[warp_idx];
-
-				// Gather
-				IndexType node_id;
-				while (coop_offset < coop_oob) {
-
-					ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
-						node_id, d_column_indices + coop_offset);
-
-					// Scatter
-					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
-						node_id, d_out_queue + s_enqueue_offset + coop_rank);
-
-					coop_offset += 32;
-					coop_rank += 32;
-				}
-			}
-//		}
+		}
 	}
 };
 
@@ -998,8 +1011,6 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 				&neighbor_node,
 				&hash,					
 				scratch_pool);
-
-			__syncthreads();
 
 			// Cull previously-visited neighbor node-Ids
 			int unvisited = 0;

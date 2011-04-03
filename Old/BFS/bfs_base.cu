@@ -127,16 +127,24 @@ struct BfsCsrProblem
 		IndexType *h_column_indices, 
 		IndexType *h_row_offsets): nodes(nodes)
 	{
-		cudaMalloc((void**) &d_column_indices, edges * sizeof(IndexType));
-	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_column_indices failed: ", __FILE__, __LINE__);
-		cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(IndexType));
-	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_row_offsets failed: ", __FILE__, __LINE__);
-		cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType));
-	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_source_dist failed: ", __FILE__, __LINE__);
+		if (cudaMalloc((void**) &d_column_indices, edges * sizeof(IndexType))) {
+			printf("BfsCsrProblem:: cudaMalloc d_column_indices failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+		if (cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(IndexType))) {
+			printf("BfsCsrProblem:: cudaMalloc d_row_offsets failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+		if (cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType))) {
+			printf("BfsCsrProblem:: cudaMalloc d_source_dist failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
 
 		unsigned int bitmask_bytes = ((nodes * sizeof(char)) + 8 - 1) / 8;
-		cudaMalloc((void**) &d_collision_cache, bitmask_bytes);
-	    dbg_perror_exit("BfsCsrProblem:: cudaMalloc d_collision_cache failed: ", __FILE__, __LINE__);
+		if (cudaMalloc((void**) &d_collision_cache, bitmask_bytes)) {
+			printf("BfsCsrProblem:: cudaMalloc d_collision_cache failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
 
 		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(IndexType), cudaMemcpyHostToDevice);
 		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(IndexType), cudaMemcpyHostToDevice);
@@ -208,10 +216,14 @@ protected:
 		const CudaProperties &props = CudaProperties()) : 
 			max_queue_size(max_queue_size), max_grid_size(max_grid_size), cuda_props(props), BFS_DEBUG(false)
 	{
-		cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(IndexType));
-	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_queue[0] failed: ", __FILE__, __LINE__);
-		cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(IndexType));
-	    dbg_perror_exit("BaseBfsEnactor:: cudaMalloc d_queue[1] failed: ", __FILE__, __LINE__);
+		if (cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(IndexType))) {
+			printf("BaseBfsEnactor:: cudaMalloc d_queue[0] failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
+		if (cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(IndexType))) {
+			printf("BaseBfsEnactor:: cudaMalloc d_queue[1] failed: ", __FILE__, __LINE__);
+			exit(1);
+		}
 	}
 
 
