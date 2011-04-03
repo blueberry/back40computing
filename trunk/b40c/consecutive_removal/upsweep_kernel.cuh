@@ -41,7 +41,7 @@ __device__ __forceinline__ void UpsweepPass(
 	typename KernelConfig::FlagCount 							*&d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition)
 {
-	typedef reduction::UpsweepCta<KernelConfig> UpsweepCta;
+	typedef UpsweepCta<KernelConfig> 			UpsweepCta;
 	typedef typename KernelConfig::SizeT 		SizeT;
 
 	// Shared SRTS grid storage
