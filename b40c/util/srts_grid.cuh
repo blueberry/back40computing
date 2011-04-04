@@ -214,6 +214,7 @@ struct SrtsGrid
 				"ROWS: %d\n"
 				"ROWS_PER_LANE: %d\n"
 				"LANE_STRIDE: %d\n"
+				"RAKING_QUADS: %d\n",
 				"SMEM_QUADS: %d\n",
 			SCAN_LANES,
 			PARTIALS_PER_LANE,
@@ -231,6 +232,7 @@ struct SrtsGrid
 			ROWS,
 			ROWS_PER_LANE,
 			LANE_STRIDE,
+			RAKING_QUADS,
 			SMEM_QUADS);
 	}
 
