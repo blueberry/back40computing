@@ -138,7 +138,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	/**
 	 * Return the cumulative partial left in the final warpscan cell
 	 */
-	__device__ __forceinline__ T CumulativePartial()
+	__device__ __forceinline__ T CumulativePartial() const
 	{
 		return warpscan[1][CUMULATIVE_THREAD];
 	}
@@ -194,7 +194,7 @@ struct SrtsDetails : SrtsGrid
 		uint4 *smem_pool) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS)
+				smem_pool + SrtsGrid::RAKING_QUADS)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 			// Set raking segment pointer
@@ -210,7 +210,7 @@ struct SrtsDetails : SrtsGrid
 		WarpscanStorage warpscan) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS,
+				smem_pool + SrtsGrid::RAKING_QUADS,
 				warpscan)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
@@ -229,7 +229,7 @@ struct SrtsDetails : SrtsGrid
 		T warpscan_identity) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::PRIMARY_SMEM_QUADS,
+				smem_pool + SrtsGrid::RAKING_QUADS,
 				warpscan,
 				warpscan_identity)
 	{
