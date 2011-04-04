@@ -26,65 +26,11 @@
 #pragma once
 
 #include <bfs_kernel_common.cu>
+#include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/memset_kernel.cuh>
 
 namespace b40c {
-
-
-
-/******************************************************************************
- * Error utils
- ******************************************************************************/
-
-
-/**
- * Block on the previous stream action (e.g., kernel launch), report error-status
- * and kernel-stdout if present
- */
-void perror_exit(const char *message, const char *filename, int line)
-{
-	cudaError_t error = cudaPeekAtLastError();
-	if (error) {
-		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
-		exit(1);
-	}
-}
-
-
-/**
- * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
- */
-void dbg_perror_exit(const char *message, const char *filename, int line)
-{
-#if defined(__B40C_ERROR_CHECKING__)
-	perror_exit(message, filename, line);
-#endif
-}
-
-
-/**
- * Block on the previous stream action (e.g., kernel launch), report error-status
- * and kernel-stdout if present
- */
-void sync_perror_exit(const char *message, const char *filename, int line)
-{
-	cudaError_t error = cudaThreadSynchronize();
-	if (error) {
-		fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
-		exit(1);
-	}
-}
-
-
-/**
- * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
- */
-void dbg_sync_perror_exit(const char *message, const char *filename, int line)
-{
-#if defined(__B40C_ERROR_CHECKING__)
-	sync_perror_exit(message, filename, line);
-#endif
-}
-
+namespace bfs {
 
 /******************************************************************************
  * ProblemStorage management structures for BFS problem data 
@@ -98,23 +44,23 @@ void dbg_sync_perror_exit(const char *message, const char *filename, int line)
  * no longer needed.  This allows for the storage to be re-used for subsequent 
  * BFS operations on the same graph.
  */
-template <typename IndexType> 
+template <typename VertexId>
 struct BfsCsrProblem
 {
-	IndexType nodes;
-	IndexType *d_column_indices;
-	IndexType *d_row_offsets;
-	IndexType *d_source_dist;
-	char *d_collision_cache;
+	VertexId nodes;
+	VertexId *d_column_indices;
+	VertexId *d_row_offsets;
+	VertexId *d_source_dist;
+	unsigned char *d_collision_cache;
 	
 	BfsCsrProblem() : nodes(0), d_column_indices(NULL), d_row_offsets(NULL), d_source_dist(NULL) {}
  
 	BfsCsrProblem(
-		IndexType nodes,
-		IndexType *d_column_indices, 
-		IndexType *d_row_offsets, 
-		IndexType *d_source_dist,
-		char *d_collision_cache) :
+		VertexId nodes,
+		VertexId *d_column_indices,
+		VertexId *d_row_offsets,
+		VertexId *d_source_dist,
+		unsigned char *d_collision_cache) :
 			nodes(nodes), 
 			d_column_indices(d_column_indices), 
 			d_row_offsets(d_row_offsets), 
@@ -122,32 +68,32 @@ struct BfsCsrProblem
 			d_collision_cache(d_collision_cache) {}
 	
 	BfsCsrProblem(
-		IndexType nodes,
-		IndexType edges,
-		IndexType *h_column_indices, 
-		IndexType *h_row_offsets): nodes(nodes)
+		VertexId nodes,
+		VertexId edges,
+		VertexId *h_column_indices,
+		VertexId *h_row_offsets): nodes(nodes)
 	{
-		if (cudaMalloc((void**) &d_column_indices, edges * sizeof(IndexType))) {
+		if (cudaMalloc((void**) &d_column_indices, edges * sizeof(VertexId))) {
 			printf("BfsCsrProblem:: cudaMalloc d_column_indices failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
-		if (cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(IndexType))) {
+		if (cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(VertexId))) {
 			printf("BfsCsrProblem:: cudaMalloc d_row_offsets failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
-		if (cudaMalloc((void**) &d_source_dist, nodes * sizeof(IndexType))) {
+		if (cudaMalloc((void**) &d_source_dist, nodes * sizeof(VertexId))) {
 			printf("BfsCsrProblem:: cudaMalloc d_source_dist failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
 
-		unsigned int bitmask_bytes = ((nodes * sizeof(char)) + 8 - 1) / 8;
+		unsigned int bitmask_bytes = ((nodes * sizeof(unsigned char)) + 8 - 1) / 8;
 		if (cudaMalloc((void**) &d_collision_cache, bitmask_bytes)) {
 			printf("BfsCsrProblem:: cudaMalloc d_collision_cache failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
 
-		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(IndexType), cudaMemcpyHostToDevice);
-		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(IndexType), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(VertexId), cudaMemcpyHostToDevice);
+		cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(VertexId), cudaMemcpyHostToDevice);
 		
 		ResetSourceDist();
 	}
@@ -158,10 +104,10 @@ struct BfsCsrProblem
 	void ResetSourceDist() 
 	{
 		int max_grid_size = B40C_MIN(1024 * 32, (nodes + 128 - 1) / 128);
-		MemsetKernel<IndexType><<<max_grid_size, 128>>>(d_source_dist, -1, nodes);
+		util::MemsetKernel<VertexId><<<max_grid_size, 128>>>(d_source_dist, -1, nodes);
 
-		unsigned int bitmask_bytes = ((nodes * sizeof(char)) + 8 - 1) / 8;
-		MemsetKernel<char><<<128, 128>>>(d_collision_cache, 0, bitmask_bytes);
+		unsigned int bitmask_bytes = ((nodes * sizeof(unsigned char)) + 8 - 1) / 8;
+		util::MemsetKernel<unsigned char><<<128, 128>>>(d_collision_cache, 0, bitmask_bytes);
 	}
 	
 	void Free() 
@@ -183,13 +129,13 @@ struct BfsCsrProblem
  * to the nodes discovered by the previous iteration.  The first iteration 
  * discovers the source node. 
  */
-template <typename IndexType, typename ProblemStorage>
+template <typename VertexId, typename ProblemStorage>
 class BaseBfsEnactor 
 {
 protected:	
 
 	//Device properties
-	const CudaProperties cuda_props;
+	const util::CudaProperties cuda_props;
 	
 	// Max grid size we will ever launch
 	int max_grid_size;
@@ -198,7 +144,7 @@ protected:
 	int max_queue_size;
 	
 	// Frontier queues
-	IndexType *d_queue[2];
+	VertexId *d_queue[2];
 	
 public:
 
@@ -213,69 +159,18 @@ protected:
 	BaseBfsEnactor(
 		int max_queue_size,
 		int max_grid_size,
-		const CudaProperties &props = CudaProperties()) : 
+		const util::CudaProperties &props = util::CudaProperties()) :
 			max_queue_size(max_queue_size), max_grid_size(max_grid_size), cuda_props(props), BFS_DEBUG(false)
 	{
-		if (cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(IndexType))) {
+		if (cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(VertexId))) {
 			printf("BaseBfsEnactor:: cudaMalloc d_queue[0] failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
-		if (cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(IndexType))) {
+		if (cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(VertexId))) {
 			printf("BaseBfsEnactor:: cudaMalloc d_queue[1] failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
 	}
-
-
-	/**
-	 * Block on the previous stream action (e.g., kernel launch), report error-status
-	 * and kernel-stdout if present
-	 */
-	void perror_exit(const char *message, const char *filename, int line)
-	{
-		cudaError_t error = cudaPeekAtLastError();
-		if (error) {
-			fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
-			exit(1);
-		}
-	}
-
-
-	/**
-	 * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
-	 */
-	void dbg_perror_exit(const char *message, const char *filename, int line)
-	{
-	#if defined(__B40C_ERROR_CHECKING__)
-		perror_exit(message, filename, line);
-	#endif
-	}
-
-
-	/**
-	 * Block on the previous stream action (e.g., kernel launch), report error-status
-	 * and kernel-stdout if present
-	 */
-	void sync_perror_exit(const char *message, const char *filename, int line)
-	{
-		cudaError_t error = cudaThreadSynchronize();
-		if (error) {
-			fprintf(stderr, "[%s, %d] %s (cuda error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
-			exit(1);
-		}
-	}
-
-
-	/**
-	 * Same as syncrhonize above, but conditional on definintion of __ERROR_SYNCHRONOUS
-	 */
-	void dbg_sync_perror_exit(const char *message, const char *filename, int line)
-	{
-	#if defined(__B40C_ERROR_CHECKING__)
-		sync_perror_exit(message, filename, line);
-	#endif
-	}
-
 
 
 public:
@@ -296,7 +191,7 @@ public:
 	 */
 	virtual cudaError_t EnactSearch(
 		ProblemStorage &problem_storage, 
-		IndexType src, 
+		VertexId src,
 		BfsStrategy strategy) = 0;	
     
 };
@@ -304,6 +199,6 @@ public:
 
 
 
-
-}// namespace b40c
+} // namespace bfs
+} // namespace b40c
 

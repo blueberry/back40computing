@@ -102,17 +102,17 @@ struct ModifiedStore
 	 */
 	#define B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
-			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(*reinterpret_cast<cast_type*>(&val)));			\
+			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
 		}
 
 	#define B40C_STORE_VEC2(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
-			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(*reinterpret_cast<cast_type*>(&val.x)), #reg_mod(*reinterpret_cast<cast_type*>(&val.y)));		\
+			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)));		\
 		}
 
 	#define B40C_STORE_VEC4(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
-			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(*reinterpret_cast<cast_type*>(&val.x)), #reg_mod(*reinterpret_cast<cast_type*>(&val.y)), #reg_mod(*reinterpret_cast<cast_type*>(&val.z)), #reg_mod(*reinterpret_cast<cast_type*>(&val.w)));		\
+			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)), #reg_mod(reinterpret_cast<cast_type&>(val.z)), #reg_mod(reinterpret_cast<cast_type&>(val.w)));		\
 		}
 
 
@@ -159,14 +159,14 @@ struct ModifiedStore
 #endif
 
 
-/**
+	/**
 	 * Define cache-modified stores for all 4-byte (and smaller) structures
 	 */
-	B40C_STORE_BASE_ONE_TWO_FOUR(char, 				signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, unsigned int))
-	B40C_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(char, 				signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, short))
+	B40C_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, short))
 	B40C_STORE_BASE_ONE_TWO_FOUR(int, 				int, 			int, 	s32, 	r, B40C_CAST_SELECT(int, int))
 	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, B40C_CAST_SELECT(unsigned char, unsigned int))
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned int))
+	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned short))
 	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned int, 		unsigned int, 	uint,	u32, 	r, B40C_CAST_SELECT(unsigned int, unsigned int))
 	B40C_STORE_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, B40C_CAST_SELECT(float, float))
 

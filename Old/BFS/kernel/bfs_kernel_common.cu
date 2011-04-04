@@ -27,10 +27,17 @@
 
 #pragma once
 
-#include <b40c_kernel_utils.cuh>
-#include <b40c_vector_types.cuh>
+#include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/vector_types.cuh>
+#include <b40c/util/basic_utils.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
+#include <b40c/util/scan/serial_scan.cuh>
+#include <b40c/util/scan/warp_scan.cuh>
 
 namespace b40c {
+namespace bfs {
 
 
 /******************************************************************************
@@ -133,7 +140,7 @@ int LocalScan(
 	int local_ranks[LOAD_VEC_SIZE])
 {
 	// Reduce in registers, placing the result into our smem cell for raking
-	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
+	base_partial[0] = util::reduction::SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
 
 	__syncthreads();
 
@@ -141,20 +148,20 @@ int LocalScan(
 	if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 
 		// Serial reduce (rake) in smem
-		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
+		int raked_reduction = util::reduction::SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 		// Warpscan
 		int total;
-		int seed = WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
+		int seed = util::scan::WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
 			raked_reduction, total, warpscan);
 		
 		// Serial scan (rake) in smem
-		SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
+		util::scan::SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
 	}
 
 	__syncthreads();
 
-	SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
+	util::scan::SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
 	
 	return warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1];
 }
@@ -183,7 +190,7 @@ int LocalScanWithAtomicReservation(
 	int &s_enqueue_offset)
 {
 	// Reduce in registers, placing the result into our smem cell for raking
-	base_partial[0] = SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
+	base_partial[0] = util::reduction::SerialReduce<int, LOAD_VEC_SIZE>::Invoke(partial_reductions);
 
 	__syncthreads();
 
@@ -191,11 +198,11 @@ int LocalScanWithAtomicReservation(
 	if (threadIdx.x < B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) {
 
 		// Serial reduce (rake) in smem
-		int raked_reduction = SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
+		int raked_reduction = util::reduction::SerialReduce<int, PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 		// Warpscan
 		int total;
-		int seed = WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
+		int seed = util::scan::WarpScan<int, B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)>::Invoke(
 			raked_reduction, total, warpscan);
 		
 		// Atomic-increment the global counter with our cycle's allocation
@@ -204,32 +211,35 @@ int LocalScanWithAtomicReservation(
 		}
 		
 		// Serial scan (rake) in smem
-		SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
+		util::scan::SerialScan<int, PARTIALS_PER_SEG>::Invoke(raking_segment, seed);
 	}
 
 	__syncthreads();
 
-	SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
+	util::scan::SerialScan<int, LOAD_VEC_SIZE>::Invoke(partial_reductions, local_ranks, base_partial[0]);
 	
 	return warpscan[1][B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1];
 }
 
 
 /**
- * Loads a single IndexType from the specified offset into node_id
+ * Loads a single VertexId from the specified offset into node_id
  * if in range, otherwise node_id is assigned -1 instead  
  */
-template <typename IndexType, int SCRATCH_SPACE, CacheModifier LIST_MODIFIER>
+template <
+	typename VertexId,
+	int SCRATCH_SPACE,
+	util::io::ld::CacheModifier LIST_MODIFIER>
 __device__ __forceinline__
 void GuardedLoadAndHash(
-	IndexType &node_id,			
+	VertexId &node_id,
 	int &hash,
-	IndexType *node_id_list,
+	VertexId *node_id_list,
 	int load_offset,
 	int out_of_bounds)							 
 {
 	if (load_offset < out_of_bounds) {
-		ModifiedLoad<IndexType, LIST_MODIFIER>::Ld(node_id, node_id_list + load_offset);
+		util::io::ModifiedLoad<LIST_MODIFIER>::Ld(node_id, node_id_list + load_offset);
 		hash = node_id % SCRATCH_SPACE;
 	} else {
 		node_id = -1;
@@ -244,28 +254,28 @@ void GuardedLoadAndHash(
  * a hash-id for each. 
  */
 template <
-	typename IndexType,
+	typename VertexId,
 	int CTA_THREADS,
 	int SCRATCH_SPACE, 
 	int LOAD_VEC_SIZE, 
-	CacheModifier LIST_MODIFIER,
+	util::io::ld::CacheModifier LIST_MODIFIER,
 	bool UNGUARDED_IO>
 __device__ __forceinline__
 void LoadAndHash(
-	IndexType node_id[LOAD_VEC_SIZE],		// out param
+	VertexId node_id[LOAD_VEC_SIZE],		// out param
 	int hash[LOAD_VEC_SIZE],				// out param
-	IndexType *node_id_list,
+	VertexId *node_id_list,
 	int out_of_bounds)						 
 {
 	// Load node-IDs
 	if (UNGUARDED_IO) {
 		
 		// Use a built-in, vector-typed alias to load straight into node_id array
-		typedef typename VecType<IndexType, LOAD_VEC_SIZE>::Type VectorType; 		
+		typedef typename util::VecType<VertexId, LOAD_VEC_SIZE>::Type VectorType;
 
 		VectorType *node_id_list_vec = (VectorType *) node_id_list;
 		VectorType *vector_alias = (VectorType *) node_id;
-		ModifiedLoad<VectorType, LIST_MODIFIER>::Ld(*vector_alias, node_id_list_vec + threadIdx.x);
+		util::io::ModifiedLoad<LIST_MODIFIER>::Ld(*vector_alias, node_id_list_vec + threadIdx.x);
 
 		// Compute hash-IDs
 		#pragma unroll
@@ -279,19 +289,19 @@ void LoadAndHash(
 		// in a pragma-unroll.
 
 		if (LOAD_VEC_SIZE > 0) {
-			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+			GuardedLoadAndHash<VertexId, SCRATCH_SPACE, LIST_MODIFIER>(
 				node_id[0], hash[0], node_id_list, (CTA_THREADS * 0) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 1) {
-			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+			GuardedLoadAndHash<VertexId, SCRATCH_SPACE, LIST_MODIFIER>(
 				node_id[1], hash[1], node_id_list, (CTA_THREADS * 1) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 2) {
-			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+			GuardedLoadAndHash<VertexId, SCRATCH_SPACE, LIST_MODIFIER>(
 				node_id[2], hash[2], node_id_list, (CTA_THREADS * 2) + threadIdx.x, out_of_bounds);
 		}
 		if (LOAD_VEC_SIZE > 3) {
-			GuardedLoadAndHash<IndexType, SCRATCH_SPACE, LIST_MODIFIER>(
+			GuardedLoadAndHash<VertexId, SCRATCH_SPACE, LIST_MODIFIER>(
 				node_id[3], hash[3], node_id_list, (CTA_THREADS * 3) + threadIdx.x, out_of_bounds);
 		}
 	}
@@ -304,12 +314,12 @@ void LoadAndHash(
  * for a given node-ID if it can be verified that some other thread will set 
  * its own duplicate flag false for the same node-ID, false otherwise. 
  */
-template <typename IndexType, int LOAD_VEC_SIZE>
+template <typename VertexId, int LOAD_VEC_SIZE>
 __device__ __forceinline__
 void CullDuplicates(
-	IndexType node_id[LOAD_VEC_SIZE],
+	VertexId node_id[LOAD_VEC_SIZE],
 	int hash[LOAD_VEC_SIZE],
-	IndexType *scratch_pool)
+	VertexId *scratch_pool)
 {
 	int hashed_node_id[LOAD_VEC_SIZE];
 	bool duplicate[LOAD_VEC_SIZE];
@@ -372,44 +382,43 @@ void CullDuplicates(
  * length of its neighbor row.
  */
 template <
-	typename IndexType, 
+	typename VertexId,
 	int SCRATCH_SPACE, 
-	CacheModifier SOURCE_DIST_MODIFIER,
-	CacheModifier ROW_OFFSETS_MODIFIER,
-	CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER>
+	util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER,
+	util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER>
 __device__ __forceinline__
 void InspectAndUpdate(
-	IndexType node_id,		
-	IndexType &row_offset,				// out param
+	VertexId node_id,
+	VertexId &row_offset,				// out param
 	int &row_length,					// out param
-	IndexType *d_source_dist,
-	IndexType *d_row_offsets,
-	IndexType iteration)
+	VertexId *d_source_dist,
+	VertexId *d_row_offsets,
+	VertexId iteration)
 {
-	typedef typename VecType<IndexType, 2>::Type IndexTypeVec2; 		
+	typedef typename util::VecType<VertexId, 2>::Type IndexTypeVec2;
 
 	// Load source distance of node
-	IndexType source_dist;
-	ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + node_id);
+	VertexId source_dist;
+	util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + node_id);
 
 	if (source_dist == -1) {
 		// Node is previously unvisited.  Load neighbor row range from d_row_offsets
 		IndexTypeVec2 row_range;
 		if (node_id & 1) {
 			// Misaligned
-			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
-			ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
+			util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
+			util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
 		} else {
 			// Aligned
 			IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
-			ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
+			util::io::ModifiedLoad<ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 		}
 		// Compute row offset and length
 		row_offset = row_range.x;
 		row_length = row_range.y - row_range.x;
 
 		// Update distance with current iteration
-		d_source_dist[node_id] = iteration;
+		util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + node_id);
 	}
 }
 
@@ -420,46 +429,45 @@ void InspectAndUpdate(
  * length of its neighbor row.
  */
 template <
-	typename IndexType, 
+	typename VertexId,
 	int LOAD_VEC_SIZE,
 	int SCRATCH_SPACE, 
-	CacheModifier SOURCE_DIST_MODIFIER,
-	CacheModifier ROW_OFFSETS_MODIFIER,
-	CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER, 
+	util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER,
+	util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
 	bool UNGUARDED_IO>
 __device__ __forceinline__
 void InspectAndUpdate(
-	IndexType node_id[LOAD_VEC_SIZE],
-	IndexType row_offset[LOAD_VEC_SIZE],				// out param
+	VertexId node_id[LOAD_VEC_SIZE],
+	VertexId row_offset[LOAD_VEC_SIZE],				// out param
 	int row_length[LOAD_VEC_SIZE],					// out param
-	IndexType *d_source_dist,
-	IndexType *d_row_offsets,
-	IndexType iteration)
+	VertexId *d_source_dist,
+	VertexId *d_row_offsets,
+	VertexId iteration)
 {
 	// N.B.: Wish we could unroll here, but can't use inlined ASM instructions
 	// in a pragma-unroll.
 
 	if (LOAD_VEC_SIZE > 0) {
 		if (node_id[0] != -1) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 1) {
 		if (node_id[1] != -1) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 2) {
 		if (node_id[2] != -1) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 3) {
 		if (node_id[3] != -1) {
-			InspectAndUpdate<IndexType, SCRATCH_SPACE, SOURCE_DIST_MODIFIER, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
+			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
 		}
 	}
@@ -470,15 +478,15 @@ void InspectAndUpdate(
  * Attempt to make more progress expanding the list of 
  * neighbor-gather-offsets into the scratch pool  
  */
-template <typename IndexType, int SCRATCH_SPACE>
+template <typename VertexId, int SCRATCH_SPACE>
 __device__ __forceinline__
 void ExpandNeighborGatherOffsets(
 	int local_rank,
 	int &row_progress,				// out param
-	IndexType row_offset,
+	VertexId row_offset,
 	int row_length,
 	int cta_progress,
-	IndexType *scratch_pool)
+	VertexId *scratch_pool)
 {
 	// Attempt to make futher progress on neighbor list
 	int scratch_offset = local_rank + row_progress - cta_progress;
@@ -496,31 +504,31 @@ void ExpandNeighborGatherOffsets(
  * Attempt to make more progress expanding the list of 
  * neighbor-gather-offsets into the scratch pool  
  */
-template <typename IndexType, int LOAD_VEC_SIZE, int SCRATCH_SPACE>
+template <typename VertexId, int LOAD_VEC_SIZE, int SCRATCH_SPACE>
 __device__ __forceinline__
 void ExpandNeighborGatherOffsets(
 	int local_rank[LOAD_VEC_SIZE],
 	int row_progress[LOAD_VEC_SIZE],	// out param 
-	IndexType row_offset[LOAD_VEC_SIZE],
+	VertexId row_offset[LOAD_VEC_SIZE],
 	int row_length[LOAD_VEC_SIZE],
 	int cta_progress,
-	IndexType *scratch_pool)
+	VertexId *scratch_pool)
 {
 	// Wish we could pragma unroll here, but we can't do that with inner loops
 	if (LOAD_VEC_SIZE > 0) {
-		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+		ExpandNeighborGatherOffsets<VertexId, SCRATCH_SPACE>(
 			local_rank[0], row_progress[0], row_offset[0], row_length[0], cta_progress, scratch_pool);
 	}
 	if (LOAD_VEC_SIZE > 1) {
-		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+		ExpandNeighborGatherOffsets<VertexId, SCRATCH_SPACE>(
 			local_rank[1], row_progress[1], row_offset[1], row_length[1], cta_progress, scratch_pool);
 	}
 	if (LOAD_VEC_SIZE > 2) {
-		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+		ExpandNeighborGatherOffsets<VertexId, SCRATCH_SPACE>(
 			local_rank[2], row_progress[2], row_offset[2], row_length[2], cta_progress, scratch_pool);
 	}
 	if (LOAD_VEC_SIZE > 3) {
-		ExpandNeighborGatherOffsets<IndexType, SCRATCH_SPACE>(
+		ExpandNeighborGatherOffsets<VertexId, SCRATCH_SPACE>(
 			local_rank[3], row_progress[3], row_offset[3], row_length[3], cta_progress, scratch_pool);
 	}
 }
@@ -532,94 +540,6 @@ void ExpandNeighborGatherOffsets(
 template <BfsStrategy STRATEGY> struct BfsTile;
 
 
-
-/**
- * Illustrates culling of duplicate tile of work from the current incoming frontier queue
- */
-template <> struct BfsTile<CULL>
-{
-	template <
-		typename IndexType,
-		int CTA_THREADS,
-		int PARTIALS_PER_SEG,
-		int SCRATCH_SPACE,
-		int LOAD_VEC_SIZE,
-		CacheModifier QUEUE_MODIFIER,
-		CacheModifier COLUMN_INDICES_MODIFIER,
-		CacheModifier SOURCE_DIST_MODIFIER,
-		CacheModifier ROW_OFFSETS_MODIFIER,
-		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
-		bool UNGUARDED_IO>
-	__device__ __forceinline__
-	static void ProcessTile(
-		IndexType iteration,
-		int num_incoming_nodes,
-		IndexType *scratch_pool,
-		int *base_partial,
-		int *raking_segment,
-		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
-		char *d_collision_cache,
-		char *d_keep,
-		IndexType *d_in_queue,
-		IndexType *d_out_queue,
-		IndexType *d_column_indices,
-		IndexType *d_row_offsets,
-		IndexType *d_source_dist,
-		int *d_enqueue_length,
-		int &s_enqueue_offset,
-		int cta_out_of_bounds)
-	{
-		IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
-		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID
-
-		//
-		// Dequeue a tile of incident node-IDs to explore and use a heuristic for
-		// culling duplicates
-		//
-
-		LoadAndHash<IndexType, CTA_THREADS, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
-			dequeued_node_id,			// out param
-			hash,						// out param
-			d_in_queue,
-			cta_out_of_bounds);
-/*
-		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
-			dequeued_node_id,
-			hash,
-			scratch_pool);
-*/
-
-		if (dequeued_node_id[0] >= 0) {
-
-			signed char mask_byte;
-			unsigned int hash = dequeued_node_id[0] >> 3;
-			ModifiedLoad<signed char , CG>::Ld(mask_byte, ((signed char *) d_collision_cache) + hash);
-			signed char mask_bit = 1 << (dequeued_node_id[0] & 7);
-
-			if (mask_bit & mask_byte) {
-
-				dequeued_node_id[0] = -1;
-
-			} else {
-
-				// set best effort
-				mask_byte |= mask_bit;
-				ModifiedStore<signed char , CG>::St(mask_byte, ((signed char *) d_collision_cache) + hash);
-			}
-		}
-
-
-		d_keep[threadIdx.x] = (dequeued_node_id[0] > 0);
-
-		__syncthreads();
-
-	}
-};
-
-
-
-
-
 /**
  * Uses the contract-expand strategy for processing a single tile of work from 
  * the current incoming frontier queue
@@ -627,45 +547,44 @@ template <> struct BfsTile<CULL>
 template <> struct BfsTile<CONTRACT_EXPAND> 
 {
 	template <
-		typename IndexType,
+		typename VertexId,
 		int CTA_THREADS,
 		int PARTIALS_PER_SEG, 
 		int SCRATCH_SPACE, 
 		int LOAD_VEC_SIZE,
-		CacheModifier QUEUE_MODIFIER,
-		CacheModifier COLUMN_INDICES_MODIFIER,
-		CacheModifier SOURCE_DIST_MODIFIER,
-		CacheModifier ROW_OFFSETS_MODIFIER,
-		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
+		util::io::ld::CacheModifier QUEUE_LD_MODIFIER,
+		util::io::st::CacheModifier QUEUE_ST_MODIFIER,
+		util::io::ld::CacheModifier COLUMN_INDICES_MODIFIER,
+		util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER,
+		util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
 		bool UNGUARDED_IO>
 	__device__ __forceinline__ 
 	static void ProcessTile(
-		IndexType iteration,
+		VertexId iteration,
 		int num_incoming_nodes,
-		IndexType *scratch_pool,
+		VertexId *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
 		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
-		char *d_collision_cache,
-		char *d_keep,
-		IndexType *d_in_queue, 
-		IndexType *d_out_queue,
-		IndexType *d_column_indices,
-		IndexType *d_row_offsets,
-		IndexType *d_source_dist,
+		unsigned char *d_collision_cache,
+		VertexId *d_in_queue,
+		VertexId *d_out_queue,
+		VertexId *d_column_indices,
+		VertexId *d_row_offsets,
+		VertexId *d_source_dist,
 		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
-		typedef typename VecType<IndexType, 2>::Type IndexTypeVec2;
+		typedef typename util::VecType<VertexId, 2>::Type IndexTypeVec2;
 
 		__shared__ volatile int gang[CTA_THREADS / 32];
 		__shared__ volatile int gang2[CTA_THREADS / 32];
 		__shared__ volatile int gang3[CTA_THREADS / 32];
 
-		IndexType dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
+		VertexId dequeued_node_id[LOAD_VEC_SIZE];	// Incoming node-IDs to process for this tile
 		int hash[LOAD_VEC_SIZE];					// Hash-id for each node-ID		
-		IndexType row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
+		VertexId row_offset[LOAD_VEC_SIZE];		// The offset into column_indices for retrieving the neighbor list
 		int row_length[LOAD_VEC_SIZE];				// Number of adjacent neighbors
 		int local_rank[LOAD_VEC_SIZE];				// Prefix sum of row-lengths, i.e., local rank for where to plop down neighbor list into scratch 
 		int row_progress[LOAD_VEC_SIZE];			// Iterator for the neighbor list
@@ -683,20 +602,20 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		// culling duplicates
 		//
 
-		LoadAndHash<IndexType, CTA_THREADS, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_MODIFIER, UNGUARDED_IO>(
+		LoadAndHash<VertexId, CTA_THREADS, SCRATCH_SPACE, LOAD_VEC_SIZE, QUEUE_LD_MODIFIER, UNGUARDED_IO>(
 			dequeued_node_id,			// out param
 			hash,						// out param
 			d_in_queue,
 			cta_out_of_bounds);
 
-
+/*
 		if (UNGUARDED_IO || (dequeued_node_id[0] >= 0)) {
 
-			signed char mask_byte;
-			signed char mask_bit;
+			unsigned char mask_byte;
+			unsigned char mask_bit;
 			unsigned int mask_byte_offset = dequeued_node_id[0] >> 3;
 
-			ModifiedLoad<signed char , CG>::Ld(mask_byte, ((signed char *) d_collision_cache) + mask_byte_offset);
+			util::io::ModifiedLoad<util::io::ld::cg>::Ld(mask_byte, d_collision_cache + mask_byte_offset);
 			mask_bit = 1 << (dequeued_node_id[0] & 7);
 
 			if (mask_bit & mask_byte) {
@@ -707,7 +626,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 
 				// set best effort
 				mask_byte |= mask_bit;
-				ModifiedStore<signed char , CG>::St(mask_byte, ((signed char *) d_collision_cache) + mask_byte_offset);
+				util::io::ModifiedStore<util::io::st::cg>::St(mask_byte, d_collision_cache + mask_byte_offset);
 			}
 		}
 
@@ -715,28 +634,29 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 
 			// Local culling for full tiles only
 
-			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+			CullDuplicates<VertexId, LOAD_VEC_SIZE>(
 				dequeued_node_id,
 				hash,
 				scratch_pool);
 		}
+*/
 
-		if (dequeued_node_id[0] >= 0) {
+		if (UNGUARDED_IO || (dequeued_node_id[0] != -1)) {
 
 			// Load source distance of node
-			IndexType source_dist;
-			ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
+			VertexId source_dist;
+			util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
 
 			// Load neighbor row range from d_row_offsets
 			IndexTypeVec2 row_range;
 			if (dequeued_node_id[0] & 1) {
 				// Misaligned
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + dequeued_node_id[0]);
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + dequeued_node_id[0] + 1);
+				util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + dequeued_node_id[0]);
+				util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + dequeued_node_id[0] + 1);
 			} else {
 				// Aligned
 				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + dequeued_node_id[0]);
-				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
+				util::io::ModifiedLoad<ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 			}
 
 			if (source_dist == -1) {
@@ -748,7 +668,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				row_length[0] = row_range.y - row_range.x;
 
 				// Update distance with current iteration
-				ModifiedStore<IndexType , CG>::St(iteration, d_source_dist + dequeued_node_id[0]);
+				util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + dequeued_node_id[0]);
 			}
 		}
 
@@ -793,14 +713,14 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				int coop_oob = gang3[0];
 
 				// Gather
-				IndexType node_id;
+				VertexId node_id;
 				while (coop_offset < coop_oob) {
 
-					ModifiedLoad<IndexType, NONE>::Ld(
+					util::io::ModifiedLoad<util::io::ld::NONE>::Ld(
 						node_id, d_column_indices + coop_offset);
 
 					// Scatter
-					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
+					util::io::ModifiedStore<QUEUE_ST_MODIFIER>::St(
 						node_id, d_out_queue + s_enqueue_offset + coop_rank);
 
 					coop_offset += CTA_THREADS;
@@ -835,14 +755,14 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				int coop_oob = gang3[warp_idx];
 
 				// Gather
-				IndexType node_id;
+				VertexId node_id;
 				while (coop_offset < coop_oob) {
 
-					ModifiedLoad<IndexType, NONE>::Ld(
+					util::io::ModifiedLoad<util::io::ld::NONE>::Ld(
 						node_id, d_column_indices + coop_offset);
 
 					// Scatter
-					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
+					util::io::ModifiedStore<QUEUE_ST_MODIFIER>::St(
 						node_id, d_out_queue + s_enqueue_offset + coop_rank);
 
 					coop_offset += 32;
@@ -867,7 +787,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				// Fill the scratch space with gather-offsets for neighbor-lists.
 				//
 
-				ExpandNeighborGatherOffsets<IndexType, LOAD_VEC_SIZE, SCRATCH_SPACE>(
+				ExpandNeighborGatherOffsets<VertexId, LOAD_VEC_SIZE, SCRATCH_SPACE>(
 					local_rank, row_progress, row_offset, row_length, cta_progress, scratch_pool);
 
 				__syncthreads();
@@ -881,12 +801,12 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				for (int scratch_offset = threadIdx.x; scratch_offset < remainder; scratch_offset += CTA_THREADS) {
 
 					// Gather
-					IndexType node_id;
-					ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+					VertexId node_id;
+					util::io::ModifiedLoad<COLUMN_INDICES_MODIFIER>::Ld(
 						node_id, d_column_indices + scratch_pool[scratch_offset]);
 
 					// Scatter
-					ModifiedStore<IndexType, QUEUE_MODIFIER>::St(
+					util::io::ModifiedStore<QUEUE_ST_MODIFIER>::St(
 						node_id,
 						d_out_queue + s_enqueue_offset + cta_progress + scratch_offset);
 				}
@@ -907,61 +827,62 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 template <> struct BfsTile<EXPAND_CONTRACT> 
 {
 	template <
-		typename IndexType,
+		typename VertexId,
 		int CTA_THREADS,
 		int PARTIALS_PER_SEG, 
 		int SCRATCH_SPACE, 
 		int LOAD_VEC_SIZE,
-		CacheModifier QUEUE_MODIFIER,
-		CacheModifier COLUMN_INDICES_MODIFIER,
-		CacheModifier SOURCE_DIST_MODIFIER,
-		CacheModifier ROW_OFFSETS_MODIFIER,
-		CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
+		util::io::ld::CacheModifier QUEUE_LD_MODIFIER,
+		util::io::st::CacheModifier QUEUE_ST_MODIFIER,
+		util::io::ld::CacheModifier COLUMN_INDICES_MODIFIER,
+		util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER,
+		util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER,
 		bool UNGUARDED_IO>
 	__device__ __forceinline__ 
 	static void ProcessTile(
-		IndexType iteration,
+		VertexId iteration,
 		int num_incoming_nodes,
-		IndexType *scratch_pool,
+		VertexId *scratch_pool,
 		int *base_partial,
 		int *raking_segment,
 		int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
-		char *d_collision_cache,
-		char *d_keep,
-		IndexType *d_in_queue, 
-		IndexType *d_out_queue,
-		IndexType *d_column_indices,
-		IndexType *d_row_offsets,
-		IndexType *d_source_dist,
+		unsigned char *d_collision_cache,
+		VertexId *d_in_queue,
+		VertexId *d_out_queue,
+		VertexId *d_column_indices,
+		VertexId *d_row_offsets,
+		VertexId *d_source_dist,
 		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
 	{
 		const int CACHE_ELEMENTS = CTA_THREADS;
 		
-		IndexType row_offset;
+		VertexId row_offset;
 		int row_length;  
 		int local_rank;					 
 		int row_progress = 0;
 		int cta_progress = 0;
 
-		typedef typename VecType<IndexType, 2>::Type IndexTypeVec2; 		
+		iteration += 1;
+
+		typedef typename util::VecType<VertexId, 2>::Type IndexTypeVec2;
 
 		// Dequeue a node-id and obtain corresponding row range
 		if ((UNGUARDED_IO) || (threadIdx.x < cta_out_of_bounds)) {
 
-			IndexType node_id;		// incoming node to process for this tile
-			ModifiedLoad<IndexType, QUEUE_MODIFIER>::Ld(node_id, d_in_queue + threadIdx.x);
+			VertexId node_id;		// incoming node to process for this tile
+			util::io::ModifiedLoad<QUEUE_LD_MODIFIER>::Ld(node_id, d_in_queue + threadIdx.x);
 
 			IndexTypeVec2 row_range;
 			if (node_id & 1) {
 				// Misaligned
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
-				ModifiedLoad<IndexType, MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
+				util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.x, d_row_offsets + node_id);
+				util::io::ModifiedLoad<MISALIGNED_ROW_OFFSETS_MODIFIER>::Ld(row_range.y, d_row_offsets + node_id + 1);
 			} else {
 				// Aligned
 				IndexTypeVec2* d_row_offsets_v2 = reinterpret_cast<IndexTypeVec2*>(d_row_offsets + node_id);
-				ModifiedLoad<IndexTypeVec2, ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
+				util::io::ModifiedLoad<ROW_OFFSETS_MODIFIER>::Ld(row_range, d_row_offsets_v2);
 			}
 			// Compute row offset and length
 			row_offset = row_range.x;
@@ -1003,11 +924,13 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			
 			// Read neighbor node-Ids using gather offsets
 			int hash;
-			IndexType neighbor_node;
+			VertexId neighbor_node;
 			if (threadIdx.x < remainder) {
-				ModifiedLoad<IndexType, COLUMN_INDICES_MODIFIER>::Ld(
+
+				util::io::ModifiedLoad<COLUMN_INDICES_MODIFIER>::Ld(
 					neighbor_node, d_column_indices + scratch_pool[threadIdx.x]);
 				hash = neighbor_node % SCRATCH_SPACE;
+
 			} else { 
 				neighbor_node = -1;
 				hash = SCRATCH_SPACE - 1;
@@ -1016,7 +939,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			__syncthreads();
 
 			// Cull duplicate neighbor node-Ids
-			CullDuplicates<IndexType, 1>(
+			CullDuplicates<VertexId, 1>(
 				&neighbor_node,
 				&hash,					
 				scratch_pool);
@@ -1024,10 +947,11 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			// Cull previously-visited neighbor node-Ids
 			int unvisited = 0;
 			if (neighbor_node != -1) {
-				IndexType source_dist;
-				ModifiedLoad<IndexType, SOURCE_DIST_MODIFIER>::Ld(source_dist, d_source_dist + neighbor_node);
+
+				VertexId source_dist;
+				util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + neighbor_node);
 				if (source_dist == -1) {
-					d_source_dist[neighbor_node] = iteration + 1;
+					util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + neighbor_node);
 					unvisited = 1;
 				}
 			}
@@ -1077,32 +1001,31 @@ template <> struct BfsTile<EXPAND_CONTRACT>
  */
 template <
 	BfsStrategy STRATEGY,
-	typename IndexType,
+	typename VertexId,
 	int CTA_THREADS,
 	int TILE_ELEMENTS,
 	int PARTIALS_PER_SEG, 
 	int SCRATCH_SPACE, 
 	int LOAD_VEC_SIZE,
-	CacheModifier QUEUE_MODIFIER,
-	CacheModifier COLUMN_INDICES_MODIFIER,
-	CacheModifier SOURCE_DIST_MODIFIER,
-	CacheModifier ROW_OFFSETS_MODIFIER,
-	CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER>
+	util::io::ld::CacheModifier QUEUE_LD_MODIFIER,
+	util::io::st::CacheModifier QUEUE_ST_MODIFIER,
+	util::io::ld::CacheModifier COLUMN_INDICES_MODIFIER,
+	util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER,
+	util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER>
 __device__ __forceinline__ 
 void BfsIteration(
-	IndexType iteration,
+	VertexId iteration,
 	int num_incoming_nodes,
-	IndexType *scratch_pool,
+	VertexId *scratch_pool,
 	int *base_partial,
 	int *raking_segment,
 	int warpscan[2][B40C_WARP_THREADS(__B40C_CUDA_ARCH__)],
-	char *d_collision_cache,
-	char *d_keep,
-	IndexType *d_in_queue, 
-	IndexType *d_out_queue,
-	IndexType *d_column_indices,
-	IndexType *d_row_offsets,
-	IndexType *d_source_dist,
+	unsigned char *d_collision_cache,
+	VertexId *d_in_queue,
+	VertexId *d_out_queue,
+	VertexId *d_column_indices,
+	VertexId *d_row_offsets,
+	VertexId *d_source_dist,
 	int *d_enqueue_length,
 	int &s_enqueue_offset,
 	int cta_offset, 
@@ -1113,8 +1036,8 @@ void BfsIteration(
 	while (cta_offset <= cta_out_of_bounds - TILE_ELEMENTS) {
 
 		BfsTile<STRATEGY>::template ProcessTile<
-				IndexType, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
-				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
+				VertexId, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE,
+				QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, true>( 
 			iteration,
 			num_incoming_nodes,
@@ -1123,7 +1046,6 @@ void BfsIteration(
 			raking_segment,
 			warpscan,
 			d_collision_cache,
-			d_keep + cta_offset,
 			d_in_queue + cta_offset, 
 			d_out_queue,
 			d_column_indices,
@@ -1140,8 +1062,8 @@ void BfsIteration(
 	if (cta_extra_elements) {
 
 		BfsTile<STRATEGY>::template ProcessTile<
-				IndexType, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE, 
-				QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER, 
+				VertexId, CTA_THREADS, PARTIALS_PER_SEG, SCRATCH_SPACE, LOAD_VEC_SIZE,
+				QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 				ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER, false>( 
 			iteration,
 			num_incoming_nodes,
@@ -1150,7 +1072,6 @@ void BfsIteration(
 			raking_segment,
 			warpscan,
 			d_collision_cache,
-			d_keep + cta_offset,
 			d_in_queue + cta_offset, 
 			d_out_queue,
 			d_column_indices,
@@ -1163,6 +1084,7 @@ void BfsIteration(
 }
 
 
+} // namespace bfs
 } // b40c namespace
 
 

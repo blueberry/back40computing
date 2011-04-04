@@ -29,6 +29,8 @@
 #include <bfs_single_grid_kernel.cu>
 
 namespace b40c {
+namespace bfs {
+
 
 /**
  * Single-grid breadth-first-search enactor.
@@ -37,19 +39,19 @@ namespace b40c {
  * made possible by software global-barriers across threadblocks.  
  * breadth-first-search enactors.
  */
-template <typename IndexType, bool INSTRUMENTED>
-class SingleGridBfsEnactor : public BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> >
+template <typename VertexId, bool INSTRUMENTED>
+class SingleGridBfsEnactor : public BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> >
 {
 private:
 	
-	typedef BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> > Base; 
+	typedef BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> > Base;
 
 protected:	
 
 	/**
 	 * Array of global synchronization counters, one for each threadblock
 	 */
-	int *d_sync;
+	util::GlobalBarrierLifetime barrier;
 	
 	/**
 	 * Rotating 4-element array of atomic counters indicating sizes of the 
@@ -64,15 +66,13 @@ protected:
 	 */
 	unsigned long long *d_barrier_time;
 
-	char *d_keep;
-
 protected:
 	
 	/**
 	 * Utility function: Returns the default maximum number of threadblocks 
 	 * this enactor class can launch.
 	 */
-	static int MaxGridSize(const CudaProperties &props, int max_grid_size = 0) 
+	static int MaxGridSize(const util::CudaProperties &props, int max_grid_size = 0)
 	{
 		if (max_grid_size == 0) {
 			// No override: Fully populate all SMs
@@ -92,17 +92,13 @@ public:
 	SingleGridBfsEnactor(
 		int max_queue_size,
 		int max_grid_size = 0,
-		const CudaProperties &props = CudaProperties()) :
+		const util::CudaProperties &props = util::CudaProperties()) :
 			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props)
 	{
 		// Size of 4-element rotating vector of queue lengths (and statistics)   
 		const int QUEUE_LENGTHS_SIZE = 4 + 2;
 		
 		// Allocate 
-		if (cudaMalloc((void**) &d_sync, sizeof(int) * this->max_grid_size)) {
-			printf("BfsCsrProblem:: cudaMalloc d_sync failed: ", __FILE__, __LINE__);
-			exit(1);
-		}
 		if (cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE)) {
 			printf("BfsCsrProblem:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
 			exit(1);
@@ -113,14 +109,10 @@ public:
 		}
 
 		// Initialize 
-		MemsetKernel<int><<<(this->max_grid_size + 128 - 1) / 128, 128>>>(			// to zero
-			d_sync, 0, this->max_grid_size);
-		MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
+		util::MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
 			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
-		
-		// Setup cache config for kernels
-//		cudaFuncSetCacheConfig(BfsSingleGridKernel<IndexType, CONTRACT_EXPAND>, cudaFuncCachePreferL1);
-//		cudaFuncSetCacheConfig(BfsSingleGridKernel<IndexType, EXPAND_CONTRACT>, cudaFuncCachePreferL1);
+
+		barrier.Setup(this->max_grid_size);
 	}
 
 public:
@@ -130,7 +122,6 @@ public:
      */
     virtual ~SingleGridBfsEnactor() 
     {
-		if (d_sync) cudaFree(d_sync);
 		if (d_queue_lengths) cudaFree(d_queue_lengths);
     }
     
@@ -176,8 +167,8 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	virtual cudaError_t EnactSearch(
-		BfsCsrProblem<IndexType> &bfs_problem,
-		IndexType src, 
+		BfsCsrProblem<VertexId> &bfs_problem,
+		VertexId src,
 		BfsStrategy strategy) 
 	{
 		int cta_threads = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
@@ -195,40 +186,44 @@ public:
 		case CONTRACT_EXPAND:
 
 			// Contract-expand strategy
-    		BfsSingleGridKernel<IndexType, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
+    		BfsSingleGridKernel<VertexId, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
 				bfs_problem.d_collision_cache,
-				NULL,
 				this->d_queue[0],								
 				this->d_queue[1],								
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
 				bfs_problem.d_source_dist,
 				this->d_queue_lengths,							
-				this->d_sync,
+				this->barrier,
 				this->d_barrier_time);
 				
-			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
+			if (BFS_DEBUG && cudaThreadSynchronize()) {
+				printf("BfsSingleGridKernel failed: %d %d", __FILE__, __LINE__);
+				exit(1);
+			}
 
 			break;
     		
 		case EXPAND_CONTRACT:
 			
 			// Expand-contract strategy
-			BfsSingleGridKernel<IndexType, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
+			BfsSingleGridKernel<VertexId, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
 				src,
 				bfs_problem.d_collision_cache,
-				NULL,
 				this->d_queue[0],								
 				this->d_queue[1],								
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
 				bfs_problem.d_source_dist,
 				this->d_queue_lengths,							
-				this->d_sync,
+				this->barrier,
 				this->d_barrier_time);
 
-			dbg_sync_perror_exit("SingleGridRadixSortingEnactor:: BfsSingleGridKernel failed: ", __FILE__, __LINE__);
+			if (BFS_DEBUG && cudaThreadSynchronize()) {
+				printf("BfsSingleGridKernel failed: %d %d", __FILE__, __LINE__);
+				exit(1);
+			}
 			
 			break;
 
@@ -242,6 +237,6 @@ public:
 
 
 
-
-}// namespace b40c
+} // namespace bfs
+} // namespace b40c
 

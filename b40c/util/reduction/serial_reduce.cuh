@@ -42,6 +42,10 @@ template <
 	T ReductionOp(const T&, const T&) = DefaultSum >
 struct SerialReduce
 {
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
 	// Iterate
 	template <int COUNT, int TOTAL>
 	struct Iterate 
@@ -77,6 +81,10 @@ struct SerialReduce
 		}
 	};
 	
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
 	// Interface
 	static __device__ __forceinline__ T Invoke(T *partials)
 	{

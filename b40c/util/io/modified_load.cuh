@@ -115,17 +115,17 @@ struct ModifiedLoad
 	 */
 	#define B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedLoad<ld::modifier>::Ld(base_type &val, base_type* ptr) {												\
-			asm("ld.global."#modifier"."#ptx_type" %0, [%1];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val)) : _B40C_ASM_PTR_(ptr));		\
-		}
+			asm("ld.global."#modifier"."#ptx_type" %0, [%1];" : "="#reg_mod(reinterpret_cast<cast_type&>(val)) : _B40C_ASM_PTR_(ptr));			\
+		}																																		\
 
 	#define B40C_LOAD_VEC2(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedLoad<ld::modifier>::Ld(base_type &val, base_type* ptr) {												\
-			asm("ld.global."#modifier".v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)) : _B40C_ASM_PTR_(ptr));		\
+			asm("ld.global."#modifier".v2."#ptx_type" {%0, %1}, [%2];" : "="#reg_mod(reinterpret_cast<cast_type&>(val.x)), "="#reg_mod(reinterpret_cast<cast_type&>(val.y)) : _B40C_ASM_PTR_(ptr));		\
 		}
 
 	#define B40C_LOAD_VEC4(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedLoad<ld::modifier>::Ld(base_type &val, base_type* ptr) {												\
-			asm("ld.global."#modifier".v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(*reinterpret_cast<cast_type*>(&val.x)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.y)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.z)), "="#reg_mod(*reinterpret_cast<cast_type*>(&val.w)) : _B40C_ASM_PTR_(ptr));		\
+			asm("ld.global."#modifier".v4."#ptx_type" {%0, %1, %2, %3}, [%4];" : "="#reg_mod(reinterpret_cast<cast_type&>(val.x)), "="#reg_mod(reinterpret_cast<cast_type&>(val.y)), "="#reg_mod(reinterpret_cast<cast_type&>(val.z)), "="#reg_mod(reinterpret_cast<cast_type&>(val.w)) : _B40C_ASM_PTR_(ptr));		\
 		}
 
 
@@ -145,10 +145,6 @@ struct ModifiedLoad
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)									\
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, ca)									\
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)									\
-																									\
-		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cg)								\
-		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, ca)								\
-		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cs)								\
 																									\
 		B40C_LOAD_VEC2(short_type##2, ptx_type, reg_mod, cast_type, cg)								\
 		B40C_LOAD_VEC2(short_type##2, ptx_type, reg_mod, cast_type, ca)								\
@@ -175,11 +171,11 @@ struct ModifiedLoad
 	/**
 	 * Define cache-modified loads for all 4-byte (and smaller) structures
 	 */
-	B40C_LOAD_BASE_ONE_TWO_FOUR(char, 			signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, unsigned int))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, unsigned int))
+	B40C_LOAD_BASE_ONE_TWO_FOUR(char, 			signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, short))
+	B40C_LOAD_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, short))
 	B40C_LOAD_BASE_ONE_TWO_FOUR(int, 			int, 			int, 	s32, 	r, B40C_CAST_SELECT(int, int))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, B40C_CAST_SELECT(unsigned char, unsigned int))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned int))
+	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, B40C_CAST_SELECT(unsigned char, unsigned short))
+	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned short))
 	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned int, 	unsigned int, 	uint,	u32, 	r, B40C_CAST_SELECT(unsigned int, unsigned int))
 	B40C_LOAD_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, B40C_CAST_SELECT(float, float))
 

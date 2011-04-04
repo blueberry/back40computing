@@ -54,6 +54,10 @@ template <
 	T ScanOp(const T&, const T&)>
 struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
 {
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
 	// Iterate
 	template <int COUNT, int __dummy = 0>
 	struct Iterate
@@ -75,6 +79,10 @@ struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
 			return exclusive_partial;
 		}
 	};
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
 
 	// Interface
 	static __device__ __forceinline__ T Invoke(
