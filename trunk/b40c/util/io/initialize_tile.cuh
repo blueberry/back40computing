@@ -52,21 +52,21 @@ struct InitializeTile
 	struct Iterate
 	{
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Copy(
 			T target[][LOAD_VEC_SIZE],
 			S source[][LOAD_VEC_SIZE])
 		{
 			target[LOAD][VEC] = source[LOAD][VEC];
-			Iterate<LOAD, VEC + 1>::Invoke(target, source);
+			Iterate<LOAD, VEC + 1>::Copy(target, source);
 		}
 
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const T datum)
+			const S datum)
 		{
 			target[LOAD][VEC] = datum;
-			Iterate<LOAD, VEC + 1>::Invoke(target, datum);
+			Iterate<LOAD, VEC + 1>::Init(target, datum);
 		}
 	};
 
@@ -75,19 +75,19 @@ struct InitializeTile
 	struct Iterate<LOAD, LOAD_VEC_SIZE>
 	{
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Copy(
 			T target[][LOAD_VEC_SIZE],
 			S source[][LOAD_VEC_SIZE])
 		{
-			Iterate<LOAD + 1, 0>::Invoke(target, source);
+			Iterate<LOAD + 1, 0>::Copy(target, source);
 		}
 
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const T datum)
+			const S datum)
 		{
-			Iterate<LOAD + 1, 0>::Invoke(target, datum);
+			Iterate<LOAD + 1, 0>::Init(target, datum);
 		}
 	};
 
@@ -96,14 +96,14 @@ struct InitializeTile
 	struct Iterate<LOADS_PER_TILE, VEC>
 	{
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Copy(
 			T target[][LOAD_VEC_SIZE],
 			S source[][LOAD_VEC_SIZE]) {}
 
 		template <typename T, typename S>
-		static __device__ __forceinline__ void Invoke(
+		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const T datum) {}
+			const S datum) {}
 	};
 
 
@@ -119,19 +119,19 @@ struct InitializeTile
 		T target[][LOAD_VEC_SIZE],
 		S source[][LOAD_VEC_SIZE])
 	{
-		Iterate<0, 0>::Invoke(target, source);
+		Iterate<0, 0>::Copy(target, source);
 	}
 
 
 	/**
 	 * Initialize target with datum
 	 */
-	template <typename T>
+	template <typename T, typename S>
 	static __device__ __forceinline__ void Init(
 		T target[][LOAD_VEC_SIZE],
-		const T datum)
+		const S datum)
 	{
-		Iterate<0, 0>::Invoke(target, datum);
+		Iterate<0, 0>::Init(target, datum);
 	}
 };
 

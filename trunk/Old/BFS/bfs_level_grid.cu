@@ -207,12 +207,12 @@ public:
 			200,
 			util::io::ld::NONE,
 			util::io::st::NONE,
-			7,
+			9,
 
 			8,
 			7,
 			0,
-			0,
+			1,
 
 			5,
 			2,
@@ -221,7 +221,7 @@ public:
 
 			8,
 			7,
-			0,
+			2,
 			0,
 			5> ProblemConfig;
 
@@ -295,14 +295,14 @@ public:
 				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
 
 			// Downsweep
-			bfs::compact::DownsweepKernel<Downsweep><<<this->max_grid_size, Upsweep::THREADS>>>(
+			bfs::compact::DownsweepKernel<Downsweep><<<this->max_grid_size, Downsweep::THREADS>>>(
 				this->d_queue[queue_idx],
 				this->d_keep,
 				this->d_queue_lengths + outgoing_queue_length_idx,
 				this->d_queue[queue_idx ^ 1],
 				(SizeT *) this->spine(),
 				work);
-
+/*
 			// Update in-queue length
 			if (cudaMemcpy(
 				&num_elements,
@@ -320,7 +320,7 @@ public:
 				// No more work, all done.
 				break;
 			}
-
+*/
 			queue_idx ^= 1;
 
 			iteration++;
