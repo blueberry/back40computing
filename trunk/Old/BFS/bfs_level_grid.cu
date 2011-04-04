@@ -28,28 +28,34 @@
 #include <bfs_base.cu>
 #include <bfs_level_grid_kernel.cu>
 
-#include <radixsort_api_enactor_tuned.cuh>		// Sorting includes
-#include <radixsort_api_storage.cuh>			// Sorting includes
+#include <b40c/util/spine.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 
-#include <b40c/consecutive_removal_enactor.cuh>
+#include <b40c/bfs/compact/problem_type.cuh>
+#include <b40c/bfs/compact/problem_config.cuh>
+#include <b40c/bfs/compact/upsweep_kernel_config.cuh>
+#include <b40c/bfs/compact/upsweep_kernel.cuh>
+#include <b40c/bfs/compact/downsweep_kernel_config.cuh>
+#include <b40c/bfs/compact/downsweep_kernel.cuh>
+
+#include <b40c/scan/spine_kernel.cuh>
 
 namespace b40c {
+namespace bfs {
+
 
 /**
  * Level-grid breadth-first-search enactor.
  *  
  * Each iterations is performed by its own kernel-launch.  
  */
-template <typename IndexType>
-class LevelGridBfsEnactor : public BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> >
+template <typename VertexId>
+class LevelGridBfsEnactor : public BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> >
 {
 private:
 	
-	typedef BaseBfsEnactor<IndexType, BfsCsrProblem<IndexType> > Base; 
+	typedef BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> > Base;
 	
-	// Sorting enactor
-//	LsbSortEnactorTuned sorting_enactor;
-//	ConsecutiveRemovalEnactor removal_enactor;
 
 protected:	
 
@@ -60,7 +66,14 @@ protected:
 	 */
 	int *d_queue_lengths;
 	
-	char *d_keep;
+	/**
+	 * Temporary device storage needed for reducing partials produced
+	 * by separate CTAs
+	 */
+	util::Spine spine;
+
+	// Flag vector
+	unsigned char *d_keep;
 
 protected:
 	
@@ -68,7 +81,7 @@ protected:
 	 * Utility function: Returns the default maximum number of threadblocks 
 	 * this enactor class can launch.
 	 */
-	static int MaxGridSize(const CudaProperties &props, int max_grid_size = 0) 
+	static int MaxGridSize(const util::CudaProperties &props, int max_grid_size = 0)
 	{
 		if (max_grid_size == 0) {
 			// No override: Fully populate all SMs
@@ -88,7 +101,7 @@ public:
 	LevelGridBfsEnactor(
 		int max_queue_size,
 		int max_grid_size = 0,
-		const CudaProperties &props = CudaProperties()) :
+		const util::CudaProperties &props = util::CudaProperties()) :
 			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props),
 			d_queue_lengths(NULL),
 			d_keep(NULL)
@@ -98,25 +111,18 @@ public:
 		
 		// Allocate 
 		if (cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE)) {
-			printf("BfsCsrProblem:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
+			printf("LevelGridBfsEnactor:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
-/*
-		if (cudaMalloc((void**) &d_keep, sizeof(char) * this->max_queue_size)) {
-			printf("BfsCsrProblem:: cudaMalloc d_keep failed: ", __FILE__, __LINE__);
+		if (cudaMalloc((void**) &d_keep, max_queue_size * sizeof(unsigned char))) {
+			printf("LevelGridBfsEnactor:: cudaMalloc d_keep failed: ", __FILE__, __LINE__);
 			exit(1);
 		}
-*/
-		// Initialize 
-		MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
-			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
-		
-		// Setup cache config for kernels
-//		cudaFuncSetCacheConfig(BfsLevelKernel<IndexType, CONTRACT_EXPAND>, cudaFuncCachePreferL1);
-//		cudaFuncSetCacheConfig(BfsLevelKernel<IndexType, EXPAND_CONTRACT>, cudaFuncCachePreferL1);
-	}
 
-public:
+		// Initialize 
+		util::MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
+			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
+	}
 
 	/**
 	 * Verify the contents of a device array match those
@@ -134,7 +140,6 @@ public:
 		cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
 
 		// Display data
-		printf("\n\nData:\n");
 		for (int i = 0; i < num_elements; i++) {
 			PrintValue(h_data[i]);
 			printf(", ");
@@ -173,115 +178,155 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	virtual cudaError_t EnactSearch(
-		BfsCsrProblem<IndexType> &bfs_problem,
-		IndexType src, 
+		BfsCsrProblem<VertexId> &bfs_problem,
+		VertexId src,
 		BfsStrategy strategy) 
 	{
-		int cta_threads = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
-		
+		typedef int SizeT;
+
+		const int CTA_THREADS = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
+
+		cudaError_t retval = cudaSuccess;
+
 		if (this->BFS_DEBUG) {
 			printf("\n[BFS level-sync, %s config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
 				(strategy == CONTRACT_EXPAND) ? "contract-expand" : "expand-contract", 
 				this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
-				this->max_grid_size, cta_threads, this->max_queue_size);
+				this->max_grid_size, CTA_THREADS, this->max_queue_size);
 			fflush(stdout);
 		}
 
+		// Make sure our spine is big enough
+		int spine_elements = this->max_grid_size;
+		if (retval = spine.Setup<SizeT>(this->max_grid_size, spine_elements)) exit(1);
 
-		// Create 
-		MultiCtaSortStorage<unsigned int> sorting_problem;
-		sorting_problem.d_keys[0] = (unsigned int *) this->d_queue[0];
-		sorting_problem.d_keys[1] = (unsigned int *) this->d_queue[1];
-		sorting_problem.selector = 0;
-		sorting_problem.num_elements = 1;
+		// Set up compaction configuration types
+		typedef bfs::compact::ProblemType<VertexId, SizeT> ProblemType;
+		typedef bfs::compact::ProblemConfig<
+			ProblemType,
+			200,
+			util::io::ld::NONE,
+			util::io::st::NONE,
+			7,
 
-		int iteration = 0;
+			8,
+			7,
+			0,
+			0,
+
+			5,
+			2,
+			0,
+			5,
+
+			8,
+			7,
+			0,
+			0,
+			5> ProblemConfig;
+
+		typedef typename ProblemConfig::Upsweep Upsweep;
+		typedef typename ProblemConfig::Spine Spine;
+		typedef typename ProblemConfig::Downsweep Downsweep;
+
+
+
+
+		int queue_idx 			= 0;
+		int num_elements 		= 1;
+		VertexId iteration 		= 0;
 
 		while (true) {
 
-			if (iteration > 6000) {
-				printf("Aborted.\n");
-				break;
-			}
-
-/*
-			MemsetKernel<char><<<128, 128>>>(d_keep, 1, max_queue_size * sizeof(char));
-
 			// Contract-expand strategy
-			BfsLevelGridKernel<IndexType, CULL><<<this->max_grid_size, cta_threads>>>(
+			BfsLevelGridKernel<VertexId, CONTRACT_EXPAND><<<this->max_grid_size, CTA_THREADS>>>(
 				src,
 				bfs_problem.d_collision_cache,
-				d_keep,
-				this->d_queue[sorting_problem.selector],
-				this->d_queue[sorting_problem.selector ^ 1],
+				this->d_queue[queue_idx],
+				this->d_queue[queue_idx ^ 1],
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
 				bfs_problem.d_source_dist,
 				this->d_queue_lengths,
 				iteration);
-			dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
 
-			// mooch
-			char *keep = (char *) malloc(sorting_problem.num_elements);
-			cudaMemcpy(keep, d_keep, sizeof(char) * sorting_problem.num_elements, cudaMemcpyDeviceToHost);
-			int sum = 0;
-			for (int i = 0; i < sorting_problem.num_elements; i++) {
-				sum += keep[i];
+			if (BFS_DEBUG && cudaThreadSynchronize()) {
+				printf("BfsLevelGridKernel failed: %d %d", __FILE__, __LINE__);
+				exit(1);
 			}
-			printf("    Iteration %d input reduced to %d\n", iteration, sum);
-			free(keep);
-*/
-			// Contract-expand strategy
-			BfsLevelGridKernel<IndexType, CONTRACT_EXPAND><<<this->max_grid_size, cta_threads>>>(
-				src,
-				bfs_problem.d_collision_cache,
-				NULL,
-				this->d_queue[sorting_problem.selector],
-				this->d_queue[sorting_problem.selector ^ 1],
-				bfs_problem.d_column_indices,
-				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_dist,
-				this->d_queue_lengths,
-				iteration);
-			dbg_sync_perror_exit("LevelGridRadixSortingEnactor:: BfsLevelGridKernel failed: ", __FILE__, __LINE__);
 
 			// Update out-queue length
 			int outgoing_queue_length_idx = (iteration + 1) & 0x3;
-			cudaMemcpy(&sorting_problem.num_elements, d_queue_lengths + outgoing_queue_length_idx,
-				1 * sizeof(int), cudaMemcpyDeviceToHost);
+			if (cudaMemcpy(
+				&num_elements,
+				d_queue_lengths + outgoing_queue_length_idx,
+				1 * sizeof(int),
+				cudaMemcpyDeviceToHost))
+			{
+				printf("cudaMemcpy failed: %d %d", __FILE__, __LINE__);
+				exit(1);
+			}
 
-			if (sorting_problem.num_elements == 0) {
+			printf("Iteration %d output queued %d nodes\n", iteration, num_elements);
+
+			if (num_elements == 0) {
 				// No more work, all done.
 				break;
 			}
-			printf("Iteration %d output queued %d nodes\n", iteration, sorting_problem.num_elements);
 
-			// Update incoming-queue selector
-			sorting_problem.selector ^= 1;
+			queue_idx ^= 1;
 
-/*
-			// Sort outgoing queue
-			sorting_problem.num_elements = sorting_problem.num_elements;
-			sorting_enactor.EnactSort(sorting_problem);
+			// Obtain a CTA work distribution for copying items of type T
+			util::CtaWorkDistribution<SizeT> work(
+				num_elements,
+				Upsweep::SCHEDULE_GRANULARITY,
+				this->max_grid_size);
 
-			removal_enactor.Enact(
-				sorting_problem.d_keys[sorting_problem.selector ^ 1],
+			// Upsweep
+			bfs::compact::UpsweepKernel<Upsweep><<<this->max_grid_size, Upsweep::THREADS>>>(
+				this->d_queue[queue_idx],
+				this->d_keep,
+				(SizeT *) this->spine(),
+				bfs_problem.d_collision_cache,
+				work);
+
+			// Spine
+			scan::SpineKernel<Spine><<<1, Spine::THREADS>>>(
+				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
+
+			// Downsweep
+			bfs::compact::DownsweepKernel<Downsweep><<<this->max_grid_size, Upsweep::THREADS>>>(
+				this->d_queue[queue_idx],
+				this->d_keep,
+				this->d_queue_lengths + outgoing_queue_length_idx,
+				this->d_queue[queue_idx ^ 1],
+				(SizeT *) this->spine(),
+				work);
+
+			// Update in-queue length
+			if (cudaMemcpy(
+				&num_elements,
 				d_queue_lengths + outgoing_queue_length_idx,
-				sorting_problem.d_keys[sorting_problem.selector],
-				sorting_problem.num_elements);
+				1 * sizeof(int),
+				cudaMemcpyDeviceToHost))
+			{
+				printf("cudaMemcpy failed: %d %d", __FILE__, __LINE__);
+				exit(1);
+			}
 
-			// Update incoming-queue selector
-			sorting_problem.selector ^= 1;
+			printf("Reduced to %d nodes\n\n", num_elements);
 
-			cudaMemcpy(&sorting_problem.num_elements, d_queue_lengths + outgoing_queue_length_idx,
-				1 * sizeof(int), cudaMemcpyDeviceToHost);
+			if (num_elements == 0) {
+				// No more work, all done.
+				break;
+			}
 
-			printf("Iteration %d reduced to %d nodes\n", iteration, sorting_problem.num_elements);
-*/
+			queue_idx ^= 1;
+
 			iteration++;
 		}
 
-		return cudaSuccess;
+		return retval;
 	}
     
 };
@@ -289,6 +334,6 @@ public:
 
 
 
-
-}// namespace b40c
+} // namespace bfs
+} // namespace b40c
 

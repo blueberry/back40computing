@@ -30,8 +30,11 @@
 #pragma once
 
 #include <bfs_kernel_common.cu>
+#include <b40c/util/global_barrier.cuh>
 
 namespace b40c {
+namespace bfs {
+
 
 /******************************************************************************
  * BFS-SG Granularity Configuration 
@@ -115,23 +118,22 @@ namespace b40c {
  *
  */
 template <
-	typename IndexType, 
+	typename VertexId,
 	int STRATEGY,			// Should be of type "BfsStrategy": NVBUGS 768132
-	bool INSTRUMENTED> 						 
+	bool INSTRUMENTED>
 __launch_bounds__ (
 	1 << B40C_BFS_SG_LOG_CTA_THREADS(__B40C_CUDA_ARCH__, STRATEGY),
 	B40C_BFS_SG_OCCUPANCY(__B40C_CUDA_ARCH__))
 __global__ void BfsSingleGridKernel(
-	IndexType src,										// Source node for the first iteration
-	char *d_collision_cache,
-	char *d_keep,
-	IndexType *d_in_queue,								// Queue of node-IDs to consume
-	IndexType *d_out_queue,								// Queue of node-IDs to produce
-	IndexType *d_column_indices,						// CSR column indices
-	IndexType *d_row_offsets,							// CSR row offsets 
-	IndexType *d_source_dist,							// Distance from the source node (initialized to -1) (per-node)
+	VertexId src,										// Source node for the first iteration
+	unsigned char *d_collision_cache,
+	VertexId *d_in_queue,								// Queue of node-IDs to consume
+	VertexId *d_out_queue,								// Queue of node-IDs to produce
+	VertexId *d_column_indices,						// CSR column indices
+	VertexId *d_row_offsets,							// CSR row offsets
+	VertexId *d_source_dist,							// Distance from the source node (initialized to -1) (per-node)
 	int *d_queue_lengths,								// Rotating 4-element array of atomic counters indicating sizes of the incoming and outgoing frontier queues
-	int *d_sync,										// Array of global synchronization counters, one for each threadblock
+	util::GlobalBarrier barrier,						// Array of global synchronization counters, one for each threadblock
 	unsigned long long *d_barrier_time)					// Time (in clocks) spent by each threadblock in software global barrier
 {
 	const int LOG_CTA_THREADS			= B40C_BFS_SG_LOG_CTA_THREADS(__B40C_CUDA_ARCH__, STRATEGY);
@@ -142,7 +144,7 @@ __global__ void BfsSingleGridKernel(
 	const int LOG_SUBTILE_ELEMENTS		= B40C_BFS_SG_LOG_SUBTILE_ELEMENTS(STRATEGY);
 	const int SUBTILE_ELEMENTS			= 1 << LOG_SUBTILE_ELEMENTS;		
 	
-	const int SCRATCH_SPACE				= B40C_BFS_SG_SCRATCH_SPACE(__B40C_CUDA_ARCH__, STRATEGY) / sizeof(IndexType);
+	const int SCRATCH_SPACE				= B40C_BFS_SG_SCRATCH_SPACE(__B40C_CUDA_ARCH__, STRATEGY) / sizeof(VertexId);
 	const int LOAD_VEC_SIZE				= 1 << B40C_BFS_SG_LOG_LOAD_VEC_SIZE(__B40C_CUDA_ARCH__, STRATEGY);
 	const int RAKING_THREADS			= 1 << B40C_BFS_SG_LOG_RAKING_THREADS(__B40C_CUDA_ARCH__, STRATEGY);
 	
@@ -166,25 +168,25 @@ __global__ void BfsSingleGridKernel(
 
 	// Figure out how big our multipurpose scratch_pool allocation should be (in 128-bit int4s)
 	const int SCAN_BYTES				= SCAN_ROWS * PADDED_PARTIALS_PER_ROW * sizeof(int);
-	const int SCRATCH_BYTES				= SCRATCH_SPACE * sizeof(IndexType);
+	const int SCRATCH_BYTES				= SCRATCH_SPACE * sizeof(VertexId);
 	const int SHARED_BYTES 				= B40C_MAX(SCAN_BYTES, SCRATCH_BYTES);
 	const int SHARED_INT4S				= (SHARED_BYTES + sizeof(int4) - 1) / sizeof(int4);
 
 	// Cache-modifiers
-	const CacheModifier QUEUE_MODIFIER						= CG;
-	const CacheModifier COLUMN_INDICES_MODIFIER				= CG;
-	const CacheModifier SOURCE_DIST_MODIFIER				= CG;
-	const CacheModifier ROW_OFFSETS_MODIFIER				= CG;
-	const CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER		= CA;
+	const util::io::ld::CacheModifier QUEUE_LD_MODIFIER						= util::io::ld::cg;
+	const util::io::st::CacheModifier QUEUE_ST_MODIFIER						= util::io::st::cg;
+	const util::io::ld::CacheModifier COLUMN_INDICES_MODIFIER				= util::io::ld::cg;
+	const util::io::ld::CacheModifier ROW_OFFSETS_MODIFIER					= util::io::ld::cg;
+	const util::io::ld::CacheModifier MISALIGNED_ROW_OFFSETS_MODIFIER		= util::io::ld::ca;
 	
-	SuppressUnusedConstantWarning(CTA_THREADS);
-	SuppressUnusedConstantWarning(LOAD_VEC_SIZE);
-	SuppressUnusedConstantWarning(PARTIALS_PER_SEG);
-	SuppressUnusedConstantWarning(QUEUE_MODIFIER);
-	SuppressUnusedConstantWarning(COLUMN_INDICES_MODIFIER);
-	SuppressUnusedConstantWarning(SOURCE_DIST_MODIFIER);
-	SuppressUnusedConstantWarning(ROW_OFFSETS_MODIFIER);
-	SuppressUnusedConstantWarning(MISALIGNED_ROW_OFFSETS_MODIFIER);
+	util::SuppressUnusedConstantWarning(CTA_THREADS);
+	util::SuppressUnusedConstantWarning(LOAD_VEC_SIZE);
+	util::SuppressUnusedConstantWarning(PARTIALS_PER_SEG);
+	util::SuppressUnusedConstantWarning(QUEUE_LD_MODIFIER);
+	util::SuppressUnusedConstantWarning(QUEUE_ST_MODIFIER);
+	util::SuppressUnusedConstantWarning(COLUMN_INDICES_MODIFIER);
+	util::SuppressUnusedConstantWarning(ROW_OFFSETS_MODIFIER);
+	util::SuppressUnusedConstantWarning(MISALIGNED_ROW_OFFSETS_MODIFIER);
 	
 	
 	__shared__ int4 aligned_smem_pool[SHARED_INT4S];	// Smem for: (i) raking prefix sum; and (ii) hashing/compaction scratch space
@@ -192,7 +194,7 @@ __global__ void BfsSingleGridKernel(
 	__shared__ int s_enqueue_offset;					// Current tile's offset into the output queue for the next iteration 
 
 	int* 		scan_pool = reinterpret_cast<int*>(aligned_smem_pool);				// The smem pool for (i) above
-	IndexType* 	scratch_pool = reinterpret_cast<IndexType*>(aligned_smem_pool);		// The smem pool for (ii) above
+	VertexId* 	scratch_pool = reinterpret_cast<VertexId*>(aligned_smem_pool);		// The smem pool for (ii) above
 	
 	__shared__ int s_num_incoming_nodes;	// Number of elements in the incoming frontier queue for the current iteration
 	__shared__ int s_cta_offset;			// Offset in the incoming frontier queue for this CTA to begin raking its tiles
@@ -201,7 +203,7 @@ __global__ void BfsSingleGridKernel(
 
 	unsigned long long barrier_time = 0;
 	unsigned int total_queued;
-	IndexType iteration = 0;				// Current BFS iteration
+	VertexId iteration = 0;				// Current BFS iteration
 
 	
 	//
@@ -275,21 +277,21 @@ __global__ void BfsSingleGridKernel(
 		if (iteration & 0x1) {
 		
 			// Odd iteration: frontier queue streamed out -> in 
-			BfsIteration<(BfsStrategy) STRATEGY, IndexType, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE, 
-					LOAD_VEC_SIZE, QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER,
+			BfsIteration<(BfsStrategy) STRATEGY, VertexId, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE,
+					LOAD_VEC_SIZE, QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
-				d_collision_cache, d_keep, d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				d_collision_cache, d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 
 		} else {
 			
 			// Even iteration: frontier queue streamed in -> out  
-			BfsIteration<(BfsStrategy) STRATEGY, IndexType, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE, 
-					LOAD_VEC_SIZE, QUEUE_MODIFIER, COLUMN_INDICES_MODIFIER, SOURCE_DIST_MODIFIER,
+			BfsIteration<(BfsStrategy) STRATEGY, VertexId, CTA_THREADS, TILE_ELEMENTS, PARTIALS_PER_SEG, SCRATCH_SPACE,
+					LOAD_VEC_SIZE, QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
-				d_collision_cache, d_keep, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				d_collision_cache, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 		}
 
@@ -305,7 +307,7 @@ __global__ void BfsSingleGridKernel(
 			}
 		}
 		
-		GlobalBarrier(d_sync);
+		barrier.Sync();
 
 		if (INSTRUMENTED) {
 			// Instrumented timer for global barrier
@@ -333,7 +335,7 @@ __global__ void BfsSingleGridKernel(
 			// Load the size of the incoming frontier queue
 			int num_incoming_nodes;
 			int incoming_queue_length_idx = (iteration + 0) & 0x3;	// Index of incoming queue length
-			ModifiedLoad<int, CG>::Ld(num_incoming_nodes, d_queue_lengths + incoming_queue_length_idx);
+			util::io::ModifiedLoad<util::io::ld::cg>::Ld(num_incoming_nodes, d_queue_lengths + incoming_queue_length_idx);
 			total_queued += num_incoming_nodes;
 	
 			//
@@ -412,6 +414,7 @@ __global__ void BfsSingleGridKernel(
 } 
 
 
+} // namespace bfs
 } // b40c namespace
 
 

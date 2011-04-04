@@ -33,7 +33,6 @@
 #include <deque>
 #include <algorithm>
 
-#include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 #include <test_utils.cu>
 
 /******************************************************************************

@@ -51,7 +51,7 @@ CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib
 #-------------------------------------------------------------------------------
 
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../.. -I../../LsbRadixSort
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../.. 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -109,6 +109,7 @@ endif
 BFS_DEPS = 		./Makefile \
 				$(wildcard *.cu) \
 				$(wildcard ../../Common/*.cuh) \
+				$(wildcard ../../../b40c/bfs/compact/*.cuh) \
 				$(wildcard ../kernel/*.cu) \
 				$(wildcard ../*.cu) \
 				$(wildcard ../../LsbRadixSort/*.cuh) 

@@ -34,7 +34,6 @@
 #include <test_utils.cu>
 
 // Graph utils
-#include <b40c_util.h>					// Misc. utils (random-number gen, I/O, etc.)
 #include <dimacs.cu>
 #include <grid2d.cu>
 #include <grid3d.cu>
@@ -43,11 +42,12 @@
 #include <random.cu>
 #include <rr.cu>
 
-// BFS includes
+// BFS enactor includes
 #include <bfs_single_grid.cu>
 #include <bfs_level_grid.cu>
 
 using namespace b40c;
+using namespace bfs;
 
 
 /******************************************************************************
@@ -128,11 +128,11 @@ void Usage()
 /**
  * Displays the BFS result (i.e., distance from source)
  */
-template<typename IndexType>
-void DisplaySolution(IndexType* source_dist, IndexType nodes)
+template<typename VertexId>
+void DisplaySolution(VertexId* source_dist, VertexId nodes)
 {
 	printf("Solution: [");
-	for (IndexType i = 0; i < nodes; i++) {
+	for (VertexId i = 0; i < nodes; i++) {
 		PrintValue(i);
 		printf(":");
 		PrintValue(source_dist[i]);
@@ -179,14 +179,14 @@ struct Stats {
 /**
  * Displays timing and correctness statistics 
  */
-template <typename IndexType, typename ValueType>
+template <typename VertexId, typename ValueType>
 void DisplayStats(
 	bool queues_nodes,
 	Stats &stats,
-	IndexType src,
-	IndexType *h_source_dist,							// computed answer
-	IndexType *reference_source_dist,					// reference answer
-	const CsrGraph<IndexType, ValueType> &csr_graph,	// reference host graph
+	VertexId src,
+	VertexId *h_source_dist,							// computed answer
+	VertexId *reference_source_dist,					// reference answer
+	const CsrGraph<VertexId, ValueType> &csr_graph,	// reference host graph
 	double elapsed, 
 	int passes,
 	int total_queued,
@@ -195,7 +195,7 @@ void DisplayStats(
 	// Compute nodes and edges visited
 	int edges_visited = 0;
 	int nodes_visited = 0;
-	for (IndexType i = 0; i < csr_graph.nodes; i++) {
+	for (VertexId i = 0; i < csr_graph.nodes; i++) {
 		if (h_source_dist[i] > -1) {
 			nodes_visited++;
 			edges_visited += csr_graph.row_offsets[i + 1] - csr_graph.row_offsets[i];
@@ -262,13 +262,13 @@ void DisplayStats(
  * BFS Testing Routines
  ******************************************************************************/
 
-template <typename IndexType, typename BfsEnactor, typename ProblemStorage>
+template <typename VertexId, typename BfsEnactor, typename ProblemStorage>
 float TestGpuBfs(
 	BfsEnactor &enactor,
 	ProblemStorage &problem_storage,
-	IndexType src,
+	VertexId src,
 	BfsStrategy strategy,
-	IndexType *h_source_dist)						// place to copy results out to
+	VertexId *h_source_dist)						// place to copy results out to
 {
 	// Create timer
 	float elapsed;
@@ -290,7 +290,7 @@ float TestGpuBfs(
 	cudaMemcpy(
 		h_source_dist, 
 		problem_storage.d_source_dist, 
-		problem_storage.nodes * sizeof(IndexType), 
+		problem_storage.nodes * sizeof(VertexId),
 		cudaMemcpyDeviceToHost);
 	
     // Clean up events
@@ -306,11 +306,11 @@ float TestGpuBfs(
  * 
  * Computes the distance of each node from the specified source node. 
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename ValueType>
 float SimpleReferenceBfs(
-	const CsrGraph<IndexType, ValueType> &csr_graph,
-	IndexType *source_dist,
-	IndexType src)
+	const CsrGraph<VertexId, ValueType> &csr_graph,
+	VertexId *source_dist,
+	VertexId src)
 {
 /*
 	// Create timer
@@ -318,13 +318,13 @@ float SimpleReferenceBfs(
 	cutCreateTimer(&timer);
 */
 	// (Re)initialize distances
-	for (IndexType i = 0; i < csr_graph.nodes; i++) {
+	for (VertexId i = 0; i < csr_graph.nodes; i++) {
 		source_dist[i] = -1;
 	}
 	source_dist[src] = 0;
 
 	// Initialize queue for managing previously-discovered nodes
-	std::deque<IndexType> frontier;
+	std::deque<VertexId> frontier;
 	frontier.push_back(src);
 
 	//
@@ -335,9 +335,9 @@ float SimpleReferenceBfs(
 	while (!frontier.empty()) {
 		
 		// Dequeue node from frontier
-		IndexType dequeued_node = frontier.front();  
+		VertexId dequeued_node = frontier.front();
 		frontier.pop_front();
-		IndexType dist = source_dist[dequeued_node];
+		VertexId dist = source_dist[dequeued_node];
 
 		// Locate adjacency list
 		int edges_begin = csr_graph.row_offsets[dequeued_node];
@@ -346,7 +346,7 @@ float SimpleReferenceBfs(
 		for (int edge = edges_begin; edge < edges_end; edge++) {
 
 			// Lookup neighbor and enqueue if undiscovered 
-			IndexType neighbor = csr_graph.column_indices[edge];
+			VertexId neighbor = csr_graph.column_indices[edge];
 			if (source_dist[neighbor] == -1) {
 				source_dist[neighbor] = dist + 1;
 				frontier.push_back(neighbor);
@@ -369,33 +369,33 @@ float SimpleReferenceBfs(
 /**
  * Runs tests
  */
-template <typename IndexType, typename ValueType, bool INSTRUMENT> 
+template <typename VertexId, typename ValueType, bool INSTRUMENT>
 void RunTests(
-	const CsrGraph<IndexType, ValueType> &csr_graph,
-	IndexType src,
+	const CsrGraph<VertexId, ValueType> &csr_graph,
+	VertexId src,
 	bool randomized_src,
 	int test_iterations,
 	int max_grid_size,
 	int queue_size) 
 {
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
-	IndexType* reference_source_dist 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
-	IndexType* h_source_dist 			= (IndexType*) malloc(sizeof(IndexType) * csr_graph.nodes);
-
-	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	SingleGridBfsEnactor<IndexType, INSTRUMENT> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges,
-		max_grid_size);
+	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* h_source_dist 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 /*
-	LevelGridBfsEnactor<IndexType> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges,
+	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
+	SingleGridBfsEnactor<VertexId, INSTRUMENT> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 4,
 		max_grid_size);
 */
+
+	LevelGridBfsEnactor<VertexId> bfs_sg_enactor(
+		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 4,
+		max_grid_size);
 
 	bfs_sg_enactor.BFS_DEBUG = g_verbose;
 
 	// Allocate problem on GPU
-	BfsCsrProblem<IndexType> problem_storage(
+	BfsCsrProblem<VertexId> problem_storage(
 		csr_graph.nodes, csr_graph.edges, csr_graph.column_indices, csr_graph.row_offsets);
 
 	
@@ -422,23 +422,23 @@ void RunTests(
 
 		// Compute reference CPU BFS solution
 		elapsed = SimpleReferenceBfs(csr_graph, reference_source_dist, src);
-		DisplayStats<IndexType, ValueType>(
+		DisplayStats<VertexId, ValueType>(
 			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-
+/*
 		// Perform expand-contract GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);	
-		DisplayStats<IndexType, ValueType>(
+		DisplayStats<VertexId, ValueType>(
 			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
-
+*/
 		// Perform contract-expand GPU BFS search
 		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
 		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);		
-		DisplayStats<IndexType, ValueType>(
+		DisplayStats<VertexId, ValueType>(
 			false, stats[2], src, h_source_dist, reference_source_dist, csr_graph,
 			elapsed, passes, total_queued, avg_barrier_wait);
 		printf("\n");
@@ -474,10 +474,10 @@ void RunTests(
 
 int main( int argc, char** argv)  
 {
-	typedef int IndexType;						// Use int's as the node identifier (we could use long longs for large graphs)					
+	typedef int VertexId;						// Use int's as the node identifier (we could use long longs for large graphs)
 	typedef int ValueType;						// Use int's as the value type
 	
-	IndexType src 			= -1;				// Use whatever default for the specified graph-type 
+	VertexId src 			= -1;				// Use whatever default for the specified graph-type
 	char* src_str			= NULL;
 	bool randomized_src		= false;
 	bool instrumented;
@@ -528,7 +528,7 @@ int main( int argc, char** argv)
 	// Obtain CSR search graph
 	//
 
-	CsrGraph<IndexType, ValueType> csr_graph;
+	CsrGraph<VertexId, ValueType> csr_graph;
 	
 	if (graph_args < 1) {
 		Usage();
@@ -538,7 +538,7 @@ int main( int argc, char** argv)
 	if (graph_type == "grid2d") {
 		// Two-dimensional regular lattice grid (degree 4)
 		if (graph_args < 2) { Usage(); return 1; }
-		IndexType width = atoi(argv[2]);
+		VertexId width = atoi(argv[2]);
 		if (BuildGrid2dGraph(width, src, csr_graph) != 0) {
 			return 1;
 		}
@@ -546,7 +546,7 @@ int main( int argc, char** argv)
 	} else if (graph_type == "grid3d") {
 		// Three-dimensional regular lattice grid (degree 6)
 		if (graph_args < 2) { Usage(); return 1; }
-		IndexType width = atoi(argv[2]);
+		VertexId width = atoi(argv[2]);
 		if (BuildGrid3dGraph(width, src, csr_graph) != 0) {
 			return 1;
 		}
@@ -578,8 +578,8 @@ int main( int argc, char** argv)
 	} else if (graph_type == "random") {
 		// Random graph of n nodes and m edges
 		if (graph_args < 3) { Usage(); return 1; }
-		IndexType nodes = atol(argv[2]);
-		IndexType edges = atol(argv[3]);
+		VertexId nodes = atol(argv[2]);
+		VertexId edges = atol(argv[3]);
 		if (BuildRandomGraph(nodes, edges, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
@@ -587,7 +587,7 @@ int main( int argc, char** argv)
 	} else if (graph_type == "rr") {
 		// Random-regular-ish graph of n nodes, each with degree d (allows loops and cycles)
 		if (graph_args < 3) { Usage(); return 1; }
-		IndexType nodes = atol(argv[2]);
+		VertexId nodes = atol(argv[2]);
 		int degree = atol(argv[3]);
 		if (BuildRandomRegularishGraph(nodes, degree, src, csr_graph) != 0) {
 			return 1;
@@ -610,11 +610,11 @@ int main( int argc, char** argv)
 	// Run tests
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
-		RunTests<IndexType, ValueType, true>(
+		RunTests<VertexId, ValueType, true>(
 			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
 	} else {
 		// Run regular kernel 
-		RunTests<IndexType, ValueType, false>(
+		RunTests<VertexId, ValueType, false>(
 			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
 	}
 }
