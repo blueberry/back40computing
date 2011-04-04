@@ -711,10 +711,15 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 			}
 		}
 
-		CullDuplicates<IndexType, LOAD_VEC_SIZE>(
-			dequeued_node_id,
-			hash,
-			scratch_pool);
+		if (UNGUARDED_IO) {
+
+			// Local culling for full tiles only
+
+			CullDuplicates<IndexType, LOAD_VEC_SIZE>(
+				dequeued_node_id,
+				hash,
+				scratch_pool);
+		}
 
 		if (dequeued_node_id[0] >= 0) {
 
