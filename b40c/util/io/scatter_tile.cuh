@@ -28,6 +28,7 @@
 #pragma once
 
 #include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/operators.cuh>
 
 namespace b40c {
 namespace util {
