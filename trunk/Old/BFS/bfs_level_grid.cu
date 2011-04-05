@@ -212,7 +212,7 @@ public:
 			8,
 			7,
 			0,
-			1,
+			0,
 
 			5,
 			2,
@@ -221,8 +221,8 @@ public:
 
 			8,
 			7,
-			2,
-			0,
+			1,
+			1,
 			5> ProblemConfig;
 
 		typedef typename ProblemConfig::Upsweep Upsweep;
