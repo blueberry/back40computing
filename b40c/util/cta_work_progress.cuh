@@ -185,6 +185,20 @@ public:
 		util::io::ModifiedStore<util::io::st::cg>::St(
 			queue_length, GetQueueCounter<SizeT>(iteration));
 	}
+
+	/**
+	 * Enqueues work from the specified iteration's queue counter, returning the
+	 * offset of that work (from zero) and incrementing it by count.
+	 * Typically called by thread-0
+	 */
+	template <typename SizeT, typename IterationT>
+	__device__ __forceinline__ SizeT Enqueue(int count, IterationT iteration)
+	{
+		return util::AtomicInt<SizeT>::Add(
+			GetQueueCounter<SizeT>(iteration),
+			count);
+	}
+
 };
 
 

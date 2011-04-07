@@ -139,7 +139,28 @@ struct SweepKernelConfig : _ProblemType
 
 		// Storage for scanning local expansion ranks
 		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		uint4 								smem_pool_int4s[SrtsGrid::TOTAL_RAKING_QUADS];	// Repurposable scan lanes
+
+		SizeT								enqueue_offset;
+
+		enum {
+			// Amount of storage we can use for hashing scratch space under target occupancy
+			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+												- sizeof(util::CtaWorkDistribution<SizeT>)
+												- sizeof(SizeT[WARPS][3])
+												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
+												- sizeof(SizeT)
+												- 64,
+			MAX_SCRATCH_OFFSETS				= MAX_SCRATCH_BYTES_PER_CTA / sizeof(SizeT),
+			SCRATCH_OFFSETS_PER_THREAD		= MAX_SCRATCH_OFFSETS / THREADS,
+			SCRATCH_OFFSETS					= SCRATCH_OFFSETS_PER_THREAD * THREADS,
+
+			SCRATCH_QUADS					= B40C_QUADS(SCRATCH_OFFSETS * sizeof(SizeT)),
+
+			SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, SCRATCH_QUADS),
+		};
+
+
+		uint4 								smem_pool_int4s[SMEM_POOL_QUADS];	// Repurposable scan lanes
 	};
 
 	enum {

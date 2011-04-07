@@ -43,12 +43,16 @@ namespace expand_atomic {
 /**
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 struct SweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
+
+	// Row-length cutoff below which we expand neighbors by writing gather
+	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
+	static const int SCAN_EXPAND_CUTOFF = B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
@@ -75,6 +79,10 @@ struct SweepCta : KernelConfig
 	SrtsDetails 			srts_details;
 
 	volatile SizeT 			(&warp_comm)[KernelConfig::WARPS][3];
+
+	SizeT					&enqueue_offset;
+
+	SizeT					*scratch_pool;
 
 
 	//---------------------------------------------------------------------
@@ -113,7 +121,11 @@ struct SweepCta : KernelConfig
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_length[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		SizeT		row_rank_b[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
+		SizeT 		enqueue_count;
+		SizeT		progress;
 
 		//---------------------------------------------------------------------
 		// Helper Structures
@@ -131,6 +143,7 @@ struct SweepCta : KernelConfig
 			static __device__ __forceinline__ void Init(Tile *tile)
 			{
 				tile->row_length[LOAD][VEC] = 0;
+				tile->row_progress[LOAD][VEC] = 0;
 
 				Iterate<LOAD, VEC + 1>::Init(tile);
 			}
@@ -180,21 +193,25 @@ struct SweepCta : KernelConfig
 							cta->d_source_path + tile->vertex_id[LOAD][VEC]);
 					}
 				}
-				tile->row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
+
+				tile->row_rank_b[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+					tile->row_length[LOAD][VEC] : 0;
+				tile->row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+					0 : tile->row_length[LOAD][VEC];
 
 				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
 			}
 
 
 			/**
-			 * Expand
+			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void Expand(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
-				while (__syncthreads_or(tile->row_length[LOAD][VEC] > KernelConfig::THREADS)) {
+				while (__syncthreads_or(tile->row_length[LOAD][VEC] >= KernelConfig::THREADS)) {
 
-					if (tile->row_length[LOAD][VEC] > KernelConfig::THREADS) {
+					if (tile->row_length[LOAD][VEC] >= KernelConfig::THREADS) {
 						// Vie for control of the CTA
 						cta->warp_comm[0][0] = threadIdx.x;
 					}
@@ -216,29 +233,38 @@ struct SweepCta : KernelConfig
 					SizeT coop_rank	 	= cta->warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->warp_comm[0][2];
 
-					VertexId node_id;
+					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
 
 						// Gather
 						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-							node_id, cta->d_column_indices + coop_offset);
+							neighbor_id, cta->d_column_indices + coop_offset);
 
 						// Scatter
 						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-							node_id, cta->d_out + coop_rank);
+							neighbor_id, cta->d_out + coop_rank);
 
 						coop_offset += KernelConfig::THREADS;
 						coop_rank += KernelConfig::THREADS;
 					}
 				}
 
+				// Next vector element
+				Iterate<LOAD, VEC + 1>::ExpandByCta(cta, tile);
+			}
+
+			/**
+			 * Expand by warp
+			 */
+			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			{
 				// Warp-based expansion/loading
 				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
 				int lane_id = util::LaneId();
 
-				while (__any(tile->row_length[LOAD][VEC])) {
+				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
 
-					if (tile->row_length[LOAD][VEC]) {
+					if (tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF) {
 						// Vie for control of the warp
 						cta->warp_comm[warp_id][0] = lane_id;
 					}
@@ -257,16 +283,16 @@ struct SweepCta : KernelConfig
 					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
-					VertexId node_id;
+					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
 
 						// Gather
 						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-							node_id, cta->d_column_indices + coop_offset);
+							neighbor_id, cta->d_column_indices + coop_offset);
 
 						// Scatter
 						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-							node_id, cta->d_out + coop_rank);
+							neighbor_id, cta->d_out + coop_rank);
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 						coop_rank += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -274,9 +300,33 @@ struct SweepCta : KernelConfig
 				}
 
 				// Next vector element
-				Iterate<LOAD, VEC + 1>::Expand(cta, tile);
+				Iterate<LOAD, VEC + 1>::ExpandByWarp(cta, tile);
+			}
+
+
+			/**
+			 * Expand by scan
+			 */
+			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			{
+				// Attempt to make further progress on this dequeued item's neighbor
+				// list if its current offset into local scratch is in range
+				SizeT scratch_offset = tile->row_rank_b[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
+
+				while ((tile->row_progress[LOAD][VEC] < tile->row_length[LOAD][VEC]) &&
+					(scratch_offset < SmemStorage::SCRATCH_OFFSETS))
+				{
+					// Put gather offset into scratch space
+					cta->scratch_pool[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
+					tile->row_progress[LOAD][VEC]++;
+					scratch_offset++;
+				}
+
+				// Next vector element
+				Iterate<LOAD, VEC + 1>::ExpandByScan(cta, tile);
 			}
 		};
+
 
 		/**
 		 * Iterate next load
@@ -301,11 +351,27 @@ struct SweepCta : KernelConfig
 			}
 
 			/**
-			 * Expand
+			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void Expand(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
 			{
-				Iterate<LOAD + 1, 0>::Expand(cta, tile);
+				Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
+			}
+
+			/**
+			 * Expand by warp
+			 */
+			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::ExpandByWarp(cta, tile);
+			}
+
+			/**
+			 * Expand by scan
+			 */
+			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::ExpandByScan(cta, tile);
 			}
 		};
 
@@ -321,8 +387,14 @@ struct SweepCta : KernelConfig
 			// Inspect
 			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile) {}
 
-			// Expand
-			static __device__ __forceinline__ void Expand(SweepCta *cta, Tile *tile) {}
+			// ExpandByCta
+			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile) {}
+
+			// ExpandByWarp
+			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile) {}
+
+			// ExpandByScan
+			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile) {}
 		};
 
 
@@ -348,11 +420,27 @@ struct SweepCta : KernelConfig
 		}
 
 		/**
-		 * Expands neighbor lists for valid vertices
+		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
 		 */
-		__device__ __forceinline__ void Expand(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByCta(SweepCta *cta)
 		{
-			Iterate<0, 0>::Expand(cta, this);
+			Iterate<0, 0>::ExpandByCta(cta, this);
+		}
+
+		/**
+		 * Expands neighbor lists for valid vertices a warp-expansion granularity
+		 */
+		__device__ __forceinline__ void ExpandByWarp(SweepCta *cta)
+		{
+			Iterate<0, 0>::ExpandByWarp(cta, this);
+		}
+
+		/**
+		 * Expands neighbor lists by local scan rank
+		 */
+		__device__ __forceinline__ void ExpandByScan(SweepCta *cta)
+		{
+			Iterate<0, 0>::ExpandByScan(cta, this);
 		}
 	};
 
@@ -380,6 +468,8 @@ struct SweepCta : KernelConfig
 				smem_storage.warpscan,
 				0),
 			warp_comm(smem_storage.warp_comm),
+			enqueue_offset(smem_storage.enqueue_offset),
+			scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
 			iteration(iteration),
 			d_in(d_in),
 			d_out(d_out),
@@ -443,7 +533,67 @@ struct SweepCta : KernelConfig
 				work_progress.GetQueueCounter<SizeT>(iteration + 1));
 
 		// Enqueue valid edge lists into outgoing queue
-		tile.Expand(this);
+		tile.ExpandByCta(this);
+
+		// Enqueue valid edge lists into outgoing queue
+		tile.ExpandByWarp(this);
+
+
+
+
+		// Scan tile of row ranks (lengths) with enqueue reservation,
+		// turning them into enqueue offsets
+		tile.enqueue_count = util::scan::CooperativeTileScan<
+			SrtsDetails,
+			KernelConfig::LOAD_VEC_SIZE,
+			true,							// exclusive
+			util::DefaultSum>::ScanTile(
+				srts_details,
+				tile.row_rank_b);
+
+		// Reserve allocation in outgoing queue
+		if (threadIdx.x == 0) {
+			enqueue_offset = work_progress.Enqueue<SizeT>(tile.enqueue_count, iteration + 1);
+		}
+
+		//
+		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
+		// gathering edges into the scratch space, and then
+		// having the entire CTA copy the scratch pool into the outgoing
+		// frontier queue.
+		//
+
+		tile.progress = 0;
+		while (tile.progress < tile.enqueue_count) {
+
+			// Fill the scratch space with gather-offsets for neighbor-lists.
+			tile.ExpandByScan(this);
+
+			__syncthreads();
+
+			// Copy scratch space into queue
+			SizeT scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_OFFSETS, tile.enqueue_count - tile.progress);
+
+			for (SizeT scratch_offset = threadIdx.x;
+				scratch_offset < scratch_remainder;
+				scratch_offset += KernelConfig::THREADS)
+			{
+				// Gather a neighbor
+				VertexId neighbor_id;
+				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
+					neighbor_id,
+					d_column_indices + scratch_pool[scratch_offset]);
+
+				// Scatter it into queue
+				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
+					neighbor_id,
+					d_out + enqueue_offset + tile.progress + scratch_offset);
+			}
+
+			tile.progress += SmemStorage::SCRATCH_OFFSETS;
+
+			__syncthreads();
+		}
 	}
 };
 
