@@ -24,7 +24,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
 #include <algorithm>
 
 #include <test/b40c_test_util.h>					// Misc. utils (random-number gen, I/O, etc.)
@@ -37,9 +36,9 @@
 /**
  * Returns a random node-ID in the range of [0, num_nodes) 
  */
-template<typename IndexType>
-IndexType RandomNode(IndexType num_nodes) {
-	IndexType node_id;
+template<typename SizeT>
+SizeT RandomNode(SizeT num_nodes) {
+	SizeT node_id;
 	b40c::RandomBits(node_id);
 	if (node_id < 0) node_id *= -1;
 	return node_id % num_nodes;
@@ -53,20 +52,20 @@ IndexType RandomNode(IndexType num_nodes) {
 /**
  * COO sparse format edge.  (A COO graph is just a list/array/vector of these.)
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value>
 struct CooEdgeTuple {
-	IndexType row;
-	IndexType col;
-	ValueType val;
+	VertexId row;
+	VertexId col;
+	Value val;
 };
 
 /**
  * Comparator for sorting COO sparse format edges
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value>
 bool DimacsTupleCompare (
-	CooEdgeTuple<IndexType, ValueType> elem1, 
-	CooEdgeTuple<IndexType, ValueType> elem2)
+	CooEdgeTuple<VertexId, Value> elem1,
+	CooEdgeTuple<VertexId, Value> elem2)
 {
 	if (elem1.row < elem2.row) {
 		// Sort edges by source node (to make rows)
@@ -89,15 +88,15 @@ bool DimacsTupleCompare (
 /**
  * CSR sparse format graph
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 struct CsrGraph
 {
-	IndexType nodes;
-	IndexType edges;
+	SizeT nodes;
+	SizeT edges;
 	
-	IndexType* row_offsets;
-	IndexType* column_indices;
-	ValueType* values;
+	SizeT 		*row_offsets;
+	VertexId	*column_indices;
+	Value		*values;
 	
 	/**
 	 * Empty constructor
@@ -114,28 +113,31 @@ struct CsrGraph
 	/**
 	 * Build CSR graph from sorted COO graph
 	 */
-	void FromCoo(CooEdgeTuple<IndexType, ValueType> *coo, IndexType coo_nodes, IndexType coo_edges)
+	void FromCoo(
+		CooEdgeTuple<VertexId, Value> *coo,
+		SizeT coo_nodes,
+		SizeT coo_edges)
 	{
 		printf("  Converting to CSR format... ");
 		time_t mark1 = time(NULL);
 		fflush(stdout);
 		
-		nodes = coo_nodes;
-		edges = coo_edges;
-		row_offsets = (IndexType*) malloc(sizeof(IndexType) * (nodes + 1));
-		column_indices = (IndexType*) malloc(sizeof(IndexType) * edges);
-		values = (ValueType*) malloc(sizeof(ValueType) * edges);
+		nodes 				= coo_nodes;
+		edges 				= coo_edges;
+		row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (nodes + 1));
+		column_indices 		= (VertexId*) malloc(sizeof(VertexId) * edges);
+		values 				= (Value*) malloc(sizeof(Value) * edges);
 		
 		// Sort COO by row, then by col
-		std::sort(coo, coo + coo_edges, DimacsTupleCompare<IndexType, ValueType>);
+		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<VertexId, Value>);
 
-		IndexType prev_row = -1;
-		for (int edge = 0; edge < edges; edge++) {
+		VertexId prev_row = -1;
+		for (SizeT edge = 0; edge < edges; edge++) {
 			
-			int current_row = coo[edge].row;
+			VertexId current_row = coo[edge].row;
 			
 			// Fill in rows up to and including the current row
-			for (int row = prev_row + 1; row <= current_row; row++) {
+			for (VertexId row = prev_row + 1; row <= current_row; row++) {
 				row_offsets[row] = edge;
 			}
 			prev_row = current_row;
@@ -145,7 +147,7 @@ struct CsrGraph
 		}
 
 		// Fill out any trailing edgeless nodes (and the end-of-list element)
-		for (int row = prev_row + 1; row <= nodes; row++) {
+		for (VertexId row = prev_row + 1; row <= nodes; row++) {
 			row_offsets[row] = edges;
 		}
 
@@ -169,9 +171,10 @@ struct CsrGraph
 
 		// Scan
 		int max_log_length = -1;
-		for (int i = 0; i < nodes; i++) {
+		for (VertexId i = 0; i < nodes; i++) {
 
-			int length = row_offsets[i + 1] - row_offsets[i];
+			SizeT length = row_offsets[i + 1] - row_offsets[i];
+
 			int log_length = -1;
 			while (length > 0) {
 				length >>= 1;
@@ -197,10 +200,10 @@ struct CsrGraph
 	void DisplayGraph()
 	{
 		printf("Input Graph:\n");
-		for (IndexType node = 0; node < nodes; node++) {
+		for (VertexId node = 0; node < nodes; node++) {
 			PrintValue(node);
 			printf(": ");
-			for (IndexType edge = row_offsets[node]; edge < row_offsets[node + 1]; edge++) {
+			for (SizeT edge = row_offsets[node]; edge < row_offsets[node + 1]; edge++) {
 				PrintValue(column_indices[edge]);
 				printf(", ");
 			}

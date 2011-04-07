@@ -315,7 +315,7 @@ __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
-	util::WorkProgress										work_progress)
+	util::CtaWorkProgress										work_progress)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<
@@ -323,11 +323,15 @@ __global__ void TunedUpsweepKernel(
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelConfig;
 
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
 	UpsweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine,
 		work_decomposition,
-		work_progress);
+		work_progress,
+		smem_storage);
 }
 
 
@@ -349,7 +353,10 @@ __global__ void TunedSpineKernel(
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelConfig;
 
-	SpinePass<KernelConfig>(d_spine, d_out, spine_elements);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	SpinePass<KernelConfig>(d_spine, d_out, spine_elements, smem_storage);
 }
 
 

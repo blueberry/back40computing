@@ -148,9 +148,6 @@ struct SrtsGrid
 
 		// Number of quad words (uint4) needed to back this level of the SRTS grid
 		RAKING_QUADS					= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
-
-		// Number of quads words needed to back warpscan storage
-		WARPSCAN_QUADS					= ((sizeof(T) << (1 + B40C_LOG_WARP_THREADS(CUDA_ARCH))) + sizeof(uint4) - 1) / sizeof(uint4),
 	};
 
 	// If there are prefix dependences between lanes, a secondary SRTS grid
@@ -186,55 +183,10 @@ struct SrtsGrid
 
 
 	enum {
-
 		// Total number of smem raking quads needed back this hierarchy
 		// of SRTS grids (may be reused for other purposes)
 		TOTAL_RAKING_QUADS = TotalRakingQuads<SrtsGrid>::VALUE,
-
-		// Total number of smem quads needed to back this hierarchy of SRTS grids
-		SMEM_QUADS = TOTAL_RAKING_QUADS + WARPSCAN_QUADS
 	};
-
-
-	static __host__ __device__ __forceinline__ void Print()
-	{
-		printf("SCAN_LANES: %d\n"
-				"PARTIALS_PER_LANE: %d\n"
-				"RAKING_THREADS: %d\n"
-				"RAKING_THREADS_PER_LANE: %d\n"
-				"PARTIALS_PER_SEG: %d\n"
-				"PARTIALS_PER_BANK_ARRAY: %d\n"
-				"SEGS_PER_BANK_ARRAY: %d\n"
-				"NO_PADDING: %d\n"
-				"SEGS_PER_ROW: %d\n"
-				"PARTIALS_PER_ROW: %d\n"
-				"BANK_PADDING_PARTIALS: %d\n"
-				"LANE_PADDING_PARTIALS: %d\n"
-				"PADDED_PARTIALS_PER_ROW: %d\n"
-				"ROWS: %d\n"
-				"ROWS_PER_LANE: %d\n"
-				"LANE_STRIDE: %d\n"
-				"RAKING_QUADS: %d\n",
-				"SMEM_QUADS: %d\n",
-			SCAN_LANES,
-			PARTIALS_PER_LANE,
-			RAKING_THREADS,
-			RAKING_THREADS_PER_LANE,
-			PARTIALS_PER_SEG,
-			PARTIALS_PER_BANK_ARRAY,
-			SEGS_PER_BANK_ARRAY,
-			NO_PADDING,
-			SEGS_PER_ROW,
-			PARTIALS_PER_ROW,
-			BANK_PADDING_PARTIALS,
-			LANE_PADDING_PARTIALS,
-			PADDED_PARTIALS_PER_ROW,
-			ROWS,
-			ROWS_PER_LANE,
-			LANE_STRIDE,
-			RAKING_QUADS,
-			SMEM_QUADS);
-	}
 
 
 	/**
@@ -276,6 +228,48 @@ struct SrtsGrid
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
 		return reinterpret_cast<RakingSegment>(smem + (row * PADDED_PARTIALS_PER_ROW) + col);
+	}
+
+
+	/**
+	 * Displays configuration to standard out
+	 */
+	static __host__ __device__ __forceinline__ void Print()
+	{
+		printf("SCAN_LANES: %d\n"
+				"PARTIALS_PER_LANE: %d\n"
+				"RAKING_THREADS: %d\n"
+				"RAKING_THREADS_PER_LANE: %d\n"
+				"PARTIALS_PER_SEG: %d\n"
+				"PARTIALS_PER_BANK_ARRAY: %d\n"
+				"SEGS_PER_BANK_ARRAY: %d\n"
+				"NO_PADDING: %d\n"
+				"SEGS_PER_ROW: %d\n"
+				"PARTIALS_PER_ROW: %d\n"
+				"BANK_PADDING_PARTIALS: %d\n"
+				"LANE_PADDING_PARTIALS: %d\n"
+				"PADDED_PARTIALS_PER_ROW: %d\n"
+				"ROWS: %d\n"
+				"ROWS_PER_LANE: %d\n"
+				"LANE_STRIDE: %d\n"
+				"RAKING_QUADS: %d\n",
+			SCAN_LANES,
+			PARTIALS_PER_LANE,
+			RAKING_THREADS,
+			RAKING_THREADS_PER_LANE,
+			PARTIALS_PER_SEG,
+			PARTIALS_PER_BANK_ARRAY,
+			SEGS_PER_BANK_ARRAY,
+			NO_PADDING,
+			SEGS_PER_ROW,
+			PARTIALS_PER_ROW,
+			BANK_PADDING_PARTIALS,
+			LANE_PADDING_PARTIALS,
+			PADDED_PARTIALS_PER_ROW,
+			ROWS,
+			ROWS_PER_LANE,
+			LANE_STRIDE,
+			RAKING_QUADS);
 	}
 };
 

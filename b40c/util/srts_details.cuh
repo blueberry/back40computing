@@ -50,7 +50,7 @@ template <typename SrtsGrid>
 struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
-	typedef T (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
+	typedef volatile T (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
 	typedef NullType SecondarySrtsDetails;
 
 	enum {

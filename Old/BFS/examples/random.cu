@@ -25,14 +25,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
-#include <sstream>
-#include <iostream>
-
-#include <fstream>
-#include <deque>
-#include <algorithm>
-
 #include <test_utils.cu>
 
 
@@ -50,15 +42,15 @@
  * 
  * Returns 0 on success, 1 on failure.
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int BuildRandomGraph(
-	IndexType nodes,
-	IndexType edges,
-	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph,
+	SizeT nodes,
+	SizeT edges,
+	VertexId &src,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 { 
-	typedef CooEdgeTuple<IndexType, ValueType> EdgeTupleType;
+	typedef CooEdgeTuple<VertexId, Value> EdgeTupleType;
 
 	if ((nodes < 0) || (edges < 0)) {
 		fprintf(stderr, "Invalid graph size: nodes=%d, edges=%d", nodes, edges);
@@ -71,9 +63,11 @@ int BuildRandomGraph(
 	fflush(stdout);
 
 	// Construct COO graph
-	IndexType directed_edges = (undirected) ? edges * 2 : edges;
+
+	VertexId directed_edges = (undirected) ? edges * 2 : edges;
 	EdgeTupleType *coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
-	for (int i = 0; i < edges; i++) {
+
+	for (SizeT i = 0; i < edges; i++) {
 		coo[i].row = RandomNode(nodes);
 		coo[i].col = RandomNode(nodes);
 		coo[i].val = 1;

@@ -22,8 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for consecutive-removal downsweep
- * scan kernels
+ * Tile-processing functionality for BFS compaction downsweep kernels
  ******************************************************************************/
 
 #pragma once
@@ -39,22 +38,11 @@ namespace b40c {
 namespace bfs {
 namespace compact {
 
-/**
- * Shared memory structure
- */
-template <typename KernelConfig>
-struct DownsweepSmemStorage
-{
-	uint4 smem_pool_int4s[KernelConfig::SMEM_POOL_QUADS];
-
-	typename KernelConfig::SizeT warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-};
-
 
 /**
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelConfig>
 struct DownsweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
@@ -62,6 +50,7 @@ struct DownsweepCta : KernelConfig
 	//---------------------------------------------------------------------
 
 	typedef typename KernelConfig::VertexId 		VertexId;
+	typedef typename KernelConfig::ValidFlag		ValidFlag;
 	typedef typename KernelConfig::SizeT 			SizeT;
 	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
 
@@ -74,10 +63,10 @@ struct DownsweepCta : KernelConfig
 	// the CTA over its tile-processing lifetime (managed in each raking thread)
 	SizeT 			carry;
 
-	// Input and output device pointers
-	VertexId 		*d_in;
-	VertexId 		*d_out;
-	unsigned char	*d_flags_in;
+	// Global device storage
+	VertexId 		*d_in;			// Incoming vertex ids
+	VertexId 		*d_out;			// Compacted vertex ids
+	ValidFlag		*d_flags_in;	// Validity flags
 
 	// Pool of storage for compacting a tile of values
 	VertexId 		*smem_pool;
@@ -94,14 +83,18 @@ struct DownsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ DownsweepCta(
 		SmemStorage 	&smem_storage,
 		VertexId 		*d_in,
-		unsigned char	*d_flags_in,
+		ValidFlag		*d_flags_in,
 		VertexId 		*d_out,
 		SizeT 			spine_partial) :
 
-			srts_details(smem_storage.smem_pool_int4s, smem_storage.warpscan, 0),
+			srts_details(
+				smem_storage.smem_pool_int4s,
+				smem_storage.warpscan,
+				0),
 			smem_pool((VertexId*) smem_storage.smem_pool_int4s),
 			d_in(d_in),
 			d_flags_in(d_flags_in),
@@ -113,7 +106,7 @@ struct DownsweepCta : KernelConfig
 	 * Converts out-of-bounds valid-flags to 0
 	 */
 	static __device__ __forceinline__ void LoadTransform(
-		unsigned char &flag,
+		ValidFlag &flag,
 		bool in_bounds)
 	{
 		if (!in_bounds) {
@@ -124,16 +117,14 @@ struct DownsweepCta : KernelConfig
 
 	/**
 	 * Process a single tile
-	 *
-	 * Each thread reduces only the strided values it loads.
 	 */
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT out_of_bounds = 0)
 	{
-		VertexId 		data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of vertex ids
-		unsigned char 	flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of valid flags
+		VertexId 		vertex_id[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of vertex ids
+		ValidFlag 		flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of valid flags
 		SizeT 			ranks[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of local scatter offsets
 
 		// Load tile of vertex ids
@@ -142,7 +133,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(vertex_id, d_in, cta_offset, out_of_bounds);
 
 		// Load tile of valid flags
 		util::io::LoadTile<
@@ -150,7 +141,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::template Invoke<unsigned char, LoadTransform>(
+			FULL_TILE>::template Invoke<ValidFlag, LoadTransform>(
 				flags, d_flags_in, cta_offset, out_of_bounds);
 
 		// Copy flags into ranks
@@ -169,21 +160,21 @@ struct DownsweepCta : KernelConfig
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
 
-		// Scatter valid data into smem exchange, predicated on flags (treat
-		// data, flags, and ranks as linear arrays)
+		// Scatter valid vertex_id into smem exchange, predicated on flags (treat
+		// vertex_id, flags, and ranks as linear arrays)
 		util::io::ScatterTile<
 			KernelConfig::TILE_ELEMENTS_PER_THREAD,
 			KernelConfig::THREADS,
 			util::io::st::NONE>::Scatter(
 				smem_pool,
-				reinterpret_cast<VertexId *>(data),
-				reinterpret_cast<unsigned char *>(flags),
+				reinterpret_cast<VertexId *>(vertex_id),
+				reinterpret_cast<ValidFlag *>(flags),
 				reinterpret_cast<SizeT *>(ranks));
 
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
 
-		// Gather compacted data from smem exchange (in 1-element stride loads)
+		// Gather compacted vertex_id from smem exchange (in 1-element stride loads)
 		VertexId compacted_data[KernelConfig::TILE_ELEMENTS_PER_THREAD][1];
 		util::io::LoadTile<
 			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
@@ -193,7 +184,7 @@ struct DownsweepCta : KernelConfig
 			false>::Invoke(								// Guarded loads
 				compacted_data, smem_pool, 0, valid_elements);
 
-		// Scatter compacted data to global output
+		// Scatter compacted vertex_id to global output
 		SizeT scatter_out_of_bounds = carry + valid_elements;
 		util::io::StoreTile<
 			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,

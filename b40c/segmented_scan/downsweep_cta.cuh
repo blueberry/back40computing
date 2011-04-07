@@ -50,15 +50,15 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::Flag Flag;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
-	typedef typename KernelConfig::SoaTuple SoaTuple;
+	typedef typename KernelConfig::T 				T;
+	typedef typename KernelConfig::Flag 			Flag;
+	typedef typename KernelConfig::SizeT 			SizeT;
+	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelConfig::SoaTuple 		SoaTuple;
 
 	typedef util::Tuple<
 		T (*)[KernelConfig::LOAD_VEC_SIZE],
-		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> DataSoa;
+		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> 		DataSoa;
 
 	// This kernel can only operate in inclusive scan mode if the it's the final kernel
 	// in the scan pass
@@ -88,14 +88,22 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ DownsweepCta(
-		SrtsSoaDetails srts_soa_details,
-		T 		*d_partials_in,
-		Flag 	*d_flags_in,
-		T 		*d_partials_out,
-		T 		spine_partial = KernelConfig::Identity()) :
+		SmemStorage 	&smem_storage,
+		T 				*d_partials_in,
+		Flag 			*d_flags_in,
+		T 				*d_partials_out,
+		T 				spine_partial = KernelConfig::Identity()) :
 
-			srts_soa_details(srts_soa_details),
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.smem_pool_int4s,
+					smem_storage.smem_pool_int4s + SmemStorage::PARTIALS_RAKING_QUADS),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.partials_warpscan,
+					smem_storage.flags_warpscan),
+				KernelConfig::SoaTupleIdentity()),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_partials_out(d_partials_out),
@@ -110,7 +118,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT out_of_bounds = 0)
 	{
 		// Tiles of segmented scan elements and flags
 		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];

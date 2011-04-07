@@ -29,6 +29,7 @@
 
 #include <stdio.h> 
 #include <string>
+#include <deque>
 
 // Utilities and correctness-checking
 #include <test_utils.cu>
@@ -43,7 +44,9 @@
 #include <rr.cu>
 
 // BFS enactor includes
-#include <bfs_single_grid.cu>
+#include <bfs_common.cu>
+#include <bfs_csr_problem.cu>
+//#include <bfs_single_grid.cu>
 #include <bfs_level_grid.cu>
 
 using namespace b40c;
@@ -128,25 +131,29 @@ void Usage()
 /**
  * Displays the BFS result (i.e., distance from source)
  */
-template<typename VertexId>
-void DisplaySolution(VertexId* source_dist, VertexId nodes)
+template<typename VertexId, typename SizeT>
+void DisplaySolution(VertexId* source_path, SizeT nodes)
 {
 	printf("Solution: [");
 	for (VertexId i = 0; i < nodes; i++) {
 		PrintValue(i);
 		printf(":");
-		PrintValue(source_dist[i]);
+		PrintValue(source_path[i]);
 		printf(", ");
 	}
 	printf("]\n");
 }
 
 
+/******************************************************************************
+ * Performance/Evaluation Statistics
+ ******************************************************************************/
+
 struct Statistic 
 {
 	double mean;
 	double m2;
-	int count;
+	size_t count;
 	
 	Statistic() : mean(0.0), m2(0.0), count(0) {}
 	
@@ -154,7 +161,8 @@ struct Statistic
 	 * Updates running statistic, returning bias-corrected sample variance.
 	 * Online method as per Knuth.
 	 */
-	double Update(double sample) {
+	double Update(double sample)
+	{
 		count++;
 		double delta = sample - mean;
 		mean = mean + (delta / count);
@@ -179,24 +187,23 @@ struct Stats {
 /**
  * Displays timing and correctness statistics 
  */
-template <typename VertexId, typename ValueType>
+template <BfsStrategy STRATEGY, typename VertexId, typename Value, typename SizeT>
 void DisplayStats(
-	bool queues_nodes,
-	Stats &stats,
-	VertexId src,
-	VertexId *h_source_dist,							// computed answer
-	VertexId *reference_source_dist,					// reference answer
-	const CsrGraph<VertexId, ValueType> &csr_graph,	// reference host graph
-	double elapsed, 
-	int passes,
-	int total_queued,
-	double avg_barrier_wait)
+	Stats 									&stats,
+	VertexId 								src,
+	VertexId 								*h_source_path,							// computed answer
+	VertexId 								*reference_source_path,					// reference answer
+	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
+	double 									elapsed,
+	int 									passes,
+	SizeT 									total_queued,
+	double 									avg_barrier_wait)
 {
 	// Compute nodes and edges visited
-	int edges_visited = 0;
-	int nodes_visited = 0;
+	SizeT edges_visited = 0;
+	SizeT nodes_visited = 0;
 	for (VertexId i = 0; i < csr_graph.nodes; i++) {
-		if (h_source_dist[i] > -1) {
+		if (h_source_path[i] > -1) {
 			nodes_visited++;
 			edges_visited += csr_graph.row_offsets[i + 1] - csr_graph.row_offsets[i];
 		}
@@ -204,16 +211,16 @@ void DisplayStats(
 	
 	double redundant_work = 0.0;
 	if (total_queued > 0)  {
-		redundant_work = (queues_nodes) ? 
-			((double) total_queued - nodes_visited) / nodes_visited : 
-			((double) total_queued - edges_visited) / edges_visited;
+		redundant_work = (STRATEGY == EXPAND_CONTRACT) ?
+			((double) total_queued - nodes_visited) / nodes_visited :		// measure duplicate nodes put through queue
+			((double) total_queued - edges_visited) / edges_visited;		// measure duplicate edges put through queue
 	}
 	redundant_work *= 100;
 
 	// Display name (and correctness)
 	printf("[%s]: ", stats.name);
-	if (reference_source_dist != NULL) {
-		CompareResults(h_source_dist, reference_source_dist, csr_graph.nodes, true);
+	if (reference_source_path != NULL) {
+		CompareResults(h_source_path, reference_source_path, csr_graph.nodes, true);
 	}
 	printf("\n");
 
@@ -227,25 +234,30 @@ void DisplayStats(
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
 		if (passes != 0) printf(", passes: %d", passes);
-		if (avg_barrier_wait != 0) printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms", 
-			avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / passes);
-		printf("\n\tsrc: %d, nodes visited: %d, edges visited: %d", src, nodes_visited, edges_visited);
-		if (redundant_work != 0) printf(", redundant work: %.2f%%", redundant_work);
+		if (avg_barrier_wait != 0) {
+			printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms",
+				avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / passes);
+		}
+		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
+			(long long) src, (long long) nodes_visited, (long long) edges_visited);
+		if (redundant_work > 0) {
+			printf(", redundant work: %.2f%%", redundant_work);
+		}
 		printf("\n");
 
 		// Display the aggregate sample statistics
 		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
 
 		double passes_stddev = sqrt(stats.passes.Update((double) passes));
-		if (passes != 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n", 
+		if (passes > 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n",
 			stats.passes.mean, passes_stddev, passes_stddev / stats.passes.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
-		if (redundant_work != 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
 		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update(avg_barrier_wait / elapsed * 100));
-		if (avg_barrier_wait != 0) printf(	"\t\t[Waiting %%]:        u: %.2f, s: %.2f, cv: %.4f\n", 
+		if (avg_barrier_wait > 0) printf(	"\t\t[Waiting %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
@@ -262,42 +274,54 @@ void DisplayStats(
  * BFS Testing Routines
  ******************************************************************************/
 
-template <typename VertexId, typename BfsEnactor, typename ProblemStorage>
-float TestGpuBfs(
-	BfsEnactor &enactor,
-	ProblemStorage &problem_storage,
-	VertexId src,
-	BfsStrategy strategy,
-	VertexId *h_source_dist)						// place to copy results out to
+template <
+	BfsStrategy STRATEGY,
+	typename BfsEnactor,
+	typename ProblemStorage,
+	typename VertexId,
+	typename Value,
+	typename SizeT>
+void TestGpuBfs(
+	BfsEnactor 								&enactor,
+	ProblemStorage 							&bfs_problem,
+	VertexId 								src,
+	VertexId 								*h_source_path,						// place to copy results out to
+	VertexId 								*reference_source_path,
+	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
+	Stats									&stats)								// running statistics
 {
-	// Create timer
-	float elapsed;
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
-
 	// (Re)initialize distances
-	problem_storage.ResetSourceDist();
+	bfs_problem.Reset();
 
 	// Perform BFS
-	cudaEventRecord(start_event, 0);
-	enactor.EnactSearch(problem_storage, src, strategy);
-	cudaEventRecord(stop_event, 0);
-	cudaEventSynchronize(stop_event);
-	cudaEventElapsedTime(&elapsed, start_event, stop_event);
+	CpuTimer cpu_timer;
+	cpu_timer.Start();
+	enactor.template EnactSearch<STRATEGY>(bfs_problem, src);
+	cpu_timer.Stop();
+	float elapsed = cpu_timer.ElapsedMillis();
 
 	// Copy out results
 	cudaMemcpy(
-		h_source_dist, 
-		problem_storage.d_source_dist, 
-		problem_storage.nodes * sizeof(VertexId),
+		h_source_path,
+		bfs_problem.d_source_path,
+		bfs_problem.nodes * sizeof(VertexId),
 		cudaMemcpyDeviceToHost);
 	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-	
-	return elapsed;
+	SizeT 		total_queued = 0;
+	int 		passes = 0;
+	double		avg_barrier_wait = 0.0;
+
+	enactor.GetStatistics(total_queued, passes, avg_barrier_wait);
+	DisplayStats<STRATEGY>(
+		stats,
+		src,
+		h_source_path,
+		reference_source_path,
+		csr_graph,
+		elapsed,
+		passes,
+		total_queued,
+		avg_barrier_wait);
 }
 
 
@@ -306,22 +330,21 @@ float TestGpuBfs(
  * 
  * Computes the distance of each node from the specified source node. 
  */
-template<typename VertexId, typename ValueType>
-float SimpleReferenceBfs(
-	const CsrGraph<VertexId, ValueType> &csr_graph,
-	VertexId *source_dist,
-	VertexId src)
+template<
+	typename VertexId,
+	typename Value,
+	typename SizeT>
+void SimpleReferenceBfs(
+	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,
+	VertexId 								*source_path,
+	VertexId 								src,
+	Stats									&stats)								// running statistics
 {
-/*
-	// Create timer
-	unsigned int timer;
-	cutCreateTimer(&timer);
-*/
 	// (Re)initialize distances
 	for (VertexId i = 0; i < csr_graph.nodes; i++) {
-		source_dist[i] = -1;
+		source_path[i] = -1;
 	}
-	source_dist[src] = 0;
+	source_path[src] = 0;
 
 	// Initialize queue for managing previously-discovered nodes
 	std::deque<VertexId> frontier;
@@ -331,13 +354,14 @@ float SimpleReferenceBfs(
 	// Perform BFS 
 	//
 	
-//	cutStartTimer(timer);
+	CpuTimer cpu_timer;
+	cpu_timer.Start();
 	while (!frontier.empty()) {
 		
 		// Dequeue node from frontier
 		VertexId dequeued_node = frontier.front();
 		frontier.pop_front();
-		VertexId dist = source_dist[dequeued_node];
+		VertexId dist = source_path[dequeued_node];
 
 		// Locate adjacency list
 		int edges_begin = csr_graph.row_offsets[dequeued_node];
@@ -347,31 +371,38 @@ float SimpleReferenceBfs(
 
 			// Lookup neighbor and enqueue if undiscovered 
 			VertexId neighbor = csr_graph.column_indices[edge];
-			if (source_dist[neighbor] == -1) {
-				source_dist[neighbor] = dist + 1;
+			if (source_path[neighbor] == -1) {
+				source_path[neighbor] = dist + 1;
 				frontier.push_back(neighbor);
 			}
 		}
 	}
-/*
-	cutStopTimer(timer);
-	
-	// Cleanup
-	float elapsed = cutGetTimerValue(timer);
-	cutDeleteTimer(timer);
-	
-	return elapsed;
-*/
-	return 99999.0;
+	cpu_timer.Stop();
+	float elapsed = cpu_timer.ElapsedMillis();
+
+	DisplayStats<NONE, VertexId, Value, SizeT>(
+		stats,
+		src,
+		source_path,
+		NULL,						// No reference source path
+		csr_graph,
+		elapsed,
+		0,							// No passes
+		0,							// No redundant queuing
+		0);							// No barrier wait
 }
 
 
 /**
  * Runs tests
  */
-template <typename VertexId, typename ValueType, bool INSTRUMENT>
+template <
+	typename VertexId,
+	typename Value,
+	typename SizeT,
+	bool INSTRUMENT>
 void RunTests(
-	const CsrGraph<VertexId, ValueType> &csr_graph,
+	const CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	VertexId src,
 	bool randomized_src,
 	int test_iterations,
@@ -379,26 +410,25 @@ void RunTests(
 	int queue_size) 
 {
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
-	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
-	VertexId* h_source_dist 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
-/*
+	VertexId* reference_source_path 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	SingleGridBfsEnactor<VertexId, INSTRUMENT> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 4,
-		max_grid_size);
-*/
-
-	LevelGridBfsEnactor<VertexId> bfs_sg_enactor(
-		(queue_size > 0) ? queue_size : csr_graph.edges * 5 / 4,
-		max_grid_size);
-
-	bfs_sg_enactor.BFS_DEBUG = g_verbose;
+	LevelGridBfsEnactor bfs_sg_enactor(g_verbose);
+//	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
 
 	// Allocate problem on GPU
-	BfsCsrProblem<VertexId> problem_storage(
-		csr_graph.nodes, csr_graph.edges, csr_graph.column_indices, csr_graph.row_offsets);
-
+	BfsCsrProblem<VertexId, SizeT> bfs_problem;
+	if (bfs_problem.FromHostProblem(
+		csr_graph.nodes,
+		csr_graph.edges,
+		csr_graph.column_indices,
+		csr_graph.row_offsets))
+	{
+		exit(1);
+	}
 	
+	// Initialize statistics
 	Stats stats[3];
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("Single-grid, expand-contract GPU BFS");
@@ -413,38 +443,37 @@ void RunTests(
 		// If randomized-src was specified, re-roll the src
 		if (randomized_src) src = RandomNode(csr_graph.nodes);
 		
-		double elapsed = 0.0;
-		int total_queued = 0;
-		int passes = 0;
-		double avg_barrier_wait = 0.0; 
-
 		printf("---------------------------------------------------------------\n");
 
 		// Compute reference CPU BFS solution
-		elapsed = SimpleReferenceBfs(csr_graph, reference_source_dist, src);
-		DisplayStats<VertexId, ValueType>(
-			true, stats[0], src, reference_source_dist, NULL, csr_graph, 
-			elapsed, passes, total_queued, avg_barrier_wait);
+		SimpleReferenceBfs(csr_graph, reference_source_path, src, stats[0]);
 		printf("\n");
 /*
 		// Perform expand-contract GPU BFS search
-		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, EXPAND_CONTRACT, h_source_dist);
-		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);	
-		DisplayStats<VertexId, ValueType>(
-			true, stats[1], src, h_source_dist, reference_source_dist, csr_graph,
-			elapsed, passes, total_queued, avg_barrier_wait);
+		TestGpuBfs<EXPAND_CONTRACT>(
+			bfs_sg_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			reference_source_path,
+			csr_graph,
+			stats[1]);
 		printf("\n");
 */
+
 		// Perform contract-expand GPU BFS search
-		elapsed = TestGpuBfs(bfs_sg_enactor, problem_storage, src, CONTRACT_EXPAND, h_source_dist);
-		bfs_sg_enactor.GetStatistics(total_queued, passes, avg_barrier_wait);		
-		DisplayStats<VertexId, ValueType>(
-			false, stats[2], src, h_source_dist, reference_source_dist, csr_graph,
-			elapsed, passes, total_queued, avg_barrier_wait);
+		TestGpuBfs<CONTRACT_EXPAND>(
+			bfs_sg_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			reference_source_path,
+			csr_graph,
+			stats[2]);
 		printf("\n");
 
 		if (g_verbose2) {
-			DisplaySolution(reference_source_dist, csr_graph.nodes);
+			DisplaySolution(reference_source_path, csr_graph.nodes);
 			printf("\n");
 		}
 		
@@ -460,9 +489,8 @@ void RunTests(
 	// Cleanup
 	//
 	
-	if (reference_source_dist) free(reference_source_dist);
-	if (h_source_dist) free(h_source_dist);
-	problem_storage.Free();
+	if (reference_source_path) free(reference_source_path);
+	if (h_source_path) free(h_source_path);
 	
 	cudaThreadSynchronize();
 }
@@ -474,26 +502,25 @@ void RunTests(
 
 int main( int argc, char** argv)  
 {
-	typedef int VertexId;						// Use int's as the node identifier (we could use long longs for large graphs)
-	typedef int ValueType;						// Use int's as the value type
+	typedef int VertexId;						// Use as the node identifier type
+	typedef int Value;							// Use as the value type
+	typedef int SizeT;							// Use as the graph size type
 	
-	VertexId src 			= -1;				// Use whatever default for the specified graph-type
-	char* src_str			= NULL;
-	bool randomized_src		= false;
-	bool instrumented;
-	int test_iterations 	= 1;
-	int max_grid_size 		= 0;				// Default: leave it up the enactor
-	int queue_size			= -1;				// Default: the size of the edge list
+	VertexId 	src 			= -1;			// Use whatever default for the specified graph-type
+	char* 		src_str			= NULL;
+	bool 		randomized_src	= false;
+	bool 		instrumented	= false;
+	int 		test_iterations = 1;
+	int 		max_grid_size 	= 0;			// Default: leave it up the enactor
+	SizeT 		queue_size		= -1;			// Default: the size of the edge list
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 	cudaSetDeviceFlags(cudaDeviceMapHost);
 
-
 	srand(0);									// Presently deterministic
 	//srand(time(NULL));	
 
-	
 	//
 	// Check command line arguments
 	// 
@@ -528,7 +555,7 @@ int main( int argc, char** argv)
 	// Obtain CSR search graph
 	//
 
-	CsrGraph<VertexId, ValueType> csr_graph;
+	CsrGraph<VertexId, Value, SizeT> csr_graph;
 	
 	if (graph_args < 1) {
 		Usage();
@@ -578,8 +605,8 @@ int main( int argc, char** argv)
 	} else if (graph_type == "random") {
 		// Random graph of n nodes and m edges
 		if (graph_args < 3) { Usage(); return 1; }
-		VertexId nodes = atol(argv[2]);
-		VertexId edges = atol(argv[3]);
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = atol(argv[3]);
 		if (BuildRandomGraph(nodes, edges, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
@@ -587,7 +614,7 @@ int main( int argc, char** argv)
 	} else if (graph_type == "rr") {
 		// Random-regular-ish graph of n nodes, each with degree d (allows loops and cycles)
 		if (graph_args < 3) { Usage(); return 1; }
-		VertexId nodes = atol(argv[2]);
+		SizeT nodes = atol(argv[2]);
 		int degree = atol(argv[3]);
 		if (BuildRandomRegularishGraph(nodes, degree, src, csr_graph) != 0) {
 			return 1;
@@ -610,11 +637,11 @@ int main( int argc, char** argv)
 	// Run tests
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
-		RunTests<VertexId, ValueType, true>(
+		RunTests<VertexId, Value, SizeT, true>(
 			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
 	} else {
 		// Run regular kernel 
-		RunTests<VertexId, ValueType, false>(
+		RunTests<VertexId, Value, SizeT, false>(
 			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
 	}
 }

@@ -35,33 +35,19 @@ namespace segmented_scan {
 /**
  * Downsweep scan pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void DownsweepPass(
 	typename KernelConfig::T 			*&d_partials_in,
 	typename KernelConfig::Flag			*&d_flags_in,
 	typename KernelConfig::T 			*&d_partials_out,
 	typename KernelConfig::T 			*&d_spine_partials,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
+	SmemStorage							&smem_storage)
 {
-	typedef DownsweepCta<KernelConfig> DownsweepCta;
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::Flag Flag;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
+	typedef DownsweepCta<KernelConfig> 		DownsweepCta;
+	typedef typename KernelConfig::T		T;
+	typedef typename KernelConfig::SizeT 	SizeT;
 
-	// Shared SRTS grid storage
-	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::TOTAL_RAKING_QUADS];
-	__shared__ uint4 flag_smem_pool[KernelConfig::FlagsSrtsGrid::TOTAL_RAKING_QUADS];
-
-	// Shared SRTS warpscan storage
-	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-	__shared__ Flag flags_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-	// SRTS grid details
-	SrtsSoaDetails srts_soa_details(
-		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
-		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan),
-		KernelConfig::SoaTupleIdentity());
 
 	// Read the exclusive partial from our spine
 	T spine_partial;
@@ -70,33 +56,30 @@ __device__ __forceinline__ void DownsweepPass(
 
 	// CTA processing abstraction
 	DownsweepCta cta(
-		srts_soa_details,
+		smem_storage,
 		d_partials_in,
 		d_flags_in,
 		d_partials_out,
 		spine_partial);
 
 	// Determine our threadblock's work range
-	SizeT cta_offset;			// Offset at which this CTA begins processing
-	SizeT cta_elements;			// Total number of elements for this CTA to process
-	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_elements;		// Number of elements in partially-full tile
-
-	work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
-
-	SizeT out_of_bounds = cta_offset + cta_elements;
+	util::CtaWorkLimits<SizeT> work_limits;
+	work_decomposition.template GetCtaWorkLimits<
+		KernelConfig::LOG_TILE_ELEMENTS,
+		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// Process full tiles of tile_elements
-	while (cta_offset < guarded_offset) {
+	while (work_limits.offset < work_limits.guarded_offset) {
 
-		cta.ProcessTile<true>(cta_offset, out_of_bounds);
-		cta_offset += KernelConfig::TILE_ELEMENTS;
+		cta.template ProcessTile<true>(work_limits.offset);
+		work_limits.offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
-	if (guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, out_of_bounds);
+	if (work_limits.guarded_elements) {
+		cta.template ProcessTile<false>(
+			work_limits.offset,
+			work_limits.out_of_bounds);
 	}
 }
 
@@ -119,12 +102,16 @@ void DownsweepKernel(
 	typename KernelConfig::T 									*d_spine_partials,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
 {
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
 	DownsweepPass<KernelConfig>(
 		d_partials_in,
 		d_flags_in,
 		d_partials_out,
 		d_spine_partials,
-		work_decomposition);
+		work_decomposition,
+		smem_storage);
 }
 
 

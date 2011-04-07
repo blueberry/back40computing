@@ -27,6 +27,7 @@
 
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -64,8 +65,9 @@ template <
 
 struct UpsweepKernelConfig : _ProblemType
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::VertexId VertexId;
+	typedef _ProblemType 					ProblemType;
+	typedef typename ProblemType::VertexId 	VertexId;
+	typedef typename ProblemType::SizeT 	SizeT;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -95,20 +97,41 @@ struct UpsweepKernelConfig : _ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+	};
 
-		// Amount of storage (in quads) for a reduction tree of SizeT partials the size of the CTA
-		REDUCTION_QUADS					= ((THREADS * sizeof(SizeT)) + sizeof(uint4) - 1) / sizeof(uint4),
+	/**
+	 * Shared memory structure
+	 */
+	struct SmemStorage
+	{
+		// Shared work-processing limits
+		util::CtaWorkDistribution<SizeT>		work_decomposition;
+
+		enum {
+			// Amount of storage (in quads) for a reduction tree of SizeT partials the size of the CTA
+			REDUCTION_QUADS				= B40C_QUADS(THREADS * sizeof(SizeT)),
+
+			// Amount of storage we can use for hashing scratch space under target occupancy
+			FULL_OCCUPANCY_QUADS		= B40C_QUADS((B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY) - B40C_QUADS(sizeof(util::CtaWorkDistribution<SizeT>)) - 64),
+
+			// Amount of repurposable quads to use for pool
+			SMEM_POOL_QUADS				= B40C_MAX(REDUCTION_QUADS, FULL_OCCUPANCY_QUADS),
+			SMEM_POOL_VERTEX_IDS		= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId),
+		};
+
+		// General pool for hashing & tree-reduction
+		uint4 							smem_pool_int4s[SMEM_POOL_QUADS];
+	};
+
+	enum {
+		// Total number of smem quads needed by this kernel
+		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (REDUCTION_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		// Actually allocate as much as we can for our occupancy (to use for scratch hashing)
-		SMEM_POOL_QUADS					= ((B40C_SMEM_BYTES(CUDA_ARCH) / CTA_OCCUPANCY) - 64 + sizeof(uint4) - 1) / sizeof(uint4),
-
-		SMEM_QUADS						= SMEM_POOL_QUADS,
-
-		VALID 							= (CTA_OCCUPANCY > 0)
+		VALID							= (CTA_OCCUPANCY > 0),
 	};
 };
 

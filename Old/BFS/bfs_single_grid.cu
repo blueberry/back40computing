@@ -193,7 +193,7 @@ public:
 				this->d_queue[1],								
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_dist,
+				bfs_problem.d_source_path,
 				this->d_queue_lengths,							
 				this->barrier,
 				this->d_barrier_time);
@@ -215,7 +215,7 @@ public:
 				this->d_queue[1],								
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_dist,
+				bfs_problem.d_source_path,
 				this->d_queue_lengths,							
 				this->barrier,
 				this->d_barrier_time);

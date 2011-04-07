@@ -25,14 +25,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
-#include <sstream>
-#include <iostream>
-
-#include <fstream>
-#include <deque>
-#include <algorithm>
-
 #include <test_utils.cu>
 
 
@@ -45,29 +37,29 @@
  * Does not meet definition of random-regular: loops, and multi-edges are 
  * possible, and in-degree is not guaranteed to be the same as out degree.   
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int BuildRandomRegularishGraph(
-	IndexType nodes,
+	SizeT nodes,
 	int degree,
-	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	VertexId &src,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 {
-	IndexType edges = nodes * degree;
+	SizeT edges 				= nodes * degree;
 	
 	csr_graph.edges 			= edges;
 	csr_graph.nodes 			= nodes;
-	csr_graph.row_offsets 		= (IndexType*) malloc(sizeof(IndexType) * (csr_graph.nodes + 1));
-	csr_graph.column_indices 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.edges);
-	csr_graph.values 			= (ValueType*) malloc(sizeof(ValueType) * csr_graph.edges);
+	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
+	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
+	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
 
-	IndexType total = 0;
-    for (IndexType node = 0; node < nodes; node++) {
+	SizeT total = 0;
+    for (VertexId node = 0; node < nodes; node++) {
     	
     	csr_graph.row_offsets[node] = total;
     	
-    	for (IndexType edge = 0; edge < degree; edge++) {
+    	for (int edge = 0; edge < degree; edge++) {
     		
-    		IndexType neighbor = RandomNode(csr_graph.nodes);
+    		VertexId neighbor = RandomNode(csr_graph.nodes);
     		csr_graph.column_indices[total] = neighbor;
     		csr_graph.values[node] = 1;
     		

@@ -25,14 +25,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
-#include <sstream>
-#include <iostream>
-
-#include <fstream>
-#include <deque>
-#include <algorithm>
-
 #include <test_utils.cu>
 
 
@@ -43,16 +35,16 @@
 /**
  * Reads a MARKET graph from an input-stream into a CSR sparse format
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int ReadMarketStream(
 	FILE *f_in,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 {
-	typedef CooEdgeTuple<IndexType, ValueType> EdgeTupleType;
+	typedef CooEdgeTuple<VertexId, Value> EdgeTupleType;
 	
-	IndexType edges_read = -1;
-	IndexType nodes = 0;
-	IndexType edges = 0;
+	SizeT edges_read = -1;
+	SizeT nodes = 0;
+	SizeT edges = 0;
 	EdgeTupleType *coo = NULL;		// read in COO format
 	
 	time_t mark0 = time(NULL);
@@ -156,11 +148,11 @@ int ReadMarketStream(
  * If src == -1, it is assigned a random node.  Otherwise it is verified 
  * to be in range of the constructed graph.
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int BuildMarketGraph(
 	char *dimacs_filename, 
-	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	VertexId &src,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 { 
 	if (dimacs_filename == NULL) {
 

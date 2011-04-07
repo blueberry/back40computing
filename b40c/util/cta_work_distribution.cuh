@@ -32,6 +32,21 @@ namespace util {
 
 
 /**
+ * Structure for describing the limits of work-processing for a given CTA
+ */
+template <typename SizeT>
+struct CtaWorkLimits
+{
+	SizeT 	offset;				// Offset at which this CTA begins processing
+	SizeT 	elements;			// Total number of elements for this CTA to process
+	SizeT 	guarded_offset; 	// Offset of final, partially-full tile (requires guarded loads)
+	SizeT 	guarded_elements;	// Number of elements in partially-full tile
+	SizeT 	out_of_bounds;		// Offset at which this CTA is out-of-bounds
+	bool	last_block;			// If this block is the last block in the grid with any work
+};
+
+
+/**
  * Description of work distribution amongst CTAs
  *
  * A given threadblock may receive one of three different amounts of 
@@ -42,25 +57,29 @@ namespace util {
 template <typename SizeT> 		// Integer type for indexing into problem arrays (e.g., int, long long, etc.)
 struct CtaWorkDistribution
 {
-	SizeT num_elements;		// Number of elements in the problem
-	SizeT total_grains;		// Number of "grain" blocks to break the problem into (round up)
-	SizeT grains_per_cta;	// Number of "grain" blocks per CTA
-	SizeT extra_grains;		// Number of CTAs having one extra "grain block"
-	int grid_size;			// Number of CTAs
+	SizeT 	num_elements;		// Number of elements in the problem
+	SizeT 	total_grains;		// Number of "grain" blocks to break the problem into (round up)
+	SizeT 	grains_per_cta;		// Number of "grain" blocks per CTA
+	SizeT 	extra_grains;		// Number of CTAs having one extra "grain block"
+	int 	grid_size;			// Number of CTAs
+
 
 	/**
-	 * Constructor
+	 * Initializer
 	 */
-	CtaWorkDistribution(
+	template <int LOG_SCHEDULE_GRANULARITY>
+	__host__ __device__ __forceinline__ void Init(
 		SizeT num_elements,
-		int schedule_granularity, 	// Problem granularity by which work is distributed amongst CTA threadblocks
-		int grid_size) :
-			num_elements(num_elements),
-			total_grains((num_elements + schedule_granularity - 1) / schedule_granularity),		// round up
-			grains_per_cta((grid_size > 0) ? total_grains / grid_size : 0),						// round down for the ks
-			extra_grains(total_grains - (grains_per_cta * grid_size)), 							// the CTAs with +1 grains
-			grid_size(grid_size)
-	{}
+		int grid_size)
+	{
+		const int SCHEDULE_GRANULARITY = 1 << LOG_SCHEDULE_GRANULARITY;
+
+		this->num_elements 		= num_elements;
+		this->total_grains 		= ((num_elements + SCHEDULE_GRANULARITY - 1) >> LOG_SCHEDULE_GRANULARITY);	// round up
+		this->grains_per_cta 	= total_grains / grid_size;																// round down for the ks
+		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);											// the CTAs with +1 grains
+		this->grid_size 		= grid_size;
+	}
 
 
 	/**
@@ -69,47 +88,46 @@ struct CtaWorkDistribution
 	template <
 		int LOG_TILE_ELEMENTS,			// CTA tile size, i.e., granularity by which the CTA processes work
 		int LOG_SCHEDULE_GRANULARITY>	// Problem granularity by which work is distributed amongst CTA threadblocks
-	__device__ __forceinline__ void GetCtaWorkLimits(
-		SizeT &cta_offset,				// Out param: Offset at which this CTA begins processing
-		SizeT &cta_elements,			// Out param: Total number of elements for this CTA to process
-		SizeT &guarded_offset, 			// Out param: Offset of final, partially-full tile (requires guarded loads)
-		SizeT &cta_guarded_elements)	// Out param: Number of elements in partially-full tile
+	__host__ __device__ __forceinline__ void GetCtaWorkLimits(
+		CtaWorkLimits<SizeT> &work_limits)	// Out param
 	{
 		const int TILE_ELEMENTS 				= 1 << LOG_TILE_ELEMENTS;
-		const int SCHEDULE_GRANULARITY 			= 1 << LOG_SCHEDULE_GRANULARITY;
 		
 		// Compute number of elements and offset at which to start tile processing
 		if (blockIdx.x < extra_grains) {
 
 			// This CTA gets grains_per_cta+1 grains
-			cta_elements = (grains_per_cta + 1) << LOG_SCHEDULE_GRANULARITY;
-			cta_offset = cta_elements * blockIdx.x;
+			work_limits.elements = (grains_per_cta + 1) << LOG_SCHEDULE_GRANULARITY;
+			work_limits.offset = work_limits.elements * blockIdx.x;
 
 		} else if (blockIdx.x < total_grains) {
 
 			// This CTA gets grains_per_cta grains
-			cta_elements = grains_per_cta << LOG_SCHEDULE_GRANULARITY;
-			cta_offset = (cta_elements * blockIdx.x) + (extra_grains << LOG_SCHEDULE_GRANULARITY);
+			work_limits.elements = grains_per_cta << LOG_SCHEDULE_GRANULARITY;
+			work_limits.offset = (work_limits.elements * blockIdx.x) + (extra_grains << LOG_SCHEDULE_GRANULARITY);
 
 		} else {
 
 			// This CTA gets no work (problem small enough that some CTAs don't even a single grain)
-			cta_elements = 0;
-			cta_offset = 0;
-		}
-		
-		// The last CTA having work will have rounded its last grain up past the end
-		if (cta_offset + cta_elements > num_elements) {
-			cta_elements = cta_elements - SCHEDULE_GRANULARITY + 			// subtract grain size
-				(num_elements & (SCHEDULE_GRANULARITY - 1));				// add delta to end of input
+			work_limits.elements = 0;
+			work_limits.offset = 0;
 		}
 
-		// The tile-aligned limit for full-tile processing
-		cta_guarded_elements = cta_elements & (TILE_ELEMENTS - 1);
+		// The offset at which this CTA is out-of-bounds
+		work_limits.out_of_bounds = work_limits.offset + work_limits.elements;
+
+		// Correct for the case where the last CTA having work has rounded its last grain up past the end
+		if (work_limits.last_block = work_limits.out_of_bounds >= num_elements) {
+			work_limits.out_of_bounds = num_elements;
+			work_limits.elements = num_elements - work_limits.offset;
+		}
 
 		// The number of extra guarded-load elements to process afterward (always
 		// less than a full tile)
-		guarded_offset = cta_offset + cta_elements - cta_guarded_elements;
+		work_limits.guarded_elements = work_limits.elements & (TILE_ELEMENTS - 1);
+
+		// The tile-aligned limit for full-tile processing
+		work_limits.guarded_offset = work_limits.out_of_bounds - work_limits.guarded_elements;
 	}
 
 
@@ -124,7 +142,6 @@ struct CtaWorkDistribution
 			(unsigned long) grains_per_cta,
 			(unsigned long) extra_grains,
 			(unsigned long) grid_size);
-
 	}
 };
 

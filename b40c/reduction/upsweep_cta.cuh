@@ -48,8 +48,8 @@ struct UpsweepCta : KernelConfig
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelConfig::T 		T;
+	typedef typename KernelConfig::SizeT 	SizeT;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -63,7 +63,7 @@ struct UpsweepCta : KernelConfig
 	T* d_out;
 
 	// Smem storage for reduction tree
-	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
+	T* reduction_tree;
 
 
 	//---------------------------------------------------------------------
@@ -74,12 +74,13 @@ struct UpsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ UpsweepCta(
-		uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS],
+		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out) :
 
-			reduction_tree(reduction_tree),
+			reduction_tree((T*) smem_storage.smem_pool_int4s),
 			d_in(d_in),
 			d_out(d_out) {}
 
@@ -91,8 +92,7 @@ struct UpsweepCta : KernelConfig
 	 */
 	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT cta_offset)
 	{
 		// Tile of elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -103,7 +103,7 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			true>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			true>::Invoke(data, d_in, cta_offset);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<
@@ -189,7 +189,7 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::LOG_THREADS,
 			KernelConfig::BinaryOp>::Invoke<false>(			// No need to return aggregate reduction in all threads
 				carry,
-				(T*) reduction_tree,
+				reduction_tree,
 				num_elements);
 
 		// Write output

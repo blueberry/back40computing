@@ -62,10 +62,10 @@ template <
 
 struct UpsweepKernelConfig : _ProblemType
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::SizeT 	SizeT;
-	typedef typename ProblemType::T 		T;
-	typedef typename ProblemType::FlagCount	FlagCount;			// Type for discontinuity counts
+	typedef _ProblemType 						ProblemType;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::T 			T;
+	typedef typename ProblemType::FlagCount		FlagCount;			// Type for discontinuity counts
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -95,15 +95,30 @@ struct UpsweepKernelConfig : _ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+	};
 
-		// Amount of storage (in quads) for a reduction tree of discontinuity counts the size of the CTA
-		SMEM_QUADS						= ((THREADS * sizeof(FlagCount)) + sizeof(uint4) - 1) / sizeof(uint4),
+	/**
+	 * Shared memory structure
+	 */
+	struct SmemStorage
+	{
+		enum {
+			// Amount of storage (in quads) for a reduction tree of SizeT partials the size of the CTA
+			REDUCTION_QUADS				= B40C_QUADS(THREADS * sizeof(FlagCount)),
+		};
+
+		uint4 smem_pool_int4s[REDUCTION_QUADS];
+	};
+
+	enum {
+		// Total number of smem quads needed by this kernel
+		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		VALID 							= (CTA_OCCUPANCY > 0)
+		VALID							= (CTA_OCCUPANCY > 0),
 	};
 };
 

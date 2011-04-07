@@ -35,17 +35,15 @@ namespace consecutive_removal {
 /**
  * Upsweep reduction pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void UpsweepPass(
 	typename KernelConfig::T 									*&d_in,
 	typename KernelConfig::FlagCount 							*&d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition)
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
+	SmemStorage													&smem_storage)
 {
 	typedef UpsweepCta<KernelConfig> 			UpsweepCta;
 	typedef typename KernelConfig::SizeT 		SizeT;
-
-	// Shared SRTS grid storage
-	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
 
 	// Quit if we're the last threadblock (no need for it in upsweep).  All other
 	// threadblocks process full tiles only.
@@ -54,26 +52,22 @@ __device__ __forceinline__ void UpsweepPass(
 	}
 
 	// CTA processing abstraction
-	UpsweepCta cta(reduction_tree, d_in, d_spine);
+	UpsweepCta cta(smem_storage, d_in, d_spine);
 
 	// Determine our threadblock's work range
-	SizeT cta_offset;			// Offset at which this CTA begins processing
-	SizeT cta_elements;			// Total number of elements for this CTA to process
-	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_elements;		// Number of elements in partially-full tile
-
-	work_decomposition.GetCtaWorkLimits<UpsweepCta::LOG_TILE_ELEMENTS, UpsweepCta::LOG_SCHEDULE_GRANULARITY>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
+	util::CtaWorkLimits<SizeT> work_limits;
+	work_decomposition.template GetCtaWorkLimits<
+		KernelConfig::LOG_TILE_ELEMENTS,
+		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// Since we're not the last block: process at least one full tile of tile_elements
-	cta.template ProcessFullTile<true>(cta_offset);
-	cta_offset += UpsweepCta::TILE_ELEMENTS;
+	cta.template ProcessFullTile<true>(work_limits.offset);
+	work_limits.offset += UpsweepCta::TILE_ELEMENTS;
 
 	// Process any other full tiles
-	while (cta_offset < guarded_offset) {
-
-		cta.ProcessFullTile<false>(cta_offset);
-		cta_offset += UpsweepCta::TILE_ELEMENTS;
+	while (work_limits.offset < work_limits.guarded_offset) {
+		cta.template ProcessFullTile<false>(work_limits.offset);
+		work_limits.offset += UpsweepCta::TILE_ELEMENTS;
 	}
 
 	// Collectively reduce accumulated carry from each thread into output
@@ -97,7 +91,10 @@ void UpsweepKernel(
 	typename KernelConfig::FlagCount							*d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
 {
-	UpsweepPass<KernelConfig>(d_in, d_spine, work_decomposition);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	UpsweepPass<KernelConfig>(d_in, d_spine, work_decomposition, smem_storage);
 }
 
 

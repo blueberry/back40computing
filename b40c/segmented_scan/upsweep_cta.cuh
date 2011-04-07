@@ -84,14 +84,22 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ UpsweepCta(
-		SrtsSoaDetails 	srts_soa_details,
+		SmemStorage 	&smem_storage,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
 		T 				*d_spine_partials,
 		Flag 			*d_spine_flags) :
 
-			srts_soa_details(srts_soa_details),
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.smem_pool_int4s,
+					smem_storage.smem_pool_int4s + SmemStorage::PARTIALS_RAKING_QUADS),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.partials_warpscan,
+					smem_storage.flags_warpscan),
+				KernelConfig::SoaTupleIdentity()),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_spine_partials(d_spine_partials),
@@ -102,8 +110,7 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 	 * Process a single, full tile
 	 */
 	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT cta_offset)
 	{
 		// Tiles of segmented scan elements and flags
 		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -116,7 +123,7 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(						// unguarded I/O
-				partials, d_partials_in, cta_offset, out_of_bounds);
+				partials, d_partials_in, cta_offset);
 
 		// Load tile of flags
 		util::io::LoadTile<
@@ -125,7 +132,7 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(						// unguarded I/O
-				flags, d_flags_in, cta_offset, out_of_bounds);
+				flags, d_flags_in, cta_offset);
 
 		// Reduce tile with carry maintained by thread SrtsSoaDetails::CUMULATIVE_THREAD
 		util::reduction::soa::CooperativeSoaTileReduction<

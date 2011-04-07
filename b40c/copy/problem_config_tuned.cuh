@@ -176,7 +176,7 @@ __global__ void TunedSweepKernel(
 	void 								*d_in,
 	void 								*d_out,
 	util::CtaWorkDistribution<size_t> 	work_decomposition,
-	util::WorkProgress					work_progress,
+	util::CtaWorkProgress					work_progress,
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture

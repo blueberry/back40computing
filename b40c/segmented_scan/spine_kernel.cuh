@@ -34,39 +34,24 @@ namespace segmented_scan {
 /**
  * Segmented scan spine pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void SpinePass(
 	typename KernelConfig::T 		*&d_partials_in,
 	typename KernelConfig::Flag		*&d_flags_in,
 	typename KernelConfig::T 		*&d_partials_out,
-	typename KernelConfig::SizeT 	&spine_elements)
+	typename KernelConfig::SizeT 	&spine_elements,
+	SmemStorage						&smem_storage)
 {
 	typedef DownsweepCta<KernelConfig> DownsweepCta;
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::Flag Flag;
 	typedef typename KernelConfig::SizeT SizeT;
 	typedef typename KernelConfig::SrtsSoaDetails SrtsSoaDetails;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// Shared SRTS grid storage
-	__shared__ uint4 partial_smem_pool[KernelConfig::PartialsSrtsGrid::TOTAL_RAKING_QUADS];
-	__shared__ uint4 flag_smem_pool[KernelConfig::FlagsSrtsGrid::TOTAL_RAKING_QUADS];
-
-	// Shared SRTS warpscan storage
-	__shared__ T partials_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-	__shared__ Flag flags_warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-	// SRTS grid details
-	SrtsSoaDetails srts_soa_details(
-		typename SrtsSoaDetails::GridStorageSoa(partial_smem_pool, flag_smem_pool),
-		typename SrtsSoaDetails::WarpscanSoa(partials_warpscan, flags_warpscan),
-		KernelConfig::SoaTupleIdentity());
-
 	// CTA processing abstraction
 	DownsweepCta cta(
-		srts_soa_details,
+		smem_storage,
 		d_partials_in,
 		d_flags_in,
 		d_partials_out);
@@ -81,13 +66,15 @@ __device__ __forceinline__ void SpinePass(
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
 
-		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
+		cta.template ProcessTile<true>(cta_offset);
 		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, spine_elements);
+		cta.template ProcessTile<false>(
+			cta_offset,
+			spine_elements);
 	}
 }
 
@@ -108,8 +95,15 @@ void SpineKernel(
 	typename KernelConfig::T 		*d_partials_out,
 	typename KernelConfig::SizeT 	spine_elements)
 {
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
 	SpinePass<KernelConfig>(
-		d_partials_in, d_flags_in, d_partials_out, spine_elements);
+		d_partials_in,
+		d_flags_in,
+		d_partials_out,
+		spine_elements,
+		smem_storage);
 }
 
 
