@@ -167,6 +167,37 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
 	}
+
+
+	/**
+	 * Scan a single tile with atomic enqueue.  Total aggregate is computed and
+	 * returned in all threads.
+	 *
+	 * No post-synchronization needed before srts_details reuse.
+	 */
+	static __device__ __forceinline__ T ScanTileWithEnqueue(
+		SrtsDetails srts_details,
+		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		T *d_enqueue_counter,
+		T &enqueue_offset)
+	{
+		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
+		CooperativeTileScan::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data);
+
+		__syncthreads();
+
+		CooperativeGridScan<SrtsDetails, ScanOp>::ScanTileWithEnqueue(
+			srts_details, d_enqueue_counter, enqueue_offset);
+
+		__syncthreads();
+
+		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
+		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+
+		// Return last thread's inclusive partial
+		return srts_details.CumulativePartial();
+	}
 };
 
 
@@ -245,7 +276,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 	 */
 	static __device__ __forceinline__ void ScanTileWithEnqueue(
 		SrtsDetails srts_details,
-		T* d_enqueue_counter)
+		T *d_enqueue_counter)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
@@ -268,6 +299,36 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 			// Seed exclusive partial with queue reservation offset
 			reservation_offset = srts_details.warpscan[1][0];
 			exclusive_partial = ScanOp(reservation_offset, exclusive_partial);
+
+			// Exclusive raking scan
+			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+				srts_details.raking_segment, exclusive_partial);
+		}
+	}
+
+	/**
+	 * Scan in last-level SRTS grid with atomic enqueue
+	 */
+	static __device__ __forceinline__ void ScanTileWithEnqueue(
+		SrtsDetails srts_details,
+		T *d_enqueue_counter,
+		T &enqueue_offset)
+	{
+		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
+
+			// Raking reduction
+			T inclusive_partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+				srts_details.raking_segment);
+
+			// Exclusive warp scan, get total
+			T warpscan_total;
+			T exclusive_partial = WarpScan<T, SrtsDetails::LOG_RAKING_THREADS, true, SrtsDetails::LOG_RAKING_THREADS, ScanOp>::Invoke(
+					inclusive_partial, warpscan_total, srts_details.warpscan);
+
+			// Atomic-increment the global counter with the total allocation
+			if (threadIdx.x == 0) {
+				enqueue_offset = util::AtomicInt<T>::Add(d_enqueue_counter, warpscan_total);
+			}
 
 			// Exclusive raking scan
 			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
