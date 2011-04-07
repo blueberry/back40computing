@@ -267,7 +267,8 @@ cudaError_t Enactor::EnactInternal(
 	int spine_elements = ((sweep_grid_size + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
 
 	// Obtain a CTA work distribution for copying items of type T
-	util::CtaWorkDistribution<SizeT> work(num_elements, Downsweep::SCHEDULE_GRANULARITY, sweep_grid_size);
+	util::CtaWorkDistribution<SizeT> work;
+	work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
 
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",

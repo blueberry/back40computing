@@ -40,49 +40,43 @@ namespace reduction {
 template <typename KernelConfig, bool WORK_STEALING>
 struct UpsweepPass
 {
+	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::T 									*&d_in,
 		typename KernelConfig::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
-		const util::WorkProgress 									&work_progress)
+		util::CtaWorkProgress 										&work_progress,
+		SmemStorage													&smem_storage)
 	{
-		typedef UpsweepCta<KernelConfig> UpsweepCta;
-		typedef typename KernelConfig::T T;
-		typedef typename KernelConfig::SizeT SizeT;
-
-		// Shared SRTS grid storage
-		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
+		typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		UpsweepCta cta(reduction_tree, d_in, d_out);
+		UpsweepCta cta(smem_storage, d_in, d_out);
 
 		// Determine our threadblock's work range
-		SizeT cta_offset;			// Offset at which this CTA begins processing
-		SizeT cta_elements;			// Total number of elements for this CTA to process
-		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-		SizeT guarded_elements;		// Number of elements in partially-full tile
+		util::CtaWorkLimits<SizeT> work_limits;
+		work_decomposition.template GetCtaWorkLimits<
+			KernelConfig::LOG_TILE_ELEMENTS,
+			KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-		work_decomposition.template GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-			cta_offset, cta_elements, guarded_offset, guarded_elements);
-
-		SizeT out_of_bounds = cta_offset + cta_elements;
-
-		if (cta_offset < guarded_offset) {
+		if (work_limits.offset < work_limits.guarded_offset) {
 
 			// Process at least one full tile of tile_elements
+			cta.template ProcessFullTile<true>(work_limits.offset);
+			work_limits.offset += KernelConfig::TILE_ELEMENTS;
 
-			cta.template ProcessFullTile<true>(cta_offset, out_of_bounds);
-			cta_offset += KernelConfig::TILE_ELEMENTS;
-
-			while (cta_offset < guarded_offset) {
-				// Process more full tiles (not first tile)
-				cta.template ProcessFullTile<false>(cta_offset, out_of_bounds);
-				cta_offset += KernelConfig::TILE_ELEMENTS;
+			// Process more full tiles (not first tile)
+			while (work_limits.offset < work_limits.guarded_offset) {
+				cta.template ProcessFullTile<false>(work_limits.offset);
+				work_limits.offset += KernelConfig::TILE_ELEMENTS;
 			}
 
 			// Clean up last partial tile with guarded-io (not first tile)
-			if (guarded_elements) {
-				cta.template ProcessPartialTile<false>(cta_offset, out_of_bounds);
+			if (work_limits.guarded_elements) {
+				cta.template ProcessPartialTile<false>(
+					work_limits.offset,
+					work_limits.out_of_bounds);
 			}
 
 			// Collectively reduce accumulated carry from each thread into output
@@ -92,30 +86,34 @@ struct UpsweepPass
 		} else {
 
 			// Clean up last partial tile with guarded-io (first tile)
-			cta.template ProcessPartialTile<true>(cta_offset, out_of_bounds);
+			cta.template ProcessPartialTile<true>(
+				work_limits.offset,
+				work_limits.out_of_bounds);
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			cta.OutputToSpine(cta_elements);
+			cta.OutputToSpine(work_limits.elements);
 		}
 
 	}
 };
 
 
-template <int TILE_ELEMENTS, typename SizeT>
+template <typename SizeT>
 __device__ __forceinline__ SizeT StealWork(
-	const util::WorkProgress &work_progress,
-	SizeT &s_cta_offset)		// reference to shared memory
+	util::CtaWorkProgress &work_progress,
+	int count)
 {
+	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
+
 	// Thread zero atomically steals work from the progress counter
 	if (threadIdx.x == 0) {
-		s_cta_offset = work_progress.Steal<TILE_ELEMENTS>();
+		s_offset = work_progress.Steal<SizeT>(count);
 	}
 
-	__syncthreads();		// Protect cta_offset
+	__syncthreads();		// Protect offset
 
-	return s_cta_offset;
+	return s_offset;
 }
 
 
@@ -126,28 +124,23 @@ __device__ __forceinline__ SizeT StealWork(
 template <typename KernelConfig>
 struct UpsweepPass <KernelConfig, true>
 {
+	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::T 									*&d_in,
 		typename KernelConfig::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
-		const util::WorkProgress 									&work_progress)
+		util::CtaWorkProgress 										&work_progress,
+		SmemStorage													&smem_storage)
 	{
-		typedef UpsweepCta<KernelConfig> UpsweepCta;
-		typedef typename KernelConfig::T T;
-		typedef typename KernelConfig::SizeT SizeT;
-
-		// Shared SRTS grid storage
-		__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
+		typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		UpsweepCta cta(reduction_tree, d_in, d_out);
-
-		__shared__ SizeT 	s_cta_offset;		// The offset at which this CTA performs tile processing, shared by all
-		SizeT 				cta_offset;			// Thread's copy of s_cta_offset
+		UpsweepCta cta(smem_storage, d_in, d_out);
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
-			work_progress.PrepareNext();
+			work_progress.template PrepResetSteal<SizeT>();
 		}
 
 		// Total number of elements in full tiles
@@ -156,19 +149,21 @@ struct UpsweepPass <KernelConfig, true>
 		// Each CTA needs to process at least one partial block of
 		// input (otherwise our spine scan will be invalid)
 
-		cta_offset = blockIdx.x << KernelConfig::LOG_TILE_ELEMENTS;
-
-		if (cta_offset < unguarded_elements) {
+		SizeT offset = blockIdx.x << KernelConfig::LOG_TILE_ELEMENTS;
+		if (offset < unguarded_elements) {
 
 			// Process our one full tile (first tile seen)
-			cta.template ProcessFullTile<true>(cta_offset, unguarded_elements);
+			cta.template ProcessFullTile<true>(offset);
 
 			// Determine the swath we just did
 			SizeT swath = work_decomposition.grid_size << KernelConfig::LOG_TILE_ELEMENTS;
 
 			// Worksteal subsequent full tiles, if any
-			while ((cta_offset = StealWork<KernelConfig::TILE_ELEMENTS>(work_progress, s_cta_offset) + swath) < unguarded_elements) {
-				cta.template ProcessFullTile<false>(cta_offset, unguarded_elements);
+			while ((offset = StealWork<SizeT>(
+				work_progress,
+				KernelConfig::TILE_ELEMENTS) + swath) < unguarded_elements)
+			{
+				cta.template ProcessFullTile<false>(offset);
 			}
 
 			// If the problem is big enough for the last CTA to be in this if-then-block,
@@ -208,13 +203,17 @@ void UpsweepKernel(
 	typename KernelConfig::T 									*d_in,
 	typename KernelConfig::T 									*d_spine,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition,
-	util::WorkProgress											work_progress)
+	util::CtaWorkProgress											work_progress)
 {
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
 	UpsweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine,
 		work_decomposition,
-		work_progress);
+		work_progress,
+		smem_storage);
 }
 
 

@@ -131,7 +131,7 @@ __global__ void BfsSingleGridKernel(
 	VertexId *d_out_queue,								// Queue of node-IDs to produce
 	VertexId *d_column_indices,						// CSR column indices
 	VertexId *d_row_offsets,							// CSR row offsets
-	VertexId *d_source_dist,							// Distance from the source node (initialized to -1) (per-node)
+	VertexId *d_source_path,							// Distance from the source node (initialized to -1) (per-node)
 	int *d_queue_lengths,								// Rotating 4-element array of atomic counters indicating sizes of the incoming and outgoing frontier queues
 	util::GlobalBarrier barrier,						// Array of global synchronization counters, one for each threadblock
 	unsigned long long *d_barrier_time)					// Time (in clocks) spent by each threadblock in software global barrier
@@ -254,7 +254,7 @@ __global__ void BfsSingleGridKernel(
 			
 			// Expand-contract algorithm requires setting source to already-discovered
 			if (STRATEGY == EXPAND_CONTRACT) {
-				d_source_dist[src] = 0;
+				d_source_path[src] = 0;
 			}
 		} else {
 
@@ -281,7 +281,7 @@ __global__ void BfsSingleGridKernel(
 					LOAD_VEC_SIZE, QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
-				d_collision_cache, d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				d_collision_cache, d_out_queue, d_in_queue, d_column_indices, d_row_offsets, d_source_path, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 
 		} else {
@@ -291,7 +291,7 @@ __global__ void BfsSingleGridKernel(
 					LOAD_VEC_SIZE, QUEUE_LD_MODIFIER, QUEUE_ST_MODIFIER, COLUMN_INDICES_MODIFIER,
 					ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
 				iteration, s_cta_extra_elements, scratch_pool, base_partial, raking_segment, warpscan,
-				d_collision_cache, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_dist, d_queue_lengths + outgoing_queue_length_idx,
+				d_collision_cache, d_in_queue, d_out_queue, d_column_indices, d_row_offsets, d_source_path, d_queue_lengths + outgoing_queue_length_idx,
 				s_enqueue_offset, s_cta_offset, s_cta_extra_elements, s_cta_out_of_bounds);
 		}
 

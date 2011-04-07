@@ -43,48 +43,47 @@ struct SweepPass
 		typename KernelConfig::T 									*&d_in,
 		typename KernelConfig::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
-		const util::WorkProgress 									&work_progress,
-		const int 													&extra_bytes)
+		util::CtaWorkProgress 										&work_progress,
+		int 														&extra_bytes)
 	{
-		typedef SweepCta<KernelConfig> SweepCta;
-		typedef typename KernelConfig::T T;
-		typedef typename KernelConfig::SizeT SizeT;
+		typedef SweepCta<KernelConfig> 			SweepCta;
+		typedef typename KernelConfig::T 		T;
+		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
 		SweepCta cta(d_in, d_out);
 
 		// Determine our threadblock's work range
-		SizeT cta_offset;			// Offset at which this CTA begins processing
-		SizeT cta_elements;			// Total number of elements for this CTA to process
-		SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-		SizeT guarded_elements;		// Number of elements in partially-full tile
-
-		work_decomposition.GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-			cta_offset, cta_elements, guarded_offset, guarded_elements);
-
-		SizeT out_of_bounds = cta_offset + cta_elements;
+		util::CtaWorkLimits<SizeT> work_limits;
+		work_decomposition.template GetCtaWorkLimits<
+			KernelConfig::LOG_TILE_ELEMENTS,
+			KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 		// Process full tiles of tile_elements
-		while (cta_offset < guarded_offset) {
+		while (work_limits.offset < work_limits.guarded_offset) {
 
-			cta.ProcessTile<true>(cta_offset, out_of_bounds);
-			cta_offset += KernelConfig::TILE_ELEMENTS;
+			cta.ProcessTile<true>(work_limits.offset);
+			work_limits.offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
-		if (guarded_elements) {
-			cta.ProcessTile<false>(cta_offset, out_of_bounds);
+		if (work_limits.guarded_elements) {
+			cta.ProcessTile<false>(
+				work_limits.offset,
+				work_limits.out_of_bounds);
 		}
 
 		// Cleanup any extra bytes
 		if ((sizeof(typename KernelConfig::T) > 1) && (blockIdx.x == gridDim.x - 1) && (threadIdx.x < extra_bytes)) {
 
-			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + out_of_bounds);
-			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + out_of_bounds);
+			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + work_limits.out_of_bounds);
+			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + work_limits.out_of_bounds);
 			unsigned char extra_byte;
 
-			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);
-			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(extra_byte, d_out_bytes + threadIdx.x);
+			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
+				extra_byte, d_in_bytes + threadIdx.x);
+			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+				extra_byte, d_out_bytes + threadIdx.x);
 		}
 
 	}
@@ -101,8 +100,8 @@ struct SweepPass <KernelConfig, true>
 		typename KernelConfig::T 									*&d_in,
 		typename KernelConfig::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
-		const util::WorkProgress 									&work_progress,
-		const int 													&extra_bytes)
+		util::CtaWorkProgress 										&work_progress,
+		int 														&extra_bytes)
 	{
 		typedef SweepCta<KernelConfig> SweepCta;
 		typedef typename KernelConfig::T T;
@@ -112,11 +111,11 @@ struct SweepPass <KernelConfig, true>
 		SweepCta cta(d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
-		__shared__ SizeT cta_offset;
+		__shared__ SizeT offset;
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
-			work_progress.PrepareNext();
+			work_progress.template PrepResetSteal<SizeT>();
 		}
 
 		// Steal full-tiles of work, incrementing progress counter
@@ -125,17 +124,17 @@ struct SweepPass <KernelConfig, true>
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				cta_offset = work_progress.Steal<KernelConfig::TILE_ELEMENTS>();
+				offset = work_progress.template Steal<SizeT>(KernelConfig::TILE_ELEMENTS);
 			}
 
-			__syncthreads();		// Protect cta_offset
+			__syncthreads();		// Protect offset
 
-			if (cta_offset >= unguarded_elements) {
+			if (offset >= unguarded_elements) {
 				// All done
 				break;
 			}
 
-			cta.ProcessTile<true>(cta_offset, unguarded_elements);
+			cta.ProcessTile<true>(offset);
 		}
 
 		// Last CTA does any extra, guarded work
@@ -172,7 +171,7 @@ void SweepKernel(
 	typename KernelConfig::T 									*d_in,
 	typename KernelConfig::T 									*d_out,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition,
-	util::WorkProgress 											work_progress,
+	util::CtaWorkProgress 										work_progress,
 	int 														extra_bytes)
 {
 	SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(

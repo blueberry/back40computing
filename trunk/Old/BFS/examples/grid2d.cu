@@ -25,14 +25,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
-#include <sstream>
-#include <iostream>
-
-#include <fstream>
-#include <deque>
-#include <algorithm>
-
 #include <test_utils.cu>
 
 /******************************************************************************
@@ -47,35 +39,35 @@
  * 
  * Returns 0 on success, 1 on failure.
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int BuildGrid2dGraph(
-	IndexType width,
-	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	VertexId width,
+	VertexId &src,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 { 
 	if (width < 0) {
 		fprintf(stderr, "Invalid width: %d", width);
 		return -1;
 	}
 	
-	IndexType interior_nodes = (width - 2) * (width - 2);
-	IndexType edge_nodes = (width - 2) * 4;
-	IndexType corner_nodes = 4;
+	SizeT interior_nodes 		= (width - 2) * (width - 2);
+	SizeT edge_nodes 			= (width - 2) * 4;
+	SizeT corner_nodes 			= 4;
 	
 	csr_graph.edges 			= (interior_nodes * 4) + (edge_nodes * 3) + (corner_nodes * 2);
 	csr_graph.nodes 			= width * width;
-	csr_graph.row_offsets 		= (IndexType*) malloc(sizeof(IndexType) * (csr_graph.nodes + 1));
-	csr_graph.column_indices 	= (IndexType*) malloc(sizeof(IndexType) * csr_graph.edges);
-	csr_graph.values 			= (ValueType*) malloc(sizeof(ValueType) * csr_graph.edges);
+	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
+	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
+	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
 
-	IndexType total = 0;
-	for (IndexType j = 0; j < width; j++) {
-		for (IndexType k = 0; k < width; k++) {
+	SizeT total = 0;
+	for (VertexId j = 0; j < width; j++) {
+		for (VertexId k = 0; k < width; k++) {
 			
-			IndexType me = (j * width) + k;
+			VertexId me = (j * width) + k;
 			csr_graph.row_offsets[me] = total; 
 
-			IndexType neighbor = (j * width) + (k - 1);
+			VertexId neighbor = (j * width) + (k - 1);
 			if (k - 1 >= 0) {
 				csr_graph.column_indices[total] = neighbor; 
 				csr_graph.values[me] = 1;
@@ -104,11 +96,11 @@ int BuildGrid2dGraph(
 			}
 		}
 	}
-	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always num_entries
+	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always total
 
 	// If unspecified, assign default source.  Otherwise verify source range.
 	if (src == -1) {
-		IndexType half = width / 2;
+		VertexId half = width / 2;
 		src = half * (width + 1);
 	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
 		fprintf(stderr, "Invalid src: %d", src);

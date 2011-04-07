@@ -20,22 +20,25 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding scan downsweep granularity configuration
+ * "Metatype" for guiding BFS expansion granularity configuration
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
-namespace scan {
+namespace bfs {
+namespace expand_atomic {
 
 /**
- * Scan downsweep kernel granularity configuration meta-type.  Parameterizations of this
+ * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -60,15 +63,18 @@ template <
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
+	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct DownsweepKernelConfig : _ProblemType
+struct SweepKernelConfig : _ProblemType
 {
-	typedef _ProblemType				ProblemType;
-	typedef typename ProblemType::T 	T;
+	typedef _ProblemType 					ProblemType;
+	typedef typename ProblemType::SizeT 	SizeT;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+
+	static const bool WORK_STEALING		= _WORK_STEALING;
 
 	enum {
 		LOG_THREADS 					= _LOG_THREADS,
@@ -99,11 +105,10 @@ struct DownsweepKernelConfig : _ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
 	};
 
-
 	// SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		T,										// Partial type
+		SizeT,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
@@ -120,24 +125,31 @@ struct DownsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		uint4 	smem_pool_int4s[SrtsGrid::TOTAL_RAKING_QUADS];
-		T 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-	};
+		// Shared work-processing limits
+		util::CtaWorkDistribution<SizeT>	work_decomposition;
 
+		// Three shared memory channels for intra-warp communication
+		SizeT 								warp_comm[WARPS][3];
+
+		// Storage for scanning local expansion ranks
+		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		uint4 								smem_pool_int4s[SrtsGrid::TOTAL_RAKING_QUADS];	// Repurposable scan lanes
+	};
 
 	enum {
 		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= (sizeof(SmemStorage) + sizeof(uint4) - 1) / sizeof(uint4),
+		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		VALID							= (CTA_OCCUPANCY > 0)
+		VALID							= (CTA_OCCUPANCY > 0),
 	};
 };
 
 
-} // namespace scan
+} // namespace expand_atomic
+} // namespace bfs
 } // namespace b40c
 

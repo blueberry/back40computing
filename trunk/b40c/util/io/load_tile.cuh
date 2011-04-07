@@ -281,7 +281,7 @@ struct LoadTile <
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
 		const SizeT &cta_offset,
-		const SizeT &out_of_bounds)
+		const SizeT &out_of_bounds = 0)
 	{
 		Invoke<T, NopLdTransform<T>, SizeT>(data, d_in, cta_offset, out_of_bounds);
 	}

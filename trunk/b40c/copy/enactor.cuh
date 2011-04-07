@@ -51,7 +51,7 @@ protected:
 
 	// Temporary device storage needed for managing work-stealing progress
 	// within a kernel invocation.
-	util::WorkProgressLifetime work_progress;
+	util::CtaWorkProgressLifetime work_progress;
 
 
 	//-----------------------------------------------------------------------------
@@ -186,7 +186,8 @@ cudaError_t Enactor::EnactInternal(
 				OccupiedGridSize<Sweep::SCHEDULE_GRANULARITY, Sweep::CTA_OCCUPANCY>(num_elements, max_grid_size);
 
 	// Obtain a CTA work distribution for copying items of type T
-	util::CtaWorkDistribution<SizeT> work(num_elements, Sweep::SCHEDULE_GRANULARITY, sweep_grid_size);
+	util::CtaWorkDistribution<SizeT> work;
+	work.template Init<Sweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
 
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",

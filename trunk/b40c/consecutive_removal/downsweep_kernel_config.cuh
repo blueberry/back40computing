@@ -64,11 +64,11 @@ template <
 
 struct DownsweepKernelConfig : _ProblemType
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::SizeT 	SizeT;
-	typedef typename ProblemType::T 		T;					// Type of input data
-	typedef typename ProblemType::FlagCount	FlagCount;			// Type for discontinuity counts
-	typedef int								LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS)
+	typedef _ProblemType 						ProblemType;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::T 			T;					// Type of input data
+	typedef typename ProblemType::FlagCount		FlagCount;			// Type for discontinuity counts
+	typedef int									LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS)
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -103,10 +103,6 @@ struct DownsweepKernelConfig : _ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
 	};
 
-	//
-	// We reduce the elements in registers, and then place that partial
-	// consecutive removal into smem rows for further consecutive removal
-	//
 
 	// SRTS grid type
 	typedef util::SrtsGrid<
@@ -118,27 +114,39 @@ struct DownsweepKernelConfig : _ProblemType
 		true>									// There are prefix dependences between lanes
 			SrtsGrid;
 
+
 	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<
-		SrtsGrid> SrtsDetails;
+	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+
+
+	/**
+	 * Shared memory structure
+	 */
+	struct SmemStorage
+	{
+		enum {
+			// Number of quads needed to back a reshuffling of all tile elements between threads
+			EXCHANGE_QUADS				= B40C_QUADS(TILE_ELEMENTS * sizeof(T)),
+
+			// Number of quads needed to back a re-purposable space that can be used for SRTS raking or element-exchange
+			SMEM_POOL_QUADS				= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, EXCHANGE_QUADS),
+		};
+
+		uint4 				smem_pool_int4s[SMEM_POOL_QUADS];
+		LocalFlagCount 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+	};
+
 
 	enum {
-
-		// Number of quads needed to back a reshuffling of all tile elements between threads
-		EXCHANGE_QUADS					= ((TILE_ELEMENTS * sizeof(T))+ sizeof(uint4) - 1) / sizeof(uint4),
-
-		// Number of quads needed to back a re-purposable space that can be used for SRTS raking or element-exchange
-		SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, EXCHANGE_QUADS),
-
-		// Total number of smem quads needed by this kernel (including non-repurposable warpscan quads)
-		SMEM_QUADS						= B40C_MAX(SrtsGrid::SMEM_QUADS, SMEM_POOL_QUADS),
+		// Total number of smem quads needed by this kernel
+		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)))
-	};
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-	static const bool VALID				= (CTA_OCCUPANCY > 0);
+		VALID							= (CTA_OCCUPANCY > 0),
+	};
 };
 
 

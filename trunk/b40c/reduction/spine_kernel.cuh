@@ -34,24 +34,22 @@ namespace reduction {
 /**
  * Spine reduction pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void SpinePass(
 	typename KernelConfig::T 		*d_in,
 	typename KernelConfig::T 		*d_spine,
-	typename KernelConfig::SizeT 	spine_elements)
+	typename KernelConfig::SizeT 	spine_elements,
+	SmemStorage						&smem_storage)
 {
-	typedef UpsweepCta<KernelConfig> UpsweepCta;
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
+	typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+	typedef typename KernelConfig::T 		T;
+	typedef typename KernelConfig::SizeT 	SizeT;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// Shared SRTS grid storage
-	__shared__ uint4 reduction_tree[KernelConfig::SMEM_QUADS];
-
 	// CTA processing abstraction
-	UpsweepCta cta(reduction_tree, d_in, d_spine);
+	UpsweepCta cta(smem_storage, d_in, d_spine);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
@@ -64,13 +62,12 @@ __device__ __forceinline__ void SpinePass(
 	if (cta_offset < guarded_offset) {
 
 		// Process at least one full tile of tile_elements
-
-		cta.ProcessFullTile<true>(cta_offset, spine_elements);
+		cta.ProcessFullTile<true>(cta_offset);
 		cta_offset += KernelConfig::TILE_ELEMENTS;
 
+		// Process more full tiles (not first tile)
 		while (cta_offset < guarded_offset) {
-
-			cta.ProcessFullTile<false>(cta_offset, spine_elements);
+			cta.ProcessFullTile<false>(cta_offset);
 			cta_offset += KernelConfig::TILE_ELEMENTS;
 		}
 
@@ -111,7 +108,10 @@ void SpineKernel(
 	typename KernelConfig::T 		*d_spine,
 	typename KernelConfig::SizeT 	spine_elements)
 {
-	SpinePass<KernelConfig>(d_in, d_spine, spine_elements);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	SpinePass<KernelConfig>(d_in, d_spine, spine_elements, smem_storage);
 }
 
 

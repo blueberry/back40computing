@@ -49,9 +49,9 @@ struct DownsweepCta : KernelConfig
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
+	typedef typename KernelConfig::T 			T;
+	typedef typename KernelConfig::SizeT 		SizeT;
+	typedef typename KernelConfig::SrtsDetails 	SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -76,13 +76,17 @@ struct DownsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ DownsweepCta(
-		SrtsDetails srts_details,
+		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out,
 		T spine_partial = KernelConfig::Identity()) :
 
-			srts_details(srts_details),
+			srts_details(
+				smem_storage.smem_pool_int4s,
+				smem_storage.warpscan,
+				KernelConfig::Identity()),
 			d_in(d_in),
 			d_out(d_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
@@ -94,7 +98,7 @@ struct DownsweepCta : KernelConfig
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT out_of_bounds = 0)
 	{
 		// Tile of scan elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];

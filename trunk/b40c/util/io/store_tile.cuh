@@ -97,7 +97,7 @@ struct StoreTile <
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
 		SizeT cta_offset,
-		const SizeT &out_of_bounds)
+		const SizeT &out_of_bounds = 0)
 	{
 		// Aliased vector type
 		typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;

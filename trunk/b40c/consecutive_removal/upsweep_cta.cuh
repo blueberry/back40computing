@@ -57,16 +57,16 @@ struct UpsweepCta : KernelConfig
 	//---------------------------------------------------------------------
 
 	// Accumulator for the number of discontinuities observed (in each thread)
-	FlagCount carry;
+	FlagCount 		carry;
 
 	// Input device pointer
-	T* d_in;
+	T* 				d_in;
 
 	// Output spine pointer
-	FlagCount* d_spine;
+	FlagCount* 		d_spine;
 
 	// Smem storage for discontinuity-count reduction tree
-	uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS];
+	FlagCount  		*reduction_tree;
 
 
 	//---------------------------------------------------------------------
@@ -77,12 +77,13 @@ struct UpsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ UpsweepCta(
-		uint4 (&reduction_tree)[KernelConfig::SMEM_QUADS],
+		SmemStorage &smem_storage,
 		T *d_in,
 		FlagCount *d_spine) :
 
-			reduction_tree(reduction_tree),
+			reduction_tree((FlagCount*) smem_storage.smem_pool_int4s),
 			d_in(d_in),
 			d_spine(d_spine),
 			carry(0) {}
@@ -128,11 +129,11 @@ struct UpsweepCta : KernelConfig
 	{
 		// Cooperatively reduce the carries in each thread (thread-0 gets the result)
 		carry = util::reduction::TreeReduce<
-			LocalFlagCount,
+			FlagCount,
 			KernelConfig::LOG_THREADS,
 			util::DefaultSum>::Invoke<false>(				// No need to return aggregate reduction in all threads
 				carry,
-				(LocalFlagCount*) reduction_tree);
+				reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {

@@ -178,7 +178,10 @@ __global__ void TunedUpsweepKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelConfig;
 
-	UpsweepPass<KernelConfig>(d_in, d_spine, work_decomposition);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	UpsweepPass<KernelConfig>(d_in, d_spine, work_decomposition, smem_storage);
 }
 
 /**
@@ -196,7 +199,10 @@ __global__ void TunedSpineKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelConfig;
 
-	scan::SpinePass<KernelConfig>(d_in, d_out, spine_elements);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	scan::SpinePass<KernelConfig>(d_in, d_out, spine_elements, smem_storage);
 }
 
 
@@ -217,7 +223,16 @@ __global__ void TunedDownsweepKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelConfig;
 
-	DownsweepPass<KernelConfig>(d_in, d_num_compacted, d_out, d_spine, work_decomposition);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	DownsweepPass<KernelConfig>(
+		d_in,
+		d_num_compacted,
+		d_out,
+		d_spine,
+		work_decomposition,
+		smem_storage);
 }
 
 
@@ -238,7 +253,16 @@ __global__ void TunedSingleKernel(
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename TunedConfig<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelConfig;
 
-	DownsweepPass<KernelConfig>(d_in, d_num_compacted, d_out, d_spine, work_decomposition);
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	DownsweepPass<KernelConfig>(
+		d_in,
+		d_num_compacted,
+		d_out,
+		d_spine,
+		work_decomposition,
+		smem_storage);
 }
 
 

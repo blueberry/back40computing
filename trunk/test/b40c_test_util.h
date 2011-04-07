@@ -21,6 +21,14 @@
 
 #pragma once
 
+#if defined(_WIN32) || defined(_WIN64)
+	#include <windows.h>
+#else
+	#include <sys/resource.h>
+#endif
+
+
+
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
@@ -272,10 +280,10 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 /**
  * Compares the equivalence of two arrays
  */
-template <typename T>
-int CompareResults(T* computed, T* reference, size_t len, bool verbose = true)
+template <typename T, typename SizeT>
+int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 {
-	for (size_t i = 0; i < len; i++) {
+	for (SizeT i = 0; i < len; i++) {
 
 		if (computed[i] != reference[i]) {
 			printf("Incorrect: [%lu]: ", (unsigned long) i);
@@ -376,6 +384,107 @@ void DisplayDeviceResults(
 	// Cleanup
 	if (h_data) free(h_data);
 }
+
+
+
+/******************************************************************************
+ * Timing
+ ******************************************************************************/
+
+
+struct CpuTimer
+{
+#if defined(_WIN32) || defined(_WIN64)
+
+	LARGE_INTEGER ll_freq;
+	LARGE_INTEGER ll_start;
+	LARGE_INTEGER ll_stop;
+
+	CpuTimer()
+	{
+		QueryPerformanceFrequency(&ll_freq);
+	}
+
+	void Start()
+	{
+		QueryPerformanceCounter(&ll_start);
+	}
+
+	void Stop()
+	{
+		QueryPerformanceCounter(&ll_stop);
+	}
+
+	float ElapsedMillis()
+	{
+		double start = double(ll_start.QuadPart) / double(ll_freq.QuadPart);
+		double stop  = double(ll_stop.QuadPart) / double(ll_freq.QuadPart);
+
+		return (stop - start) * 1000;
+	}
+
+#else
+
+	rusage start;
+	rusage stop;
+
+	void Start()
+	{
+		getrusage(RUSAGE_SELF, &start);
+	}
+
+	void Stop()
+	{
+		getrusage(RUSAGE_SELF, &stop);
+	}
+
+	float ElapsedMillis()
+	{
+		float sec = stop.ru_utime.tv_sec - start.ru_utime.tv_sec;
+		float usec = stop.ru_utime.tv_usec - start.ru_utime.tv_usec;
+
+		return (sec * 1000) + (usec / 1000);
+	}
+
+#endif
+};
+
+struct GpuTimer
+{
+	cudaEvent_t start;
+	cudaEvent_t stop;
+
+	GpuTimer()
+	{
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+	}
+
+	~GpuTimer()
+	{
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+	}
+
+	void Start()
+	{
+		cudaEventRecord(start, 0);
+	}
+
+	void Stop()
+	{
+		cudaEventRecord(stop, 0);
+	}
+
+	float ElapsedMillis()
+	{
+		float elapsed;
+		cudaEventSynchronize(stop);
+		cudaEventElapsedTime(&elapsed, start, stop);
+		return elapsed;
+	}
+};
+
 
 
 }// namespace b40c

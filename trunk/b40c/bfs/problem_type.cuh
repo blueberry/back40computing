@@ -27,23 +27,25 @@
 
 namespace b40c {
 namespace bfs {
-namespace compact {
 
 
 /**
- * Type of BFS Compaction problem
+ * Type of BFS problem
  */
 template <
 	typename _VertexId,
-	typename _SizeT>
+	typename _SizeT,
+	typename _CollisionMask,
+	typename _ValidFlag>
 struct ProblemType
 {
 	typedef _VertexId		VertexId;
 	typedef _SizeT 			SizeT;
+	typedef _CollisionMask	CollisionMask;
+	typedef _ValidFlag		ValidFlag;
 };
 
 
-} // namespace compact
 } // namespace bfs
 } // namespace b40c
 

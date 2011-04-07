@@ -83,15 +83,18 @@ struct DownsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
+	template <typename SmemStorage>
 	__device__ __forceinline__ DownsweepCta(
-		SrtsDetails srts_details,
-		T *smem_pool,
+		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out,
 		FlagCount spine_partial = 0) :
 
-			srts_details(srts_details),
-			smem_pool(smem_pool),
+			srts_details(
+				smem_storage.smem_pool_int4s,
+				smem_storage.warpscan,
+				0),
+			smem_pool((T*) smem_storage.smem_pool_int4s),
 			d_in(d_in),
 			d_out(d_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
@@ -105,7 +108,7 @@ struct DownsweepCta : KernelConfig
 	template <bool FULL_TILE, bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT out_of_bounds = 0)
 	{
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];					// Tile of elements
 		LocalFlagCount flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of discontinuity flags

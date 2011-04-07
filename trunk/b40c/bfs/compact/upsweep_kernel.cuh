@@ -37,21 +37,28 @@ namespace compact {
 /**
  * Upsweep BFS Compaction pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelConfig::VertexId 							*&d_in,
-	unsigned char												*&d_out_flag,
-	typename KernelConfig::SizeT 								*&d_spine,
-	unsigned char 												*&d_collision_cache,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition)
+	typename KernelConfig::VertexId 				*&d_in,
+	typename KernelConfig::ValidFlag				*&d_out_flag,
+	typename KernelConfig::SizeT 					*&d_spine,
+	typename KernelConfig::CollisionMask 			*&d_collision_cache,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
+	SmemStorage										&smem_storage)
 {
-	typedef UpsweepSmemStorage<KernelConfig> 		SmemStorage;
 	typedef UpsweepCta<KernelConfig, SmemStorage> 	UpsweepCta;
-	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
 
-	// Shared storage
-	__shared__ SmemStorage smem_storage;
+	// Determine our threadblock's work range
+	util::CtaWorkLimits<SizeT> work_limits;
+	work_decomposition.template GetCtaWorkLimits<
+		KernelConfig::LOG_TILE_ELEMENTS,
+		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
+
+	// Return if we have no work to do
+	if (!work_limits.elements) {
+		return;
+	}
 
 	// CTA processing abstraction
 	UpsweepCta cta(
@@ -61,26 +68,17 @@ __device__ __forceinline__ void UpsweepPass(
 		d_spine,
 		d_collision_cache);
 
-	// Determine our threadblock's work range
-	SizeT cta_offset;			// Offset at which this CTA begins processing
-	SizeT cta_elements;			// Total number of elements for this CTA to process
-	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_elements;		// Number of elements in partially-full tile
-
-	work_decomposition.template GetCtaWorkLimits<KernelConfig::LOG_TILE_ELEMENTS, KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
-
-	SizeT out_of_bounds = cta_offset + cta_elements;
-
 	// Process full tiles
-	while (cta_offset < guarded_offset) {
-		cta.ProcessFullTile(cta_offset, out_of_bounds);
-		cta_offset += KernelConfig::TILE_ELEMENTS;
+	while (work_limits.offset < work_limits.guarded_offset) {
+		cta.ProcessFullTile(work_limits.offset);
+		work_limits.offset += KernelConfig::TILE_ELEMENTS;
 	}
 
-	// Clean up last partial tile with guarded-io (not first tile)
-	if (guarded_elements) {
-		cta.ProcessPartialTile(cta_offset, out_of_bounds);
+	// Clean up last partial tile with guarded-io
+	if (work_limits.guarded_elements) {
+		cta.ProcessPartialTile(
+			work_limits.offset,
+			work_limits.out_of_bounds);
 	}
 
 	// Collectively reduce accumulated carry from each thread into output
@@ -100,18 +98,43 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
-	typename KernelConfig::VertexId 							*d_in,
-	unsigned char												*d_out_flag,
-	typename KernelConfig::SizeT								*d_spine,
-	unsigned char 												*d_collision_cache,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
+	typename KernelConfig::VertexId			iteration,
+	typename KernelConfig::VertexId 		*d_in,
+	typename KernelConfig::ValidFlag		*d_out_flag,
+	typename KernelConfig::SizeT			*d_spine,
+	typename KernelConfig::CollisionMask 	*d_collision_cache,
+	util::CtaWorkProgress 					work_progress)
 {
+	typedef typename KernelConfig::SizeT SizeT;
+
+	// Shared storage for CTA processing
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	// Determine work decomposition
+	if (threadIdx.x == 0) {
+
+		// Obtain problem size
+		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+/*
+		if (blockIdx.x == 0)
+		printf("Iteration %d Compact upsweep block %d thread %d read queue size %d\n",
+			iteration, blockIdx.x, threadIdx.x, num_elements);
+*/
+		// Initialize work decomposition in smem
+		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+			num_elements, gridDim.x);
+	}
+
+	// Barrier to protect work decomposition
+	__syncthreads();
+
 	UpsweepPass<KernelConfig>(
 		d_in,
 		d_out_flag,
 		d_spine,
 		d_collision_cache,
-		work_decomposition);
+		smem_storage.work_decomposition,
+		smem_storage);
 }
 
 

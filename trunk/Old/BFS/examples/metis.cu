@@ -25,14 +25,6 @@
 #include <time.h>
 #include <stdio.h>
 
-#include <string>
-#include <sstream>
-#include <iostream>
-
-#include <fstream>
-#include <deque>
-#include <algorithm>
-
 #include <test_utils.cu>
 
 
@@ -44,22 +36,21 @@
 /**
  * Reads a DIMACS graph from an input-stream into a CSR sparse format 
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int ReadMetisStream(
 	FILE *f_in,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 {
 	
 	time_t mark0 = time(NULL);
 	printf("  Parsing METIS CSR format ");
 	fflush(stdout);
 
-	char line[1024];
-	int c;
-
-	IndexType edges_read = 0;
-	IndexType current_node = -1;
-	long long ll_edge;
+	char 		line[1024];
+	int			c;
+	SizeT 		edges_read = 0;
+	VertexId 	current_node = -1;
+	long long 	ll_edge;
 	
 	while ((c = fgetc(f_in)) != EOF) {
 
@@ -105,8 +96,8 @@ int ReadMetisStream(
 					fflush(stdout);
 					
 					// Allocate csr graph
-					csr_graph.row_offsets = 		(IndexType*) malloc(sizeof(IndexType) * (csr_graph.nodes + 1));
-					csr_graph.column_indices = 		(IndexType*) malloc(sizeof(IndexType) * csr_graph.edges);
+					csr_graph.row_offsets = 		(SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
+					csr_graph.column_indices = 		(VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
 					
 				} else {
 					fprintf(stderr, "Error parsing METIS graph: invalid format\n");
@@ -183,11 +174,11 @@ int ReadMetisStream(
  * If src == -1, it is assigned a random node.  Otherwise it is verified 
  * to be in range of the constructed graph.
  */
-template<typename IndexType, typename ValueType>
+template<typename VertexId, typename Value, typename SizeT>
 int BuildMetisGraph(
 	char *metis_filename, 
-	IndexType &src,
-	CsrGraph<IndexType, ValueType> &csr_graph)
+	VertexId &src,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 { 
 	if (metis_filename == NULL) {
 

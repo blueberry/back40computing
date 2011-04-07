@@ -36,87 +36,10 @@
 #include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/scan/warp_scan.cuh>
 
+#include <bfs_common.cu>
+
 namespace b40c {
 namespace bfs {
-
-
-/******************************************************************************
- * BFS Algorithm and Granularity Configuration 
- ******************************************************************************/
-
-/**
- * Enumeration of parallel BFS algorithm strategies
- */
-enum BfsStrategy {
-	
-	/**
-	 * Contract-then-Expand
-	 * 
-	 * At each iteration, the frontier queue is comprised of "unvisited-edges", 
-	 * i.e. the concatenation of the adjacency lists belonging to the nodes 
-	 * that were discovered from the previous iteration. (These unvisited-edges 
-	 * are simply the incident node IDs.)  The algorithm discards the edges 
-	 * leading to previously-visited nodes, and then expands the edge-lists of 
-	 * the remaining (newly-discovered) nodes into the frontier queue for the 
-	 * next iteration. As the frontier is streamed through the SMs for each BFS 
-	 * iteration, the kernel operates by:
-	 * 
-	 *  (1) Streaming in tiles of the frontier queue and contracting the unvisited-
-	 *      edges by:
-	 *        (i)  Removing incident nodes that were discovered by previous 
-	 *             iterations
-	 *        (ii) A heuristic for removing duplicate incident nodes††. 
-	 *         
-	 *      The remaining incident nodes are marked as being discovered at this 
-	 *      iteration. 
-	 *       
-	 *  (2) Expanding the newly discovered nodes into their adjacency lists and
-	 *      enqueuing these adjacency lists into the outgoing frontier for 
-	 *      processing by the next iteration. 
-	 */
-	CONTRACT_EXPAND,
-	
-	/**
-	 * Expand-then-Contract 
-	 * 
-	 * At each iteration, the frontier queue is comprised of "discovered nodes" 
-	 * from the previous iteration.  The algorithm expands these nodes into 
-	 * their edge-lists.  The edges leading to previously-visited nodes are 
-	 * discarded.  Then the remaining (newly-discovered) nodes are enqueued 
-	 * into the frontier queue for the next iteration. As the frontier is 
-	 * streamed through the SMs for each BFS iteration, the kernel operates by:
-	 * 
-	 *  (1) Streaming in tiles of the frontier queue and expanding those nodes 
-	 *      into their adjacency lists into shared-memory scratch space.
-	 *         
-	 *  (2) Contracting these "unvisited edges" in shared-memory scratch by:
-	 *        (i)  Removing incident nodes that were discovered by previous 
-	 *             iterations
-	 *        (ii) A heuristic for removing duplicate incident nodes††. 
-	 *         
-	 *      The remaining incident nodes are marked as being discovered at this 
-	 *      iteration, and enqueued into the outgoing frontier for processing by 
-	 *      the next iteration.
-	 */
-	EXPAND_CONTRACT,
-	
-	/**
-	 * Footnotes:
-	 * 
-	 *   †† Frontier duplicates exist when a node is neighbor to multiple nodes 
-	 *      discovered by the previous iteration.  Although the operation of the 
-	 *      algorithm is correct regardless of the number of times a node is 
-	 *      discovered within a given iteration, duplicate-removal can drastically 
-	 *      reduce the overall work performed.  When the same node is discovered
-	 *      concurrently within a given iteration, its entire adjacency list will 
-	 *      be duplicated in the next iteration's frontier.  Duplicate-removal is 
-	 *      particularly effective for lattice-like graphs: nodes are often 
-	 *      discoverable at a given iteration via multiple indicent edges.  
-	 */
-
-	CULL
-};
-
 
 /******************************************************************************
  * BFS Kernel Subroutines 
@@ -377,7 +300,7 @@ void CullDuplicates(
 
 /**
  * Inspects an incident node-ID to see if it's been visited already.  If not,
- * we mark its discovery in d_source_dist at this iteration, returning 
+ * we mark its discovery in d_source_path at this iteration, returning
  * the length and offset of its neighbor row.  If not, we return zero as the 
  * length of its neighbor row.
  */
@@ -391,7 +314,7 @@ void InspectAndUpdate(
 	VertexId node_id,
 	VertexId &row_offset,				// out param
 	int &row_length,					// out param
-	VertexId *d_source_dist,
+	VertexId *d_source_path,
 	VertexId *d_row_offsets,
 	VertexId iteration)
 {
@@ -399,7 +322,7 @@ void InspectAndUpdate(
 
 	// Load source distance of node
 	VertexId source_dist;
-	util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + node_id);
+	util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_path + node_id);
 
 	if (source_dist == -1) {
 		// Node is previously unvisited.  Load neighbor row range from d_row_offsets
@@ -418,13 +341,13 @@ void InspectAndUpdate(
 		row_length = row_range.y - row_range.x;
 
 		// Update distance with current iteration
-		util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + node_id);
+		util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_path + node_id);
 	}
 }
 
 /**
  * Inspects an incident node-ID to see if it's been visited already.  If not,
- * we mark its discovery in d_source_dist at this iteration, returning 
+ * we mark its discovery in d_source_path at this iteration, returning
  * the length and offset of its neighbor row.  If not, we return zero as the 
  * length of its neighbor row.
  */
@@ -440,7 +363,7 @@ void InspectAndUpdate(
 	VertexId node_id[LOAD_VEC_SIZE],
 	VertexId row_offset[LOAD_VEC_SIZE],				// out param
 	int row_length[LOAD_VEC_SIZE],					// out param
-	VertexId *d_source_dist,
+	VertexId *d_source_path,
 	VertexId *d_row_offsets,
 	VertexId iteration)
 {
@@ -450,25 +373,25 @@ void InspectAndUpdate(
 	if (LOAD_VEC_SIZE > 0) {
 		if (node_id[0] != -1) {
 			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				node_id[0], row_offset[0], row_length[0], d_source_dist, d_row_offsets, iteration);
+				node_id[0], row_offset[0], row_length[0], d_source_path, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 1) {
 		if (node_id[1] != -1) {
 			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				node_id[1], row_offset[1], row_length[1], d_source_dist, d_row_offsets, iteration);
+				node_id[1], row_offset[1], row_length[1], d_source_path, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 2) {
 		if (node_id[2] != -1) {
 			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				node_id[2], row_offset[2], row_length[2], d_source_dist, d_row_offsets, iteration);
+				node_id[2], row_offset[2], row_length[2], d_source_path, d_row_offsets, iteration);
 		}
 	}
 	if (LOAD_VEC_SIZE > 3) {
 		if (node_id[3] != -1) {
 			InspectAndUpdate<VertexId, SCRATCH_SPACE, ROW_OFFSETS_MODIFIER, MISALIGNED_ROW_OFFSETS_MODIFIER>(
-				node_id[3], row_offset[3], row_length[3], d_source_dist, d_row_offsets, iteration);
+				node_id[3], row_offset[3], row_length[3], d_source_path, d_row_offsets, iteration);
 		}
 	}
 }
@@ -571,7 +494,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 		VertexId *d_out_queue,
 		VertexId *d_column_indices,
 		VertexId *d_row_offsets,
-		VertexId *d_source_dist,
+		VertexId *d_source_path,
 		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
@@ -645,7 +568,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 
 			// Load source distance of node
 			VertexId source_dist;
-			util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + dequeued_node_id[0]);
+			util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_path + dequeued_node_id[0]);
 
 			// Load neighbor row range from d_row_offsets
 			IndexTypeVec2 row_range;
@@ -668,7 +591,7 @@ template <> struct BfsTile<CONTRACT_EXPAND>
 				row_length[0] = row_range.y - row_range.x;
 
 				// Update distance with current iteration
-				util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + dequeued_node_id[0]);
+				util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_path + dequeued_node_id[0]);
 			}
 		}
 
@@ -851,7 +774,7 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 		VertexId *d_out_queue,
 		VertexId *d_column_indices,
 		VertexId *d_row_offsets,
-		VertexId *d_source_dist,
+		VertexId *d_source_path,
 		int *d_enqueue_length,
 		int &s_enqueue_offset,
 		int cta_out_of_bounds)
@@ -949,9 +872,9 @@ template <> struct BfsTile<EXPAND_CONTRACT>
 			if (neighbor_node != -1) {
 
 				VertexId source_dist;
-				util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_dist + neighbor_node);
+				util::io::ModifiedLoad<util::io::ld::cg>::Ld(source_dist, d_source_path + neighbor_node);
 				if (source_dist == -1) {
-					util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_dist + neighbor_node);
+					util::io::ModifiedStore<util::io::st::cg>::St(iteration, d_source_path + neighbor_node);
 					unvisited = 1;
 				}
 			}
@@ -1025,7 +948,7 @@ void BfsIteration(
 	VertexId *d_out_queue,
 	VertexId *d_column_indices,
 	VertexId *d_row_offsets,
-	VertexId *d_source_dist,
+	VertexId *d_source_path,
 	int *d_enqueue_length,
 	int &s_enqueue_offset,
 	int cta_offset, 
@@ -1050,7 +973,7 @@ void BfsIteration(
 			d_out_queue,
 			d_column_indices,
 			d_row_offsets,
-			d_source_dist,
+			d_source_path,
 			d_enqueue_length,
 			s_enqueue_offset,
 			TILE_ELEMENTS);
@@ -1076,7 +999,7 @@ void BfsIteration(
 			d_out_queue,
 			d_column_indices,
 			d_row_offsets,
-			d_source_dist,
+			d_source_path,
 			d_enqueue_length,
 			s_enqueue_offset,
 			cta_extra_elements); 

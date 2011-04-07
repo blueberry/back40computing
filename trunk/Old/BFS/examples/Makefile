@@ -109,7 +109,10 @@ endif
 BFS_DEPS = 		./Makefile \
 				$(wildcard *.cu) \
 				$(wildcard ../../Common/*.cuh) \
+				$(wildcard ../../../b40c/util/*.cuh) \
+				$(wildcard ../../../b40c/bfs/*.cuh) \
 				$(wildcard ../../../b40c/bfs/compact/*.cuh) \
+				$(wildcard ../../../b40c/bfs/expand_atomic/*.cuh) \
 				$(wildcard ../kernel/*.cu) \
 				$(wildcard ../*.cu) \
 				$(wildcard ../../LsbRadixSort/*.cuh) 

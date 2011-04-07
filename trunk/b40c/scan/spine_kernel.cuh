@@ -34,29 +34,22 @@ namespace scan {
 /**
  * Spine scan pass
  */
-template <typename KernelConfig>
+template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void SpinePass(
 	typename KernelConfig::T 		*&d_in,
 	typename KernelConfig::T 		*&d_out,
-	typename KernelConfig::SizeT 	&spine_elements)
+	typename KernelConfig::SizeT 	&spine_elements,
+	SmemStorage 					&smem_storage)
 {
-	typedef typename KernelConfig::SrtsDetails SrtsDetails;
-	typedef DownsweepCta<KernelConfig> DownsweepCta;
-	typedef typename KernelConfig::SizeT SizeT;
-	typedef typename KernelConfig::T T;
+	typedef DownsweepCta<KernelConfig> 			DownsweepCta;
+	typedef typename KernelConfig::SizeT 		SizeT;
+	typedef typename KernelConfig::T 			T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
 
-	// Shared storage for CTA processing
-	__shared__ uint4 smem_pool[KernelConfig::SrtsGrid::TOTAL_RAKING_QUADS];
-	__shared__ T warpscan[2][B40C_WARP_THREADS(KernelConfig::CUDA_ARCH)];
-
-	// SRTS grid details
-	SrtsDetails srts_detail(smem_pool, warpscan, KernelConfig::Identity());
-
 	// CTA processing abstraction
-	DownsweepCta cta(srts_detail, d_in, d_out);
+	DownsweepCta cta(smem_storage, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT cta_guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
@@ -67,8 +60,7 @@ __device__ __forceinline__ void SpinePass(
 	// Process full tiles of tile_elements
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
-
-		cta.ProcessTile<true>(cta_offset, cta_guarded_offset);
+		cta.ProcessTile<true>(cta_offset);
 		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
@@ -94,7 +86,9 @@ void SpineKernel(
 	typename KernelConfig::T			*d_out,
 	typename KernelConfig::SizeT 		spine_elements)
 {
-	SpinePass<KernelConfig>(d_in, d_out, spine_elements);
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	SpinePass<KernelConfig>(d_in, d_out, spine_elements, smem_storage);
 }
 
 

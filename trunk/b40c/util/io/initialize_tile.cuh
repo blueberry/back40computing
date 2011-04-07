@@ -63,7 +63,7 @@ struct InitializeTile
 		template <typename T, typename S>
 		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const S datum)
+			S datum)
 		{
 			target[LOAD][VEC] = datum;
 			Iterate<LOAD, VEC + 1>::Init(target, datum);
@@ -85,7 +85,7 @@ struct InitializeTile
 		template <typename T, typename S>
 		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const S datum)
+			S datum)
 		{
 			Iterate<LOAD + 1, 0>::Init(target, datum);
 		}
@@ -103,7 +103,7 @@ struct InitializeTile
 		template <typename T, typename S>
 		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
-			const S datum) {}
+			S datum) {}
 	};
 
 
@@ -129,7 +129,7 @@ struct InitializeTile
 	template <typename T, typename S>
 	static __device__ __forceinline__ void Init(
 		T target[][LOAD_VEC_SIZE],
-		const S datum)
+		S datum)
 	{
 		Iterate<0, 0>::Init(target, datum);
 	}

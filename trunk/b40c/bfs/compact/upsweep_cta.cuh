@@ -31,6 +31,7 @@
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 
 #include <b40c/util/operators.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
@@ -41,17 +42,6 @@ namespace bfs {
 namespace compact {
 
 
-
-/**
- * Shared memory structure
- */
-template <typename KernelConfig>
-struct UpsweepSmemStorage
-{
-	int4 smem_pool_int4s[KernelConfig::SMEM_POOL_QUADS];
-};
-
-
 /**
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
@@ -59,25 +49,27 @@ template <typename KernelConfig, typename SmemStorage>
 struct UpsweepCta : KernelConfig
 {
 	//---------------------------------------------------------------------
-	// Typedefs
+	// Typedefs and Constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::VertexId 	VertexId;
-	typedef typename KernelConfig::SizeT 		SizeT;
-	typedef unsigned int 						ThreadId;
+	typedef typename KernelConfig::VertexId 		VertexId;
+	typedef typename KernelConfig::ValidFlag		ValidFlag;
+	typedef typename KernelConfig::CollisionMask 	CollisionMask;
+	typedef typename KernelConfig::SizeT 			SizeT;
+	typedef unsigned int 							ThreadId;
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// The value we will accumulate (in each thread)
-	SizeT carry;
+	SizeT 			carry;
 
 	// Input and output device pointers
 	VertexId 		*d_in;
-	unsigned char	*d_flags_out;
+	ValidFlag		*d_flags_out;
 	SizeT 			*d_spine;
-	unsigned char 	*d_collision_cache;
+	CollisionMask 	*d_collision_cache;
 
 	// Smem storage for reduction tree and hashing scratch
 	VertexId 		*s_vid_hashtable;
@@ -96,20 +88,28 @@ struct UpsweepCta : KernelConfig
 	struct Tile
 	{
 		//---------------------------------------------------------------------
+		// Typedefs and Constants
+		//---------------------------------------------------------------------
+
+		enum {
+			ELEMENTS_PER_TILE = LOADS_PER_TILE * LOAD_VEC_SIZE
+		};
+
+
+		//---------------------------------------------------------------------
 		// Members
 		//---------------------------------------------------------------------
 
-		static const int ELEMENTS_PER_TILE = LOADS_PER_TILE * LOAD_VEC_SIZE;
-
 		// Dequeued vertex ids
-		VertexId vertex_id[ELEMENTS_PER_TILE];
+		VertexId 	vertex_id[ELEMENTS_PER_TILE];
 
 		// Whether or not the corresponding vertex_id is valid for exploring
-		unsigned char valid[ELEMENTS_PER_TILE];
+		ValidFlag 	valid[ELEMENTS_PER_TILE];
 
 		// Temporary state for local culling
-		int hash[ELEMENTS_PER_TILE];			// Hash ids for vertex ids
-		bool duplicate[ELEMENTS_PER_TILE];		// Status as potential duplicate
+		int 		hash[ELEMENTS_PER_TILE];			// Hash ids for vertex ids
+		bool 		duplicate[ELEMENTS_PER_TILE];		// Status as potential duplicate
+
 
 		//---------------------------------------------------------------------
 		// Helper Structures
@@ -121,7 +121,9 @@ struct UpsweepCta : KernelConfig
 		template <int COUNT, int TOTAL>
 		struct Iterate
 		{
-			// BitmaskCull
+			/**
+			 * BitmaskCull
+			 */
 			static __device__ __forceinline__ void BitmaskCull(
 				UpsweepCta *cta,
 				Tile *tile)
@@ -132,10 +134,10 @@ struct UpsweepCta : KernelConfig
 					SizeT mask_byte_offset = tile->vertex_id[COUNT] >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
-					unsigned char mask_bit = 1 << (tile->vertex_id[COUNT] & 7);
+					CollisionMask mask_bit = 1 << (tile->vertex_id[COUNT] & 7);
 
 					// Read byte from from collision cache bitmask
-					unsigned char mask_byte;
+					CollisionMask mask_byte;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						mask_byte, cta->d_collision_cache + mask_byte_offset);
 
@@ -159,15 +161,14 @@ struct UpsweepCta : KernelConfig
 			}
 
 
-			// HashInVertex
+			/**
+			 * HashInVertex
+			 */
 			static __device__ __forceinline__ void HashInVertex(
 				UpsweepCta *cta,
 				Tile *tile)
 			{
-				// Size of hash table in VertexIds
-				const int HASH_TABLE_ELEMENTS = SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId);
-
-				tile->hash[COUNT] = tile->vertex_id[COUNT] % HASH_TABLE_ELEMENTS;
+				tile->hash[COUNT] = tile->vertex_id[COUNT] % SmemStorage::SMEM_POOL_VERTEX_IDS;
 				tile->duplicate[COUNT] = false;
 
 				// Hash the node-IDs into smem scratch
@@ -180,7 +181,9 @@ struct UpsweepCta : KernelConfig
 			}
 
 
-			// HashOutVertex
+			/**
+			 * HashOutVertex
+			 */
 			static __device__ __forceinline__ void HashOutVertex(
 				UpsweepCta *cta,
 				Tile *tile)
@@ -200,7 +203,9 @@ struct UpsweepCta : KernelConfig
 			}
 
 
-			// HashInTid
+			/**
+			 * HashInTid
+			 */
 			static __device__ __forceinline__ void HashInTid(
 				UpsweepCta *cta,
 				Tile *tile)
@@ -216,7 +221,9 @@ struct UpsweepCta : KernelConfig
 			}
 
 
-			// HashOutTid
+			/**
+			 * HashOutTid
+			 */
 			static __device__ __forceinline__ void HashOutTid(
 				UpsweepCta *cta,
 				Tile *tile)
@@ -235,7 +242,9 @@ struct UpsweepCta : KernelConfig
 			}
 
 
-			// Init
+			/**
+			 * Init
+			 */
 			static __device__ __forceinline__ void Init(Tile *tile)
 			{
 				tile->valid[COUNT] = 1;
@@ -334,9 +343,9 @@ struct UpsweepCta : KernelConfig
 	__device__ __forceinline__ UpsweepCta(
 		SmemStorage 	&smem_storage,
 		VertexId 		*d_in,
-		unsigned char	*d_flags_out,
+		ValidFlag		*d_flags_out,
 		SizeT 			*d_spine,
-		unsigned char 	*d_collision_cache) :
+		CollisionMask 	*d_collision_cache) :
 
 			carry(0),
 			s_vid_hashtable((VertexId *) smem_storage.smem_pool_int4s),
@@ -354,8 +363,7 @@ struct UpsweepCta : KernelConfig
 	 * Each thread reduces only the strided values it loads.
 	 */
 	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT cta_offset)
 	{
 		Tile<KernelConfig::LOADS_PER_TILE, KernelConfig::LOAD_VEC_SIZE> tile;
 
@@ -368,8 +376,7 @@ struct UpsweepCta : KernelConfig
 			true>::Invoke(
 				reinterpret_cast<VertexId (*)[KernelConfig::LOAD_VEC_SIZE]>(tile.vertex_id),
 				d_in,
-				cta_offset,
-				out_of_bounds);
+				cta_offset);
 
 		// Cull valid flags using global collision bitmask
 		tile.BitmaskCull(this);
@@ -384,14 +391,13 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
 			true>::Invoke(
-				reinterpret_cast<unsigned char (*)[KernelConfig::LOAD_VEC_SIZE]>(tile.valid),
+				reinterpret_cast<ValidFlag (*)[KernelConfig::LOAD_VEC_SIZE]>(tile.valid),
 				d_flags_out,
-				cta_offset,
-				out_of_bounds);
+				cta_offset);
 
 		// Reduce into carry
 		carry += util::reduction::SerialReduce<
-			unsigned char,
+			ValidFlag,
 			KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(tile.valid);
 	}
 
@@ -415,7 +421,10 @@ struct UpsweepCta : KernelConfig
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
 				tile.vertex_id[0],
 				d_in + cta_offset);
-
+/*
+			printf("Upsweep block %d thread %d looking at vertex %d @ %llu\n",
+				blockIdx.x, threadIdx.x, tile.vertex_id[0], (unsigned long long) (d_in + cta_offset));
+*/
 			// Cull valid flags using global collision bitmask
 			tile.BitmaskCull(this);
 
@@ -450,6 +459,10 @@ struct UpsweepCta : KernelConfig
 
 		// Write output
 		if (threadIdx.x == 0) {
+/*
+			printf("Block %d thread %d reduced %d valid queue items\n",
+				blockIdx.x, threadIdx.x, carry);
+*/
 			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);
 		}
