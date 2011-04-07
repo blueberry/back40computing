@@ -61,8 +61,11 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,
+	util::io::ld::CacheModifier _COLUMN_READ_MODIFIER,
+	util::io::ld::CacheModifier _ROW_OFFSET_ALIGNED_READ_MODIFIER,
+	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
@@ -71,8 +74,11 @@ struct SweepKernelConfig : _ProblemType
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::SizeT 	SizeT;
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier QUEUE_READ_MODIFIER 					= _QUEUE_READ_MODIFIER;
+	static const util::io::ld::CacheModifier COLUMN_READ_MODIFIER 					= _COLUMN_READ_MODIFIER;
+	static const util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER 		= _ROW_OFFSET_ALIGNED_READ_MODIFIER;
+	static const util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER 	= _ROW_OFFSET_UNALIGNED_READ_MODIFIER;
+	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
 
 	static const bool WORK_STEALING		= _WORK_STEALING;
 

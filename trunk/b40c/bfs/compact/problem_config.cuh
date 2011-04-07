@@ -39,10 +39,11 @@
 
 namespace b40c {
 namespace bfs {
+namespace compact {
 
 
 /**
- * Unified BFS granularity configuration type.
+ * Unified BFS compaction granularity configuration type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
@@ -61,15 +62,6 @@ template <
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
 	int LOG_SCHEDULE_GRANULARITY,
-
-	// Atomic expansion tunable params
-	int ATOMIC_EXPAND_LOG_SCHEDULE_GRANULARITY,
-	int ATOMIC_EXPAND_MAX_CTA_OCCUPANCY,
-	int ATOMIC_EXPAND_LOG_THREADS,
-	int ATOMIC_EXPAND_LOG_LOAD_VEC_SIZE,
-	int ATOMIC_EXPAND_LOG_LOADS_PER_TILE,
-	int ATOMIC_EXPAND_LOG_RAKING_THREADS,
-	bool ATOMIC_EXPAND_WORK_STEALING,
 
 	// Compaction upsweep tunable params
 	int UPSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
@@ -94,25 +86,6 @@ struct ProblemConfig : _ProblemType
 {
 	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::SizeT SizeT;
-
-	//---------------------------------------------------------------------
-	// Atomic Expansion
-	//---------------------------------------------------------------------
-
-	// Kernel config for the upsweep reduction kernel
-	typedef expand_atomic::SweepKernelConfig <
-		ProblemType,
-		CUDA_ARCH,
-		ATOMIC_EXPAND_MAX_CTA_OCCUPANCY,
-		ATOMIC_EXPAND_LOG_THREADS,
-		ATOMIC_EXPAND_LOG_LOAD_VEC_SIZE,
-		ATOMIC_EXPAND_LOG_LOADS_PER_TILE,
-		ATOMIC_EXPAND_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		ATOMIC_EXPAND_WORK_STEALING,
-		ATOMIC_EXPAND_LOG_SCHEDULE_GRANULARITY>
-			ExpandAtomicSweep;
 
 	//---------------------------------------------------------------------
 	// Compaction upsweep
@@ -179,10 +152,8 @@ struct ProblemConfig : _ProblemType
 			CompactDownsweep;
 
 
-
-
 	enum {
-		VALID = CompactUpsweep::VALID & CompactSpine::VALID & CompactDownsweep::VALID & ExpandAtomicSweep::VALID
+		VALID = CompactUpsweep::VALID & CompactSpine::VALID & CompactDownsweep::VALID
 	};
 
 	static void Print()
@@ -214,7 +185,7 @@ struct ProblemConfig : _ProblemType
 	}
 };
 		
-
+} // namespace compact
 } // namespace bfs
 } // namespace b40c
 

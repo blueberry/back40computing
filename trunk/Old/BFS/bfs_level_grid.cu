@@ -30,7 +30,7 @@
 
 #include <b40c/util/spine.cuh>
 #include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/problem_config.cuh>
+#include <b40c/bfs/compact/problem_config.cuh>
 
 #include <b40c/bfs/expand_atomic/sweep_kernel.cuh>
 #include <b40c/bfs/compact/upsweep_kernel.cuh>
@@ -48,8 +48,9 @@ namespace bfs {
  */
 class LevelGridBfsEnactor : public BaseBfsEnactor
 {
+
 protected:
-	
+
 	/**
 	 * Temporary device storage needed for reducing partials produced
 	 * by separate CTAs
@@ -104,22 +105,32 @@ public:
 		typename BfsCsrProblem::VertexId 	src,
 		int 								max_grid_size = 0)
 	{
-		// Compaction tuning configuration
-		typedef ProblemConfig<
+		// Expansion kernel config
+		typedef expand_atomic::SweepKernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
-			util::io::ld::NONE,
-			util::io::st::NONE,
-			9,
-
-			// Atomic expand
-			6,
 			8,
 			7,
 			0,
 			0,
 			5,
+			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+
 			true,
+			6> ExpandAtomicSweep;
+
+
+		// Compaction tuning configuration
+		typedef compact::ProblemConfig<
+			typename BfsCsrProblem::ProblemType,
+			200,
+			util::io::ld::NONE,
+			util::io::st::NONE,
+			9,
 
 			// Compact upsweep
 			8,
@@ -138,29 +149,40 @@ public:
 			7,
 			1,
 			1,
-			5> ProblemConfig;
+			5> CompactProblemConfig;
 
-		typedef typename ProblemConfig::ExpandAtomicSweep 	ExpandAtomicSweep;
-		typedef typename ProblemConfig::CompactUpsweep 		CompactUpsweep;
-		typedef typename ProblemConfig::CompactSpine 		CompactSpine;
-		typedef typename ProblemConfig::CompactDownsweep 	CompactDownsweep;
 
-		typedef typename BfsCsrProblem::VertexId			VertexId;
-		typedef typename BfsCsrProblem::SizeT				SizeT;
+		typedef typename CompactProblemConfig::CompactUpsweep 		CompactUpsweep;
+		typedef typename CompactProblemConfig::CompactSpine 		CompactSpine;
+		typedef typename CompactProblemConfig::CompactDownsweep 	CompactDownsweep;
+
+		typedef typename BfsCsrProblem::VertexId					VertexId;
+		typedef typename BfsCsrProblem::SizeT						SizeT;
+
+		//
+		// Determine grid size(s)
+		//
+
+		int expand_min_occupancy = ExpandAtomicSweep::CTA_OCCUPANCY;
+		int expand_grid_size = MaxGridSize(expand_min_occupancy, max_grid_size);
+
+		printf("DEBUG: BFS expand min occupancy %d, level-grid size %d\n",
+				expand_min_occupancy, expand_grid_size);
+
+		int compact_min_occupancy = B40C_MIN(CompactUpsweep::CTA_OCCUPANCY, CompactDownsweep::CTA_OCCUPANCY);
+		int compact_grid_size = MaxGridSize(compact_min_occupancy, max_grid_size);
+
+		printf("DEBUG: BFS compact min occupancy %d, level-grid size %d\n",
+			compact_min_occupancy, compact_grid_size);
+
 
 
 		cudaError_t retval = cudaSuccess;
 
-		// Determine grid size
-		int min_occupancy = B40C_MIN(CompactUpsweep::CTA_OCCUPANCY, B40C_MIN(CompactDownsweep::CTA_OCCUPANCY, ExpandAtomicSweep::CTA_OCCUPANCY));
-		int grid_size = MaxGridSize(min_occupancy, max_grid_size);
-
 		// Make sure our spine is big enough
-		int spine_elements = grid_size;
-		if (retval = spine.Setup<SizeT>(grid_size, spine_elements)) exit(1);
+		int spine_elements = compact_grid_size;
+		if (retval = spine.Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
-
-		printf("DEBUG: BFS min occupancy %d, level-grid size %d\n", min_occupancy, grid_size);
 
 		VertexId iteration = 0;
 		SizeT queue_length;
@@ -168,7 +190,7 @@ public:
 		while (true) {
 
 			// BFS iteration
-			expand_atomic::SweepKernel<ExpandAtomicSweep><<<grid_size, ExpandAtomicSweep::THREADS>>>(
+			expand_atomic::SweepKernel<ExpandAtomicSweep><<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
 				src,
 				iteration,
 				bfs_problem.d_queue[0],
@@ -188,7 +210,7 @@ public:
 			}
 
 			// Upsweep compact
-			compact::UpsweepKernel<CompactUpsweep><<<grid_size, CompactUpsweep::THREADS>>>(
+			compact::UpsweepKernel<CompactUpsweep><<<compact_grid_size, CompactUpsweep::THREADS>>>(
 				iteration,
 				bfs_problem.d_queue[1],
 				bfs_problem.d_keep,
@@ -201,7 +223,7 @@ public:
 				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
 
 			// Downsweep
-			compact::DownsweepKernel<CompactDownsweep><<<grid_size, CompactDownsweep::THREADS>>>(
+			compact::DownsweepKernel<CompactDownsweep><<<compact_grid_size, CompactDownsweep::THREADS>>>(
 				iteration,
 				bfs_problem.d_queue[1],
 				bfs_problem.d_keep,
@@ -219,76 +241,6 @@ public:
 			}
 */
 		}
-
-
-
-
-
-/*
-		while (true) {
-
-			// Contract-expand strategy
-			BfsLevelGridKernel<VertexId, CollisionMask, CONTRACT_EXPAND><<<this->max_grid_size, CTA_THREADS>>>(
-				src,
-				bfs_problem.d_collision_cache,
-				this->d_queue[queue_idx],
-				this->d_queue[queue_idx ^ 1],
-				bfs_problem.d_column_indices,
-				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_path,
-				this->d_queue_lengths,
-				iteration);
-
-			if (DEBUG && cudaThreadSynchronize()) {
-				printf("BfsLevelGridKernel failed: %d %d", __FILE__, __LINE__);
-				exit(1);
-			}
-
-			// Update out-queue length
-			int outgoing_queue_length_idx = (iteration + 1) & 0x3;
-			if (cudaMemcpy(
-				&num_elements,
-				d_queue_lengths + outgoing_queue_length_idx,
-				1 * sizeof(int),
-				cudaMemcpyDeviceToHost))
-			{
-				printf("cudaMemcpy failed: %d %d", __FILE__, __LINE__);
-				exit(1);
-			}
-
-			printf("Iteration %d output queued %d nodes\n", iteration, num_elements);
-
-			if (num_elements == 0) {
-				// No more work, all done.
-				break;
-			}
-
-			queue_idx ^= 1;
-
-			// Upsweep
-			bfs::compact::UpsweepKernel<Upsweep><<<this->max_grid_size, Upsweep::THREADS>>>(
-				this->d_queue[queue_idx],
-				this->d_keep,
-				(SizeT *) this->spine(),
-				bfs_problem.d_collision_cache);
-
-			// Spine
-			scan::SpineKernel<Spine><<<1, Spine::THREADS>>>(
-				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
-
-			// Downsweep
-			bfs::compact::DownsweepKernel<Downsweep><<<this->max_grid_size, Downsweep::THREADS>>>(
-				this->d_queue[queue_idx],
-				this->d_keep,
-				this->d_queue_lengths + outgoing_queue_length_idx,
-				this->d_queue[queue_idx ^ 1],
-				(SizeT *) this->spine());
-
-			queue_idx ^= 1;
-
-			iteration++;
-		}
-*/
 
 		return retval;
 	}

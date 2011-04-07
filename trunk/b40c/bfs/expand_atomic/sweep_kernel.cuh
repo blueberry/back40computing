@@ -204,7 +204,7 @@ void SweepKernel(
 
 				// We'll be the only block with active work this iteration.
 				// Enqueue the source for us to subsequently process.
-				util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(src, d_in);
+				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(src, d_in);
 
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
