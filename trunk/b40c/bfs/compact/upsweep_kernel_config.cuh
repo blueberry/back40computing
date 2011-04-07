@@ -112,7 +112,7 @@ struct UpsweepKernelConfig : _ProblemType
 			REDUCTION_QUADS				= B40C_QUADS(THREADS * sizeof(SizeT)),
 
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_QUADS		= B40C_QUADS((B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY) - B40C_QUADS(sizeof(util::CtaWorkDistribution<SizeT>)) - 64),
+			FULL_OCCUPANCY_QUADS		= B40C_QUADS((B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY) - sizeof(util::CtaWorkDistribution<SizeT>) - 32),
 
 			// Amount of repurposable quads to use for pool
 			SMEM_POOL_QUADS				= B40C_MAX(REDUCTION_QUADS, FULL_OCCUPANCY_QUADS),
@@ -134,7 +134,6 @@ struct UpsweepKernelConfig : _ProblemType
 		VALID							= (CTA_OCCUPANCY > 0),
 	};
 };
-
 
 } // namespace compact
 } // namespace bfs
