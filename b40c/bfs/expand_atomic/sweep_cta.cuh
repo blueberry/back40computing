@@ -153,26 +153,23 @@ struct SweepCta : KernelConfig
 					if (tile->vertex_id[LOAD][VEC] & 1) {
 
 						// Misaligned: load separately
-						util::io::ModifiedLoad<util::io::ld::ca>::Ld(
+						util::io::ModifiedLoad<KernelConfig::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
 							row_range.x,
 							cta->d_row_offsets + tile->vertex_id[LOAD][VEC]);
 
-						util::io::ModifiedLoad<util::io::ld::ca>::Ld(
+						util::io::ModifiedLoad<KernelConfig::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
 							row_range.y,
 							cta->d_row_offsets + tile->vertex_id[LOAD][VEC] + 1);
 
 					} else {
 						// Aligned: load together
-						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+						util::io::ModifiedLoad<KernelConfig::ROW_OFFSET_ALIGNED_READ_MODIFIER>::Ld(
 							row_range,
 							reinterpret_cast<Vec2SizeT*>(cta->d_row_offsets + tile->vertex_id[LOAD][VEC]));
 					}
 
 					if (source_path == -1) {
-/*
-						printf("\t\tIteration %d block %d thread %d found unexplored vertex %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x, tile->vertex_id[LOAD][VEC]);
-*/
+
 						// Node is previously unvisited: compute row offset and length
 						tile->row_offset[LOAD][VEC] = row_range.x;
 						tile->row_length[LOAD][VEC] = row_range.y - row_range.x;
@@ -219,15 +216,15 @@ struct SweepCta : KernelConfig
 					SizeT coop_rank	 	= cta->warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->warp_comm[0][2];
 
-					// Gather
 					VertexId node_id;
 					while (coop_offset < coop_oob) {
 
-						util::io::ModifiedLoad<util::io::ld::NONE>::Ld(
+						// Gather
+						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 							node_id, cta->d_column_indices + coop_offset);
 
 						// Scatter
-						util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 							node_id, cta->d_out + coop_rank);
 
 						coop_offset += KernelConfig::THREADS;
@@ -260,18 +257,15 @@ struct SweepCta : KernelConfig
 					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
-					// Gather
 					VertexId node_id;
 					while (coop_offset < coop_oob) {
 
-						util::io::ModifiedLoad<util::io::ld::NONE>::Ld(
+						// Gather
+						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 							node_id, cta->d_column_indices + coop_offset);
-/*
-						printf("\t\t\tIteration %d block %d thread %d laneid %d enqueued vertex %d @ %llu\n",
-							cta->iteration, blockIdx.x, threadIdx.x, lane_id, node_id, (unsigned long long) (cta->d_out + coop_rank));
-*/
+
 						// Scatter
-						util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 							node_id, cta->d_out + coop_rank);
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -426,7 +420,7 @@ struct SweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
+			KernelConfig::QUEUE_READ_MODIFIER,
 			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
 				tile.vertex_id,
 				d_in,
