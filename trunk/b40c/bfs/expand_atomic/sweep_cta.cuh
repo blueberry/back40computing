@@ -120,8 +120,8 @@ struct SweepCta : KernelConfig
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_length[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		row_rank_b[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		SizeT		coarse_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		SizeT		fine_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		SizeT 		enqueue_count;
@@ -194,9 +194,9 @@ struct SweepCta : KernelConfig
 					}
 				}
 
-				tile->row_rank_b[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
 					tile->row_length[LOAD][VEC] : 0;
-				tile->row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
 					0 : tile->row_length[LOAD][VEC];
 
 				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
@@ -221,7 +221,7 @@ struct SweepCta : KernelConfig
 					if (threadIdx.x == cta->warp_comm[0][0]) {
 						// Got control of the CTA
 						cta->warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
-						cta->warp_comm[0][1] = tile->row_rank[LOAD][VEC];										// queue rank
+						cta->warp_comm[0][1] = tile->coarse_row_rank[LOAD][VEC];										// queue rank
 						cta->warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
 
 						tile->row_length[LOAD][VEC] = 0;
@@ -273,7 +273,7 @@ struct SweepCta : KernelConfig
 
 						// Got control of the warp
 						cta->warp_comm[warp_id][0] = tile->row_offset[LOAD][VEC];									// start
-						cta->warp_comm[warp_id][1] = tile->row_rank[LOAD][VEC];									// queue rank
+						cta->warp_comm[warp_id][1] = tile->coarse_row_rank[LOAD][VEC];									// queue rank
 						cta->warp_comm[warp_id][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];	// oob
 
 						tile->row_length[LOAD][VEC] = 0;
@@ -311,7 +311,7 @@ struct SweepCta : KernelConfig
 			{
 				// Attempt to make further progress on this dequeued item's neighbor
 				// list if its current offset into local scratch is in range
-				SizeT scratch_offset = tile->row_rank_b[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
+				SizeT scratch_offset = tile->fine_row_rank[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
 
 				while ((tile->row_progress[LOAD][VEC] < tile->row_length[LOAD][VEC]) &&
 					(scratch_offset < SmemStorage::SCRATCH_OFFSETS))
@@ -529,7 +529,7 @@ struct SweepCta : KernelConfig
 			true,							// exclusive
 			util::DefaultSum>::ScanTileWithEnqueue(
 				srts_details,
-				tile.row_rank,
+				tile.coarse_row_rank,
 				work_progress.GetQueueCounter<SizeT>(iteration + 1));
 
 		// Enqueue valid edge lists into outgoing queue
@@ -537,9 +537,6 @@ struct SweepCta : KernelConfig
 
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByWarp(this);
-
-
-
 
 		// Scan tile of row ranks (lengths) with enqueue reservation,
 		// turning them into enqueue offsets
@@ -549,7 +546,7 @@ struct SweepCta : KernelConfig
 			true,							// exclusive
 			util::DefaultSum>::ScanTile(
 				srts_details,
-				tile.row_rank_b);
+				tile.fine_row_rank);
 
 		// Reserve allocation in outgoing queue
 		if (threadIdx.x == 0) {

@@ -59,7 +59,7 @@ struct BfsCsrProblem
 	typedef typename ProblemType::CollisionMask 	CollisionMask;
 	typedef typename ProblemType::ValidFlag 		ValidFlag;
 
-	static const SizeT		DEFAULT_QUEUE_PADDING_PERCENT = 0;
+	static const SizeT		DEFAULT_QUEUE_PADDING_PERCENT = 10;
 
 	//---------------------------------------------------------------------
 	// Members
