@@ -295,7 +295,7 @@ public:
 			1 * sizeof(SizeT),
 			cudaMemcpyDeviceToHost))
 		{
-			printf("cudaMemcpy failed: %d %d", __FILE__, __LINE__);
+			printf("cudaMemcpy failed: %s %d", __FILE__, __LINE__);
 		}
 
 		return retval;

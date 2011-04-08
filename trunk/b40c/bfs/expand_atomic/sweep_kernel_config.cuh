@@ -72,6 +72,7 @@ template <
 struct SweepKernelConfig : _ProblemType
 {
 	typedef _ProblemType 					ProblemType;
+	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
 
 	static const util::io::ld::CacheModifier QUEUE_READ_MODIFIER 					= _QUEUE_READ_MODIFIER;

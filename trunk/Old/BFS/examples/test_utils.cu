@@ -186,7 +186,7 @@ struct CsrGraph
 
 			log_counts[log_length + 1]++;
 		}
-		printf("\nDegree Histogram (%lld vertices, %lld edges):\n", nodes, edges);
+		printf("\nDegree Histogram (%lld vertices, %lld edges):\n", (long long) nodes, (long long) edges);
 		for (int i = -1; i < max_log_length + 1; i++) {
 			printf("\tDegree 2^%i: %d (%.2f%%)\n", i, log_counts[i + 1], (float) log_counts[i + 1] * 100.0 / nodes);
 		}

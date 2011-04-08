@@ -169,7 +169,7 @@ public:
 		printf("DEBUG: BFS expand min occupancy %d, level-grid size %d\n",
 				expand_min_occupancy, expand_grid_size);
 
-		int compact_min_occupancy = B40C_MIN(CompactUpsweep::CTA_OCCUPANCY, CompactDownsweep::CTA_OCCUPANCY);
+		int compact_min_occupancy = B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
 		int compact_grid_size = MaxGridSize(compact_min_occupancy, max_grid_size);
 
 		printf("DEBUG: BFS compact min occupancy %d, level-grid size %d\n",

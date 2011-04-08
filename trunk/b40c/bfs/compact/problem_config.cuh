@@ -42,6 +42,8 @@ namespace bfs {
 namespace compact {
 
 
+
+
 /**
  * Unified BFS compaction granularity configuration type.
  *
@@ -108,16 +110,13 @@ struct ProblemConfig : _ProblemType
 	// Compaction spine
 	//---------------------------------------------------------------------
 
-	// Identity for spine
-	static __device__ __forceinline__ SizeT CompactSpineIdentity() { return 0; }
-
 	// Problem type for compaction spine
 	typedef scan::ProblemType<
 		SizeT,								// Spine-scan type is SizeT
 		SizeT,								// Spine-scan sizet is SizeT
 		true,								// Exclusive
 		util::DefaultSum<SizeT>,
-		CompactSpineIdentity> CompactSpineProblem;
+		util::DefaultSumIdentity<SizeT> > CompactSpineProblem;
 
 	// Kernel config for the BFS compaction spine kernel
 	typedef scan::DownsweepKernelConfig <
