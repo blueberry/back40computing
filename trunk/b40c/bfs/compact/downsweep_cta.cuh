@@ -43,7 +43,7 @@ namespace compact {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig>
-struct DownsweepCta : KernelConfig
+struct DownsweepCta
 {
 	//---------------------------------------------------------------------
 	// Typedefs

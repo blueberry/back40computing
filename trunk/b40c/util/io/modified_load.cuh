@@ -162,22 +162,26 @@ struct ModifiedLoad
 
 
 #if CUDA_VERSION >= 4000
-	#define B40C_CAST_SELECT(v3, v4) v4
+	#define B40C_REG8		h
+	#define B40C_REG16 		h
+	#define B40C_CAST8 		short
 #else
-	#define B40C_CAST_SELECT(v3, v4) v3
+	#define B40C_REG8		r
+	#define B40C_REG16 		r
+	#define B40C_CAST8 		char
 #endif
 
 
 	/**
 	 * Define cache-modified loads for all 4-byte (and smaller) structures
 	 */
-	B40C_LOAD_BASE_ONE_TWO_FOUR(char, 			signed char, 	char, 	s8, 	r, B40C_CAST_SELECT(char, short))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	r, B40C_CAST_SELECT(short, short))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(int, 			int, 			int, 	s32, 	r, B40C_CAST_SELECT(int, int))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	r, B40C_CAST_SELECT(unsigned char, unsigned short))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	r, B40C_CAST_SELECT(unsigned short, unsigned short))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned int, 	unsigned int, 	uint,	u32, 	r, B40C_CAST_SELECT(unsigned int, unsigned int))
-	B40C_LOAD_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, B40C_CAST_SELECT(float, float))
+	B40C_LOAD_BASE_ONE_TWO_FOUR(char, 			char, 			char, 	s8, 	B40C_REG8, 		B40C_CAST8)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	B40C_REG16, 	short)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(int, 			int, 			int, 	s32, 	r, 				int)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	B40C_REG8, 		unsigned B40C_CAST8)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	B40C_REG16, 	unsigned short)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(unsigned int, 	unsigned int, 	uint,	u32, 	r, 				unsigned int)
+	B40C_LOAD_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, 				float)
 
 	#if !defined(__B40C_LP64__) || (__B40C_LP64__ == 0)
 	B40C_LOAD_BASE_ONE_TWO_FOUR(long, 			long, 			long, 	s32, 	r, long)
@@ -209,7 +213,9 @@ struct ModifiedLoad
 	#undef B40C_LOAD_BASE
 	#undef B40C_LOAD_BASE_ONE_TWO
 	#undef B40C_LOAD_BASE_ONE_TWO_FOUR
-	#undef B40C_CAST_SELECT
+	#undef B40C_CAST8
+	#undef B40C_REG8
+	#undef B40C_REG16
 
 
 #endif //__CUDA_ARCH__

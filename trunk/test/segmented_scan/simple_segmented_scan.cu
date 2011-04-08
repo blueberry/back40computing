@@ -147,9 +147,9 @@ int main(int argc, char** argv)
 		false,
 		false,
 		false,
-		7, 8, 5, 1, 1, 5,
+		7, 8, 5, 2, 1, 5,
 		      5, 1, 1, 5,
-		   8, 5, 1, 1, 5> CustomConfig;
+		   8, 5, 1, 2, 5> CustomConfig;
 
 	segmented_scan::Enactor segmented_scan_enactor;
 	segmented_scan_enactor.DEBUG = true;

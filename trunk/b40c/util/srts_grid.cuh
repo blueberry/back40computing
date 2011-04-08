@@ -147,7 +147,7 @@ struct SrtsGrid
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
 		// Number of quad words (uint4) needed to back this level of the SRTS grid
-		RAKING_QUADS					= (((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)) + sizeof(uint4) - 1) / sizeof(uint4)),
+		RAKING_QUADS					= B40C_QUADS(ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)),
 	};
 
 	// If there are prefix dependences between lanes, a secondary SRTS grid
@@ -208,12 +208,12 @@ struct SrtsGrid
 	 */
 	static __host__ __device__ __forceinline__  LanePartial MyLanePartial(uint4 *smem_pool)
 	{
-		T *smem = reinterpret_cast<T*>(smem_pool);
+		T *smem = (T*) smem_pool;
 
 		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;
 		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);
 
-		return reinterpret_cast<LanePartial>(smem + (row * PADDED_PARTIALS_PER_ROW) + col);
+		return (LanePartial) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
 	}
 
 
@@ -223,11 +223,11 @@ struct SrtsGrid
 	 */
 	static __host__ __device__ __forceinline__  RakingSegment MyRakingSegment(uint4 *smem_pool)
 	{
-		T *smem = reinterpret_cast<T*>(smem_pool);
+		T *smem = (T*) smem_pool;
 
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
-		return reinterpret_cast<RakingSegment>(smem + (row * PADDED_PARTIALS_PER_ROW) + col);
+		return (RakingSegment) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
 	}
 
 
