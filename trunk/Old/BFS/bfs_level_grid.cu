@@ -193,8 +193,10 @@ public:
 			expand_atomic::SweepKernel<ExpandAtomicSweep><<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
 				src,
 				iteration,
-				bfs_problem.d_queue[0],
-				bfs_problem.d_queue[1],
+				bfs_problem.d_compact_queue,			// in
+				bfs_problem.d_compact_parent_queue,
+				bfs_problem.d_expand_queue,				// out
+				bfs_problem.d_expand_parent_queue,
 				bfs_problem.d_column_indices,
 				bfs_problem.d_row_offsets,
 				bfs_problem.d_source_path,
@@ -212,7 +214,7 @@ public:
 			// Upsweep compact
 			compact::UpsweepKernel<CompactUpsweep><<<compact_grid_size, CompactUpsweep::THREADS>>>(
 				iteration,
-				bfs_problem.d_queue[1],
+				bfs_problem.d_expand_queue,				// in
 				bfs_problem.d_keep,
 				(SizeT *) this->spine(),
 				bfs_problem.d_collision_cache,
@@ -225,11 +227,14 @@ public:
 			// Downsweep
 			compact::DownsweepKernel<CompactDownsweep><<<compact_grid_size, CompactDownsweep::THREADS>>>(
 				iteration,
-				bfs_problem.d_queue[1],
+				bfs_problem.d_expand_queue,				// in
+				bfs_problem.d_expand_parent_queue,
 				bfs_problem.d_keep,
-				bfs_problem.d_queue[0],
+				bfs_problem.d_compact_queue,			// out
+				bfs_problem.d_compact_parent_queue,
 				(SizeT *) this->spine(),
 				this->work_progress);
+
 /*
 			this->work_progress.GetQueueLength(iteration, queue_length);
 
@@ -241,6 +246,8 @@ public:
 			}
 */
 		}
+
+		printf("\n");
 
 		return retval;
 	}

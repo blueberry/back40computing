@@ -131,32 +131,43 @@ struct SweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
+		// Type describing four shared memory channels per warp for intra-warp communication
+		typedef SizeT 						WarpComm[WARPS][4];
+
 		// Shared work-processing limits
 		util::CtaWorkDistribution<SizeT>	work_decomposition;
 
-		// Three shared memory channels for intra-warp communication
-		SizeT 								warp_comm[WARPS][3];
+		// Shared memory channels for intra-warp communication
+		WarpComm							warp_comm;
 
 		// Storage for scanning local expansion ranks
 		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
+		// Enqueue offset for neighbors of the current tile
 		SizeT								enqueue_offset;
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
-												- sizeof(SizeT[WARPS][3])
+												- sizeof(WarpComm)
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
 												- sizeof(SizeT)
 												- 64,
-			MAX_SCRATCH_OFFSETS				= MAX_SCRATCH_BYTES_PER_CTA / sizeof(SizeT),
-			SCRATCH_OFFSETS_PER_THREAD		= MAX_SCRATCH_OFFSETS / THREADS,
-			SCRATCH_OFFSETS					= SCRATCH_OFFSETS_PER_THREAD * THREADS,
 
-			SCRATCH_QUADS					= B40C_QUADS(SCRATCH_OFFSETS * sizeof(SizeT)),
+			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
+													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
+													sizeof(SizeT),								// Just gather offset
 
-			SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, SCRATCH_QUADS),
+			SCRATCH_ELEMENTS				= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+
+			OFFSET_QUADS					= B40C_QUADS(SCRATCH_ELEMENTS * sizeof(SizeT)),		// Number of quads for offsets
+			PARENT_QUADS					= (ProblemType::MARK_PARENTS) ? 					// Number of parent
+												B40C_QUADS(SCRATCH_ELEMENTS * sizeof(VertexId)) :
+												0,
+			SCRATCH_QUADS					= OFFSET_QUADS + PARENT_QUADS,						// Number of quads for scratch space
+
+			SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, SCRATCH_QUADS),	// Number of quads for repurposable smem
 		};
 
 

@@ -40,7 +40,7 @@ namespace bfs {
 /**
  * CSR storage management structure for BFS problems.  
  */
-template <typename _VertexId, typename _SizeT>
+template <typename _VertexId, typename _SizeT, bool MARK_PARENTS>
 struct BfsCsrProblem
 {
 	//---------------------------------------------------------------------
@@ -51,7 +51,8 @@ struct BfsCsrProblem
 		_VertexId,				// VertexId
 		_SizeT,					// SizeT
 		unsigned char,			// CollisionMask
-		unsigned char> 			// ValidFlag
+		unsigned char, 			// ValidFlag
+		MARK_PARENTS>			// MARK_PARENTS
 			ProblemType;
 
 	typedef typename ProblemType::VertexId 			VertexId;
@@ -59,7 +60,7 @@ struct BfsCsrProblem
 	typedef typename ProblemType::CollisionMask 	CollisionMask;
 	typedef typename ProblemType::ValidFlag 		ValidFlag;
 
-	static const SizeT		DEFAULT_QUEUE_PADDING_PERCENT = 10;
+	static const SizeT		DEFAULT_QUEUE_PADDING_PERCENT = 20;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -78,13 +79,19 @@ struct BfsCsrProblem
 	CollisionMask 	*d_collision_cache;
 	
 	// Frontier queues
-	VertexId 		*d_queue[2];
+	VertexId 		*d_expand_queue;
+	VertexId 		*d_compact_queue;
+
+	// Optional queues for tracking parent vertices
+	VertexId 		*d_expand_parent_queue;
+	VertexId 		*d_compact_parent_queue;
 
 	// Vector of valid flags for elements in the frontier queue
 	ValidFlag 		*d_keep;
 
 	// Maximum size of the queues
-	SizeT 			max_queue_size;
+	SizeT 			max_expand_queue_size;
+	SizeT 			max_compact_queue_size;
 
 
 	//---------------------------------------------------------------------
@@ -102,11 +109,12 @@ struct BfsCsrProblem
 		d_source_path(NULL),
 		d_collision_cache(NULL),
 		d_keep(NULL),
-		max_queue_size(0)
-	{
-		d_queue[0] = NULL;
-		d_queue[1] = NULL;
-	}
+		d_expand_queue(NULL),
+		d_compact_queue(NULL),
+		d_expand_parent_queue(NULL),
+		d_compact_parent_queue(NULL),
+		max_expand_queue_size(0),
+		max_compact_queue_size(0) {}
 
 
 	/**
@@ -114,13 +122,15 @@ struct BfsCsrProblem
      */
     virtual ~BfsCsrProblem()
     {
-		if (d_column_indices) 	cudaFree(d_column_indices);
-		if (d_row_offsets) 		cudaFree(d_row_offsets);
-		if (d_source_path) 		cudaFree(d_source_path);
-		if (d_collision_cache) 	cudaFree(d_collision_cache);
-		if (d_keep) 			cudaFree(d_keep);
-		if (d_queue[0])			cudaFree(d_queue[0]);
-		if (d_queue[1])			cudaFree(d_queue[1]);
+		if (d_column_indices) 			cudaFree(d_column_indices);
+		if (d_row_offsets) 				cudaFree(d_row_offsets);
+		if (d_source_path) 				cudaFree(d_source_path);
+		if (d_collision_cache) 			cudaFree(d_collision_cache);
+		if (d_keep) 					cudaFree(d_keep);
+		if (d_expand_queue) 			cudaFree(d_expand_queue);
+		if (d_compact_queue) 			cudaFree(d_compact_queue);
+		if (d_expand_parent_queue) 		cudaFree(d_expand_parent_queue);
+		if (d_compact_parent_queue) 	cudaFree(d_compact_parent_queue);
 	}
 
 
@@ -133,16 +143,22 @@ struct BfsCsrProblem
 		VertexId 	*d_column_indices,
 		SizeT 		*d_row_offsets,
 		VertexId 	*d_source_path = NULL,
-		SizeT 		max_queue_size = -1)
+		SizeT 		max_expand_queue_size = -1,
+		SizeT 		max_compact_queue_size = -1)
 	{
 		this->nodes 			= nodes;
 		this->edges 			= edges;
 		this->d_column_indices 	= d_column_indices;
 		this->d_row_offsets 	= d_row_offsets;
 		this->d_source_path 	= d_source_path;
-		this->max_queue_size 	= (max_queue_size > 0) ?
-			max_queue_size : 														// Queue-size override
-			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;		// Use default queue size
+
+		this->max_expand_queue_size 	= (max_expand_queue_size > 0) ?
+			max_expand_queue_size : 													// Queue-size override
+			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+
+		this->max_compact_queue_size 	= (max_compact_queue_size > 0) ?
+			max_compact_queue_size : 													// Queue-size override
+			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
 
 		return cudaSuccess;
 	}
@@ -155,15 +171,21 @@ struct BfsCsrProblem
 		SizeT 		edges,
 		VertexId 	*h_column_indices,
 		SizeT 		*h_row_offsets,
-		SizeT 		max_queue_size = -1)
+		SizeT 		max_expand_queue_size = -1,
+		SizeT 		max_compact_queue_size = -1)
 	{
 		cudaError_t retval = cudaSuccess;
 
 		this->nodes = nodes;
 		this->edges = edges;
-		this->max_queue_size 	= (max_queue_size > 0) ?
-			max_queue_size : 														// Queue-size override
-			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;		// Use default queue size
+
+		this->max_expand_queue_size 	= (max_expand_queue_size > 0) ?
+			max_expand_queue_size : 													// Queue-size override
+			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+
+		this->max_compact_queue_size 	= (max_compact_queue_size > 0) ?
+			max_compact_queue_size : 													// Queue-size override
+			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
 
 		do {
 			// Allocate and initialize d_column_indices
@@ -212,18 +234,31 @@ struct BfsCsrProblem
 			}
 
 			// Allocate queues if necessary
-			if (!d_queue[0]) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_queue[0], max_queue_size * sizeof(VertexId)),
-					"BfsCsrProblem cudaMalloc d_queue[0] failed", __FILE__, __LINE__)) break;
+			if (!d_expand_queue) {
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_expand_queue, max_expand_queue_size * sizeof(VertexId)),
+					"BfsCsrProblem cudaMalloc d_expand_queue failed", __FILE__, __LINE__)) break;
 			}
-			if (!d_queue[1]) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_queue[1], max_queue_size * sizeof(VertexId)),
-					"BfsCsrProblem cudaMalloc d_queue[1] failed", __FILE__, __LINE__)) break;
+			if (!d_compact_queue) {
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_compact_queue, max_compact_queue_size * sizeof(VertexId)),
+					"BfsCsrProblem cudaMalloc d_compact_queue failed", __FILE__, __LINE__)) break;
 			}
+
+			if (MARK_PARENTS) {
+				// Allocate parent vertex queues if necessary
+				if (!d_expand_parent_queue) {
+					if (retval = util::B40CPerror(cudaMalloc((void**) &d_expand_parent_queue, max_expand_queue_size * sizeof(VertexId)),
+						"BfsCsrProblem cudaMalloc d_expand_parent_queue failed", __FILE__, __LINE__)) break;
+				}
+				if (!d_compact_parent_queue) {
+					if (retval = util::B40CPerror(cudaMalloc((void**) &d_compact_parent_queue, max_compact_queue_size * sizeof(VertexId)),
+						"BfsCsrProblem cudaMalloc d_compact_parent_queue failed", __FILE__, __LINE__)) break;
+				}
+			}
+
 
 			// Allocate d_keep if necessary
 			if (!d_keep) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_keep, max_queue_size * sizeof(ValidFlag)),
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_keep, max_expand_queue_size * sizeof(ValidFlag)),
 					"BfsCsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
 

@@ -134,7 +134,7 @@ void Usage()
 template<typename VertexId, typename SizeT>
 void DisplaySolution(VertexId* source_path, SizeT nodes)
 {
-	printf("Solution: [");
+	printf("[");
 	for (VertexId i = 0; i < nodes; i++) {
 		PrintValue(i);
 		printf(":");
@@ -187,12 +187,17 @@ struct Stats {
 /**
  * Displays timing and correctness statistics 
  */
-template <BfsStrategy STRATEGY, typename VertexId, typename Value, typename SizeT>
+template <
+	bool MARK_PARENTS,
+	BfsStrategy STRATEGY,
+	typename VertexId,
+	typename Value,
+	typename SizeT>
 void DisplayStats(
 	Stats 									&stats,
 	VertexId 								src,
 	VertexId 								*h_source_path,							// computed answer
-	VertexId 								*reference_source_path,					// reference answer
+	VertexId 								*reference_source_dist,					// reference answer
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	double 									elapsed,
 	int 									passes,
@@ -217,15 +222,75 @@ void DisplayStats(
 	}
 	redundant_work *= 100;
 
-	// Display name (and correctness)
-	printf("[%s]: ", stats.name);
-	if (reference_source_path != NULL) {
-		CompareResults(h_source_path, reference_source_path, csr_graph.nodes, true);
+	// Display test name
+	printf("[%s] finished. ", stats.name);
+
+	// Display correctness
+	if (reference_source_dist != NULL) {
+		printf("Validity: ");
+		fflush(stdout);
+		if (!MARK_PARENTS) {
+
+			// Simply compare with the reference source-distance
+			CompareResults(h_source_path, reference_source_dist, csr_graph.nodes, true);
+
+		} else {
+
+			// Verify plausibility of parent markings
+			bool correct = true;
+			for (VertexId node = 0; node < csr_graph.nodes; node++) {
+				VertexId parent = h_source_path[node];
+
+				// Check that parentless nodes have zero or unvisited source distance
+				VertexId node_dist = reference_source_dist[node];
+				if (parent < 0) {
+					if (reference_source_dist[node] > 0) {
+						printf("INCORRECT: parentless node %lld (parent %lld) has positive distance distance %lld",
+							(long long) node, (long long) parent, (long long) node_dist);
+						correct = false;
+						break;
+					}
+					continue;
+				}
+
+				// Check that parent has iteration one less than node
+				VertexId parent_dist = reference_source_dist[parent];
+				if (parent_dist + 1 != node_dist) {
+					printf("INCORRECT: parent %lld has distance %lld, node %lld has distance %lld",
+						(long long) parent, (long long) parent_dist, (long long) node, (long long) node_dist);
+					correct = false;
+					break;
+				}
+
+				// Check that parent is in fact a parent
+				bool found = false;
+				for (SizeT neighbor_offset = csr_graph.row_offsets[parent];
+					neighbor_offset < csr_graph.row_offsets[parent + 1];
+					neighbor_offset++)
+				{
+					if (csr_graph.column_indices[neighbor_offset] == node) {
+						found = true;
+						break;
+					}
+				}
+				if (!found) {
+					printf("INCORRECT: %lld is not a neighbor of %lld",
+						(long long) parent, (long long) node);
+					correct = false;
+					break;
+				}
+			}
+
+			if (correct) {
+				printf("CORRECT");
+			}
+
+		}
 	}
 	printf("\n");
 
+	// Display statistics
 	if (nodes_visited < 5) {
-	
 		printf("Fewer than 5 vertices visited.\n");
 
 	} else {
@@ -286,7 +351,7 @@ void TestGpuBfs(
 	ProblemStorage 							&bfs_problem,
 	VertexId 								src,
 	VertexId 								*h_source_path,						// place to copy results out to
-	VertexId 								*reference_source_path,
+	VertexId 								*reference_source_dist,
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
 	Stats									&stats)								// running statistics
 {
@@ -312,11 +377,11 @@ void TestGpuBfs(
 	double		avg_barrier_wait = 0.0;
 
 	enactor.GetStatistics(total_queued, passes, avg_barrier_wait);
-	DisplayStats<STRATEGY>(
+	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS, STRATEGY>(
 		stats,
 		src,
 		h_source_path,
-		reference_source_path,
+		reference_source_dist,
 		csr_graph,
 		elapsed,
 		passes,
@@ -380,7 +445,7 @@ void SimpleReferenceBfs(
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
-	DisplayStats<NONE, VertexId, Value, SizeT>(
+	DisplayStats<false, NONE, VertexId, Value, SizeT>(
 		stats,
 		src,
 		source_path,
@@ -409,8 +474,11 @@ void RunTests(
 	int max_grid_size,
 	int queue_size) 
 {
+	const bool MARK_PARENTS = false;
+
+
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
-	VertexId* reference_source_path 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
@@ -418,7 +486,7 @@ void RunTests(
 //	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
 
 	// Allocate problem on GPU
-	BfsCsrProblem<VertexId, SizeT> bfs_problem;
+	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
 	if (bfs_problem.FromHostProblem(
 		csr_graph.nodes,
 		csr_graph.edges,
@@ -445,8 +513,8 @@ void RunTests(
 		
 		printf("---------------------------------------------------------------\n");
 
-		// Compute reference CPU BFS solution
-		SimpleReferenceBfs(csr_graph, reference_source_path, src, stats[0]);
+		// Compute reference CPU BFS solution for source-distance
+		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
 		printf("\n");
 /*
 		// Perform expand-contract GPU BFS search
@@ -455,7 +523,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_path,
+			reference_source_dist,
 			csr_graph,
 			stats[1]);
 		printf("\n");
@@ -467,13 +535,16 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_path,
+			reference_source_dist,
 			csr_graph,
 			stats[2]);
 		printf("\n");
 
 		if (g_verbose2) {
-			DisplaySolution(reference_source_path, csr_graph.nodes);
+			printf("Reference solution: ");
+			DisplaySolution(reference_source_dist, csr_graph.nodes);
+			printf("Computed solution (%s): ", (MARK_PARENTS) ? "parents" : "source dist");
+			DisplaySolution(h_source_path, csr_graph.nodes);
 			printf("\n");
 		}
 		
@@ -489,7 +560,7 @@ void RunTests(
 	// Cleanup
 	//
 	
-	if (reference_source_path) free(reference_source_path);
+	if (reference_source_dist) free(reference_source_dist);
 	if (h_source_path) free(h_source_path);
 	
 	cudaThreadSynchronize();
