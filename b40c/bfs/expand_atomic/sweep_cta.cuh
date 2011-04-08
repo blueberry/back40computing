@@ -44,7 +44,7 @@ namespace expand_atomic {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig, typename SmemStorage>
-struct SweepCta : KernelConfig
+struct SweepCta
 {
 	//---------------------------------------------------------------------
 	// Typedefs

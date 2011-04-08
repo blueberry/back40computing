@@ -152,8 +152,8 @@ int main(int argc, char** argv)
 		false,
 		true, 
 		false, 
-		8, 7, 0, 2, 9,
-		8, 0, 1> CustomConfig;
+		8, 7, 1, 2, 9,
+		8, 1, 1> CustomConfig;
 	
 	reduction_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
 

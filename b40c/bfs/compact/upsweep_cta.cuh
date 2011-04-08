@@ -46,7 +46,7 @@ namespace compact {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig, typename SmemStorage>
-struct UpsweepCta : KernelConfig
+struct UpsweepCta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
