@@ -33,16 +33,18 @@ namespace bfs {
  * Type of BFS problem
  */
 template <
-	typename _VertexId,
-	typename _SizeT,
-	typename _CollisionMask,
-	typename _ValidFlag>
+	typename 	_VertexId,
+	typename 	_SizeT,
+	typename 	_CollisionMask,
+	typename 	_ValidFlag,
+	bool 		_MARK_PARENTS>
 struct ProblemType
 {
-	typedef _VertexId		VertexId;
-	typedef _SizeT 			SizeT;
-	typedef _CollisionMask	CollisionMask;
-	typedef _ValidFlag		ValidFlag;
+	typedef _VertexId					VertexId;
+	typedef _SizeT 						SizeT;
+	typedef _CollisionMask				CollisionMask;
+	typedef _ValidFlag					ValidFlag;
+	static const bool MARK_PARENTS		= _MARK_PARENTS;
 };
 
 

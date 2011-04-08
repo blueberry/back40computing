@@ -65,7 +65,9 @@ struct DownsweepCta : KernelConfig
 
 	// Global device storage
 	VertexId 		*d_in;			// Incoming vertex ids
+	VertexId 		*d_parent_in;	// Incoming parent vertex ids (optional)
 	VertexId 		*d_out;			// Compacted vertex ids
+	VertexId 		*d_parent_out;	// Compacted parent vertex ids (optional)
 	ValidFlag		*d_flags_in;	// Validity flags
 
 	// Pool of storage for compacting a tile of values
@@ -87,8 +89,10 @@ struct DownsweepCta : KernelConfig
 	__device__ __forceinline__ DownsweepCta(
 		SmemStorage 	&smem_storage,
 		VertexId 		*d_in,
+		VertexId 		*d_parent_in,
 		ValidFlag		*d_flags_in,
 		VertexId 		*d_out,
+		VertexId 		*d_parent_out,
 		SizeT 			spine_partial) :
 
 			srts_details(
@@ -97,8 +101,10 @@ struct DownsweepCta : KernelConfig
 				0),
 			smem_pool((VertexId*) smem_storage.smem_pool_int4s),
 			d_in(d_in),
+			d_parent_in(d_parent_in),
 			d_flags_in(d_flags_in),
 			d_out(d_out),
+			d_parent_out(d_parent_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
 
 
@@ -123,7 +129,7 @@ struct DownsweepCta : KernelConfig
 		SizeT cta_offset,
 		SizeT out_of_bounds = 0)
 	{
-		VertexId 		vertex_id[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of vertex ids
+		VertexId 		vertex_id[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of vertex ids
 		ValidFlag 		flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of valid flags
 		SizeT 			ranks[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of local scatter offsets
 
@@ -194,11 +200,58 @@ struct DownsweepCta : KernelConfig
 			false>::Invoke(								// Guarded stores
 				compacted_data, d_out, carry, scatter_out_of_bounds);
 
-		// Update running discontinuity count for CTA
-		carry = scatter_out_of_bounds;
-
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
+
+		if (KernelConfig::MARK_PARENTS) {
+
+			// Compact parent vertices as well
+			util::io::LoadTile<
+				KernelConfig::LOG_LOADS_PER_TILE,
+				KernelConfig::LOG_LOAD_VEC_SIZE,
+				KernelConfig::THREADS,
+				KernelConfig::READ_MODIFIER,
+				FULL_TILE>::Invoke(vertex_id, d_parent_in, cta_offset, out_of_bounds);
+
+			// Scatter valid vertex_id into smem exchange, predicated on flags (treat
+			// vertex_id, flags, and ranks as linear arrays)
+			util::io::ScatterTile<
+				KernelConfig::TILE_ELEMENTS_PER_THREAD,
+				KernelConfig::THREADS,
+				util::io::st::NONE>::Scatter(
+					smem_pool,
+					reinterpret_cast<VertexId *>(vertex_id),
+					reinterpret_cast<ValidFlag *>(flags),
+					reinterpret_cast<SizeT *>(ranks));
+
+			// Barrier sync to protect smem exchange storage
+			__syncthreads();
+
+			// Gather compacted vertex_id from smem exchange (in 1-element stride loads)
+			VertexId compacted_data[KernelConfig::TILE_ELEMENTS_PER_THREAD][1];
+			util::io::LoadTile<
+				KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
+				0, 											// Vec-1
+				KernelConfig::THREADS,
+				util::io::ld::NONE,
+				false>::Invoke(								// Guarded loads
+					compacted_data, smem_pool, 0, valid_elements);
+
+			// Scatter compacted vertex_id to global output
+			util::io::StoreTile<
+				KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
+				0, 											// Vec-1
+				KernelConfig::THREADS,
+				KernelConfig::WRITE_MODIFIER,
+				false>::Invoke(								// Guarded stores
+					compacted_data, d_parent_out, carry, scatter_out_of_bounds);
+
+			// Barrier sync to protect smem exchange storage
+			__syncthreads();
+		}
+
+		// Update running discontinuity count for CTA
+		carry = scatter_out_of_bounds;
 	}
 };
 

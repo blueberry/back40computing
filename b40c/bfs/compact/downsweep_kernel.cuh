@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS Compaction downsweep kernel
+ * BFS compaction downsweep kernel
  ******************************************************************************/
 
 #pragma once
@@ -40,8 +40,10 @@ template <typename KernelConfig, typename SmemStorage>
 __device__ __forceinline__ void DownsweepPass(
 	int 										&iteration,
 	typename KernelConfig::VertexId 			* &d_in,
+	typename KernelConfig::VertexId 			* &d_parent_in,
 	typename KernelConfig::ValidFlag			* &d_flags_in,
 	typename KernelConfig::VertexId 			* &d_out,
+	typename KernelConfig::VertexId 			* &d_parent_out,
 	typename KernelConfig::SizeT 				* &d_spine,
 	util::CtaWorkProgress 						&work_progress,
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
@@ -70,8 +72,10 @@ __device__ __forceinline__ void DownsweepPass(
 	DownsweepCta cta(
 		smem_storage,
 		d_in,
+		d_parent_in,
 		d_flags_in,
 		d_out,
+		d_parent_out,
 		spine_partial);
 
 	// Process full tiles
@@ -89,10 +93,6 @@ __device__ __forceinline__ void DownsweepPass(
 
 	// Last block with work writes out compacted length
 	if (work_limits.last_block && (threadIdx.x == 0)) {
-/*
-		printf("Iteration %d block %d queue compacted down to %d elements\n",
-			iteration, blockIdx.x, cta.carry);
-*/
 		work_progress.StoreQueueLength(cta.carry, iteration);
 	}
 }
@@ -111,8 +111,10 @@ __global__
 void DownsweepKernel(
 	typename KernelConfig::VertexId			iteration,
 	typename KernelConfig::VertexId 		* d_in,
+	typename KernelConfig::VertexId 		* d_parent_in,
 	typename KernelConfig::ValidFlag		* d_flags_in,
 	typename KernelConfig::VertexId 		* d_out,
+	typename KernelConfig::VertexId 		* d_parent_out,
 	typename KernelConfig::SizeT			* d_spine,
 	util::CtaWorkProgress 					work_progress)
 {
@@ -126,11 +128,7 @@ void DownsweepKernel(
 
 		// Obtain problem size
 		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-		if (blockIdx.x == 0)
-		printf("Iteration %d Compact downsweep block %d thread %d read queue size %d\n",
-			iteration, blockIdx.x, threadIdx.x, num_elements);
-*/
+
 		// Initialize work decomposition in smem
 		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 			num_elements, gridDim.x);
@@ -142,8 +140,10 @@ void DownsweepKernel(
 	DownsweepPass<KernelConfig>(
 		iteration,
 		d_in,
+		d_parent_in,
 		d_flags_in,
 		d_out,
+		d_parent_out,
 		d_spine,
 		work_progress,
 		smem_storage.work_decomposition,

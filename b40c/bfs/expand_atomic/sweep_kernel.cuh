@@ -44,7 +44,9 @@ struct SweepPass
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
 		typename KernelConfig::VertexId 		*&d_in,
+		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
+		typename KernelConfig::VertexId 		*&d_parent_out,
 		typename KernelConfig::VertexId			*&d_column_indices,
 		typename KernelConfig::SizeT			*&d_row_offsets,
 		typename KernelConfig::VertexId			*&d_source_path,
@@ -65,17 +67,15 @@ struct SweepPass
 		if (!work_limits.elements) {
 			return;
 		}
-/*
-		if (threadIdx.x == 0)
-		printf("Iteration %d BFS block %d thread %d with cta_elements %d\n",
-			iteration, blockIdx.x, threadIdx.x, work_limits.elements);
-*/
+
 		// CTA processing abstraction
 		SweepCta cta(
 			iteration,
 			smem_storage,
 			d_in,
+			d_parent_in,
 			d_out,
+			d_parent_out,
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
@@ -128,7 +128,9 @@ struct SweepPass <KernelConfig, true>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
 		typename KernelConfig::VertexId 		*&d_in,
+		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
+		typename KernelConfig::VertexId 		*&d_parent_out,
 		typename KernelConfig::VertexId			*&d_column_indices,
 		typename KernelConfig::SizeT			*&d_row_offsets,
 		typename KernelConfig::VertexId			*&d_source_path,
@@ -144,7 +146,9 @@ struct SweepPass <KernelConfig, true>
 			iteration,
 			smem_storage,
 			d_in,
+			d_parent_in,
 			d_out,
+			d_parent_out,
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
@@ -181,7 +185,9 @@ void SweepKernel(
 	typename KernelConfig::VertexId 		src,
 	typename KernelConfig::VertexId 		iteration,
 	typename KernelConfig::VertexId 		*d_in,
+	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
+	typename KernelConfig::VertexId 		*d_parent_out,
 	typename KernelConfig::VertexId			*d_column_indices,
 	typename KernelConfig::SizeT			*d_row_offsets,
 	typename KernelConfig::VertexId			*d_source_path,
@@ -206,6 +212,12 @@ void SweepKernel(
 				// Enqueue the source for us to subsequently process.
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(src, d_in);
 
+				if (KernelConfig::MARK_PARENTS) {
+					// Enqueue parent of source
+					typename KernelConfig::VertexId parent = -2;
+					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+				}
+
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
 				smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
@@ -222,7 +234,9 @@ void SweepKernel(
 		SweepPass<KernelConfig, false>::Invoke(
 			iteration,
 			d_in,
+			d_parent_in,
 			d_out,
+			d_parent_out,
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
@@ -237,11 +251,7 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-			if (blockIdx.x == 0)
-			printf("Iteration %d BFS block %d thread %d read queue size %d\n",
-				iteration, blockIdx.x, threadIdx.x, num_elements);
-*/
+
 			// Initialize work decomposition in smem
 			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
@@ -260,7 +270,9 @@ void SweepKernel(
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
 			d_in,
+			d_parent_in,
 			d_out,
+			d_parent_out,
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,

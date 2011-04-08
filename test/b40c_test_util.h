@@ -286,7 +286,7 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 	for (SizeT i = 0; i < len; i++) {
 
 		if (computed[i] != reference[i]) {
-			printf("Incorrect: [%lu]: ", (unsigned long) i);
+			printf("INCORRECT: [%lu]: ", (unsigned long) i);
 			PrintValue<T>(computed[i]);
 			printf(" != ");
 			PrintValue<T>(reference[i]);
@@ -310,7 +310,7 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 		}
 	}
 
-	printf("Correct");
+	printf("CORRECT");
 	return 0;
 }
 
