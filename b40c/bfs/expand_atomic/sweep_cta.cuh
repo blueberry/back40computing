@@ -506,7 +506,6 @@ struct SweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
 	__device__ __forceinline__ SweepCta(
 		VertexId 				iteration,
 		SmemStorage 			&smem_storage,

@@ -47,9 +47,18 @@ __device__ __forceinline__ void NopStTransform(T &val) {}
  * Addition binary associative operator
  */
 template <typename T>
-T __host__ __device__ __forceinline__ DefaultSum(const T &a, const T &b)
+__host__ __device__ __forceinline__ T DefaultSum(const T &a, const T &b)
 {
 	return a + b;
+}
+
+/**
+ * Identity for binary addition operator
+ */
+template <typename T>
+__host__ __device__ __forceinline__ T DefaultSumIdentity()
+{
+	return (T) 0;
 }
 
 
