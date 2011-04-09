@@ -20,13 +20,18 @@
  ******************************************************************************/
 
 /******************************************************************************
- * API a the Single-grid BFS Imlementation
+ * Level-grid BFS implementation
  ******************************************************************************/
 
 #pragma once
 
 #include <bfs_base.cu>
-#include <bfs_single_grid_kernel.cu>
+
+#include <b40c/util/spine.cuh>
+#include <b40c/util/global_barrier.cuh>
+#include <b40c/bfs/problem_type.cuh>
+#include <b40c/bfs/single_grid/problem_config.cuh>
+#include <b40c/bfs/single_grid/sweep_kernel.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -34,97 +39,32 @@ namespace bfs {
 
 /**
  * Single-grid breadth-first-search enactor.
- *  
- * All iterations are performed by a single kernel-launch.  This is 
- * made possible by software global-barriers across threadblocks.  
- * breadth-first-search enactors.
  */
-template <typename VertexId, bool INSTRUMENTED>
-class SingleGridBfsEnactor : public BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> >
+class SingleGridBfsEnactor : public BaseBfsEnactor
 {
-private:
-	
-	typedef BaseBfsEnactor<VertexId, BfsCsrProblem<VertexId> > Base;
-
-protected:	
-
-	/**
-	 * Array of global synchronization counters, one for each threadblock
-	 */
-	util::GlobalBarrierLifetime barrier;
-	
-	/**
-	 * Rotating 4-element array of atomic counters indicating sizes of the 
-	 * incoming and outgoing frontier queues, where 
-	 * incoming = iteration % 4, and outgoing = (iteration + 1) % 4
-	 */
-	int *d_queue_lengths;
-	
-	/**
-	 * Time (in clocks) spent by each threadblock in software global barrier.
-	 * Can be used to measure load imbalance.
-	 */
-	unsigned long long *d_barrier_time;
 
 protected:
-	
+
 	/**
-	 * Utility function: Returns the default maximum number of threadblocks 
-	 * this enactor class can launch.
+	 * Temporary device storage needed for reducing partials produced
+	 * by separate CTAs
 	 */
-	static int MaxGridSize(const util::CudaProperties &props, int max_grid_size = 0)
-	{
-		if (max_grid_size == 0) {
-			// No override: Fully populate all SMs
-			max_grid_size = props.device_props.multiProcessorCount * 
-					B40C_BFS_SG_OCCUPANCY(props.kernel_ptx_version); 
-		} 
-		
-		return max_grid_size;
-	}
-	
+	util::Spine spine;
+
+	/**
+	 * Mechanism for implementing software global barriers from within
+	 * a single grid invocation
+	 */
+	util::GlobalBarrierLifetime global_barrier;
+
 public: 	
 	
 	/**
-	 * Constructor.  Requires specification of the maximum number of elements
-	 * that can be queued into the frontier-queue for a given BFS iteration.
+	 * Constructor
 	 */
-	SingleGridBfsEnactor(
-		int max_queue_size,
-		int max_grid_size = 0,
-		const util::CudaProperties &props = util::CudaProperties()) :
-			Base::BaseBfsEnactor(max_queue_size, MaxGridSize(props, max_grid_size), props)
-	{
-		// Size of 4-element rotating vector of queue lengths (and statistics)   
-		const int QUEUE_LENGTHS_SIZE = 4 + 2;
-		
-		// Allocate 
-		if (cudaMalloc((void**) &d_queue_lengths, sizeof(int) * QUEUE_LENGTHS_SIZE)) {
-			printf("BfsCsrProblem:: cudaMalloc d_queue_lengths failed: ", __FILE__, __LINE__);
-			exit(1);
-		}
-		if (cudaMalloc((void**) &d_barrier_time, sizeof(unsigned long long) * this->max_grid_size)) {
-			printf("BfsCsrProblem:: cudaMalloc d_barrier_time failed: ", __FILE__, __LINE__);
-			exit(1);
-		}
+	SingleGridBfsEnactor(bool DEBUG = false) : BaseBfsEnactor(DEBUG) {}
 
-		// Initialize 
-		util::MemsetKernel<int><<<1, QUEUE_LENGTHS_SIZE>>>(								// to zero
-			d_queue_lengths, 0, QUEUE_LENGTHS_SIZE);
 
-		barrier.Setup(this->max_grid_size);
-	}
-
-public:
-
-	/**
-     * Destructor
-     */
-    virtual ~SingleGridBfsEnactor() 
-    {
-		if (d_queue_lengths) cudaFree(d_queue_lengths);
-    }
-    
     /**
      * Obtain statistics about the last BFS search enacted 
      */
@@ -136,29 +76,6 @@ public:
     	total_queued = 0;
     	passes = 0;
     	avg_barrier_wait = 0;
-    	
-    	if (INSTRUMENTED) {
-    	
-			cudaMemcpy(&total_queued, d_queue_lengths + 4, 1 * sizeof(int), cudaMemcpyDeviceToHost);
-			cudaMemcpy(&passes, d_queue_lengths + 5, 1 * sizeof(int), cudaMemcpyDeviceToHost);
-	
-			unsigned long long *h_barrier_time = 
-				(unsigned long long *) malloc(this->max_grid_size * sizeof(unsigned long long));
-			
-			cudaMemcpy(h_barrier_time, d_barrier_time, this->max_grid_size * sizeof(unsigned long long), cudaMemcpyDeviceToHost);
-			unsigned long long total_barrier_time = 0;
-			for (int i = 0; i < this->max_grid_size; i++) {
-				total_barrier_time += h_barrier_time[i];
-			}
-			
-			// Average barrier wait in clocks
-			avg_barrier_wait = total_barrier_time / this->max_grid_size;
-			
-			// Scale to milliseconds
-			avg_barrier_wait /= (this->cuda_props.device_props.clockRate);
-			
-			free(h_barrier_time);
-    	}
     }
     
 	/**
@@ -166,70 +83,86 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	virtual cudaError_t EnactSearch(
-		BfsCsrProblem<VertexId> &bfs_problem,
-		VertexId src,
-		BfsStrategy strategy) 
+    template <typename BfsCsrProblem>
+	cudaError_t EnactSearch(
+		BfsCsrProblem 						&bfs_problem,
+		typename BfsCsrProblem::VertexId 	src,
+		int 								max_grid_size = 0)
 	{
-		int cta_threads = 1 << B40C_BFS_SG_LOG_CTA_THREADS(this->cuda_props.device_sm_version, strategy);
-		
-		if (this->BFS_DEBUG) {
-			printf("\n[BFS single-grid, %s config:] device_sm_version: %d, kernel_ptx_version: %d, grid_size: %d, threads: %d, max_queue_size: %d\n", 
-				(strategy == CONTRACT_EXPAND) ? "contract-expand" : "expand-contract", 
-				this->cuda_props.device_sm_version, this->cuda_props.kernel_ptx_version, 
-				this->max_grid_size, cta_threads, this->max_queue_size);
-			fflush(stdout);
-		}
+		cudaError_t retval = cudaSuccess;
 
-		switch (strategy) {
+		// Compaction tuning configuration
+		typedef single_grid::ProblemConfig<
 
-		case CONTRACT_EXPAND:
+			typename BfsCsrProblem::ProblemType,
+			200,					// CUDA_ARCH
+			8,						// MAX_CTA_OCCUPANCY
+			7,						// LOG_THREADS
+			util::io::ld::cg,
+			util::io::st::cg,
+			7,						// SCHEDULE_GRANULARITY
 
-			// Contract-expand strategy
-    		BfsSingleGridKernel<VertexId, CONTRACT_EXPAND, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
-				src,
-				bfs_problem.d_collision_cache,
-				this->d_queue[0],								
-				this->d_queue[1],								
-				bfs_problem.d_column_indices,
-				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_path,
-				this->d_queue_lengths,							
-				this->barrier,
-				this->d_barrier_time);
-				
-			if (BFS_DEBUG && cudaThreadSynchronize()) {
-				printf("BfsSingleGridKernel failed: %d %d", __FILE__, __LINE__);
-				exit(1);
-			}
+			// BFS expand
+			0,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
+			5,						// LOG_RAKING_THREADS
+			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+			util::io::ld::cg,		// COLUMN_READ_MODIFIER,
+			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+			util::io::ld::cg,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+			false,					// WORK_STEALING
+			7,						// EXPAND_LOG_SCHEDULE_GRANULARITY
 
-			break;
-    		
-		case EXPAND_CONTRACT:
-			
-			// Expand-contract strategy
-			BfsSingleGridKernel<VertexId, EXPAND_CONTRACT, INSTRUMENTED><<<this->max_grid_size, cta_threads>>>(
-				src,
-				bfs_problem.d_collision_cache,
-				this->d_queue[0],								
-				this->d_queue[1],								
-				bfs_problem.d_column_indices,
-				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_path,
-				this->d_queue_lengths,							
-				this->barrier,
-				this->d_barrier_time);
+			// Compact upsweep
+			0,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
 
-			if (BFS_DEBUG && cudaThreadSynchronize()) {
-				printf("BfsSingleGridKernel failed: %d %d", __FILE__, __LINE__);
-				exit(1);
-			}
-			
-			break;
+			// Compact spine
+			2,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
+			5,						// LOG_RAKING_THREADS
 
-		}
-		
-		return cudaSuccess;
+			// Compact downsweep
+			0,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
+			5> 						// LOG_RAKING_THREADS
+				ProblemConfig;
+
+		typedef typename ProblemConfig::SizeT SizeT;
+
+
+		int occupancy = ProblemConfig::CTA_OCCUPANCY;
+		int grid_size = MaxGridSize(occupancy, max_grid_size);
+
+		printf("DEBUG: BFS occupancy %d, grid size %d\n",
+			occupancy, grid_size);
+
+		// Make sure spine and barriers are initialized
+		int spine_elements = grid_size;
+		if (retval = spine.Setup<SizeT>(grid_size, spine_elements)) exit(1);
+		if (retval = global_barrier.Setup(grid_size)) (exit(1));
+
+		single_grid::SweepKernel<ProblemConfig><<<grid_size, ProblemConfig::THREADS>>>(
+			src,
+
+			bfs_problem.d_expand_queue,
+			bfs_problem.d_expand_parent_queue,
+			bfs_problem.d_compact_queue,
+			bfs_problem.d_compact_parent_queue,
+
+			bfs_problem.d_column_indices,
+			bfs_problem.d_row_offsets,
+			bfs_problem.d_source_path,
+			bfs_problem.d_collision_cache,
+			bfs_problem.d_keep,
+			(SizeT *) this->spine(),
+
+			this->work_progress,
+			this->global_barrier,
+			spine_elements);
+
+		return retval;
 	}
     
 };

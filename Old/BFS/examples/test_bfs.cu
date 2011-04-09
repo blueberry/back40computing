@@ -21,7 +21,7 @@
 
 
 /******************************************************************************
- * Simple test driver program for BFS graph traversal API.
+ * Simple test driver program for BFS graph traversal.
  *
  * Useful for demonstrating how to integrate BFS traversal into your 
  * application. 
@@ -44,9 +44,8 @@
 #include <rr.cu>
 
 // BFS enactor includes
-#include <bfs_common.cu>
 #include <bfs_csr_problem.cu>
-//#include <bfs_single_grid.cu>
+#include <bfs_single_grid.cu>
 #include <bfs_level_grid.cu>
 
 using namespace b40c;
@@ -353,7 +352,8 @@ void TestGpuBfs(
 	VertexId 								*h_source_path,						// place to copy results out to
 	VertexId 								*reference_source_dist,
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
-	Stats									&stats)								// running statistics
+	Stats									&stats,								// running statistics
+	int 									max_grid_size)
 {
 	// (Re)initialize distances
 	bfs_problem.Reset();
@@ -361,7 +361,7 @@ void TestGpuBfs(
 	// Perform BFS
 	CpuTimer cpu_timer;
 	cpu_timer.Start();
-	enactor.EnactSearch(bfs_problem, src);
+	enactor.EnactSearch(bfs_problem, src, max_grid_size);
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
@@ -480,8 +480,8 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	LevelGridBfsEnactor bfs_sg_enactor(g_verbose);
-//	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
+//	LevelGridBfsEnactor bfs_sg_enactor(g_verbose);
+	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
@@ -524,7 +524,8 @@ void RunTests(
 			h_source_path,
 			reference_source_dist,
 			csr_graph,
-			stats[1]);
+			stats[1],
+			max_grid_size);
 		printf("\n");
 
 		if (g_verbose2) {

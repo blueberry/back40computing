@@ -20,13 +20,12 @@
  ******************************************************************************/
 
 /******************************************************************************
- * API a the Single-grid BFS Imlementation
+ * Level-grid BFS implementation
  ******************************************************************************/
 
 #pragma once
 
 #include <bfs_base.cu>
-#include <bfs_common.cu>
 
 #include <b40c/util/spine.cuh>
 #include <b40c/bfs/problem_type.cuh>
@@ -58,22 +57,6 @@ protected:
 	 */
 	util::Spine spine;
 
-protected:
-
-	/**
-	 * Utility function: Returns the default maximum number of threadblocks 
-	 * this enactor class can launch.
-	 */
-	int MaxGridSize(int cta_occupancy, int max_grid_size = 0)
-	{
-		if (max_grid_size <= 0) {
-			// No override: Fully populate all SMs
-			max_grid_size = this->cuda_props.device_props.multiProcessorCount * cta_occupancy;
-		} 
-		
-		return max_grid_size;
-	}
-	
 public: 	
 	
 	/**

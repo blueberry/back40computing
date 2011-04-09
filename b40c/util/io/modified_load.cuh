@@ -77,10 +77,7 @@ struct ModifiedLoad
 	 * Load operation we will provide specializations for
 	 */
 	template <typename T>
-	__device__ __forceinline__ static void Ld(T &val, T *ptr)
-	{
-		val = *ptr;
-	}
+	__device__ __forceinline__ static void Ld(T &val, T *ptr);
 
 	/**
 	 * Vec-4 loads for 64-bit types are implemented as two vec-2 loads
@@ -103,8 +100,6 @@ struct ModifiedLoad
 		ModifiedLoad<CACHE_MODIFIER>::Ld(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(ptr) + 1);
 	}
 };
-
-
 
 
 #if __CUDA_ARCH__ >= 200
@@ -145,6 +140,10 @@ struct ModifiedLoad
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)									\
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, ca)									\
 		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)									\
+																									\
+		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cg)								\
+		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, ca)								\
+		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cs)								\
 																									\
 		B40C_LOAD_VEC2(short_type##2, ptx_type, reg_mod, cast_type, cg)								\
 		B40C_LOAD_VEC2(short_type##2, ptx_type, reg_mod, cast_type, ca)								\
@@ -216,6 +215,25 @@ struct ModifiedLoad
 	#undef B40C_CAST8
 	#undef B40C_REG8
 	#undef B40C_REG16
+
+
+	template <>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
+	{
+		val = *ptr;
+	}
+
+
+#else  //__CUDA_ARCH__
+
+
+	template <ld::CacheModifier READ_MODIFIER>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedLoad<READ_MODIFIER>::Ld(T &val, T *ptr)
+	{
+		val = *ptr;
+	}
 
 
 #endif //__CUDA_ARCH__
