@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <bfs_kernel_common.cu>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/error_utils.cuh>
@@ -68,6 +67,22 @@ protected:
 		// it in our kernel code)
 		work_progress.Setup();
 	}
+
+
+	/**
+	 * Utility function: Returns the default maximum number of threadblocks
+	 * this enactor class can launch.
+	 */
+	int MaxGridSize(int cta_occupancy, int max_grid_size = 0)
+	{
+		if (max_grid_size <= 0) {
+			// No override: Fully populate all SMs
+			max_grid_size = this->cuda_props.device_props.multiProcessorCount * cta_occupancy;
+		}
+
+		return max_grid_size;
+	}
+
 
 	/**
 	 * Utility method to display the contents of a device array
