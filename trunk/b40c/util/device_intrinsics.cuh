@@ -102,6 +102,21 @@ __device__ __forceinline__ int TallyWarpVote(int predicate)
 
 
 /**
+ * The best way to tally a warp-vote in the first warp
+ */
+template <int LOG_ACTIVE_THREADS>
+__device__ __forceinline__ int TallyWarpVote(int predicate, int *storage)
+{
+#if __CUDA_ARCH__ >= 200
+	return __popc(__ballot(predicate));
+#else
+	return reduction::WarpReduce<int, LOG_ACTIVE_THREADS>::Invoke(
+		predicate, storage);
+#endif
+}
+
+
+/**
  * The best way to warp-vote-all
  */
 template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
@@ -112,6 +127,23 @@ __device__ __forceinline__ int WarpVoteAll(int predicate)
 #else 
 	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
 	return (TallyWarpVote<LOG_ACTIVE_WARPS, LOG_ACTIVE_THREADS>(predicate) == ACTIVE_THREADS);
+#endif
+}
+
+
+/**
+ * The best way to warp-vote-all in the first warp
+ */
+template <int LOG_ACTIVE_THREADS>
+__device__ __forceinline__ int WarpVoteAll(int predicate)
+{
+#if __CUDA_ARCH__ >= 120
+	return __all(predicate);
+#else
+	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
+	__shared__ int storage[ACTIVE_THREADS];
+
+	return (TallyWarpVote<LOG_ACTIVE_THREADS>(predicate, storage) == ACTIVE_THREADS);
 #endif
 }
 

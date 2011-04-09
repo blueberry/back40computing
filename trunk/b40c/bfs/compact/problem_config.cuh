@@ -31,7 +31,6 @@
 
 #include <b40c/bfs/compact/upsweep_kernel_config.cuh>
 #include <b40c/bfs/compact/downsweep_kernel_config.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
 
 #include <b40c/scan/downsweep_kernel_config.cuh>
 #include <b40c/scan/problem_type.cuh>
@@ -66,48 +65,48 @@ template <
 	int LOG_SCHEDULE_GRANULARITY,
 
 	// Compaction upsweep tunable params
-	int UPSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-	int UPSWEEP_COMPACT_LOG_THREADS,
-	int UPSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-	int UPSWEEP_COMPACT_LOG_LOADS_PER_TILE,
+	int UPSWEEP_MAX_CTA_OCCUPANCY,
+	int UPSWEEP_LOG_THREADS,
+	int UPSWEEP_LOG_LOAD_VEC_SIZE,
+	int UPSWEEP_LOG_LOADS_PER_TILE,
 
 	// Compaction spine tunable params
-	int SPINE_COMPACT_LOG_THREADS,
-	int SPINE_COMPACT_LOG_LOAD_VEC_SIZE,
-	int SPINE_COMPACT_LOG_LOADS_PER_TILE,
-	int SPINE_COMPACT_LOG_RAKING_THREADS,
+	int SPINE_LOG_THREADS,
+	int SPINE_LOG_LOAD_VEC_SIZE,
+	int SPINE_LOG_LOADS_PER_TILE,
+	int SPINE_LOG_RAKING_THREADS,
 
 	// Compaction downsweep tunable params
-	int DOWNSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-	int DOWNSWEEP_COMPACT_LOG_THREADS,
-	int DOWNSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-	int DOWNSWEEP_COMPACT_LOG_LOADS_PER_TILE,
-	int DOWNSWEEP_COMPACT_LOG_RAKING_THREADS>
+	int DOWNSWEEP_MAX_CTA_OCCUPANCY,
+	int DOWNSWEEP_LOG_THREADS,
+	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+	int DOWNSWEEP_LOG_LOADS_PER_TILE,
+	int DOWNSWEEP_LOG_RAKING_THREADS>
 
 struct ProblemConfig : _ProblemType
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::SizeT SizeT;
+	typedef _ProblemType 					ProblemType;
+	typedef typename ProblemType::SizeT 	SizeT;
 
 	//---------------------------------------------------------------------
-	// Compaction upsweep
+	// Upsweep
 	//---------------------------------------------------------------------
 
 	// Kernel config for the BFS compaction upsweep kernel
 	typedef compact::UpsweepKernelConfig <
-		_ProblemType,
+		ProblemType,
 		CUDA_ARCH,
-		UPSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-		UPSWEEP_COMPACT_LOG_THREADS,
-		UPSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-		UPSWEEP_COMPACT_LOG_LOADS_PER_TILE,
+		UPSWEEP_MAX_CTA_OCCUPANCY,
+		UPSWEEP_LOG_THREADS,
+		UPSWEEP_LOG_LOAD_VEC_SIZE,
+		UPSWEEP_LOG_LOADS_PER_TILE,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			CompactUpsweep;
 
 	//---------------------------------------------------------------------
-	// Compaction spine
+	// Spine
 	//---------------------------------------------------------------------
 
 	// Problem type for compaction spine
@@ -123,28 +122,28 @@ struct ProblemConfig : _ProblemType
 		CompactSpineProblem,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
-		SPINE_COMPACT_LOG_THREADS,
-		SPINE_COMPACT_LOG_LOAD_VEC_SIZE,
-		SPINE_COMPACT_LOG_LOADS_PER_TILE,
-		SPINE_COMPACT_LOG_RAKING_THREADS,
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		SPINE_COMPACT_LOG_LOADS_PER_TILE + SPINE_COMPACT_LOG_LOAD_VEC_SIZE + SPINE_COMPACT_LOG_THREADS>
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			CompactSpine;
 
 	//---------------------------------------------------------------------
-	// Compaction downsweep
+	// Downsweep
 	//---------------------------------------------------------------------
 
 	// Kernel config for the BFS compaction downsweep kernel
 	typedef compact::DownsweepKernelConfig <
-		_ProblemType,
+		ProblemType,
 		CUDA_ARCH,
-		DOWNSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-		DOWNSWEEP_COMPACT_LOG_THREADS,
-		DOWNSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-		DOWNSWEEP_COMPACT_LOG_LOADS_PER_TILE,
-		DOWNSWEEP_COMPACT_LOG_RAKING_THREADS,
+		DOWNSWEEP_MAX_CTA_OCCUPANCY,
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
@@ -166,21 +165,21 @@ struct ProblemConfig : _ProblemType
 			CacheModifierToString((int) WRITE_MODIFIER),
 			LOG_SCHEDULE_GRANULARITY,
 
-			UPSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-			UPSWEEP_COMPACT_LOG_THREADS,
-			UPSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-			UPSWEEP_COMPACT_LOG_LOADS_PER_TILE,
+			UPSWEEP_MAX_CTA_OCCUPANCY,
+			UPSWEEP_LOG_THREADS,
+			UPSWEEP_LOG_LOAD_VEC_SIZE,
+			UPSWEEP_LOG_LOADS_PER_TILE,
 
-			SPINE_COMPACT_LOG_THREADS,
-			SPINE_COMPACT_LOG_LOAD_VEC_SIZE,
-			SPINE_COMPACT_LOG_LOADS_PER_TILE,
-			SPINE_COMPACT_LOG_RAKING_THREADS,
+			SPINE_LOG_THREADS,
+			SPINE_LOG_LOAD_VEC_SIZE,
+			SPINE_LOG_LOADS_PER_TILE,
+			SPINE_LOG_RAKING_THREADS,
 
-			DOWNSWEEP_COMPACT_MAX_CTA_OCCUPANCY,
-			DOWNSWEEP_COMPACT_LOG_THREADS,
-			DOWNSWEEP_COMPACT_LOG_LOAD_VEC_SIZE,
-			DOWNSWEEP_COMPACT_LOG_LOADS_PER_TILE,
-			DOWNSWEEP_COMPACT_LOG_RAKING_THREADS);
+			DOWNSWEEP_MAX_CTA_OCCUPANCY,
+			DOWNSWEEP_LOG_THREADS,
+			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+			DOWNSWEEP_LOG_LOADS_PER_TILE,
+			DOWNSWEEP_LOG_RAKING_THREADS);
 	}
 };
 		
