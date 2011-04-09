@@ -76,6 +76,7 @@ void Usage()
 	printf("\ntest_bfs <graph type> <graph type args> [--device=<device index>] "
 			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
 			"[--src=< <source idx> | randomize >] [--queue-size=<queue size>\n"
+			"[--mark-parents]\n"
 			"\n"
 			"graph types and args:\n"
 			"\tgrid2d <width>\n"
@@ -120,6 +121,9 @@ void Usage()
 			"\n"
 			"--queue-size\tAllocates a frontier queue of <queue size> elements.  Default\n"
 			"\t\tis the size of the edge list.\n"
+			"\n"
+			"--mark-parents\tParent vertices are marked instead of source distances, i.e., it\n"
+			"\t\tcreates an ancestor tree rooted at the source vertex.\n"
 			"\n"
 			"--undirected\tEdges are undirected.  Reverse edges are added to DIMACS and\n"
 			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
@@ -189,7 +193,6 @@ struct Stats {
  */
 template <
 	bool MARK_PARENTS,
-	BfsStrategy STRATEGY,
 	typename VertexId,
 	typename Value,
 	typename SizeT>
@@ -216,9 +219,7 @@ void DisplayStats(
 	
 	double redundant_work = 0.0;
 	if (total_queued > 0)  {
-		redundant_work = (STRATEGY == EXPAND_CONTRACT) ?
-			((double) total_queued - nodes_visited) / nodes_visited :		// measure duplicate nodes put through queue
-			((double) total_queued - edges_visited) / edges_visited;		// measure duplicate edges put through queue
+		redundant_work = ((double) total_queued - edges_visited) / edges_visited;		// measure duplicate edges put through queue
 	}
 	redundant_work *= 100;
 
@@ -340,7 +341,6 @@ void DisplayStats(
  ******************************************************************************/
 
 template <
-	BfsStrategy STRATEGY,
 	typename BfsEnactor,
 	typename ProblemStorage,
 	typename VertexId,
@@ -361,7 +361,7 @@ void TestGpuBfs(
 	// Perform BFS
 	CpuTimer cpu_timer;
 	cpu_timer.Start();
-	enactor.template EnactSearch<STRATEGY>(bfs_problem, src);
+	enactor.EnactSearch(bfs_problem, src);
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
@@ -377,7 +377,7 @@ void TestGpuBfs(
 	double		avg_barrier_wait = 0.0;
 
 	enactor.GetStatistics(total_queued, passes, avg_barrier_wait);
-	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS, STRATEGY>(
+	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
 		stats,
 		src,
 		h_source_path,
@@ -445,7 +445,7 @@ void SimpleReferenceBfs(
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
-	DisplayStats<false, NONE, VertexId, Value, SizeT>(
+	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
 		src,
 		source_path,
@@ -465,7 +465,8 @@ template <
 	typename VertexId,
 	typename Value,
 	typename SizeT,
-	bool INSTRUMENT>
+	bool INSTRUMENT,
+	bool MARK_PARENTS>
 void RunTests(
 	const CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	VertexId src,
@@ -474,9 +475,6 @@ void RunTests(
 	int max_grid_size,
 	int queue_size) 
 {
-	const bool MARK_PARENTS = false;
-
-
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
@@ -497,12 +495,13 @@ void RunTests(
 	}
 	
 	// Initialize statistics
-	Stats stats[3];
+	Stats stats[2];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("Single-grid, expand-contract GPU BFS");
-	stats[2] = Stats("Single-grid, contract-expand GPU BFS"); 
+	stats[1] = Stats("Single-grid, contract-expand GPU BFS");
 	
-	printf("Running %s tests...\n\n", (INSTRUMENT) ? "instrumented" : "non-instrumented");
+	printf("Running %s %s tests...\n\n",
+		(INSTRUMENT) ? "instrumented" : "non-instrumented",
+		(MARK_PARENTS) ? "parent-marking" : "distance-marking");
 	
 	// Perform the specified number of test iterations
 	int test_iteration = 0;
@@ -516,9 +515,9 @@ void RunTests(
 		// Compute reference CPU BFS solution for source-distance
 		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
 		printf("\n");
-/*
-		// Perform expand-contract GPU BFS search
-		TestGpuBfs<EXPAND_CONTRACT>(
+
+		// Perform contract-expand GPU BFS search
+		TestGpuBfs(
 			bfs_sg_enactor,
 			bfs_problem,
 			src,
@@ -526,18 +525,6 @@ void RunTests(
 			reference_source_dist,
 			csr_graph,
 			stats[1]);
-		printf("\n");
-*/
-
-		// Perform contract-expand GPU BFS search
-		TestGpuBfs<CONTRACT_EXPAND>(
-			bfs_sg_enactor,
-			bfs_problem,
-			src,
-			h_source_path,
-			reference_source_dist,
-			csr_graph,
-			stats[2]);
 		printf("\n");
 
 		if (g_verbose2) {
@@ -581,6 +568,7 @@ int main( int argc, char** argv)
 	char* 		src_str			= NULL;
 	bool 		randomized_src	= false;
 	bool 		instrumented	= false;
+	bool 		mark_parents	= false;
 	int 		test_iterations = 1;
 	int 		max_grid_size 	= 0;			// Default: leave it up the enactor
 	SizeT 		queue_size		= -1;			// Default: the size of the edge list
@@ -610,6 +598,7 @@ int main( int argc, char** argv)
 		}
 	}
 	g_undirected = args.CheckCmdLineFlag("undirected");
+	mark_parents = args.CheckCmdLineFlag("mark-parents");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("queue-size", queue_size);
@@ -708,11 +697,21 @@ int main( int argc, char** argv)
 	// Run tests
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
-		RunTests<VertexId, Value, SizeT, true>(
-			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		if (mark_parents) {
+			RunTests<VertexId, Value, SizeT, true, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		} else {
+			RunTests<VertexId, Value, SizeT, true, false>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		}
 	} else {
 		// Run regular kernel 
-		RunTests<VertexId, Value, SizeT, false>(
-			csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		if (mark_parents) {
+			RunTests<VertexId, Value, SizeT, false, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		} else {
+			RunTests<VertexId, Value, SizeT, false, false>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+		}
 	}
 }

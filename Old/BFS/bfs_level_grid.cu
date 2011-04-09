@@ -33,6 +33,7 @@
 #include <b40c/bfs/compact/problem_config.cuh>
 
 #include <b40c/bfs/expand_atomic/sweep_kernel.cuh>
+#include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
 #include <b40c/bfs/compact/upsweep_kernel.cuh>
 #include <b40c/bfs/compact/downsweep_kernel.cuh>
 #include <b40c/scan/spine_kernel.cuh>
@@ -99,7 +100,7 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <BfsStrategy STRATEGY, typename BfsCsrProblem>
+    template <typename BfsCsrProblem>
 	cudaError_t EnactSearch(
 		BfsCsrProblem 						&bfs_problem,
 		typename BfsCsrProblem::VertexId 	src,
