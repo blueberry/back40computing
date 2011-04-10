@@ -117,7 +117,7 @@ public:
 
 			// Compact upsweep
 			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
+			1,						// LOG_LOADS_PER_TILE
 
 			// Compact spine
 			0,						// LOG_LOAD_VEC_SIZE
@@ -125,8 +125,8 @@ public:
 			5,						// LOG_RAKING_THREADS
 
 			// Compact downsweep
-			1,						// LOG_LOAD_VEC_SIZE
-			1,						// LOG_LOADS_PER_TILE
+			2,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
 			5> 						// LOG_RAKING_THREADS
 				ProblemConfig;
 
