@@ -31,6 +31,7 @@
 #include <string>
 #include <deque>
 #include <vector>
+#include <iostream>
 
 // Utilities and correctness-checking
 #include <test_utils.cu>
@@ -81,10 +82,10 @@ void Usage()
 			"graph types and args:\n"
 			"\tgrid2d <width>\n"
 			"\t\t2D square grid lattice with width <width>.  Interior vertices \n"
-			"\t\thave 4 neighbors.  Default source vertex is the grid-center.\n"
+			"\t\thave 4 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
 			"\tgrid3d <side-length>\n"
 			"\t\t3D square grid lattice with width <width>.  Interior vertices \n"
-			"\t\thave 6 neighbors.  Default source vertex is the grid-center.\n"
+			"\t\thave 6 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
 			"\tdimacs [<file>]\n"
 			"\t\tReads a DIMACS-formatted graph of directed edges from stdin (or \n"
 			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
@@ -214,6 +215,10 @@ void Histogram(
 	HistogramLevel<SizeT> *histogram = new HistogramLevel<SizeT>[search_depth];
 	std::vector<VertexId> *frontier = new std::vector<VertexId>[search_depth];
 
+	// Establish basics
+	histogram[0].expanded = 1;
+	histogram[0].unique_expanded = 1;
+
 	for (VertexId vertex = 0; vertex < csr_graph.nodes; vertex++) {
 
 		VertexId distance = reference_source_dist[vertex];
@@ -224,17 +229,33 @@ void Histogram(
 			SizeT neighbors 	= row_oob - row_offset;
 
 			histogram[distance].discovered++;
-			histogram[distance].expanded += neighbors;
+			histogram[distance + 1].expanded += neighbors;
+		}
+	}
+
+	// Allocate frontiers
+	for (VertexId distance = 0; distance < search_depth; distance++) {
+		frontier[distance].reserve(histogram[distance].expanded);
+	}
+
+	// Construct frontiers
+	for (VertexId vertex = 0; vertex < csr_graph.nodes; vertex++) {
+
+		VertexId distance = reference_source_dist[vertex];
+		if (distance >= 0) {
+
+			SizeT row_offset 	= csr_graph.row_offsets[vertex];
+			SizeT row_oob 		= csr_graph.row_offsets[vertex + 1];
 
 			frontier[distance].insert(
 				frontier[distance].end(),
-				csr_graph.column_indices[row_offset],
-				csr_graph.column_indices[row_oob]);
+				csr_graph.column_indices + row_offset,
+				csr_graph.column_indices + row_oob);
 		}
 	}
 
 	printf("Work Histogram:\n");
-	printf("Depth, Discovered, Expanded, Unique-Expanded\n");
+	printf("Depth, Expanded, Unique-Expanded, Discovered\n");
 	for (VertexId distance = 0; distance < search_depth; distance++) {
 
 		// Sort
@@ -243,15 +264,15 @@ void Histogram(
 			frontier[distance].end());
 
 		// Count unique elements
-		histogram[distance].unique_expanded =
+		histogram[distance + 1].unique_expanded =
 			std::unique(frontier[distance].begin(), frontier[distance].end()) -
 			frontier[distance].begin();
 
 		printf("%d, %d, %d, %d\n",
 			distance,
-			histogram[distance].discovered,
 			histogram[distance].expanded,
-			histogram[distance].unique_expanded);
+			histogram[distance].unique_expanded,
+			histogram[distance].discovered);
 	}
 	printf("\n\n");
 }
@@ -525,9 +546,9 @@ void SimpleReferenceBfs(
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 	search_depth++;
-/*
+
 	Histogram(src, source_path, csr_graph, search_depth);
-*/
+
 	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
 		src,
@@ -602,7 +623,7 @@ void RunTests(
 		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
 		printf("\n");
 		fflush(stdout);
-
+/*
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs(
 			bfs_lg_enactor,
@@ -628,7 +649,7 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-
+*/
 		if (g_verbose2) {
 			printf("Reference solution: ");
 			DisplaySolution(reference_source_dist, csr_graph.nodes);

@@ -33,7 +33,8 @@
  ******************************************************************************/
 
 /**
- * Builds a square 3D grid CSR graph.  Interior nodes have degree 6.  
+ * Builds a square 3D grid CSR graph.  Interior nodes have degree 7 (including
+ * a self-loop)
  * 
  * If src == -1, then it is assigned to the grid-center.  Otherwise it is 
  * verified to be in range of the constructed graph.
@@ -56,8 +57,8 @@ int BuildGrid3dGraph(
 	SizeT edge_nodes 			= (width - 2) * 12;
 	SizeT corner_nodes 			= 8;
 	
-	csr_graph.edges 			= (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3);
 	csr_graph.nodes 			= width * width * width;
+	csr_graph.edges 			= (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3) + csr_graph.nodes;
 	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
 	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
 	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
@@ -73,44 +74,44 @@ int BuildGrid3dGraph(
 				VertexId neighbor = (i * width * width) + (j * width) + (k - 1);
 				if (k - 1 >= 0) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
 				
 				neighbor = (i * width * width) + (j * width) + (k + 1);
 				if (k + 1 < width) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
 				
 				neighbor = (i * width * width) + ((j - 1) * width) + k;
 				if (j - 1 >= 0) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
 
 				neighbor = (i * width * width) + ((j + 1) * width) + k;
 				if (j + 1 < width) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
 
 				neighbor = ((i - 1) * width * width) + (j * width) + k;
 				if (i - 1 >= 0) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
 
 				neighbor = ((i + 1) * width * width) + (j * width) + k;
 				if (i + 1 < width) {
 					csr_graph.column_indices[total] = neighbor; 
-					csr_graph.values[me] = 1;
 					total++;
 				}
+
+				neighbor = me;
+				csr_graph.column_indices[total] = neighbor;
+				total++;
+
+				csr_graph.values[me] = 1;
 			}
 		}
 	}
