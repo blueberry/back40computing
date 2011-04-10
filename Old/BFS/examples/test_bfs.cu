@@ -275,6 +275,9 @@ void Histogram(
 			histogram[distance].discovered);
 	}
 	printf("\n\n");
+
+	delete histogram;
+	delete frontier;
 }
 
 
@@ -546,9 +549,9 @@ void SimpleReferenceBfs(
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 	search_depth++;
-
+/*
 	Histogram(src, source_path, csr_graph, search_depth);
-
+*/
 	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
 		src,
@@ -623,7 +626,7 @@ void RunTests(
 		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
 		printf("\n");
 		fflush(stdout);
-/*
+
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs(
 			bfs_lg_enactor,
@@ -649,7 +652,7 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-*/
+
 		if (g_verbose2) {
 			printf("Reference solution: ");
 			DisplaySolution(reference_source_dist, csr_graph.nodes);
@@ -749,7 +752,7 @@ int main( int argc, char** argv)
 		// Two-dimensional regular lattice grid (degree 4)
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (BuildGrid2dGraph(width, src, csr_graph) != 0) {
+		if (BuildGrid2dGraph<false>(width, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -757,7 +760,7 @@ int main( int argc, char** argv)
 		// Three-dimensional regular lattice grid (degree 6)
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (BuildGrid3dGraph(width, src, csr_graph) != 0) {
+		if (BuildGrid3dGraph<false>(width, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -765,7 +768,7 @@ int main( int argc, char** argv)
 		// DIMACS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildDimacsGraph(dimacs_filename, src, csr_graph, g_undirected) != 0) {
+		if (BuildDimacsGraph<false>(dimacs_filename, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 		
@@ -773,7 +776,7 @@ int main( int argc, char** argv)
 		// METIS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildMetisGraph(metis_filename, src, csr_graph) != 0) {
+		if (BuildMetisGraph<false>(metis_filename, src, csr_graph) != 0) {
 			return 1;
 		}
 		
@@ -781,7 +784,7 @@ int main( int argc, char** argv)
 		// Matrix-market coordinate-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildMarketGraph(market_filename, src, csr_graph) != 0) {
+		if (BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -790,7 +793,7 @@ int main( int argc, char** argv)
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		SizeT edges = atol(argv[3]);
-		if (BuildRandomGraph(nodes, edges, src, csr_graph, g_undirected) != 0) {
+		if (BuildRandomGraph<false>(nodes, edges, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 
@@ -799,7 +802,7 @@ int main( int argc, char** argv)
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		int degree = atol(argv[3]);
-		if (BuildRandomRegularishGraph(nodes, degree, src, csr_graph) != 0) {
+		if (BuildRandomRegularishGraph<false>(nodes, degree, src, csr_graph) != 0) {
 			return 1;
 		}
 

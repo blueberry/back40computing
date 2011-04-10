@@ -42,7 +42,7 @@
  * 
  * Returns 0 on success, 1 on failure.
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildRandomGraph(
 	SizeT nodes,
 	SizeT edges,
@@ -84,7 +84,7 @@ int BuildRandomGraph(
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
-	csr_graph.FromCoo(coo, nodes, directed_edges);
+	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges);
 	free(coo);
 
 	// If unspecified, assign default source.  Otherwise verify source range.
