@@ -163,6 +163,19 @@ struct DownsweepCta
 			util::DefaultSum>::ScanTile(
 				srts_details, ranks);
 
+		// Scatter valid vertex_id into smem exchange, predicated on flags (treat
+		// vertex_id, flags, and ranks as linear arrays)
+		util::io::ScatterTile<
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER>::Scatter(
+				d_out + carry,
+				reinterpret_cast<VertexId *>(vertex_id),
+				reinterpret_cast<ValidFlag *>(flags),
+				reinterpret_cast<SizeT *>(ranks));
+
+
+/*
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
 
@@ -191,7 +204,9 @@ struct DownsweepCta
 				compacted_data, smem_pool, 0, valid_elements);
 
 		// Scatter compacted vertex_id to global output
+ */
 		SizeT scatter_out_of_bounds = carry + valid_elements;
+/*
 		util::io::StoreTile<
 			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
 			0, 											// Vec-1
@@ -249,7 +264,7 @@ struct DownsweepCta
 			// Barrier sync to protect smem exchange storage
 			__syncthreads();
 		}
-
+*/
 		// Update running discontinuity count for CTA
 		carry = scatter_out_of_bounds;
 	}

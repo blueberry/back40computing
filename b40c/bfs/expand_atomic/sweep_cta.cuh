@@ -57,7 +57,7 @@ struct SweepCta
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
 	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
-	typedef typename SmemStorage::WarpComm			WarpComm;
+	typedef typename SmemStorage::WarpComm 			WarpComm;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -292,8 +292,8 @@ struct SweepCta
 			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
-				int lane_id = util::LaneId();
+				int warp_id = threadIdx.x >> 5; //B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
+				int lane_id = threadIdx.x & 31; //util::LaneId();
 
 				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
 
@@ -316,8 +316,8 @@ struct SweepCta
 						tile->row_length[LOAD][VEC] = 0;
 					}
 
-					SizeT coop_offset 	= cta->warp_comm[warp_id][0] + lane_id;
-					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
+					SizeT coop_offset 	= cta->warp_comm[warp_id][0];
+					SizeT coop_rank 	= cta->warp_comm[warp_id][1];
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
 					VertexId parent_id;
@@ -328,23 +328,27 @@ struct SweepCta
 					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
 
-						// Gather
-						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-							neighbor_id, cta->d_column_indices + coop_offset);
+						if (coop_offset + lane_id < coop_oob) {
 
-						// Scatter neighbor
-						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-							neighbor_id, cta->d_out + coop_rank);
+							// Gather
+							util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
+								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
 
-						if (KernelConfig::MARK_PARENTS) {
-							// Scatter parent
+							// Scatter neighbor
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								parent_id, cta->d_parent_out + coop_rank);
+								neighbor_id, cta->d_out + coop_rank + lane_id);
+
+							if (KernelConfig::MARK_PARENTS) {
+								// Scatter parent
+								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
+									parent_id, cta->d_parent_out + coop_rank + lane_id);
+							}
 						}
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 						coop_rank += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 					}
+
 				}
 
 				// Next vector element
@@ -588,12 +592,6 @@ struct SweepCta
 					d_parent_in,
 					cta_offset,
 					out_of_bounds);
-/*
-			if (tile.vertex_id[0][0] != -1) {
-				printf("\tIteration %d block %d thread %d dequeued node %d with parent %d\n",
-					iteration, blockIdx.x, threadIdx.x, tile.vertex_id[0][0], tile.parent_id[0][0]);
-			}
-*/
 		}
 
 		// Inspect dequeued vertices, updating source path and obtaining
@@ -611,12 +609,6 @@ struct SweepCta
 				tile.coarse_row_rank,
 				work_progress.GetQueueCounter<SizeT>(iteration + 1));
 
-		// Enqueue valid edge lists into outgoing queue
-		tile.ExpandByCta(this);
-
-		// Enqueue valid edge lists into outgoing queue
-		tile.ExpandByWarp(this);
-
 		// Scan tile of row ranks (lengths) with enqueue reservation,
 		// turning them into enqueue offsets
 		tile.enqueue_count = util::scan::CooperativeTileScan<
@@ -631,6 +623,12 @@ struct SweepCta
 		if (threadIdx.x == 0) {
 			enqueue_offset = work_progress.Enqueue<SizeT>(tile.enqueue_count, iteration + 1);
 		}
+
+		// Enqueue valid edge lists into outgoing queue
+		tile.ExpandByCta(this);
+
+		// Enqueue valid edge lists into outgoing queue
+		tile.ExpandByWarp(this);
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly

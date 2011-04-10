@@ -480,7 +480,7 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-//	LevelGridBfsEnactor bfs_sg_enactor(g_verbose);
+	LevelGridBfsEnactor bfs_lg_enactor(g_verbose);
 	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
 
 	// Allocate problem on GPU
@@ -489,15 +489,18 @@ void RunTests(
 		csr_graph.nodes,
 		csr_graph.edges,
 		csr_graph.column_indices,
-		csr_graph.row_offsets))
+		csr_graph.row_offsets,
+		queue_size,
+		queue_size))
 	{
 		exit(1);
 	}
 	
 	// Initialize statistics
-	Stats stats[2];
+	Stats stats[3];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("Single-grid, contract-expand GPU BFS");
+	stats[1] = Stats("Level-grid, contract-expand GPU BFS");
+	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
 	
 	printf("Running %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -515,10 +518,11 @@ void RunTests(
 		// Compute reference CPU BFS solution for source-distance
 		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
 		printf("\n");
+		fflush(stdout);
 
-		// Perform contract-expand GPU BFS search
+		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs(
-			bfs_sg_enactor,
+			bfs_lg_enactor,
 			bfs_problem,
 			src,
 			h_source_path,
@@ -527,6 +531,20 @@ void RunTests(
 			stats[1],
 			max_grid_size);
 		printf("\n");
+		fflush(stdout);
+
+		// Perform single-grid contract-expand GPU BFS search
+		TestGpuBfs(
+			bfs_sg_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			reference_source_dist,
+			csr_graph,
+			stats[2],
+			max_grid_size);
+		printf("\n");
+		fflush(stdout);
 
 		if (g_verbose2) {
 			printf("Reference solution: ");

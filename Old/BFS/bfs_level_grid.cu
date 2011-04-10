@@ -103,8 +103,7 @@ public:
 			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
 			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-
-			true,
+			true,					// WORK_STEALING
 			6> ExpandAtomicSweep;
 
 
