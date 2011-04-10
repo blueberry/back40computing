@@ -113,6 +113,7 @@ struct CsrGraph
 	/**
 	 * Build CSR graph from sorted COO graph
 	 */
+	template <bool LOAD_VALUES>
 	void FromCoo(
 		CooEdgeTuple<VertexId, Value> *coo,
 		SizeT coo_nodes,
@@ -126,7 +127,7 @@ struct CsrGraph
 		edges 				= coo_edges;
 		row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (nodes + 1));
 		column_indices 		= (VertexId*) malloc(sizeof(VertexId) * edges);
-		values 				= (Value*) malloc(sizeof(Value) * edges);
+		values 				= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * edges) : NULL;
 		
 		// Sort COO by row, then by col
 		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<VertexId, Value>);
@@ -143,7 +144,9 @@ struct CsrGraph
 			prev_row = current_row;
 			
 			column_indices[edge] = coo[edge].col;
-			values[edge] = coo[edge].val;
+			if (LOAD_VALUES) {
+				values[edge] = coo[edge].val;
+			}
 		}
 
 		// Fill out any trailing edgeless nodes (and the end-of-list element)

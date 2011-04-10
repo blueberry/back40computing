@@ -41,7 +41,7 @@
  * 
  * Returns 0 on success, 1 on failure.
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildGrid3dGraph(
 	VertexId width,
 	VertexId &src,
@@ -61,7 +61,7 @@ int BuildGrid3dGraph(
 	csr_graph.edges 			= (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3) + csr_graph.nodes;
 	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
 	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
-	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
+	csr_graph.values 			= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * csr_graph.edges) : NULL;
 			
 	SizeT total = 0;
 	for (VertexId i = 0; i < width; i++) {
@@ -111,7 +111,9 @@ int BuildGrid3dGraph(
 				csr_graph.column_indices[total] = neighbor;
 				total++;
 
-				csr_graph.values[me] = 1;
+				if (LOAD_VALUES) {
+					csr_graph.values[me] = 1;
+				}
 			}
 		}
 	}

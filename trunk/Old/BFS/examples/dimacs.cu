@@ -36,7 +36,7 @@
 /**
  * Reads a DIMACS graph from an input-stream into a CSR sparse format 
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int ReadDimacsStream(
 	FILE *f_in,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
@@ -136,7 +136,7 @@ int ReadDimacsStream(
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
-	csr_graph.FromCoo(coo, nodes, directed_edges);
+	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges);
 	free(coo);
 
 	fflush(stdout);
@@ -152,7 +152,7 @@ int ReadDimacsStream(
  * If src == -1, it is assigned a random node.  Otherwise it is verified 
  * to be in range of the constructed graph.
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildDimacsGraph(
 	char *dimacs_filename, 
 	VertexId &src,
@@ -163,7 +163,7 @@ int BuildDimacsGraph(
 
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadDimacsStream(stdin, csr_graph, undirected) != 0) {
+		if (ReadDimacsStream<LOAD_VALUES>(stdin, csr_graph, undirected) != 0) {
 			return -1;
 		}
 
@@ -173,7 +173,7 @@ int BuildDimacsGraph(
 		FILE *f_in = fopen(dimacs_filename, "r");
 		if (f_in) {
 			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadDimacsStream(f_in, csr_graph, undirected) != 0) {
+			if (ReadDimacsStream<LOAD_VALUES>(f_in, csr_graph, undirected) != 0) {
 				fclose(f_in);
 				return -1;
 			}

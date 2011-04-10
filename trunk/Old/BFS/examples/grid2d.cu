@@ -40,7 +40,7 @@
  * 
  * Returns 0 on success, 1 on failure.
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildGrid2dGraph(
 	VertexId width,
 	VertexId &src,

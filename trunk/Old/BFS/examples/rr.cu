@@ -37,7 +37,7 @@
  * Does not meet definition of random-regular: loops, and multi-edges are 
  * possible, and in-degree is not guaranteed to be the same as out degree.   
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildRandomRegularishGraph(
 	SizeT nodes,
 	int degree,
@@ -50,7 +50,7 @@ int BuildRandomRegularishGraph(
 	csr_graph.nodes 			= nodes;
 	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
 	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
-	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
+	csr_graph.values 			= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * csr_graph.edges) : NULL;
 
 	SizeT total = 0;
     for (VertexId node = 0; node < nodes; node++) {
@@ -61,7 +61,9 @@ int BuildRandomRegularishGraph(
     		
     		VertexId neighbor = RandomNode(csr_graph.nodes);
     		csr_graph.column_indices[total] = neighbor;
-    		csr_graph.values[node] = 1;
+    		if (LOAD_VALUES) {
+    			csr_graph.values[node] = 1;
+    		}
     		
     		total++;
     	}

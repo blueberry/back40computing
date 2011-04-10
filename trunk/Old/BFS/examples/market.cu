@@ -35,7 +35,7 @@
 /**
  * Reads a MARKET graph from an input-stream into a CSR sparse format
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int ReadMarketStream(
 	FILE *f_in,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph)
@@ -132,7 +132,7 @@ int ReadMarketStream(
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
-	csr_graph.FromCoo(coo, nodes, edges);
+	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, edges);
 	free(coo);
 
 	fflush(stdout);
@@ -148,7 +148,7 @@ int ReadMarketStream(
  * If src == -1, it is assigned a random node.  Otherwise it is verified 
  * to be in range of the constructed graph.
  */
-template<typename VertexId, typename Value, typename SizeT>
+template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildMarketGraph(
 	char *dimacs_filename, 
 	VertexId &src,
@@ -158,7 +158,7 @@ int BuildMarketGraph(
 
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadMarketStream(stdin, csr_graph) != 0) {
+		if (ReadMarketStream<LOAD_VALUES>(stdin, csr_graph) != 0) {
 			return -1;
 		}
 
@@ -168,7 +168,7 @@ int BuildMarketGraph(
 		FILE *f_in = fopen(dimacs_filename, "r");
 		if (f_in) {
 			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadMarketStream(f_in, csr_graph) != 0) {
+			if (ReadMarketStream<LOAD_VALUES>(f_in, csr_graph) != 0) {
 				fclose(f_in);
 				return -1;
 			}
