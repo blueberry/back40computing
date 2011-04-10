@@ -615,14 +615,11 @@ struct SweepCta
 			SrtsDetails,
 			KernelConfig::LOAD_VEC_SIZE,
 			true,							// exclusive
-			util::DefaultSum>::ScanTile(
+			util::DefaultSum>::ScanTileWithEnqueue(
 				srts_details,
-				tile.fine_row_rank);
-
-		// Reserve allocation in outgoing queue
-		if (threadIdx.x == 0) {
-			enqueue_offset = work_progress.Enqueue<SizeT>(tile.enqueue_count, iteration + 1);
-		}
+				tile.fine_row_rank,
+				work_progress.GetQueueCounter<SizeT>(iteration + 1),
+				enqueue_offset);
 
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByCta(this);
