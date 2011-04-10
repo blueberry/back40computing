@@ -57,24 +57,31 @@ protected:
 	 */
 	util::Spine spine;
 
+	long long iteration;
+	long long total_queued;
+
 public: 	
 	
 	/**
 	 * Constructor
 	 */
-	LevelGridBfsEnactor(bool DEBUG = false) : BaseBfsEnactor(DEBUG) {}
+	LevelGridBfsEnactor(bool DEBUG = false) :
+		BaseBfsEnactor(DEBUG),
+		iteration(0),
+		total_queued(0)
+			{}
 
 
     /**
      * Obtain statistics about the last BFS search enacted 
      */
     void GetStatistics(
-    	int &total_queued, 
-    	int &passes, 
+    	long long &total_queued,
+    	long long &search_depth,
     	double &avg_barrier_wait)		// total time spent waiting in barriers in ms (threadblock average)
     {
-    	total_queued = 0;
-    	passes = 0;
+    	total_queued = this->total_queued;
+    	search_depth = iteration - 1;
     	avg_barrier_wait = 0;
     }
     
@@ -167,7 +174,8 @@ public:
 		if (retval = spine.Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
 
-		VertexId iteration = 0;
+		iteration = 0;
+		total_queued = 0;
 		SizeT queue_length;
 
 		while (true) {
@@ -188,7 +196,8 @@ public:
 			iteration++;
 
 			this->work_progress.GetQueueLength(iteration, queue_length);
-			printf("Iteration %d BFS queued %lld elements\n",
+			total_queued += queue_length;
+			printf("Iteration %lld BFS queued %lld elements\n",
 				iteration - 1, (long long) queue_length);
 			if (!queue_length) {
 				break;
@@ -217,17 +226,6 @@ public:
 				bfs_problem.d_compact_parent_queue,
 				(SizeT *) this->spine(),
 				this->work_progress);
-
-/*
-			this->work_progress.GetQueueLength(iteration, queue_length);
-
-			printf("Iteration %d compact queued %lld elements\n",
-				iteration - 1, (long long) queue_length);
-
-			if (!queue_length) {
-				break;
-			}
-*/
 		}
 
 		printf("\n");
