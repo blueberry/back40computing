@@ -32,7 +32,8 @@
  ******************************************************************************/
 
 /**
- * Builds a square 2D grid CSR graph.  Interior nodes have degree 4.  
+ * Builds a square 2D grid CSR graph.  Interior nodes have degree 5 (including
+ * a self-loop)
  * 
  * If src == -1, then it is assigned to the grid-center.  Otherwise it is 
  * verified to be in range of the constructed graph.
@@ -54,8 +55,8 @@ int BuildGrid2dGraph(
 	SizeT edge_nodes 			= (width - 2) * 4;
 	SizeT corner_nodes 			= 4;
 	
-	csr_graph.edges 			= (interior_nodes * 4) + (edge_nodes * 3) + (corner_nodes * 2);
 	csr_graph.nodes 			= width * width;
+	csr_graph.edges 			= (interior_nodes * 4) + (edge_nodes * 3) + (corner_nodes * 2) + csr_graph.nodes;
 	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
 	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
 	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
@@ -70,30 +71,32 @@ int BuildGrid2dGraph(
 			VertexId neighbor = (j * width) + (k - 1);
 			if (k - 1 >= 0) {
 				csr_graph.column_indices[total] = neighbor; 
-				csr_graph.values[me] = 1;
 				total++;
 			}
 
 			neighbor = (j * width) + (k + 1);
 			if (k + 1 < width) {
 				csr_graph.column_indices[total] = neighbor; 
-				csr_graph.values[me] = 1;
 				total++;
 			}
 			
 			neighbor = ((j - 1) * width) + k;
 			if (j - 1 >= 0) {
 				csr_graph.column_indices[total] = neighbor; 
-				csr_graph.values[me] = 1;
 				total++;
 			}
 			
 			neighbor = ((j + 1) * width) + k;
 			if (j + 1 < width) {
 				csr_graph.column_indices[total] = neighbor; 
-				csr_graph.values[me] = 1;
 				total++;
 			}
+
+			neighbor = me;
+			csr_graph.column_indices[total] = neighbor;
+			total++;
+
+			csr_graph.values[me] = 1;
 		}
 	}
 	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always total
