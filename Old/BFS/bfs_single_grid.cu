@@ -117,7 +117,7 @@ public:
 
 			// Compact upsweep
 			0,						// LOG_LOAD_VEC_SIZE
-			1,						// LOG_LOADS_PER_TILE
+			0,						// LOG_LOADS_PER_TILE
 
 			// Compact spine
 			0,						// LOG_LOAD_VEC_SIZE
