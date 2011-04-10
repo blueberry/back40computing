@@ -69,8 +69,8 @@ public:
      * Obtain statistics about the last BFS search enacted 
      */
     void GetStatistics(
-    	int &total_queued, 
-    	int &passes, 
+    	long long &total_queued,
+    	long long &passes,
     	double &avg_barrier_wait)		// total time spent waiting in barriers in ms (threadblock average)
     {
     	total_queued = 0;

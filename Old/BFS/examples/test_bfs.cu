@@ -107,7 +107,7 @@ void Usage()
 			"\n"
 			"--v2\tSame as --v, but also displays the input graph to the console.\n"
 			"\n"
-			"--instrumented\tKernels keep track of queue-passes, redundant work (i.e., the \n"
+			"--instrumented\tKernels keep track of queue-search_depth, redundant work (i.e., the \n"
 			"\t\toverhead of duplicates in the frontier), and average barrier wait (a \n"
 			"\t\trelative indicator of load imbalance.)\n"
 			"\n"
@@ -178,12 +178,12 @@ struct Statistic
 struct Stats {
 	char *name;
 	Statistic rate;
-	Statistic passes;
+	Statistic search_depth;
 	Statistic redundant_work;
 	Statistic barrier_wait;
 	
-	Stats() : name(NULL), rate(), passes(), redundant_work(), barrier_wait() {}
-	Stats(char *name) : name(name), rate(), passes(), redundant_work(), barrier_wait() {}
+	Stats() : name(NULL), rate(), search_depth(), redundant_work(), barrier_wait() {}
+	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), barrier_wait() {}
 };
 
 
@@ -202,8 +202,8 @@ void DisplayStats(
 	VertexId 								*reference_source_dist,					// reference answer
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	double 									elapsed,
-	int 									passes,
-	SizeT 									total_queued,
+	long long								search_depth,
+	long long 								total_queued,
 	double 									avg_barrier_wait)
 {
 	// Compute nodes and edges visited
@@ -298,13 +298,16 @@ void DisplayStats(
 		// Display the specific sample statistics
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
-		if (passes != 0) printf(", passes: %d", passes);
+		if (search_depth != 0) printf(", search_depth: %d", search_depth);
 		if (avg_barrier_wait != 0) {
 			printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms",
-				avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / passes);
+				avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / search_depth);
 		}
 		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
 			(long long) src, (long long) nodes_visited, (long long) edges_visited);
+		if (total_queued > 0) {
+			printf(", total queued: %lld", total_queued);
+		}
 		if (redundant_work > 0) {
 			printf(", redundant work: %.2f%%", redundant_work);
 		}
@@ -313,9 +316,9 @@ void DisplayStats(
 		// Display the aggregate sample statistics
 		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
 
-		double passes_stddev = sqrt(stats.passes.Update((double) passes));
-		if (passes > 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n",
-			stats.passes.mean, passes_stddev, passes_stddev / stats.passes.mean);
+		double search_depth_stddev = sqrt(stats.search_depth.Update((double) search_depth));
+		if (search_depth > 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n",
+			stats.search_depth.mean, search_depth_stddev, search_depth_stddev / stats.search_depth.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
 		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
@@ -372,11 +375,11 @@ void TestGpuBfs(
 		bfs_problem.nodes * sizeof(VertexId),
 		cudaMemcpyDeviceToHost);
 	
-	SizeT 		total_queued = 0;
-	int 		passes = 0;
+	long long 	total_queued = 0;
+	long long 	search_depth = 0;
 	double		avg_barrier_wait = 0.0;
 
-	enactor.GetStatistics(total_queued, passes, avg_barrier_wait);
+	enactor.GetStatistics(total_queued, search_depth, avg_barrier_wait);
 	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
 		stats,
 		src,
@@ -384,7 +387,7 @@ void TestGpuBfs(
 		reference_source_dist,
 		csr_graph,
 		elapsed,
-		passes,
+		search_depth,
 		total_queued,
 		avg_barrier_wait);
 }
@@ -410,6 +413,7 @@ void SimpleReferenceBfs(
 		source_path[i] = -1;
 	}
 	source_path[src] = 0;
+	VertexId search_depth = 0;
 
 	// Initialize queue for managing previously-discovered nodes
 	std::deque<VertexId> frontier;
@@ -426,7 +430,7 @@ void SimpleReferenceBfs(
 		// Dequeue node from frontier
 		VertexId dequeued_node = frontier.front();
 		frontier.pop_front();
-		VertexId dist = source_path[dequeued_node];
+		VertexId neighbor_dist = source_path[dequeued_node] + 1;
 
 		// Locate adjacency list
 		int edges_begin = csr_graph.row_offsets[dequeued_node];
@@ -437,7 +441,10 @@ void SimpleReferenceBfs(
 			// Lookup neighbor and enqueue if undiscovered 
 			VertexId neighbor = csr_graph.column_indices[edge];
 			if (source_path[neighbor] == -1) {
-				source_path[neighbor] = dist + 1;
+				source_path[neighbor] = neighbor_dist;
+				if (search_depth < neighbor_dist) {
+					search_depth = neighbor_dist;
+				}
 				frontier.push_back(neighbor);
 			}
 		}
@@ -452,7 +459,7 @@ void SimpleReferenceBfs(
 		NULL,						// No reference source path
 		csr_graph,
 		elapsed,
-		0,							// No passes
+		search_depth + 1,
 		0,							// No redundant queuing
 		0);							// No barrier wait
 }
