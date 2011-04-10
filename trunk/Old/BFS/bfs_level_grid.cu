@@ -75,9 +75,10 @@ public:
     /**
      * Obtain statistics about the last BFS search enacted 
      */
+	template <typename VertexId>
     void GetStatistics(
     	long long &total_queued,
-    	long long &search_depth,
+    	VertexId &search_depth,
     	double &avg_barrier_wait)		// total time spent waiting in barriers in ms (threadblock average)
     {
     	total_queued = this->total_queued;
