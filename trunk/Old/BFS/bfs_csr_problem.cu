@@ -160,6 +160,8 @@ struct BfsCsrProblem
 			max_compact_queue_size : 													// Queue-size override
 			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
 
+		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
+
 		return cudaSuccess;
 	}
 
@@ -186,6 +188,8 @@ struct BfsCsrProblem
 		this->max_compact_queue_size 	= (max_compact_queue_size > 0) ?
 			max_compact_queue_size : 													// Queue-size override
 			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+
+		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
 		do {
 			// Allocate and initialize d_column_indices

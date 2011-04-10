@@ -77,76 +77,75 @@ void SweepKernel(
 
 	// Work management
 	VertexId iteration = 0;
-	util::CtaWorkDistribution<SizeT> work_decomposition;
 
-	// First iteration
-	if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
+	if (blockIdx.x == 0) {
 
-		// Reset all counters
-		work_progress.template Reset<SizeT>();
+		// First iteration
+		if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
 
-		// Setup queue
-		if (threadIdx.x == 0) {
+			// Reset all counters
+			work_progress.template Reset<SizeT>();
 
-			// We'll be the only block with active work this iteration.
-			// Enqueue the source for us to subsequently process.
-			util::io::ModifiedStore<ExpandSweep::QUEUE_WRITE_MODIFIER>::St(src, d_compact_queue);
+			// Setup queue
+			if (threadIdx.x == 0) {
 
-			if (ProblemConfig::MARK_PARENTS) {
-				// Enqueue parent of source
-				typename ProblemConfig::VertexId parent = -2;
-				util::io::ModifiedStore<ExpandSweep::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_compact_queue);
+				// We'll be the only block with active work this iteration.
+				// Enqueue the source for us to subsequently process.
+				util::io::ModifiedStore<ExpandSweep::QUEUE_WRITE_MODIFIER>::St(src, d_compact_queue);
+
+				if (ProblemConfig::MARK_PARENTS) {
+					// Enqueue parent of source
+					typename ProblemConfig::VertexId parent = -2;
+					util::io::ModifiedStore<ExpandSweep::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_compact_queue);
+				}
+
+				// Initialize work decomposition in smem
+				SizeT num_elements = 1;
+				smem_storage.expand_smem_storage.work_decomposition.template
+					Init<ExpandSweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
 			}
 		}
+
+		__syncthreads();
+
+		// No workstealing this iteration
+		expand_atomic::SweepPass<ExpandSweep, false>::Invoke(
+			iteration,
+			d_compact_queue,
+			d_parent_compact_queue,
+			d_expand_queue,
+			d_parent_expand_queue,
+			d_column_indices,
+			d_row_offsets,
+			d_source_path,
+			work_progress,
+			smem_storage.expand_smem_storage.work_decomposition,
+			smem_storage.expand_smem_storage);
 	}
 
-	// Initialize work decomposition
-	SizeT num_elements = 1;
-	work_decomposition.template Init<ExpandSweep::LOG_SCHEDULE_GRANULARITY>(
-		num_elements, gridDim.x);
+	iteration++;
 
-	// No workstealing this iteration
-	expand_atomic::SweepPass<ExpandSweep, false>::Invoke(
-		iteration,
-		d_compact_queue,
-		d_parent_compact_queue,
-		d_expand_queue,
-		d_parent_expand_queue,
-		d_column_indices,
-		d_row_offsets,
-		d_source_path,
-		work_progress,
-		work_decomposition,
-		smem_storage.expand_smem_storage);
+	global_barrier.Sync();
 
-	while (true) {
+	//---------------------------------------------------------------------
+	// Upsweep
+	//---------------------------------------------------------------------
 
-		iteration++;
+	// Determine work decomposition
+	if (threadIdx.x == 0) {
 
-		global_barrier.Sync();
+		// Obtain problem size
+		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
 
-		//---------------------------------------------------------------------
-		// Upsweep
-		//---------------------------------------------------------------------
+		// Initialize work decomposition in smem
+		smem_storage.upsweep_smem_storage.work_decomposition.template
+			Init<CompactUpsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
+	}
 
-		// Determine work decomposition
-		if (threadIdx.x == 0) {
+	// Barrier to protect work decomposition
+	__syncthreads();
 
-			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-			if (blockIdx.x == 0) {
-				printf("\t(1) Iteration %d block %d thread %d loaded queue size %d\n",
-					iteration, blockIdx.x, threadIdx.x, num_elements);
-			}
-*/
-			// Initialize work decomposition in smem
-			smem_storage.upsweep_smem_storage.work_decomposition.template
-				Init<CompactUpsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
-		}
-
-		// Barrier to protect work decomposition
-		__syncthreads();
+	while (smem_storage.upsweep_smem_storage.work_decomposition.num_elements) {
 
 		compact::UpsweepPass<CompactUpsweep>(
 			d_expand_queue,
@@ -180,12 +179,7 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-			if (blockIdx.x == 0) {
-				printf("\t(2) Iteration %d block %d thread %d loaded queue size %d\n",
-					iteration, blockIdx.x, threadIdx.x, num_elements);
-			}
-*/
+
 			// Initialize work decomposition in smem
 			smem_storage.downsweep_smem_storage.work_decomposition.template
 				Init<CompactDownsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
@@ -218,31 +212,25 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-			if (blockIdx.x == 0) {
-				printf("\t(3) Iteration %d block %d thread %d loaded queue size %d\n",
-					iteration, blockIdx.x, threadIdx.x, num_elements);
-			}
-*/
+
 			// Initialize work decomposition in smem
 			smem_storage.expand_smem_storage.work_decomposition.template
 				Init<ExpandSweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
 
-			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			if (blockIdx.x == 0) {
+				// Reset our next outgoing queue counter to zero
+				work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
 
-			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+				if (ExpandSweep::WORK_STEALING) {
+					// Reset our next workstealing counter to zero
+					work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+				}
+			}
 
 		}
 
 		// Barrier to protect work decomposition
 		__syncthreads();
-
-		if (smem_storage.expand_smem_storage.work_decomposition.num_elements == 0) {
-			// All done
-			break;
-		}
 
 		expand_atomic::SweepPass<ExpandSweep, ExpandSweep::WORK_STEALING>::Invoke(
 			iteration,
@@ -256,8 +244,29 @@ void SweepKernel(
 			work_progress,
 			smem_storage.expand_smem_storage.work_decomposition,
 			smem_storage.expand_smem_storage);
-	}
 
+		iteration++;
+
+		global_barrier.Sync();
+
+		//---------------------------------------------------------------------
+		// Upsweep
+		//---------------------------------------------------------------------
+
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
+
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+
+			// Initialize work decomposition in smem
+			smem_storage.upsweep_smem_storage.work_decomposition.template
+				Init<CompactUpsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, gridDim.x);
+		}
+
+		// Barrier to protect work decomposition
+		__syncthreads();
+	}
 }
 
 } // namespace single_grid

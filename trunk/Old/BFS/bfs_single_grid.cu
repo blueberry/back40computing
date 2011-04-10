@@ -90,6 +90,7 @@ public:
 		int 								max_grid_size = 0)
 	{
 		cudaError_t retval = cudaSuccess;
+		typedef typename BfsCsrProblem::SizeT SizeT;
 
 		// Compaction tuning configuration
 		typedef single_grid::ProblemConfig<
@@ -100,36 +101,35 @@ public:
 			7,						// LOG_THREADS
 			util::io::ld::cg,
 			util::io::st::cg,
-			7,						// SCHEDULE_GRANULARITY
+			9,						// SCHEDULE_GRANULARITY
 
 			// BFS expand
 			0,						// LOG_LOAD_VEC_SIZE
 			0,						// LOG_LOADS_PER_TILE
 			5,						// LOG_RAKING_THREADS
 			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-			util::io::ld::cg,		// COLUMN_READ_MODIFIER,
+			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
 			util::io::ld::cg,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			false,					// WORK_STEALING
-			7,						// EXPAND_LOG_SCHEDULE_GRANULARITY
+			true,					// WORK_STEALING
+			6,						// EXPAND_LOG_SCHEDULE_GRANULARITY
 
 			// Compact upsweep
 			0,						// LOG_LOAD_VEC_SIZE
 			0,						// LOG_LOADS_PER_TILE
 
 			// Compact spine
-			2,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOAD_VEC_SIZE
 			0,						// LOG_LOADS_PER_TILE
 			5,						// LOG_RAKING_THREADS
 
 			// Compact downsweep
-			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
+			1,						// LOG_LOAD_VEC_SIZE
+			1,						// LOG_LOADS_PER_TILE
 			5> 						// LOG_RAKING_THREADS
 				ProblemConfig;
 
-		typedef typename ProblemConfig::SizeT SizeT;
 
 
 		int occupancy = ProblemConfig::CTA_OCCUPANCY;
@@ -160,7 +160,10 @@ public:
 
 			this->work_progress,
 			this->global_barrier,
-			spine_elements);
+			spine_elements	);
+
+		if (retval = util::B40CPerror(cudaThreadSynchronize(),
+			"SweepKernel failed", __FILE__, __LINE__)) exit(1);
 
 		return retval;
 	}
