@@ -30,6 +30,7 @@
 #include <stdio.h> 
 #include <string>
 #include <deque>
+#include <vector>
 
 // Utilities and correctness-checking
 #include <test_utils.cu>
@@ -187,6 +188,78 @@ struct Stats {
 };
 
 
+template <typename SizeT>
+struct HistogramLevel
+{
+	SizeT		discovered;
+	SizeT		expanded;
+	SizeT		unique_expanded;
+
+	HistogramLevel() : discovered(0), expanded(0), unique_expanded(0) {}
+};
+
+/**
+ *
+ */
+template <
+	typename VertexId,
+	typename Value,
+	typename SizeT>
+void Histogram(
+	VertexId 								src,
+	VertexId 								*reference_source_dist,					// reference answer
+	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
+	VertexId								search_depth)
+{
+	HistogramLevel<SizeT> *histogram = new HistogramLevel<SizeT>[search_depth];
+	std::vector<VertexId> *frontier = new std::vector<VertexId>[search_depth];
+
+	for (VertexId vertex = 0; vertex < csr_graph.nodes; vertex++) {
+
+		VertexId distance = reference_source_dist[vertex];
+		if (distance >= 0) {
+
+			SizeT row_offset 	= csr_graph.row_offsets[vertex];
+			SizeT row_oob 		= csr_graph.row_offsets[vertex + 1];
+			SizeT neighbors 	= row_oob - row_offset;
+
+			histogram[distance].discovered++;
+			histogram[distance].expanded += neighbors;
+
+			frontier[distance].insert(
+				frontier[distance].end(),
+				csr_graph.column_indices[row_offset],
+				csr_graph.column_indices[row_oob]);
+		}
+	}
+
+	printf("Work Histogram:\n");
+	printf("Depth, Discovered, Expanded, Unique-Expanded\n");
+	for (VertexId distance = 0; distance < search_depth; distance++) {
+
+		// Sort
+		std::sort(
+			frontier[distance].begin(),
+			frontier[distance].end());
+
+		// Count unique elements
+		histogram[distance].unique_expanded =
+			std::unique(frontier[distance].begin(), frontier[distance].end()) -
+			frontier[distance].begin();
+
+		printf("%d, %d, %d, %d\n",
+			distance,
+			histogram[distance].discovered,
+			histogram[distance].expanded,
+			histogram[distance].unique_expanded);
+	}
+	printf("\n\n");
+}
+
+
+
+
+
 /**
  * Displays timing and correctness statistics 
  */
@@ -202,7 +275,7 @@ void DisplayStats(
 	VertexId 								*reference_source_dist,					// reference answer
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	double 									elapsed,
-	long long								search_depth,
+	VertexId								search_depth,
 	long long 								total_queued,
 	double 									avg_barrier_wait)
 {
@@ -298,7 +371,7 @@ void DisplayStats(
 		// Display the specific sample statistics
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
-		if (search_depth != 0) printf(", search_depth: %d", search_depth);
+		if (search_depth != 0) printf(", search_depth: %lld", (long long) search_depth);
 		if (avg_barrier_wait != 0) {
 			printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms",
 				avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / search_depth);
@@ -317,7 +390,7 @@ void DisplayStats(
 		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
 
 		double search_depth_stddev = sqrt(stats.search_depth.Update((double) search_depth));
-		if (search_depth > 0) printf(			"\t\t[Passes]:           u: %.1f, s: %.1f, cv: %.4f\n",
+		if (search_depth > 0) printf(			"\t\t[Search depth]:           u: %.1f, s: %.1f, cv: %.4f\n",
 			stats.search_depth.mean, search_depth_stddev, search_depth_stddev / stats.search_depth.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
@@ -376,7 +449,7 @@ void TestGpuBfs(
 		cudaMemcpyDeviceToHost);
 	
 	long long 	total_queued = 0;
-	long long 	search_depth = 0;
+	VertexId	search_depth = 0;
 	double		avg_barrier_wait = 0.0;
 
 	enactor.GetStatistics(total_queued, search_depth, avg_barrier_wait);
@@ -451,7 +524,10 @@ void SimpleReferenceBfs(
 	}
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
-
+	search_depth++;
+/*
+	Histogram(src, source_path, csr_graph, search_depth);
+*/
 	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
 		src,
@@ -459,7 +535,7 @@ void SimpleReferenceBfs(
 		NULL,						// No reference source path
 		csr_graph,
 		elapsed,
-		search_depth + 1,
+		search_depth,
 		0,							// No redundant queuing
 		0);							// No barrier wait
 }
