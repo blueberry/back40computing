@@ -49,6 +49,8 @@ SizeT RandomNode(SizeT num_nodes) {
  * Simple COO sparse graph datastructure
  ******************************************************************************/
 
+struct NoValue {};
+
 /**
  * COO sparse format edge.  (A COO graph is just a list/array/vector of these.)
  */
@@ -57,15 +59,34 @@ struct CooEdgeTuple {
 	VertexId row;
 	VertexId col;
 	Value val;
+
+	CooEdgeTuple(VertexId row, VertexId col, Value val) : row(row), col(col), val(val) {}
+
+	void Val(Value &value)
+	{
+		value = val;
+	}
+};
+
+template<typename VertexId>
+struct CooEdgeTuple<VertexId, NoValue> {
+	VertexId row;
+	VertexId col;
+
+	template <typename Value>
+	CooEdgeTuple(VertexId row, VertexId col, Value val) : row(row), col(col) {}
+
+	template <typename Value>
+	void Val(Value &value) {}
 };
 
 /**
  * Comparator for sorting COO sparse format edges
  */
-template<typename VertexId, typename Value>
+template<typename Tuple>
 bool DimacsTupleCompare (
-	CooEdgeTuple<VertexId, Value> elem1,
-	CooEdgeTuple<VertexId, Value> elem2)
+	Tuple elem1,
+	Tuple elem2)
 {
 	if (elem1.row < elem2.row) {
 		// Sort edges by source node (to make rows)
@@ -113,9 +134,9 @@ struct CsrGraph
 	/**
 	 * Build CSR graph from sorted COO graph
 	 */
-	template <bool LOAD_VALUES>
+	template <bool LOAD_VALUES, typename Tuple>
 	void FromCoo(
-		CooEdgeTuple<VertexId, Value> *coo,
+			Tuple *coo,
 		SizeT coo_nodes,
 		SizeT coo_edges)
 	{
@@ -130,7 +151,7 @@ struct CsrGraph
 		values 				= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * edges) : NULL;
 		
 		// Sort COO by row, then by col
-		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<VertexId, Value>);
+		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<Tuple>);
 
 		VertexId prev_row = -1;
 		for (SizeT edge = 0; edge < edges; edge++) {
@@ -145,7 +166,7 @@ struct CsrGraph
 			
 			column_indices[edge] = coo[edge].col;
 			if (LOAD_VALUES) {
-				values[edge] = coo[edge].val;
+				coo[edge].Val(values[edge]);
 			}
 		}
 
