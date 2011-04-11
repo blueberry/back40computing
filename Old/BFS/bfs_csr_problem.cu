@@ -36,6 +36,7 @@
 namespace b40c {
 namespace bfs {
 
+#define B40C_DEFAULT_QUEUE_SIZING 1.15
 
 /**
  * CSR storage management structure for BFS problems.  
@@ -60,7 +61,6 @@ struct BfsCsrProblem
 	typedef typename ProblemType::CollisionMask 	CollisionMask;
 	typedef typename ProblemType::ValidFlag 		ValidFlag;
 
-	static const SizeT		DEFAULT_QUEUE_PADDING_PERCENT = 20;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -143,8 +143,7 @@ struct BfsCsrProblem
 		VertexId 	*d_column_indices,
 		SizeT 		*d_row_offsets,
 		VertexId 	*d_source_path = NULL,
-		SizeT 		max_expand_queue_size = -1,
-		SizeT 		max_compact_queue_size = -1)
+		double 		queue_sizing = 0.0)
 	{
 		this->nodes 			= nodes;
 		this->edges 			= edges;
@@ -152,13 +151,13 @@ struct BfsCsrProblem
 		this->d_row_offsets 	= d_row_offsets;
 		this->d_source_path 	= d_source_path;
 
-		this->max_expand_queue_size 	= (max_expand_queue_size > 0) ?
-			max_expand_queue_size : 													// Queue-size override
-			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+		this->max_expand_queue_size = (queue_sizing > 0.0) ?
+			queue_sizing * double(edges) : 							// Queue-size override
+			double(B40C_DEFAULT_QUEUE_SIZING) * double(edges);		// Use default queue size
 
-		this->max_compact_queue_size 	= (max_compact_queue_size > 0) ?
-			max_compact_queue_size : 													// Queue-size override
-			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+		this->max_compact_queue_size = (queue_sizing > 0.0) ?
+			queue_sizing * double(nodes) : 							// Queue-size override
+			double(B40C_DEFAULT_QUEUE_SIZING) * double(nodes);		// Use default queue size
 
 		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
@@ -173,21 +172,20 @@ struct BfsCsrProblem
 		SizeT 		edges,
 		VertexId 	*h_column_indices,
 		SizeT 		*h_row_offsets,
-		SizeT 		max_expand_queue_size = -1,
-		SizeT 		max_compact_queue_size = -1)
+		double 		queue_sizing = 0.0)
 	{
 		cudaError_t retval = cudaSuccess;
 
 		this->nodes = nodes;
 		this->edges = edges;
 
-		this->max_expand_queue_size 	= (max_expand_queue_size > 0) ?
-			max_expand_queue_size : 													// Queue-size override
-			((long long) edges) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+		this->max_expand_queue_size = (queue_sizing > 0.0) ?
+			queue_sizing * double(edges) : 							// Queue-size override
+			double(B40C_DEFAULT_QUEUE_SIZING) * double(edges);		// Use default queue size
 
-		this->max_compact_queue_size 	= (max_compact_queue_size > 0) ?
-			max_compact_queue_size : 													// Queue-size override
-			((long long) nodes) * (DEFAULT_QUEUE_PADDING_PERCENT + 100) / 100;			// Use default queue size
+		this->max_compact_queue_size = (queue_sizing > 0.0) ?
+			queue_sizing * double(nodes) : 							// Queue-size override
+			double(B40C_DEFAULT_QUEUE_SIZING) * double(nodes);		// Use default queue size
 
 		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
@@ -296,6 +294,8 @@ struct BfsCsrProblem
 		return retval;
 	}
 };
+
+#undef B40C_DEFAULT_QUEUE_SIZING
 
 
 } // namespace bfs

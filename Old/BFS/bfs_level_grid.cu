@@ -179,6 +179,9 @@ public:
 		total_queued = 0;
 		SizeT queue_length;
 
+		printf("Iteration, Expand, Compact\n");
+		printf("0, 1, 1\n");
+
 		while (true) {
 
 			// BFS iteration
@@ -198,11 +201,7 @@ public:
 
 			this->work_progress.GetQueueLength(iteration, queue_length);
 			total_queued += queue_length;
-			printf("Iteration %lld BFS queued %lld elements\n",
-				iteration - 1, (long long) queue_length);
-			if (!queue_length) {
-				break;
-			}
+			printf("%lld, %lld", iteration, (long long) queue_length);
 
 			// Upsweep compact
 			compact::UpsweepKernel<CompactUpsweep><<<compact_grid_size, CompactUpsweep::THREADS>>>(
@@ -227,6 +226,12 @@ public:
 				bfs_problem.d_compact_parent_queue,
 				(SizeT *) this->spine(),
 				this->work_progress);
+
+			this->work_progress.GetQueueLength(iteration, queue_length);
+			printf(", %lld\n", (long long) queue_length);
+			if (!queue_length) {
+				break;
+			}
 		}
 
 		printf("\n");
