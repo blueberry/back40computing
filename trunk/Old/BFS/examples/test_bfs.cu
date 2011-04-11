@@ -120,8 +120,8 @@ void Usage()
 			"\t\tgraph-type.  If alternatively specified as \"randomize\", each \n"
 			"\t\ttest-iteration will begin with a newly-chosen random source vertex.\n"
 			"\n"
-			"--queue-size\tAllocates a frontier queue of <queue size> elements.  Default\n"
-			"\t\tis the size of the edge list.\n"
+			"--queue-sizing\tAllocates a frontier queue sized at (graph-edges * <queue-sizing>).  Default\n"
+			"\t\tis 1.15.\n"
 			"\n"
 			"--mark-parents\tParent vertices are marked instead of source distances, i.e., it\n"
 			"\t\tcreates an ancestor tree rooted at the source vertex.\n"
@@ -212,8 +212,8 @@ void Histogram(
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	VertexId								search_depth)
 {
-	HistogramLevel<SizeT> *histogram = new HistogramLevel<SizeT>[search_depth];
-	std::vector<VertexId> *frontier = new std::vector<VertexId>[search_depth];
+	std::vector<HistogramLevel<SizeT> > histogram(search_depth + 1);
+	std::vector<std::vector<VertexId> > frontier(search_depth + 1);
 
 	// Establish basics
 	histogram[0].expanded = 1;
@@ -275,9 +275,6 @@ void Histogram(
 			histogram[distance].discovered);
 	}
 	printf("\n\n");
-
-	delete histogram;
-	delete frontier;
 }
 
 
@@ -549,9 +546,9 @@ void SimpleReferenceBfs(
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 	search_depth++;
-/*
-	Histogram(src, source_path, csr_graph, search_depth);
-*/
+
+//	Histogram(src, source_path, csr_graph, search_depth);
+
 	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
 		src,
@@ -580,7 +577,7 @@ void RunTests(
 	bool randomized_src,
 	int test_iterations,
 	int max_grid_size,
-	int queue_size) 
+	double queue_sizing)
 {
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
@@ -597,8 +594,7 @@ void RunTests(
 		csr_graph.edges,
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
-		queue_size,
-		queue_size))
+		queue_sizing))
 	{
 		exit(1);
 	}
@@ -697,7 +693,7 @@ int main( int argc, char** argv)
 	bool 		mark_parents	= false;
 	int 		test_iterations = 1;
 	int 		max_grid_size 	= 0;			// Default: leave it up the enactor
-	SizeT 		queue_size		= -1;			// Default: the size of the edge list
+	double 		queue_sizing	= 0.0;			// Default: the size of the edge list * 1.15
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
@@ -727,7 +723,7 @@ int main( int argc, char** argv)
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
-	args.GetCmdLineArgument("queue-size", queue_size);
+	args.GetCmdLineArgument("queue-sizing", queue_sizing);
 	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
 	} else {
@@ -825,19 +821,19 @@ int main( int argc, char** argv)
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
 		} else {
 			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
 		}
 	} else {
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_size);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
 		}
 	}
 }
