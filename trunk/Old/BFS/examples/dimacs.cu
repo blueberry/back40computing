@@ -25,6 +25,7 @@
 #include <time.h>
 #include <stdio.h>
 
+#include <b40c/util/basic_utils.cuh>
 #include <test_utils.cu>
 
 
@@ -42,7 +43,8 @@ int ReadDimacsStream(
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 {
-	typedef CooEdgeTuple<VertexId, Value> EdgeTupleType;
+	typedef typename b40c::util::If<LOAD_VALUES, Value, NoValue>::Type TupleValue;
+	typedef CooEdgeTuple<VertexId, TupleValue> EdgeTupleType;
 	
 	SizeT edges_read = 0;
 	SizeT nodes = 0;
@@ -99,15 +101,17 @@ int ReadDimacsStream(
 			long long ll_row, ll_col, ll_val;
 			sscanf(line, "a %lld %lld %lld", &ll_row, &ll_col, &ll_val);
 
-			coo[edges_read].row = ll_row - 1;	// zero-based array
-			coo[edges_read].col = ll_col - 1;	// zero-based array
-			coo[edges_read].val = ll_val;
+			coo[edges_read] = EdgeTupleType(
+				ll_row - 1,	// zero-based array
+				ll_col - 1,	// zero-based array
+				ll_val);
 
 			if (undirected) {
 				// Reverse edge
-				coo[edges + edges_read].row = coo[edges_read].col;
-				coo[edges + edges_read].col = coo[edges_read].row;
-				coo[edges + edges_read].val = coo[edges_read].val;
+				coo[edges + edges_read] = EdgeTupleType(
+					ll_col - 1,	// zero-based array
+					ll_row - 1,	// zero-based array
+					ll_val);
 			}
 
 			edges_read++;
