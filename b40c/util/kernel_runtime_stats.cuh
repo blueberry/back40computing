@@ -159,9 +159,9 @@ public:
 
 
 	/**
-	 * Returns ratio of (avg time waiting after completion : total runtime)
+	 * Returns ratio of (avg cta runtime : total runtime)
 	 */
-	double AvgBarrierWait(int sweep_grid_size, util::CudaProperties &cuda_props)
+	double AvgLive(int sweep_grid_size)
 	{
 		clock_t *h_stat = (clock_t*) malloc(stat_bytes);
 
@@ -176,12 +176,12 @@ public:
 
 			clock_t start = h_stat[block];
 			clock_t stop = h_stat[sweep_grid_size + block];
-
+/*
 			if ((start == 0) && (stop == 0)) {
 				// reported did no work
 				continue;
 			}
-
+*/
 			clock_t runtime = (stop >= start) ?
 				stop - start :
 				stop + (((clock_t) -1) - start);
@@ -198,11 +198,10 @@ public:
 			double(total_runtimes) / ctas_with_work :
 			0.0;
 
-		// Compute avg wait time
-		double avg_wait_time = max_runtime - avg_runtime;
+		free(h_stat);
 
 		return (max_runtime > 0) ?
-			avg_wait_time / max_runtime :
+			avg_runtime / max_runtime :
 			0.0;
 	}
 };
