@@ -587,7 +587,7 @@ void RunTests(
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	LevelGridBfsEnactor bfs_lg_enactor(g_verbose);
 	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
-	ExpandCompactBfsEnactor bfs_ec_enactor(g_verbose);
+//	ExpandCompactBfsEnactor bfs_ec_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
@@ -606,7 +606,7 @@ void RunTests(
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("Level-grid, contract-expand GPU BFS");
 	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
-	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
+//	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
 	
 	printf("Running %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -632,7 +632,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_dist,
+			(VertexId*) NULL, //reference_source_dist,
 			csr_graph,
 			stats[1],
 			max_grid_size);
@@ -645,13 +645,14 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_dist,
+			(VertexId*) NULL, //reference_source_dist,
 			csr_graph,
 			stats[2],
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
 
+/*
 		// Perform single-grid contract-expand GPU BFS search
 		TestGpuBfs(
 			bfs_ec_enactor,
@@ -664,7 +665,7 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-
+*/
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -675,7 +676,7 @@ void RunTests(
 		}
 		
 		if (randomized_src) {
-			test_iteration = stats[0].rate.count;
+			test_iteration = B40C_MAX(stats[0].rate.count, B40C_MAX(stats[1].rate.count, stats[2].rate.count));
 		} else {
 			test_iteration++;
 		}

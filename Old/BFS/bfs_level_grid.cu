@@ -197,9 +197,9 @@ public:
 
 			iteration++;
 
-			this->work_progress.GetQueueLength(iteration, queue_length);
+			if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
 			total_queued += queue_length;
-			printf("%lld, %lld\n", iteration, (long long) queue_length);
+//			printf("%lld, %lld\n", iteration, (long long) queue_length);
 			if (!queue_length) {
 				break;
 			}

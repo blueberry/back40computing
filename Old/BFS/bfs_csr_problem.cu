@@ -155,10 +155,12 @@ struct BfsCsrProblem
 			queue_sizing * double(edges) : 							// Queue-size override
 			double(B40C_DEFAULT_QUEUE_SIZING) * double(edges);		// Use default queue size
 
+		this->max_compact_queue_size = max_expand_queue_size;
+/*
 		this->max_compact_queue_size = (queue_sizing > 0.0) ?
 			queue_sizing * double(nodes) : 							// Queue-size override
 			double(B40C_DEFAULT_QUEUE_SIZING) * double(nodes);		// Use default queue size
-
+*/
 		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
 		return cudaSuccess;
@@ -183,10 +185,12 @@ struct BfsCsrProblem
 			queue_sizing * double(edges) : 							// Queue-size override
 			double(B40C_DEFAULT_QUEUE_SIZING) * double(edges);		// Use default queue size
 
+		this->max_compact_queue_size = max_expand_queue_size;
+/*
 		this->max_compact_queue_size = (queue_sizing > 0.0) ?
 			queue_sizing * double(nodes) : 							// Queue-size override
 			double(B40C_DEFAULT_QUEUE_SIZING) * double(nodes);		// Use default queue size
-
+*/
 		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
 		do {
