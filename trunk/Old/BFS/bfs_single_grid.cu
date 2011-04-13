@@ -33,6 +33,10 @@
 #include <b40c/bfs/single_grid/problem_config.cuh>
 #include <b40c/bfs/single_grid/sweep_kernel.cuh>
 
+#include <b40c/bfs/compact_expand/sweep_kernel_config.cuh>
+#include <b40c/bfs/compact_expand/sweep_kernel.cuh>
+
+
 namespace b40c {
 namespace bfs {
 
@@ -94,46 +98,24 @@ public:
 		typedef typename BfsCsrProblem::SizeT SizeT;
 
 		// Compaction tuning configuration
-		typedef single_grid::ProblemConfig<
+		typedef compact_expand::SweepKernelConfig<
 
-			typename BfsCsrProblem::ProblemType,
-			200,					// CUDA_ARCH
-			8,						// MAX_CTA_OCCUPANCY
-			7,						// LOG_THREADS
-			util::io::ld::cg,
-			util::io::st::cg,
-			9,						// SCHEDULE_GRANULARITY
+				typename BfsCsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				0,
+				5,
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				6> KernelConfig;
 
-			// BFS expand
-			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
-			5,						// LOG_RAKING_THREADS
-			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			true,					// WORK_STEALING
-			6,						// EXPAND_LOG_SCHEDULE_GRANULARITY
-
-			// Compact upsweep
-			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
-
-			// Compact spine
-			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
-			5,						// LOG_RAKING_THREADS
-
-			// Compact downsweep
-			2,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
-			5> 						// LOG_RAKING_THREADS
-				ProblemConfig;
-
-
-
-		int occupancy = ProblemConfig::CTA_OCCUPANCY;
+		int occupancy = KernelConfig::CTA_OCCUPANCY;
 		int grid_size = MaxGridSize(occupancy, max_grid_size);
 
 		printf("DEBUG: BFS occupancy %d, grid size %d\n",
@@ -144,7 +126,9 @@ public:
 		if (retval = spine.Setup<SizeT>(grid_size, spine_elements)) exit(1);
 		if (retval = global_barrier.Setup(grid_size)) (exit(1));
 
-		single_grid::SweepKernel<ProblemConfig><<<grid_size, ProblemConfig::THREADS>>>(
+		fflush(stdout);
+
+		compact_expand::SweepKernel<KernelConfig><<<grid_size, KernelConfig::THREADS>>>(
 			src,
 
 			bfs_problem.d_expand_queue,
@@ -156,12 +140,8 @@ public:
 			bfs_problem.d_row_offsets,
 			bfs_problem.d_source_path,
 			bfs_problem.d_collision_cache,
-			bfs_problem.d_keep,
-			(SizeT *) this->spine(),
-
 			this->work_progress,
-			this->global_barrier,
-			spine_elements	);
+			this->global_barrier);
 
 		if (retval = util::B40CPerror(cudaThreadSynchronize(),
 			"SweepKernel failed", __FILE__, __LINE__)) exit(1);
