@@ -34,6 +34,8 @@
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
 
+#include <b40c/util/soa_tuple.cuh>
+#include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -57,9 +59,17 @@ struct SweepCta
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::CollisionMask 	CollisionMask;
 	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
 	typedef typename SmemStorage::WarpComm 			WarpComm;
 	typedef unsigned int							ThreadId;
+
+	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelConfig::SoaTuple 		SoaTuple;
+
+	typedef util::Tuple<
+		SizeT (*)[KernelConfig::LOAD_VEC_SIZE],
+		SizeT (*)[KernelConfig::LOAD_VEC_SIZE]> 	RankSoa;
+
+
 
 	//---------------------------------------------------------------------
 	// Members
@@ -81,8 +91,8 @@ struct SweepCta
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
 
-	// Operational details for SRTS scan grid
-	SrtsDetails 			srts_details;
+	// Operational details for SRTS grid
+	SrtsSoaDetails 			srts_soa_details;
 
 	// Shared memory channels for intra-warp communication
 	volatile WarpComm		&warp_comm;
@@ -750,10 +760,14 @@ struct SweepCta
 		CollisionMask 			*d_collision_cache,
 		util::CtaWorkProgress	&work_progress) :
 
-			srts_details(
-				smem_storage.smem_pool_int4s,
-				smem_storage.warpscan,
-				0),
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.smem_pool_int4s,
+					smem_storage.smem_pool_int4s + SmemStorage::COARSE_RAKING_QUADS),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.coarse_warpscan,
+					smem_storage.fine_warpscan),
+				KernelConfig::SoaTupleIdentity()),
 			warp_comm(smem_storage.warp_comm),
 			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
@@ -832,35 +846,29 @@ struct SweepCta
 		// Cull valid flags using local collision hashing
 		tile.LocalCull(this);
 
-		// Barrier to protect local culling scratch from cooperative scan below
-		__syncthreads();
-
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details
 		tile.Inspect(this);
 
-		// Scan tile of coarse-grained row ranks (lengths) with enqueue reservation,
-		// turning them into enqueue offsets
-		SizeT coarse_count = util::scan::CooperativeTileScan<
-			SrtsDetails,
-			KernelConfig::LOAD_VEC_SIZE,
-			true,							// exclusive
-			util::DefaultSum>::ScanTile(
-				srts_details,
-				tile.coarse_row_rank);
+		// Barrier to protect local culling scratch from cooperative scan below
+		__syncthreads();
 
-		// Scan tile of fine-grained row ranks (lengths) with enqueue reservation,
-		// turning them into enqueue offsets
-		tile.fine_count = util::scan::CooperativeTileScan<
-			SrtsDetails,
+		// Scan tile with carry update in raking threads
+		SoaTuple totals = util::scan::soa::CooperativeSoaTileScan<
+			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
-			true,							// exclusive
-			util::DefaultSum>::ScanTile(
-				srts_details,
-				tile.fine_row_rank);
+			true,									//exclusive
+			KernelConfig::SoaScanOp,
+			KernelConfig::SoaScanOp>::ScanTile(
+				srts_soa_details,
+				RankSoa(tile.coarse_row_rank, tile.fine_row_rank));
+		SizeT coarse_count = totals.t0;
+		tile.fine_count = totals.t1;
 
 		if (threadIdx.x == 0) {
-			coarse_enqueue_offset = work_progress.Enqueue(coarse_count + tile.fine_count, iteration + 1);
+			coarse_enqueue_offset = work_progress.Enqueue(
+				coarse_count + tile.fine_count,
+				iteration + 1);
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}
 
