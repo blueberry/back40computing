@@ -204,6 +204,53 @@ public:
 			avg_runtime / max_runtime :
 			0.0;
 	}
+
+
+	/**
+	 * Returns ratio of (avg cta runtime : total runtime)
+	 */
+	void Accumulate(int sweep_grid_size, long long &total_avg_live, long long &total_max_live)
+	{
+		clock_t *h_stat = (clock_t*) malloc(stat_bytes);
+
+		util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
+			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
+
+		// Compute runtimes, find max
+		int ctas_with_work = 0;
+		clock_t max_runtime = 0;
+		unsigned long long total_runtimes = 0;
+		for (int block = 0; block < sweep_grid_size; block++) {
+
+			clock_t start = h_stat[block];
+			clock_t stop = h_stat[sweep_grid_size + block];
+/*
+			if ((start == 0) && (stop == 0)) {
+				// reported did no work
+				continue;
+			}
+*/
+			clock_t runtime = (stop >= start) ?
+				stop - start :
+				stop + (((clock_t) -1) - start);
+
+			if (runtime > max_runtime) {
+				max_runtime = runtime;
+			}
+			total_runtimes += runtime;
+			ctas_with_work++;
+		}
+
+		// Compute avg runtime
+		double avg_runtime = (ctas_with_work > 0) ?
+			double(total_runtimes) / ctas_with_work :
+			0.0;
+
+		free(h_stat);
+
+		total_max_live += max_runtime;
+		total_avg_live += avg_runtime;
+	}
 };
 
 
