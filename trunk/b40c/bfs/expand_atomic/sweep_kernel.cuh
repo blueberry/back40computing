@@ -27,6 +27,7 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
 #include <b40c/bfs/expand_atomic/sweep_cta.cuh>
 
 namespace b40c {
@@ -178,7 +179,7 @@ struct SweepPass <KernelConfig, true>
 /**
  * Sweep expansion kernel entry point
  */
-template <typename KernelConfig>
+template <typename KernelConfig, bool INSTRUMENT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
@@ -191,12 +192,19 @@ void SweepKernel(
 	typename KernelConfig::VertexId			*d_column_indices,
 	typename KernelConfig::SizeT			*d_row_offsets,
 	typename KernelConfig::VertexId			*d_source_path,
-	util::CtaWorkProgress 					work_progress)
+	util::CtaWorkProgress 					work_progress,
+	util::KernelRuntimeStats				kernel_stats)
 {
 	typedef typename KernelConfig::SizeT SizeT;
 
 	// Shared storage for the kernel
 	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStart();
+		}
+	}
 
 	if (iteration == 0) {
 
@@ -279,6 +287,12 @@ void SweepKernel(
 			work_progress,
 			smem_storage.work_decomposition,
 			smem_storage);
+	}
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStop();
+		}
 	}
 }
 

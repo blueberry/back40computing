@@ -111,7 +111,7 @@ void Usage()
 			"--v2\tSame as --v, but also displays the input graph to the console.\n"
 			"\n"
 			"--instrumented\tKernels keep track of queue-search_depth, redundant work (i.e., the \n"
-			"\t\toverhead of duplicates in the frontier), and average barrier wait (a \n"
+			"\t\toverhead of duplicates in the frontier), and average barrier duty (a \n"
 			"\t\trelative indicator of load imbalance.)\n"
 			"\n"
 			"--i\tPerforms <num-iterations> test-iterations of BFS traversals.\n"
@@ -183,10 +183,10 @@ struct Stats {
 	Statistic rate;
 	Statistic search_depth;
 	Statistic redundant_work;
-	Statistic barrier_wait;
+	Statistic duty;
 	
-	Stats() : name(NULL), rate(), search_depth(), redundant_work(), barrier_wait() {}
-	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), barrier_wait() {}
+	Stats() : name(NULL), rate(), search_depth(), redundant_work(), duty() {}
+	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), duty() {}
 };
 
 
@@ -299,7 +299,7 @@ void DisplayStats(
 	double 									elapsed,
 	VertexId								search_depth,
 	long long 								total_queued,
-	double 									avg_barrier_wait)
+	double 									avg_duty)
 {
 	// Compute nodes and edges visited
 	SizeT edges_visited = 0;
@@ -333,6 +333,7 @@ void DisplayStats(
 
 			// Verify plausibility of parent markings
 			bool correct = true;
+
 			for (VertexId node = 0; node < csr_graph.nodes; node++) {
 				VertexId parent = h_source_path[node];
 
@@ -394,9 +395,8 @@ void DisplayStats(
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
 		if (search_depth != 0) printf(", search_depth: %lld", (long long) search_depth);
-		if (avg_barrier_wait != 0) {
-			printf("\n\tavg cta waiting: %.3f ms (%.2f%%), avg g-barrier wait: %.4f ms",
-				avg_barrier_wait, avg_barrier_wait / elapsed * 100, avg_barrier_wait / search_depth);
+		if (avg_duty != 0) {
+			printf("\n\tavg cta duty: %.2f%%", avg_duty * 100);
 		}
 		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
 			(long long) src, (long long) nodes_visited, (long long) edges_visited);
@@ -419,9 +419,9 @@ void DisplayStats(
 		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
-		double barrier_wait_stddev = sqrt(stats.barrier_wait.Update(avg_barrier_wait / elapsed * 100));
-		if (avg_barrier_wait > 0) printf(	"\t\t[Waiting %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
-			stats.barrier_wait.mean, barrier_wait_stddev, barrier_wait_stddev / stats.barrier_wait.mean);
+		double duty_stddev = sqrt(stats.duty.Update(avg_duty * 100));
+		if (avg_duty > 0) printf(	"\t\t[Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
+			stats.duty.mean, duty_stddev, duty_stddev / stats.duty.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
 		printf(								"\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
@@ -438,6 +438,7 @@ void DisplayStats(
  ******************************************************************************/
 
 template <
+	bool INSTRUMENT,
 	typename BfsEnactor,
 	typename ProblemStorage,
 	typename VertexId,
@@ -459,7 +460,7 @@ void TestGpuBfs(
 	// Perform BFS
 	CpuTimer cpu_timer;
 	cpu_timer.Start();
-	enactor.EnactSearch(bfs_problem, src, max_grid_size);
+	enactor.template EnactSearch<INSTRUMENT>(bfs_problem, src, max_grid_size);
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
@@ -472,9 +473,9 @@ void TestGpuBfs(
 	
 	long long 	total_queued = 0;
 	VertexId	search_depth = 0;
-	double		avg_barrier_wait = 0.0;
+	double		avg_duty = 0.0;
 
-	enactor.GetStatistics(total_queued, search_depth, avg_barrier_wait);
+	enactor.GetStatistics(total_queued, search_depth, avg_duty);
 	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
 		stats,
 		src,
@@ -484,7 +485,7 @@ void TestGpuBfs(
 		elapsed,
 		search_depth,
 		total_queued,
-		avg_barrier_wait);
+		avg_duty);
 }
 
 
@@ -559,7 +560,7 @@ void SimpleReferenceBfs(
 		elapsed,
 		search_depth,
 		0,							// No redundant queuing
-		0);							// No barrier wait
+		0);							// No barrier duty
 }
 
 
@@ -606,7 +607,7 @@ void RunTests(
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("Level-grid, contract-expand GPU BFS");
 	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
-//	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
+	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
 	
 	printf("Running %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -627,12 +628,13 @@ void RunTests(
 		fflush(stdout);
 
 		// Perform level-grid contract-expand GPU BFS search
-		TestGpuBfs(
+		TestGpuBfs<INSTRUMENT>(
 			bfs_lg_enactor,
 			bfs_problem,
 			src,
 			h_source_path,
 			reference_source_dist,
+//			(VertexId*) NULL,
 			csr_graph,
 			stats[1],
 			max_grid_size);
@@ -640,21 +642,21 @@ void RunTests(
 		fflush(stdout);
 
 		// Perform single-grid contract-expand GPU BFS search
-		TestGpuBfs(
+		TestGpuBfs<INSTRUMENT>(
 			bfs_sg_enactor,
 			bfs_problem,
 			src,
 			h_source_path,
 			reference_source_dist,
+//			(VertexId*) NULL,
 			csr_graph,
 			stats[2],
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-
 /*
 		// Perform single-grid contract-expand GPU BFS search
-		TestGpuBfs(
+		TestGpuBfs<INSTRUMENT>(
 			bfs_ec_enactor,
 			bfs_problem,
 			src,

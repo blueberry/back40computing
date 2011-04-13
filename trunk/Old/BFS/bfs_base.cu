@@ -46,7 +46,7 @@ class BaseBfsEnactor
 protected:	
 
 	//Device properties
-	const util::CudaProperties cuda_props;
+	util::CudaProperties cuda_props;
 	
 	// Queue size counters and accompanying functionality
 	util::CtaWorkProgressLifetime work_progress;

@@ -20,15 +20,16 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Level-grid BFS implementation
+ * Single-grid compact-expand BFS implementation
  ******************************************************************************/
 
 #pragma once
 
 #include <bfs_base.cu>
 
-#include <b40c/util/spine.cuh>
 #include <b40c/util/global_barrier.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
+
 #include <b40c/bfs/problem_type.cuh>
 #include <b40c/bfs/single_grid/problem_config.cuh>
 #include <b40c/bfs/single_grid/sweep_kernel.cuh>
@@ -50,23 +51,64 @@ class SingleGridBfsEnactor : public BaseBfsEnactor
 protected:
 
 	/**
-	 * Temporary device storage needed for reducing partials produced
-	 * by separate CTAs
-	 */
-	util::Spine spine;
-
-	/**
 	 * Mechanism for implementing software global barriers from within
 	 * a single grid invocation
 	 */
 	util::GlobalBarrierLifetime global_barrier;
+
+	/**
+	 * CTA duty kernel stats
+	 */
+	util::KernelRuntimeStatsLifetime kernel_stats;
+	long long total_avg_live;
+	long long total_max_live;
+
+	volatile long long *iteration;
+	volatile long long *total_queued;
+
+	long long *d_iteration;
+	long long *d_total_queued;
 
 public: 	
 	
 	/**
 	 * Constructor
 	 */
-	SingleGridBfsEnactor(bool DEBUG = false) : BaseBfsEnactor(DEBUG) {}
+	SingleGridBfsEnactor(bool DEBUG = false) :
+		BaseBfsEnactor(DEBUG),
+		iteration(NULL),
+		total_queued(NULL),
+		d_iteration(NULL),
+		d_total_queued(NULL),
+		total_avg_live(0),
+		total_max_live(0)
+	{
+		int flags = cudaHostAllocMapped;
+
+		// Allocate pinned memory
+		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
+			"SingleGridBfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaHostAlloc((void **)&total_queued, sizeof(long long) * 1, flags),
+			"SingleGridBfsEnactor cudaHostAlloc total_queued failed", __FILE__, __LINE__)) exit(1);
+
+		// Map into GPU space
+		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
+			"SingleGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_total_queued, (void *) total_queued, 0),
+			"SingleGridBfsEnactor cudaHostGetDevicePointer total_queued failed", __FILE__, __LINE__)) exit(1);
+
+		total_queued[0] = 0;
+	}
+
+
+	/**
+	 * Destructor
+	 */
+	virtual ~SingleGridBfsEnactor()
+	{
+		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "SingleGridBfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
+		if (total_queued) util::B40CPerror(cudaFreeHost((void *) total_queued), "SingleGridBfsEnactor cudaFreeHost total_queued failed", __FILE__, __LINE__);
+	}
 
 
     /**
@@ -74,13 +116,13 @@ public:
      */
 	template <typename VertexId>
     void GetStatistics(
-    	long long &total_queued,
-    	VertexId &search_depth,
-    	double &avg_barrier_wait)		// total time spent waiting in barriers in ms (threadblock average)
+		long long &total_queued,
+		VertexId &search_depth,
+		double &avg_live)
     {
-    	total_queued = 0;
-    	search_depth = 0;
-    	avg_barrier_wait = 0;
+    	total_queued = this->total_queued[0];
+    	search_depth = iteration[0] - 1;
+    	avg_live = double(total_avg_live) / total_max_live;
     }
     
 	/**
@@ -88,14 +130,16 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <typename BfsCsrProblem>
+    template <bool INSTRUMENT, typename BfsCsrProblem>
 	cudaError_t EnactSearch(
 		BfsCsrProblem 						&bfs_problem,
 		typename BfsCsrProblem::VertexId 	src,
 		int 								max_grid_size = 0)
 	{
 		cudaError_t retval = cudaSuccess;
+
 		typedef typename BfsCsrProblem::SizeT SizeT;
+		typedef typename BfsCsrProblem::VertexId VertexId;
 
 		// Compaction tuning configuration
 		typedef compact_expand::SweepKernelConfig<
@@ -120,15 +164,18 @@ public:
 
 		printf("DEBUG: BFS occupancy %d, grid size %d\n",
 			occupancy, grid_size);
-
-		// Make sure spine and barriers are initialized
-		int spine_elements = grid_size;
-		if (retval = spine.Setup<SizeT>(grid_size, spine_elements)) exit(1);
-		if (retval = global_barrier.Setup(grid_size)) (exit(1));
-
 		fflush(stdout);
 
-		compact_expand::SweepKernel<KernelConfig><<<grid_size, KernelConfig::THREADS>>>(
+		// Make barriers are initialized
+		if (retval = global_barrier.Setup(grid_size)) (exit(1));
+
+		// Make sure our runtime stats are good
+		if (retval = kernel_stats.Setup(grid_size)) exit(1);
+
+		// Initiate single-grid kernel
+		iteration[0] = 0;
+		compact_expand::SweepKernel<KernelConfig, INSTRUMENT><<<grid_size, KernelConfig::THREADS>>>(
+			0,
 			src,
 
 			bfs_problem.d_expand_queue,
@@ -141,10 +188,17 @@ public:
 			bfs_problem.d_source_path,
 			bfs_problem.d_collision_cache,
 			this->work_progress,
-			this->global_barrier);
+			this->global_barrier,
+
+			this->kernel_stats,
+			(VertexId *) d_iteration,
+			(SizeT *) d_total_queued);
 
 		if (retval = util::B40CPerror(cudaThreadSynchronize(),
 			"SweepKernel failed", __FILE__, __LINE__)) exit(1);
+
+		// expand barrier wait
+		kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live);
 
 		return retval;
 	}

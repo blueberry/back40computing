@@ -27,6 +27,8 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
+
 #include <b40c/bfs/compact/upsweep_cta.cuh>
 
 namespace b40c {
@@ -94,7 +96,7 @@ __device__ __forceinline__ void UpsweepPass(
 /**
  * Upsweep BFS Compaction kernel entry point
  */
-template <typename KernelConfig>
+template <typename KernelConfig, bool INSTRUMENT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
@@ -103,23 +105,25 @@ void UpsweepKernel(
 	typename KernelConfig::ValidFlag		*d_out_flag,
 	typename KernelConfig::SizeT			*d_spine,
 	typename KernelConfig::CollisionMask 	*d_collision_cache,
-	util::CtaWorkProgress 					work_progress)
+	util::CtaWorkProgress 					work_progress,
+	util::KernelRuntimeStats				kernel_stats)
 {
 	typedef typename KernelConfig::SizeT SizeT;
 
 	// Shared storage for CTA processing
 	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStart();
+		}
+	}
+
 	// Determine work decomposition
 	if (threadIdx.x == 0) {
-
 		// Obtain problem size
 		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-/*
-		if (blockIdx.x == 0)
-		printf("Iteration %d Compact upsweep block %d thread %d read queue size %d\n",
-			iteration, blockIdx.x, threadIdx.x, num_elements);
-*/
+
 		// Initialize work decomposition in smem
 		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 			num_elements, gridDim.x);
@@ -135,6 +139,12 @@ void UpsweepKernel(
 		d_collision_cache,
 		smem_storage.work_decomposition,
 		smem_storage);
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStop();
+		}
+	}
 }
 
 

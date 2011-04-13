@@ -26,6 +26,8 @@
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
+
 #include <b40c/bfs/compact/downsweep_cta.cuh>
 
 namespace b40c {
@@ -105,7 +107,7 @@ __device__ __forceinline__ void DownsweepPass(
 /**
  * Downsweep BFS Compaction kernel entry point
  */
-template <typename KernelConfig>
+template <typename KernelConfig, bool INSTRUMENT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void DownsweepKernel(
@@ -116,12 +118,19 @@ void DownsweepKernel(
 	typename KernelConfig::VertexId 		* d_out,
 	typename KernelConfig::VertexId 		* d_parent_out,
 	typename KernelConfig::SizeT			* d_spine,
-	util::CtaWorkProgress 					work_progress)
+	util::CtaWorkProgress 					work_progress,
+	util::KernelRuntimeStats				kernel_stats)
 {
 	typedef typename KernelConfig::SizeT SizeT;
 
 	// Shared storage for CTA processing
 	__shared__ typename KernelConfig::SmemStorage smem_storage;
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStart();
+		}
+	}
 
 	// Determine work decomposition
 	if (threadIdx.x == 0) {
@@ -148,6 +157,12 @@ void DownsweepKernel(
 		work_progress,
 		smem_storage.work_decomposition,
 		smem_storage);
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStop();
+		}
+	}
 }
 
 
