@@ -45,36 +45,49 @@ protected :
 	// Counters in global device memory
 	clock_t* d_stat;
 
+	// Start time
+	clock_t start;
+	clock_t accumulated;
+
 public:
 
 	/**
 	 * Constructor
 	 */
-	KernelRuntimeStats() : d_stat(NULL) {}
+	KernelRuntimeStats() :
+		d_stat(NULL),
+		accumulated(0) {}
 
 	/**
 	 * Marks start time.  Typically called by thread-0.
 	 */
-	__device__ __forceinline__ void MarkStart() const
+	__device__ __forceinline__ void MarkStart()
 	{
-		d_stat[blockIdx.x] = clock();
+		start = clock();
 	}
 
 	/**
 	 * Marks stop time.  Typically called by thread-0.
 	 */
-	__device__ __forceinline__ void MarkStop() const
+	__device__ __forceinline__ void MarkStop(bool complete = true)
 	{
-		d_stat[gridDim.x + blockIdx.x] = clock();
+		clock_t stop = clock();
+		clock_t runtime = (stop >= start) ?
+			stop - start :
+			stop + (((clock_t) -1) - start);
+		accumulated += runtime;
+
+		if (complete) {
+			d_stat[blockIdx.x] = accumulated;
+		}
 	}
 
 	/**
-	 * Marks invalid. Typically called by thread-0.
+	 * Resets statistic. Typically called by thread-0.
 	 */
-	__device__ __forceinline__ void MarkInvalid() const
+	__device__ __forceinline__ void Reset() const
 	{
 		d_stat[blockIdx.x] = 0;
-		d_stat[gridDim.x + blockIdx.x] = 0;
 	}
 
 };
@@ -133,7 +146,7 @@ public:
 	{
 		cudaError_t retval = cudaSuccess;
 		do {
-			size_t new_stat_bytes = sweep_grid_size * sizeof(clock_t) * 2;
+			size_t new_stat_bytes = sweep_grid_size * sizeof(clock_t);
 			if (new_stat_bytes > stat_bytes) {
 
 				if (d_stat) {
@@ -174,21 +187,12 @@ public:
 		unsigned long long total_runtimes = 0;
 		for (int block = 0; block < sweep_grid_size; block++) {
 
-			clock_t start = h_stat[block];
-			clock_t stop = h_stat[sweep_grid_size + block];
-/*
-			if ((start == 0) && (stop == 0)) {
-				// reported did no work
-				continue;
-			}
-*/
-			clock_t runtime = (stop >= start) ?
-				stop - start :
-				stop + (((clock_t) -1) - start);
+			clock_t runtime = h_stat[block];
 
 			if (runtime > max_runtime) {
 				max_runtime = runtime;
 			}
+
 			total_runtimes += runtime;
 			ctas_with_work++;
 		}
@@ -222,21 +226,12 @@ public:
 		unsigned long long total_runtimes = 0;
 		for (int block = 0; block < sweep_grid_size; block++) {
 
-			clock_t start = h_stat[block];
-			clock_t stop = h_stat[sweep_grid_size + block];
-/*
-			if ((start == 0) && (stop == 0)) {
-				// reported did no work
-				continue;
-			}
-*/
-			clock_t runtime = (stop >= start) ?
-				stop - start :
-				stop + (((clock_t) -1) - start);
+			clock_t runtime = h_stat[block];
 
 			if (runtime > max_runtime) {
 				max_runtime = runtime;
 			}
+
 			total_runtimes += runtime;
 			ctas_with_work++;
 		}

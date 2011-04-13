@@ -28,6 +28,7 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/bfs/compact_expand/sweep_cta.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -182,28 +183,41 @@ struct SweepPass <KernelConfig, true>
 /**
  * Sweep compact-expand kernel entry point
  */
-template <typename KernelConfig>
+template <typename KernelConfig, bool INSTRUMENT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
+	typename KernelConfig::VertexId			iteration,
 	typename KernelConfig::VertexId 		src,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
 	typename KernelConfig::VertexId 		*d_parent_out,
+
 	typename KernelConfig::VertexId			*d_column_indices,
 	typename KernelConfig::SizeT			*d_row_offsets,
 	typename KernelConfig::VertexId			*d_source_path,
 	typename KernelConfig::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
-	util::GlobalBarrier						global_barrier)
+	util::GlobalBarrier						global_barrier,
+
+	util::KernelRuntimeStats				kernel_stats,
+	typename KernelConfig::VertexId			*d_iteration,
+	typename KernelConfig::SizeT			*d_total_queued)
 {
+	typedef typename KernelConfig::VertexId VertexId;
 	typedef typename KernelConfig::SizeT SizeT;
 
 	// Shared storage for the kernel
 	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
-	typename KernelConfig::VertexId iteration = 0;
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStart();
+		}
+	}
+
+	SizeT total_queued = 0;
 
 	if (blockIdx.x == 0) {
 
@@ -261,13 +275,28 @@ void SweepKernel(
 
 		iteration++;
 
+		if (INSTRUMENT) {
+			if (threadIdx.x == 0) {
+				kernel_stats.MarkStop(false);
+			}
+		}
+
 		global_barrier.Sync();
+
+		if (INSTRUMENT) {
+			if (threadIdx.x == 0) {
+				kernel_stats.MarkStart();
+			}
+		}
 
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			if (INSTRUMENT) {
+				total_queued += num_elements;
+			}
 
 			// Initialize work decomposition in smem
 			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
@@ -306,13 +335,28 @@ void SweepKernel(
 
 		iteration++;
 
+		if (INSTRUMENT) {
+			if (threadIdx.x == 0) {
+				kernel_stats.MarkStop(false);
+			}
+		}
+
 		global_barrier.Sync();
+
+		if (INSTRUMENT) {
+			if (threadIdx.x == 0) {
+				kernel_stats.MarkStart();
+			}
+		}
 
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			if (INSTRUMENT) {
+				total_queued += num_elements;
+			}
 
 			// Initialize work decomposition in smem
 			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
@@ -343,7 +387,21 @@ void SweepKernel(
 			work_progress,
 			smem_storage.work_decomposition,
 			smem_storage);
+
 	}
+
+	// Write out our final iteration
+	if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
+		d_iteration[0] = iteration;
+	}
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStop(true);
+			d_total_queued[0] = total_queued;
+		}
+	}
+
 }
 
 } // namespace compact_expand
