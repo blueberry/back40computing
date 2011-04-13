@@ -54,7 +54,7 @@ struct SweepCta
 
 	// Row-length cutoff below which we expand neighbors by writing gather
 	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
-	static const int SCAN_EXPAND_CUTOFF = B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
+	static const int SCAN_EXPAND_CUTOFF = KernelConfig::THREADS; //B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::CollisionMask 	CollisionMask;
@@ -876,7 +876,7 @@ struct SweepCta
 		tile.ExpandByCta(this);
 
 		// Enqueue valid edge lists into outgoing queue
-		tile.ExpandByWarp(this);
+//		tile.ExpandByWarp(this);
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
