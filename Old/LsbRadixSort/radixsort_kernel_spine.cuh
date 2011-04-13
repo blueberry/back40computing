@@ -43,9 +43,13 @@
 
 #pragma once
 
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/store_tile.cuh>
+
 #include "b40c_cuda_properties.cuh"
 #include "b40c_kernel_utils.cuh"
-#include "b40c_kernel_data_movement.cuh"
 #include "radixsort_common.cuh"
 
 namespace b40c {
@@ -75,7 +79,8 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	CacheModifier _CACHE_MODIFIER>
+	util::io::ld::CacheModifier _READ_MODIFIER,
+	util::io::st::CacheModifier _WRITE_MODIFIER>
 
 struct SpineScanConfig
 {
@@ -86,7 +91,8 @@ struct SpineScanConfig
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
 	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
 	static const int LOG_RAKING_THREADS			= _LOG_RAKING_THREADS;
-	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
+	static const util::io::ld::CacheModifier READ_MODIFIER = _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER = _WRITE_MODIFIER;
 };
 
 
@@ -253,7 +259,10 @@ __device__ __forceinline__ void WarpRakeAndScan(
 		
 		// Warpscan
 		PartialType warpscan_total;
-		partial = WarpScan<PartialType, Grid::LOG_RAKING_THREADS>::Invoke(partial, warpscan_total, warpscan);
+		partial = WarpScan<PartialType, Grid::LOG_RAKING_THREADS>::Invoke(
+			partial,
+			warpscan_total,
+			warpscan);
 		partial += carry;
 
 		// Raking scan 
@@ -293,7 +302,7 @@ struct ProcessTile <Config, false>
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
+		util::io::LoadTile<Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::READ_MODIFIER, true>::Invoke(
 			data, d_data, cta_offset, 0);
 		
 		// Reduce in registers, place partials in smem
@@ -310,8 +319,8 @@ struct ProcessTile <Config, false>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset, 0);
+		util::io::StoreTile<Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::WRITE_MODIFIER, true>::Invoke(
+			data, d_data, cta_offset);
 	}
 };
 
@@ -339,8 +348,8 @@ struct ProcessTile <Config, true>
 		ScanType data[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 		
 		// Load tile
-		LoadTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset, 0);
+		util::io::LoadTile<Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::READ_MODIFIER, true>::Invoke(
+			data, d_data, cta_offset);
 		
 		// Reduce in registers, place partials in smem
 		ReduceVectors<Config>::Invoke(data, primary_base_partial);
@@ -372,8 +381,8 @@ struct ProcessTile <Config, true>
 		ScanVectors<Config>::Invoke(data, primary_base_partial);
 		
 		// Store tile
-		StoreTile<ScanType, SizeT, Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::CACHE_MODIFIER, true>::Invoke(
-			data, d_data, cta_offset, 0);
+		util::io::StoreTile<Config::LOG_LOADS_PER_TILE, Config::LOG_LOAD_VEC_SIZE, Config::THREADS, Config::WRITE_MODIFIER, true>::Invoke(
+			data, d_data, cta_offset);
 		
 	}
 };
@@ -456,16 +465,6 @@ __global__ void SpineScanKernel(
 {
 	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
 } 
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-template <typename KernelConfig>
-void __wrapper__device_stub_SpineScanKernel(
-	typename KernelConfig::ScanType *&,
-	typename KernelConfig::SizeT &) {}
-
 
 
 } // namespace scan

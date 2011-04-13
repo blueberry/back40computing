@@ -43,8 +43,10 @@
 
 #pragma once
 
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+
 #include "b40c_cuda_properties.cuh"
-#include "b40c_kernel_data_movement.cuh"
 #include "radixsort_api_granularity.cuh"
 
 namespace b40c {
@@ -104,7 +106,8 @@ struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits
 		10,						// LOG_SCHEDULE_GRANULARITY: 	1024 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::st::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
 		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
 		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
 		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
@@ -150,7 +153,8 @@ struct TunedConfig<SM13, KeyType, ValueType, SizeT>
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::st::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
 		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
 		true,					// UNIFORM_SMEM_ALLOCATION:		Use dynamic smem padding to maintain constant grid smem allocations across all kernels
 		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels
@@ -196,7 +200,8 @@ struct TunedConfig<SM10, KeyType, ValueType, SizeT>
 		// Common
 		4,						// RADIX_BITS: 					4-bit radix digits
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
-		NONE,					// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
+		util::io::st::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
 		true,					// EARLY_EXIT: 					Terminate downsweep if homogeneous digits
 		false,					// UNIFORM_SMEM_ALLOCATION:		No dynamic smem padding added
 		true, 					// UNIFORM_GRID_SIZE: 			Use "do-nothing" spine-scan CTAs maintain constant grid size across all kernels

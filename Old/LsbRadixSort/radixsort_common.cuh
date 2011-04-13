@@ -88,7 +88,7 @@ struct ExtractKeyBits
 	__device__ __forceinline__ static void Extract(int &bits, const T &source) 
 	{
 #if __CUDA_ARCH__ >= 200
-		asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "n"(BIT_START), "n"(NUM_BITS));
+		asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(BIT_START), "r"(NUM_BITS));
 #else 
 		const T MASK = (1 << NUM_BITS) - 1;
 		bits = (source >> BIT_START) & MASK;

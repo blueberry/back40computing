@@ -43,7 +43,9 @@
 #pragma once
 
 #include "b40c_cuda_properties.cuh"
-#include "b40c_kernel_data_movement.cuh"
+
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 #include "radixsort_kernel_upsweep.cuh"
 #include "radixsort_kernel_spine.cuh"
@@ -72,7 +74,8 @@ template <
 	typename SizeT,
 	int RADIX_BITS,
 	int LOG_SCHEDULE_GRANULARITY,
-	CacheModifier CACHE_MODIFIER,
+	util::io::ld::CacheModifier READ_MODIFIER,
+	util::io::st::CacheModifier WRITE_MODIFIER,
 	bool EARLY_EXIT,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
@@ -116,7 +119,8 @@ struct LsbSortConfig
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,  	
 		UPSWEEP_LOG_LOADS_PER_TILE,
-		CACHE_MODIFIER,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
 		EARLY_EXIT>
 			Upsweep;
 	
@@ -128,7 +132,8 @@ struct LsbSortConfig
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		CACHE_MODIFIER>
+		READ_MODIFIER,
+		WRITE_MODIFIER>
 			SpineScan;
 	
 	typedef downsweep::DownsweepConfig<
@@ -143,7 +148,8 @@ struct LsbSortConfig
 		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
 		DOWNSWEEP_LOG_CYCLES_PER_TILE,
 		DOWNSWEEP_LOG_RAKING_THREADS,
-		CACHE_MODIFIER,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
 		EARLY_EXIT>
 			Downsweep;
 };

@@ -84,7 +84,7 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_OCCUPANCY))
-__global__ void TunedUpsweepKernel(int * __restrict d_selectors, SizeT * __restrict d_spine, ConvertedKeyType * __restrict d_in_keys, ConvertedKeyType * __restrict d_out_keys, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedUpsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_in_keys, ConvertedKeyType *d_out_keys, CtaWorkDistribution<SizeT> work_decomposition);
 
 // SpineScan
 template <typename KeyType, typename ValueType, typename SizeT, int GRANULARITY_ENUM>
@@ -98,7 +98,7 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_OCCUPANCY))
-__global__ void TunedDownsweepKernel(int * __restrict d_selectors, SizeT * __restrict d_spine, ConvertedKeyType * __restrict d_keys0, ConvertedKeyType * __restrict d_keys1, ValueType * __restrict d_values0, ValueType * __restrict d_values1, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedDownsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, CtaWorkDistribution<SizeT> work_decomposition);
 
 
 
@@ -406,10 +406,10 @@ struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, SizeT>
 // Upsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename SizeT, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 void TunedUpsweepKernel(
-	int 						* __restrict d_selectors,
-	SizeT 						* __restrict d_spine,
-	ConvertedKeyType 			* __restrict d_in_keys,
-	ConvertedKeyType			* __restrict d_out_keys,
+	int 						*d_selectors,
+	SizeT 						*d_spine,
+	ConvertedKeyType 			*d_in_keys,
+	ConvertedKeyType			*d_out_keys,
 	CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
@@ -439,12 +439,12 @@ void TunedSpineScanKernel(
 // Downsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename SizeT, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 void TunedDownsweepKernel(
-	int 						* __restrict d_selectors,
-	SizeT 						* __restrict d_spine,
-	ConvertedKeyType 			* __restrict d_keys0,
-	ConvertedKeyType 			* __restrict d_keys1,
-	ValueType 					* __restrict d_values0,
-	ValueType					* __restrict d_values1,
+	int 						*d_selectors,
+	SizeT 						*d_spine,
+	ConvertedKeyType 			*d_keys0,
+	ConvertedKeyType 			*d_keys1,
+	ValueType 					*d_values0,
+	ValueType					*d_values1,
 	CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
