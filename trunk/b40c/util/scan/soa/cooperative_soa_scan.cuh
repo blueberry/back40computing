@@ -143,7 +143,7 @@ struct CooperativeSoaTileScan :
 		DataSoa data_soa)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeSoaTileScan::template ReduceLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(
+		CooperativeSoaTileScan::template ReduceLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
 			srts_soa_details, data_soa);
 
 		__syncthreads();
