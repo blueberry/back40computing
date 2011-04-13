@@ -632,7 +632,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			(VertexId*) NULL, //reference_source_dist,
+			reference_source_dist,
 			csr_graph,
 			stats[1],
 			max_grid_size);
@@ -645,7 +645,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			(VertexId*) NULL, //reference_source_dist,
+			reference_source_dist,
 			csr_graph,
 			stats[2],
 			max_grid_size);
