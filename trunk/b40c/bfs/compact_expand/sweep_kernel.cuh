@@ -253,33 +253,38 @@ void SweepKernel(
 			smem_storage);
 	}
 
-	iteration++;
+	while (true) {
 
-	global_barrier.Sync();
+		//---------------------------------------------------------------------
+		// Second half
+		//---------------------------------------------------------------------
 
+		iteration++;
 
-	// Determine work decomposition
-	if (threadIdx.x == 0) {
+		global_barrier.Sync();
 
-		// Obtain problem size
-		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
 
-		// Initialize work decomposition in smem
-		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-			num_elements, gridDim.x);
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
 
-		// Reset our next outgoing queue counter to zero
-		work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			// Initialize work decomposition in smem
+			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+				num_elements, gridDim.x);
 
-		// Reset our next workstealing counter to zero
-		work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+			// Reset our next outgoing queue counter to zero
+			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
 
-	}
+			// Reset our next workstealing counter to zero
+			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
 
-	// Barrier to protect work decomposition
-	__syncthreads();
+		}
 
-	while (smem_storage.work_decomposition.num_elements) {
+		// Barrier to protect work decomposition
+		__syncthreads();
+
+		if (!smem_storage.work_decomposition.num_elements) break;
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
@@ -294,6 +299,10 @@ void SweepKernel(
 			work_progress,
 			smem_storage.work_decomposition,
 			smem_storage);
+
+		//---------------------------------------------------------------------
+		// First half
+		//---------------------------------------------------------------------
 
 		iteration++;
 
@@ -334,30 +343,6 @@ void SweepKernel(
 			work_progress,
 			smem_storage.work_decomposition,
 			smem_storage);
-
-		iteration++;
-
-		global_barrier.Sync();
-
-		// Determine work decomposition
-		if (threadIdx.x == 0) {
-
-			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-
-			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
-				num_elements, gridDim.x);
-
-			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
-
-			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
-		}
-
-		// Barrier to protect work decomposition
-		__syncthreads();
 	}
 }
 
