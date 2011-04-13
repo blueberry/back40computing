@@ -43,9 +43,13 @@
 
 #pragma once
 
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/scatter_tile.cuh>
+
 #include "b40c_cuda_properties.cuh"
 #include "b40c_kernel_utils.cuh"
-#include "b40c_kernel_data_movement.cuh"
 #include "radixsort_common.cuh"
 
 namespace b40c {
@@ -96,7 +100,8 @@ template <
 	int _LOG_LOADS_PER_CYCLE,
 	int _LOG_CYCLES_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	CacheModifier _CACHE_MODIFIER,
+	util::io::ld::CacheModifier _READ_MODIFIER,
+	util::io::st::CacheModifier _WRITE_MODIFIER,
 	bool _EARLY_EXIT>
 
 struct DownsweepConfig
@@ -112,7 +117,8 @@ struct DownsweepConfig
 	static const int LOG_LOADS_PER_CYCLE		= _LOG_LOADS_PER_CYCLE;
 	static const int LOG_CYCLES_PER_TILE		= _LOG_CYCLES_PER_TILE;
 	static const int LOG_RAKING_THREADS			= _LOG_RAKING_THREADS;
-	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
+	static const util::io::ld::CacheModifier READ_MODIFIER = _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER = _WRITE_MODIFIER;
 	static const bool EARLY_EXIT				= _EARLY_EXIT;
 };
 
@@ -764,8 +770,8 @@ struct SwapAndScatter
 	struct PermuteValues
 	{
 		static __device__ __forceinline__ void Invoke(
-			V * __restrict d_in_values,
-			V * __restrict d_out_values,
+			V *d_in_values,
+			V *d_out_values,
 			const SizeT	&guarded_elements,
 			int *exchange,
 			int linear_ranks[Config::TILE_ELEMENTS_PER_THREAD],
@@ -776,31 +782,49 @@ struct SwapAndScatter
 			V *linear_values = reinterpret_cast<ValueType *>(values);
 			V *value_exchange = reinterpret_cast<ValueType *>(exchange);
 
-			LoadTile<
-				V,													// Type to load
-				SizeT,											// Integer type for indexing into global arrays
+			util::io::LoadTile<
 				Config::LOG_LOADS_PER_TILE, 						// Number of vector loads (log)
 				Config::LOG_LOAD_VEC_SIZE,							// Number of items per vector load (log)
 				Config::THREADS,									// Active threads that will be loading
-				Config::CACHE_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+				Config::READ_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 				UNGUARDED_IO>										// Whether or not bounds-checking is to be done
 			::Invoke(values, d_in_values, 0, guarded_elements);
 
 			__syncthreads();
 
 			// Scatter values to smem
-			Scatter<ValueType, int, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, NONE, true>::Invoke(
-					value_exchange, linear_values, linear_ranks, guarded_elements);
+			util::io::ScatterTile<
+				Config::TILE_ELEMENTS_PER_THREAD,
+				Config::THREADS,
+				util::io::st::NONE>::template Scatter<true>(
+					value_exchange,
+					linear_values,
+					linear_ranks,
+					guarded_elements);
 
 			__syncthreads();
 
 			// Gather values from smem (vec-1)
-			LoadTile<ValueType, int, Config::LOG_TILE_ELEMENTS_PER_THREAD, 0, Config::THREADS, NONE, true>::Invoke(
-				reinterpret_cast<ValueType (*)[1]>(values), value_exchange, 0, guarded_elements);
+			util::io::LoadTile<
+				Config::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
+				Config::THREADS,
+				util::io::ld::NONE,
+				true>::Invoke(
+					reinterpret_cast<ValueType (*)[1]>(values),
+					value_exchange,
+					0,
+					guarded_elements);
 
 			// Scatter values to global digit partitions
-			Scatter<ValueType, SizeT, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, Config::CACHE_MODIFIER, UNGUARDED_IO>::Invoke(
-				d_out_values, linear_values, scatter_offsets, guarded_elements);
+			util::io::ScatterTile<
+				Config::TILE_ELEMENTS_PER_THREAD,
+				Config::THREADS,
+				Config::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO>(
+					d_out_values,
+					linear_values,
+					scatter_offsets,
+					guarded_elements);
 		}
 	};
 	
@@ -808,8 +832,8 @@ struct SwapAndScatter
 	struct PermuteValues <KeysOnly, __dummy>
 	{
 		static __device__ __forceinline__ void Invoke(
-			KeysOnly * __restrict d_in_values,
-			KeysOnly * __restrict d_out_values,
+			KeysOnly *d_in_values,
+			KeysOnly *d_out_values,
 			const SizeT	&guarded_elements,
 			int *exchange,
 			int linear_ranks[Config::TILE_ELEMENTS_PER_THREAD],
@@ -818,9 +842,9 @@ struct SwapAndScatter
 
 	
 	static __device__ __forceinline__ void Invoke(
-		ValueType 	* __restrict d_in_values,
-		KeyType 	* __restrict d_out_keys,
-		ValueType 	* __restrict d_out_values,
+		ValueType 	*d_in_values,
+		KeyType 	*d_out_keys,
+		ValueType 	*d_out_values,
 		int 		*exchange,
 		SizeT	digit_carry[Config::RADIX_DIGITS],
 		const SizeT	&guarded_elements,
@@ -832,28 +856,39 @@ struct SwapAndScatter
 		int *linear_ranks = reinterpret_cast<int *>(key_ranks);
 
 		// Scatter keys to smem
-		Scatter<KeyType, int, Config::TILE_ELEMENTS_PER_THREAD, Config::THREADS, NONE, true>::Invoke(
-			key_exchange, linear_keys, linear_ranks, guarded_elements);
+		util::io::ScatterTile<
+			Config::TILE_ELEMENTS_PER_THREAD,
+			Config::THREADS,
+			util::io::st::NONE>::template Scatter<true>(
+				key_exchange,
+				linear_keys,
+				linear_ranks,
+				guarded_elements);
 
 		__syncthreads();
 
 		// Gather keys from smem (vec-1)
-		LoadTile<KeyType, int, Config::LOG_TILE_ELEMENTS_PER_THREAD, 0, Config::THREADS, NONE, true>::Invoke(
-			reinterpret_cast<KeyType (*)[1]>(keys), key_exchange, 0, guarded_elements);
+		util::io::LoadTile<
+			Config::LOG_TILE_ELEMENTS_PER_THREAD,
+			0,
+			Config::THREADS,
+			util::io::ld::NONE,
+			true>::Invoke(
+				reinterpret_cast<KeyType (*)[1]>(keys),
+				key_exchange,
+				0,
+				guarded_elements);
 		
 		// Compute global scatter offsets for gathered keys
 		SizeT scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD];
 		ComputeScatterOffsets<Config>::Invoke(scatter_offsets, digit_carry, linear_keys);
 
 		// Scatter keys to global digit partitions
-		Scatter<
-			KeyType,
-			SizeT,
+		util::io::ScatterTile<
 			Config::TILE_ELEMENTS_PER_THREAD,
 			Config::THREADS,
-			Config::CACHE_MODIFIER,
-			UNGUARDED_IO,
-			Config::PostprocessTraits::Postprocess>::Invoke(d_out_keys, linear_keys, scatter_offsets, guarded_elements);
+			Config::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO, KeyType, Config::PostprocessTraits::Postprocess>(
+				d_out_keys, linear_keys, scatter_offsets, guarded_elements);
 
 		// PermuteValues
 		PermuteValues<ValueType>::Invoke(
@@ -1008,10 +1043,10 @@ template <
 	typename Config,
 	bool UNGUARDED_IO>
 __device__ __forceinline__ void ProcessTile(
-	typename Config::KeyType 	* __restrict d_in_keys, 
-	typename Config::ValueType 	* __restrict d_in_values, 
-	typename Config::KeyType 	* __restrict d_out_keys, 
-	typename Config::ValueType 	* __restrict d_out_values, 
+	typename Config::KeyType 	*d_in_keys,
+	typename Config::ValueType 	*d_in_values,
+	typename Config::KeyType 	*d_out_keys,
+	typename Config::ValueType 	*d_out_values,
 	int 						*exchange,								
 	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 	typename Config::SizeT		digit_carry[Config::RADIX_DIGITS],
@@ -1030,16 +1065,13 @@ __device__ __forceinline__ void ProcessTile(
 	int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE];		// The CTA-scope rank of each key
 
 	// Read tile of keys
-	LoadTile<
-		KeyType,											// Type to load
-		SizeT,											// Integer type for indexing into global arrays
-		Config::LOG_LOADS_PER_TILE, 						// Number of vector loads (log)
-		Config::LOG_LOAD_VEC_SIZE,							// Number of items per vector load (log)
-		Config::THREADS,									// Active threads that will be loading
-		Config::CACHE_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-		UNGUARDED_IO,										// Whether or not bounds-checking is to be done
-		Config::PreprocessTraits::Preprocess>				// Assignment function to transform the loaded value (or provide default if out-of-bounds)
-	::Invoke(
+	util::io::LoadTile<
+		Config::LOG_LOADS_PER_TILE, 					// Number of vector loads (log)
+		Config::LOG_LOAD_VEC_SIZE,						// Number of items per vector load (log)
+		Config::THREADS,								// Active threads that will be loading
+		Config::READ_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+		UNGUARDED_IO>									// Assignment function to transform the loaded value (or provide default if out-of-bounds)
+	::template Invoke<KeyType, Config::PreprocessTraits::Preprocess>(
 			reinterpret_cast<KeyType (*)[Config::LOAD_VEC_SIZE]>(keys),	 
 			d_in_keys,
 			0,
@@ -1109,11 +1141,11 @@ __device__ __forceinline__ void ProcessTile(
 
 template <typename Config>
 __device__ __forceinline__ void DigitPass(
-	typename Config::SizeT 		* __restrict d_spine,
-	typename Config::KeyType 	* __restrict d_in_keys, 
-	typename Config::ValueType 	* __restrict d_in_values, 
-	typename Config::KeyType 	* __restrict d_out_keys, 
-	typename Config::ValueType 	* __restrict d_out_values, 
+	typename Config::SizeT 		*d_spine,
+	typename Config::KeyType 	*d_in_keys,
+	typename Config::ValueType 	*d_in_values,
+	typename Config::KeyType 	*d_out_keys,
+	typename Config::ValueType 	*d_out_values,
 	int 						*exchange,								
 	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
 	typename Config::SizeT		digit_carry[Config::RADIX_DIGITS],
@@ -1136,7 +1168,7 @@ __device__ __forceinline__ void DigitPass(
 		// Read digit_carry in parallel 
 		SizeT my_digit_carry;
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-		ModifiedLoad<SizeT, Config::CACHE_MODIFIER>::Ld(my_digit_carry, d_spine + spine_digit_offset);
+		util::io::ModifiedLoad<Config::READ_MODIFIER>::Ld(my_digit_carry, d_spine + spine_digit_offset);
 		digit_carry[threadIdx.x] = my_digit_carry;
 	}
 
@@ -1189,12 +1221,12 @@ __device__ __forceinline__ void DigitPass(
  */
 template <typename Config>
 __device__ __forceinline__ void LsbDownsweep(
-	int 						* __restrict &d_selectors,
-	typename Config::SizeT 		* __restrict &d_spine,
-	typename Config::KeyType 	* __restrict &d_keys0,
-	typename Config::KeyType 	* __restrict &d_keys1,
-	typename Config::ValueType 	* __restrict &d_values0,
-	typename Config::ValueType 	* __restrict &d_values1,
+	int 						*&d_selectors,
+	typename Config::SizeT 		*&d_spine,
+	typename Config::KeyType 	*&d_keys0,
+	typename Config::KeyType 	*&d_keys1,
+	typename Config::ValueType 	*&d_values0,
+	typename Config::ValueType 	*&d_values1,
 	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
 {
 	typedef typename Config::KeyType KeyType;
@@ -1329,12 +1361,12 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void DownsweepKernel(
-	int 								* __restrict d_selectors,
-	typename KernelConfig::SizeT 		* __restrict d_spine,
-	typename KernelConfig::KeyType 		* __restrict d_keys0,
-	typename KernelConfig::KeyType 		* __restrict d_keys1,
-	typename KernelConfig::ValueType 	* __restrict d_values0,
-	typename KernelConfig::ValueType 	* __restrict d_values1,
+	int 								*d_selectors,
+	typename KernelConfig::SizeT 		*d_spine,
+	typename KernelConfig::KeyType 		*d_keys0,
+	typename KernelConfig::KeyType 		*d_keys1,
+	typename KernelConfig::ValueType 	*d_values0,
+	typename KernelConfig::ValueType 	*d_values1,
 	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
 	LsbDownsweep<KernelConfig>(
@@ -1346,20 +1378,6 @@ void DownsweepKernel(
 		d_values1,
 		work_decomposition);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-template <typename KernelConfig>
-void __wrapper__device_stub_DownsweepKernel(
-	int 								* __restrict &,
-	typename KernelConfig::SizeT 		* __restrict &,
-	typename KernelConfig::KeyType 		* __restrict &,
-	typename KernelConfig::KeyType 		* __restrict &,
-	typename KernelConfig::ValueType 	* __restrict &,
-	typename KernelConfig::ValueType 	* __restrict &,
-	CtaWorkDistribution<typename KernelConfig::SizeT> &) {}
 
 
 

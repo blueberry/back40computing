@@ -43,9 +43,12 @@
 
 #pragma once
 
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+
 #include "b40c_cuda_properties.cuh"
 #include "b40c_kernel_utils.cuh"
-#include "b40c_kernel_data_movement.cuh"
 #include "radixsort_common.cuh"
 
 namespace b40c {
@@ -76,7 +79,8 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	CacheModifier _CACHE_MODIFIER,
+	util::io::ld::CacheModifier _READ_MODIFIER,
+	util::io::st::CacheModifier _WRITE_MODIFIER,
 	bool _EARLY_EXIT>
 
 struct UpsweepConfig
@@ -89,7 +93,8 @@ struct UpsweepConfig
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
 	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
-	static const CacheModifier CACHE_MODIFIER 	= _CACHE_MODIFIER;
+	static const util::io::ld::CacheModifier READ_MODIFIER = _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER = _WRITE_MODIFIER;
 	static const bool EARLY_EXIT				= _EARLY_EXIT;
 };
 
@@ -362,14 +367,12 @@ __device__ __forceinline__ void ProcessTile(
 	// Load tile of keys
 	KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
 
-	LoadTile<
-		KeyType, 
-		SizeT,
+	util::io::LoadTile<
 		Config::LOG_LOADS_PER_TILE, 
 		Config::LOG_LOAD_VEC_SIZE, 
 		Config::THREADS, 
-		Config::CACHE_MODIFIER, 
-		true>::Invoke(keys, d_in_keys, cta_offset, 0);
+		Config::READ_MODIFIER,
+		true>::Invoke(keys, d_in_keys, cta_offset);
 
 	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
 
@@ -481,8 +484,8 @@ struct FullTiles
 
 template <typename Config>
 __device__ __forceinline__ void ReductionPass(
-	typename Config::KeyType 	* __restrict d_in_keys,
-	typename Config::SizeT 		* __restrict d_spine,
+	typename Config::KeyType 	*d_in_keys,
+	typename Config::SizeT 		*d_spine,
 	int*	smem_pool,
 	int* 	composite_column,
 	typename Config::SizeT 	cta_offset,
@@ -524,7 +527,7 @@ __device__ __forceinline__ void ReductionPass(
 	// Process (potentially-partial) loads singly
 	while (cta_offset + threadIdx.x < out_of_bounds) {
 		KeyType key;
-		ModifiedLoad<KeyType, Config::CACHE_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
+		util::io::ModifiedLoad<Config::READ_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
 		Bucket<Config>(key, composite_column);
 		cta_offset += Config::THREADS;
 	}
@@ -588,10 +591,10 @@ __device__ __forceinline__ void ReductionPass(
  */
 template <typename Config>
 __device__ __forceinline__ void LsbUpsweep(
-	int 							* __restrict &d_selectors,
-	typename Config::SizeT 			* __restrict &d_spine,
-	typename Config::KeyType 		* __restrict &d_in_keys,
-	typename Config::KeyType 		* __restrict &d_out_keys,
+	int 							*&d_selectors,
+	typename Config::SizeT 			*&d_spine,
+	typename Config::KeyType 		*&d_in_keys,
+	typename Config::KeyType 		*&d_out_keys,
 	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
 {
 	typedef typename Config::SizeT SizeT;
@@ -639,10 +642,10 @@ template <typename KernelConfig>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__ 
 void UpsweepKernel(
-	int 								* __restrict d_selectors,
-	typename KernelConfig::SizeT 		* __restrict d_spine,
-	typename KernelConfig::KeyType 		* __restrict d_in_keys,
-	typename KernelConfig::KeyType 		* __restrict d_out_keys,
+	int 								*d_selectors,
+	typename KernelConfig::SizeT 		*d_spine,
+	typename KernelConfig::KeyType 		*d_in_keys,
+	typename KernelConfig::KeyType 		*d_out_keys,
 	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
 	LsbUpsweep<KernelConfig>(
@@ -652,19 +655,6 @@ void UpsweepKernel(
 		d_out_keys, 
 		work_decomposition);
 }
-
-
-/**
- * Wrapper stub for arbitrary types to quiet the linker
- */
-template <typename KernelConfig>
-void __wrapper__device_stub_UpsweepKernel(
-	int 								* __restrict &,
-	typename KernelConfig::SizeT 		* __restrict &,
-	typename KernelConfig::KeyType 		* __restrict &,
-	typename KernelConfig::KeyType 		* __restrict &,
-	CtaWorkDistribution<typename KernelConfig::SizeT> &) {}
-
 
 
 } // namespace upsweep

@@ -135,7 +135,7 @@ struct ScatterTile
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD],
 		SizeT tile_size = 0)
 	{
-		Iterate<0, ELEMENTS_PER_THREAD>::template Invoke<UNGUARDED_IO>(
+		Iterate<0, ELEMENTS_PER_THREAD>::template Invoke<UNGUARDED_IO, T, Transform, SizeT>(
 			dest, src, scatter_offsets, tile_size);
 	}
 

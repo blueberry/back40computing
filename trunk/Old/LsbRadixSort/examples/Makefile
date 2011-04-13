@@ -79,7 +79,7 @@ SM_TARGETS = $(GEN_SM20)
 #-------------------------------------------------------------------------------
 
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude 
+INC = -I. -I$(CUDA_INC) -I.. -I../kernel -I../../Common -I../../ExamplesInclude -I../../..
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -141,7 +141,6 @@ SORTING_DEPS = 	./Makefile \
 				../radixsort_kernel_upsweep.cuh \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
-				../../Common/b40c_kernel_data_movement.cuh \
 				../../Common/b40c_enactor_base.cuh \
 				../../Common/b40c_kernel_utils.cuh \
 				../../Common/b40c_vector_types.cuh 

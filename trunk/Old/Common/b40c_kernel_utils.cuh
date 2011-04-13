@@ -27,8 +27,9 @@
 
 #pragma once
 
+#include <b40c/util/io/modified_load.cuh>
+
 #include "b40c_cuda_properties.cuh"
-#include "b40c_kernel_data_movement.cuh"
 
 namespace b40c {
 
@@ -640,7 +641,7 @@ struct SerialScan
 __device__ __forceinline__ int LoadCG(int* d_ptr) 
 {
 	int retval;
-	ModifiedLoad<int, CG>::Ld(retval, d_ptr);
+	util::io::ModifiedLoad<util::io::ld::cg>::Ld(retval, d_ptr);
 	return retval;
 }
 
