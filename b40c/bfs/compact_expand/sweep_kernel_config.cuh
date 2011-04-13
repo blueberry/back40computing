@@ -204,7 +204,7 @@ struct SweepKernelConfig : _ProblemType
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
 												- sizeof(SizeT)
 												- sizeof(SizeT)
-												- 64,
+												- 128,
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
@@ -222,7 +222,7 @@ struct SweepKernelConfig : _ProblemType
 												COARSE_RAKING_QUADS + FINE_RAKING_QUADS,
 												SCRATCH_QUADS),
 
-			SMEM_POOL_VERTEX_IDS			= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId) + 1,
+			SMEM_POOL_VERTEX_IDS			= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId) - 1,
 		};
 
 
