@@ -34,6 +34,8 @@
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
 
+#include <b40c/util/soa_tuple.cuh>
+#include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -56,8 +58,14 @@ struct SweepCta
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
 	typedef typename SmemStorage::WarpComm 			WarpComm;
+
+	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelConfig::SoaTuple 		SoaTuple;
+
+	typedef util::Tuple<
+		SizeT (*)[KernelConfig::LOAD_VEC_SIZE],
+		SizeT (*)[KernelConfig::LOAD_VEC_SIZE]> 	RankSoa;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -78,14 +86,15 @@ struct SweepCta
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
 
-	// Operational details for SRTS scan grid
-	SrtsDetails 			srts_details;
+	// Operational details for SRTS grid
+	SrtsSoaDetails 			srts_soa_details;
 
 	// Shared memory channels for intra-warp communication
 	volatile WarpComm		&warp_comm;
 
 	// Enqueue offset for neighbors of the current tile
-	SizeT					&enqueue_offset;
+	SizeT					&coarse_enqueue_offset;
+	SizeT					&fine_enqueue_offset;
 
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
 	SizeT					*offset_scratch_pool;
@@ -132,7 +141,7 @@ struct SweepCta
 		SizeT		fine_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		SizeT 		enqueue_count;
+		SizeT 		fine_count;
 		SizeT		progress;
 
 		//---------------------------------------------------------------------
@@ -269,12 +278,12 @@ struct SweepCta
 
 						// Scatter neighbor
 						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-							neighbor_id, cta->d_out + coop_rank);
+							neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank);
 
 						if (KernelConfig::MARK_PARENTS) {
 							// Scatter parent
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								parent_id, cta->d_parent_out + coop_rank);
+								parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += KernelConfig::THREADS;
@@ -336,12 +345,12 @@ struct SweepCta
 
 							// Scatter neighbor
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								neighbor_id, cta->d_out + coop_rank + lane_id);
+								neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
 
 							if (KernelConfig::MARK_PARENTS) {
 								// Scatter parent
 								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + coop_rank + lane_id);
+									parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
 							}
 						}
 
@@ -522,12 +531,17 @@ struct SweepCta
 		VertexId 				*d_source_path,
 		util::CtaWorkProgress	&work_progress) :
 
-			srts_details(
-				smem_storage.smem_pool_int4s,
-				smem_storage.warpscan,
-				0),
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.smem_pool_int4s,
+					smem_storage.smem_pool_int4s + SmemStorage::COARSE_RAKING_QUADS),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.coarse_warpscan,
+					smem_storage.fine_warpscan),
+				KernelConfig::SoaTupleIdentity()),
 			warp_comm(smem_storage.warp_comm),
-			enqueue_offset(smem_storage.enqueue_offset),
+			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
+			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
 			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
 			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
 			iteration(iteration),
@@ -598,28 +612,24 @@ struct SweepCta
 		// edge-list details
 		tile.Inspect(this);
 
-		// Scan tile of row ranks (lengths) with enqueue reservation,
-		// turning them into enqueue offsets
-		util::scan::CooperativeTileScan<
-			SrtsDetails,
+		// Scan tile with carry update in raking threads
+		SoaTuple totals = util::scan::soa::CooperativeSoaTileScan<
+			SrtsSoaDetails,
 			KernelConfig::LOAD_VEC_SIZE,
-			true,							// exclusive
-			util::DefaultSum>::ScanTileWithEnqueue(
-				srts_details,
-				tile.coarse_row_rank,
-				work_progress.GetQueueCounter<SizeT>(iteration + 1));
+			true,									//exclusive
+			KernelConfig::SoaScanOp,
+			KernelConfig::SoaScanOp>::ScanTile(
+				srts_soa_details,
+				RankSoa(tile.coarse_row_rank, tile.fine_row_rank));
+		SizeT coarse_count = totals.t0;
+		tile.fine_count = totals.t1;
 
-		// Scan tile of row ranks (lengths) with enqueue reservation,
-		// turning them into enqueue offsets
-		tile.enqueue_count = util::scan::CooperativeTileScan<
-			SrtsDetails,
-			KernelConfig::LOAD_VEC_SIZE,
-			true,							// exclusive
-			util::DefaultSum>::ScanTileWithEnqueue(
-				srts_details,
-				tile.fine_row_rank,
-				work_progress.GetQueueCounter<SizeT>(iteration + 1),
-				enqueue_offset);
+		if (threadIdx.x == 0) {
+			coarse_enqueue_offset = work_progress.Enqueue(
+				coarse_count + tile.fine_count,
+				iteration + 1);
+			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
+		}
 
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByCta(this);
@@ -635,7 +645,7 @@ struct SweepCta
 		//
 
 		tile.progress = 0;
-		while (tile.progress < tile.enqueue_count) {
+		while (tile.progress < tile.fine_count) {
 
 			// Fill the scratch space with gather-offsets for neighbor-lists.
 			tile.ExpandByScan(this);
@@ -643,7 +653,7 @@ struct SweepCta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.enqueue_count - tile.progress);
+			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = threadIdx.x;
 				scratch_offset < scratch_remainder;
@@ -658,14 +668,14 @@ struct SweepCta
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 					neighbor_id,
-					d_out + enqueue_offset + tile.progress + scratch_offset);
+					d_out + fine_enqueue_offset + tile.progress + scratch_offset);
 
 				if (KernelConfig::MARK_PARENTS) {
 					// Scatter parent it into queue
 					VertexId parent_id = parent_scratch_pool[scratch_offset];
 					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
-						d_parent_out + enqueue_offset + tile.progress + scratch_offset);
+						d_parent_out + fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 
