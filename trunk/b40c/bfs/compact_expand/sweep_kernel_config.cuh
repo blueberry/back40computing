@@ -28,8 +28,9 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_details.cuh>
+#include <b40c/util/srts_soa_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -112,7 +113,7 @@ struct SweepKernelConfig : _ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
 	};
 
-	// SRTS grid type
+	// SRTS grid type for coarse
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
@@ -120,11 +121,53 @@ struct SweepKernelConfig : _ProblemType
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
+			CoarseGrid;
+
+	// SRTS grid type for fine
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		SizeT,									// Partial type
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			FineGrid;
+
+
+
+
+
+	// Tuple of partial-flag type
+	typedef util::Tuple<SizeT, SizeT> SoaTuple;
+
+	/**
+	 * SOA scan operator
+	 */
+	static __device__ __forceinline__ SoaTuple SoaScanOp(
+		SoaTuple &first,
+		SoaTuple &second)
+	{
+		return SoaTuple(first.t0 + second.t0, first.t1 + second.t1);
+	}
+
+	/**
+	 * Identity operator for granularity reservation tuples
+	 */
+	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
+	{
+		return SoaTuple(0,0);
+	}
+
+	// Tuple type of SRTS grid types
+	typedef util::Tuple<
+		CoarseGrid,
+		FineGrid> SrtsGridTuple;
 
 
 	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	typedef util::SrtsSoaDetails<
+		SoaTuple,
+		SrtsGridTuple> SrtsSoaDetails;
 
 
 	/**
@@ -142,17 +185,22 @@ struct SweepKernelConfig : _ProblemType
 		WarpComm							warp_comm;
 
 		// Storage for scanning local compact-expand ranks
-		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 		// Enqueue offset for neighbors of the current tile
 		SizeT								fine_enqueue_offset;
 		SizeT								coarse_enqueue_offset;
 
 		enum {
+			COARSE_RAKING_QUADS 			= CoarseGrid::TOTAL_RAKING_QUADS,
+			FINE_RAKING_QUADS 				= FineGrid::TOTAL_RAKING_QUADS,
+
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(WarpComm)
+												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
 												- sizeof(SizeT)
 												- sizeof(SizeT)
@@ -170,7 +218,9 @@ struct SweepKernelConfig : _ProblemType
 												0,
 			SCRATCH_QUADS					= OFFSET_QUADS + PARENT_QUADS,						// Number of quads for scratch space
 
-			SMEM_POOL_QUADS					= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, SCRATCH_QUADS),	// Number of quads for repurposable smem
+			SMEM_POOL_QUADS					= B40C_MAX(
+												COARSE_RAKING_QUADS + FINE_RAKING_QUADS,
+												SCRATCH_QUADS),
 
 			SMEM_POOL_VERTEX_IDS			= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId) + 1,
 		};
