@@ -192,7 +192,7 @@ public:
 	 * Typically called by thread-0
 	 */
 	template <typename SizeT, typename IterationT>
-	__device__ __forceinline__ SizeT Enqueue(int count, IterationT iteration)
+	__device__ __forceinline__ SizeT Enqueue(SizeT count, IterationT iteration)
 	{
 		return util::AtomicInt<SizeT>::Add(
 			GetQueueCounter<SizeT>(iteration),

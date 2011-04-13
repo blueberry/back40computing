@@ -145,7 +145,8 @@ struct SweepKernelConfig : _ProblemType
 		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 		// Enqueue offset for neighbors of the current tile
-		SizeT								enqueue_offset;
+		SizeT								fine_enqueue_offset;
+		SizeT								coarse_enqueue_offset;
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
@@ -153,6 +154,7 @@ struct SweepKernelConfig : _ProblemType
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(WarpComm)
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
+												- sizeof(SizeT)
 												- sizeof(SizeT)
 												- 64,
 

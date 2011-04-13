@@ -88,7 +88,8 @@ struct SweepCta
 	volatile WarpComm		&warp_comm;
 
 	// Enqueue offset for neighbors of the current tile
-	SizeT					&enqueue_offset;
+	SizeT					&coarse_enqueue_offset;
+	SizeT					&fine_enqueue_offset;
 
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
 	SizeT					*offset_scratch_pool;
@@ -107,8 +108,7 @@ struct SweepCta
 	 */
 	template <
 		int LOG_LOADS_PER_TILE,
-		int LOG_LOAD_VEC_SIZE,
-		bool FULL_TILE>
+		int LOG_LOAD_VEC_SIZE>
 	struct Tile
 	{
 		//---------------------------------------------------------------------
@@ -142,7 +142,7 @@ struct SweepCta
 		int 		hash[LOADS_PER_TILE][LOAD_VEC_SIZE];			// Hash ids for vertex ids
 		bool 		duplicate[LOADS_PER_TILE][LOAD_VEC_SIZE];		// Status as potential duplicate
 
-		SizeT 		enqueue_count;
+		SizeT 		fine_count;
 		SizeT		progress;
 
 		//---------------------------------------------------------------------
@@ -171,7 +171,7 @@ struct SweepCta
 			 */
 			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
 			{
-				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					// Load source path of node
 					VertexId source_path;
@@ -220,16 +220,16 @@ struct SweepCta
 						}
 					}
 				}
-/*
+
 				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
 					tile->row_length[LOAD][VEC] : 0;
 
 				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
 					0 : tile->row_length[LOAD][VEC];
-*/
+/*
 				tile->fine_row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
 				tile->coarse_row_rank[LOAD][VEC] = 0;
-
+*/
 				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
 			}
 
@@ -282,12 +282,12 @@ struct SweepCta
 
 						// Scatter neighbor
 						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-							neighbor_id, cta->d_out + coop_rank);
+							neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank);
 
 						if (KernelConfig::MARK_PARENTS) {
 							// Scatter parent
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								parent_id, cta->d_parent_out + coop_rank);
+								parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += KernelConfig::THREADS;
@@ -349,12 +349,12 @@ struct SweepCta
 
 							// Scatter neighbor
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								neighbor_id, cta->d_out + coop_rank + lane_id);
+								neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
 
 							if (KernelConfig::MARK_PARENTS) {
 								// Scatter parent
 								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + coop_rank + lane_id);
+									parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
 							}
 						}
 
@@ -406,7 +406,7 @@ struct SweepCta
 				SweepCta *cta,
 				Tile *tile)
 			{
-				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					// Location of mask byte to read
 					SizeT mask_byte_offset = tile->vertex_id[LOAD][VEC] >> 3;
@@ -450,7 +450,7 @@ struct SweepCta
 				tile->duplicate[LOAD][VEC] = false;
 
 				// Hash the node-IDs into smem scratch
-				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 					cta->s_vid_hashtable[tile->hash[LOAD][VEC]] = tile->vertex_id[LOAD][VEC];
 				}
 
@@ -471,7 +471,7 @@ struct SweepCta
 				// that we may not be a duplicate.  Otherwise assume that
 				// we are a duplicate... for now.
 
-				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 					VertexId hashed_node = cta->s_vid_hashtable[tile->hash[LOAD][VEC]];
 					tile->duplicate[LOAD][VEC] = (hashed_node == tile->vertex_id[LOAD][VEC]);
 				}
@@ -755,7 +755,8 @@ struct SweepCta
 				smem_storage.warpscan,
 				0),
 			warp_comm(smem_storage.warp_comm),
-			enqueue_offset(smem_storage.enqueue_offset),
+			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
+			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
 			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
 			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
 			s_vid_hashtable((VertexId *) smem_storage.smem_pool_int4s),
@@ -795,8 +796,7 @@ struct SweepCta
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			FULL_TILE> tile;
+			KernelConfig::LOG_LOAD_VEC_SIZE> tile;
 		tile.Init();
 
 		// Load tile
@@ -838,38 +838,37 @@ struct SweepCta
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details
 		tile.Inspect(this);
-/*
+
 		// Scan tile of coarse-grained row ranks (lengths) with enqueue reservation,
 		// turning them into enqueue offsets
-		util::scan::CooperativeTileScan<
+		SizeT coarse_count = util::scan::CooperativeTileScan<
 			SrtsDetails,
 			KernelConfig::LOAD_VEC_SIZE,
 			true,							// exclusive
-			util::DefaultSum>::ScanTileWithEnqueue(
+			util::DefaultSum>::ScanTile(
 				srts_details,
-				tile.coarse_row_rank,
-				work_progress.GetQueueCounter<SizeT>(iteration + 1));
-*/
+				tile.coarse_row_rank);
+
 		// Scan tile of fine-grained row ranks (lengths) with enqueue reservation,
 		// turning them into enqueue offsets
-		tile.enqueue_count = util::scan::CooperativeTileScan<
+		tile.fine_count = util::scan::CooperativeTileScan<
 			SrtsDetails,
 			KernelConfig::LOAD_VEC_SIZE,
 			true,							// exclusive
-			util::DefaultSum>::ScanTileWithEnqueue(
+			util::DefaultSum>::ScanTile(
 				srts_details,
-				tile.fine_row_rank,
-				work_progress.GetQueueCounter<SizeT>(iteration + 1),
-				enqueue_offset);
-/*
+				tile.fine_row_rank);
+
+		if (threadIdx.x == 0) {
+			coarse_enqueue_offset = work_progress.Enqueue(coarse_count + tile.fine_count, iteration + 1);
+			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
+		}
+
 		// Enqueue valid edge lists into outgoing queue (includes barrier)
 		tile.ExpandByCta(this);
 
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByWarp(this);
-*/
-
-		__syncthreads();
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
@@ -879,7 +878,7 @@ struct SweepCta
 		//
 
 		tile.progress = 0;
-		while (tile.progress < tile.enqueue_count) {
+		while (tile.progress < tile.fine_count) {
 
 			// Fill the scratch space with gather-offsets for neighbor-lists.
 			tile.ExpandByScan(this);
@@ -887,7 +886,7 @@ struct SweepCta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.enqueue_count - tile.progress);
+			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = threadIdx.x;
 				scratch_offset < scratch_remainder;
@@ -902,14 +901,14 @@ struct SweepCta
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 					neighbor_id,
-					d_out + enqueue_offset + tile.progress + scratch_offset);
+					d_out + fine_enqueue_offset + tile.progress + scratch_offset);
 
 				if (KernelConfig::MARK_PARENTS) {
 					// Scatter parent it into queue
 					VertexId parent_id = parent_scratch_pool[scratch_offset];
 					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
-						d_parent_out + enqueue_offset + tile.progress + scratch_offset);
+						d_parent_out + fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 
