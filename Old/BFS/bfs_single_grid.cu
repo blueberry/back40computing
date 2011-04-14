@@ -79,9 +79,7 @@ public:
 		iteration(NULL),
 		total_queued(NULL),
 		d_iteration(NULL),
-		d_total_queued(NULL),
-		total_avg_live(0),
-		total_max_live(0)
+		d_total_queued(NULL)
 	{
 		int flags = cudaHostAllocMapped;
 
@@ -96,8 +94,6 @@ public:
 			"SingleGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
 		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_total_queued, (void *) total_queued, 0),
 			"SingleGridBfsEnactor cudaHostGetDevicePointer total_queued failed", __FILE__, __LINE__)) exit(1);
-
-		total_queued[0] = 0;
 	}
 
 
@@ -172,8 +168,13 @@ public:
 		// Make sure our runtime stats are good
 		if (retval = kernel_stats.Setup(grid_size)) exit(1);
 
+		// Reset statistics
+		total_queued[0] 	= 0;
+		iteration[0] 		= 0;
+		total_avg_live 		= 0;
+		total_max_live 		= 0;
+
 		// Initiate single-grid kernel
-		iteration[0] = 0;
 		compact_expand::SweepKernel<KernelConfig, INSTRUMENT><<<grid_size, KernelConfig::THREADS>>>(
 			0,
 			src,

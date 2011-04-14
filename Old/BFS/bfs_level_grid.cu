@@ -86,9 +86,7 @@ public:
 		iteration(NULL),
 		total_queued(NULL),
 		d_iteration(NULL),
-		d_total_queued(NULL),
-		total_avg_live(0),
-		total_max_live(0)
+		d_total_queued(NULL)
 	{
 		int flags = cudaHostAllocMapped;
 
@@ -103,8 +101,6 @@ public:
 			"LevelGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
 		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_total_queued, (void *) total_queued, 0),
 			"LevelGridBfsEnactor cudaHostGetDevicePointer total_queued failed", __FILE__, __LINE__)) exit(1);
-
-		total_queued[0] = 0;
 	}
 
 
@@ -225,9 +221,13 @@ public:
 		if (retval = compact_kernel_stats.Setup(compact_grid_size)) exit(1);
 
 
-		iteration[0] = 0;
-		SizeT expand_queue_length;
+		// Reset statistics
+		total_queued[0] 	= 0;
+		iteration[0] 		= 0;
+		total_avg_live 		= 0;
+		total_max_live 		= 0;
 
+		SizeT expand_queue_length;
 		while (true) {
 
 			// BFS iteration
