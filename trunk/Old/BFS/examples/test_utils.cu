@@ -26,7 +26,8 @@
 
 #include <algorithm>
 
-#include <test/b40c_test_util.h>					// Misc. utils (random-number gen, I/O, etc.)
+#include <b40c/util/error_utils.cuh>
+#include <test/b40c_test_util.h>
 
 
 /******************************************************************************
@@ -119,24 +120,57 @@ struct CsrGraph
 	VertexId	*column_indices;
 	Value		*values;
 	
+	bool 		pinned;
+
 	/**
 	 * Empty constructor
 	 */
-	CsrGraph()
+	CsrGraph(bool pinned)
 	{
 		nodes = 0;
 		edges = 0;
 		row_offsets = NULL;
 		column_indices = NULL;
 		values = NULL;
+		this->pinned = pinned;
 	}
+
+	template <bool LOAD_VALUES>
+	void FromScratch(SizeT nodes, SizeT edges)
+	{
+		this->nodes = nodes;
+		this->edges = edges;
+
+		if (pinned) {
+
+			// Put our graph in pinned memory
+			int flags 		= cudaHostAllocMapped;
+			if (b40c::util::B40CPerror(cudaHostAlloc((void **)&row_offsets, sizeof(SizeT) * (nodes + 1), flags),
+				"CsrGraph cudaHostAlloc row_offsets failed", __FILE__, __LINE__)) exit(1);
+			if (b40c::util::B40CPerror(cudaHostAlloc((void **)&column_indices, sizeof(VertexId) * edges, flags),
+				"CsrGraph cudaHostAlloc column_indices failed", __FILE__, __LINE__)) exit(1);
+
+			if (LOAD_VALUES) {
+				if (b40c::util::B40CPerror(cudaHostAlloc((void **)&values, sizeof(Value) * edges, flags),
+						"CsrGraph cudaHostAlloc values failed", __FILE__, __LINE__)) exit(1);
+			}
+
+		} else {
+
+			// Put our graph in regular memory
+			row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (nodes + 1));
+			column_indices 		= (VertexId*) malloc(sizeof(VertexId) * edges);
+			values 				= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * edges) : NULL;
+		}
+	}
+
 
 	/**
 	 * Build CSR graph from sorted COO graph
 	 */
 	template <bool LOAD_VALUES, typename Tuple>
 	void FromCoo(
-			Tuple *coo,
+		Tuple *coo,
 		SizeT coo_nodes,
 		SizeT coo_edges)
 	{
@@ -144,11 +178,7 @@ struct CsrGraph
 		time_t mark1 = time(NULL);
 		fflush(stdout);
 		
-		nodes 				= coo_nodes;
-		edges 				= coo_edges;
-		row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (nodes + 1));
-		column_indices 		= (VertexId*) malloc(sizeof(VertexId) * edges);
-		values 				= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * edges) : NULL;
+		FromScratch<LOAD_VALUES>(coo_nodes, coo_edges);
 		
 		// Sort COO by row, then by col
 		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<Tuple>);
@@ -238,9 +268,24 @@ struct CsrGraph
 
 	void Free()
 	{
-		if (row_offsets) { free(row_offsets); row_offsets = NULL; }
-		if (column_indices) { free(column_indices); column_indices = NULL; }
+		if (row_offsets) {
+			if (pinned) {
+				b40c::util::B40CPerror(cudaFreeHost(row_offsets), "CsrGraph cudaFreeHost row_offsets failed", __FILE__, __LINE__);
+			} else {
+				free(row_offsets);
+			}
+			row_offsets = NULL;
+		}
+		if (column_indices) {
+			if (pinned) {
+				b40c::util::B40CPerror(cudaFreeHost(column_indices), "CsrGraph cudaFreeHost column_indices failed", __FILE__, __LINE__);
+			} else {
+				free(column_indices);
+			}
+			column_indices = NULL;
+		}
 		if (values) { free (values); values = NULL; }
+
 		nodes = 0;
 		edges = 0;
 	}

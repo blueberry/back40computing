@@ -54,12 +54,10 @@ int BuildGrid2dGraph(
 	SizeT interior_nodes 		= (width - 2) * (width - 2);
 	SizeT edge_nodes 			= (width - 2) * 4;
 	SizeT corner_nodes 			= 4;
-	
-	csr_graph.nodes 			= width * width;
-	csr_graph.edges 			= (interior_nodes * 4) + (edge_nodes * 3) + (corner_nodes * 2) + csr_graph.nodes;
-	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
-	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
-	csr_graph.values 			= (Value*) malloc(sizeof(Value) * csr_graph.edges);
+	SizeT nodes 				= width * width;
+	SizeT edges 				= (interior_nodes * 4) + (edge_nodes * 3) + (corner_nodes * 2) + nodes;
+
+	csr_graph.template FromScratch<LOAD_VALUES>(nodes, edges);
 
 	SizeT total = 0;
 	for (VertexId j = 0; j < width; j++) {
@@ -96,7 +94,9 @@ int BuildGrid2dGraph(
 			csr_graph.column_indices[total] = neighbor;
 			total++;
 
-			csr_graph.values[me] = 1;
+			if (LOAD_VALUES) {
+				csr_graph.values[me] = 1;
+			}
 		}
 	}
 	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always total

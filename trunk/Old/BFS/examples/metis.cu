@@ -89,15 +89,12 @@ int ReadMetisStream(
 				long long ll_nodes, ll_edges;
 				if (fscanf(f_in, "%lld %lld%[^\n]", &ll_nodes, &ll_edges, line) > 0) {
 					
-					csr_graph.nodes = ll_nodes;
-					csr_graph.edges = ll_edges * 2;		// Most METIS graphs report the count of M undirected edges, followed by 2M directed edges with the inclusion of backedges
+					csr_graph.template FromScratch<LOAD_VALUES>(
+						ll_nodes,
+						ll_edges * 2); 	// Most METIS graphs report the count of M undirected edges, followed by 2M directed edges with the inclusion of backedges
 
 					printf("%d nodes, %d directed edges\n", csr_graph.nodes, csr_graph.edges);
 					fflush(stdout);
-					
-					// Allocate csr graph
-					csr_graph.row_offsets = 		(SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
-					csr_graph.column_indices = 		(VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
 					
 				} else {
 					fprintf(stderr, "Error parsing METIS graph: invalid format\n");
