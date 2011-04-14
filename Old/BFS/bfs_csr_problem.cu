@@ -93,6 +93,9 @@ struct BfsCsrProblem
 	SizeT 			max_expand_queue_size;
 	SizeT 			max_compact_queue_size;
 
+	// Whether or not to stream the problem from host memory as needed
+	bool 			stream_from_host;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -114,7 +117,8 @@ struct BfsCsrProblem
 		d_expand_parent_queue(NULL),
 		d_compact_parent_queue(NULL),
 		max_expand_queue_size(0),
-		max_compact_queue_size(0) {}
+		max_compact_queue_size(0),
+		stream_from_host(false) {}
 
 
 	/**
@@ -122,8 +126,8 @@ struct BfsCsrProblem
      */
     virtual ~BfsCsrProblem()
     {
-		if (d_column_indices) 			cudaFree(d_column_indices);
-		if (d_row_offsets) 				cudaFree(d_row_offsets);
+		if (d_column_indices && !stream_from_host) 		cudaFree(d_column_indices);
+		if (d_row_offsets && !stream_from_host) 		cudaFree(d_row_offsets);
 		if (d_source_path) 				cudaFree(d_source_path);
 		if (d_collision_cache) 			cudaFree(d_collision_cache);
 		if (d_keep) 					cudaFree(d_keep);
@@ -170,6 +174,7 @@ struct BfsCsrProblem
 	 * Initialize from host CSR problem
 	 */
 	cudaError_t FromHostProblem(
+		bool		stream_from_host,
 		SizeT 		nodes,
 		SizeT 		edges,
 		VertexId 	*h_column_indices,
@@ -178,6 +183,7 @@ struct BfsCsrProblem
 	{
 		cudaError_t retval = cudaSuccess;
 
+		this->stream_from_host = stream_from_host;
 		this->nodes = nodes;
 		this->edges = edges;
 
@@ -194,17 +200,38 @@ struct BfsCsrProblem
 		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
 
 		do {
-			// Allocate and initialize d_column_indices
-			if (retval = util::B40CPerror(cudaMalloc((void**) &d_column_indices, edges * sizeof(VertexId)),
-				"BfsCsrProblem cudaMalloc d_column_indices failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(VertexId), cudaMemcpyHostToDevice),
-				"BfsCsrProblem cudaMemcpy d_column_indices failed", __FILE__, __LINE__)) break;
 
-			// Allocate and initialize d_row_offsets
-			if (retval = util::B40CPerror(cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(SizeT)),
-				"BfsCsrProblem cudaMalloc d_row_offsets failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(SizeT), cudaMemcpyHostToDevice),
-				"BfsCsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
+			if (stream_from_host) {
+
+/*
+				// Pin the graph memory
+				if (retval = util::B40CPerror(cudaHostRegister(h_column_indices, edges * sizeof(VertexId), CU_MEMHOSTALLOC_DEVICEMAP),
+					"BfsCsrProblem cudaHostRegister h_column_indices failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaHostRegister(h_row_offsets, (nodes + 1) * sizeof(SizeT), CU_MEMHOSTALLOC_DEVICEMAP),
+					"BfsCsrProblem cudaHostRegister h_row_offsets failed", __FILE__, __LINE__)) break;
+*/
+				// Map the pinned graph pointers into device pointers
+				if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_column_indices, (void *) h_column_indices, 0),
+					"LevelGridBfsEnactor cudaHostGetDevicePointer d_column_indices failed", __FILE__, __LINE__)) exit(1);
+
+				if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_row_offsets, (void *) h_row_offsets, 0),
+					"LevelGridBfsEnactor cudaHostGetDevicePointer d_row_offsets failed", __FILE__, __LINE__)) exit(1);
+
+			} else {
+				// Allocate and initialize d_column_indices
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_column_indices, edges * sizeof(VertexId)),
+					"BfsCsrProblem cudaMalloc d_column_indices failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaMemcpy(d_column_indices, h_column_indices, edges * sizeof(VertexId), cudaMemcpyHostToDevice),
+					"BfsCsrProblem cudaMemcpy d_column_indices failed", __FILE__, __LINE__)) break;
+
+				// Allocate and initialize d_row_offsets
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_row_offsets, (nodes + 1) * sizeof(SizeT)),
+					"BfsCsrProblem cudaMalloc d_row_offsets failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaMemcpy(d_row_offsets, h_row_offsets, (nodes + 1) * sizeof(SizeT), cudaMemcpyHostToDevice),
+					"BfsCsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
+
+			}
+
 
 		} while (0);
 

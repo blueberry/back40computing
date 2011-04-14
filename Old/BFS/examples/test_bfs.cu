@@ -127,6 +127,9 @@ void Usage()
 			"--mark-parents\tParent vertices are marked instead of source distances, i.e., it\n"
 			"\t\tcreates an ancestor tree rooted at the source vertex.\n"
 			"\n"
+			"--stream-from-host\tKeeps the graph data (column indices, row offsets) on the host,\n"
+			"\t\tusing zero-copy access to traverse it.\n"
+			"\n"
 			"--undirected\tEdges are undirected.  Reverse edges are added to DIMACS and\n"
 			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
 			"\t\tGrid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
@@ -579,7 +582,8 @@ void RunTests(
 	bool randomized_src,
 	int test_iterations,
 	int max_grid_size,
-	double queue_sizing)
+	double queue_sizing,
+	bool stream_from_host)
 {
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
@@ -593,6 +597,7 @@ void RunTests(
 	// Allocate problem on GPU
 	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
 	if (bfs_problem.FromHostProblem(
+		stream_from_host,
 		csr_graph.nodes,
 		csr_graph.edges,
 		csr_graph.column_indices,
@@ -609,9 +614,10 @@ void RunTests(
 	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
 	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
 	
-	printf("Running %s %s tests...\n\n",
+	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
-		(MARK_PARENTS) ? "parent-marking" : "distance-marking");
+		(MARK_PARENTS) ? "parent-marking" : "distance-marking",
+		(stream_from_host) ? "stream-from-host" : "copied-to-device");
 	
 	// Perform the specified number of test iterations
 	int test_iteration = 0;
@@ -706,14 +712,15 @@ int main( int argc, char** argv)
 	typedef int Value;							// Use as the value type
 	typedef int SizeT;							// Use as the graph size type
 	
-	VertexId 	src 			= -1;			// Use whatever default for the specified graph-type
-	char* 		src_str			= NULL;
-	bool 		randomized_src	= false;
-	bool 		instrumented	= false;
-	bool 		mark_parents	= false;
-	int 		test_iterations = 1;
-	int 		max_grid_size 	= 0;			// Default: leave it up the enactor
-	double 		queue_sizing	= 0.0;			// Default: the size of the edge list * 1.15
+	VertexId 	src 				= -1;			// Use whatever default for the specified graph-type
+	char* 		src_str				= NULL;
+	bool 		randomized_src		= false;
+	bool 		instrumented		= false;
+	bool 		mark_parents		= false;
+	bool		stream_from_host	= false;
+	int 		test_iterations 	= 1;
+	int 		max_grid_size 		= 0;			// Default: leave it up the enactor
+	double 		queue_sizing		= 0.0;			// Default: the size of the edge list * 1.15
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
@@ -741,6 +748,7 @@ int main( int argc, char** argv)
 	}
 	g_undirected = args.CheckCmdLineFlag("undirected");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
+	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("queue-sizing", queue_sizing);
@@ -757,7 +765,7 @@ int main( int argc, char** argv)
 	// Obtain CSR search graph
 	//
 
-	CsrGraph<VertexId, Value, SizeT> csr_graph;
+	CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
 	
 	if (graph_args < 1) {
 		Usage();
@@ -841,19 +849,19 @@ int main( int argc, char** argv)
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
 		}
 	} else {
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
 		}
 	}
 }

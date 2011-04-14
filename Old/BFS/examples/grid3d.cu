@@ -56,12 +56,10 @@ int BuildGrid3dGraph(
 	SizeT face_nodes 			= (width - 2) * (width - 2) * 6;
 	SizeT edge_nodes 			= (width - 2) * 12;
 	SizeT corner_nodes 			= 8;
-	
-	csr_graph.nodes 			= width * width * width;
-	csr_graph.edges 			= (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3) + csr_graph.nodes;
-	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
-	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
-	csr_graph.values 			= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * csr_graph.edges) : NULL;
+	SizeT nodes 				= width * width * width;
+	SizeT edges 				= (interior_nodes * 6) + (face_nodes * 5) + (edge_nodes * 4) + (corner_nodes * 3) + nodes;
+
+	csr_graph.template FromScratch<LOAD_VALUES>(nodes, edges);
 			
 	SizeT total = 0;
 	for (VertexId i = 0; i < width; i++) {

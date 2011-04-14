@@ -46,11 +46,7 @@ int BuildRandomRegularishGraph(
 {
 	SizeT edges 				= nodes * degree;
 	
-	csr_graph.edges 			= edges;
-	csr_graph.nodes 			= nodes;
-	csr_graph.row_offsets 		= (SizeT*) malloc(sizeof(SizeT) * (csr_graph.nodes + 1));
-	csr_graph.column_indices 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.edges);
-	csr_graph.values 			= (LOAD_VALUES) ? (Value*) malloc(sizeof(Value) * csr_graph.edges) : NULL;
+	csr_graph.template FromScratch<LOAD_VALUES>(nodes, edges);
 
 	SizeT total = 0;
     for (VertexId node = 0; node < nodes; node++) {
