@@ -119,7 +119,7 @@ void DownsweepKernel(
 	typename KernelConfig::VertexId 		* d_parent_out,
 	typename KernelConfig::SizeT			* d_spine,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelConfig::SizeT SizeT;
 

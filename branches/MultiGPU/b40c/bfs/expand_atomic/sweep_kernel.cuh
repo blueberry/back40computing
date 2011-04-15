@@ -44,6 +44,7 @@ struct SweepPass
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
+		typename KernelConfig::VertexId 		&gpu_base_vertex,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -72,6 +73,7 @@ struct SweepPass
 		// CTA processing abstraction
 		SweepCta cta(
 			iteration,
+			gpu_base_vertex,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -128,6 +130,7 @@ struct SweepPass <KernelConfig, true>
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
+		typename KernelConfig::VertexId 		&gpu_base_vertex,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -145,6 +148,7 @@ struct SweepPass <KernelConfig, true>
 		// CTA processing abstraction
 		SweepCta cta(
 			iteration,
+			gpu_base_vertex,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -184,7 +188,9 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
 	typename KernelConfig::VertexId 		src,
+	typename KernelConfig::SizeT			num_elements,
 	typename KernelConfig::VertexId 		iteration,
+	typename KernelConfig::VertexId			gpu_base_vertex,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
@@ -193,7 +199,7 @@ void SweepKernel(
 	typename KernelConfig::SizeT			*d_row_offsets,
 	typename KernelConfig::VertexId			*d_source_path,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelConfig::SizeT SizeT;
 
@@ -216,18 +222,20 @@ void SweepKernel(
 			// Determine work decomposition for first iteration
 			if (threadIdx.x == 0) {
 
-				// We'll be the only block with active work this iteration.
-				// Enqueue the source for us to subsequently process.
-				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+				if (src != -1) {
 
-				if (KernelConfig::MARK_PARENTS) {
-					// Enqueue parent of source
-					typename KernelConfig::VertexId parent = -2;
-					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+					// We'll be the only block on the only GPU with active work this iteration.
+					// Enqueue the source for us to subsequently process.
+					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+
+					if (KernelConfig::MARK_PARENTS) {
+						// Enqueue parent of source
+						typename KernelConfig::VertexId parent = -2;
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+					}
 				}
 
 				// Initialize work decomposition in smem
-				SizeT num_elements = 1;
 				smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
@@ -241,6 +249,7 @@ void SweepKernel(
 		// across CTAs
 		SweepPass<KernelConfig, false>::Invoke(
 			iteration,
+			gpu_base_vertex,
 			d_in,
 			d_parent_in,
 			d_out,
@@ -256,9 +265,6 @@ void SweepKernel(
 
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
-
-			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
 
 			// Initialize work decomposition in smem
 			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
@@ -277,6 +283,7 @@ void SweepKernel(
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
+			gpu_base_vertex,
 			d_in,
 			d_parent_in,
 			d_out,

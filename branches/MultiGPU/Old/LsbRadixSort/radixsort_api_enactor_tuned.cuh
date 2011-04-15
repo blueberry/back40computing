@@ -203,10 +203,13 @@ protected:
 				// We need to make sure that all kernels launch the same number of CTAs
 				grid_size[1] = work.sweep_grid_size;
 			}
-
+/*
+			printf("\tSorting pass %d at bit %d launching %d CTAs\n",
+				CURRENT_PASS, CURRENT_BIT, grid_size[0]);
+*/
 			// Invoke upsweep reduction kernel
 			TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
-				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
+				<<<grid_size[0], threads[0], dynamic_smem[0], this->stream>>>(
 					this->d_selectors,
 					(SizeT *) this->d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -217,7 +220,7 @@ protected:
 
 			// Invoke spine scan kernel
 			TunedSpineScanKernel<KeyType, ValueType, SizeT, SortingConfig::GRANULARITY_ENUM>
-				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
+				<<<grid_size[1], threads[1], dynamic_smem[1], this->stream>>>(
 					(SizeT *) this->d_spine,
 					work.spine_elements);
 			if (this->DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
@@ -225,7 +228,7 @@ protected:
 
 			// Invoke downsweep scan/scatter kernel
 			TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
-				<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
+				<<<grid_size[2], threads[2], dynamic_smem[2], this->stream>>>(
 					this->d_selectors,
 					(SizeT *) this->d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -297,7 +300,7 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	template <typename Storage, int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM>
+	template <int START_BIT, int NUM_BITS, TunedGranularityEnum GRANULARITY_ENUM, typename Storage>
 	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0)
 	{
 		typedef Detail<START_BIT, NUM_BITS, GRANULARITY_ENUM> DetailType;
@@ -322,7 +325,7 @@ public:
 	template <typename Storage>
 	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0) 
 	{
-		return EnactSort<Storage, 0, sizeof(typename Storage::KeyType) * 8, LARGE_PROBLEM>(
+		return EnactSort<0, sizeof(typename Storage::KeyType) * 8, LARGE_PROBLEM>(
 			problem_storage, max_grid_size);
 	}
 	
@@ -342,7 +345,7 @@ public:
 	template <TunedGranularityEnum GRANULARITY_ENUM, typename Storage>
 	cudaError_t EnactSort(Storage &problem_storage, int max_grid_size = 0)
 	{
-		return EnactSort<Storage, 0, sizeof(typename Storage::KeyType) * 8, GRANULARITY_ENUM>(
+		return EnactSort<0, sizeof(typename Storage::KeyType) * 8, GRANULARITY_ENUM>(
 			problem_storage, max_grid_size);
 	}
 

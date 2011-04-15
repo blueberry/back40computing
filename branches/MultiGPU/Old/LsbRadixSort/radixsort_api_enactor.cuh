@@ -89,11 +89,15 @@ protected:
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
 	void *d_spine;
+	int spine_gpu;
 
 	// Pair of "selector" device integers.  The first selects the incoming device 
 	// vector for even passes, the second selects the odd.
 	int *d_selectors;
+	int selectors_gpu;
 	
+	cudaStream_t 	stream;
+
 
 	//-----------------------------------------------------------------------------
 	// Utility Routines
@@ -128,6 +132,7 @@ protected:
 		do {
 			// If necessary, allocate pair of ints denoting input and output vectors for even and odd passes
 			if (d_selectors == NULL) {
+				cudaGetDevice(&selectors_gpu);
 				if (retval = B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
 					"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__)) break;
 			}
@@ -156,13 +161,21 @@ protected:
 			int problem_spine_bytes = problem_spine_elements * sizeof(typename StorageType::SizeT);
 
 			if (problem_spine_bytes > spine_bytes) {
-				if (d_spine) {
+
+				printf("WHEELS ABOUT TO FALL OFF: bfs did not allocate a big enough spine!\n");
+				fflush(stdout);
+
+				if (d_spine && (spine_gpu > -1)) {
+					int current_gpu;
+					cudaGetDevice(&current_gpu);
+					cudaSetDevice(spine_gpu);
 					if (retval = B40CPerror(cudaFree(d_spine),
 						"LsbSortEnactor cudaFree d_spine failed", __FILE__, __LINE__)) break;
+					cudaSetDevice(current_gpu);
 				}
 
+				cudaGetDevice(&spine_gpu);
 				spine_bytes = problem_spine_bytes;
-
 				if (retval = B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
 					"LsbSortEnactor cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
 			}
@@ -274,7 +287,7 @@ protected:
 
 			// Invoke upsweep reduction kernel
 			UpsweepKernel<UpsweepKernelConfigType>
-				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
+				<<<grid_size[0], threads[0], dynamic_smem[0], stream>>>(
 					d_selectors,
 					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -285,7 +298,7 @@ protected:
 
 			// Invoke spine scan kernel
 			SpineScanKernel<SpineScanKernelConfigType>
-				<<<grid_size[1], threads[1], dynamic_smem[1]>>>(
+				<<<grid_size[1], threads[1], dynamic_smem[1], stream>>>(
 					(SizeT *) d_spine,
 					work.spine_elements);
 			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
@@ -293,7 +306,7 @@ protected:
 
 			// Invoke downsweep scan/scatter kernel
 			DownsweepKernel<DownsweepKernelConfigType>
-				<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
+				<<<grid_size[2], threads[2], dynamic_smem[2], stream>>>(
 					d_selectors,
 					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -451,9 +464,12 @@ public:
 	 * Constructor.
 	 */
 	LsbSortEnactor() :
+			stream(0),
 			d_selectors(NULL),
 			d_spine(NULL),
-			spine_bytes(0) {}
+			spine_bytes(0),
+			spine_gpu(B40C_INVALID_DEVICE),
+			selectors_gpu(B40C_INVALID_DEVICE) {}
 	
 
 	/**
@@ -461,12 +477,17 @@ public:
      */
     virtual ~LsbSortEnactor() 
     {
-   		if (d_spine) {
+		int current_gpu;
+		cudaGetDevice(&current_gpu);
+   		if (d_spine && (spine_gpu != B40C_INVALID_DEVICE)) {
+			cudaSetDevice(spine_gpu);
    			B40CPerror(cudaFree(d_spine), "LsbSortEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
    		}
-   		if (d_selectors) {
-   			B40CPerror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
-   		}
+		if (d_selectors && (selectors_gpu != B40C_INVALID_DEVICE)) {
+			cudaSetDevice(selectors_gpu);
+			B40CPerror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
+		}
+		cudaSetDevice(current_gpu);
     }
     
     
@@ -477,6 +498,22 @@ public:
     // with user-supplied granularity-specialization types.  (Useful for auto-tuning.) 
 	//-----------------------------------------------------------------------------
     
+
+    /**
+     *
+     */
+    void BfsConfigure(
+    	cudaStream_t stream,
+    	void *d_spine = NULL,
+    	int spine_bytes = 0)
+    {
+    	this->stream 			= stream;
+    	this->d_spine 			= d_spine;
+    	this->spine_bytes 		= spine_bytes;
+    }
+
+
+
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
@@ -495,15 +532,21 @@ public:
 	    typedef SortingCtaDecomposition<Storage> Decomposition;
 
 	    const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
-		const int NUM_PASSES 			= (NUM_BITS - START_BIT + RADIX_BITS - 1) / RADIX_BITS;
+		const int NUM_PASSES 			= (NUM_BITS + RADIX_BITS - 1) / RADIX_BITS;
 		const int SCHEDULE_GRANULARITY 	= 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
 		const int SPINE_TILE_ELEMENTS 	= 1 << 
 				(SortingConfig::SpineScan::LOG_THREADS + 
 				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
 				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
 		
-		int sweep_grid_size = OversubscribedGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
-			problem_storage.num_elements, max_grid_size);
+		int sweep_grid_size;
+		if (max_grid_size > 0) {
+			sweep_grid_size = max_grid_size;
+		} else {
+			sweep_grid_size = OversubscribedGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
+					problem_storage.num_elements, max_grid_size);
+		}
+
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
 		Decomposition work(&problem_storage, SCHEDULE_GRANULARITY, sweep_grid_size, spine_elements);

@@ -65,8 +65,10 @@ class CtaWorkProgress
 {
 protected :
 
-	static const int QUEUE_COUNTERS = 4;
-	static const int STEAL_COUNTERS = 2;
+	enum {
+		QUEUE_COUNTERS = 4,
+		STEAL_COUNTERS = 2,
+	};
 
 	// Six pointer-sized counters in global device memory (we may not use
 	// all of them, or may only use 32-bit versions of them)
@@ -77,12 +79,16 @@ protected :
 
 public:
 
-	static const int COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS;
+	enum {
+		COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS
+	};
 
 	/**
 	 * Constructor
 	 */
-	CtaWorkProgress() : d_counters(NULL), progress_selector(0) {}
+	CtaWorkProgress() :
+		d_counters(NULL),
+		progress_selector(0) {}
 
 	/**
 	 * Resets all counters.  Must be called by thread-0 through
@@ -210,13 +216,19 @@ public:
  */
 class CtaWorkProgressLifetime : public CtaWorkProgress
 {
+protected:
+
+	// GPU d_counters was allocated on
+	int d_counters_gpu;
+
 public:
 
 	/**
 	 * Constructor
 	 */
 	CtaWorkProgressLifetime() :
-		CtaWorkProgress() {}
+		CtaWorkProgress(),
+		d_counters_gpu(B40C_INVALID_DEVICE) {}
 
 
 	/**
@@ -225,11 +237,19 @@ public:
 	cudaError_t HostReset()
 	{
 		cudaError_t retval = cudaSuccess;
-		if (d_counters) {
+		if (d_counters_gpu != B40C_INVALID_DEVICE) {
 
+			int current_gpu;
+			cudaGetDevice(&current_gpu);
+
+			// Deallocate
+			cudaSetDevice(d_counters_gpu);
 			retval = util::B40CPerror(cudaFree(d_counters),
 				"CtaWorkProgress cudaFree d_counters failed: ", __FILE__, __LINE__);
 			d_counters = NULL;
+			d_counters_gpu = -1;
+
+			cudaSetDevice(current_gpu);
 		}
 		progress_selector = 0;
 		return retval;
@@ -263,6 +283,7 @@ public:
 				}
 
 				// Allocate and initialize
+				cudaGetDevice(&d_counters_gpu);
 				if (retval = util::B40CPerror(cudaMalloc((void**) &d_counters, sizeof(h_counters)),
 					"ReductionEnactor cudaMalloc d_counters failed", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaMemcpy(d_counters, h_counters, sizeof(h_counters), cudaMemcpyHostToDevice),

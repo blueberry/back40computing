@@ -125,11 +125,13 @@ void TimedSort(
 	// Create sorting enactor
 	LsbSortEnactorTuned sorting_enactor;
 
+	static const TunedGranularityEnum GENRE = SMALL_PROBLEM;
+
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
 		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 	sorting_enactor.DEBUG = true;
-	sorting_enactor.template EnactSort<LARGE_PROBLEM>(device_storage, g_max_ctas);
+	sorting_enactor.template EnactSort<0, 2, GENRE>(device_storage, g_max_ctas);
 //	sorting_enactor.EnactSort(device_storage, g_max_ctas);
 	sorting_enactor.DEBUG = false;
 
@@ -151,7 +153,7 @@ void TimedSort(
 		cudaEventRecord(start_event, 0);
 
 		// Call the sorting API routine
-		sorting_enactor.template EnactSort<LARGE_PROBLEM>(device_storage, g_max_ctas);
+		sorting_enactor.template EnactSort<0, 2, GENRE>(device_storage, g_max_ctas);
 //		sorting_enactor.EnactSort(device_storage, g_max_ctas);
 
 		// End cuda timing record
@@ -206,6 +208,7 @@ void TestSort(
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
 		RandomBits<K>(h_keys[i], 0);
+		h_keys[i] &= 3;
 		h_reference_keys[i] = h_keys[i];
 	}
 

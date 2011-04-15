@@ -47,9 +47,9 @@
 
 // BFS enactor includes
 #include <bfs_csr_problem.cu>
-#include <bfs_single_grid.cu>
-#include <bfs_level_grid.cu>
-#include <bfs_expand_compact.cu>
+//#include <bfs_single_grid.cu>
+//#include <bfs_level_grid.cu>
+#include <bfs_multi_gpu.cu>
 
 using namespace b40c;
 using namespace bfs;
@@ -129,6 +129,8 @@ void Usage()
 			"\n"
 			"--stream-from-host\tKeeps the graph data (column indices, row offsets) on the host,\n"
 			"\t\tusing zero-copy access to traverse it.\n"
+			"\n"
+			"--num-gpus\tNumber of GPUs to use\n"
 			"\n"
 			"--undirected\tEdges are undirected.  Reverse edges are added to DIMACS and\n"
 			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
@@ -455,7 +457,8 @@ void TestGpuBfs(
 	VertexId 								*reference_source_dist,
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
 	Stats									&stats,								// running statistics
-	int 									max_grid_size)
+	int 									max_grid_size,
+	int 									num_gpus)
 {
 	// (Re)initialize distances
 	bfs_problem.Reset();
@@ -463,16 +466,12 @@ void TestGpuBfs(
 	// Perform BFS
 	CpuTimer cpu_timer;
 	cpu_timer.Start();
-	enactor.template EnactSearch<INSTRUMENT>(bfs_problem, src, max_grid_size);
+	enactor.template EnactSearch<INSTRUMENT>(bfs_problem, src, max_grid_size, num_gpus);
 	cpu_timer.Stop();
 	float elapsed = cpu_timer.ElapsedMillis();
 
 	// Copy out results
-	cudaMemcpy(
-		h_source_path,
-		bfs_problem.d_source_path,
-		bfs_problem.nodes * sizeof(VertexId),
-		cudaMemcpyDeviceToHost);
+	bfs_problem.CombineResults(h_source_path);
 	
 	long long 	total_queued = 0;
 	VertexId	search_depth = 0;
@@ -582,6 +581,7 @@ void RunTests(
 	bool randomized_src,
 	int test_iterations,
 	int max_grid_size,
+	int num_gpus,
 	double queue_sizing,
 	bool stream_from_host)
 {
@@ -590,19 +590,20 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	LevelGridBfsEnactor bfs_lg_enactor(g_verbose);
-	SingleGridBfsEnactor bfs_sg_enactor(g_verbose);
-//	ExpandCompactBfsEnactor bfs_ec_enactor(g_verbose);
+//	LevelGridBfsEnactor 			bfs_lg_enactor(g_verbose);
+//	SingleGridBfsEnactor 			bfs_sg_enactor(g_verbose);
+//	ExpandCompactBfsEnactor 		bfs_ec_enactor(g_verbose);
+	MultiGpuBfsEnactor				bfs_mg_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
 	if (bfs_problem.FromHostProblem(
-		stream_from_host,
 		csr_graph.nodes,
 		csr_graph.edges,
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
-		queue_sizing))
+		queue_sizing,
+		num_gpus))
 	{
 		exit(1);
 	}
@@ -610,9 +611,7 @@ void RunTests(
 	// Initialize statistics
 	Stats stats[4];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("Level-grid, contract-expand GPU BFS");
-	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
-	stats[3] = Stats("Level-grid, expand-compact GPU BFS");
+	stats[1] = Stats("Multi-GPU, contract-expand GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -633,9 +632,9 @@ void RunTests(
 		printf("\n");
 		fflush(stdout);
 
-		// Perform level-grid contract-expand GPU BFS search
+		// Perform multi-GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
-			bfs_lg_enactor,
+			bfs_mg_enactor,
 			bfs_problem,
 			src,
 			h_source_path,
@@ -643,37 +642,10 @@ void RunTests(
 //			(VertexId*) NULL,
 			csr_graph,
 			stats[1],
-			max_grid_size);
+			max_grid_size,
+			num_gpus);
 		printf("\n");
 		fflush(stdout);
-
-		// Perform single-grid contract-expand GPU BFS search
-		TestGpuBfs<INSTRUMENT>(
-			bfs_sg_enactor,
-			bfs_problem,
-			src,
-			h_source_path,
-			reference_source_dist,
-//			(VertexId*) NULL,
-			csr_graph,
-			stats[2],
-			max_grid_size);
-		printf("\n");
-		fflush(stdout);
-/*
-		// Perform single-grid contract-expand GPU BFS search
-		TestGpuBfs<INSTRUMENT>(
-			bfs_ec_enactor,
-			bfs_problem,
-			src,
-			h_source_path,
-			reference_source_dist,
-			csr_graph,
-			stats[3],
-			max_grid_size);
-		printf("\n");
-		fflush(stdout);
-*/
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -719,7 +691,8 @@ int main( int argc, char** argv)
 	bool 		mark_parents		= false;
 	bool		stream_from_host	= false;
 	int 		test_iterations 	= 1;
-	int 		max_grid_size 		= 0;			// Default: leave it up the enactor
+	int 		max_grid_size 		= 0;			// Default: leave it up to the enactor
+	int 		num_gpus			= 1;			// Default: 1 gpu
 	double 		queue_sizing		= 0.0;			// Default: the size of the edge list * 1.15
 
 	CommandLineArgs args(argc, argv);
@@ -751,6 +724,7 @@ int main( int argc, char** argv)
 	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
+	args.GetCmdLineArgument("num-gpus", num_gpus);
 	args.GetCmdLineArgument("queue-sizing", queue_sizing);
 	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
@@ -759,8 +733,29 @@ int main( int argc, char** argv)
 	}
 	int flags = args.ParsedArgc();
 	int graph_args = argc - flags - 1;
+
 	
-	
+	// Enable symmetric peer access
+	for (int gpu = 0; gpu < num_gpus; gpu++) {
+		for (int other_gpu = (gpu + 1) % num_gpus;
+				other_gpu != gpu;
+				other_gpu = (other_gpu + 1) % num_gpus)
+		{
+			// Set device
+			if (util::B40CPerror(cudaSetDevice(gpu),
+				"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+			printf("Enabling peer access to GPU %d from GPU %d\n", other_gpu, gpu);
+
+			cudaError_t error = cudaDeviceEnablePeerAccess(other_gpu, 0);
+			if ((error != cudaSuccess) && (error != cudaErrorPeerAccessAlreadyEnabled)) {
+				util::B40CPerror(error, "MultiGpuBfsEnactor cudaDeviceEnablePeerAccess failed", __FILE__, __LINE__);
+				exit(1);
+			}
+		}
+	}
+
+
 	//
 	// Obtain CSR search graph
 	//
@@ -849,19 +844,19 @@ int main( int argc, char** argv)
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
 	} else {
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
 	}
 }

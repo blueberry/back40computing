@@ -49,6 +49,8 @@ namespace util {
  * Device properties by SM architectural version
  ******************************************************************************/
 
+// Invalid CUDA device ordinal
+#define B40C_INVALID_DEVICE				(-1)
 
 // Threads per warp. 
 #define B40C_LOG_WARP_THREADS(arch)		(5)			// 32 threads in a warp 

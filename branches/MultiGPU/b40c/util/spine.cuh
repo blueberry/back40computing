@@ -47,12 +47,19 @@ protected :
 	// Number of bytes backed by d_spine
 	size_t spine_bytes;
 
+	// GPU d_spine was allocated on
+	int d_spine_gpu;
+
+
 public :
 
 	/**
 	 * Constructor
 	 */
-	Spine() : d_spine(NULL), spine_bytes(0) {}
+	Spine() :
+		d_spine(NULL),
+		spine_bytes(0),
+		d_spine_gpu(B40C_INVALID_DEVICE) {}
 
 
 	/**
@@ -60,9 +67,18 @@ public :
 	 */
 	void HostReset()
 	{
-		if (d_spine) {
+		if (d_spine_gpu != B40C_INVALID_DEVICE) {
+
+			int current_gpu;
+			cudaGetDevice(&current_gpu);
+
+			// Deallocate
+			cudaSetDevice(d_spine_gpu);
 			util::B40CPerror(cudaFree(d_spine), "Spine cudaFree d_spine failed: ", __FILE__, __LINE__);
 			d_spine = NULL;
+			d_spine_gpu = -1;
+
+			cudaSetDevice(current_gpu);
 		}
 		spine_bytes = 0;
 	}
@@ -101,13 +117,13 @@ public :
 			size_t problem_spine_bytes = spine_elements * sizeof(T);
 
 			if (problem_spine_bytes > spine_bytes) {
-				if (d_spine) {
-					if (retval = util::B40CPerror(cudaFree(d_spine),
-						"Spine cudaFree d_spine failed", __FILE__, __LINE__)) break;
-				}
 
+				// Deallocate if exists
+				HostReset();
+
+				// Reallocate
+				cudaGetDevice(&d_spine_gpu);
 				spine_bytes = problem_spine_bytes;
-
 				if (retval = util::B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
 					"Spine cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
 			}

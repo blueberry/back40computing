@@ -74,6 +74,8 @@ struct SweepCta
 	// Current BFS iteration
 	VertexId 				iteration;
 
+	VertexId				gpu_base_vertex;
+
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_parent_in;
@@ -172,6 +174,9 @@ struct SweepCta
 			{
 				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
 
+					// Subtract out gpu-base vertex
+					tile->vertex_id[LOAD][VEC] -= cta->gpu_base_vertex;
+
 					// Load source path of node
 					VertexId source_path;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
@@ -197,7 +202,11 @@ struct SweepCta
 							row_range,
 							reinterpret_cast<Vec2SizeT*>(cta->d_row_offsets + tile->vertex_id[LOAD][VEC]));
 					}
-
+/*
+					printf("\t\tIteration %d thread %d inspected vertex %d: dist %d, row range [%d, %d)\n",
+						cta->iteration, threadIdx.x, tile->vertex_id[0][0],
+						source_path, row_range.x, row_range.y);
+*/
 					if (source_path == -1) {
 
 						// Node is previously unvisited: compute row offset and length
@@ -266,7 +275,7 @@ struct SweepCta
 
 					VertexId parent_id;
 					if (KernelConfig::MARK_PARENTS) {
-						parent_id = cta->warp_comm[0][3];
+						parent_id = cta->gpu_base_vertex + cta->warp_comm[0][3];
 					}
 
 					VertexId neighbor_id;
@@ -331,7 +340,7 @@ struct SweepCta
 
 					VertexId parent_id;
 					if (KernelConfig::MARK_PARENTS) {
-						parent_id = cta->warp_comm[warp_id][3];
+						parent_id = cta->gpu_base_vertex + cta->warp_comm[warp_id][3];
 					}
 
 					VertexId neighbor_id;
@@ -521,6 +530,7 @@ struct SweepCta
 	 */
 	__device__ __forceinline__ SweepCta(
 		VertexId 				iteration,
+		VertexId				gpu_base_vertex,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_parent_in,
@@ -545,6 +555,7 @@ struct SweepCta
 			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
 			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
 			iteration(iteration),
+			gpu_base_vertex(gpu_base_vertex),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
 			d_out(d_out),
@@ -607,7 +618,12 @@ struct SweepCta
 					cta_offset,
 					out_of_bounds);
 		}
-
+/*
+		if (tile.vertex_id[0][0] != -1) {
+			printf("\t\tIteration %d thread %d saw vertex %d\n",
+				iteration, threadIdx.x, tile.vertex_id[0][0]);
+		}
+*/
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details
 		tile.Inspect(this);
@@ -664,7 +680,10 @@ struct SweepCta
 				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_id,
 					d_column_indices + offset_scratch_pool[scratch_offset]);
-
+/*
+				printf("\t\tIteration %d thread %d enqueued vertex %d\n",
+					iteration, threadIdx.x, neighbor_id);
+*/
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 					neighbor_id,
@@ -672,7 +691,7 @@ struct SweepCta
 
 				if (KernelConfig::MARK_PARENTS) {
 					// Scatter parent it into queue
-					VertexId parent_id = parent_scratch_pool[scratch_offset];
+					VertexId parent_id = gpu_base_vertex + parent_scratch_pool[scratch_offset];
 					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
 						d_parent_out + fine_enqueue_offset + tile.progress + scratch_offset);

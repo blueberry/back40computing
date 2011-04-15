@@ -144,7 +144,7 @@ struct CsrGraph
 		if (pinned) {
 
 			// Put our graph in pinned memory
-			int flags 		= cudaHostAllocMapped;
+			int flags = cudaHostAllocMapped;
 			if (b40c::util::B40CPerror(cudaHostAlloc((void **)&row_offsets, sizeof(SizeT) * (nodes + 1), flags),
 				"CsrGraph cudaHostAlloc row_offsets failed", __FILE__, __LINE__)) exit(1);
 			if (b40c::util::B40CPerror(cudaHostAlloc((void **)&column_indices, sizeof(VertexId) * edges, flags),

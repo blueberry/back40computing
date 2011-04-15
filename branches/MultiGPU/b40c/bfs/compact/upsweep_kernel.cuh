@@ -106,7 +106,7 @@ void UpsweepKernel(
 	typename KernelConfig::SizeT			*d_spine,
 	typename KernelConfig::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelConfig::SizeT SizeT;
 
