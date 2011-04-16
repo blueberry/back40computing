@@ -292,7 +292,9 @@ public:
 		printf("Shift bits: %d, bins per gpu: %d\n", shift_bits, bins_per_gpu);
 
 		// Configure sorting storage
-		MultiCtaSortStorage<VertexId, SortValueType> sort_storage[MAX_GPUS];
+		MultiCtaSortStorage<VertexId, SortValueType> 	sort_storage[MAX_GPUS];
+		VertexId 										iteration[MAX_GPUS];
+
 		for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
 
 			// Set device
@@ -317,159 +319,53 @@ public:
 			sort_storage[gpu].d_keys[1] 		= bfs_problem.d_expand_queue[gpu];
 			sort_storage[gpu].d_values[0] 		= (SortValueType *) bfs_problem.d_compact_parent_queue[gpu];
 			sort_storage[gpu].d_values[1] 		= (SortValueType *) bfs_problem.d_expand_parent_queue[gpu];
+
+			iteration[gpu]= 0;
 		}
 
 
-		VertexId iteration[MAX_GPUS];
-		for (int i = 0; i < MAX_GPUS; i++) {
-			iteration[i]= 0;
+		// First iteration
+		// Expand work queues
+		for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
+
+			// Set device
+			if (util::B40CPerror(cudaSetDevice(gpu),
+				"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+			bool owns_source = ((src >> shift_bits) == gpu);
+			if (owns_source) {
+				printf("GPU %d owns source %d\n", gpu, src);
+			}
+
+			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
+					<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+				(owns_source) ? src : -1,					// source
+				(owns_source) ? 1 : 0,						// num_elements
+				iteration[gpu],
+				bfs_problem.gpu_vertex_range[gpu],
+				sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// sorted in
+				(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// sorted parents in
+				sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
+				(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents out
+				bfs_problem.d_column_indices[gpu],
+				bfs_problem.d_row_offsets[gpu],
+				bfs_problem.d_source_path[gpu],
+				work_progress[gpu]);
+/*
+			// Mooch
+			if (util::B40CPerror(cudaThreadSynchronize(),
+				"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
+*/
+
+			sort_storage[gpu].selector ^= 1;
+			iteration[gpu] += 1;
 		}
 
 		// BFS passes
 		while (true) {
 
-			// Expand work queues
-			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
-
-				// Set device
-				if (util::B40CPerror(cudaSetDevice(gpu),
-					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
-
-				if (iteration[gpu] == 0) {
-
-					// First iteration
-					bool owns_source = ((src >> shift_bits) == gpu);
-					if (owns_source) {
-						printf("GPU %d owns source %d\n", gpu, src);
-					}
-
-					expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
-							<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
-						(owns_source) ? src : -1,					// source
-						(owns_source) ? 1 : 0,						// num_elements
-						iteration[gpu],
-						bfs_problem.gpu_vertex_range[gpu],
-						sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// sorted in
-						(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// sorted parents in
-						sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
-						(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents out
-						bfs_problem.d_column_indices[gpu],
-						bfs_problem.d_row_offsets[gpu],
-						bfs_problem.d_source_path[gpu],
-						work_progress[gpu]);
-/*
-					// Mooch
-					if (util::B40CPerror(cudaThreadSynchronize(),
-						"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
-				} else {
-
-					// Stream in and expand inputs from all gpus (including ourselves
-					for (int i = 0; i < num_gpus; i++) {
-
-						int peer_gpu 		= (gpu + i) % num_gpus;
-						int queue_offset 	= sorting_spines[peer_gpu][bins_per_gpu * gpu * sort_grid_size];
-						int queue_oob 		= sorting_spines[peer_gpu][bins_per_gpu * (gpu + 1) * sort_grid_size];
-						int num_elements	= queue_oob - queue_offset;
-/*
-						printf("Gpu %d getting %d from gpu %d: "
-								"queue_offset: %d @ %d,"
-								"queue_oob: %d @ %d\n",
-							gpu, num_elements, peer_gpu,
-							queue_offset, bins_per_gpu * gpu * sort_grid_size,
-							queue_oob, bins_per_gpu * (gpu + 1) * sort_grid_size);
-						fflush(stdout);
-*/
-/*
-						printf("Input: \n");
-						DisplayDeviceResults(
-								sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,
-								num_elements);
-						fflush(stdout);
-*/
-						expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
-								<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
-							-1,
-							num_elements,
-							iteration[gpu],
-							bfs_problem.gpu_vertex_range[gpu],
-							sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,							// sorted in
-							(VertexId *) sort_storage[peer_gpu].d_values[sort_storage[peer_gpu].selector] + queue_offset,			// sorted parents in
-							sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
-							(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents out
-							bfs_problem.d_column_indices[gpu],
-							bfs_problem.d_row_offsets[gpu],
-							bfs_problem.d_source_path[gpu],
-							work_progress[gpu]);
-/*
-						// Mooch
-						if (util::B40CPerror(cudaThreadSynchronize(),
-							"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
-					}
-				}
-			}
-
-			// Synchronize all GPUs to so that they may read their peer expansion
-			// queues without having the results be clobbered by run-ahead compaction
-			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
-				if (util::B40CPerror(cudaSetDevice(gpu),
-					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
-				if (util::B40CPerror(cudaDeviceSynchronize(),
-					"MultiGpuBfsEnactor cudaDeviceSynchronize failed", __FILE__, __LINE__)) exit(1);
-			}
-
-			// Compact work queues
-			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
-
-				// Set device
-				if (util::B40CPerror(cudaSetDevice(gpu),
-					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
-
-				iteration[gpu]++;
-
-				// Upsweep
-				compact::UpsweepKernel<CompactUpsweep, INSTRUMENT>
-						<<<compact_grid_size, CompactUpsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
-					iteration[gpu],
-					sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],			// expanded in
-					bfs_problem.d_keep[gpu],
-					(SizeT *) spine[gpu](),
-					bfs_problem.d_collision_cache[gpu],
-					work_progress[gpu]);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
-					"MultiGpuBfsEnactor UpsweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
-				// Spine
-				scan::SpineKernel<CompactSpine><<<1, CompactSpine::THREADS>>>(
-					(SizeT*) spine[gpu](), (SizeT*) spine[gpu](), spine_elements);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
-					"MultiGpuBfsEnactor SpineKernel failed", __FILE__, __LINE__)) exit(1);
-*/
-				// Downsweep
-				compact::DownsweepKernel<CompactDownsweep, INSTRUMENT>
-						<<<compact_grid_size, CompactDownsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
-					iteration[gpu],
-					sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded in
-					(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents in
-					bfs_problem.d_keep[gpu],
-					sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// compacted out
-					(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// compacted parents out
-					(SizeT *) spine[gpu](),
-					work_progress[gpu]);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
-					"MultiGpuBfsEnactor DownsweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
-			}
-
 			// This is an unnecessary synch point in that the host must read
-			// the compaction sizes in order to pass them to sorting
+			// the queue sizes in order to pass them to sorting
 			bool done = true;
 			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
 
@@ -478,7 +374,7 @@ public:
 					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
 				if (this->work_progress[gpu].GetQueueLength(iteration[gpu], sort_storage[gpu].num_elements)) exit(0);
-				printf("Iteration %d GPU %d queued %d\n", iteration[gpu], gpu, sort_storage[gpu].num_elements);
+				printf("Iteration %d GPU %d compact queued %d\n", iteration[gpu], gpu, sort_storage[gpu].num_elements);
 				if (sort_storage[gpu].num_elements) {
 					done = false;
 				}
@@ -530,8 +426,122 @@ public:
 				if (util::B40CPerror(cudaDeviceSynchronize(),
 					"MultiGpuBfsEnactor cudaDeviceSynchronize failed", __FILE__, __LINE__)) exit(1);
 			}
-		}
 
+			// Expand work queues
+			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
+
+				// Set device
+				if (util::B40CPerror(cudaSetDevice(gpu),
+					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+				// Stream in and expand inputs from all gpus (including ourselves
+				for (int i = 0; i < num_gpus; i++) {
+
+					int peer_gpu 		= (gpu + i) % num_gpus;
+					int queue_offset 	= sorting_spines[peer_gpu][bins_per_gpu * gpu * sort_grid_size];
+					int queue_oob 		= sorting_spines[peer_gpu][bins_per_gpu * (gpu + 1) * sort_grid_size];
+					int num_elements	= queue_oob - queue_offset;
+/*
+					printf("Gpu %d getting %d from gpu %d: "
+							"queue_offset: %d @ %d,"
+							"queue_oob: %d @ %d\n",
+						gpu, num_elements, peer_gpu,
+						queue_offset, bins_per_gpu * gpu * sort_grid_size,
+						queue_oob, bins_per_gpu * (gpu + 1) * sort_grid_size);
+					fflush(stdout);
+*/
+/*
+					printf("Input: \n");
+					DisplayDeviceResults(
+							sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,
+							num_elements);
+					fflush(stdout);
+*/
+					expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
+							<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+						-1,
+						num_elements,
+						iteration[gpu],
+						bfs_problem.gpu_vertex_range[gpu],
+						sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,							// sorted in
+						(VertexId *) sort_storage[peer_gpu].d_values[sort_storage[peer_gpu].selector] + queue_offset,			// sorted parents in
+						sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
+						(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents out
+						bfs_problem.d_column_indices[gpu],
+						bfs_problem.d_row_offsets[gpu],
+						bfs_problem.d_source_path[gpu],
+						work_progress[gpu]);
+/*
+					// Mooch
+					if (util::B40CPerror(cudaThreadSynchronize(),
+						"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
+*/
+				}
+			}
+
+			// Synchronize all GPUs to so that they may read their peer expansion
+			// queues without having the results be clobbered by run-ahead compaction
+			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
+				if (util::B40CPerror(cudaSetDevice(gpu),
+					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+				if (this->work_progress[gpu].GetQueueLength(iteration[gpu] + 1, sort_storage[gpu].num_elements)) exit(0);
+				printf("Iteration %d GPU %d expand queued %d\n", iteration[gpu], gpu, sort_storage[gpu].num_elements);
+/*
+				if (util::B40CPerror(cudaDeviceSynchronize(),
+					"MultiGpuBfsEnactor cudaDeviceSynchronize failed", __FILE__, __LINE__)) exit(1);
+*/
+			}
+
+			// Compact work queues
+			for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
+
+				// Set device
+				if (util::B40CPerror(cudaSetDevice(gpu),
+					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+				iteration[gpu]++;
+
+				// Upsweep
+				compact::UpsweepKernel<CompactUpsweep, INSTRUMENT>
+						<<<compact_grid_size, CompactUpsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+					iteration[gpu],
+					sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],			// expanded in
+					bfs_problem.d_keep[gpu],
+					(SizeT *) spine[gpu](),
+					bfs_problem.d_collision_cache[gpu],
+					work_progress[gpu]);
+/*
+				// Mooch
+				if (util::B40CPerror(cudaThreadSynchronize(),
+					"MultiGpuBfsEnactor UpsweepKernel failed", __FILE__, __LINE__)) exit(1);
+*/
+				// Spine
+				scan::SpineKernel<CompactSpine><<<1, CompactSpine::THREADS>>>(
+					(SizeT*) spine[gpu](), (SizeT*) spine[gpu](), spine_elements);
+/*
+				// Mooch
+				if (util::B40CPerror(cudaThreadSynchronize(),
+					"MultiGpuBfsEnactor SpineKernel failed", __FILE__, __LINE__)) exit(1);
+*/
+				// Downsweep
+				compact::DownsweepKernel<CompactDownsweep, INSTRUMENT>
+						<<<compact_grid_size, CompactDownsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+					iteration[gpu],
+					sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded in
+					(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector ^ 1],		// expanded parents in
+					bfs_problem.d_keep[gpu],
+					sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// compacted out
+					(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// compacted parents out
+					(SizeT *) spine[gpu](),
+					work_progress[gpu]);
+/*
+				// Mooch
+				if (util::B40CPerror(cudaThreadSynchronize(),
+					"MultiGpuBfsEnactor DownsweepKernel failed", __FILE__, __LINE__)) exit(1);
+*/
+			}
+		}
 
 		return retval;
 	}
