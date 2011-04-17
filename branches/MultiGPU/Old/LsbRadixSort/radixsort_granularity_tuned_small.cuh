@@ -103,7 +103,7 @@ struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 		SizeT,					// SizeT
 
 		// Common
-		2,						// RADIX_BITS: 					4-bit radix digits
+		1,						// RADIX_BITS: 					4-bit radix digits
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
 		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
 		util::io::st::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
@@ -132,7 +132,7 @@ struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 		(B40C_MAX(sizeof(KeyType), sizeof(ValueType)) <= 4) ?
 			0 : 					// Normal keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycles/tile
 			0, 						// Large keys|values: 	DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
-		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 1		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
+		B40C_LOG_WARP_THREADS(CUDA_ARCH) + 0		// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
 	> 
 {};
 

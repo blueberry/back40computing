@@ -421,10 +421,7 @@ struct UpsweepCta
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
 				tile.vertex_id[0],
 				d_in + cta_offset);
-/*
-			printf("Upsweep block %d thread %d looking at vertex %d @ %llu\n",
-				blockIdx.x, threadIdx.x, tile.vertex_id[0], (unsigned long long) (d_in + cta_offset));
-*/
+
 			// Cull valid flags using global collision bitmask
 			tile.BitmaskCull(this);
 
@@ -459,10 +456,6 @@ struct UpsweepCta
 
 		// Write output
 		if (threadIdx.x == 0) {
-/*
-			printf("Block %d thread %d reduced %d valid queue items\n",
-				blockIdx.x, threadIdx.x, carry);
-*/
 			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);
 		}

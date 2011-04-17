@@ -607,7 +607,7 @@ void RunTests(
 	{
 		exit(1);
 	}
-	
+
 	// Initialize statistics
 	Stats stats[4];
 	stats[0] = Stats("Simple CPU BFS");
@@ -669,7 +669,7 @@ void RunTests(
 	
 	if (reference_source_dist) free(reference_source_dist);
 	if (h_source_path) free(h_source_path);
-	
+
 	cudaThreadSynchronize();
 }
 

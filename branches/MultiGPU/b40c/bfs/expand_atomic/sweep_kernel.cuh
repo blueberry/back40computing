@@ -44,7 +44,8 @@ struct SweepPass
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
-		typename KernelConfig::VertexId 		&gpu_base_vertex,
+		typename KernelConfig::VertexId 		&sub_iteration,
+		typename KernelConfig::VertexId 		&num_gpus,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -73,7 +74,7 @@ struct SweepPass
 		// CTA processing abstraction
 		SweepCta cta(
 			iteration,
-			gpu_base_vertex,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -105,13 +106,13 @@ template <typename SizeT, typename IterationT>
 __device__ __forceinline__ SizeT StealWork(
 	util::CtaWorkProgress &work_progress,
 	int count,
-	IterationT iteration)
+	IterationT sub_iteration)
 {
 	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
 
 	// Thread zero atomically steals work from the progress counter
 	if (threadIdx.x == 0) {
-		s_offset = work_progress.Steal<SizeT>(count, iteration);
+		s_offset = work_progress.Steal<SizeT>(count, sub_iteration);
 	}
 
 	__syncthreads();		// Protect offset
@@ -130,7 +131,8 @@ struct SweepPass <KernelConfig, true>
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
-		typename KernelConfig::VertexId 		&gpu_base_vertex,
+		typename KernelConfig::VertexId 		&sub_iteration,
+		typename KernelConfig::VertexId 		&num_gpus,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -148,7 +150,7 @@ struct SweepPass <KernelConfig, true>
 		// CTA processing abstraction
 		SweepCta cta(
 			iteration,
-			gpu_base_vertex,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -164,7 +166,7 @@ struct SweepPass <KernelConfig, true>
 
 		// Worksteal full tiles, if any
 		SizeT offset;
-		while ((offset = StealWork<SizeT>(work_progress, KernelConfig::TILE_ELEMENTS, iteration)) < unguarded_elements) {
+		while ((offset = StealWork<SizeT>(work_progress, KernelConfig::TILE_ELEMENTS, sub_iteration)) < unguarded_elements) {
 			cta.template ProcessTile<true>(offset);
 		}
 
@@ -190,7 +192,8 @@ void SweepKernel(
 	typename KernelConfig::VertexId 		src,
 	typename KernelConfig::SizeT			num_elements,
 	typename KernelConfig::VertexId 		iteration,
-	typename KernelConfig::VertexId			gpu_base_vertex,
+	typename KernelConfig::VertexId 		sub_iteration,
+	typename KernelConfig::VertexId			num_gpus,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
@@ -249,7 +252,8 @@ void SweepKernel(
 		// across CTAs
 		SweepPass<KernelConfig, false>::Invoke(
 			iteration,
-			gpu_base_vertex,
+			sub_iteration,
+			num_gpus,
 			d_in,
 			d_parent_in,
 			d_out,
@@ -274,7 +278,7 @@ void SweepKernel(
 			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+			work_progress.template PrepResetSteal<SizeT>(sub_iteration + 1);
 
 		}
 
@@ -283,7 +287,8 @@ void SweepKernel(
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
-			gpu_base_vertex,
+			sub_iteration,
+			num_gpus,
 			d_in,
 			d_parent_in,
 			d_out,

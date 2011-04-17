@@ -36,7 +36,7 @@
 namespace b40c {
 namespace bfs {
 
-#define B40C_DEFAULT_QUEUE_SIZING 1.15
+#define B40C_DEFAULT_QUEUE_SIZING 1.25
 
 /**
  * CSR storage management structure for BFS problems.  
@@ -91,14 +91,13 @@ struct BfsCsrProblem
 	// Vector of valid flags for elements in the frontier queue
 	ValidFlag 		*d_keep[MAX_GPUS];
 
-	// Maximum size of the queues
-	SizeT 			max_expand_queue_size;
-	SizeT 			max_compact_queue_size;
+	// Maximum size factor (in terms of total edges) of the queues
+	double 			queue_sizing;
 
 	// Actual number of GPUS
 	int				num_gpus;
-	VertexId		gpu_vertex_range[MAX_GPUS + 1];
-	SizeT			gpu_edge_range[MAX_GPUS + 1];
+	VertexId		gpu_nodes[MAX_GPUS + 1];
+	SizeT			gpu_edges[MAX_GPUS + 1];
 
 
 	/**
@@ -117,8 +116,7 @@ struct BfsCsrProblem
 	BfsCsrProblem() :
 		nodes(0),
 		edges(0),
-		max_expand_queue_size(0),
-		max_compact_queue_size(0),
+		queue_sizing(1.0),
 		num_gpus(0)
 	{
 		for (int i = 0; i < MAX_GPUS; i++) {
@@ -163,19 +161,16 @@ struct BfsCsrProblem
 		}
 	}
 
-	/**
-	 * Returns the number of bits to shift a vertex ID to get a gpu_id
-	 */
 	template <typename VertexId>
-	int ShiftBits(VertexId nodes, int num_gpus)
+	int Gpu(VertexId vertex)
 	{
-		int retval = 0;
-		VertexId max_vertex = nodes - 1;
-		while (max_vertex >= num_gpus) {
-			max_vertex >>= 1;
-			retval++;
-		}
-		return retval;
+		return vertex & (num_gpus - 1);
+	}
+
+	template <typename VertexId>
+	VertexId GpuRow(VertexId vertex)
+	{
+		return vertex / num_gpus;
 	}
 
 	/**
@@ -185,16 +180,34 @@ struct BfsCsrProblem
 	{
 		cudaError_t retval = cudaSuccess;
 
+		// Copy out
+		VertexId* gpu_source_path[MAX_GPUS];
 		for (int gpu = 0; gpu < num_gpus; gpu++) {
+			// Set device
+			if (util::B40CPerror(cudaSetDevice(gpu),
+				"BfsCsrProblem cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
-			VertexId gpu_vertices = gpu_vertex_range[gpu + 1] - gpu_vertex_range[gpu];
-
+			// Allocate and copy out
+			gpu_source_path[gpu] = (VertexId *) malloc(sizeof(VertexId) * gpu_nodes[gpu]);
 			if (retval = util::B40CPerror(cudaMemcpy(
-					h_source_path + gpu_vertex_range[gpu],
+					gpu_source_path[gpu],
 					d_source_path[gpu],
-					gpu_vertices * sizeof(SizeT),
+					sizeof(VertexId) * gpu_nodes[gpu],
 					cudaMemcpyDeviceToHost),
 				"BfsCsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
+		}
+
+		// Combine
+		for (VertexId node = 0; node < nodes; node++) {
+
+			int 		gpu = Gpu(node);
+			VertexId 	gpu_row = GpuRow(node);
+			h_source_path[node] = gpu_source_path[gpu][gpu_row];
+		}
+
+		// Clean up
+		for (int gpu = 0; gpu < num_gpus; gpu++) {
+			if (gpu_source_path[gpu]) free(gpu_source_path[gpu]);
 		}
 
 		return retval;
@@ -216,15 +229,12 @@ struct BfsCsrProblem
 		this->nodes						= nodes;
 		this->edges 					= edges;
 		this->num_gpus 					= num_gpus;
-		this->max_expand_queue_size 	= (queue_sizing > 0.0) ?
-											queue_sizing * double(edges) : 							// Queue-size override
-											double(B40C_DEFAULT_QUEUE_SIZING) * double(edges);		// Use default queue size
-		this->max_compact_queue_size 	= max_expand_queue_size;
 
-		printf("Expand queue size: %d, Compact queue size: %d\n", this->max_expand_queue_size, this->max_compact_queue_size);
+		if (queue_sizing <= 0.0) {
+			queue_sizing = B40C_DEFAULT_QUEUE_SIZING;
+		}
+		this->queue_sizing = queue_sizing;
 
-		int shift_bits = ShiftBits(nodes, num_gpus);
-		SizeT *h_gpu_row_offsets = NULL;
 		for (int gpu = 0; gpu < num_gpus; gpu++) {
 
 			// Set device
@@ -235,54 +245,91 @@ struct BfsCsrProblem
 			if (util::B40CPerror(cudaStreamCreate(&stream[gpu]),
 				"BfsCsrProblem cudaStreamCreate failed", __FILE__, __LINE__)) exit(1);
 
-			// Compute GPU offsets
-			gpu_vertex_range[gpu] 		= gpu << shift_bits;
-			gpu_vertex_range[gpu + 1]	= B40C_MIN(nodes, (gpu + 1) << shift_bits);
-			VertexId gpu_vertices 		= gpu_vertex_range[gpu + 1] - gpu_vertex_range[gpu];
+			gpu_nodes[gpu] = 0;
+			gpu_edges[gpu] = 0;
+		}
 
-			gpu_edge_range[gpu]			= h_row_offsets[gpu_vertex_range[gpu]];
-			gpu_edge_range[gpu + 1]		= h_row_offsets[gpu_vertex_range[gpu + 1]];
-			SizeT gpu_edges				= gpu_edge_range[gpu + 1] - gpu_edge_range[gpu];
+		// Count up nodes and edges for each gpu
+		for (VertexId node = 0; node < nodes; node++) {
+			int gpu = Gpu(node);
+			gpu_nodes[gpu]++;
+			gpu_edges[gpu] += h_row_offsets[node + 1] - h_row_offsets[node];
+		}
 
-			printf("GPU %d gets %d vertices [%d,%d) and %d edges[%d,%d)\n",
-				gpu,
-				gpu_vertices, gpu_vertex_range[gpu], gpu_vertex_range[gpu + 1],
-				gpu_edges, gpu_edge_range[gpu], gpu_edge_range[gpu + 1]);
+		// Allocate data structures for gpus on host
+		SizeT* gpu_row_offsets[MAX_GPUS];
+		VertexId* gpu_column_indices[MAX_GPUS];
+		for (int gpu = 0; gpu < num_gpus; gpu++) {
+
+			printf("GPU %d gets %d vertices and %d edges\n",
+				gpu, gpu_nodes[gpu], gpu_edges[gpu]);
+			fflush(stdout);
+
+			gpu_row_offsets[gpu] = (SizeT*) malloc(sizeof(SizeT) * (gpu_nodes[gpu] + 1));
+			gpu_row_offsets[gpu][0] = 0;
+
+			gpu_column_indices[gpu] = (VertexId*) malloc(sizeof(VertexId) * gpu_edges[gpu]);
+
+			// Reset for construction
+			gpu_edges[gpu] = 0;
+		}
+
+		printf("Done allocating gpu data structures\n");
+		fflush(stdout);
+
+		// Construct data structures for gpus on host
+		for (VertexId node = 0; node < nodes; node++) {
+
+			int 		gpu = Gpu(node);
+			VertexId 	gpu_row = GpuRow(node);
+			SizeT 		row_edges = h_row_offsets[node + 1] - h_row_offsets[node];
+
+			memcpy(
+				gpu_column_indices[gpu] + gpu_row_offsets[gpu][gpu_row],
+				h_column_indices + h_row_offsets[node],
+				row_edges * sizeof(VertexId));
+
+			gpu_edges[gpu] += row_edges;
+			gpu_row_offsets[gpu][gpu_row + 1] = gpu_edges[gpu];
+		}
+
+		printf("Done constructing gpu data structures\n");
+		fflush(stdout);
+
+		// Initialize data structures on GPU
+		for (int gpu = 0; gpu < num_gpus; gpu++) {
+
+			// Set device
+			if (util::B40CPerror(cudaSetDevice(gpu),
+				"BfsCsrProblem cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+
+			// Allocate and initialize d_row_offsets: copy and adjust by gpu offset
+			if (retval = util::B40CPerror(cudaMalloc(
+					(void**) &d_row_offsets[gpu],
+					(gpu_nodes[gpu] + 1) * sizeof(SizeT)),
+				"BfsCsrProblem cudaMalloc d_row_offsets failed", __FILE__, __LINE__)) break;
+			if (retval = util::B40CPerror(cudaMemcpy(
+					d_row_offsets[gpu],
+					gpu_row_offsets[gpu],
+					(gpu_nodes[gpu] + 1) * sizeof(SizeT),
+					cudaMemcpyHostToDevice),
+				"BfsCsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
 
 			// Allocate and initialize d_column_indices
 			if (retval = util::B40CPerror(cudaMalloc(
 					(void**) &d_column_indices[gpu],
-					gpu_edges * sizeof(VertexId)),
+					gpu_edges[gpu] * sizeof(VertexId)),
 				"BfsCsrProblem cudaMalloc d_column_indices failed", __FILE__, __LINE__)) break;
 			if (retval = util::B40CPerror(cudaMemcpy(
 					d_column_indices[gpu],
-					h_column_indices + gpu_edge_range[gpu],
-					gpu_edges * sizeof(VertexId),
+					gpu_column_indices[gpu],
+					gpu_edges[gpu] * sizeof(VertexId),
 					cudaMemcpyHostToDevice),
 				"BfsCsrProblem cudaMemcpy d_column_indices failed", __FILE__, __LINE__)) break;
 
-			// Allocate and initialize d_row_offsets: copy and adjust by gpu offset
-			if (h_gpu_row_offsets) {
-				free(h_gpu_row_offsets);
-			}
-			h_gpu_row_offsets = (SizeT *) malloc((gpu_vertices + 1) * sizeof(SizeT));
-			for (int row = 0; row < gpu_vertices + 1; row++) {
-				h_gpu_row_offsets[row] = h_row_offsets[gpu_vertex_range[gpu] + row] - gpu_edge_range[gpu];
-			}
-
-			if (retval = util::B40CPerror(cudaMalloc(
-					(void**) &d_row_offsets[gpu],
-					(gpu_vertices + 1) * sizeof(SizeT)),
-				"BfsCsrProblem cudaMalloc d_row_offsets failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaMemcpy(
-					d_row_offsets[gpu],
-					h_gpu_row_offsets,
-					(gpu_vertices + 1) * sizeof(SizeT),
-					cudaMemcpyHostToDevice),
-				"BfsCsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
+			if (gpu_row_offsets[gpu]) free(gpu_row_offsets[gpu]);
+			if (gpu_column_indices[gpu]) free(gpu_column_indices[gpu]);
 		};
-
-		if (h_gpu_row_offsets) free(h_gpu_row_offsets);
 
 		return retval;
 	}
@@ -305,13 +352,12 @@ struct BfsCsrProblem
 			//
 			// Allocate ancillary storage if necessary
 			//
-			VertexId gpu_vertices = gpu_vertex_range[gpu + 1] - gpu_vertex_range[gpu];
 
 			// Allocate d_source_path if necessary
 			if (!d_source_path[gpu]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &d_source_path[gpu],
-						gpu_vertices * sizeof(VertexId)),
+						gpu_nodes[gpu] * sizeof(VertexId)),
 					"BfsCsrProblem cudaMalloc d_source_path failed", __FILE__, __LINE__)) break;
 			}
 
@@ -326,16 +372,20 @@ struct BfsCsrProblem
 			}
 
 			// Allocate queues if necessary
+			SizeT queue_elements = double(gpu_edges[gpu]) * queue_sizing;
+			printf("GPU %d queue size: %d\n", gpu, queue_elements);
+			fflush(stdout);
+
 			if (!d_expand_queue[gpu]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &d_expand_queue[gpu],
-						max_expand_queue_size * sizeof(VertexId)),
+						queue_elements * sizeof(VertexId)),
 					"BfsCsrProblem cudaMalloc d_expand_queue failed", __FILE__, __LINE__)) break;
 			}
 			if (!d_compact_queue[gpu]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &d_compact_queue[gpu],
-						max_compact_queue_size * sizeof(VertexId)),
+						queue_elements * sizeof(VertexId)),
 					"BfsCsrProblem cudaMalloc d_compact_queue failed", __FILE__, __LINE__)) break;
 			}
 
@@ -344,13 +394,13 @@ struct BfsCsrProblem
 				if (!d_expand_parent_queue[gpu]) {
 					if (retval = util::B40CPerror(
 							cudaMalloc((void**) &d_expand_parent_queue[gpu],
-							max_expand_queue_size * sizeof(VertexId)),
+							queue_elements * sizeof(VertexId)),
 						"BfsCsrProblem cudaMalloc d_expand_parent_queue failed", __FILE__, __LINE__)) break;
 				}
 				if (!d_compact_parent_queue[gpu]) {
 					if (retval = util::B40CPerror(cudaMalloc(
 							(void**) &d_compact_parent_queue[gpu],
-							max_compact_queue_size * sizeof(VertexId)),
+							queue_elements * sizeof(VertexId)),
 						"BfsCsrProblem cudaMalloc d_compact_parent_queue failed", __FILE__, __LINE__)) break;
 				}
 			}
@@ -360,7 +410,7 @@ struct BfsCsrProblem
 			if (!d_keep[gpu]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &d_keep[gpu],
-						max_expand_queue_size * sizeof(ValidFlag)),
+						queue_elements * sizeof(ValidFlag)),
 					"BfsCsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
 
@@ -374,9 +424,12 @@ struct BfsCsrProblem
 			int memset_grid_size;
 
 			// Initialize d_source_path elements to -1
-			memset_grid_size = B40C_MIN(memset_grid_size_max, (gpu_vertices + memset_block_size - 1) / memset_block_size);
-			util::MemsetKernel<VertexId><<<memset_grid_size, memset_block_size, 0, stream[gpu]>>>(
-				d_source_path[gpu], -1, nodes);
+			memset_grid_size = B40C_MIN(memset_grid_size_max, (gpu_nodes[gpu] + memset_block_size - 1) / memset_block_size);
+			util::MemsetKernel<VertexId>
+					<<<memset_grid_size, memset_block_size, 0, stream[gpu]>>>(
+				d_source_path[gpu],
+				-1,
+				gpu_nodes[gpu]);
 
 			if (retval = util::B40CPerror(cudaThreadSynchronize(),
 				"MemsetKernel failed", __FILE__, __LINE__)) break;
@@ -384,8 +437,10 @@ struct BfsCsrProblem
 			// Initialize d_collision_cache elements to 0
 			memset_grid_size = B40C_MIN(memset_grid_size_max, (bitmask_elements + memset_block_size - 1) / memset_block_size);
 			util::MemsetKernel<CollisionMask>
-				<<<memset_grid_size, memset_block_size, 0, stream[gpu]>>>(
-					d_collision_cache[gpu], 0, bitmask_elements);
+					<<<memset_grid_size, memset_block_size, 0, stream[gpu]>>>(
+				d_collision_cache[gpu],
+				0,
+				bitmask_elements);
 
 			if (retval = util::B40CPerror(cudaThreadSynchronize(),
 				"MemsetKernel failed", __FILE__, __LINE__)) break;

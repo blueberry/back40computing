@@ -62,7 +62,7 @@ class MultiGpuBfsEnactor : public BaseBfsEnactor
 protected:
 
 	static const int MAX_GPUS 			= 2;
-	static const int RADIX_BITS 		= 2;
+	static const int RADIX_BITS 		= 1;
 
 	typedef int SortingSpine[128 * (1 << RADIX_BITS) * 8];
 
@@ -82,6 +82,7 @@ protected:
 	 * Pinned memory for sorting spines
 	 */
 	volatile int (*sorting_spines)[128 * (1 << RADIX_BITS) * 8];
+	int (*d_sorting_spines)[128 * (1 << RADIX_BITS) * 8];
 
 public: 	
 	
@@ -98,6 +99,9 @@ public:
 		if (b40c::util::B40CPerror(cudaHostAlloc((void **)&sorting_spines, sizeof(SortingSpine) * MAX_GPUS, flags),
 			"CsrGraph cudaHostAlloc row_offsets failed", __FILE__, __LINE__)) exit(1);
 
+		// Map the pinned sorting spines into device pointers
+		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_sorting_spines, (void *) sorting_spines, 0),
+			"LevelGridBfsEnactor cudaHostGetDevicePointer d_column_indices failed", __FILE__, __LINE__)) exit(1);
 	}
 
 
@@ -125,69 +129,7 @@ public:
     	avg_live = 0;
     }
 
-	template <typename VertexId>
-	struct SortDispatch
-	{
-		template <int START, int MAX_START>
-		struct Iterate
-		{
-			template <typename BfsCsrProblem, typename SortStorage, typename SortingEnactor>
-			static void Enact(
-				BfsCsrProblem 	&bfs_problem,
-				SortStorage 	&storage,
-				SortingEnactor 	&sorting_enactor,
-				int 			grid_size)
-			{
-				if (bfs_problem.nodes <= (1 << (START + RADIX_BITS))) {
-					sorting_enactor.template EnactSort<START, RADIX_BITS, SMALL_PROBLEM>(storage, grid_size);
-				} else {
-					Iterate<START + 1, MAX_START>::Enact(bfs_problem, storage, sorting_enactor, grid_size);
-				}
-			}
-		};
 
-		template <int MAX_START>
-		struct Iterate<MAX_START, MAX_START>
-		{
-			template <typename BfsCsrProblem, typename SortStorage, typename SortingEnactor>
-			static void Enact(
-				BfsCsrProblem 	&bfs_problem,
-				SortStorage 	&storage,
-				SortingEnactor 	&sorting_enactor,
-				int 			grid_size)
-			{
-				sorting_enactor.template EnactSort<MAX_START, RADIX_BITS, SMALL_PROBLEM>(storage, grid_size);
-			}
-		};
-
-		template <typename BfsCsrProblem, typename SortStorage, typename SortingEnactor>
-		static void Enact(
-			BfsCsrProblem 	&bfs_problem,
-			SortStorage 	&storage,
-			SortingEnactor 	&sorting_enactor,
-			int 			grid_size)
-		{
-			const int MAX_START = (sizeof(VertexId) * 8) - RADIX_BITS;
-			Iterate<0, MAX_START>::Enact(bfs_problem, storage, sorting_enactor, grid_size);
-		}
-	};
-
-	/**
-	 * Returns the number of bits to shift a vertex ID to get a gpu_id
-	 */
-	template <typename VertexId>
-	int ShiftBits(VertexId nodes, int num_gpus)
-	{
-		int retval = 0;
-		VertexId max_vertex = nodes - 1;
-		while (max_vertex >= num_gpus) {
-			max_vertex >>= 1;
-			retval++;
-		}
-		return retval;
-	}
-
-    
 	/**
 	 * Enacts a breadth-first-search on the specified graph problem.
 	 *
@@ -220,8 +162,7 @@ public:
 			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
 			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			false,					// WORK_STEALING
-// mooch			true,					// WORK_STEALING
+			true,					// WORK_STEALING
 			6> ExpandAtomicSweep;
 
 
@@ -273,27 +214,27 @@ public:
 		int expand_grid_size 		= MaxGridSize(expand_min_occupancy, max_grid_size);
 		int sort_grid_size 			= expand_grid_size;
 
-		printf("DEBUG: BFS expand min occupancy %d, level-grid size %d\n",
+		if (DEBUG) printf("DEBUG: BFS expand min occupancy %d, level-grid size %d\n",
 				expand_min_occupancy, expand_grid_size);
 
 		int compact_min_occupancy 	= B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
 		int compact_grid_size 		= MaxGridSize(compact_min_occupancy, max_grid_size);
 		int spine_elements 			= compact_grid_size;
 
-		printf("DEBUG: BFS compact min occupancy %d, level-grid size %d\n",
+		if (DEBUG) printf("DEBUG: BFS compact min occupancy %d, level-grid size %d\n",
 			compact_min_occupancy, compact_grid_size);
 
 		//
 		// Configure our state
 		//
 
-		int shift_bits = ShiftBits(bfs_problem.nodes, num_gpus);
 		int bins_per_gpu = (1 << RADIX_BITS) / num_gpus;
-		printf("Shift bits: %d, bins per gpu: %d\n", shift_bits, bins_per_gpu);
+		printf("Bins per gpu: %d\n", bins_per_gpu);
 
 		// Configure sorting storage
 		MultiCtaSortStorage<VertexId, SortValueType> 	sort_storage[MAX_GPUS];
 		VertexId 										iteration[MAX_GPUS];
+		VertexId										sub_iteration[MAX_GPUS];
 
 		for (volatile int gpu = 0; gpu < num_gpus; gpu++) {
 
@@ -304,8 +245,9 @@ public:
 			// Set stream and pinned spines on sorting enactor
 			sorting_enactor[gpu].BfsConfigure(
 				bfs_problem.stream[gpu],
-				(void *) sorting_spines[gpu],
+				(void *) d_sorting_spines[gpu],
 				sizeof(SortingSpine));
+			sorting_enactor[gpu].DEBUG = DEBUG;
 
 			// Setup queue compaction spines
 			if (retval = spine[gpu].template Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
@@ -313,14 +255,15 @@ public:
 			// Setup work progresses
 			if (retval = work_progress[gpu].Setup()) exit(1);
 
-			// Radix sorting enactors
+			// Radix sorting storage
 			sort_storage[gpu].num_elements 		= 0;
 			sort_storage[gpu].d_keys[0] 		= bfs_problem.d_compact_queue[gpu];
 			sort_storage[gpu].d_keys[1] 		= bfs_problem.d_expand_queue[gpu];
 			sort_storage[gpu].d_values[0] 		= (SortValueType *) bfs_problem.d_compact_parent_queue[gpu];
 			sort_storage[gpu].d_values[1] 		= (SortValueType *) bfs_problem.d_expand_parent_queue[gpu];
 
-			iteration[gpu]= 0;
+			iteration[gpu]						= 0;
+			sub_iteration[gpu]					= 0;
 		}
 
 
@@ -332,7 +275,7 @@ public:
 			if (util::B40CPerror(cudaSetDevice(gpu),
 				"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
-			bool owns_source = ((src >> shift_bits) == gpu);
+			bool owns_source = (gpu == bfs_problem.Gpu(src));
 			if (owns_source) {
 				printf("GPU %d owns source %d\n", gpu, src);
 			}
@@ -342,7 +285,8 @@ public:
 				(owns_source) ? src : -1,					// source
 				(owns_source) ? 1 : 0,						// num_elements
 				iteration[gpu],
-				bfs_problem.gpu_vertex_range[gpu],
+				sub_iteration[gpu],
+				num_gpus,
 				sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// sorted in
 				(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// sorted parents in
 				sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
@@ -351,14 +295,12 @@ public:
 				bfs_problem.d_row_offsets[gpu],
 				bfs_problem.d_source_path[gpu],
 				work_progress[gpu]);
-/*
-			// Mooch
-			if (util::B40CPerror(cudaThreadSynchronize(),
+			if (DEBUG && util::B40CPerror(cudaThreadSynchronize(),
 				"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
 
-			sort_storage[gpu].selector ^= 1;
-			iteration[gpu] += 1;
+			sort_storage[gpu].selector 		^= 1;
+			iteration[gpu] 					+= 1;
+			sub_iteration[gpu] 				+= 1;
 		}
 
 		// BFS passes
@@ -374,16 +316,19 @@ public:
 					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
 				if (this->work_progress[gpu].GetQueueLength(iteration[gpu], sort_storage[gpu].num_elements)) exit(0);
-				printf("Iteration %d GPU %d compact queued %d\n", iteration[gpu], gpu, sort_storage[gpu].num_elements);
+				printf("Iteration %d GPU %d compact queued %d\n",
+					iteration[gpu] - 1,
+					gpu,
+					sort_storage[gpu].num_elements);
 				if (sort_storage[gpu].num_elements) {
 					done = false;
 				}
-/*
-				printf("Pre- sorting gpu %d:\n", gpu);
-				DisplayDeviceResults(
-					sort_storage[gpu].d_keys[sort_storage[gpu].selector],
-					sort_storage[gpu].num_elements);
-*/
+
+//				printf("Pre- sorting gpu %d:\n", gpu);
+//				DisplayDeviceResults(
+//					sort_storage[gpu].d_keys[sort_storage[gpu].selector],
+//					sort_storage[gpu].num_elements);
+
 			}
 			if (done) {
 				// All done in all GPUs
@@ -396,27 +341,16 @@ public:
 				// Set device
 				if (util::B40CPerror(cudaSetDevice(gpu),
 					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
-/*
-				// Mooch sort perfect
-				sorting_enactor[gpu].template EnactSort<SMALL_PROBLEM>(sort_storage[gpu], sort_grid_size);
-*/
-				// Sort/Bin
-				SortDispatch<VertexId>::Enact(
-					bfs_problem,
+
+				if (sorting_enactor[gpu].template EnactSort<0, RADIX_BITS, SMALL_PROBLEM>(
 					sort_storage[gpu],
-					sorting_enactor[gpu],
-					sort_grid_size);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
-					"MultiGpuBfsEnactor SortDispatch failed", __FILE__, __LINE__)) exit(1);
-*/
-/*
-				printf("Post sorting gpu %d:\n", gpu);
-				DisplayDeviceResults(
-					sort_storage[gpu].d_keys[sort_storage[gpu].selector],
-					sort_storage[gpu].num_elements);
-*/
+					sort_grid_size)) exit(1);
+
+//				printf("Post sorting gpu %d:\n", gpu);
+//				DisplayDeviceResults(
+//					sort_storage[gpu].d_keys[sort_storage[gpu].selector],
+//					sort_storage[gpu].num_elements);
+
 			}
 
 			// Synchronize all GPUs to protect spines
@@ -441,28 +375,20 @@ public:
 					int queue_offset 	= sorting_spines[peer_gpu][bins_per_gpu * gpu * sort_grid_size];
 					int queue_oob 		= sorting_spines[peer_gpu][bins_per_gpu * (gpu + 1) * sort_grid_size];
 					int num_elements	= queue_oob - queue_offset;
-/*
-					printf("Gpu %d getting %d from gpu %d: "
-							"queue_offset: %d @ %d,"
-							"queue_oob: %d @ %d\n",
-						gpu, num_elements, peer_gpu,
-						queue_offset, bins_per_gpu * gpu * sort_grid_size,
-						queue_oob, bins_per_gpu * (gpu + 1) * sort_grid_size);
-					fflush(stdout);
-*/
-/*
-					printf("Input: \n");
-					DisplayDeviceResults(
-							sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,
-							num_elements);
-					fflush(stdout);
-*/
+
+//					printf("Gpu %d getting %d from gpu %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
+//						gpu, num_elements, peer_gpu,
+//						queue_offset, bins_per_gpu * gpu * sort_grid_size,
+//						queue_oob, bins_per_gpu * (gpu + 1) * sort_grid_size);
+//					fflush(stdout);
+
 					expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
 							<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
 						-1,
 						num_elements,
 						iteration[gpu],
-						bfs_problem.gpu_vertex_range[gpu],
+						sub_iteration[gpu],
+						num_gpus,
 						sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,							// sorted in
 						(VertexId *) sort_storage[peer_gpu].d_values[sort_storage[peer_gpu].selector] + queue_offset,			// sorted parents in
 						sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
@@ -471,11 +397,10 @@ public:
 						bfs_problem.d_row_offsets[gpu],
 						bfs_problem.d_source_path[gpu],
 						work_progress[gpu]);
-/*
-					// Mooch
-					if (util::B40CPerror(cudaThreadSynchronize(),
+					if (DEBUG && util::B40CPerror(cudaThreadSynchronize(),
 						"MultiGpuBfsEnactor SweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
+
+					sub_iteration[gpu] += 1;
 				}
 			}
 
@@ -487,10 +412,6 @@ public:
 
 				if (this->work_progress[gpu].GetQueueLength(iteration[gpu] + 1, sort_storage[gpu].num_elements)) exit(0);
 				printf("Iteration %d GPU %d expand queued %d\n", iteration[gpu], gpu, sort_storage[gpu].num_elements);
-/*
-				if (util::B40CPerror(cudaDeviceSynchronize(),
-					"MultiGpuBfsEnactor cudaDeviceSynchronize failed", __FILE__, __LINE__)) exit(1);
-*/
 			}
 
 			// Compact work queues
@@ -511,19 +432,15 @@ public:
 					(SizeT *) spine[gpu](),
 					bfs_problem.d_collision_cache[gpu],
 					work_progress[gpu]);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
+				if (DEBUG && util::B40CPerror(cudaThreadSynchronize(),
 					"MultiGpuBfsEnactor UpsweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
+
 				// Spine
 				scan::SpineKernel<CompactSpine><<<1, CompactSpine::THREADS>>>(
 					(SizeT*) spine[gpu](), (SizeT*) spine[gpu](), spine_elements);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
+				if (DEBUG && util::B40CPerror(cudaThreadSynchronize(),
 					"MultiGpuBfsEnactor SpineKernel failed", __FILE__, __LINE__)) exit(1);
-*/
+
 				// Downsweep
 				compact::DownsweepKernel<CompactDownsweep, INSTRUMENT>
 						<<<compact_grid_size, CompactDownsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
@@ -535,11 +452,8 @@ public:
 					(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// compacted parents out
 					(SizeT *) spine[gpu](),
 					work_progress[gpu]);
-/*
-				// Mooch
-				if (util::B40CPerror(cudaThreadSynchronize(),
+				if (DEBUG && util::B40CPerror(cudaThreadSynchronize(),
 					"MultiGpuBfsEnactor DownsweepKernel failed", __FILE__, __LINE__)) exit(1);
-*/
 			}
 		}
 

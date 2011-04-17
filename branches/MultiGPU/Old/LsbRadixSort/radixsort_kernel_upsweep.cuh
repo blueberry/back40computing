@@ -86,15 +86,15 @@ template <
 struct UpsweepConfig
 {
 	typedef _KeyType							KeyType;
-	typedef _SizeT							SizeT;
+	typedef _SizeT								SizeT;
 	static const int RADIX_BITS					= _RADIX_BITS;
-	static const int LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY;
+	static const int LOG_SCHEDULE_GRANULARITY	= _LOG_SCHEDULE_GRANULARITY;
 	static const int CTA_OCCUPANCY  			= _CTA_OCCUPANCY;
 	static const int LOG_THREADS 				= _LOG_THREADS;
 	static const int LOG_LOAD_VEC_SIZE  		= _LOG_LOAD_VEC_SIZE;
 	static const int LOG_LOADS_PER_TILE 		= _LOG_LOADS_PER_TILE;
-	static const util::io::ld::CacheModifier READ_MODIFIER = _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER = _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 	static const bool EARLY_EXIT				= _EARLY_EXIT;
 };
 
@@ -139,13 +139,11 @@ struct UpsweepKernelConfig : UpsweepConfigType
 		LOG_TILE_ELEMENTS 					= LOG_TILE_ELEMENTS_PER_THREAD + UpsweepConfigType::LOG_THREADS,
 		TILE_ELEMENTS						= 1 << LOG_TILE_ELEMENTS,
 
-		// A lane is a row of 32-bit words, one words per thread, each words a
+		// A lane is a row of 32-bit words, one word per thread, each word is a
 		// composite of four 8-bit digit counters, i.e., we need one lane for every
 		// four radix digits.
 
-		LOG_COMPOSITE_LANES 				= (UpsweepConfigType::RADIX_BITS >= 2) ?
-												UpsweepConfigType::RADIX_BITS - 2 :
-												0,	// Always at least one lane
+		LOG_COMPOSITE_LANES 				= B40C_MAX(0, UpsweepConfigType::RADIX_BITS - 2), // Always at least one lane
 		COMPOSITE_LANES 					= 1 << LOG_COMPOSITE_LANES,
 	
 		LOG_COMPOSITES_PER_LANE				= UpsweepConfigType::LOG_THREADS,				// Every thread contributes one partial for each lane
@@ -211,8 +209,10 @@ struct ReduceCompositeLanes
 			unsigned char* composite_counters = (unsigned char *) &smem_pool[composite_offset];
 			local_counts[LANE][0] += composite_counters[0];
 			local_counts[LANE][1] += composite_counters[1];
-			local_counts[LANE][2] += composite_counters[2];
-			local_counts[LANE][3] += composite_counters[3];
+			if (Config::RADIX_BITS > 1) {
+				local_counts[LANE][2] += composite_counters[2];
+				local_counts[LANE][3] += composite_counters[3];
+			}
 
 			Iterate<LANE, TOTAL_LANES, COMPOSITE + 1, TOTAL_COMPOSITES>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
 		}
@@ -273,7 +273,7 @@ __device__ __forceinline__ void Bucket(
 	ExtractKeyBits<
 		KeyType, 
 		Config::CURRENT_BIT + 2, 
-		Config::RADIX_BITS - 2>::Extract(lane, key);
+		B40C_MAX(0, Config::RADIX_BITS - 2)>::Extract(lane, key);
 
 	if (__B40C_CUDA_ARCH__ >= 200) {	
 	
@@ -505,10 +505,11 @@ __device__ __forceinline__ void ReductionPass(
 	for (int LANE = 0; LANE < Config::LANES_PER_WARP; LANE++) {
 		local_counts[LANE][0] = 0;
 		local_counts[LANE][1] = 0;
-		local_counts[LANE][2] = 0;
-		local_counts[LANE][3] = 0;
+		if (Config::RADIX_BITS > 1) {
+			local_counts[LANE][2] = 0;
+			local_counts[LANE][3] = 0;
+		}
 	}
-	
 	// Reset encoded counters
 	ResetCompositeLanes<Config>(composite_column);
 	
@@ -531,7 +532,7 @@ __device__ __forceinline__ void ReductionPass(
 		Bucket<Config>(key, composite_column);
 		cta_offset += Config::THREADS;
 	}
-	
+
 	__syncthreads();
 	
 	// Aggregate back into local_count registers 
@@ -543,10 +544,10 @@ __device__ __forceinline__ void ReductionPass(
 	//
 	// Final raking reduction of aggregated local_counts within each warp  
 	//
-	
+
 	SizeT *raking_pool = reinterpret_cast<SizeT*>(smem_pool);
 
-	// Iterate over lanes per warp, placing the four counts from each into smem
+	// Iterate over composite lanes per warp, placing the four counts from each into smem
 	if (warp_id < Config::COMPOSITE_LANES) {
 
 		// My thread's (first) reduction counter placement offset
@@ -562,8 +563,10 @@ __device__ __forceinline__ void ReductionPass(
 			// Four counts per composite lane
 			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0) + STRIDE] = local_counts[i][0];
 			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1) + STRIDE] = local_counts[i][1];
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2) + STRIDE] = local_counts[i][2];
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3) + STRIDE] = local_counts[i][3];
+			if (Config::RADIX_BITS > 1) {
+				base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2) + STRIDE] = local_counts[i][2];
+				base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3) + STRIDE] = local_counts[i][3];
+			}
 		}
 	}
 

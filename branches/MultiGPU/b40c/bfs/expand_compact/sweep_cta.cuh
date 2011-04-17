@@ -192,11 +192,6 @@ struct SweepCta
 								cta->iteration,
 								cta->d_source_path + tile->vertex_id[LOAD][VEC]);
 						}
-/*
-						printf("\t\tIteration %d block %d thread %d found unvisited vertex %d with dist %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x,
-							tile->vertex_id[LOAD][VEC], source_path);
-*/
 					} else {
 
 						tile->vertex_id[LOAD][VEC] = -1;
@@ -251,20 +246,10 @@ struct SweepCta
 							cta->iteration,
 							cta->d_source_path + tile->vertex_id[LOAD][VEC]);
 					}
-/*
-					printf("Iteration %d block %d thread %d gathering row data (%d, %d) for unvisited vertex %d\n",
-						cta->iteration, blockIdx.x, threadIdx.x,
-						tile->row_offset[LOAD][VEC], tile->row_length[LOAD][VEC], tile->vertex_id[LOAD][VEC]);
-*/
 				}
 
 				tile->fine_row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
-/*
-				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
-					tile->row_length[LOAD][VEC] : 0;
-				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
-					0 : tile->row_length[LOAD][VEC];
-*/
+
 				Iterate<LOAD, VEC + 1>::NeighborDetails(cta, tile);
 			}
 
@@ -443,19 +428,9 @@ struct SweepCta
 						mask_byte, cta->d_collision_cache + mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
-
 						// Seen it
 						tile->vertex_id[LOAD][VEC] = -1;
-/*
-						printf("CULL Iteration %d block %d thread %d mask SET for vertex %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x, tile->vertex_id[LOAD][VEC]);
-*/
 					} else {
-/*
-						printf("CULL Iteration %d block %d thread %d mask UNSET for vertex %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x, tile->vertex_id[LOAD][VEC]);
-*/
-
 						// Update with best effort
 						mask_byte |= mask_bit;
 						util::io::ModifiedStore<util::io::st::cg>::St(
@@ -874,13 +849,7 @@ struct SweepCta
 			util::DefaultSum>::ScanTile(
 				srts_details,
 				tile.fine_row_rank);
-/*
-		if (tile.vertex_id[0][0] != -1) {
-			printf("\tBIteration %d block %d thread %d has rank %d/%d for unvisited vertex %d\n",
-				iteration, blockIdx.x, threadIdx.x,
-				tile.fine_row_rank[0][0], tile.enqueue_count, tile.vertex_id[0][0]);
-		}
-*/
+
 		__syncthreads();
 
 		tile.progress = 0;
@@ -902,11 +871,7 @@ struct SweepCta
 				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_tile.vertex_id[0][0],
 					d_column_indices + offset_scratch_pool[threadIdx.x]);
-/*
-				printf("Iteration %d block %d thread %d gathered neighbor %d\n",
-					iteration, blockIdx.x, threadIdx.x,
-					neighbor_tile.vertex_id[0][0]);
-*/
+
 				if (KernelConfig::MARK_PARENTS) {
 					// Gather parent
 					neighbor_tile.parent_id[0][0] = parent_scratch_pool[threadIdx.x];
