@@ -660,6 +660,7 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
+
 /*
 		// Perform single-grid contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(

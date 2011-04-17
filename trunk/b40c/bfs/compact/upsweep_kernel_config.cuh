@@ -68,6 +68,7 @@ struct UpsweepKernelConfig : _ProblemType
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
+	typedef char							ThreadId;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -108,21 +109,25 @@ struct UpsweepKernelConfig : _ProblemType
 		util::CtaWorkDistribution<SizeT>		work_decomposition;
 
 		enum {
-			// Amount of storage (in quads) for a reduction tree of SizeT partials the size of the CTA
-			REDUCTION_QUADS				= B40C_QUADS(THREADS * sizeof(SizeT)),
+			WARP_HASH_ELEMENTS			= 128,
+
 
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_QUADS		= B40C_QUADS((B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 											- sizeof(util::CtaWorkDistribution<SizeT>)
-											- 64),
+											- 64,
 
-			// Amount of repurposable quads to use for pool
-			SMEM_POOL_QUADS				= B40C_MAX(REDUCTION_QUADS, FULL_OCCUPANCY_QUADS),
-			SMEM_POOL_VERTEX_IDS		= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId) + 1,
+			HISTORY_HASH_ELEMENTS		= (FULL_OCCUPANCY_BYTES - sizeof(VertexId[WARPS][WARP_HASH_ELEMENTS])) / sizeof(VertexId),
 		};
 
 		// General pool for hashing & tree-reduction
-		uint4 							smem_pool_int4s[SMEM_POOL_QUADS];
+		union {
+			SizeT				reduction_tree[THREADS];
+			struct {
+				VertexId 		vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
+				VertexId		history[HISTORY_HASH_ELEMENTS];
+			} hashtables;
+		} smem_pool;
 	};
 
 	enum {
