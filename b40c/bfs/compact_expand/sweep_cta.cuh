@@ -105,7 +105,6 @@ struct SweepCta
 	SizeT					*offset_scratch_pool;
 	VertexId				*parent_scratch_pool;
 	VertexId 				*s_vid_hashtable;
-	ThreadId				*s_tid_hashtable;
 
 
 
@@ -236,11 +235,9 @@ struct SweepCta
 
 				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
 					0 : tile->row_length[LOAD][VEC];
-/*
-				tile->fine_row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
-				tile->coarse_row_rank[LOAD][VEC] = 0;
-*/
+
 				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
+
 			}
 
 
@@ -456,7 +453,7 @@ struct SweepCta
 				SweepCta *cta,
 				Tile *tile)
 			{
-				tile->hash[LOAD][VEC] = tile->vertex_id[LOAD][VEC] % SmemStorage::SMEM_POOL_VERTEX_IDS;
+				tile->hash[LOAD][VEC] = tile->vertex_id[LOAD][VEC] % SmemStorage::HASH_ELEMENTS;
 				tile->duplicate[LOAD][VEC] = false;
 
 				// Hash the node-IDs into smem scratch
@@ -501,7 +498,7 @@ struct SweepCta
 				// For the possible-duplicates, hash in thread-IDs to select
 				// one of the threads to be the unique one
 				if (tile->duplicate[LOAD][VEC]) {
-					cta->s_tid_hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
+					cta->s_vid_hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
 				}
 
 				// Next
@@ -520,7 +517,7 @@ struct SweepCta
 				if (tile->duplicate[LOAD][VEC]) {
 					// If not equal to our tid, we are not an authoritative thread
 					// for this node-ID
-					if (cta->s_tid_hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
+					if (cta->s_vid_hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
 						tile->vertex_id[LOAD][VEC] = -1;
 					}
 				}
@@ -762,8 +759,8 @@ struct SweepCta
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool_int4s,
-					smem_storage.smem_pool_int4s + SmemStorage::COARSE_RAKING_QUADS),
+					smem_storage.smem_pool.raking_lanes.coarse_lanes,
+					smem_storage.smem_pool.raking_lanes.fine_lanes),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.coarse_warpscan,
 					smem_storage.fine_warpscan),
@@ -771,10 +768,9 @@ struct SweepCta
 			warp_comm(smem_storage.warp_comm),
 			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
-			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
-			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
-			s_vid_hashtable((VertexId *) smem_storage.smem_pool_int4s),
-			s_tid_hashtable((ThreadId *) smem_storage.smem_pool_int4s),
+			offset_scratch_pool(smem_storage.smem_pool.gather_scratch.offsets),
+			parent_scratch_pool(smem_storage.smem_pool.gather_scratch.parents),
+			s_vid_hashtable(smem_storage.smem_pool.vid_hashtable),
 			iteration(iteration),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
