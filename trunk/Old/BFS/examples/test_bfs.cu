@@ -458,21 +458,22 @@ void TestGpuBfs(
 	int 									max_grid_size)
 {
 	// (Re)initialize distances
-	bfs_problem.Reset();
+	if (bfs_problem.Reset()) exit(1);
 
 	// Perform BFS
-	CpuTimer cpu_timer;
-	cpu_timer.Start();
+	GpuTimer gpu_timer;
+	gpu_timer.Start();
 	enactor.template EnactSearch<INSTRUMENT>(bfs_problem, src, max_grid_size);
-	cpu_timer.Stop();
-	float elapsed = cpu_timer.ElapsedMillis();
+	gpu_timer.Stop();
+	float elapsed = gpu_timer.ElapsedMillis();
 
 	// Copy out results
-	cudaMemcpy(
-		h_source_path,
-		bfs_problem.d_source_path,
-		bfs_problem.nodes * sizeof(VertexId),
-		cudaMemcpyDeviceToHost);
+	if (util::B40CPerror(cudaMemcpy(
+			h_source_path,
+			bfs_problem.d_source_path,
+			bfs_problem.nodes * sizeof(VertexId),
+			cudaMemcpyDeviceToHost),
+		"TestGpuBfs cudaMemcpy bfs_problem.d_source_path failed", __FILE__, __LINE__)) exit(1);
 	
 	long long 	total_queued = 0;
 	VertexId	search_depth = 0;
@@ -699,7 +700,7 @@ void RunTests(
 	if (reference_source_dist) free(reference_source_dist);
 	if (h_source_path) free(h_source_path);
 	
-	cudaThreadSynchronize();
+	cudaDeviceSynchronize();
 }
 
 
