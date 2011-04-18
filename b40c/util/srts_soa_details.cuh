@@ -101,8 +101,8 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	 * Constructor
 	 */
 	__host__ __device__ __forceinline__ SrtsSoaDetails(
-		GridStorageSoa &smem_pools,
-		WarpscanSoa &warpscan_partials) :
+		GridStorageSoa smem_pools,
+		WarpscanSoa warpscan_partials) :
 
 			warpscan_partials(warpscan_partials),
 			lane_partials(												// set lane partial pointer
@@ -123,8 +123,8 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	 * Constructor
 	 */
 	__host__ __device__ __forceinline__ SrtsSoaDetails(
-		GridStorageSoa &smem_pools,
-		WarpscanSoa &warpscan_partials,
+		GridStorageSoa smem_pools,
+		WarpscanSoa warpscan_partials,
 		SoaTuple soa_tuple_identity) :
 
 			warpscan_partials(warpscan_partials),
