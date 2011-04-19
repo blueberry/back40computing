@@ -301,8 +301,8 @@ struct SweepCta
 			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> 5; //B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
-				int lane_id = threadIdx.x & 31; //util::LaneId();
+				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
+				int lane_id = util::LaneId();
 
 				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
 
@@ -325,8 +325,8 @@ struct SweepCta
 						tile->row_length[LOAD][VEC] = 0;
 					}
 
-					SizeT coop_offset 	= cta->warp_comm[warp_id][0];
-					SizeT coop_rank 	= cta->warp_comm[warp_id][1];
+					SizeT coop_offset 	= cta->warp_comm[warp_id][0] + lane_id;
+					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
 					VertexId parent_id;
@@ -336,22 +336,18 @@ struct SweepCta
 
 					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
+						// Gather
+						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
+							neighbor_id, cta->d_column_indices + coop_offset);
 
-						if (coop_offset + lane_id < coop_oob) {
+						// Scatter neighbor
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
+							neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank);
 
-							// Gather
-							util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
-
-							// Scatter neighbor
+						if (KernelConfig::MARK_PARENTS) {
+							// Scatter parent
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-
-							if (KernelConfig::MARK_PARENTS) {
-								// Scatter parent
-								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-							}
+								parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);

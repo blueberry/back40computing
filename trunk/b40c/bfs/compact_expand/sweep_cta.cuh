@@ -54,7 +54,7 @@ struct SweepCta
 
 	// Row-length cutoff below which we expand neighbors by writing gather
 	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
-	static const int SCAN_EXPAND_CUTOFF = KernelConfig::THREADS; //B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
+	static const int SCAN_EXPAND_CUTOFF = B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::CollisionMask 	CollisionMask;
@@ -104,7 +104,9 @@ struct SweepCta
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
 	SizeT					*offset_scratch_pool;
 	VertexId				*parent_scratch_pool;
-	VertexId 				*s_vid_hashtable;
+
+	volatile VertexId 	(*s_vid_hashtable)[SmemStorage::WARP_HASH_ELEMENTS];
+	volatile VertexId	*s_history;
 
 
 
@@ -146,10 +148,6 @@ struct SweepCta
 		SizeT		coarse_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		fine_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-		// Temporary state for local culling
-		int 		hash[LOADS_PER_TILE][LOAD_VEC_SIZE];			// Hash ids for vertex ids
-		bool 		duplicate[LOADS_PER_TILE][LOAD_VEC_SIZE];		// Status as potential duplicate
 
 		SizeT 		fine_count;
 		SizeT		progress;
@@ -312,8 +310,8 @@ struct SweepCta
 			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> 5; //B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
-				int lane_id = threadIdx.x & 31; //util::LaneId();
+				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
+				int lane_id = util::LaneId();
 
 				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
 
@@ -336,8 +334,8 @@ struct SweepCta
 						tile->row_length[LOAD][VEC] = 0;
 					}
 
-					SizeT coop_offset 	= cta->warp_comm[warp_id][0];
-					SizeT coop_rank 	= cta->warp_comm[warp_id][1];
+					SizeT coop_offset 	= cta->warp_comm[warp_id][0] + lane_id;
+					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
 					VertexId parent_id;
@@ -348,21 +346,18 @@ struct SweepCta
 					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
 
-						if (coop_offset + lane_id < coop_oob) {
+						// Gather
+						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
+							neighbor_id, cta->d_column_indices + coop_offset);
 
-							// Gather
-							util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
+						// Scatter neighbor
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
+							neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank);
 
-							// Scatter neighbor
+						if (KernelConfig::MARK_PARENTS) {
+							// Scatter parent
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-
-							if (KernelConfig::MARK_PARENTS) {
-								// Scatter parent
-								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-							}
+								parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -447,83 +442,58 @@ struct SweepCta
 
 
 			/**
-			 * HashInVertex
+			 * HistoryCull
 			 */
-			static __device__ __forceinline__ void HashInVertex(
+			static __device__ __forceinline__ void HistoryCull(
 				SweepCta *cta,
 				Tile *tile)
 			{
-				tile->hash[LOAD][VEC] = tile->vertex_id[LOAD][VEC] % SmemStorage::HASH_ELEMENTS;
-				tile->duplicate[LOAD][VEC] = false;
-
-				// Hash the node-IDs into smem scratch
 				if (tile->vertex_id[LOAD][VEC] != -1) {
-					cta->s_vid_hashtable[tile->hash[LOAD][VEC]] = tile->vertex_id[LOAD][VEC];
-				}
 
-				// Next
-				Iterate<LOAD, VEC + 1>::HashInVertex(cta, tile);
-			}
+					int hash = tile->vertex_id[LOAD][VEC] % SmemStorage::HISTORY_HASH_ELEMENTS;
+					VertexId retrieved = cta->s_history[hash];
 
-
-			/**
-			 * HashOutVertex
-			 */
-			static __device__ __forceinline__ void HashOutVertex(
-				SweepCta *cta,
-				Tile *tile)
-			{
-				// Retrieve what vertices "won" at the hash locations. If a
-				// different node beat us to this hash cell; we must assume
-				// that we may not be a duplicate.  Otherwise assume that
-				// we are a duplicate... for now.
-
-				if (tile->vertex_id[LOAD][VEC] != -1) {
-					VertexId hashed_node = cta->s_vid_hashtable[tile->hash[LOAD][VEC]];
-					tile->duplicate[LOAD][VEC] = (hashed_node == tile->vertex_id[LOAD][VEC]);
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashOutVertex(cta, tile);
-			}
-
-
-			/**
-			 * HashInTid
-			 */
-			static __device__ __forceinline__ void HashInTid(
-				SweepCta *cta,
-				Tile *tile)
-			{
-				// For the possible-duplicates, hash in thread-IDs to select
-				// one of the threads to be the unique one
-				if (tile->duplicate[LOAD][VEC]) {
-					cta->s_vid_hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashInTid(cta, tile);
-			}
-
-
-			/**
-			 * HashOutTid
-			 */
-			static __device__ __forceinline__ void HashOutTid(
-				SweepCta *cta,
-				Tile *tile)
-			{
-				// See if our thread won out amongst everyone with similar node-IDs
-				if (tile->duplicate[LOAD][VEC]) {
-					// If not equal to our tid, we are not an authoritative thread
-					// for this node-ID
-					if (cta->s_vid_hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
+						// Seen it
 						tile->vertex_id[LOAD][VEC] = -1;
+					} else {
+						// Update it
+						cta->s_history[hash] = tile->vertex_id[LOAD][VEC];
 					}
 				}
 
 				// Next
-				Iterate<LOAD, VEC + 1>::HashOutTid(cta, tile);
+				Iterate<LOAD, VEC + 1>::HistoryCull(cta, tile);
+			}
+
+
+			/**
+			 * WarpCull
+			 */
+			static __device__ __forceinline__ void WarpCull(
+				SweepCta *cta,
+				Tile *tile)
+			{
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+
+					int warp_id 		= threadIdx.x >> 5;
+					int hash 			= tile->vertex_id[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
+
+					cta->s_vid_hashtable[warp_id][hash] = tile->vertex_id[LOAD][VEC];
+					VertexId retrieved = cta->s_vid_hashtable[warp_id][hash];
+
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
+
+						cta->s_vid_hashtable[warp_id][hash] = threadIdx.x;
+						VertexId tid = cta->s_vid_hashtable[warp_id][hash];
+						if (tid != threadIdx.x) {
+							tile->vertex_id[LOAD][VEC] = -1;
+						}
+					}
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::WarpCull(cta, tile);
 			}
 		};
 
@@ -584,35 +554,19 @@ struct SweepCta
 			}
 
 			/**
-			 * HashInVertex
+			 * HistoryCull
 			 */
-			static __device__ __forceinline__ void HashInVertex(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void HistoryCull(SweepCta *cta, Tile *tile)
 			{
-				Iterate<LOAD + 1, 0>::HashInVertex(cta, tile);
+				Iterate<LOAD + 1, 0>::HistoryCull(cta, tile);
 			}
 
 			/**
-			 * HashOutVertex
+			 * WarpCull
 			 */
-			static __device__ __forceinline__ void HashOutVertex(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void WarpCull(SweepCta *cta, Tile *tile)
 			{
-				Iterate<LOAD + 1, 0>::HashOutVertex(cta, tile);
-			}
-
-			/**
-			 * HashInTid
-			 */
-			static __device__ __forceinline__ void HashInTid(SweepCta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashInTid(cta, tile);
-			}
-
-			/**
-			 * HashOutTid
-			 */
-			static __device__ __forceinline__ void HashOutTid(SweepCta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashOutTid(cta, tile);
+				Iterate<LOAD + 1, 0>::WarpCull(cta, tile);
 			}
 		};
 
@@ -640,17 +594,11 @@ struct SweepCta
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(SweepCta *cta, Tile *tile) {}
 
-			// HashInVertex
-			static __device__ __forceinline__ void HashInVertex(SweepCta *cta, Tile *tile) {}
+			// HistoryCull
+			static __device__ __forceinline__ void HistoryCull(SweepCta *cta, Tile *tile) {}
 
-			// HashOutVertex
-			static __device__ __forceinline__ void HashOutVertex(SweepCta *cta, Tile *tile) {}
-
-			// HashInTid
-			static __device__ __forceinline__ void HashInTid(SweepCta *cta, Tile *tile) {}
-
-			// HashOutTid
-			static __device__ __forceinline__ void HashOutTid(SweepCta *cta, Tile *tile) {}
+			// WarpCull
+			static __device__ __forceinline__ void WarpCull(SweepCta *cta, Tile *tile) {}
 		};
 
 
@@ -714,25 +662,8 @@ struct SweepCta
 		 */
 		__device__ __forceinline__ void LocalCull(SweepCta *cta)
 		{
-			// Hash the node-IDs into smem scratch
-			Iterate<0, 0>::HashInVertex(cta, this);
-
-			__syncthreads();
-
-			// Retrieve what node-IDs "won" at those locations
-			Iterate<0, 0>::HashOutVertex(cta, this);
-
-			__syncthreads();
-
-			// For the winners, hash in thread-IDs to select one of the threads
-			Iterate<0, 0>::HashInTid(cta, this);
-
-			__syncthreads();
-
-			// See if our thread won out amongst everyone with similar node-IDs
-			Iterate<0, 0>::HashOutTid(cta, this);
-
-			__syncthreads();
+			Iterate<0, 0>::HistoryCull(cta, this);
+			Iterate<0, 0>::WarpCull(cta, this);
 		}
 	};
 
@@ -771,6 +702,7 @@ struct SweepCta
 			offset_scratch_pool(smem_storage.smem_pool.gather_scratch.offsets),
 			parent_scratch_pool(smem_storage.smem_pool.gather_scratch.parents),
 			s_vid_hashtable(smem_storage.smem_pool.vid_hashtable),
+			s_history(smem_storage.history),
 			iteration(iteration),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
@@ -872,7 +804,7 @@ struct SweepCta
 		tile.ExpandByCta(this);
 
 		// Enqueue valid edge lists into outgoing queue
-//		tile.ExpandByWarp(this);
+		tile.ExpandByWarp(this);
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
