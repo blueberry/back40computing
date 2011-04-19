@@ -179,7 +179,7 @@ struct SweepPass <KernelConfig, true>
 /**
  * Sweep expansion kernel entry point
  */
-template <typename KernelConfig, bool INSTRUMENT>
+template <typename KernelConfig, bool INSTRUMENT, int SATURATION_QUIT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
@@ -262,7 +262,9 @@ void SweepKernel(
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
 
 			// Signal to host that we're done
-			if (num_elements == 0) {
+			if ((num_elements == 0) ||
+				(SATURATION_QUIT && (num_elements <= gridDim.x * KernelConfig::TILE_ELEMENTS * SATURATION_QUIT)))
+			{
 				d_done[0] = 1;
 			}
 
