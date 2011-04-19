@@ -213,11 +213,11 @@ public:
 	/**
 	 * Returns ratio of (avg cta runtime : total runtime)
 	 */
-	void Accumulate(int sweep_grid_size, long long &total_avg_live, long long &total_max_live)
+	cudaError_t Accumulate(int sweep_grid_size, long long &total_avg_live, long long &total_max_live)
 	{
 		clock_t *h_stat = (clock_t*) malloc(stat_bytes);
 
-		util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
+		cudaError_t retval = util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
 			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
 
 		// Compute runtimes, find max
@@ -245,6 +245,8 @@ public:
 
 		total_max_live += max_runtime;
 		total_avg_live += avg_runtime;
+
+		return retval;
 	}
 };
 

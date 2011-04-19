@@ -185,6 +185,7 @@ __global__
 void SweepKernel(
 	typename KernelConfig::VertexId 		src,
 	typename KernelConfig::VertexId 		iteration,
+	volatile int 							*d_done,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
@@ -259,6 +260,11 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+
+			// Signal to host that we're done
+			if (num_elements == 0) {
+				d_done[0] = 1;
+			}
 
 			// Initialize work decomposition in smem
 			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(

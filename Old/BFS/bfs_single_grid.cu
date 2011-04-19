@@ -63,11 +63,11 @@ protected:
 	long long total_avg_live;
 	long long total_max_live;
 
-	volatile long long *iteration;
 	volatile long long *total_queued;
-
-	long long *d_iteration;
 	long long *d_total_queued;
+
+	volatile long long *iteration;
+	long long *d_iteration;
 
 public: 	
 	
@@ -158,8 +158,7 @@ public:
 		int occupancy = KernelConfig::CTA_OCCUPANCY;
 		int grid_size = MaxGridSize(occupancy, max_grid_size);
 
-		printf("DEBUG: BFS occupancy %d, grid size %d\n",
-			occupancy, grid_size);
+		if (DEBUG) printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
 		fflush(stdout);
 
 		// Make barriers are initialized
@@ -195,11 +194,10 @@ public:
 			(VertexId *) d_iteration,
 			(SizeT *) d_total_queued);
 
-		if (retval = util::B40CPerror(cudaThreadSynchronize(),
-			"SweepKernel failed", __FILE__, __LINE__)) exit(1);
-
-		// expand barrier wait
-		kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live);
+		if (INSTRUMENT) {
+			// Get stats
+			kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live);
+		}
 
 		return retval;
 	}

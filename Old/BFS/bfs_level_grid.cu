@@ -66,15 +66,20 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime compact_kernel_stats;
-	long long total_avg_live;
-	long long total_max_live;
+	long long 		total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
+	long long 		total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
+	long long 		total_queued;
+	long long 		search_depth;
 
-	volatile long long *iteration;
-	volatile long long *total_queued;
-
-	long long *d_iteration;
-	long long *d_total_queued;
-
+	/**
+	 * Throttle state.  We want the host to have an additional BFS iteration
+	 * of kernel launches queued up for for pipeline efficiency (particularly on
+	 * Windows), so we keep a pinned, mapped word that the traversal kernels will
+	 * signal when done.
+	 */
+	volatile int 	*done;
+	int 			*d_done;
+	cudaEvent_t		throttle_event;
 
 public: 	
 	
@@ -83,24 +88,24 @@ public:
 	 */
 	LevelGridBfsEnactor(bool DEBUG = false) :
 		BaseBfsEnactor(DEBUG),
-		iteration(NULL),
-		total_queued(NULL),
-		d_iteration(NULL),
-		d_total_queued(NULL)
+		search_depth(0),
+		total_queued(0),
+		done(NULL),
+		d_done(NULL)
 	{
 		int flags = cudaHostAllocMapped;
 
-		// Allocate pinned memory
-		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
-			"LevelGridBfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
-		if (util::B40CPerror(cudaHostAlloc((void **)&total_queued, sizeof(long long) * 1, flags),
-			"LevelGridBfsEnactor cudaHostAlloc total_queued failed", __FILE__, __LINE__)) exit(1);
+		// Allocate pinned memory for done
+		if (util::B40CPerror(cudaHostAlloc((void **)&done, sizeof(int) * 1, flags),
+			"LevelGridBfsEnactor cudaHostAlloc done failed", __FILE__, __LINE__)) exit(1);
 
-		// Map into GPU space
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
-			"LevelGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_total_queued, (void *) total_queued, 0),
-			"LevelGridBfsEnactor cudaHostGetDevicePointer total_queued failed", __FILE__, __LINE__)) exit(1);
+		// Map done into GPU space
+		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_done, (void *) done, 0),
+			"LevelGridBfsEnactor cudaHostGetDevicePointer done failed", __FILE__, __LINE__)) exit(1);
+
+		// Create throttle event
+		if (util::B40CPerror(cudaEventCreateWithFlags(&throttle_event, cudaEventDisableTiming),
+			"LevelGridBfsEnactor cudaEventCreateWithFlags throttle_event failed", __FILE__, __LINE__)) exit(1);
 	}
 
 
@@ -109,8 +114,8 @@ public:
 	 */
 	virtual ~LevelGridBfsEnactor()
 	{
-		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "LevelGridBfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
-		if (total_queued) util::B40CPerror(cudaFreeHost((void *) total_queued), "LevelGridBfsEnactor cudaFreeHost total_queued failed", __FILE__, __LINE__);
+		if (done) util::B40CPerror(cudaFreeHost((void *) done), "LevelGridBfsEnactor cudaFreeHost done failed", __FILE__, __LINE__);
+		util::B40CPerror(cudaEventDestroy(throttle_event), "LevelGridBfsEnactor cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
 	}
 
 
@@ -123,8 +128,8 @@ public:
     	VertexId &search_depth,
     	double &avg_live)
     {
-    	total_queued = this->total_queued[0];
-    	search_depth = iteration[0] - 1;
+    	total_queued = this->total_queued;
+    	search_depth = this->search_depth;
     	avg_live = double(total_avg_live) / total_max_live;
     }
     
@@ -192,25 +197,21 @@ public:
 		typedef typename BfsCsrProblem::VertexId					VertexId;
 		typedef typename BfsCsrProblem::SizeT						SizeT;
 
+		cudaError_t retval = cudaSuccess;
+
 		//
 		// Determine grid size(s)
 		//
 
-		int expand_min_occupancy = ExpandAtomicSweep::CTA_OCCUPANCY;
-		int expand_grid_size = MaxGridSize(expand_min_occupancy, max_grid_size);
+		int expand_min_occupancy 		= ExpandAtomicSweep::CTA_OCCUPANCY;
+		int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
+		int compact_min_occupancy		= B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
+		int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
-		printf("DEBUG: BFS expand min occupancy %d, level-grid size %d\n",
+		if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
 				expand_min_occupancy, expand_grid_size);
-
-		int compact_min_occupancy = B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
-		int compact_grid_size = MaxGridSize(compact_min_occupancy, max_grid_size);
-
-		printf("DEBUG: BFS compact min occupancy %d, level-grid size %d\n",
+		if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
 			compact_min_occupancy, compact_grid_size);
-
-
-
-		cudaError_t retval = cudaSuccess;
 
 		// Make sure our spine is big enough
 		int spine_elements = compact_grid_size;
@@ -220,20 +221,25 @@ public:
 		if (retval = expand_kernel_stats.Setup(compact_grid_size)) exit(1);
 		if (retval = compact_kernel_stats.Setup(compact_grid_size)) exit(1);
 
-
 		// Reset statistics
-		total_queued[0] 	= 0;
-		iteration[0] 		= 0;
+		total_queued 		= 0;
+		done[0] 			= 0;
 		total_avg_live 		= 0;
 		total_max_live 		= 0;
 
-		SizeT expand_queue_length;
-		while (true) {
+		if (INSTRUMENT) {
+			printf("1, 1\n");
+		}
+
+		SizeT queue_length;
+		VertexId iteration = 0;
+		while (!done[0]) {
 
 			// BFS iteration
 			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT><<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
 				src,
-				iteration[0],
+				iteration,
+				d_done,
 				bfs_problem.d_compact_queue,			// in
 				bfs_problem.d_compact_parent_queue,
 				bfs_problem.d_expand_queue,				// out
@@ -244,23 +250,22 @@ public:
 				this->work_progress,
 				this->expand_kernel_stats);
 
+			iteration++;
+
 			if (INSTRUMENT) {
-				// expand barrier wait
+				// Get expansion queue length
+				if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
+				total_queued += queue_length;
+				printf("%lld", (long long) queue_length);
+
+				// Get expand stats (i.e., duty %)
 				expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
-			}
-
-			iteration[0]++;
-
-			if (this->work_progress.GetQueueLength(iteration[0], expand_queue_length)) exit(0);
-			total_queued[0] += expand_queue_length;
-//			printf("%lld, %lld\n", iteration[0], (long long) queue_length);
-			if (!expand_queue_length) {
-				break;
 			}
 
 			// Upsweep
 			compact::UpsweepKernel<CompactUpsweep, INSTRUMENT><<<compact_grid_size, CompactUpsweep::THREADS>>>(
-				iteration[0],
+				iteration,
+				d_done,
 				bfs_problem.d_expand_queue,				// in
 				bfs_problem.d_keep,
 				(SizeT *) this->spine(),
@@ -268,8 +273,8 @@ public:
 				this->work_progress,
 				this->compact_kernel_stats);
 
-			// Get compact upsweep barrier duty %
 			if (INSTRUMENT) {
+				// Get compact upsweep stats (i.e., duty %)
 				compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live);
 			}
 
@@ -279,7 +284,7 @@ public:
 
 			// Downsweep
 			compact::DownsweepKernel<CompactDownsweep, INSTRUMENT><<<compact_grid_size, CompactDownsweep::THREADS>>>(
-				iteration[0],
+				iteration,
 				bfs_problem.d_expand_queue,				// in
 				bfs_problem.d_expand_parent_queue,
 				bfs_problem.d_keep,
@@ -290,10 +295,26 @@ public:
 				this->compact_kernel_stats);
 
 			if (INSTRUMENT) {
-				// Get compact downsweep barrier duty %
-				compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live);
+				// Get compaction queue length
+				if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
+				printf(", %lld\n", (long long) queue_length);
+
+				// Get compact downsweep stats (i.e., duty %)
+				if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
 			}
+
+			if (iteration & 1) {
+				if (util::B40CPerror(cudaEventRecord(throttle_event),
+					"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) exit(1);
+			} else {
+				if (util::B40CPerror(cudaEventSynchronize(throttle_event),
+					"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) exit(1);
+			};
 		}
+		printf("\n");
+
+		printf("Launched iterations: %d\n", iteration);
+		search_depth = iteration - 1;
 
 		return retval;
 	}
