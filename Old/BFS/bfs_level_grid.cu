@@ -218,7 +218,7 @@ public:
 		if (retval = spine.Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
 		// Make sure our runtime stats are good
-		if (retval = expand_kernel_stats.Setup(compact_grid_size)) exit(1);
+		if (retval = expand_kernel_stats.Setup(expand_grid_size)) exit(1);
 		if (retval = compact_kernel_stats.Setup(compact_grid_size)) exit(1);
 
 		// Reset statistics
@@ -236,7 +236,8 @@ public:
 		while (!done[0]) {
 
 			// BFS iteration
-			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT><<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
+			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT, 0>
+					<<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
 				src,
 				iteration,
 				d_done,
@@ -303,6 +304,7 @@ public:
 				if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
 			}
 
+			// Throttle
 			if (iteration & 1) {
 				if (util::B40CPerror(cudaEventRecord(throttle_event),
 					"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) exit(1);
