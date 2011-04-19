@@ -193,23 +193,6 @@ struct SweepKernelConfig : _ProblemType
 		SizeT								coarse_enqueue_offset;
 
 		enum {
-			WARP_HASH_ELEMENTS				= 128,
-			SCRATCH_ELEMENTS				= THREADS * 3,
-		};
-
-		union SmemPool {
-			struct {
-				uint4						coarse_lanes[CoarseGrid::TOTAL_RAKING_QUADS];
-				uint4						fine_lanes[FineGrid::TOTAL_RAKING_QUADS];
-			} raking_lanes;
-			struct {
-				SizeT						offsets[SCRATCH_ELEMENTS];
-				VertexId					parents[(ProblemType::MARK_PARENTS) ? SCRATCH_ELEMENTS : 0];
-			} gather_scratch;
-			VertexId 						vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
-		} smem_pool;
-
-		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			FULL_OCCUPANCY_BYTES		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
@@ -218,13 +201,28 @@ struct SweepKernelConfig : _ProblemType
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
 												- sizeof(SizeT)
 												- sizeof(SizeT)
-												- sizeof(SmemPool)
 												- 128,
 
-			HISTORY_HASH_ELEMENTS		= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
+			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
+													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
+													sizeof(SizeT),								// Just gather offset
+
+			SCRATCH_ELEMENTS				= FULL_OCCUPANCY_BYTES / SCRATCH_ELEMENT_SIZE,
+
+			HASH_ELEMENTS					= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
 		};
 
-		VertexId history[HISTORY_HASH_ELEMENTS];
+		union {
+			struct {
+				uint4						coarse_lanes[CoarseGrid::TOTAL_RAKING_QUADS];
+				uint4						fine_lanes[FineGrid::TOTAL_RAKING_QUADS];
+			} raking_lanes;
+			struct {
+				SizeT						offsets[SCRATCH_ELEMENTS];
+				VertexId					parents[(ProblemType::MARK_PARENTS) ? SCRATCH_ELEMENTS : 0];
+			} gather_scratch;
+			VertexId 						vid_hashtable[HASH_ELEMENTS];
+		} smem_pool;
 	};
 
 	enum {
