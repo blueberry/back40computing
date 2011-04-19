@@ -203,13 +203,6 @@ struct BfsCsrProblem
 
 			if (stream_from_host) {
 
-/*
-				// Pin the graph memory
-				if (retval = util::B40CPerror(cudaHostRegister(h_column_indices, edges * sizeof(VertexId), CU_MEMHOSTALLOC_DEVICEMAP),
-					"BfsCsrProblem cudaHostRegister h_column_indices failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaHostRegister(h_row_offsets, (nodes + 1) * sizeof(SizeT), CU_MEMHOSTALLOC_DEVICEMAP),
-					"BfsCsrProblem cudaHostRegister h_row_offsets failed", __FILE__, __LINE__)) break;
-*/
 				// Map the pinned graph pointers into device pointers
 				if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_column_indices, (void *) h_column_indices, 0),
 					"LevelGridBfsEnactor cudaHostGetDevicePointer d_column_indices failed", __FILE__, __LINE__)) exit(1);

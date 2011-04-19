@@ -64,6 +64,7 @@ using namespace bfs;
 bool g_verbose;
 bool g_verbose2;
 bool g_undirected;
+bool g_quick;			// Whether or not to perform CPU traversal as reference
 
 
 /******************************************************************************
@@ -630,9 +631,11 @@ void RunTests(
 		printf("---------------------------------------------------------------\n");
 
 		// Compute reference CPU BFS solution for source-distance
-		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
-		printf("\n");
-		fflush(stdout);
+		if (!g_quick) {
+			SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
+			printf("\n");
+			fflush(stdout);
+		}
 
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
@@ -640,8 +643,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_dist,
-//			(VertexId*) NULL,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
 			csr_graph,
 			stats[1],
 			max_grid_size);
@@ -654,8 +656,7 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_dist,
-//			(VertexId*) NULL,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
 			csr_graph,
 			stats[2],
 			max_grid_size);
@@ -749,6 +750,7 @@ int main( int argc, char** argv)
 		}
 	}
 	g_undirected = args.CheckCmdLineFlag("undirected");
+	g_quick = args.CheckCmdLineFlag("quick");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
 	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
 	args.GetCmdLineArgument("i", test_iterations);
