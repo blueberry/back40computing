@@ -45,6 +45,7 @@
 #include <stdio.h>
 #include <limits.h>
 
+#include <b40c/util/cta_work_distribution.cuh>
 #include "b40c_kernel_utils.cuh"
 #include "b40c_enactor_base.cuh"
 
@@ -63,7 +64,7 @@ using namespace lsb_radix_sort;
  * if CUDA Runtime is fixed to properly support template specialization around
  * kernel call sites.
  */
-template <typename Storage> struct SortingCtaDecomposition;
+template <typename Storage> struct SortingDetails;
 
 
 
@@ -210,11 +211,11 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int CURRENT_BIT, 
 		typename PreprocessTraits, 
-		typename PostprocessTraits>
+		typename PostprocessTraits,
+		typename Decomposition>
 	cudaError_t DigitPlacePass(Decomposition &work)
 	{
 		using namespace lsb_radix_sort::upsweep;
@@ -233,7 +234,7 @@ protected:
 			DownsweepKernelConfigType;
 
 		int dynamic_smem[3] = {0, 0, 0};
-		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
+		int grid_size[3] = {work.grid_size, 1, work.grid_size};
 		int threads[3] = {UpsweepKernelConfigType::THREADS, SpineScanKernelConfigType::THREADS, DownsweepKernelConfigType::THREADS};
 
 		cudaError_t retval = cudaSuccess;
@@ -269,7 +270,7 @@ protected:
 			if (SortingConfig::UNIFORM_GRID_SIZE) {
 
 				// We need to make sure that all kernels launch the same number of CTAs
-				grid_size[1] = work.sweep_grid_size;
+				grid_size[1] = work.grid_size;
 			}
 
 			// Invoke upsweep reduction kernel
@@ -320,20 +321,18 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
 	struct UnrolledPasses 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke 
 			cudaError_t retval = enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				CURRENT_PASS, 
 				CURRENT_BIT,
 				KeyTraits<typename SortingConfig::ConvertedKeyType>,			// no bit twiddling
@@ -344,7 +343,6 @@ protected:
 			// Next
 			return UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				CURRENT_PASS + 1, 
 				LAST_PASS, 
 				CURRENT_BIT + RADIX_BITS, 
@@ -358,19 +356,17 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, 0, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, 0, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			cudaError_t retval = enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				0, 
 				CURRENT_BIT,
 				KeyTraits<typename Decomposition::KeyType>,						// possible bit twiddling
@@ -381,7 +377,6 @@ protected:
 			// Next
 			return UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				1, 
 				LAST_PASS, 
 				CURRENT_BIT + RADIX_BITS, 
@@ -395,19 +390,17 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			return enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				LAST_PASS, 
 				CURRENT_BIT,
 				KeyTraits<typename SortingConfig::ConvertedKeyType>,		// no bit twiddling
@@ -421,18 +414,16 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, 0, 0, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, 0, 0, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			return enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				0, 
 				CURRENT_BIT,
 				KeyTraits<typename Decomposition::KeyType>,				// possible bit twiddling
@@ -492,8 +483,6 @@ public:
 	template <typename Storage, typename SortingConfig, int START_BIT, int NUM_BITS> 
 	cudaError_t Enact(Storage &problem_storage, int max_grid_size = 0)
 	{
-	    typedef SortingCtaDecomposition<Storage> Decomposition;
-
 	    const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
 		const int NUM_PASSES 			= (NUM_BITS - START_BIT + RADIX_BITS - 1) / RADIX_BITS;
 		const int SCHEDULE_GRANULARITY 	= 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
@@ -506,8 +495,10 @@ public:
 			problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
-		Decomposition work(&problem_storage, SCHEDULE_GRANULARITY, sweep_grid_size, spine_elements);
-			
+		SortingDetails<Storage> work(spine_elements, &problem_storage);
+		work.template Init<SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY>(
+			problem_storage.num_elements, sweep_grid_size);
+		
 		if (DEBUG) {
 			printf("\n\n");
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
@@ -534,7 +525,6 @@ public:
 			// Perform sorting passes
 			if (retval = UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				0,
 				NUM_PASSES - 1,
 				START_BIT,
@@ -556,28 +546,23 @@ public:
  * Utility type for managing the state for a specific sorting operation
  */
 template <typename Storage>
-struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::SizeT>
+struct SortingDetails : util::CtaWorkDistribution<typename Storage::SizeT>
 {
-	typedef typename Storage::KeyType KeyType;
-	typedef typename Storage::ValueType ValueType;
-	typedef typename Storage::SizeT SizeT;
+	typedef typename Storage::KeyType 		KeyType;
+	typedef typename Storage::ValueType 	ValueType;
+	typedef typename Storage::SizeT 		SizeT;
 
-	int sweep_grid_size;
 	int spine_elements;
 	Storage *problem_storage;
 
 	// Constructor
-	SortingCtaDecomposition(
-		Storage *problem_storage,
-		int schedule_granularity,
-		int sweep_grid_size,
-		int spine_elements) : CtaWorkDistribution<SizeT>(
-				problem_storage->num_elements,
-				schedule_granularity,
-				sweep_grid_size),
-			sweep_grid_size(sweep_grid_size),
+	SortingDetails(
+		int spine_elements,
+		Storage *problem_storage) : 
 			spine_elements(spine_elements),
-			problem_storage(problem_storage) {};
+			problem_storage(problem_storage)
+	{
+	}
 };
 
 }// namespace b40c

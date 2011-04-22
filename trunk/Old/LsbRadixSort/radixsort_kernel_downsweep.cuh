@@ -43,6 +43,7 @@
 
 #pragma once
 
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
@@ -203,27 +204,27 @@ struct DownsweepKernelConfig : DownsweepConfigType
  * Tile-processing Routines
  ******************************************************************************/
 
-template <typename Config> 
-__device__ __forceinline__ int DecodeDigit(typename Config::KeyType key) 
+template <typename KernelConfig> 
+__device__ __forceinline__ int DecodeDigit(typename KernelConfig::KeyType key) 
 {
 	int retval;
-	ExtractKeyBits<typename Config::KeyType, Config::CURRENT_BIT, Config::RADIX_BITS>::Extract(retval, key);
+	ExtractKeyBits<typename KernelConfig::KeyType, KernelConfig::CURRENT_BIT, KernelConfig::RADIX_BITS>::Extract(retval, key);
 	return retval;
 }
 
 
 // Count previous keys in the vector having the same digit as current_digit
-template <typename Config>
+template <typename KernelConfig>
 struct SameDigitCount
 {
-	typedef typename Config::KeyType KeyType;
+	typedef typename KernelConfig::KeyType KeyType;
 
 	// Inspect prev vec-element
 	template <int LOAD, int VEC_ELEMENT>
 	struct Iterate
 	{
 		static __device__ __forceinline__ int Invoke(
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int current_digit) 
 		{
 			return (current_digit == key_digits[LOAD][VEC_ELEMENT - 1]) + Iterate<LOAD, VEC_ELEMENT - 1>::Invoke(key_digits, current_digit);
@@ -235,7 +236,7 @@ struct SameDigitCount
 	struct Iterate<LOAD, 0>
 	{
 		static __device__ __forceinline__ int Invoke(
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int current_digit) 
 		{
 			return 0;
@@ -245,31 +246,31 @@ struct SameDigitCount
 
 
 // Decode a cycle of keys
-template <typename Config> 
+template <typename KernelConfig> 
 struct DecodeCycleKeys
 {
-	typedef typename Config::KeyType KeyType;
+	typedef typename KernelConfig::KeyType KeyType;
 	
 	// Next vec-element
 	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			KeyType keys[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
-			const int PADDED_BYTES_PER_LANE 	= Config::Grid::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW * 4;
-			const int LOAD_OFFSET_BYTES 		= LOAD * Config::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
-			const KeyType COUNTER_BYTE_MASK 	= (Config::RADIX_BITS < 2) ? 0x1 : 0x3;
+			const int PADDED_BYTES_PER_LANE 	= KernelConfig::Grid::ROWS_PER_LANE * KernelConfig::Grid::PADDED_PARTIALS_PER_ROW * 4;
+			const int LOAD_OFFSET_BYTES 		= LOAD * KernelConfig::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
+			const KeyType COUNTER_BYTE_MASK 	= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
 			
-			key_digits[LOAD][VEC_ELEMENT] = DecodeDigit<Config>(keys[LOAD][VEC_ELEMENT]);			// extract digit
+			key_digits[LOAD][VEC_ELEMENT] = DecodeDigit<KernelConfig>(keys[LOAD][VEC_ELEMENT]);			// extract digit
 			int lane = key_digits[LOAD][VEC_ELEMENT] >> 2;									// extract composite counter lane
 			int counter_byte = key_digits[LOAD][VEC_ELEMENT] & COUNTER_BYTE_MASK;			// extract 8-bit counter offset
 
 			// Compute partial (because we overwrite, we need to accommodate all previous vec-elements if they have the same digit)
-			int partial = 1 + SameDigitCount<Config>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
+			int partial = 1 + SameDigitCount<KernelConfig>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
 
 			// Counter offset in bytes from this thread's "base_partial" location
 			counter_offsets[LOAD][VEC_ELEMENT] = LOAD_OFFSET_BYTES + FastMul(lane, PADDED_BYTES_PER_LANE) + counter_byte;
@@ -289,9 +290,9 @@ struct DecodeCycleKeys
 	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			KeyType keys[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
 			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
@@ -304,27 +305,27 @@ struct DecodeCycleKeys
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			KeyType keys[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) {} 
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		KeyType keys[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-		int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+		KeyType keys[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+		int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 		int *base_partial) 
 	{
-		Iterate<0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+		Iterate<0, KernelConfig::LOADS_PER_CYCLE, 0, KernelConfig::LOAD_VEC_SIZE>::Invoke(
 			keys, key_digits, counter_offsets, base_partial);
 	} 
 };
 
 
 // Extract cycle ranks
-template <typename Config> 
+template <typename KernelConfig> 
 struct ExtractCycleRanks
 {
 	// Next vec-element
@@ -332,15 +333,15 @@ struct ExtractCycleRanks
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			int key_ranks[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
 			unsigned char *base_partial_chars = reinterpret_cast<unsigned char *>(base_partial);
 
 			key_ranks[LOAD][VEC_ELEMENT] = base_partial_chars[counter_offsets[LOAD][VEC_ELEMENT]] +
-				SameDigitCount<Config>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
+				SameDigitCount<KernelConfig>::template Iterate<LOAD, VEC_ELEMENT>::Invoke(key_digits, key_digits[LOAD][VEC_ELEMENT]);
 
 			// Next
 			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
@@ -353,9 +354,9 @@ struct ExtractCycleRanks
 	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			int key_ranks[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) 
 		{
 			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(key_ranks, key_digits, counter_offsets, base_partial);
@@ -367,20 +368,20 @@ struct ExtractCycleRanks
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+			int key_ranks[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 			int *base_partial) {} 
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		int key_ranks[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-		int key_digits[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
+		int key_ranks[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+		int key_digits[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
 		int *base_partial) 
 	{
-		Iterate<0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+		Iterate<0, KernelConfig::LOADS_PER_CYCLE, 0, KernelConfig::LOAD_VEC_SIZE>::Invoke(
 			key_ranks, key_digits, counter_offsets, base_partial);
 	} 
 };
@@ -388,33 +389,33 @@ struct ExtractCycleRanks
 
 // Scan a cycle of lanes
 // Called by threads [0 .. raking-threads- 1]
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void ScanCycleLanes(
 	int* 	raking_segment,
-	int 	lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-	int 	lane_totals[Config::SCAN_LANES_PER_CYCLE])
+	int 	lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+	int 	lane_totals[KernelConfig::SCAN_LANES_PER_CYCLE])
 {
 	// Upsweep rake
-	int partial = SerialReduce<int, Config::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment);
+	int partial = SerialReduce<int, KernelConfig::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment);
 
 	// Warpscan reduction in digit warpscan_lane
-	int warpscan_lane = threadIdx.x >> Config::Grid::LOG_RAKING_THREADS_PER_LANE;
-	int warpscan_tid = threadIdx.x & (Config::Grid::RAKING_THREADS_PER_LANE - 1);
+	int warpscan_lane = threadIdx.x >> KernelConfig::Grid::LOG_RAKING_THREADS_PER_LANE;
+	int warpscan_tid = threadIdx.x & (KernelConfig::Grid::RAKING_THREADS_PER_LANE - 1);
 
-	int inclusive_prefix = WarpScanInclusive<int, Config::Grid::LOG_RAKING_THREADS_PER_LANE>::Invoke(
+	int inclusive_prefix = WarpScanInclusive<int, KernelConfig::Grid::LOG_RAKING_THREADS_PER_LANE>::Invoke(
 		partial, lanes_warpscan[warpscan_lane], warpscan_tid);
 	int exclusive_prefix = inclusive_prefix - partial;
 	
 	// Save off each lane's warpscan total for this cycle
-	if (warpscan_tid == Config::Grid::RAKING_THREADS_PER_LANE - 1) lane_totals[warpscan_lane] = inclusive_prefix;
+	if (warpscan_tid == KernelConfig::Grid::RAKING_THREADS_PER_LANE - 1) lane_totals[warpscan_lane] = inclusive_prefix;
 
 	// Downsweep rake
-	SerialScan<int, Config::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment, exclusive_prefix);
+	SerialScan<int, KernelConfig::Grid::PARTIALS_PER_SEG>::Invoke(raking_segment, exclusive_prefix);
 }
 
 
 // Update ranks in each load with digit prefixes for the current tile
-template <typename Config> 
+template <typename KernelConfig> 
 struct UpdateTileRanks
 {
 	// Next vec-element
@@ -422,9 +423,9 @@ struct UpdateTileRanks
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
+			int key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS])
 		{
 			key_ranks[CYCLE][LOAD][VEC_ELEMENT] += digit_prefixes[CYCLE][LOAD][key_digits[CYCLE][LOAD][VEC_ELEMENT]];
 			Iterate<CYCLE, TOTAL_CYCLES, LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(
@@ -437,9 +438,9 @@ struct UpdateTileRanks
 	struct Iterate<CYCLE, TOTAL_CYCLES, LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
+			int key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) 
 		{
 			Iterate<CYCLE, TOTAL_CYCLES, LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
 				key_ranks, key_digits, digit_prefixes);
@@ -451,9 +452,9 @@ struct UpdateTileRanks
 	struct Iterate<CYCLE, TOTAL_CYCLES, TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
+			int key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS])
 		{
 			Iterate<CYCLE + 1, TOTAL_CYCLES, 0, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(
 				key_ranks, key_digits, digit_prefixes);
@@ -465,18 +466,18 @@ struct UpdateTileRanks
 	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES, 0, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) {} 
+			int key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) {} 
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		int key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE], 
-		int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
+		int key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE], 
+		int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) 
 	{
-		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE, 0, Config::LOAD_VEC_SIZE>::Invoke(
+		Iterate<0, KernelConfig::CYCLES_PER_TILE, 0, KernelConfig::LOADS_PER_CYCLE, 0, KernelConfig::LOAD_VEC_SIZE>::Invoke(
 			key_ranks, key_digits, digit_prefixes);
 	} 
 	
@@ -485,7 +486,7 @@ struct UpdateTileRanks
 
 // Recover digit counts for each load from composite 8-bit counters recorded in lane_totals
 // Called by threads [0 .. radix-digits - 1]
-template <typename Config> 
+template <typename KernelConfig> 
 struct RecoverTileDigitCounts
 {
 	// Next load
@@ -493,19 +494,19 @@ struct RecoverTileDigitCounts
 	struct Iterate 
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],
 			int my_base_lane,
 			int my_quad_byte)
 		{
 			unsigned char *composite_counter = reinterpret_cast<unsigned char *>(
-				&lane_totals[CYCLE][my_base_lane + (Config::SCAN_LANES_PER_LOAD * LOAD)]);
+				&lane_totals[CYCLE][my_base_lane + (KernelConfig::SCAN_LANES_PER_LOAD * LOAD)]);
 
 			digit_counts[CYCLE][LOAD] = composite_counter[my_quad_byte];
 
 			// Correct for possible overflow
-			if (WarpVoteAll(Config::RADIX_BITS, digit_counts[CYCLE][LOAD] <= 1)) {
+			if (WarpVoteAll(KernelConfig::RADIX_BITS, digit_counts[CYCLE][LOAD] <= 1)) {
 				// We overflowed in this load: all keys for this load have same
 				// digit, i.e., whoever owns the digit matching one of their own 
 				// key's digit gets all 256 counts
@@ -522,9 +523,9 @@ struct RecoverTileDigitCounts
 	struct Iterate<CYCLE, TOTAL_CYCLES, TOTAL_LOADS, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],
 			int my_base_lane,
 			int my_quad_byte)
 		{
@@ -538,23 +539,23 @@ struct RecoverTileDigitCounts
 	struct Iterate<TOTAL_CYCLES, TOTAL_CYCLES, 0, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],
+			int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],
 			int my_base_lane,
 			int my_quad_byte) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		int key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
-		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE])				// Counts of my digit in each load in each cycle 
+		int key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
+		int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE])				// Counts of my digit in each load in each cycle 
 	{
 		int my_base_lane = threadIdx.x >> 2;
 		int my_quad_byte = threadIdx.x & 3;
 
-		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE>::Invoke(
+		Iterate<0, KernelConfig::CYCLES_PER_TILE, 0, KernelConfig::LOADS_PER_CYCLE>::Invoke(
 				key_digits, lane_totals, digit_counts, my_base_lane, my_quad_byte);
 	} 
 };
@@ -562,7 +563,7 @@ struct RecoverTileDigitCounts
 
 // Compute the digit prefixes for this tile for each load  
 // Called by threads [0 .. radix-digits - 1]
-template <typename Config> 
+template <typename KernelConfig> 
 struct UpdateDigitPrefixes
 {
 	// Next load
@@ -571,8 +572,8 @@ struct UpdateDigitPrefixes
 	{
 		static __device__ __forceinline__ void Invoke(
 			int digit_prefix,																
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],				
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) 
 		{
 			digit_prefixes[CYCLE][LOAD][threadIdx.x] = digit_counts[CYCLE][LOAD] + digit_prefix;
 			Iterate<CYCLE, TOTAL_CYCLES, LOAD + 1, TOTAL_LOADS>::Invoke(
@@ -586,8 +587,8 @@ struct UpdateDigitPrefixes
 	{
 		static __device__ __forceinline__ void Invoke(
 			int digit_prefix,																
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) 
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],				
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) 
 		{
 			Iterate<CYCLE + 1, TOTAL_CYCLES, 0, TOTAL_LOADS>::Invoke(
 				digit_prefix, digit_counts, digit_prefixes);
@@ -600,28 +601,28 @@ struct UpdateDigitPrefixes
 	{
 		static __device__ __forceinline__ void Invoke(
 			int digit_prefix,																
-			int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				
-			int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS]) {} 
+			int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],				
+			int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS]) {} 
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		int digit_prefix,																// My digit's prefix for this tile
-		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE],				// Counts of my digit in each load in each cycle of this tile
-		int digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS])
+		int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE],				// Counts of my digit in each load in each cycle of this tile
+		int digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS])
 	{
-		Iterate<0, Config::CYCLES_PER_TILE, 0, Config::LOADS_PER_CYCLE>::Invoke(
+		Iterate<0, KernelConfig::CYCLES_PER_TILE, 0, KernelConfig::LOADS_PER_CYCLE>::Invoke(
 			digit_prefix, digit_counts, digit_prefixes);
 	} 
 };
 
 
 // Scans all of the cycles in a tile
-template <typename Config, bool UNGUARDED_IO>
+template <typename KernelConfig, bool UNGUARDED_IO>
 struct ScanTileCycles
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	// Next cycle
 	template <int CYCLE, int TOTAL_CYCLES>
@@ -630,23 +631,23 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			int 		*base_partial,
 			int			*raking_segment,
-			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-			KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE])
+			int 		lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+			KeyType 	keys[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE])
 		{
 			// Byte offset from base_partial of 8-bit counter for each key
-			int counter_offsets[Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE];		
+			int counter_offsets[KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE];		
 
 			// Reset smem composite counters
 			#pragma unroll
-			for (int SCAN_LANE = 0; SCAN_LANE < Config::SCAN_LANES_PER_CYCLE; SCAN_LANE++) {
-				base_partial[SCAN_LANE * Config::Grid::ROWS_PER_LANE * Config::Grid::PADDED_PARTIALS_PER_ROW] = 0;
+			for (int SCAN_LANE = 0; SCAN_LANE < KernelConfig::SCAN_LANES_PER_CYCLE; SCAN_LANE++) {
+				base_partial[SCAN_LANE * KernelConfig::Grid::ROWS_PER_LANE * KernelConfig::Grid::PADDED_PARTIALS_PER_ROW] = 0;
 			}
 
 			// Decode digits and update 8-bit composite counters for the keys in this cycle
-			DecodeCycleKeys<Config>::Invoke(
+			DecodeCycleKeys<KernelConfig>::Invoke(
 				keys[CYCLE], 
 				key_digits[CYCLE], 
 				counter_offsets, 
@@ -655,15 +656,15 @@ struct ScanTileCycles
 			__syncthreads();
 			
 			// Use our raking threads to, in aggregate, scan the composite counter lanes
-			if (threadIdx.x < Config::Grid::RAKING_THREADS) {
+			if (threadIdx.x < KernelConfig::Grid::RAKING_THREADS) {
 
-				ScanCycleLanes<Config>(raking_segment, lanes_warpscan, lane_totals[CYCLE]);
+				ScanCycleLanes<KernelConfig>(raking_segment, lanes_warpscan, lane_totals[CYCLE]);
 			}
 			
 			__syncthreads();
 
 			// Extract the local ranks of each key
-			ExtractCycleRanks<Config>::Invoke(
+			ExtractCycleRanks<KernelConfig>::Invoke(
 				key_ranks[CYCLE], 
 				key_digits[CYCLE],
 				counter_offsets,
@@ -688,24 +689,24 @@ struct ScanTileCycles
 		static __device__ __forceinline__ void Invoke(
 			int 		*base_partial,
 			int			*raking_segment,
-			int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-			KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-			int 		lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE]) {} 
+			int 		lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+			KeyType 	keys[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+			int 		lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE]) {} 
 	};
 	
 	// Interface
 	static __device__ __forceinline__ void Invoke(
 		int 		*base_partial,
 		int			*raking_segment,
-		int 		lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-		KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],
-		int 		lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE]) 
+		int 		lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+		KeyType 	keys[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int 		key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int 		key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],
+		int 		lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE]) 
 	{
-		Iterate<0, Config::CYCLES_PER_TILE>::Invoke(
+		Iterate<0, KernelConfig::CYCLES_PER_TILE>::Invoke(
 			base_partial, 
 			raking_segment, 
 			lanes_warpscan, 
@@ -718,22 +719,22 @@ struct ScanTileCycles
 };
 
 
-template <typename Config>
+template <typename KernelConfig>
 struct ComputeScatterOffsets
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	// Iterate over loads
 	template <int LOAD, int TOTAL_LOADS>
 	struct Iterate
 	{
 		static __device__ __forceinline__ void Invoke(
-			SizeT 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-			SizeT	digit_carry[Config::RADIX_DIGITS],
-			KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD])
+			SizeT 	scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD],
+			SizeT	digit_carry[KernelConfig::RADIX_DIGITS],
+			KeyType 	linear_keys[KernelConfig::TILE_ELEMENTS_PER_THREAD])
 		{
-			scatter_offsets[LOAD] = digit_carry[DecodeDigit<Config>(linear_keys[LOAD])] + (Config::THREADS * LOAD) + threadIdx.x;
+			scatter_offsets[LOAD] = digit_carry[DecodeDigit<KernelConfig>(linear_keys[LOAD])] + (KernelConfig::THREADS * LOAD) + threadIdx.x;
 			Iterate<LOAD + 1, TOTAL_LOADS>::Invoke(scatter_offsets, digit_carry, linear_keys);
 		}
 	};
@@ -743,28 +744,28 @@ struct ComputeScatterOffsets
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS>
 	{
 		static __device__ __forceinline__ void Invoke(
-			SizeT 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-			SizeT	digit_carry[Config::RADIX_DIGITS],
-			KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD]) {}
+			SizeT 	scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD],
+			SizeT	digit_carry[KernelConfig::RADIX_DIGITS],
+			KeyType 	linear_keys[KernelConfig::TILE_ELEMENTS_PER_THREAD]) {}
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		SizeT 	scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD],
-		SizeT	digit_carry[Config::RADIX_DIGITS],
-		KeyType 	linear_keys[Config::TILE_ELEMENTS_PER_THREAD])
+		SizeT 	scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD],
+		SizeT	digit_carry[KernelConfig::RADIX_DIGITS],
+		KeyType 	linear_keys[KernelConfig::TILE_ELEMENTS_PER_THREAD])
 	{
-		Iterate<0, Config::TILE_ELEMENTS_PER_THREAD>::Invoke(scatter_offsets, digit_carry, linear_keys);
+		Iterate<0, KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(scatter_offsets, digit_carry, linear_keys);
 	}
 };
 
 
-template <typename Config, bool UNGUARDED_IO, bool STRICT_ALIGNMENT>
+template <typename KernelConfig, bool UNGUARDED_IO, bool STRICT_ALIGNMENT>
 struct SwapAndScatter
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::ValueType ValueType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::ValueType ValueType;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	template <typename V, int __dummy = 0> 
 	struct PermuteValues
@@ -774,19 +775,19 @@ struct SwapAndScatter
 			V *d_out_values,
 			const SizeT	&guarded_elements,
 			int *exchange,
-			int linear_ranks[Config::TILE_ELEMENTS_PER_THREAD],
-			SizeT scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD])
+			int linear_ranks[KernelConfig::TILE_ELEMENTS_PER_THREAD],
+			SizeT scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD])
 		{
 			// Read values
-			V values[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+			V values[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 			V *linear_values = reinterpret_cast<ValueType *>(values);
 			V *value_exchange = reinterpret_cast<ValueType *>(exchange);
 
 			util::io::LoadTile<
-				Config::LOG_LOADS_PER_TILE, 						// Number of vector loads (log)
-				Config::LOG_LOAD_VEC_SIZE,							// Number of items per vector load (log)
-				Config::THREADS,									// Active threads that will be loading
-				Config::READ_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+				KernelConfig::LOG_LOADS_PER_TILE, 						// Number of vector loads (log)
+				KernelConfig::LOG_LOAD_VEC_SIZE,							// Number of items per vector load (log)
+				KernelConfig::THREADS,									// Active threads that will be loading
+				KernelConfig::READ_MODIFIER,								// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 				UNGUARDED_IO>										// Whether or not bounds-checking is to be done
 			::Invoke(values, d_in_values, 0, guarded_elements);
 
@@ -794,8 +795,8 @@ struct SwapAndScatter
 
 			// Scatter values to smem
 			util::io::ScatterTile<
-				Config::TILE_ELEMENTS_PER_THREAD,
-				Config::THREADS,
+				KernelConfig::TILE_ELEMENTS_PER_THREAD,
+				KernelConfig::THREADS,
 				util::io::st::NONE>::template Scatter<true>(
 					value_exchange,
 					linear_values,
@@ -806,9 +807,9 @@ struct SwapAndScatter
 
 			// Gather values from smem (vec-1)
 			util::io::LoadTile<
-				Config::LOG_TILE_ELEMENTS_PER_THREAD,
+				KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
-				Config::THREADS,
+				KernelConfig::THREADS,
 				util::io::ld::NONE,
 				true>::Invoke(
 					reinterpret_cast<ValueType (*)[1]>(values),
@@ -818,9 +819,9 @@ struct SwapAndScatter
 
 			// Scatter values to global digit partitions
 			util::io::ScatterTile<
-				Config::TILE_ELEMENTS_PER_THREAD,
-				Config::THREADS,
-				Config::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO>(
+				KernelConfig::TILE_ELEMENTS_PER_THREAD,
+				KernelConfig::THREADS,
+				KernelConfig::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO>(
 					d_out_values,
 					linear_values,
 					scatter_offsets,
@@ -836,8 +837,8 @@ struct SwapAndScatter
 			KeysOnly *d_out_values,
 			const SizeT	&guarded_elements,
 			int *exchange,
-			int linear_ranks[Config::TILE_ELEMENTS_PER_THREAD],
-			SizeT scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD]) {}
+			int linear_ranks[KernelConfig::TILE_ELEMENTS_PER_THREAD],
+			SizeT scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD]) {}
 	};
 
 	
@@ -846,10 +847,10 @@ struct SwapAndScatter
 		KeyType 	*d_out_keys,
 		ValueType 	*d_out_values,
 		int 		*exchange,
-		SizeT	digit_carry[Config::RADIX_DIGITS],
+		SizeT	digit_carry[KernelConfig::RADIX_DIGITS],
 		const SizeT	&guarded_elements,
-		KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE],			// The keys this thread will read this tile
-		int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE])		// The CTA-scope rank of each key
+		KeyType 	keys[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE],			// The keys this thread will read this tile
+		int 		key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE])		// The CTA-scope rank of each key
 	{
 		KeyType *linear_keys = reinterpret_cast<KeyType *>(keys);
 		KeyType *key_exchange = reinterpret_cast<KeyType *>(exchange);
@@ -857,8 +858,8 @@ struct SwapAndScatter
 
 		// Scatter keys to smem
 		util::io::ScatterTile<
-			Config::TILE_ELEMENTS_PER_THREAD,
-			Config::THREADS,
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
 			util::io::st::NONE>::template Scatter<true>(
 				key_exchange,
 				linear_keys,
@@ -869,9 +870,9 @@ struct SwapAndScatter
 
 		// Gather keys from smem (vec-1)
 		util::io::LoadTile<
-			Config::LOG_TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
 			0,
-			Config::THREADS,
+			KernelConfig::THREADS,
 			util::io::ld::NONE,
 			true>::Invoke(
 				reinterpret_cast<KeyType (*)[1]>(keys),
@@ -880,14 +881,14 @@ struct SwapAndScatter
 				guarded_elements);
 		
 		// Compute global scatter offsets for gathered keys
-		SizeT scatter_offsets[Config::TILE_ELEMENTS_PER_THREAD];
-		ComputeScatterOffsets<Config>::Invoke(scatter_offsets, digit_carry, linear_keys);
+		SizeT scatter_offsets[KernelConfig::TILE_ELEMENTS_PER_THREAD];
+		ComputeScatterOffsets<KernelConfig>::Invoke(scatter_offsets, digit_carry, linear_keys);
 
 		// Scatter keys to global digit partitions
 		util::io::ScatterTile<
-			Config::TILE_ELEMENTS_PER_THREAD,
-			Config::THREADS,
-			Config::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO, KeyType, Config::PostprocessTraits::Postprocess>(
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER>::template Scatter<UNGUARDED_IO, KeyType, KernelConfig::PostprocessTraits::Postprocess>(
 				d_out_keys, linear_keys, scatter_offsets, guarded_elements);
 
 		// PermuteValues
@@ -1040,45 +1041,45 @@ __device__ __forceinline__ void SwapAndScatterSm10(
 
 
 template <
-	typename Config,
+	typename KernelConfig,
 	bool UNGUARDED_IO>
 __device__ __forceinline__ void ProcessTile(
-	typename Config::KeyType 	*d_in_keys,
-	typename Config::ValueType 	*d_in_values,
-	typename Config::KeyType 	*d_out_keys,
-	typename Config::ValueType 	*d_out_values,
+	typename KernelConfig::KeyType 	*d_in_keys,
+	typename KernelConfig::ValueType 	*d_in_values,
+	typename KernelConfig::KeyType 	*d_out_keys,
+	typename KernelConfig::ValueType 	*d_out_values,
 	int 						*exchange,								
-	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-	typename Config::SizeT		digit_carry[Config::RADIX_DIGITS],
-	int							digit_warpscan[2][Config::RADIX_DIGITS],						 
-	int							digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS],
-	int 						lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
+	int							lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+	typename KernelConfig::SizeT		digit_carry[KernelConfig::RADIX_DIGITS],
+	int							digit_warpscan[2][KernelConfig::RADIX_DIGITS],						 
+	int							digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS],
+	int 						lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
 	int							*base_partial,
 	int							*raking_segment,		
-	const typename Config::SizeT 		&guarded_elements)
+	const typename KernelConfig::SizeT 		&guarded_elements)
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 	
-	KeyType 	keys[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE];			// The keys this thread will read this tile
-	int 		key_digits[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE];	// Their decoded digits
-	int 		key_ranks[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::LOAD_VEC_SIZE];		// The CTA-scope rank of each key
+	KeyType 	keys[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE];			// The keys this thread will read this tile
+	int 		key_digits[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE];	// Their decoded digits
+	int 		key_ranks[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::LOAD_VEC_SIZE];		// The CTA-scope rank of each key
 
 	// Read tile of keys
 	util::io::LoadTile<
-		Config::LOG_LOADS_PER_TILE, 					// Number of vector loads (log)
-		Config::LOG_LOAD_VEC_SIZE,						// Number of items per vector load (log)
-		Config::THREADS,								// Active threads that will be loading
-		Config::READ_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+		KernelConfig::LOG_LOADS_PER_TILE, 					// Number of vector loads (log)
+		KernelConfig::LOG_LOAD_VEC_SIZE,						// Number of items per vector load (log)
+		KernelConfig::THREADS,								// Active threads that will be loading
+		KernelConfig::READ_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 		UNGUARDED_IO>									// Assignment function to transform the loaded value (or provide default if out-of-bounds)
-	::template Invoke<KeyType, Config::PreprocessTraits::Preprocess>(
-			reinterpret_cast<KeyType (*)[Config::LOAD_VEC_SIZE]>(keys),	 
+	::template Invoke<KeyType, KernelConfig::PreprocessTraits::Preprocess>(
+			reinterpret_cast<KeyType (*)[KernelConfig::LOAD_VEC_SIZE]>(keys),	 
 			d_in_keys,
 			0,
 			guarded_elements);
 
 	// Scan cycles
-	ScanTileCycles<Config, UNGUARDED_IO>::Invoke(
+	ScanTileCycles<KernelConfig, UNGUARDED_IO>::Invoke(
 		base_partial,
 		raking_segment,
 		lanes_warpscan,
@@ -1088,21 +1089,21 @@ __device__ __forceinline__ void ProcessTile(
 		lane_totals); 
 
 	// Scan across digits
-	if (threadIdx.x < Config::RADIX_DIGITS) {
-		int digit_counts[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE];					// Counts of my digit in each load in each cycle
+	if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
+		int digit_counts[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE];					// Counts of my digit in each load in each cycle
 		
 		// Recover digit-counts from lanes_warpscan padding
-		RecoverTileDigitCounts<Config>::Invoke(key_digits, lane_totals, digit_counts);
+		RecoverTileDigitCounts<KernelConfig>::Invoke(key_digits, lane_totals, digit_counts);
 		
 		// Scan across my digit counts for each load
-		int inclusive_total = SerialScan<int, Config::LOADS_PER_TILE>::Invoke(
+		int inclusive_total = SerialScan<int, KernelConfig::LOADS_PER_TILE>::Invoke(
 			reinterpret_cast<int*>(digit_counts), 0);
 
 		// Add the inclusive scan of digit counts from the previous tile to the running carry
 		SizeT my_carry = digit_carry[threadIdx.x] + digit_warpscan[1][threadIdx.x];
 
 		// Perform overflow-free SIMD Kogge-Stone across digits
-		int digit_prefix_inclusive = WarpScanInclusive<int, Config::RADIX_BITS>::Invoke(
+		int digit_prefix_inclusive = WarpScanInclusive<int, KernelConfig::RADIX_BITS>::Invoke(
 				inclusive_total,
 				digit_warpscan);
 
@@ -1116,16 +1117,16 @@ __device__ __forceinline__ void ProcessTile(
 		digit_carry[threadIdx.x] = my_carry - digit_prefix_exclusive;
 
 		// Compute the digit prefixes for this tile for each load  
-		UpdateDigitPrefixes<Config>::Invoke(digit_prefix_exclusive, digit_counts, digit_prefixes);
+		UpdateDigitPrefixes<KernelConfig>::Invoke(digit_prefix_exclusive, digit_counts, digit_prefixes);
 	}
 	
 	__syncthreads();
 
 	// Update the key ranks in each load with the digit prefixes for the tile
-	UpdateTileRanks<Config>::Invoke(key_ranks, key_digits, digit_prefixes);
+	UpdateTileRanks<KernelConfig>::Invoke(key_ranks, key_digits, digit_prefixes);
 
 	// Scatter to outgoing digit partitions (using a local scatter first)
-	SwapAndScatter<Config, UNGUARDED_IO, (__B40C_CUDA_ARCH__ < 120)>::Invoke(
+	SwapAndScatter<KernelConfig, UNGUARDED_IO, (__B40C_CUDA_ARCH__ < 120)>::Invoke(
 		d_in_values,
 		d_out_keys,
 		d_out_values,
@@ -1139,28 +1140,28 @@ __device__ __forceinline__ void ProcessTile(
 }
 
 
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void DigitPass(
-	typename Config::SizeT 		*d_spine,
-	typename Config::KeyType 	*d_in_keys,
-	typename Config::ValueType 	*d_in_values,
-	typename Config::KeyType 	*d_out_keys,
-	typename Config::ValueType 	*d_out_values,
+	typename KernelConfig::SizeT 		*d_spine,
+	typename KernelConfig::KeyType 	*d_in_keys,
+	typename KernelConfig::ValueType 	*d_in_values,
+	typename KernelConfig::KeyType 	*d_out_keys,
+	typename KernelConfig::ValueType 	*d_out_values,
 	int 						*exchange,								
-	int							lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE],
-	typename Config::SizeT		digit_carry[Config::RADIX_DIGITS],
-	int							digit_warpscan[2][Config::RADIX_DIGITS],						 
-	int							digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS],
-	int 						lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE],
+	int							lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE],
+	typename KernelConfig::SizeT		digit_carry[KernelConfig::RADIX_DIGITS],
+	int							digit_warpscan[2][KernelConfig::RADIX_DIGITS],						 
+	int							digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS],
+	int 						lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE],
 	int							*base_partial,
 	int							*raking_segment,		
-	typename Config::SizeT 		cta_offset,
-	typename Config::SizeT 		&guarded_offset,
-	typename Config::SizeT 		&guarded_elements)
+	typename KernelConfig::SizeT 		cta_offset,
+	typename KernelConfig::SizeT 		&guarded_offset,
+	typename KernelConfig::SizeT 		&guarded_elements)
 {
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::SizeT SizeT;
 
-	if (threadIdx.x < Config::RADIX_DIGITS) {
+	if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
 
 		// Reset value-area of digit_warpscan
 		digit_warpscan[1][threadIdx.x] = 0;
@@ -1168,14 +1169,14 @@ __device__ __forceinline__ void DigitPass(
 		// Read digit_carry in parallel 
 		SizeT my_digit_carry;
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-		util::io::ModifiedLoad<Config::READ_MODIFIER>::Ld(my_digit_carry, d_spine + spine_digit_offset);
+		util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(my_digit_carry, d_spine + spine_digit_offset);
 		digit_carry[threadIdx.x] = my_digit_carry;
 	}
 
 	// Scan in full tiles of tile_elements
 	while (cta_offset < guarded_offset) {
 
-		ProcessTile<Config, true>(
+		ProcessTile<KernelConfig, true>(
 			d_in_keys + cta_offset,
 			d_in_values + cta_offset,
 			d_out_keys,
@@ -1190,13 +1191,13 @@ __device__ __forceinline__ void DigitPass(
 			raking_segment,
 			0);
 	
-		cta_offset += Config::TILE_ELEMENTS;
+		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (guarded_elements) {
 
-		ProcessTile<Config, false>(	
+		ProcessTile<KernelConfig, false>(	
 			d_in_keys + cta_offset,
 			d_in_values + cta_offset,
 			d_out_keys,
@@ -1219,75 +1220,73 @@ __device__ __forceinline__ void DigitPass(
 /**
  * Downsweep scan-scatter 
  */
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void LsbDownsweep(
 	int 						*&d_selectors,
-	typename Config::SizeT 		*&d_spine,
-	typename Config::KeyType 	*&d_keys0,
-	typename Config::KeyType 	*&d_keys1,
-	typename Config::ValueType 	*&d_values0,
-	typename Config::ValueType 	*&d_values1,
-	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
+	typename KernelConfig::SizeT 		*&d_spine,
+	typename KernelConfig::KeyType 	*&d_keys0,
+	typename KernelConfig::KeyType 	*&d_keys1,
+	typename KernelConfig::ValueType 	*&d_values0,
+	typename KernelConfig::ValueType 	*&d_values1,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 
-	__shared__ int4			smem_pool_int4s[Config::SMEM_POOL_INT4S];
-	__shared__ int 			lanes_warpscan[Config::SCAN_LANES_PER_CYCLE][3][Config::Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
-	__shared__ SizeT	digit_carry[Config::RADIX_DIGITS];
-	__shared__ int 			digit_warpscan[2][Config::RADIX_DIGITS];
-	__shared__ int 			digit_prefixes[Config::CYCLES_PER_TILE][Config::LOADS_PER_CYCLE][Config::RADIX_DIGITS];
-	__shared__ int 			lane_totals[Config::CYCLES_PER_TILE][Config::SCAN_LANES_PER_CYCLE];
-	__shared__ bool 		non_trivial_digit_pass;
-	__shared__ int 			selector;
-	__shared__ SizeT 	cta_offset;			// Offset at which this CTA begins processing
-	__shared__ SizeT 	guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	__shared__ SizeT 	guarded_elements;		// Number of elements in partially-full tile
+	__shared__ int4		smem_pool_int4s[KernelConfig::SMEM_POOL_INT4S];
+	__shared__ int 		lanes_warpscan[KernelConfig::SCAN_LANES_PER_CYCLE][3][KernelConfig::Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
+	__shared__ SizeT	digit_carry[KernelConfig::RADIX_DIGITS];
+	__shared__ int 		digit_warpscan[2][KernelConfig::RADIX_DIGITS];
+	__shared__ int 		digit_prefixes[KernelConfig::CYCLES_PER_TILE][KernelConfig::LOADS_PER_CYCLE][KernelConfig::RADIX_DIGITS];
+	__shared__ int 		lane_totals[KernelConfig::CYCLES_PER_TILE][KernelConfig::SCAN_LANES_PER_CYCLE];
+	__shared__ bool 	non_trivial_digit_pass;
+	__shared__ int 		selector;
+	__shared__ util::CtaWorkLimits<SizeT> work_limits;
 	
 	int *smem_pool = reinterpret_cast<int *>(smem_pool_int4s);
 
 	// location for placing 2-element partial reductions in the first lane of a cycle	
-	int *base_partial = Config::Grid::BasePartial(smem_pool); 								
+	int *base_partial = KernelConfig::Grid::BasePartial(smem_pool); 								
 	
 	// location for raking across all loads within a cycle
 	int *raking_segment = 0;										
 	
-	if (threadIdx.x < Config::Grid::RAKING_THREADS) {
+	if (threadIdx.x < KernelConfig::Grid::RAKING_THREADS) {
 
 		// initalize lane warpscans
-		int warpscan_lane = threadIdx.x >> Config::Grid::LOG_RAKING_THREADS_PER_LANE;
-		int warpscan_tid = threadIdx.x & (Config::Grid::RAKING_THREADS_PER_LANE - 1);
+		int warpscan_lane = threadIdx.x >> KernelConfig::Grid::LOG_RAKING_THREADS_PER_LANE;
+		int warpscan_tid = threadIdx.x & (KernelConfig::Grid::RAKING_THREADS_PER_LANE - 1);
 		lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
 		
 		// initialize raking segment
-		raking_segment = Config::Grid::RakingSegment(smem_pool); 
+		raking_segment = KernelConfig::Grid::RakingSegment(smem_pool); 
 
 		// initialize digit warpscans
-		if (threadIdx.x < Config::RADIX_DIGITS) {
+		if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
 
 			// Initialize digit_warpscan
 			digit_warpscan[0][threadIdx.x] = 0;
 
 			// Determine where to read our input
-			if (Config::EARLY_EXIT) {
+			if (KernelConfig::EARLY_EXIT) {
 
 				// We have early-exit-upon-homogeneous-digits enabled
 
-				const int SELECTOR_IDX = Config::CURRENT_PASS & 0x1;
-				const int NEXT_SELECTOR_IDX = (Config::CURRENT_PASS + 1) & 0x1;
+				const int SELECTOR_IDX = KernelConfig::CURRENT_PASS & 0x1;
+				const int NEXT_SELECTOR_IDX = (KernelConfig::CURRENT_PASS + 1) & 0x1;
 
-				selector = (Config::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
+				selector = (KernelConfig::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
 
 				// Determine whether or not we have work to do and setup the next round
 				// accordingly.  We can do this by looking at the first-block's
 				// histograms and counting the number of digits with counts that are
 				// non-zero and not-the-problem-size.
-				if (Config::PreprocessTraits::MustApply || Config::PostprocessTraits::MustApply) {
+				if (KernelConfig::PreprocessTraits::MustApply || KernelConfig::PostprocessTraits::MustApply) {
 					non_trivial_digit_pass = true;
 				} else {
 					int first_block_carry = d_spine[FastMul(gridDim.x, threadIdx.x)];
 					int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-					non_trivial_digit_pass = TallyWarpVote(Config::RADIX_BITS, predicate, smem_pool);
+					non_trivial_digit_pass = TallyWarpVote(KernelConfig::RADIX_BITS, predicate, smem_pool);
 				}
 
 				// Let the next round know which set of buffers to use
@@ -1297,9 +1296,9 @@ __device__ __forceinline__ void LsbDownsweep(
 			}
 
 			// Determine our threadblock's work range
-			SizeT cta_elements;			// Total number of elements for this CTA to process
-			work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
-				cta_offset, cta_elements, guarded_offset, guarded_elements);
+			work_decomposition.template GetCtaWorkLimits<
+				KernelConfig::LOG_TILE_ELEMENTS,
+				KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 		}
 	}
 
@@ -1307,12 +1306,12 @@ __device__ __forceinline__ void LsbDownsweep(
 	__syncthreads();
 	
 	// Short-circuit this entire cycle
-	if (Config::EARLY_EXIT && !non_trivial_digit_pass) return;
+	if (KernelConfig::EARLY_EXIT && !non_trivial_digit_pass) return;
 
-	if ((Config::EARLY_EXIT && selector) || (!Config::EARLY_EXIT && (Config::CURRENT_PASS & 0x1))) {
+	if ((KernelConfig::EARLY_EXIT && selector) || (!KernelConfig::EARLY_EXIT && (KernelConfig::CURRENT_PASS & 0x1))) {
 	
 		// d_keys1 -> d_keys0
-		DigitPass<Config>(	
+		DigitPass<KernelConfig>(	
 			d_spine,
 			d_keys1,
 			d_values1,
@@ -1326,14 +1325,14 @@ __device__ __forceinline__ void LsbDownsweep(
 			lane_totals,
 			base_partial,
 			raking_segment,
-			cta_offset,
-			guarded_offset,
-			guarded_elements);
+			work_limits.offset,
+			work_limits.guarded_offset,
+			work_limits.guarded_elements);
 
 	} else {
 		
 		// d_keys0 -> d_keys1
-		DigitPass<Config>(	
+		DigitPass<KernelConfig>(	
 			d_spine,
 			d_keys0,
 			d_values0,
@@ -1347,9 +1346,9 @@ __device__ __forceinline__ void LsbDownsweep(
 			lane_totals,
 			base_partial,
 			raking_segment,
-			cta_offset,
-			guarded_offset,
-			guarded_elements);
+			work_limits.offset,
+			work_limits.guarded_offset,
+			work_limits.guarded_elements);
 	}
 }
 
@@ -1367,7 +1366,7 @@ void DownsweepKernel(
 	typename KernelConfig::KeyType 		*d_keys1,
 	typename KernelConfig::ValueType 	*d_values0,
 	typename KernelConfig::ValueType 	*d_values1,
-	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
 	LsbDownsweep<KernelConfig>(
 		d_selectors,

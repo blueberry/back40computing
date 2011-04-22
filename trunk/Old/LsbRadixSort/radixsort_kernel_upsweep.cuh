@@ -43,6 +43,7 @@
 
 #pragma once
 
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
@@ -178,34 +179,34 @@ struct UpsweepKernelConfig : UpsweepConfigType
  ******************************************************************************/
 
 // Reset 8-bit composite counters back to zero
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void ResetCompositeLanes(int *composite_column)
 {
 	#pragma unroll
-	for (int LANE = 0; LANE < Config::COMPOSITE_LANES; LANE++) {
-		composite_column[LANE * Config::COMPOSITES_PER_LANE] = 0;
+	for (int LANE = 0; LANE < KernelConfig::COMPOSITE_LANES; LANE++) {
+		composite_column[LANE * KernelConfig::COMPOSITES_PER_LANE] = 0;
 	}
 }
 
 
 // Partially-reduce 8-bit composite counters back into full 32-bit registers
-template <typename Config> 
+template <typename KernelConfig> 
 struct ReduceCompositeLanes
 {
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	// Next composite counter
 	template <int LANE, int TOTAL_LANES, int COMPOSITE, int TOTAL_COMPOSITES>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			SizeT local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[KernelConfig::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx)
 		{
 			int composite_offset = 
-				((warp_id << Config::LOG_COMPOSITES_PER_LANE) + warp_idx) + 	// base lane offset + base composite offset
-				(LANE * Config::COMPOSITES_PER_LANE * Config::WARPS) + 			// stride to current lane
+				((warp_id << KernelConfig::LOG_COMPOSITES_PER_LANE) + warp_idx) + 	// base lane offset + base composite offset
+				(LANE * KernelConfig::COMPOSITES_PER_LANE * KernelConfig::WARPS) + 			// stride to current lane
 				(COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__)); 			// stride to current composite
 			
 			unsigned char* composite_counters = (unsigned char *) &smem_pool[composite_offset];
@@ -222,7 +223,7 @@ struct ReduceCompositeLanes
 	template <int LANE, int TOTAL_LANES, int TOTAL_COMPOSITES>
 	struct Iterate<LANE, TOTAL_LANES, TOTAL_COMPOSITES, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
-			SizeT local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[KernelConfig::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx)
@@ -235,7 +236,7 @@ struct ReduceCompositeLanes
 	template <int TOTAL_LANES, int TOTAL_COMPOSITES>
 	struct Iterate<TOTAL_LANES, TOTAL_LANES, 0, TOTAL_COMPOSITES> {
 		static __device__ __forceinline__ void Invoke(
-			SizeT local_counts[Config::LANES_PER_WARP][4],
+			SizeT local_counts[KernelConfig::LANES_PER_WARP][4],
 			int *smem_pool,
 			int warp_id,
 			int warp_idx) {}
@@ -243,14 +244,14 @@ struct ReduceCompositeLanes
 	
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		SizeT local_counts[Config::LANES_PER_WARP][4],
+		SizeT local_counts[KernelConfig::LANES_PER_WARP][4],
 		int *smem_pool,
 		int warp_id,
 		int warp_idx) 
 	{
 		// Accomodate radices where we have more warps than lanes
-		if (warp_id < Config::COMPOSITE_LANES) {
-			Iterate<0, Config::LANES_PER_WARP, 0, Config::COMPOSITES_PER_LANE_PER_THREAD>::Invoke(
+		if (warp_id < KernelConfig::COMPOSITE_LANES) {
+			Iterate<0, KernelConfig::LANES_PER_WARP, 0, KernelConfig::COMPOSITES_PER_LANE_PER_THREAD>::Invoke(
 				local_counts, smem_pool, warp_id, warp_idx);
 		}
 	}
@@ -258,35 +259,35 @@ struct ReduceCompositeLanes
 
 
 // Bucket a key
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void Bucket(
-	typename Config::KeyType key, 
+	typename KernelConfig::KeyType key, 
 	int *composite_column)
 {
-	typedef typename Config::KeyType KeyType;
+	typedef typename KernelConfig::KeyType KeyType;
 
 	// Pre-process key with bit-twiddling functor if necessary
-	Config::PreprocessTraits::Preprocess(key, true);
+	KernelConfig::PreprocessTraits::Preprocess(key, true);
 
 	// Extract lane containing corresponding composite counter 
 	int lane;
 	ExtractKeyBits<
 		KeyType, 
-		Config::CURRENT_BIT + 2, 
-		Config::RADIX_BITS - 2>::Extract(lane, key);
+		KernelConfig::CURRENT_BIT + 2, 
+		KernelConfig::RADIX_BITS - 2>::Extract(lane, key);
 
 	if (__B40C_CUDA_ARCH__ >= 200) {	
 	
 		// GF100+ has special bit-extraction instructions (instead of shift+mask)
 		int quad_byte;
-		if (Config::RADIX_BITS < 2) { 
-			ExtractKeyBits<KeyType, Config::CURRENT_BIT, 1>::Extract(quad_byte, key);
+		if (KernelConfig::RADIX_BITS < 2) { 
+			ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 1>::Extract(quad_byte, key);
 		} else {
-			ExtractKeyBits<KeyType, Config::CURRENT_BIT, 2>::Extract(quad_byte, key);
+			ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 2>::Extract(quad_byte, key);
 		}
 		
 		// Increment sub-field in composite counter 
-		unsigned char *encoded_col = (unsigned char *) &composite_column[FastMul(lane, Config::COMPOSITES_PER_LANE)];
+		unsigned char *encoded_col = (unsigned char *) &composite_column[FastMul(lane, KernelConfig::COMPOSITES_PER_LANE)];
 		encoded_col[quad_byte]++;
 
 	} else {
@@ -294,31 +295,31 @@ __device__ __forceinline__ void Bucket(
 		// GT200 can save an instruction because it can source an operand 
 		// directly from smem
 		const int BYTE_ENCODE_SHIFT 		= 0x3;
-		const KeyType QUAD_MASK 			= (Config::RADIX_BITS < 2) ? 0x1 : 0x3;
+		const KeyType QUAD_MASK 			= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
 
-		int quad_shift = MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - Config::CURRENT_BIT>(
-			key & (QUAD_MASK << Config::CURRENT_BIT));
+		int quad_shift = MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - KernelConfig::CURRENT_BIT>(
+			key & (QUAD_MASK << KernelConfig::CURRENT_BIT));
 		
 		// Increment sub-field in composite counter 
-		composite_column[FastMul(lane, Config::COMPOSITES_PER_LANE)] += (1 << quad_shift);
+		composite_column[FastMul(lane, KernelConfig::COMPOSITES_PER_LANE)] += (1 << quad_shift);
 	}
 }
 
 
 // Bucket a tile of keys
-template <typename Config> 
+template <typename KernelConfig> 
 struct BucketTileKeys
 {
-	typedef typename Config::KeyType KeyType;
+	typedef typename KernelConfig::KeyType KeyType;
 	
 	// Iterate over vec-elements
 	template <int LOAD, int TOTAL_LOADS, int VEC_ELEMENT, int TOTAL_VEC_ELEMENTS>
 	struct Iterate {
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			KeyType keys[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE], 
 			int *composite_column) 
 		{
-			Bucket<Config>(keys[LOAD][VEC_ELEMENT], composite_column);
+			Bucket<KernelConfig>(keys[LOAD][VEC_ELEMENT], composite_column);
 			Iterate<LOAD, TOTAL_LOADS, VEC_ELEMENT + 1, TOTAL_VEC_ELEMENTS>::Invoke(keys, composite_column);
 		}
 	};
@@ -327,7 +328,7 @@ struct BucketTileKeys
 	template <int LOAD, int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
 	struct Iterate<LOAD, TOTAL_LOADS, TOTAL_VEC_ELEMENTS, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			KeyType keys[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE], 
 			int *composite_column) 
 		{
 			Iterate<LOAD + 1, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS>::Invoke(keys, composite_column);
@@ -338,16 +339,16 @@ struct BucketTileKeys
 	template <int TOTAL_LOADS, int TOTAL_VEC_ELEMENTS>
 	struct Iterate<TOTAL_LOADS, TOTAL_LOADS, 0, TOTAL_VEC_ELEMENTS> {
 		static __device__ __forceinline__ void Invoke(
-			KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+			KeyType keys[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE], 
 			int *composite_column) {} 
 	};
 
 	// Interface
 	static __device__ __forceinline__ void Invoke(
-		KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE], 
+		KeyType keys[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE], 
 		int *composite_column) 
 	{
-		Iterate<0, Config::LOADS_PER_TILE, 0, Config::LOAD_VEC_SIZE>::Invoke(keys, composite_column);
+		Iterate<0, KernelConfig::LOADS_PER_TILE, 0, KernelConfig::LOAD_VEC_SIZE>::Invoke(keys, composite_column);
 	} 
 };
 
@@ -355,38 +356,38 @@ struct BucketTileKeys
 
 
 // Process one tile of keys
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void ProcessTile(
-	typename Config::KeyType *d_in_keys, 
-	typename Config::SizeT cta_offset,
+	typename KernelConfig::KeyType *d_in_keys, 
+	typename KernelConfig::SizeT cta_offset,
 	int *composite_column) 
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 
 	// Load tile of keys
-	KeyType keys[Config::LOADS_PER_TILE][Config::LOAD_VEC_SIZE];
+	KeyType keys[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
 
 	util::io::LoadTile<
-		Config::LOG_LOADS_PER_TILE, 
-		Config::LOG_LOAD_VEC_SIZE, 
-		Config::THREADS, 
-		Config::READ_MODIFIER,
+		KernelConfig::LOG_LOADS_PER_TILE, 
+		KernelConfig::LOG_LOAD_VEC_SIZE, 
+		KernelConfig::THREADS, 
+		KernelConfig::READ_MODIFIER,
 		true>::Invoke(keys, d_in_keys, cta_offset);
 
-	if (Config::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
+	if (KernelConfig::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads 
 
 	// Bucket tile of keys
-	BucketTileKeys<Config>::Invoke(keys, composite_column);
+	BucketTileKeys<KernelConfig>::Invoke(keys, composite_column);
 }
 
 
 // Unroll tiles
-template <typename Config>
+template <typename KernelConfig>
 struct UnrollTiles
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	// Iterate over counts
 	template <int UNROLL_COUNT, int __dummy = 0>
@@ -397,7 +398,7 @@ struct UnrollTiles
 			int *composite_column)
 		{
 			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset, composite_column);
-			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset + (Config::TILE_ELEMENTS * UNROLL_COUNT / 2), composite_column);
+			Iterate<UNROLL_COUNT / 2>::Invoke(d_in_keys, cta_offset + (KernelConfig::TILE_ELEMENTS * UNROLL_COUNT / 2), composite_column);
 		}
 	};
 
@@ -409,7 +410,7 @@ struct UnrollTiles
 			SizeT cta_offset,
 			int *composite_column)
 		{
-			ProcessTile<Config>(d_in_keys, cta_offset, composite_column);
+			ProcessTile<KernelConfig>(d_in_keys, cta_offset, composite_column);
 		}
 	};
 };
@@ -417,22 +418,22 @@ struct UnrollTiles
 
 // Unroll key processing in batches of UNROLL_COUNT tiles, optionally with 
 // occasional partial-reduction to avoid overflow.
-template <typename Config, int UNROLL_COUNT, bool REDUCE_AFTERWARD>
+template <typename KernelConfig, int UNROLL_COUNT, bool REDUCE_AFTERWARD>
 __device__ __forceinline__ void UnrollTileBatches(
-	typename Config::KeyType 	*d_in_keys,
-	typename Config::SizeT 		&cta_offset,
+	typename KernelConfig::KeyType 	*d_in_keys,
+	typename KernelConfig::SizeT 		&cta_offset,
 	int* 						composite_column,
 	int*						smem_pool,
-	typename Config::SizeT 		out_of_bounds,
-	typename Config::SizeT 		local_counts[Config::LANES_PER_WARP][4],
+	typename KernelConfig::SizeT 		out_of_bounds,
+	typename KernelConfig::SizeT 		local_counts[KernelConfig::LANES_PER_WARP][4],
 	int 						warp_id,
 	int 						warp_idx)
 {
-	const int UNROLLED_ELEMENTS = UNROLL_COUNT * Config::TILE_ELEMENTS;
+	const int UNROLLED_ELEMENTS = UNROLL_COUNT * KernelConfig::TILE_ELEMENTS;
 	
 	while (cta_offset + UNROLLED_ELEMENTS < out_of_bounds) {
 	
-		UnrollTiles<Config>::template Iterate<UNROLL_COUNT>::Invoke(
+		UnrollTiles<KernelConfig>::template Iterate<UNROLL_COUNT>::Invoke(
 			d_in_keys, cta_offset, composite_column);
 
 		cta_offset += UNROLLED_ELEMENTS;
@@ -442,24 +443,24 @@ __device__ __forceinline__ void UnrollTileBatches(
 			
 			__syncthreads();
 	
-			ReduceCompositeLanes<Config>::Invoke(
+			ReduceCompositeLanes<KernelConfig>::Invoke(
 				local_counts, smem_pool, warp_id, warp_idx);
 	
 			__syncthreads();
 			
 			// Reset composite counters
-			ResetCompositeLanes<Config>(composite_column);
+			ResetCompositeLanes<KernelConfig>(composite_column);
 		}
 	} 
 }
 
 
 // Reduces all full-tiles 
-template <typename Config> 
+template <typename KernelConfig> 
 struct FullTiles
 {
-	typedef typename Config::KeyType KeyType;
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType;
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	__device__ __forceinline__ static void Reduce(
 		KeyType 	*d_in_keys,
@@ -467,42 +468,42 @@ struct FullTiles
 		int			*composite_column,
 		int			*smem_pool,
 		SizeT  		out_of_bounds,
-		SizeT  		local_counts[Config::LANES_PER_WARP][4],
+		SizeT  		local_counts[KernelConfig::LANES_PER_WARP][4],
 		int  		warp_id,
 		int  		warp_idx) 
 	{
 		// Loop over tile-batches of 64 keys per thread, aggregating after each batch
-		UnrollTileBatches<Config, 64 / Config::TILE_ELEMENTS_PER_THREAD, true>(
+		UnrollTileBatches<KernelConfig, 64 / KernelConfig::TILE_ELEMENTS_PER_THREAD, true>(
 			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
 
 		// Loop over tiles one at a time
-		UnrollTileBatches<Config, 1, false>(
+		UnrollTileBatches<KernelConfig, 1, false>(
 			d_in_keys, cta_offset, composite_column, smem_pool, out_of_bounds, local_counts, warp_id, warp_idx); 
 	}
 };
 
 
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void ReductionPass(
-	typename Config::KeyType 	*d_in_keys,
-	typename Config::SizeT 		*d_spine,
+	typename KernelConfig::KeyType 	*d_in_keys,
+	typename KernelConfig::SizeT 		*d_spine,
 	int*	smem_pool,
 	int* 	composite_column,
-	typename Config::SizeT 	cta_offset,
-	typename Config::SizeT 	out_of_bounds)
+	typename KernelConfig::SizeT 	cta_offset,
+	typename KernelConfig::SizeT 	out_of_bounds)
 {
-	typedef typename Config::KeyType KeyType; 
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::KeyType KeyType; 
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
 	int warp_idx = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
 	
 	// Each thread is responsible for aggregating an unencoded segment of a fours-group
-	SizeT local_counts[Config::LANES_PER_WARP][4];
+	SizeT local_counts[KernelConfig::LANES_PER_WARP][4];
 	
 	// Initialize local counts
 	#pragma unroll 
-	for (int LANE = 0; LANE < Config::LANES_PER_WARP; LANE++) {
+	for (int LANE = 0; LANE < KernelConfig::LANES_PER_WARP; LANE++) {
 		local_counts[LANE][0] = 0;
 		local_counts[LANE][1] = 0;
 		local_counts[LANE][2] = 0;
@@ -510,11 +511,11 @@ __device__ __forceinline__ void ReductionPass(
 	}
 	
 	// Reset encoded counters
-	ResetCompositeLanes<Config>(composite_column);
+	ResetCompositeLanes<KernelConfig>(composite_column);
 	
 	// Process loads in bulk (if applicable), making sure to leave
 	// enough headroom for one more (partial) tile before rollover  
-	FullTiles<Config>::Reduce(
+	FullTiles<KernelConfig>::Reduce(
 		d_in_keys,
 		cta_offset,
 		composite_column,
@@ -527,15 +528,15 @@ __device__ __forceinline__ void ReductionPass(
 	// Process (potentially-partial) loads singly
 	while (cta_offset + threadIdx.x < out_of_bounds) {
 		KeyType key;
-		util::io::ModifiedLoad<Config::READ_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
-		Bucket<Config>(key, composite_column);
-		cta_offset += Config::THREADS;
+		util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(key, d_in_keys + cta_offset + threadIdx.x);
+		Bucket<KernelConfig>(key, composite_column);
+		cta_offset += KernelConfig::THREADS;
 	}
 	
 	__syncthreads();
 	
 	// Aggregate back into local_count registers 
-	ReduceCompositeLanes<Config>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
+	ReduceCompositeLanes<KernelConfig>::Invoke(local_counts, smem_pool, warp_id, warp_idx);
 
 	__syncthreads();
 
@@ -547,34 +548,34 @@ __device__ __forceinline__ void ReductionPass(
 	SizeT *raking_pool = reinterpret_cast<SizeT*>(smem_pool);
 
 	// Iterate over lanes per warp, placing the four counts from each into smem
-	if (warp_id < Config::COMPOSITE_LANES) {
+	if (warp_id < KernelConfig::COMPOSITE_LANES) {
 
 		// My thread's (first) reduction counter placement offset
 		SizeT *base_partial = raking_pool +
-				FastMul(warp_id, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4) + warp_idx;
+				FastMul(warp_id, KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4) + warp_idx;
 
 		// We have at least one lane to place
 		#pragma unroll
-		for (int i = 0; i < Config::LANES_PER_WARP; i++) {
+		for (int i = 0; i < KernelConfig::LANES_PER_WARP; i++) {
 
-			const int STRIDE = Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4 * Config::WARPS * i;
+			const int STRIDE = KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 4 * KernelConfig::WARPS * i;
 
 			// Four counts per composite lane
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0) + STRIDE] = local_counts[i][0];
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1) + STRIDE] = local_counts[i][1];
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2) + STRIDE] = local_counts[i][2];
-			base_partial[(Config::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3) + STRIDE] = local_counts[i][3];
+			base_partial[(KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 0) + STRIDE] = local_counts[i][0];
+			base_partial[(KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 1) + STRIDE] = local_counts[i][1];
+			base_partial[(KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 2) + STRIDE] = local_counts[i][2];
+			base_partial[(KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW * 3) + STRIDE] = local_counts[i][3];
 		}
 	}
 
 	__syncthreads();
 
 	// Rake-reduce and write out the digit_count reductions 
-	if (threadIdx.x < Config::RADIX_DIGITS) {
+	if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
 
-		int base_row_offset = FastMul(threadIdx.x, Config::PADDED_AGGREGATED_PARTIALS_PER_ROW);
+		int base_row_offset = FastMul(threadIdx.x, KernelConfig::PADDED_AGGREGATED_PARTIALS_PER_ROW);
 
-		SizeT digit_count = SerialReduce<SizeT, Config::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
+		SizeT digit_count = SerialReduce<SizeT, KernelConfig::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 			raking_pool + base_row_offset);
 
 		int spine_digit_offset = FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
@@ -589,49 +590,45 @@ __device__ __forceinline__ void ReductionPass(
 /**
  * Upsweep reduction 
  */
-template <typename Config>
+template <typename KernelConfig>
 __device__ __forceinline__ void LsbUpsweep(
-	int 							*&d_selectors,
-	typename Config::SizeT 			*&d_spine,
-	typename Config::KeyType 		*&d_in_keys,
-	typename Config::KeyType 		*&d_out_keys,
-	CtaWorkDistribution<typename Config::SizeT> &work_decomposition)
+	int 								*&d_selectors,
+	typename KernelConfig::SizeT 		*&d_spine,
+	typename KernelConfig::KeyType 		*&d_in_keys,
+	typename KernelConfig::KeyType 		*&d_out_keys,
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition)
 {
-	typedef typename Config::SizeT SizeT;
+	typedef typename KernelConfig::SizeT SizeT;
 	
 	// Shared memory pool
-	__shared__ unsigned char smem_pool[Config::SMEM_BYTES];
+	__shared__ unsigned char smem_pool[KernelConfig::SMEM_BYTES];
 	
 	// The smem column in composite lanes for each thread 
 	int *composite_column = reinterpret_cast<int*>(smem_pool) + threadIdx.x;	// first element of column
 
 	// Determine where to read our input
-	if (Config::EARLY_EXIT) {
-		if ((Config::CURRENT_PASS != 0) && (d_selectors[Config::CURRENT_PASS & 0x1])) {
+	if (KernelConfig::EARLY_EXIT) {
+		if ((KernelConfig::CURRENT_PASS != 0) && (d_selectors[KernelConfig::CURRENT_PASS & 0x1])) {
 			d_in_keys = d_out_keys;
 		}
-	} else if (Config::CURRENT_PASS & 0x1) {
+	} else if (KernelConfig::CURRENT_PASS & 0x1) {
 		d_in_keys = d_out_keys;
 	}
 
 	// Determine our threadblock's work range
-	
-	SizeT cta_offset;			// Offset at which this CTA begins processing
-	SizeT cta_elements;			// Total number of elements for this CTA to process
-	SizeT guarded_offset; 		// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_elements;		// Number of elements in partially-full tile
-
-	work_decomposition.GetCtaWorkLimits<Config::LOG_TILE_ELEMENTS, Config::LOG_SCHEDULE_GRANULARITY>(
-		cta_offset, cta_elements, guarded_offset, guarded_elements);
+	util::CtaWorkLimits<SizeT> work_limits;
+	work_decomposition.template GetCtaWorkLimits<
+		KernelConfig::LOG_TILE_ELEMENTS,
+		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
 		
 	// Perform reduction pass over work range
-	ReductionPass<Config>(
+	ReductionPass<KernelConfig>(
 		d_in_keys,
 		d_spine,
 		reinterpret_cast<int*>(smem_pool),
 		composite_column,
-		cta_offset,
-		cta_offset + cta_elements);
+		work_limits.offset,
+		work_limits.out_of_bounds);
 } 
 
 
@@ -646,7 +643,7 @@ void UpsweepKernel(
 	typename KernelConfig::SizeT 		*d_spine,
 	typename KernelConfig::KeyType 		*d_in_keys,
 	typename KernelConfig::KeyType 		*d_out_keys,
-	CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
+	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
 {
 	LsbUpsweep<KernelConfig>(
 		d_selectors, 
