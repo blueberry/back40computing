@@ -45,6 +45,8 @@
 #include <stdio.h>
 #include <limits.h>
 
+#include <b40c/util/cta_work_distribution.cuh>
+
 #include "radixsort_common.cuh"
 #include "radixsort_api_enactor.cuh"
 #include "radixsort_api_granularity.cuh"
@@ -84,7 +86,7 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_OCCUPANCY))
-__global__ void TunedUpsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_in_keys, ConvertedKeyType *d_out_keys, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedUpsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_in_keys, ConvertedKeyType *d_out_keys, util::CtaWorkDistribution<SizeT> work_decomposition);
 
 // SpineScan
 template <typename KeyType, typename ValueType, typename SizeT, int GRANULARITY_ENUM>
@@ -98,7 +100,7 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_OCCUPANCY))
-__global__ void TunedDownsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedDownsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, util::CtaWorkDistribution<SizeT> work_decomposition);
 
 
 
@@ -154,11 +156,11 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int CURRENT_BIT, 
 		typename PreprocessTraits, 
-		typename PostprocessTraits>
+		typename PostprocessTraits,
+		typename Decomposition>
 	cudaError_t DigitPlacePass(Decomposition &work)
 	{
 		typedef typename Decomposition::KeyType KeyType;
@@ -167,7 +169,7 @@ protected:
 		typedef typename SortingConfig::ConvertedKeyType ConvertedKeyType;
 
 		int dynamic_smem[3] = {0, 0, 0};
-		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
+		int grid_size[3] = {work.grid_size, 1, work.grid_size};
 		int threads[3] = {1 << SortingConfig::Upsweep::LOG_THREADS, 1 << SortingConfig::SpineScan::LOG_THREADS, 1 << SortingConfig::Downsweep::LOG_THREADS};
 
 		cudaError_t retval = cudaSuccess;
@@ -201,7 +203,7 @@ protected:
 			if (SortingConfig::UNIFORM_GRID_SIZE) {
 
 				// We need to make sure that all kernels launch the same number of CTAs
-				grid_size[1] = work.sweep_grid_size;
+				grid_size[1] = work.grid_size;
 			}
 
 			// Invoke upsweep reduction kernel
@@ -410,7 +412,7 @@ void TunedUpsweepKernel(
 	SizeT 						*d_spine,
 	ConvertedKeyType 			*d_in_keys,
 	ConvertedKeyType			*d_out_keys,
-	CtaWorkDistribution<SizeT>	work_decomposition)
+	util::CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	using namespace upsweep;
@@ -445,7 +447,7 @@ void TunedDownsweepKernel(
 	ConvertedKeyType 			*d_keys1,
 	ValueType 					*d_values0,
 	ValueType					*d_values1,
-	CtaWorkDistribution<SizeT>	work_decomposition)
+	util::CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	using namespace downsweep;
