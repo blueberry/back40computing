@@ -799,7 +799,7 @@ struct SweepCta
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
@@ -814,9 +814,8 @@ struct SweepCta
 			KernelConfig::QUEUE_READ_MODIFIER,
 			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
 				tile.vertex_id,
-				d_in,
-				cta_offset,
-				out_of_bounds);
+				d_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of parents
 		if (KernelConfig::MARK_PARENTS) {
@@ -828,9 +827,8 @@ struct SweepCta
 				KernelConfig::QUEUE_READ_MODIFIER,
 				FULL_TILE>::Invoke(
 					tile.parent_id,
-					d_parent_in,
-					cta_offset,
-					out_of_bounds);
+					d_parent_in + cta_offset,
+					guarded_elements);
 		}
 
 		// Cull valid flags using global collision bitmask

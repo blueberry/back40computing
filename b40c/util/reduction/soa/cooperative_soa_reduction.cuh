@@ -227,68 +227,6 @@ struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 };
 
 
-/**
- * Cooperative SOA SRTS grid reduction for multi-level SRTS grids
- * /
-template <
-	typename SrtsSoaDetails,
-	typename SrtsSoaDetails::SoaTuple ReductionOp(typename SrtsSoaDetails::SoaTuple&, typename SrtsSoaDetails::SoaTuple&),
-	typename SecondarySrtsSoaDetails>
-struct CooperativeSoaGridReduction
-{
-	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
-
-	/ **
-	 * Reduction in SRTS grid.  Carry is computed (or updated if REDUCE_CARRY is set)
-	 * only in last raking thread
-	 * /
-	template <bool REDUCE_CARRY>
-	static __device__ __forceinline__ void ReduceTileWithCarry(
-		SrtsSoaDetails &srts_soa_details,
-		SoaTuple &carry)
-	{
-		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
-
-			// Raking reduction
-			SoaTuple partial = SerialReduce<SoaTuple, SrtsSoaDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
-				srts_soa_details.raking_segment);
-
-			// Place partial in next grid
-			srts_soa_details.secondary_details.lane_partial[0][0] = partial;
-		}
-
-		__syncthreads();
-
-		// Collectively reduce in next grid
-		CooperativeSoaGridReduction<SecondarySrtsSoaDetails, ReductionOp>::ReduceTileWithCarry(
-			srts_soa_details.secondary_details, carry);
-	}
-
-
-	/ **
-	 * Reduction in SRTS grid.  Result is computed in all threads.
-	 * /
-	static __device__ __forceinline__ SoaTuple ReduceTile(SrtsSoaDetails &srts_soa_details)
-	{
-		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
-
-			// Raking reduction
-			SoaTuple partial = SerialReduce<SoaTuple, SrtsSoaDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
-				srts_soa_details.raking_segment);
-
-			// Place partial in next grid
-			srts_soa_details.secondary_details.lane_partial[0][0] = partial;
-		}
-
-		__syncthreads();
-
-		// Collectively reduce in next grid
-		return CooperativeSoaGridReduction<SecondarySrtsSoaDetails, ReductionOp>::ReduceTile(
-			srts_soa_details.secondary_details);
-	}
-};
-*/
-
 } // namespace soa
 } // namespace reduction
 } // namespace util

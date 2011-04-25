@@ -79,7 +79,7 @@ __device__ __forceinline__ void DownsweepPass(
 	if (work_limits.guarded_elements) {
 		cta.template ProcessTile<false>(
 			work_limits.offset,
-			work_limits.out_of_bounds);
+			work_limits.guarded_elements);
 	}
 }
 

@@ -77,7 +77,7 @@ struct SweepCta : KernelConfig
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		// Tile of elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -88,7 +88,7 @@ struct SweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_in + cta_offset, guarded_elements);
 
 		__syncthreads();
 
@@ -98,7 +98,7 @@ struct SweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(data, d_out, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_out + cta_offset, guarded_elements);
 	}
 };
 

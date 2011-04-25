@@ -72,7 +72,7 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 			T exclusive_partial = srts_details.lane_partial[LANE][0];
 
 			// Scan the partials in this lane/load
-			SerialScan<T, VEC_SIZE, EXCLUSIVE, ScanOp>::Invoke(data[LANE], exclusive_partial);
+			SerialScan<VEC_SIZE, EXCLUSIVE>::template Invoke<T, ScanOp>(data[LANE], exclusive_partial);
 
 			// Next load
 			ScanLane<LANE + 1, TOTAL_LANES>::Invoke(srts_details, data);
@@ -225,15 +225,15 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Exclusive warp scan
-			T exclusive_partial = WarpScan<T, SrtsDetails::LOG_RAKING_THREADS, true, SrtsDetails::LOG_RAKING_THREADS, ScanOp>::Invoke(
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
 				inclusive_partial, srts_details.warpscan);
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 
 		}
@@ -250,19 +250,19 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<T, SrtsDetails::LOG_RAKING_THREADS, true, SrtsDetails::LOG_RAKING_THREADS, ScanOp>::Invoke(
-					inclusive_partial, warpscan_total, srts_details.warpscan);
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
+				inclusive_partial, warpscan_total, srts_details.warpscan);
 
 			// Seed exclusive partial with carry-in
 			exclusive_partial = ScanOp(carry, exclusive_partial);
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 
 			// Update carry
@@ -281,12 +281,12 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<T, SrtsDetails::LOG_RAKING_THREADS, true, SrtsDetails::LOG_RAKING_THREADS, ScanOp>::Invoke(
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
 					inclusive_partial, warpscan_total, srts_details.warpscan);
 
 			// Atomic-increment the global counter with the total allocation
@@ -301,7 +301,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 			exclusive_partial = ScanOp(reservation_offset, exclusive_partial);
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 		}
 	}
@@ -317,12 +317,12 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<T, SrtsDetails::LOG_RAKING_THREADS, true, SrtsDetails::LOG_RAKING_THREADS, ScanOp>::Invoke(
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
 					inclusive_partial, warpscan_total, srts_details.warpscan);
 
 			// Atomic-increment the global counter with the total allocation
@@ -331,7 +331,7 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 			}
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 		}
 	}
@@ -357,7 +357,7 @@ struct CooperativeGridScan
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Place partial in next grid
@@ -378,7 +378,7 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 		}
 	}
@@ -393,7 +393,7 @@ struct CooperativeGridScan
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Place partial in next grid
@@ -414,7 +414,7 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 		}
 	}
@@ -429,7 +429,7 @@ struct CooperativeGridScan
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ScanOp>::Invoke(
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment);
 
 			// Place partial in next grid
@@ -450,7 +450,7 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<T, SrtsDetails::PARTIALS_PER_SEG, true, ScanOp>::Invoke(
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
 				srts_details.raking_segment, exclusive_partial);
 		}
 	}

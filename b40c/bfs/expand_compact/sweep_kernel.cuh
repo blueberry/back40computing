@@ -90,7 +90,7 @@ struct SweepPass
 		if (work_limits.guarded_elements) {
 			cta.template ProcessTile<false>(
 				work_limits.offset,
-				work_limits.out_of_bounds);
+				work_limits.guarded_elements);
 		}
 	}
 };
@@ -161,7 +161,8 @@ struct SweepPass <KernelConfig, true>
 
 		// Last CTA does any extra, guarded work (first tile seen)
 		if (blockIdx.x == gridDim.x - 1) {
-			cta.template ProcessTile<false>(unguarded_elements, work_decomposition.num_elements);
+			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
+			cta.template ProcessTile<false>(unguarded_elements, guarded_elements);
 		}
 	}
 };

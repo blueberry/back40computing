@@ -59,7 +59,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 
 	typedef _SoaTuple SoaTuple;
 
-	typedef Tuple<uint4*, uint4*> GridStorageSoa;
+	typedef Tuple<typename SoaTuple::T0*, typename SoaTuple::T1*> GridStorageSoa;
 
 	typedef Tuple<
 		volatile typename SoaTuple::T0 (*)[WARP_THREADS],

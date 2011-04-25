@@ -259,17 +259,30 @@ struct LoadTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds = 0)
+		const SizeT &guarded_elements)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
 
 		VectorType *vectors = (VectorType *) data;
-		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 
 		Iterate<false, 0,0>::template Invoke<T, Transform, VectorType>(
 			data, vectors, d_in_vectors);
+	}
+
+
+	/**
+	 * Load a tile with transform (unguarded)
+	 */
+	template <
+		typename T,
+		void Transform(T&, bool)> 						// Assignment function to transform the loaded value (can be used assign default values for items deemed not in bounds)
+	static __device__ __forceinline__ void Invoke(
+		T data[][LOAD_VEC_SIZE],
+		T *d_in)
+	{
+		Invoke<T, Transform>(data, d_in, 0);
 	}
 
 
@@ -280,10 +293,21 @@ struct LoadTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds = 0)
+		const SizeT &guarded_elements)
 	{
-		Invoke<T, NopLdTransform<T>, SizeT>(data, d_in, cta_offset, out_of_bounds);
+		Invoke<T, NopLdTransform<T>, SizeT>(data, d_in, guarded_elements);
+	}
+
+
+	/**
+	 * Load a tile (unguarded)
+	 */
+	template <typename T>
+	static __device__ __forceinline__ void Invoke(
+		T data[][LOAD_VEC_SIZE],
+		T *d_in)
+	{
+		Invoke<T, NopLdTransform<T> >(data, d_in, 0);
 	}
 
 
@@ -300,17 +324,35 @@ struct LoadTile <
 		T data[][LOAD_VEC_SIZE],
 		Flag flags[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds = 0)
+		const SizeT &guarded_elements)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
 		typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
 
 		VectorType *vectors = (VectorType *) data;
-		VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 		Iterate<FIRST_TILE, 0,0>::Invoke(data, flags, vectors, d_in_vectors);
 	} 
+
+
+	/**
+	 * Load a tile and initialize discontinuity flags when values change
+	 * between consecutive elements (unguarded)
+	 */
+	template <
+		bool FIRST_TILE,											// Whether or not this is the first tile loaded by the CTA
+		typename T,
+		typename Flag>												// Integer type for indexing into global arrays
+	static __device__ __forceinline__ void Invoke(
+		T data[][LOAD_VEC_SIZE],
+		Flag flags[][LOAD_VEC_SIZE],
+		T *d_in)
+	{
+		Invoke<FIRST_TILE, T, Flag>(data, flags, d_in, 0);
+	}
 };
+
+
 
 
 
@@ -349,12 +391,11 @@ struct LoadTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
 
-			if (thread_offset < out_of_bounds) {
+			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
 				Transform(data[LOAD][0], true);
 			} else {
@@ -362,7 +403,7 @@ struct LoadTile <
 			}
 
 			Iterate<FIRST_TILE, LOAD, 1>::template Invoke<T, Transform, SizeT>(
-				data, d_in, cta_offset, out_of_bounds);
+				data, d_in, guarded_elements);
 		}
 
 		// With discontinuity flags
@@ -371,15 +412,16 @@ struct LoadTile <
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
-			if (cta_offset < out_of_bounds) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + cta_offset);
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
+
+			if (thread_offset < guarded_elements) {
+				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
 
 				// Get the previous vector element (which is in range b/c this one is in range)
 				T previous;
-				ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + cta_offset - 1);
+				ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + thread_offset - 1);
 				flags[LOAD][0] = (previous != data[LOAD][0]);
 
 			} else {
@@ -387,7 +429,7 @@ struct LoadTile <
 			}
 
 			Iterate<FIRST_TILE, LOAD, 1>::Invoke(
-				data, flags, d_in, cta_offset, out_of_bounds);
+				data, flags, d_in, guarded_elements);
 		}
 	};
 
@@ -403,11 +445,12 @@ struct LoadTile <
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
-			if (cta_offset < out_of_bounds) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[0][0], d_in + cta_offset);
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (0 * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
+
+			if (thread_offset < guarded_elements) {
+				ModifiedLoad<CACHE_MODIFIER>::Ld(data[0][0], d_in + thread_offset);
 
 				if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
 
@@ -418,7 +461,7 @@ struct LoadTile <
 
 					// Get the previous vector element (which is in range b/c this one is in range)
 					T previous;
-					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + cta_offset - 1);
+					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + thread_offset - 1);
 					flags[0][0] = (previous != data[0][0]);
 				}
 
@@ -427,7 +470,7 @@ struct LoadTile <
 			}
 
 			Iterate<true, 0, 1>::Invoke(
-				data, flags, d_in, cta_offset, out_of_bounds);
+				data, flags, d_in, guarded_elements);
 		}
 	};
 
@@ -442,12 +485,11 @@ struct LoadTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE) + VEC;
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
-			if (thread_offset < out_of_bounds) {
+			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
 				Transform(data[LOAD][VEC], true);
 			} else {
@@ -455,7 +497,7 @@ struct LoadTile <
 			}
 
 			Iterate<FIRST_TILE, LOAD, VEC + 1>::template Invoke<T, Transform, SizeT>(
-				data, d_in, cta_offset, out_of_bounds);
+				data, d_in, guarded_elements);
 		}
 
 		// With discontinuity flags
@@ -464,12 +506,11 @@ struct LoadTile <
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = cta_offset + VEC;
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
-			if (thread_offset < out_of_bounds) {
+			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
 
 				T previous = data[LOAD][VEC - 1];
@@ -482,7 +523,7 @@ struct LoadTile <
 			}
 			
 			Iterate<FIRST_TILE, LOAD, VEC + 1>::Invoke(
-				data, flags, d_in, cta_offset, out_of_bounds);
+				data, flags, d_in, guarded_elements);
 		}
 	};
 
@@ -497,14 +538,12 @@ struct LoadTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
 			Iterate<FIRST_TILE, LOAD + 1, 0>::template Invoke<T, Transform, SizeT>(
 				data,
 				d_in,
-				cta_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE),
-				out_of_bounds);
+				guarded_elements);
 		}
 
 		// With discontinuity flags
@@ -513,15 +552,13 @@ struct LoadTile <
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds)
+			const SizeT &guarded_elements)
 		{
 			Iterate<FIRST_TILE, LOAD + 1, 0>::Invoke(
 				data,
 				flags,
 				d_in,
-				cta_offset + (ACTIVE_THREADS << LOG_LOAD_VEC_SIZE),
-				out_of_bounds);
+				guarded_elements);
 		}
 	};
 	
@@ -536,8 +573,7 @@ struct LoadTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds) {}
+			const SizeT &guarded_elements) {}
 
 		// With discontinuity flags
 		template <typename T, typename Flag, typename SizeT>
@@ -545,8 +581,7 @@ struct LoadTile <
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
-			const SizeT &cta_offset,
-			const SizeT &out_of_bounds) {}
+			const SizeT &guarded_elements) {}
 	};
 
 	//---------------------------------------------------------------------
@@ -563,11 +598,10 @@ struct LoadTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds)
+		const SizeT &guarded_elements)
 	{
 		Iterate<false, 0, 0>::template Invoke<T, Transform, SizeT>(
-			data, d_in, cta_offset, out_of_bounds);
+			data, d_in, guarded_elements);
 	}
 
 	/**
@@ -577,10 +611,9 @@ struct LoadTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds)
+		const SizeT &guarded_elements)
 	{
-		Invoke<T, NopLdTransform<T>, SizeT>(data, d_in, cta_offset, out_of_bounds);
+		Invoke<T, NopLdTransform<T>, SizeT>(data, d_in, guarded_elements);
 	}
 
 	/**
@@ -596,16 +629,9 @@ struct LoadTile <
 		T data[][LOAD_VEC_SIZE],
 		Flag flags[][LOAD_VEC_SIZE],
 		T *d_in,
-		const SizeT &cta_offset,
-		const SizeT &out_of_bounds)
+		const SizeT &guarded_elements)
 	{
-		SizeT thread_offset = cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE);
-		Iterate<FIRST_TILE, 0, 0>::Invoke(
-			data,
-			flags,
-			d_in,
-			thread_offset,
-			out_of_bounds);
+		Iterate<FIRST_TILE, 0, 0>::Invoke(data, flags, d_in, guarded_elements);
 	} 
 };
 

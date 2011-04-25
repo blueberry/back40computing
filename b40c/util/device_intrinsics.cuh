@@ -96,7 +96,7 @@ __device__ __forceinline__ int TallyWarpVote(int predicate)
 	int tid = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
 	int wid = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
 
-	return reduction::WarpReduce<int, LOG_ACTIVE_THREADS>::Invoke(predicate, storage[wid], tid);
+	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(predicate, storage[wid], tid);
 #endif
 }
 
@@ -110,8 +110,7 @@ __device__ __forceinline__ int TallyWarpVote(int predicate, int *storage)
 #if __CUDA_ARCH__ >= 200
 	return __popc(__ballot(predicate));
 #else
-	return reduction::WarpReduce<int, LOG_ACTIVE_THREADS>::Invoke(
-		predicate, storage);
+	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(predicate, storage);
 #endif
 }
 

@@ -59,7 +59,6 @@ struct SweepCta
 	typedef typename KernelConfig::SizeT 			SizeT;
 	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
 	typedef typename SmemStorage::WarpComm 			WarpComm;
-	typedef unsigned int							ThreadId;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -89,10 +88,9 @@ struct SweepCta
 	SizeT					&enqueue_offset;
 
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
-	SizeT					*offset_scratch_pool;
-	VertexId				*parent_scratch_pool;
-	VertexId 				*s_vid_hashtable;
-	ThreadId				*s_tid_hashtable;
+	SizeT					*offset_scratch;
+	VertexId				*parent_scratch;
+	VertexId 				*hashtable;
 
 
 
@@ -192,11 +190,6 @@ struct SweepCta
 								cta->iteration,
 								cta->d_source_path + tile->vertex_id[LOAD][VEC]);
 						}
-/*
-						printf("\t\tIteration %d block %d thread %d found unvisited vertex %d with dist %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x,
-							tile->vertex_id[LOAD][VEC], source_path);
-*/
 					} else {
 
 						tile->vertex_id[LOAD][VEC] = -1;
@@ -251,20 +244,10 @@ struct SweepCta
 							cta->iteration,
 							cta->d_source_path + tile->vertex_id[LOAD][VEC]);
 					}
-/*
-					printf("Iteration %d block %d thread %d gathering row data (%d, %d) for unvisited vertex %d\n",
-						cta->iteration, blockIdx.x, threadIdx.x,
-						tile->row_offset[LOAD][VEC], tile->row_length[LOAD][VEC], tile->vertex_id[LOAD][VEC]);
-*/
 				}
 
 				tile->fine_row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
-/*
-				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
-					tile->row_length[LOAD][VEC] : 0;
-				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
-					0 : tile->row_length[LOAD][VEC];
-*/
+
 				Iterate<LOAD, VEC + 1>::NeighborDetails(cta, tile);
 			}
 
@@ -405,11 +388,11 @@ struct SweepCta
 					(scratch_offset < KernelConfig::THREADS))
 				{
 					// Put gather offset into scratch space
-					cta->offset_scratch_pool[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
+					cta->offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
 					if (KernelConfig::MARK_PARENTS) {
 						// Put dequeued vertex as the parent into scratch space
-						cta->parent_scratch_pool[scratch_offset] = tile->vertex_id[LOAD][VEC];
+						cta->parent_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -446,15 +429,8 @@ struct SweepCta
 
 						// Seen it
 						tile->vertex_id[LOAD][VEC] = -1;
-/*
-						printf("CULL Iteration %d block %d thread %d mask SET for vertex %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x, tile->vertex_id[LOAD][VEC]);
-*/
+
 					} else {
-/*
-						printf("CULL Iteration %d block %d thread %d mask UNSET for vertex %d\n",
-							cta->iteration, blockIdx.x, threadIdx.x, tile->vertex_id[LOAD][VEC]);
-*/
 
 						// Update with best effort
 						mask_byte |= mask_bit;
@@ -481,7 +457,7 @@ struct SweepCta
 
 				// Hash the node-IDs into smem scratch
 				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
-					cta->s_vid_hashtable[tile->hash[LOAD][VEC]] = tile->vertex_id[LOAD][VEC];
+					cta->hashtable[tile->hash[LOAD][VEC]] = tile->vertex_id[LOAD][VEC];
 				}
 
 				// Next
@@ -502,7 +478,7 @@ struct SweepCta
 				// we are a duplicate... for now.
 
 				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
-					VertexId hashed_node = cta->s_vid_hashtable[tile->hash[LOAD][VEC]];
+					VertexId hashed_node = cta->hashtable[tile->hash[LOAD][VEC]];
 					tile->duplicate[LOAD][VEC] = (hashed_node == tile->vertex_id[LOAD][VEC]);
 				}
 
@@ -521,7 +497,7 @@ struct SweepCta
 				// For the possible-duplicates, hash in thread-IDs to select
 				// one of the threads to be the unique one
 				if (tile->duplicate[LOAD][VEC]) {
-					cta->s_tid_hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
+					cta->hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
 				}
 
 				// Next
@@ -540,7 +516,7 @@ struct SweepCta
 				if (tile->duplicate[LOAD][VEC]) {
 					// If not equal to our tid, we are not an authoritative thread
 					// for this node-ID
-					if (cta->s_tid_hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
+					if (cta->hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
 						tile->vertex_id[LOAD][VEC] = -1;
 					}
 				}
@@ -797,15 +773,14 @@ struct SweepCta
 		util::CtaWorkProgress	&work_progress) :
 
 			srts_details(
-				smem_storage.smem_pool_int4s,
-				smem_storage.warpscan,
+				smem_storage.smem_pool.raking_elements,
+				smem_storage.state.warpscan,
 				0),
-			warp_comm(smem_storage.warp_comm),
-			enqueue_offset(smem_storage.enqueue_offset),
-			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
-			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
-			s_vid_hashtable((VertexId *) smem_storage.smem_pool_int4s),
-			s_tid_hashtable((ThreadId *) smem_storage.smem_pool_int4s),
+			warp_comm(smem_storage.state.warp_comm),
+			enqueue_offset(smem_storage.state.enqueue_offset),
+			offset_scratch(smem_storage.smem_pool.scratch.offset_scratch),
+			parent_scratch(smem_storage.smem_pool.scratch.parent_scratch),
+			hashtable(smem_storage.smem_pool.hashtable),
 			iteration(iteration),
 			d_in(d_in),
 			d_out(d_out),
@@ -835,7 +810,7 @@ struct SweepCta
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
@@ -851,9 +826,8 @@ struct SweepCta
 			KernelConfig::QUEUE_READ_MODIFIER,
 			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
 				tile.vertex_id,
-				d_in,
-				cta_offset,
-				out_of_bounds);
+				d_in + cta_offset,
+				guarded_elements);
 
 		// Populate with row offsets
 		tile.NeighborDetails(this);
@@ -874,13 +848,7 @@ struct SweepCta
 			util::DefaultSum>::ScanTile(
 				srts_details,
 				tile.fine_row_rank);
-/*
-		if (tile.vertex_id[0][0] != -1) {
-			printf("\tBIteration %d block %d thread %d has rank %d/%d for unvisited vertex %d\n",
-				iteration, blockIdx.x, threadIdx.x,
-				tile.fine_row_rank[0][0], tile.enqueue_count, tile.vertex_id[0][0]);
-		}
-*/
+
 		__syncthreads();
 
 		tile.progress = 0;
@@ -901,15 +869,11 @@ struct SweepCta
 				// Gather a neighbor
 				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_tile.vertex_id[0][0],
-					d_column_indices + offset_scratch_pool[threadIdx.x]);
-/*
-				printf("Iteration %d block %d thread %d gathered neighbor %d\n",
-					iteration, blockIdx.x, threadIdx.x,
-					neighbor_tile.vertex_id[0][0]);
-*/
+					d_column_indices + offset_scratch[threadIdx.x]);
+
 				if (KernelConfig::MARK_PARENTS) {
 					// Gather parent
-					neighbor_tile.parent_id[0][0] = parent_scratch_pool[threadIdx.x];
+					neighbor_tile.parent_id[0][0] = parent_scratch[threadIdx.x];
 				}
 
 			} else {

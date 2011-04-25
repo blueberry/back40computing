@@ -172,64 +172,58 @@ struct SweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		// Type describing four shared memory channels per warp for intra-warp communication
-		typedef SizeT 						WarpComm[WARPS][4];
+		struct State {
+			// Type describing four shared memory channels per warp for intra-warp communication
+			typedef SizeT 						WarpComm[WARPS][4];
 
-		// Shared work-processing limits
-		util::CtaWorkDistribution<SizeT>	work_decomposition;
+			// Shared work-processing limits
+			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
-		// Shared memory channels for intra-warp communication
-		WarpComm							warp_comm;
+			// Shared memory channels for intra-warp communication
+			WarpComm							warp_comm;
 
-		// Storage for scanning local compact-expand ranks
-		SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			// Storage for scanning local compact-expand ranks
+			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
-		// Enqueue offset for neighbors of the current tile
-		SizeT								fine_enqueue_offset;
-		SizeT								coarse_enqueue_offset;
+			// Enqueue offset for neighbors of the current tile
+			SizeT								fine_enqueue_offset;
+			SizeT								coarse_enqueue_offset;
+
+		} state;
 
 		enum {
-			COARSE_RAKING_QUADS 			= CoarseGrid::TOTAL_RAKING_QUADS,
-			FINE_RAKING_QUADS 				= FineGrid::TOTAL_RAKING_QUADS,
-
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
-												- sizeof(util::CtaWorkDistribution<SizeT>)
-												- sizeof(WarpComm)
-												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
-												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
-												- sizeof(SizeT)
-												- sizeof(SizeT)
+												- sizeof(State)
 												- 64,
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
 													sizeof(SizeT),								// Just gather offset
 
-			SCRATCH_ELEMENTS				= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
-
-			OFFSET_QUADS					= B40C_QUADS(SCRATCH_ELEMENTS * sizeof(SizeT)),		// Number of quads for offsets
-			PARENT_QUADS					= (ProblemType::MARK_PARENTS) ? 					// Number of parent
-												B40C_QUADS(SCRATCH_ELEMENTS * sizeof(VertexId)) :
-												0,
-			SCRATCH_QUADS					= OFFSET_QUADS + PARENT_QUADS,						// Number of quads for scratch space
-
-			SMEM_POOL_QUADS					= B40C_MAX(
-												COARSE_RAKING_QUADS + FINE_RAKING_QUADS,
-												SCRATCH_QUADS),
+			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
 		};
 
+		union SmemPool {
+			// Raking elements
+			struct {
+				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT 						fine_raking_elements[FineGrid::TOTAL_RAKING_ELEMENTS];
+			} raking_elements;
 
-		uint4 								smem_pool_int4s[SMEM_POOL_QUADS];	// Repurposable scan lanes
+			// Scratch elements
+			struct {
+				SizeT 						offset_scratch[OFFSET_ELEMENTS];
+				VertexId 					parent_scratch[PARENT_ELEMENTS];
+			} scratch;
+		} smem_pool;
 	};
 
 	enum {
-		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
-
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID							= (CTA_OCCUPANCY > 0),

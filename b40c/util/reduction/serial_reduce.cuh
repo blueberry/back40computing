@@ -34,25 +34,23 @@ namespace util {
 namespace reduction {
 
 /**
- * Have each thread concurrently perform a serial reduction over its specified segment 
+ * Have each thread concurrently perform a serial reduction over its specified segment
  */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	T ReductionOp(const T&, const T&) = DefaultSum >
+template <int NUM_ELEMENTS>
 struct SerialReduce
 {
 	//---------------------------------------------------------------------
-	// Helper Structures
+	// Iteration Structures
 	//---------------------------------------------------------------------
 
 	// Iterate
 	template <int COUNT, int TOTAL>
-	struct Iterate 
+	struct Iterate
 	{
+		template <typename T, T ReductionOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(T *partials)
 		{
-			T a = Iterate<COUNT - 2, TOTAL>::Invoke(partials);
+			T a = Iterate<COUNT - 2, TOTAL>::template Invoke<T, ReductionOp>(partials);
 			T b = partials[TOTAL - COUNT];
 			T c = partials[TOTAL - (COUNT - 1)];
 
@@ -65,6 +63,7 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<2, TOTAL>
 	{
+		template <typename T, T ReductionOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(T *partials)
 		{
 			return ReductionOp(partials[TOTAL - 2], partials[TOTAL - 1]);
@@ -75,6 +74,7 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<1, TOTAL>
 	{
+		template <typename T, T ReductionOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(T *partials)
 		{
 			return partials[TOTAL - 1];
@@ -85,18 +85,49 @@ struct SerialReduce
 	// Interface
 	//---------------------------------------------------------------------
 
-	// Interface
+	/**
+	 * Serial reduction with the specified operator
+	 */
+	template <
+		typename T,
+		T ReductionOp(const T&, const T&)>
 	static __device__ __forceinline__ T Invoke(T *partials)
 	{
-		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials);
+		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::template Invoke<T, ReductionOp>(partials);
 	}
 
-	// Interface
+	/**
+	 * Serial reduction with the addition operator
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T Invoke(T *partials)
+	{
+		return Invoke<T, DefaultSum>(partials);
+	}
+
+	/**
+	 * Serial reduction with the specified operator, seeded with the
+	 * given exclusive partial
+	 */
+	template <typename T,
+		T ReductionOp(const T&, const T&)>
 	static __device__ __forceinline__ T Invoke(T *partials, T exclusive_partial)
 	{
 		return ReductionOp(
 			exclusive_partial,
-			Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials));
+			Invoke<T, ReductionOp>(partials));
+	}
+
+	/**
+	 * Serial reduction with the addition operator, seeded with the
+	 * given exclusive partial
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T Invoke(T *partials, T exclusive_partial)
+	{
+		return ReductionOp(
+			exclusive_partial,
+			Invoke(partials));
 	}
 };
 
