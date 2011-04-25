@@ -31,7 +31,6 @@
 
 #include <b40c/scan/spine_kernel.cuh>
 #include <b40c/consecutive_removal/upsweep_kernel.cuh>
-#include <b40c/scan/spine_kernel.cuh>
 #include <b40c/consecutive_removal/downsweep_kernel.cuh>
 #include <b40c/consecutive_removal/problem_config.cuh>
 

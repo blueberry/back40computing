@@ -83,7 +83,7 @@ struct UpsweepCta : KernelConfig
 		T *d_in,
 		FlagCount *d_spine) :
 
-			reduction_tree((FlagCount*) smem_storage.smem_pool_int4s),
+			reduction_tree(smem_storage.smem_pool.reduction_tree),
 			d_in(d_in),
 			d_spine(d_spine),
 			carry(0) {}
@@ -108,12 +108,11 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::template Invoke<FIRST_TILE>(							// Full-tile == unguarded loads
-				data, flags, d_in, cta_offset);
+				data, flags, d_in + cta_offset);
 
 		// Reduce flags, accumulate in carry
-		carry += util::reduction::SerialReduce<
-			LocalFlagCount,
-			KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke((LocalFlagCount*) flags);
+		carry += util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(
+			(LocalFlagCount*) flags);
 
 		__syncthreads();
 	}

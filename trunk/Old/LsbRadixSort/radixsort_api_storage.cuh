@@ -42,6 +42,8 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
+
 namespace b40c {
 
 /**
@@ -119,7 +121,7 @@ protected:
  *
  * For use in sorting up to 2^31 elements.   
  */
-template <typename KeyType, typename ValueType = KeysOnly> 
+template <typename KeyType, typename ValueType = util::NullType>
 struct MultiCtaSortStorage : 
 	public MultiCtaSortStorageBase<KeyType, ValueType, int>
 {
@@ -156,7 +158,7 @@ public:
  * than the (32-bit) MultiCtaSortStorage wrapper due to increased 
  * register pressure and memory workloads.
  */
-template <typename KeyType, typename ValueType = KeysOnly> 
+template <typename KeyType, typename ValueType = util::NullType>
 struct MultiCtaSortStorage64 : 
 	public MultiCtaSortStorageBase<KeyType, ValueType, long long>
 {

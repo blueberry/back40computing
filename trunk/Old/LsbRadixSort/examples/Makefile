@@ -129,16 +129,7 @@ endif
 #-------------------------------------------------------------------------------
 
 SORTING_DEPS = 	./Makefile \
-				../radixsort_common.cuh \
-				../radixsort_api_enactor.cuh \
-				../radixsort_api_enactor_tuned.cuh \
-				../radixsort_api_granularity.cuh \
-				../radixsort_api_storage.cuh \
-				../radixsort_granularity_tuned_large.cuh \
-				../radixsort_granularity_tuned_small.cuh \
-				../radixsort_kernel_downsweep.cuh \
-				../radixsort_kernel_spine.cuh \
-				../radixsort_kernel_upsweep.cuh \
+				$(wildcard ../*.cuh) \
 				../../ExamplesInclude/b40c_util.h \
 				../../Common/b40c_cuda_properties.cuh \
 				../../Common/b40c_enactor_base.cuh \

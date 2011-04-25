@@ -102,16 +102,13 @@ struct ProblemConfig : _ProblemType
 	// Spine type (discontinuity flag counts)
 	typedef typename Upsweep::FlagCount FlagCount;
 
-	// Identity for spine
-	static __device__ __forceinline__ FlagCount FlagIdentity() { return 0; }
-
 	// Problem type for spine
 	typedef scan::ProblemType<
 		FlagCount,
-		typename _ProblemType::SizeT,
+		typename ProblemType::SizeT,
 		true,								// Exclusive
 		util::DefaultSum<FlagCount>,
-		FlagIdentity> SpineProblemType;
+		util::DefaultSumIdentity<FlagCount> > SpineProblemType;
 
 	// Kernel config for the spine consecutive removal kernel
 	typedef scan::DownsweepKernelConfig <

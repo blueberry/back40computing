@@ -146,8 +146,8 @@ struct SrtsGrid
 											PARTIALS_PER_LANE :
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
-		// Number of quad words (uint4) needed to back this level of the SRTS grid
-		RAKING_QUADS					= B40C_QUADS(ROWS * PADDED_PARTIALS_PER_ROW * sizeof(T)),
+		// Number of elements needed to back this level of the SRTS grid
+		RAKING_ELEMENTS					= ROWS * PADDED_PARTIALS_PER_ROW,
 	};
 
 	// If there are prefix dependences between lanes, a secondary SRTS grid
@@ -166,16 +166,16 @@ struct SrtsGrid
 
 
 	/**
-	 * Utility class for totaling the SMEM raking quads needed for an SRTS grid hierarchy
+	 * Utility class for totaling the SMEM elements needed for an SRTS grid hierarchy
 	 */
 	template <typename SrtsGrid, int __dummy = 0>
-	struct TotalRakingQuads
+	struct TotalRakingElements
 	{
 		// Recurse
-		enum { VALUE = SrtsGrid::RAKING_QUADS + TotalRakingQuads<typename SrtsGrid::SecondaryGrid>::VALUE };
+		enum { VALUE = SrtsGrid::RAKING_ELEMENTS + TotalRakingElements<typename SrtsGrid::SecondaryGrid>::VALUE };
 	};
 	template <int __dummy>
-	struct TotalRakingQuads<NullType, __dummy>
+	struct TotalRakingElements<NullType, __dummy>
 	{
 		// Terminate
 		enum { VALUE = 0 };
@@ -183,9 +183,9 @@ struct SrtsGrid
 
 
 	enum {
-		// Total number of smem raking quads needed back this hierarchy
+		// Total number of smem raking elements needed back this hierarchy
 		// of SRTS grids (may be reused for other purposes)
-		TOTAL_RAKING_QUADS = TotalRakingQuads<SrtsGrid>::VALUE,
+		TOTAL_RAKING_ELEMENTS = TotalRakingElements<SrtsGrid>::VALUE,
 	};
 
 
@@ -206,10 +206,8 @@ struct SrtsGrid
 	 * its partial for raking reduction/scan into the first lane.  Positions in subsequent
 	 * lanes can be obtained via increments of LANE_STRIDE.
 	 */
-	static __host__ __device__ __forceinline__  LanePartial MyLanePartial(uint4 *smem_pool)
+	static __host__ __device__ __forceinline__  LanePartial MyLanePartial(T *smem)
 	{
-		T *smem = (T*) smem_pool;
-
 		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;
 		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);
 
@@ -221,10 +219,8 @@ struct SrtsGrid
 	 * Returns the location in the smem grid where the calling thread can begin serial
 	 * raking/scanning
 	 */
-	static __host__ __device__ __forceinline__  RakingSegment MyRakingSegment(uint4 *smem_pool)
+	static __host__ __device__ __forceinline__  RakingSegment MyRakingSegment(T *smem)
 	{
-		T *smem = (T*) smem_pool;
-
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
 		return (RakingSegment) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
@@ -252,7 +248,7 @@ struct SrtsGrid
 				"ROWS: %d\n"
 				"ROWS_PER_LANE: %d\n"
 				"LANE_STRIDE: %d\n"
-				"RAKING_QUADS: %d\n",
+				"RAKING_ELEMENTS: %d\n",
 			SCAN_LANES,
 			PARTIALS_PER_LANE,
 			RAKING_THREADS,
@@ -269,7 +265,7 @@ struct SrtsGrid
 			ROWS,
 			ROWS_PER_LANE,
 			LANE_STRIDE,
-			RAKING_QUADS);
+			RAKING_ELEMENTS);
 	}
 };
 

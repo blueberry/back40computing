@@ -85,7 +85,7 @@ __device__ __forceinline__ void DownsweepPass(
 		if (work_limits.guarded_elements) {
 			cta.template ProcessTile<false, false>(
 				work_limits.offset,
-				work_limits.out_of_bounds);
+				work_limits.guarded_elements);
 		}
 
 	} else {
@@ -93,7 +93,7 @@ __device__ __forceinline__ void DownsweepPass(
 		// Clean up last partial tile with guarded-io (first tile)
 		cta.template ProcessTile<false, true>(
 			work_limits.offset,
-			work_limits.out_of_bounds);
+			work_limits.guarded_elements);
 	}
 
 	if ((blockIdx.x == gridDim.x - 1) && (threadIdx.x == 0)) {

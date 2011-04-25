@@ -80,7 +80,7 @@ struct UpsweepCta : KernelConfig
 		T *d_in,
 		T *d_out) :
 
-			reduction_tree((T*) smem_storage.smem_pool_int4s),
+			reduction_tree(smem_storage.smem_pool.reduction_tree),
 			d_in(d_in),
 			d_out(d_out) {}
 
@@ -103,13 +103,11 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			true>::Invoke(data, d_in, cta_offset);
+			true>::Invoke(data, d_in + cta_offset);
 
 		// Reduce the data we loaded for this tile
-		T tile_partial = util::reduction::SerialReduce<
-			T,
-			KernelConfig::TILE_ELEMENTS_PER_THREAD,
-			KernelConfig::BinaryOp>::Invoke(reinterpret_cast<T*>(data));
+		T tile_partial = util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::template Invoke<
+			T, KernelConfig::BinaryOp>((T*) data);
 
 		// Reduce into carry
 		if (FIRST_TILE) {

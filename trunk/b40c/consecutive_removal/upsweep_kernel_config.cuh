@@ -102,20 +102,14 @@ struct UpsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		enum {
-			// Amount of storage (in quads) for a reduction tree of SizeT partials the size of the CTA
-			REDUCTION_QUADS				= B40C_QUADS(THREADS * sizeof(FlagCount)),
-		};
-
-		uint4 smem_pool_int4s[REDUCTION_QUADS];
+		union {
+			FlagCount reduction_tree[THREADS];
+		} smem_pool;
 	};
 
 	enum {
-		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
-
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID							= (CTA_OCCUPANCY > 0),

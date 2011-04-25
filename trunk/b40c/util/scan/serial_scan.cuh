@@ -37,43 +37,38 @@ namespace scan {
  * Have each thread concurrently perform a serial scan over its
  * specified segment (in place).  Returns the inclusive total_reduction.
  */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	bool EXCLUSIVE = true,
-	T ScanOp(const T&, const T&) = DefaultSum>
-struct SerialScan;
-
-
-/**
- * Inclusive serial scan
- */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	T ScanOp(const T&, const T&)>
-struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
+template <int NUM_ELEMENTS, bool EXCLUSIVE = true>
+struct SerialScan
 {
 	//---------------------------------------------------------------------
-	// Helper Structures
+	// Iteration Structures
 	//---------------------------------------------------------------------
 
 	// Iterate
-	template <int COUNT, int __dummy = 0>
+	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
+		template <
+			typename T,
+			T ScanOp(const T&, const T&)>
+		static __device__ __forceinline__ T Invoke(
+			T partials[],
+			T results[],
+			T exclusive_partial)
 		{
 			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
-			results[COUNT] = inclusive_partial;
-			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
+			results[COUNT] = (EXCLUSIVE) ? exclusive_partial : inclusive_partial;
+			return Iterate<COUNT + 1, TOTAL>::template Invoke<T, ScanOp>(partials, results, inclusive_partial);
 		}
 	};
 
 	// Terminate
-	template <int __dummy>
-	struct Iterate<NUM_ELEMENTS, __dummy>
+	template <int TOTAL>
+	struct Iterate<TOTAL, TOTAL>
 	{
+		template <
+			typename T,
+			T ScanOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
 		{
 			return exclusive_partial;
@@ -84,73 +79,62 @@ struct SerialScan <T, NUM_ELEMENTS, false, ScanOp>
 	// Interface
 	//---------------------------------------------------------------------
 
-	// Interface
+	/**
+	 * Serial scan with the specified operator
+	 */
+	template <
+		typename T,
+		T ScanOp(const T&, const T&)>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Iterate<0>::Invoke(partials, partials, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::template Invoke<T, ScanOp>(
+			partials, partials, exclusive_partial);
 	}
 
-	// Interface
-	static __device__ __forceinline__ T Invoke(
-		T partials[],
-		T results[],
-		T exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0>::Invoke(partials, results, exclusive_partial);
-	}
-};
-
-
-/**
- * Exclusive serial scan
- */
-template <
-	typename T,
-	int NUM_ELEMENTS,
-	T ScanOp(const T&, const T&)>
-struct SerialScan <T, NUM_ELEMENTS, true, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int __dummy = 0>
-	struct Iterate
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
-			results[COUNT] = exclusive_partial;
-			return Iterate<COUNT + 1>::Invoke(partials, results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int __dummy>
-	struct Iterate<NUM_ELEMENTS, __dummy>
-	{
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
+	/**
+	 * Serial scan with the addition operator
+	 */
+	template <
+		typename T>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Iterate<0>::Invoke(partials, partials, exclusive_partial);
+		return Invoke<T, DefaultSum>(partials, exclusive_partial);
 	}
 
-	// Interface
+
+	/**
+	 * Serial scan with the specified operator
+	 */
+	template <
+		typename T,
+		T ScanOp(const T&, const T&)>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T results[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Iterate<0>::Invoke(partials, results, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::template Invoke<T, ScanOp>(
+			partials, results, exclusive_partial);
+	}
+
+	/**
+	 * Serial scan with the addition operator
+	 */
+	template <
+		typename T>
+	static __device__ __forceinline__ T Invoke(
+		T partials[],
+		T results[],
+		T exclusive_partial)			// Exclusive partial to seed with
+	{
+		return Invoke<T, DefaultSum>(partials, results, exclusive_partial);
 	}
 };
+
 
 
 } // namespace scan

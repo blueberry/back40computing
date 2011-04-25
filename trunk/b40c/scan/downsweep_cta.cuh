@@ -84,7 +84,7 @@ struct DownsweepCta : KernelConfig
 		T spine_partial = KernelConfig::Identity()) :
 
 			srts_details(
-				smem_storage.smem_pool_int4s,
+				smem_storage.smem_pool,
 				smem_storage.warpscan,
 				KernelConfig::Identity()),
 			d_in(d_in),
@@ -98,7 +98,7 @@ struct DownsweepCta : KernelConfig
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		// Tile of scan elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -109,7 +109,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(data, d_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_in + cta_offset, guarded_elements);
 
 		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
@@ -124,7 +124,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(data, d_out, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(data, d_out + cta_offset, guarded_elements);
 	}
 };
 

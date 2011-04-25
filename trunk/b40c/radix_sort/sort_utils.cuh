@@ -43,35 +43,8 @@
 
 #pragma once
 
-#include "b40c_cuda_properties.cuh"
-
 namespace b40c {
-namespace lsb_radix_sort {
-
-
-/******************************************************************************
- * Value type for keys-only sorting 
- ******************************************************************************/
-
-/**
- * Value-type structure denoting keys-only sorting
- */
-struct KeysOnly {};
-
-
-/**
- * Returns whether or not the templated type indicates keys-only sorting
- */
-template <typename V>
-__forceinline__ __host__ __device__ bool IsKeysOnly() {return false;}
-
-
-/**
- * Returns whether or not the templated type indicates keys-only sorting
- */
-template <>
-__forceinline__ __host__ __device__ bool IsKeysOnly<KeysOnly>() {return true;}
-
+namespace radix_sort {
 
 
 /******************************************************************************
@@ -89,7 +62,7 @@ struct ExtractKeyBits
 	{
 #if __CUDA_ARCH__ >= 200
 		asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(BIT_START), "r"(NUM_BITS));
-#else 
+#else
 		const T MASK = (1 << NUM_BITS) - 1;
 		bits = (source >> BIT_START) & MASK;
 #endif
@@ -228,7 +201,6 @@ template <> struct KeyTraits<double> : FloatingPointKeyConversion<unsigned long 
 
 
 
-} // namespace lsb_radix_sort
-
+} // namespace radix_sort
 } // namespace b40c
 

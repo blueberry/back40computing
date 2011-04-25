@@ -70,7 +70,7 @@ struct CooperativeTileReduction
 			T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
 		{
 			// Reduce the partials in this lane/load
-			T partial_reduction = SerialReduce<T, VEC_SIZE, ReductionOp>::Invoke(data[LANE]);
+			T partial_reduction = SerialReduce<VEC_SIZE>::template Invoke<T, ReductionOp>(data[LANE]);
 
 			// Store partial reduction into SRTS grid
 			srts_details.lane_partial[LANE][0] = partial_reduction;
@@ -161,11 +161,11 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
 				srts_details.raking_segment);
 
 			// Warp reduction
-			T warpscan_total = WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::InvokeSingle(
+			T warpscan_total = WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::template InvokeSingle<T, ReductionOp>(
 				partial, srts_details.warpscan);
 
 			carry = (REDUCE_CARRY) ?
@@ -183,11 +183,11 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
 				srts_details.raking_segment);
 
 			// Warp reduction
-			WarpReduce<T, SrtsDetails::LOG_RAKING_THREADS, ReductionOp>::InvokeSingle(
+			WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::template InvokeSingle<T, ReductionOp>(
 				partial, srts_details.warpscan);
 		}
 
@@ -221,7 +221,7 @@ struct CooperativeGridReduction
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
 				srts_details.raking_segment);
 
 			// Place partial in next grid
@@ -246,7 +246,7 @@ struct CooperativeGridReduction
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<T, SrtsDetails::PARTIALS_PER_SEG, ReductionOp>::Invoke(
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
 				srts_details.raking_segment);
 
 			// Place partial in next grid

@@ -315,7 +315,8 @@ struct SrtsGrid
 		LANE_STRIDE						= ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
 		// Total number of quad words (uint4) needed to back the grid
-		SMEM_QUADS						= ((ROWS * PADDED_PARTIALS_PER_ROW * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4),
+		SMEM_ELEMENTS 					= ROWS * PADDED_PARTIALS_PER_ROW,
+		SMEM_QUADS						= ((SMEM_ELEMENTS * sizeof(PartialType)) + sizeof(uint4) - 1) / sizeof(uint4),
 
 		SMEM_BYTES						= SMEM_QUADS * sizeof(uint4)
 	};
@@ -474,6 +475,20 @@ struct WarpScan
 		// Set aggregate reduction
 		total = warpscan[1][NUM_ELEMENTS - 1];
 		
+		// Return scan partial
+		return warpscan[1][warpscan_tid - 1];
+	}
+
+	// Interface
+	static __device__ __forceinline__ T Invoke(
+		T partial,									// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
+		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	{
+		warpscan[1][warpscan_tid] = partial;
+
+		Iterate<1>::Invoke(partial, warpscan, warpscan_tid);
+
 		// Return scan partial
 		return warpscan[1][warpscan_tid - 1];
 	}

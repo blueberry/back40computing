@@ -97,8 +97,8 @@ struct SweepCta
 	SizeT					&fine_enqueue_offset;
 
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
-	SizeT					*offset_scratch_pool;
-	VertexId				*parent_scratch_pool;
+	SizeT					*offset_scratch;
+	VertexId				*parent_scratch;
 
 
 	//---------------------------------------------------------------------
@@ -374,11 +374,11 @@ struct SweepCta
 					(scratch_offset < SmemStorage::SCRATCH_ELEMENTS))
 				{
 					// Put gather offset into scratch space
-					cta->offset_scratch_pool[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
+					cta->offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
 					if (KernelConfig::MARK_PARENTS) {
 						// Put dequeued vertex as the parent into scratch space
-						cta->parent_scratch_pool[scratch_offset] = tile->vertex_id[LOAD][VEC];
+						cta->parent_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -529,17 +529,17 @@ struct SweepCta
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool_int4s,
-					smem_storage.smem_pool_int4s + SmemStorage::COARSE_RAKING_QUADS),
+					smem_storage.smem_pool.raking_elements.coarse_raking_elements,
+					smem_storage.smem_pool.raking_elements.fine_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
-					smem_storage.coarse_warpscan,
-					smem_storage.fine_warpscan),
+					smem_storage.state.coarse_warpscan,
+					smem_storage.state.fine_warpscan),
 				KernelConfig::SoaTupleIdentity()),
-			warp_comm(smem_storage.warp_comm),
-			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
-			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
-			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
-			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
+			warp_comm(smem_storage.state.warp_comm),
+			coarse_enqueue_offset(smem_storage.state.coarse_enqueue_offset),
+			fine_enqueue_offset(smem_storage.state.fine_enqueue_offset),
+			offset_scratch(smem_storage.smem_pool.scratch.offset_scratch),
+			parent_scratch(smem_storage.smem_pool.scratch.parent_scratch),
 			iteration(iteration),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
@@ -570,7 +570,7 @@ struct SweepCta
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
@@ -585,9 +585,8 @@ struct SweepCta
 			KernelConfig::QUEUE_READ_MODIFIER,
 			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
 				tile.vertex_id,
-				d_in,
-				cta_offset,
-				out_of_bounds);
+				d_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of parents
 		if (KernelConfig::MARK_PARENTS) {
@@ -599,9 +598,8 @@ struct SweepCta
 				KernelConfig::QUEUE_READ_MODIFIER,
 				FULL_TILE>::Invoke(
 					tile.parent_id,
-					d_parent_in,
-					cta_offset,
-					out_of_bounds);
+					d_parent_in + cta_offset,
+					guarded_elements);
 		}
 
 		// Inspect dequeued vertices, updating source path and obtaining
@@ -659,7 +657,7 @@ struct SweepCta
 				VertexId neighbor_id;
 				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_id,
-					d_column_indices + offset_scratch_pool[scratch_offset]);
+					d_column_indices + offset_scratch[scratch_offset]);
 
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
@@ -668,7 +666,7 @@ struct SweepCta
 
 				if (KernelConfig::MARK_PARENTS) {
 					// Scatter parent it into queue
-					VertexId parent_id = parent_scratch_pool[scratch_offset];
+					VertexId parent_id = parent_scratch[scratch_offset];
 					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
 						d_parent_out + fine_enqueue_offset + tile.progress + scratch_offset);

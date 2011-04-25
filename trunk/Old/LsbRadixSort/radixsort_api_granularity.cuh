@@ -42,14 +42,16 @@
 
 #pragma once
 
-#include "b40c_cuda_properties.cuh"
-
+#include <b40c/util/operators.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include "radixsort_kernel_upsweep.cuh"
-#include "radixsort_kernel_spine.cuh"
-#include "radixsort_kernel_downsweep.cuh"
+#include <b40c/radix_sort/distribution/upsweep/tuning_config.cuh>
+#include <b40c/radix_sort/distribution/downsweep/tuning_config.cuh>
+#include <b40c/radix_sort/sort_utils.cuh>
+
+#include <b40c/scan/problem_type.cuh>
+#include <b40c/scan/downsweep_kernel_config.cuh>
 
 namespace b40c {
 namespace lsb_radix_sort {
@@ -68,10 +70,13 @@ namespace lsb_radix_sort {
  * types, we assure operational consistency over an entire sorting pass. 
  */
 template <
-	// Common
+	// Problem Type
 	typename KeyType,
 	typename ValueType,
 	typename SizeT,
+
+	// Common
+	int CUDA_ARCH,
 	int RADIX_BITS,
 	int LOG_SCHEDULE_GRANULARITY,
 	util::io::ld::CacheModifier READ_MODIFIER,
@@ -105,14 +110,15 @@ struct LsbSortConfig
 {
 	// Unsigned integer type to cast keys as in order to make them suitable 
 	// for radix sorting 
-	typedef typename KeyTraits<KeyType>::ConvertedKeyType ConvertedKeyType;
+	typedef typename radix_sort::KeyTraits<KeyType>::ConvertedKeyType ConvertedKeyType;
 
 	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
 	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
 	
-	typedef upsweep::UpsweepConfig<
+	typedef radix_sort::distribution::upsweep::TuningConfig<
 		ConvertedKeyType, 
 		SizeT,
+		CUDA_ARCH,
 		RADIX_BITS, 
 		LOG_SCHEDULE_GRANULARITY,
 		UPSWEEP_CTA_OCCUPANCY,  
@@ -123,23 +129,34 @@ struct LsbSortConfig
 		WRITE_MODIFIER,
 		EARLY_EXIT>
 			Upsweep;
-	
-	typedef spine_scan::SpineScanConfig<
-		SizeT,								// Type of scan problem
-		int,									// Type for indexing into scan problem
-		SPINE_CTA_OCCUPANCY,
+
+	// Problem type for spine scan
+	typedef scan::ProblemType<
+		SizeT,
+		int,
+		true,								// Exclusive
+		util::DefaultSum<SizeT>,
+		util::DefaultSumIdentity<SizeT> > SpineProblemType;
+
+	// Kernel config for spine scan
+	typedef scan::DownsweepKernelConfig <
+		SpineProblemType,
+		CUDA_ARCH,
+		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
-		WRITE_MODIFIER>
-			SpineScan;
+		WRITE_MODIFIER,
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
+			Spine;
 	
-	typedef downsweep::DownsweepConfig<
+	typedef radix_sort::distribution::downsweep::TuningConfig<
 		ConvertedKeyType,
 		ValueType,
 		SizeT,
+		CUDA_ARCH,
 		RADIX_BITS,
 		LOG_SCHEDULE_GRANULARITY,
 		DOWNSWEEP_CTA_OCCUPANCY,

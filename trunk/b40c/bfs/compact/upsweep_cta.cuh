@@ -363,8 +363,7 @@ struct UpsweepCta
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(
 				tile.vertex_id,
-				d_in,
-				cta_offset);
+				d_in + cta_offset);
 
 		// Cull valid flags using global collision bitmask
 		tile.BitmaskCull(this);
@@ -378,15 +377,11 @@ struct UpsweepCta
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			true>::Invoke(
-				tile.valid,
-				d_flags_out,
-				cta_offset);
+			true>::Invoke(tile.valid, d_flags_out + cta_offset);
 
 		// Reduce into carry
-		carry += util::reduction::SerialReduce<
-			ValidFlag,
-			KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke((ValidFlag *) tile.valid);
+		carry += util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(
+			(ValidFlag *) tile.valid);
 	}
 
 

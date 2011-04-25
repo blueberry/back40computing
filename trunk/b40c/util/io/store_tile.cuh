@@ -96,15 +96,14 @@ struct StoreTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
-		SizeT cta_offset,
-		const SizeT &out_of_bounds = 0)
+		const SizeT &guarded_elements = 0)
 	{
 		// Aliased vector type
 		typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;
 
 		// Use an aliased pointer to keys array to perform built-in vector stores
 		VectorType *vectors = (VectorType *) data;
-		VectorType *d_in_vectors = (VectorType *) (d_out + cta_offset);
+		VectorType *d_in_vectors = (VectorType *) d_out;
 		
 		Iterate<0>::Invoke(vectors, d_in_vectors);
 	}
@@ -137,15 +136,14 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT cta_offset,
-			SizeT out_of_bounds)
+			SizeT guarded_elements)
 		{
-			SizeT thread_offset = cta_offset + VEC;
+			SizeT thread_offset = (threadIdx.x << LOG_STORE_VEC_SIZE) + (STORE * ACTIVE_THREADS * STORE_VEC_SIZE) + VEC;
 
-			if (thread_offset < out_of_bounds) {
+			if (thread_offset < guarded_elements) {
 				ModifiedStore<CACHE_MODIFIER>::St(data[STORE][VEC], d_out + thread_offset);
 			}
-			Iterate<STORE, VEC + 1>::Invoke(data, d_out, cta_offset, out_of_bounds);
+			Iterate<STORE, VEC + 1>::Invoke(data, d_out, guarded_elements);
 		}
 	};
 
@@ -157,11 +155,9 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT cta_offset,
-			SizeT out_of_bounds)
+			SizeT guarded_elements)
 		{
-			Iterate<STORE + 1, 0>::Invoke(
-				data, d_out, cta_offset + (ACTIVE_THREADS << LOG_STORE_VEC_SIZE), out_of_bounds);
+			Iterate<STORE + 1, 0>::Invoke(data, d_out, guarded_elements);
 		}
 	};
 	
@@ -173,8 +169,7 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT cta_offset,
-			SizeT out_of_bounds) {}
+			SizeT guarded_elements) {}
 	};
 
 	// Interface
@@ -182,14 +177,9 @@ struct StoreTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
-		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT guarded_elements)
 	{
-		Iterate<0, 0>::template Invoke<T, SizeT>(
-			data,
-			d_out,
-			cta_offset + (threadIdx.x << LOG_STORE_VEC_SIZE),
-			out_of_bounds);
+		Iterate<0, 0>::template Invoke<T, SizeT>(data, d_out, guarded_elements);
 	} 
 };
 

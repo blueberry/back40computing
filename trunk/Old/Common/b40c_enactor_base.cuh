@@ -27,27 +27,10 @@
 
 #pragma once
 
-#include "b40c_cuda_properties.cuh"
+#include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/basic_utils.cuh>
 
 namespace b40c {
-
-
-/******************************************************************************
- * Metaprogramming type for Enactor base class
- ******************************************************************************/
-
-template <typename MyType, typename DerivedType = void>
-struct DispatchType
-{
-	typedef DerivedType Type;
-};
-
-template <typename MyType>
-struct DispatchType<MyType, void>
-{
-	typedef MyType Type;
-};
-
 
 
 /******************************************************************************
@@ -81,7 +64,7 @@ protected:
 	//---------------------------------------------------------------------
 
 	// Device properties
-	const CudaProperties cuda_props;
+	const util::CudaProperties cuda_props;
 
 
 	//-----------------------------------------------------------------------------
