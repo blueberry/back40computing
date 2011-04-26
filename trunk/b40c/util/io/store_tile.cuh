@@ -96,7 +96,7 @@ struct StoreTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
-		const SizeT &guarded_elements = 0)
+		const SizeT &guarded_elements)
 	{
 		// Aliased vector type
 		typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;
@@ -106,6 +106,15 @@ struct StoreTile <
 		VectorType *d_in_vectors = (VectorType *) d_out;
 		
 		Iterate<0>::Invoke(vectors, d_in_vectors);
+	}
+
+	// Interface
+	template <typename T>
+	static __device__ __forceinline__ void Invoke(
+		T data[][STORE_VEC_SIZE],
+		T *d_out)
+	{
+		Invoke(data, d_out, 0);
 	}
 };
 	
@@ -136,7 +145,7 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT guarded_elements)
+			const SizeT &guarded_elements)
 		{
 			SizeT thread_offset = (threadIdx.x << LOG_STORE_VEC_SIZE) + (STORE * ACTIVE_THREADS * STORE_VEC_SIZE) + VEC;
 
@@ -155,7 +164,7 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT guarded_elements)
+			const SizeT &guarded_elements)
 		{
 			Iterate<STORE + 1, 0>::Invoke(data, d_out, guarded_elements);
 		}
@@ -169,7 +178,7 @@ struct StoreTile <
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
 			T *d_out,
-			SizeT guarded_elements) {}
+			const SizeT &guarded_elements) {}
 	};
 
 	// Interface
@@ -177,7 +186,7 @@ struct StoreTile <
 	static __device__ __forceinline__ void Invoke(
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
-		SizeT guarded_elements)
+		const SizeT &guarded_elements)
 	{
 		Iterate<0, 0>::template Invoke<T, SizeT>(data, d_out, guarded_elements);
 	} 

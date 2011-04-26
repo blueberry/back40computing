@@ -214,8 +214,8 @@ struct SweepKernelConfig : _ProblemType
 
 		union {
 			struct {
-				uint4						coarse_lanes[CoarseGrid::TOTAL_RAKING_QUADS];
-				uint4						fine_lanes[FineGrid::TOTAL_RAKING_QUADS];
+				SizeT						coarse_lanes[CoarseGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT						fine_lanes[FineGrid::TOTAL_RAKING_ELEMENTS];
 			} raking_lanes;
 			struct {
 				SizeT						offsets[SCRATCH_ELEMENTS];
