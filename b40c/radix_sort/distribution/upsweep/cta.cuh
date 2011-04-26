@@ -100,8 +100,133 @@ struct Cta
 
 	struct Composites;
 
+	/**
+	 * Tile
+	 */
 	template <int LOG_LOADS_PER_TILE, int LOG_LOAD_VEC_SIZE>
-	struct Tile;
+	struct Tile
+	{
+		//---------------------------------------------------------------------
+		// Typedefs and Constants
+		//---------------------------------------------------------------------
+
+		enum {
+			LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
+			LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE
+		};
+
+		//---------------------------------------------------------------------
+		// Members
+		//---------------------------------------------------------------------
+
+		// Dequeued vertex ids
+		KeyType 	keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
+
+		//---------------------------------------------------------------------
+		// Internal Methods
+		//---------------------------------------------------------------------
+
+		/**
+		 * Buckets the key specified by LOAD and VEC
+		 */
+		template <int LOAD, int VEC>
+		__device__ __forceinline__ void Bucket(Cta *cta)
+		{
+			// Pre-process key with bit-twiddling functor if necessary
+			KernelConfig::PreprocessTraits::Preprocess(keys[LOAD][VEC], true);
+
+			// Extract lane containing corresponding composite counter
+			int lane;
+			radix_sort::ExtractKeyBits<
+				KeyType,
+				KernelConfig::CURRENT_BIT + 2,
+				KernelConfig::RADIX_BITS - 2>::Extract(lane, keys[LOAD][VEC]);
+
+			if (__B40C_CUDA_ARCH__ >= 200) {
+
+				// GF100+ has special bit-extraction instructions (instead of shift+mask)
+				int quad_byte;
+				if (KernelConfig::RADIX_BITS < 2) {
+					radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 1>::Extract(quad_byte, keys[LOAD][VEC]);
+				} else {
+					radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 2>::Extract(quad_byte, keys[LOAD][VEC]);
+				}
+
+				// Increment sub-field in composite counter
+				cta->smem_storage.composite_counters.counters[lane][threadIdx.x][quad_byte]++;
+
+			} else {
+
+				// GT200 can save an instruction because it can source an operand
+				// directly from smem
+				const int BYTE_ENCODE_SHIFT 		= 0x3;
+				const KeyType QUAD_MASK 			= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
+
+				int quad_shift = util::MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - KernelConfig::CURRENT_BIT>(
+					keys[LOAD][VEC] & (QUAD_MASK << KernelConfig::CURRENT_BIT));
+
+				// Increment sub-field in composite counter
+				cta->smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << quad_shift);;
+			}
+		}
+
+
+		//---------------------------------------------------------------------
+		// Iteration Structures
+		//---------------------------------------------------------------------
+
+		/**
+		 * Iterate next vector element
+		 */
+		template <int LOAD, int VEC, int dummy = 0>
+		struct Iterate
+		{
+			// Bucket
+			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
+			{
+				tile->Bucket<LOAD, VEC>(cta);
+				Iterate<LOAD, VEC + 1>::Bucket(cta, tile);
+			}
+		};
+
+
+		/**
+		 * Iterate next load
+		 */
+		template <int LOAD, int dummy>
+		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+		{
+			// Bucket
+			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::Bucket(cta, tile);
+			}
+		};
+
+		/**
+		 * Terminate iteration
+		 */
+		template <int dummy>
+		struct Iterate<LOADS_PER_TILE, 0, dummy>
+		{
+			// Bucket
+			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile) {}
+		};
+
+
+		//---------------------------------------------------------------------
+		// Interface
+		//---------------------------------------------------------------------
+
+		/**
+		 * Decode keys in this tile and update the cta's corresponding composite counters
+		 */
+		__device__ __forceinline__ void Bucket(Cta *cta)
+		{
+			Iterate<0, 0>::Bucket(cta, this);
+		}
+	};
+
 
 	/**
 	 * Unrolled tile processing
@@ -460,148 +585,6 @@ struct Cta<KernelConfig, SmemStorage, Derived>::Composites
 		Iterate<0, 0>::ResetCounters(cta);
 	}
 };
-
-
-
-/**
- * Tile
- */
-template <typename KernelConfig, typename SmemStorage, typename Derived>
-template <int LOG_LOADS_PER_TILE, int LOG_LOAD_VEC_SIZE>
-struct Cta<KernelConfig, SmemStorage, Derived>::Tile
-{
-	//---------------------------------------------------------------------
-	// Typedefs and Constants
-	//---------------------------------------------------------------------
-
-	enum {
-		LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
-		LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE
-	};
-
-	//---------------------------------------------------------------------
-	// Members
-	//---------------------------------------------------------------------
-
-	// Dequeued vertex ids
-	KeyType 	keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-	//---------------------------------------------------------------------
-	// Internal Methods
-	//---------------------------------------------------------------------
-
-	/**
-	 * Buckets the key specified by LOAD and VEC
-	 */
-	template <int LOAD, int VEC>
-	__device__ __forceinline__ void Bucket(Cta *cta)
-	{
-		// Pre-process key with bit-twiddling functor if necessary
-		KernelConfig::PreprocessTraits::Preprocess(keys[LOAD][VEC], true);
-
-		// Extract lane containing corresponding composite counter
-		int lane;
-		radix_sort::ExtractKeyBits<
-			KeyType,
-			KernelConfig::CURRENT_BIT + 2,
-			KernelConfig::RADIX_BITS - 2>::Extract(lane, keys[LOAD][VEC]);
-
-		if (__B40C_CUDA_ARCH__ >= 200) {
-
-			// GF100+ has special bit-extraction instructions (instead of shift+mask)
-			int quad_byte;
-			if (KernelConfig::RADIX_BITS < 2) {
-				radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 1>::Extract(quad_byte, keys[LOAD][VEC]);
-			} else {
-				radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 2>::Extract(quad_byte, keys[LOAD][VEC]);
-			}
-
-			// Increment sub-field in composite counter
-			cta->smem_storage.composite_counters.counters[lane][threadIdx.x][quad_byte]++;
-
-		} else {
-
-			// GT200 can save an instruction because it can source an operand
-			// directly from smem
-			const int BYTE_ENCODE_SHIFT 		= 0x3;
-			const KeyType QUAD_MASK 			= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
-
-			int quad_shift = util::MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - KernelConfig::CURRENT_BIT>(
-				keys[LOAD][VEC] & (QUAD_MASK << KernelConfig::CURRENT_BIT));
-
-			// Increment sub-field in composite counter
-			cta->smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << quad_shift);;
-		}
-	}
-
-
-	//---------------------------------------------------------------------
-	// Iteration Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate next vector element
-	 */
-	template <int LOAD, int VEC, int dummy = 0>
-	struct Iterate
-	{
-		// Bucket
-		static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
-		{
-			tile->Bucket<LOAD, VEC>(cta);
-			Iterate<LOAD, VEC + 1>::Bucket(cta, tile);
-		}
-	};
-
-
-	/**
-	 * Iterate next load
-	 */
-	template <int LOAD, int dummy>
-	struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
-	{
-		// Bucket
-		static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
-		{
-			Iterate<LOAD + 1, 0>::Bucket(cta, tile);
-		}
-	};
-
-	/**
-	 * Terminate iteration
-	 */
-	template <int dummy>
-	struct Iterate<LOADS_PER_TILE, 0, dummy>
-	{
-		// Bucket
-		static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile) {}
-	};
-
-
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * Decode keys in this tile and update the cta's corresponding composite counters
-	 */
-	__device__ __forceinline__ void Bucket(Cta *cta)
-	{
-		Iterate<0, 0>::Bucket(cta, this);
-	}
-};
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

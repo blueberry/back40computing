@@ -110,7 +110,9 @@ __device__ __forceinline__ int TallyWarpVote(int predicate, int *storage)
 #if __CUDA_ARCH__ >= 200
 	return __popc(__ballot(predicate));
 #else
-	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(predicate, storage);
+	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(
+		predicate, 
+		reinterpret_cast<int (*)[1 << LOG_ACTIVE_THREADS]>(storage));
 #endif
 }
 
