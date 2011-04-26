@@ -132,42 +132,7 @@ struct Cta
 		template <int LOAD, int VEC>
 		__device__ __forceinline__ void Bucket(Cta *cta)
 		{
-			// Pre-process key with bit-twiddling functor if necessary
-			KernelConfig::PreprocessTraits::Preprocess(keys[LOAD][VEC], true);
-
-			// Extract lane containing corresponding composite counter
-			int lane;
-			radix_sort::ExtractKeyBits<
-				KeyType,
-				KernelConfig::CURRENT_BIT + 2,
-				KernelConfig::RADIX_BITS - 2>::Extract(lane, keys[LOAD][VEC]);
-
-			if (__B40C_CUDA_ARCH__ >= 200) {
-
-				// GF100+ has special bit-extraction instructions (instead of shift+mask)
-				int quad_byte;
-				if (KernelConfig::RADIX_BITS < 2) {
-					radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 1>::Extract(quad_byte, keys[LOAD][VEC]);
-				} else {
-					radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 2>::Extract(quad_byte, keys[LOAD][VEC]);
-				}
-
-				// Increment sub-field in composite counter
-				cta->smem_storage.composite_counters.counters[lane][threadIdx.x][quad_byte]++;
-
-			} else {
-
-				// GT200 can save an instruction because it can source an operand
-				// directly from smem
-				const int BYTE_ENCODE_SHIFT 		= 0x3;
-				const KeyType QUAD_MASK 			= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
-
-				int quad_shift = util::MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - KernelConfig::CURRENT_BIT>(
-					keys[LOAD][VEC] & (QUAD_MASK << KernelConfig::CURRENT_BIT));
-
-				// Increment sub-field in composite counter
-				cta->smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << quad_shift);;
-			}
+			cta->Bucket(keys[LOAD][VEC]);
 		}
 
 
@@ -303,16 +268,58 @@ struct Cta
 
 
 	/**
+	 * 
+	 */
+	__device__ __forceinline__ void Bucket(KeyType key) 
+	{
+		// Pre-process key with bit-twiddling functor if necessary
+		KernelConfig::PreprocessTraits::Preprocess(key, true);
+
+		// Extract lane containing corresponding composite counter
+		int lane;
+		radix_sort::ExtractKeyBits<
+			KeyType,
+			KernelConfig::CURRENT_BIT + 2,
+			KernelConfig::RADIX_BITS - 2>::Extract(lane, key);
+
+		if (__B40C_CUDA_ARCH__ >= 200) {
+
+			// GF100+ has special bit-extraction instructions (instead of shift+mask)
+			int quad_byte;
+			if (KernelConfig::RADIX_BITS < 2) {
+				radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 1>::Extract(quad_byte, key);
+			} else {
+				radix_sort::ExtractKeyBits<KeyType, KernelConfig::CURRENT_BIT, 2>::Extract(quad_byte, key);
+			}
+
+			// Increment sub-field in composite counter
+			smem_storage.composite_counters.counters[lane][threadIdx.x][quad_byte]++;
+
+		} else {
+
+			// GT200 can save an instruction because it can source an operand
+			// directly from smem
+			const int BYTE_ENCODE_SHIFT 		= 0x3;
+			const KeyType QUAD_MASK 			= (KernelConfig::RADIX_BITS < 2) ? 0x1 : 0x3;
+
+			int quad_shift = util::MagnitudeShift<KeyType, BYTE_ENCODE_SHIFT - KernelConfig::CURRENT_BIT>(
+				key & (QUAD_MASK << KernelConfig::CURRENT_BIT));
+
+			// Increment sub-field in composite counter
+			smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << quad_shift);;
+		}
+	}
+
+	/**
 	 * Processes a single load (may have some threads masked off)
 	 */
 	__device__ __forceinline__ void ProcessPartialLoad(
 		SizeT cta_offset)
 	{
-		Tile<0, 0> tile;
+		KeyType key;
 		util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
-			tile.keys[0][0], d_in_keys + cta_offset);
-
-		tile.Bucket(this);
+			key, d_in_keys + cta_offset);
+		Bucket(key);
 	}
 
 
@@ -389,7 +396,6 @@ struct Cta
 			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
 					digit_count, d_spine + spine_digit_offset);
 		}
-
 	}
 };
 
