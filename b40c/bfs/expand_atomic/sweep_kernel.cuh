@@ -230,7 +230,7 @@ void SweepKernel(
 
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
-				smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.state.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
@@ -251,7 +251,7 @@ void SweepKernel(
 			d_row_offsets,
 			d_source_path,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 
 	} else {
@@ -270,7 +270,7 @@ void SweepKernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.state.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -294,7 +294,7 @@ void SweepKernel(
 			d_row_offsets,
 			d_source_path,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 	}
 

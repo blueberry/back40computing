@@ -58,7 +58,7 @@ struct SweepCta
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename SmemStorage::WarpComm 			WarpComm;
+	typedef typename SmemStorage::State::WarpComm 	WarpComm;
 
 	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelConfig::SoaTuple 		SoaTuple;
@@ -371,7 +371,7 @@ struct SweepCta
 				SizeT scratch_offset = tile->fine_row_rank[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
 
 				while ((tile->row_progress[LOAD][VEC] < tile->row_length[LOAD][VEC]) &&
-					(scratch_offset < SmemStorage::SCRATCH_ELEMENTS))
+					(scratch_offset < SmemStorage::OFFSET_ELEMENTS))
 				{
 					// Put gather offset into scratch space
 					cta->offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
@@ -647,7 +647,7 @@ struct SweepCta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.fine_count - tile.progress);
+			int scratch_remainder = B40C_MIN(SmemStorage::OFFSET_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = threadIdx.x;
 				scratch_offset < scratch_remainder;
@@ -673,7 +673,7 @@ struct SweepCta
 				}
 			}
 
-			tile.progress += SmemStorage::SCRATCH_ELEMENTS;
+			tile.progress += SmemStorage::OFFSET_ELEMENTS;
 
 			__syncthreads();
 		}

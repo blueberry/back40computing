@@ -377,7 +377,9 @@ struct UpsweepCta
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			true>::Invoke(tile.valid, d_flags_out + cta_offset);
+			true>::Invoke(
+				tile.valid,
+				d_flags_out + cta_offset);
 
 		// Reduce into carry
 		carry += util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(
