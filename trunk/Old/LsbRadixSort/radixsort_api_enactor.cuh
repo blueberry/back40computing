@@ -295,13 +295,13 @@ protected:
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
 
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke spine scan
 			scan::SpineKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(SizeT*) spine(), (SizeT*) spine(), work.spine_elements);
+				(SizeT*) d_spine, (SizeT*) d_spine, work.spine_elements);
 
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke downsweep scan/scatter kernel
 			radix_sort::distribution::downsweep::DownsweepKernel<DownsweepKernelConfigType>
@@ -314,7 +314,7 @@ protected:
 					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 					work);
 
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: DownsweepKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);
 
