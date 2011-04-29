@@ -193,11 +193,8 @@ struct SweepKernelConfig : _ProblemType
 		SizeT								coarse_enqueue_offset;
 
 		enum {
-			COARSE_RAKING_QUADS 			= CoarseGrid::TOTAL_RAKING_QUADS,
-			FINE_RAKING_QUADS 				= FineGrid::TOTAL_RAKING_QUADS,
-
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(WarpComm)
 												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
@@ -210,23 +207,22 @@ struct SweepKernelConfig : _ProblemType
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
 													sizeof(SizeT),								// Just gather offset
 
-			SCRATCH_ELEMENTS				= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			SCRATCH_ELEMENTS				= FULL_OCCUPANCY_BYTES / SCRATCH_ELEMENT_SIZE,
 
-			OFFSET_QUADS					= B40C_QUADS(SCRATCH_ELEMENTS * sizeof(SizeT)),		// Number of quads for offsets
-			PARENT_QUADS					= (ProblemType::MARK_PARENTS) ? 					// Number of parent
-												B40C_QUADS(SCRATCH_ELEMENTS * sizeof(VertexId)) :
-												0,
-			SCRATCH_QUADS					= OFFSET_QUADS + PARENT_QUADS,						// Number of quads for scratch space
-
-			SMEM_POOL_QUADS					= B40C_MAX(
-												COARSE_RAKING_QUADS + FINE_RAKING_QUADS,
-												SCRATCH_QUADS),
-
-			SMEM_POOL_VERTEX_IDS			= SMEM_POOL_QUADS * sizeof(uint4) / sizeof(VertexId) - 1,
+			HASH_ELEMENTS					= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
 		};
 
-
-		uint4 								smem_pool_int4s[SMEM_POOL_QUADS];	// Repurposable scan lanes
+		union {
+			struct {
+				SizeT						coarse_lanes[CoarseGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT						fine_lanes[FineGrid::TOTAL_RAKING_ELEMENTS];
+			} raking_lanes;
+			struct {
+				SizeT						offsets[SCRATCH_ELEMENTS];
+				VertexId					parents[(ProblemType::MARK_PARENTS) ? SCRATCH_ELEMENTS : 0];
+			} gather_scratch;
+			VertexId 						vid_hashtable[HASH_ELEMENTS];
+		} smem_pool;
 	};
 
 	enum {

@@ -45,17 +45,17 @@
 #include <stdio.h>
 #include <limits.h>
 
-#include "b40c_kernel_utils.cuh"
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/error_utils.cuh>
 #include "b40c_enactor_base.cuh"
 
-#include "radixsort_kernel_upsweep.cuh"
-#include "radixsort_kernel_spine.cuh"
-#include "radixsort_kernel_downsweep.cuh"
+#include <b40c/radix_sort/distribution/upsweep/kernel.cuh>
+#include <b40c/radix_sort/distribution/upsweep/kernel_config.cuh>
+#include <b40c/radix_sort/distribution/downsweep/kernel.cuh>
+#include <b40c/radix_sort/distribution/downsweep/kernel_config.cuh>
+#include <b40c/scan/spine_kernel.cuh>
 
 namespace b40c {
-
-using namespace lsb_radix_sort;
-
 
 /**
  * Forward declaration of an internal utility type for managing the state for a
@@ -63,14 +63,14 @@ using namespace lsb_radix_sort;
  * if CUDA Runtime is fixed to properly support template specialization around
  * kernel call sites.
  */
-template <typename Storage> struct SortingCtaDecomposition;
+template <typename Storage> struct SortingDetails;
 
 
 
 /**
  * Basic LSB radix sorting enactor class.  
  */
-template <typename DerivedEnactorType = void>
+template <typename DerivedEnactorType = util::NullType>
 class LsbSortEnactor : public EnactorBase
 {
 protected:
@@ -81,7 +81,7 @@ protected:
 
 	// Dispatch type (to self, or to derived class as per CRTP -- curiously
 	// recurring template pattern
-	typedef typename DispatchType<LsbSortEnactor, DerivedEnactorType>::Type Dispatch;
+	typedef typename util::If<util::Equals<DerivedEnactorType, util::NullType>::VALUE, LsbSortEnactor, DerivedEnactorType>::Type Dispatch;
 
 	// Number of bytes backed by d_spine 
 	int spine_bytes;
@@ -89,15 +89,11 @@ protected:
 	// Temporary device storage needed for scanning digit histograms produced
 	// by separate CTAs
 	void *d_spine;
-	int spine_gpu;
 
 	// Pair of "selector" device integers.  The first selects the incoming device 
 	// vector for even passes, the second selects the odd.
 	int *d_selectors;
-	int selectors_gpu;
 	
-	cudaStream_t 	stream;
-
 
 	//-----------------------------------------------------------------------------
 	// Utility Routines
@@ -132,27 +128,26 @@ protected:
 		do {
 			// If necessary, allocate pair of ints denoting input and output vectors for even and odd passes
 			if (d_selectors == NULL) {
-				cudaGetDevice(&selectors_gpu);
-				if (retval = B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
 					"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__)) break;
 			}
 
 			// If necessary, allocate device memory for temporary storage in the problem structure
 			if (problem_storage.d_keys[0] == NULL) {
-				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType)),
+				if (retval = util::B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[0], problem_storage.num_elements * sizeof(KeyType)),
 					"LsbSortEnactor cudaMalloc problem_storage.d_keys[0] failed", __FILE__, __LINE__)) break;
 			}
 			if (problem_storage.d_keys[1] == NULL) {
-				if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(KeyType)),
+				if (retval = util::B40CPerror(cudaMalloc((void**) &problem_storage.d_keys[1], problem_storage.num_elements * sizeof(KeyType)),
 					"LsbSortEnactor cudaMalloc problem_storage.d_keys[1] failed", __FILE__, __LINE__)) break;
 			}
-			if (!IsKeysOnly<ValueType>()) {
+			if (!util::Equals<ValueType, util::NullType>::VALUE) {
 				if (problem_storage.d_values[0] == NULL) {
-					if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(ValueType)),
+					if (retval = util::B40CPerror(cudaMalloc((void**) &problem_storage.d_values[0], problem_storage.num_elements * sizeof(ValueType)),
 						"LsbSortEnactor cudaMalloc problem_storage.d_values[0] failed", __FILE__, __LINE__)) break;
 				}
 				if (problem_storage.d_values[1] == NULL) {
-					if (retval = B40CPerror(cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType)),
+					if (retval = util::B40CPerror(cudaMalloc((void**) &problem_storage.d_values[1], problem_storage.num_elements * sizeof(ValueType)),
 						"LsbSortEnactor cudaMalloc problem_storage.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
 			}
@@ -161,22 +156,14 @@ protected:
 			int problem_spine_bytes = problem_spine_elements * sizeof(typename StorageType::SizeT);
 
 			if (problem_spine_bytes > spine_bytes) {
-
-				printf("WHEELS ABOUT TO FALL OFF: bfs did not allocate a big enough spine!\n");
-				fflush(stdout);
-
-				if (d_spine && (spine_gpu > -1)) {
-					int current_gpu;
-					cudaGetDevice(&current_gpu);
-					cudaSetDevice(spine_gpu);
-					if (retval = B40CPerror(cudaFree(d_spine),
+				if (d_spine) {
+					if (retval = util::B40CPerror(cudaFree(d_spine),
 						"LsbSortEnactor cudaFree d_spine failed", __FILE__, __LINE__)) break;
-					cudaSetDevice(current_gpu);
 				}
 
-				cudaGetDevice(&spine_gpu);
 				spine_bytes = problem_spine_bytes;
-				if (retval = B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
+
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
 					"LsbSortEnactor cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
 			}
 		} while (0);
@@ -205,7 +192,7 @@ protected:
 				int old_selector = problem_storage.selector;
 
 				// Copy out the selector from the last pass
-				if (retval = B40CPerror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
+				if (retval = util::B40CPerror(cudaMemcpy(&problem_storage.selector, &d_selectors[passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
 					"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__)) break;
 
 				// Correct new selector if the original indicated that we started off from the alternate
@@ -223,31 +210,39 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int CURRENT_BIT, 
 		typename PreprocessTraits, 
-		typename PostprocessTraits>
+		typename PostprocessTraits,
+		typename Decomposition>
 	cudaError_t DigitPlacePass(Decomposition &work)
 	{
-		using namespace lsb_radix_sort::upsweep;
-		using namespace lsb_radix_sort::spine_scan;
-		using namespace lsb_radix_sort::downsweep;
-
 		typedef typename Decomposition::SizeT SizeT;
 		typedef typename SortingConfig::ConvertedKeyType ConvertedKeyType;
 
 		// Detailed kernel granularity parameterization types
-		typedef UpsweepKernelConfig <typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> 
-			UpsweepKernelConfigType;
-		typedef SpineScanKernelConfig <typename SortingConfig::SpineScan> 
-			SpineScanKernelConfigType;
-		typedef DownsweepKernelConfig <typename SortingConfig::Downsweep, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT> 
-			DownsweepKernelConfigType;
+
+		typedef radix_sort::distribution::upsweep::KernelConfig<
+			typename SortingConfig::Upsweep,
+			PreprocessTraits,
+			CURRENT_PASS,
+			CURRENT_BIT> UpsweepKernelConfigType;
+
+		typedef typename SortingConfig::Spine Spine;
+
+		typedef radix_sort::distribution::downsweep::KernelConfig<
+			typename SortingConfig::Downsweep,
+			PreprocessTraits,
+			PostprocessTraits,
+			CURRENT_PASS,
+			CURRENT_BIT> DownsweepKernelConfigType;
 
 		int dynamic_smem[3] = {0, 0, 0};
-		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
-		int threads[3] = {UpsweepKernelConfigType::THREADS, SpineScanKernelConfigType::THREADS, DownsweepKernelConfigType::THREADS};
+		int grid_size[3] = {work.grid_size, 1, work.grid_size};
+		int threads[3] = {
+			UpsweepKernelConfigType::THREADS,
+			Spine::THREADS,
+			DownsweepKernelConfigType::THREADS};
 
 		cudaError_t retval = cudaSuccess;
 
@@ -260,53 +255,57 @@ protected:
 				// kernels end up allocating the same amount of smem per CTA
 
 				// Get kernel attributes
-				cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
+				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
 
-				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel<UpsweepKernelConfigType>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(
+						&upsweep_kernel_attrs,
+						radix_sort::distribution::upsweep::UpsweepKernel<UpsweepKernelConfigType>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, SpineScanKernel<SpineScanKernelConfigType>),
-					"LsbSortEnactor cudaFuncGetAttributes spine_scan_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = B40CPerror(cudaFuncGetAttributes(&downsweep_attrs, DownsweepKernel<DownsweepKernelConfigType>),
+
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, scan::SpineKernel<Spine>),
+					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+				if (retval = B40CPerror(cudaFuncGetAttributes(
+						&downsweep_kernel_attrs,
+						radix_sort::distribution::downsweep::DownsweepKernel<DownsweepKernelConfigType>),
 					"LsbSortEnactor cudaFuncGetAttributes downsweep_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
 					upsweep_kernel_attrs.sharedSizeBytes,
-					B40C_MAX(spine_scan_kernel_attrs.sharedSizeBytes, downsweep_attrs.sharedSizeBytes));
+					B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
 
 				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[1] = max_static_smem - spine_scan_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[2] = max_static_smem - downsweep_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
 			}
 
 			// Tuning option for spine-scan kernel grid size
 			if (SortingConfig::UNIFORM_GRID_SIZE) {
 
 				// We need to make sure that all kernels launch the same number of CTAs
-				grid_size[1] = work.sweep_grid_size;
+				grid_size[1] = work.grid_size;
 			}
 
 			// Invoke upsweep reduction kernel
-			UpsweepKernel<UpsweepKernelConfigType>
-				<<<grid_size[0], threads[0], dynamic_smem[0], stream>>>(
+			radix_sort::distribution::upsweep::UpsweepKernel<UpsweepKernelConfigType>
+				<<<grid_size[0], threads[0], dynamic_smem[0]>>>(
 					d_selectors,
 					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
-			// Invoke spine scan kernel
-			SpineScanKernel<SpineScanKernelConfigType>
-				<<<grid_size[1], threads[1], dynamic_smem[1], stream>>>(
-					(SizeT *) d_spine,
-					work.spine_elements);
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
+
+			// Invoke spine scan
+			scan::SpineKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+				(SizeT*) d_spine, (SizeT*) d_spine, work.spine_elements);
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke downsweep scan/scatter kernel
-			DownsweepKernel<DownsweepKernelConfigType>
-				<<<grid_size[2], threads[2], dynamic_smem[2], stream>>>(
+			radix_sort::distribution::downsweep::DownsweepKernel<DownsweepKernelConfigType>
+				<<<grid_size[2], threads[2], dynamic_smem[2]>>>(
 					d_selectors,
 					(SizeT *) d_spine,
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
@@ -314,8 +313,8 @@ protected:
 					work.problem_storage->d_values[work.problem_storage->selector],
 					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 					work);
-			if (DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"LsbSortEnactor:: DownsweepKernel failed ", __FILE__, __LINE__))) break;
+
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);
 
@@ -333,31 +332,28 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
 	struct UnrolledPasses 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke 
 			cudaError_t retval = enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				CURRENT_PASS, 
 				CURRENT_BIT,
-				KeyTraits<typename SortingConfig::ConvertedKeyType>,			// no bit twiddling
-				KeyTraits<typename SortingConfig::ConvertedKeyType> >(work);	// no bit twiddling
+				radix_sort::KeyTraits<typename SortingConfig::ConvertedKeyType>,			// no bit twiddling
+				radix_sort::KeyTraits<typename SortingConfig::ConvertedKeyType> >(work);	// no bit twiddling
 			
 			if (retval) return retval;
 
 			// Next
 			return UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				CURRENT_PASS + 1, 
 				LAST_PASS, 
 				CURRENT_BIT + RADIX_BITS, 
@@ -371,30 +367,27 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, 0, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, 0, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			cudaError_t retval = enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				0, 
 				CURRENT_BIT,
-				KeyTraits<typename Decomposition::KeyType>,						// possible bit twiddling
-				KeyTraits<typename SortingConfig::ConvertedKeyType> >(work);	// no bit twiddling
+				radix_sort::KeyTraits<typename Decomposition::KeyType>,						// possible bit twiddling
+				radix_sort::KeyTraits<typename SortingConfig::ConvertedKeyType> >(work);	// no bit twiddling
 			
 			if (retval) return retval;
 
 			// Next
 			return UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				1, 
 				LAST_PASS, 
 				CURRENT_BIT + RADIX_BITS, 
@@ -408,23 +401,21 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int LAST_PASS, 
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			return enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				LAST_PASS, 
 				CURRENT_BIT,
-				KeyTraits<typename SortingConfig::ConvertedKeyType>,		// no bit twiddling
-				KeyTraits<typename Decomposition::KeyType> >(work);			// possible bit twiddling
+				radix_sort::KeyTraits<typename SortingConfig::ConvertedKeyType>,		// no bit twiddling
+				radix_sort::KeyTraits<typename Decomposition::KeyType> >(work);			// possible bit twiddling
 		}
 	};
 
@@ -434,22 +425,20 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_BIT, 
 		int RADIX_BITS>
-	struct UnrolledPasses <SortingConfig, Decomposition, 0, 0, CURRENT_BIT, RADIX_BITS> 
+	struct UnrolledPasses <SortingConfig, 0, 0, CURRENT_BIT, RADIX_BITS> 
 	{
-		template <typename EnactorType>
+		template <typename EnactorType, typename Decomposition>
 		static cudaError_t Invoke(EnactorType *enactor, Decomposition &work)
 		{
 			// Invoke
 			return enactor->template DigitPlacePass<
 				SortingConfig, 
-				Decomposition,
 				0, 
 				CURRENT_BIT,
-				KeyTraits<typename Decomposition::KeyType>,				// possible bit twiddling
-				KeyTraits<typename Decomposition::KeyType> >(work);		// possible bit twiddling
+				radix_sort::KeyTraits<typename Decomposition::KeyType>,				// possible bit twiddling
+				radix_sort::KeyTraits<typename Decomposition::KeyType> >(work);		// possible bit twiddling
 		}
 	};
 	
@@ -464,12 +453,9 @@ public:
 	 * Constructor.
 	 */
 	LsbSortEnactor() :
-			stream(0),
 			d_selectors(NULL),
 			d_spine(NULL),
-			spine_bytes(0),
-			spine_gpu(B40C_INVALID_DEVICE),
-			selectors_gpu(B40C_INVALID_DEVICE) {}
+			spine_bytes(0) {}
 	
 
 	/**
@@ -477,17 +463,12 @@ public:
      */
     virtual ~LsbSortEnactor() 
     {
-		int current_gpu;
-		cudaGetDevice(&current_gpu);
-   		if (d_spine && (spine_gpu != B40C_INVALID_DEVICE)) {
-			cudaSetDevice(spine_gpu);
-   			B40CPerror(cudaFree(d_spine), "LsbSortEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
+   		if (d_spine) {
+   			util::B40CPerror(cudaFree(d_spine), "LsbSortEnactor cudaFree d_spine failed: ", __FILE__, __LINE__);
    		}
-		if (d_selectors && (selectors_gpu != B40C_INVALID_DEVICE)) {
-			cudaSetDevice(selectors_gpu);
-			B40CPerror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
-		}
-		cudaSetDevice(current_gpu);
+   		if (d_selectors) {
+   			util::B40CPerror(cudaFree(d_selectors), "LsbSortEnactor cudaFree d_selectors failed: ", __FILE__, __LINE__);
+   		}
     }
     
     
@@ -498,22 +479,6 @@ public:
     // with user-supplied granularity-specialization types.  (Useful for auto-tuning.) 
 	//-----------------------------------------------------------------------------
     
-
-    /**
-     *
-     */
-    void BfsConfigure(
-    	cudaStream_t stream,
-    	void *d_spine = NULL,
-    	int spine_bytes = 0)
-    {
-    	this->stream 			= stream;
-    	this->d_spine 			= d_spine;
-    	this->spine_bytes 		= spine_bytes;
-    }
-
-
-
 	/**
 	 * Enacts a radix sorting operation on the specified device data.
 	 *
@@ -529,28 +494,22 @@ public:
 	template <typename Storage, typename SortingConfig, int START_BIT, int NUM_BITS> 
 	cudaError_t Enact(Storage &problem_storage, int max_grid_size = 0)
 	{
-	    typedef SortingCtaDecomposition<Storage> Decomposition;
-
 	    const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
-		const int NUM_PASSES 			= (NUM_BITS + RADIX_BITS - 1) / RADIX_BITS;
+		const int NUM_PASSES 			= (NUM_BITS - START_BIT + RADIX_BITS - 1) / RADIX_BITS;
 		const int SCHEDULE_GRANULARITY 	= 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
 		const int SPINE_TILE_ELEMENTS 	= 1 << 
-				(SortingConfig::SpineScan::LOG_THREADS + 
-				 SortingConfig::SpineScan::LOG_LOAD_VEC_SIZE + 
-				 SortingConfig::SpineScan::LOG_LOADS_PER_TILE);
+				(SortingConfig::Spine::LOG_THREADS +
+				 SortingConfig::Spine::LOG_LOAD_VEC_SIZE +
+				 SortingConfig::Spine::LOG_LOADS_PER_TILE);
 		
-		int sweep_grid_size;
-		if (max_grid_size > 0) {
-			sweep_grid_size = max_grid_size;
-		} else {
-			sweep_grid_size = OversubscribedGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
-					problem_storage.num_elements, max_grid_size);
-		}
-
+		int sweep_grid_size = OversubscribedGridSize<SCHEDULE_GRANULARITY, SortingConfig::Downsweep::CTA_OCCUPANCY>(
+			problem_storage.num_elements, max_grid_size);
 		int spine_elements = SpineElements(sweep_grid_size, RADIX_BITS, SPINE_TILE_ELEMENTS); 
 
-		Decomposition work(&problem_storage, SCHEDULE_GRANULARITY, sweep_grid_size, spine_elements);
-			
+		SortingDetails<Storage> work(spine_elements, &problem_storage);
+		work.template Init<SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY>(
+			problem_storage.num_elements, sweep_grid_size);
+		
 		if (DEBUG) {
 			printf("\n\n");
 			printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n", 
@@ -559,8 +518,8 @@ public:
 				RADIX_BITS, START_BIT, NUM_BITS, NUM_PASSES, sizeof(typename Storage::SizeT));
 			printf("Upsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Upsweep::LOG_THREADS);
-			printf("SpineScan: \t[grid_size: %d, threads %d, spine_elements: %d]\n",
-				1, 1 << SortingConfig::SpineScan::LOG_THREADS, spine_elements);
+			printf("Spine: \t[grid_size: %d, threads %d, spine_elements: %d]\n",
+				1, 1 << SortingConfig::Spine::LOG_THREADS, spine_elements);
 			printf("Downsweep: \t[grid_size: %d, threads %d]\n",
 				sweep_grid_size, 1 << SortingConfig::Downsweep::LOG_THREADS);
 			printf("Work: \t\t[num_elements: %d, schedule_granularity: %d, total_grains: %d, grains_per_cta: %d, extra_grains: %d]\n",
@@ -577,7 +536,6 @@ public:
 			// Perform sorting passes
 			if (retval = UnrolledPasses<
 				SortingConfig,
-				Decomposition,
 				0,
 				NUM_PASSES - 1,
 				START_BIT,
@@ -599,28 +557,23 @@ public:
  * Utility type for managing the state for a specific sorting operation
  */
 template <typename Storage>
-struct SortingCtaDecomposition : CtaWorkDistribution<typename Storage::SizeT>
+struct SortingDetails : util::CtaWorkDistribution<typename Storage::SizeT>
 {
-	typedef typename Storage::KeyType KeyType;
-	typedef typename Storage::ValueType ValueType;
-	typedef typename Storage::SizeT SizeT;
+	typedef typename Storage::KeyType 		KeyType;
+	typedef typename Storage::ValueType 	ValueType;
+	typedef typename Storage::SizeT 		SizeT;
 
-	int sweep_grid_size;
 	int spine_elements;
 	Storage *problem_storage;
 
 	// Constructor
-	SortingCtaDecomposition(
-		Storage *problem_storage,
-		int schedule_granularity,
-		int sweep_grid_size,
-		int spine_elements) : CtaWorkDistribution<SizeT>(
-				problem_storage->num_elements,
-				schedule_granularity,
-				sweep_grid_size),
-			sweep_grid_size(sweep_grid_size),
+	SortingDetails(
+		int spine_elements,
+		Storage *problem_storage) : 
 			spine_elements(spine_elements),
-			problem_storage(problem_storage) {};
+			problem_storage(problem_storage)
+	{
+	}
 };
 
 }// namespace b40c

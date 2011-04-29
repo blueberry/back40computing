@@ -40,9 +40,15 @@
 #include <b40c/bfs/compact/upsweep_kernel.cuh>
 #include <b40c/bfs/compact/downsweep_kernel.cuh>
 
+#include <b40c/bfs/sort_compact/problem_config.cuh>
+#include <b40c/bfs/sort_compact/downsweep/kernel.cuh>
+#include <b40c/bfs/sort_compact/upsweep/kernel.cuh>
+
+#include <b40c/radix_sort/distribution/downsweep/kernel_config.cuh>
+#include <b40c/radix_sort/distribution/upsweep/kernel_config.cuh>
+
 #include <b40c/scan/spine_kernel.cuh>
 
-#include <radixsort_api_enactor_tuned.cuh>
 #include <radixsort_api_storage.cuh>
 
 
@@ -74,9 +80,6 @@ protected:
 
 	// Queue size counters and accompanying functionality
 	util::CtaWorkProgressLifetime work_progress[MAX_GPUS];
-
-	// Sorting enactors
-	LsbSortEnactorTuned sorting_enactor[MAX_GPUS];
 
 	/**
 	 * Pinned memory for sorting spines
@@ -142,11 +145,8 @@ public:
 		int 								max_grid_size = 0,
 		int 								num_gpus = 0)
 	{
-		cudaError_t retval = cudaSuccess;
-
-		if (num_gpus == 0) {
-			num_gpus = 1;
-		}
+		typedef typename BfsCsrProblem::VertexId					VertexId;
+		typedef typename BfsCsrProblem::SizeT						SizeT;
 
 		// Expansion kernel config
 		typedef expand_atomic::SweepKernelConfig<
@@ -193,17 +193,80 @@ public:
 			1,
 			5> CompactProblemConfig;
 
-
 		typedef typename CompactProblemConfig::CompactUpsweep 		CompactUpsweep;
 		typedef typename CompactProblemConfig::CompactSpine 		CompactSpine;
 		typedef typename CompactProblemConfig::CompactDownsweep 	CompactDownsweep;
 
-		typedef typename BfsCsrProblem::VertexId					VertexId;
-		typedef typename BfsCsrProblem::SizeT						SizeT;
+
+
+		// Radix sorting upsweep and downsweep configs
 		typedef typename util::If<
 			BfsCsrProblem::ProblemType::MARK_PARENTS,
 			VertexId,
-			lsb_radix_sort::KeysOnly>::Type							SortValueType;
+			util::NullType>::Type									SortValueType;
+
+		typedef sort_compact::ProblemConfig<
+			VertexId,				// KeyType
+			SortValueType,			// ValueType
+			SizeT,					// SizeT
+
+			// Common
+			200,
+			RADIX_BITS,				// RADIX_BITS: 					1-bit radix digits
+			9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
+			util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
+			util::io::st::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
+			false,					// EARLY_EXIT: 					No early termination if homogeneous digits
+
+			// Upsweep Kernel
+			8,						// UPSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
+			7,						// UPSWEEP_LOG_THREADS: 		128 threads/CTA
+			1,						// UPSWEEP_LOG_LOAD_VEC_SIZE: 	vec-2 loads
+			0,						// UPSWEEP_LOG_LOADS_PER_TILE: 	1 loads/tile
+
+			// Spine-scan Kernel
+			1,										// SPINE_CTA_OCCUPANCY: 		Only 1 CTA/SM really needed
+			8,										// SPINE_LOG_THREADS: 			128 threads/CTA
+			2,										// SPINE_LOG_LOAD_VEC_SIZE:		vec-4 loads
+			0,										// SPINE_LOG_LOADS_PER_TILE:	1 loads/tile
+			5,
+
+			// Downsweep Kernel
+			4,						// DOWNSWEEP_CTA_OCCUPANCY: 		8 CTAs/SM
+			8,						// DOWNSWEEP_LOG_THREADS: 			64 threads/CTA
+			0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE: 	vec-4 loads
+			1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE: 	2 loads/cycle
+			0, 						// DOWNSWEEP_LOG_CYCLES_PER_TILE: 1 cycle/tile
+			7>						// DOWNSWEEP_LOG_RAKING_THREADS: 4 warps
+				SortCompactTuneConfig;
+
+		// SortCompact upsweep kernel config
+		typedef radix_sort::distribution::upsweep::KernelConfig<
+				typename SortCompactTuneConfig::Upsweep,
+				util::NullType,
+				0,
+				0> SortUpsweep;
+
+		// SortCompact spine kernel config
+		typedef typename SortCompactTuneConfig::Spine SortSpine;
+
+		// SortCompact downsweep kernel config
+		typedef radix_sort::distribution::downsweep::KernelConfig<
+				typename SortCompactTuneConfig::Downsweep,
+				util::NullType,
+				util::NullType,
+				0,
+				0> SortDownsweep;
+
+
+
+
+
+
+		cudaError_t retval = cudaSuccess;
+		if (num_gpus == 0) {
+			num_gpus = 1;
+		}
 
 
 		//
@@ -242,13 +305,6 @@ public:
 			if (util::B40CPerror(cudaSetDevice(gpu),
 				"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
-			// Set stream and pinned spines on sorting enactor
-			sorting_enactor[gpu].BfsConfigure(
-				bfs_problem.stream[gpu],
-				(void *) d_sorting_spines[gpu],
-				sizeof(SortingSpine));
-			sorting_enactor[gpu].DEBUG = DEBUG;
-
 			// Setup queue compaction spines
 			if (retval = spine[gpu].template Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
@@ -280,13 +336,14 @@ public:
 				printf("GPU %d owns source %d\n", gpu, src);
 			}
 
-			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
+			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT, false>
 					<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
 				(owns_source) ? src : -1,					// source
 				(owns_source) ? 1 : 0,						// num_elements
 				iteration[gpu],
 				sub_iteration[gpu],
 				num_gpus,
+				NULL,
 				sort_storage[gpu].d_keys[sort_storage[gpu].selector],							// sorted in
 				(VertexId *) sort_storage[gpu].d_values[sort_storage[gpu].selector],			// sorted parents in
 				sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
@@ -342,9 +399,39 @@ public:
 				if (util::B40CPerror(cudaSetDevice(gpu),
 					"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
 
-				if (sorting_enactor[gpu].template EnactSort<0, RADIX_BITS, SMALL_PROBLEM>(
-					sort_storage[gpu],
-					sort_grid_size)) exit(1);
+
+/*
+				// Invoke upsweep sorting kernel
+				sort_compact::upsweep::UpsweepKernel<SortUpsweep>
+					<<<compact_grid_size, SortUpsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+						NULL,
+						(SizeT *) d_sorting_spines[gpu],
+						sort_storage[gpu].d_keys[work.problem_storage->selector],
+						sort_storage[gpu].d_keys[work.problem_storage->selector ^ 1],
+						work_progress[gpu]);
+
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: UpsweepKernel failed ", __FILE__, __LINE__))) break;
+*/
+				// Invoke spine scan
+				scan::SpineKernel<SortSpine><<<1, SortSpine::THREADS, 0, bfs_problem.stream[gpu]>>>(
+					(SizeT*) d_sorting_spines[gpu],
+					(SizeT*) d_sorting_spines[gpu],
+					spine_elements << RADIX_BITS);
+/*
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "LsbSortEnactor:: SpineScanKernel failed ", __FILE__, __LINE__))) break;
+
+				// Invoke downsweep sorting kernel
+				sort_compact::downsweep::DownsweepKernel<SortDownsweep>
+					<<<compact_grid_size, SortDownsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
+						NULL,
+						(SizeT *) d_sorting_spines[gpu],
+						sort_storage[gpu].d_keys[work.problem_storage->selector],
+						sort_storage[gpu].d_keys[work.problem_storage->selector ^ 1],
+						sort_storage[gpu].d_values[work.problem_storage->selector],
+						sort_storage[gpu].d_values[work.problem_storage->selector ^ 1],
+						work_progress[gpu]);
+*/
+
 
 //				printf("Post sorting gpu %d:\n", gpu);
 //				DisplayDeviceResults(
@@ -382,13 +469,14 @@ public:
 //						queue_oob, bins_per_gpu * (gpu + 1) * sort_grid_size);
 //					fflush(stdout);
 
-					expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT>
+					expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT, false>
 							<<<expand_grid_size, ExpandAtomicSweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
 						-1,
 						num_elements,
 						iteration[gpu],
 						sub_iteration[gpu],
 						num_gpus,
+						NULL,
 						sort_storage[peer_gpu].d_keys[sort_storage[peer_gpu].selector] + queue_offset,							// sorted in
 						(VertexId *) sort_storage[peer_gpu].d_values[sort_storage[peer_gpu].selector] + queue_offset,			// sorted parents in
 						sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],						// expanded out
@@ -427,6 +515,7 @@ public:
 				compact::UpsweepKernel<CompactUpsweep, INSTRUMENT>
 						<<<compact_grid_size, CompactUpsweep::THREADS, 0, bfs_problem.stream[gpu]>>>(
 					iteration[gpu],
+					NULL,
 					sort_storage[gpu].d_keys[sort_storage[gpu].selector ^ 1],			// expanded in
 					bfs_problem.d_keep[gpu],
 					(SizeT *) spine[gpu](),

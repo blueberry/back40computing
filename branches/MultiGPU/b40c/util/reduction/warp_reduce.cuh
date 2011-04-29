@@ -46,18 +46,25 @@ namespace reduction {
  * Can be used to perform concurrent, independent warp-reductions if
  * storage pointers and their local-thread indexing id's are set up properly.
  */
-template <
-	typename T,
-	int LOG_NUM_ELEMENTS,
-	T ReductionOp(const T&, const T&) = DefaultSum>
+template <int LOG_NUM_ELEMENTS>
 struct WarpReduce
 {
-	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
+	enum {
+		NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS,
+	};
 
-	// General iteration
+
+	//---------------------------------------------------------------------
+	// Iteration Structures
+	//---------------------------------------------------------------------
+
+	// Iterate
 	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
+		template <
+			typename T,
+			T ReductionOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(
 			T exclusive_partial,
 			volatile T warpscan[][NUM_ELEMENTS],
@@ -73,7 +80,8 @@ struct WarpReduce
 			T inclusive_partial = ReductionOp(exclusive_partial, current_partial);
 
 			// Recurse
-			return Iterate<OFFSET_LEFT / 2>::Invoke(inclusive_partial, warpscan, warpscan_tid);
+			return Iterate<OFFSET_LEFT / 2>::template Invoke<T, ReductionOp>(
+				inclusive_partial, warpscan, warpscan_tid);
 		}
 	};
 	
@@ -81,6 +89,9 @@ struct WarpReduce
 	template <int __dummy>
 	struct Iterate<0, __dummy>
 	{
+		template <
+			typename T,
+			T ReductionOp(const T&, const T&)>
 		static __device__ __forceinline__ T Invoke(
 			T partial,
 			volatile T warpscan[][NUM_ELEMENTS],
@@ -90,13 +101,53 @@ struct WarpReduce
 		}
 	};
 
-	// Interface (result is returned in all warpscan threads)
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Warp reduction with the specified operator, result is returned in last warpscan thread
+	 */
+	template <
+		typename T,
+		T ReductionOp(const T&, const T&)>
+	static __device__ __forceinline__ T InvokeSingle(
+		T partial,								// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
+	{
+		return Iterate<NUM_ELEMENTS / 2>::template Invoke<T, ReductionOp>(
+			partial, warpscan, warpscan_tid);
+	}
+
+
+	/**
+	 * Warp reduction with the addition operator, result is returned in last warpscan thread
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T InvokeSingle(
+		T partial,								// Input partial
+		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
+	{
+		return InvokeSingle<T, DefaultSum>(partial, warpscan, warpscan_tid);
+	}
+
+
+	/**
+	 * Warp reduction with the specified operator, result is returned in all warpscan threads)
+	 */
+	template <
+		typename T,
+		T ReductionOp(const T&, const T&)>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		T inclusive_partial = Iterate<NUM_ELEMENTS / 2>::Invoke(current_partial, warpscan, warpscan_tid);
+		T inclusive_partial = InvokeSingle<T, ReductionOp>(
+			current_partial, warpscan, warpscan_tid);
 
 		// Write our inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
@@ -105,13 +156,17 @@ struct WarpReduce
 		return warpscan[1][NUM_ELEMENTS - 1];
 	}
 
-	// Interface (result is returned in last warpscan thread)
-	static __device__ __forceinline__ T InvokeSingle(
-		T partial,								// Input partial
+
+	/**
+	 * Warp reduction with the addition operator, result is returned in all warpscan threads)
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T Invoke(
+		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Iterate<NUM_ELEMENTS / 2>::Invoke(partial, warpscan, warpscan_tid);
+		return Invoke<T, DefaultSum>(current_partial, warpscan, warpscan_tid);
 	}
 };
 

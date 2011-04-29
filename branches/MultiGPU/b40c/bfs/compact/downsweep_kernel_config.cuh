@@ -122,26 +122,20 @@ struct DownsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		enum {
-			// Number of quads needed to back a reshuffling of all tile elements between threads
-			EXCHANGE_QUADS				= B40C_QUADS(TILE_ELEMENTS * sizeof(VertexId)),
-
-			// Number of quads needed to back a re-purposable space that can be used for SRTS raking or element-exchange
-			SMEM_POOL_QUADS				= B40C_MAX(SrtsGrid::TOTAL_RAKING_QUADS, EXCHANGE_QUADS),
-		};
-
 		util::CtaWorkDistribution<SizeT>	work_decomposition;
-		uint4 								smem_pool_int4s[SMEM_POOL_QUADS];
 		SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+
+		union {
+			SizeT						raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+			VertexId					exchange[TILE_ELEMENTS];
+		} smem_pool;
 	};
 
 
 	enum {
 		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
-
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID							= (CTA_OCCUPANCY > 0),

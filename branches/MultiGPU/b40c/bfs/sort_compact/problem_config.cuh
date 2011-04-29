@@ -54,7 +54,8 @@
 #include <b40c/scan/downsweep_kernel_config.cuh>
 
 namespace b40c {
-namespace lsb_radix_sort {
+namespace bfs {
+namespace sort_compact {
 
 
 /******************************************************************************
@@ -82,8 +83,6 @@ template <
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
 	bool EARLY_EXIT,
-	bool _UNIFORM_SMEM_ALLOCATION,
-	bool _UNIFORM_GRID_SIZE,
 	
 	// Upsweep
 	int UPSWEEP_CTA_OCCUPANCY,
@@ -106,17 +105,10 @@ template <
 	int DOWNSWEEP_LOG_CYCLES_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct LsbSortConfig
+struct ProblemConfig
 {
-	// Unsigned integer type to cast keys as in order to make them suitable 
-	// for radix sorting 
-	typedef typename radix_sort::KeyTraits<KeyType>::ConvertedKeyType ConvertedKeyType;
-
-	static const bool UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION;
-	static const bool UNIFORM_GRID_SIZE 		= _UNIFORM_GRID_SIZE;
-	
 	typedef radix_sort::distribution::upsweep::TuningConfig<
-		ConvertedKeyType, 
+		KeyType,
 		SizeT,
 		CUDA_ARCH,
 		RADIX_BITS, 
@@ -153,7 +145,7 @@ struct LsbSortConfig
 			Spine;
 	
 	typedef radix_sort::distribution::downsweep::TuningConfig<
-		ConvertedKeyType,
+		KeyType,
 		ValueType,
 		SizeT,
 		CUDA_ARCH,
@@ -171,7 +163,7 @@ struct LsbSortConfig
 			Downsweep;
 };
 		
-
-}// namespace lsb_radix_sort
-}// namespace b40c
+} // namespace sort_compact
+} // namespace bfs
+} // namespace b40c
 

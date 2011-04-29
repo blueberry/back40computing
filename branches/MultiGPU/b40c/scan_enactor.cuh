@@ -310,12 +310,15 @@ cudaError_t ScanEnactor::EnactPass(
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
+
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, TunedSpineKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
 					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
 				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, TunedDownsweepKernel<ProblemType, TunedConfig::PROB_SIZE_GENRE>),
-					"ScanEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+					"ScanEnactor cudaFuncGetAttributes downsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
 					upsweep_kernel_attrs.sharedSizeBytes,

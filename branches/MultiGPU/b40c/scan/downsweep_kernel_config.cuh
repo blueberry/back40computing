@@ -120,17 +120,14 @@ struct DownsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		uint4 	smem_pool_int4s[SrtsGrid::TOTAL_RAKING_QUADS];
+		T 		smem_pool[SrtsGrid::TOTAL_RAKING_ELEMENTS];
 		T 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 	};
 
 
 	enum {
-		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= (sizeof(SmemStorage) + sizeof(uint4) - 1) / sizeof(uint4),
-
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID							= (CTA_OCCUPANCY > 0)

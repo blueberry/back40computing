@@ -56,7 +56,7 @@ struct UpsweepCta
 	typedef typename KernelConfig::ValidFlag		ValidFlag;
 	typedef typename KernelConfig::CollisionMask 	CollisionMask;
 	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef unsigned int 							ThreadId;
+	typedef typename KernelConfig::ThreadId			ThreadId;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -72,9 +72,9 @@ struct UpsweepCta
 	CollisionMask 	*d_collision_cache;
 
 	// Smem storage for reduction tree and hashing scratch
-	VertexId 		*s_vid_hashtable;
-	ThreadId		*s_tid_hashtable;
-	SizeT 			*s_reduction_tree;
+	volatile VertexId 	(*s_vid_hashtable)[SmemStorage::WARP_HASH_ELEMENTS];
+	volatile VertexId	*s_history;
+	SizeT 				*s_reduction_tree;
 
 
 	//---------------------------------------------------------------------
@@ -84,7 +84,9 @@ struct UpsweepCta
 	/**
 	 * Tile
 	 */
-	template <int LOADS_PER_TILE, int LOAD_VEC_SIZE>
+	template <
+		int LOG_LOADS_PER_TILE,
+		int LOG_LOAD_VEC_SIZE>
 	struct Tile
 	{
 		//---------------------------------------------------------------------
@@ -92,7 +94,8 @@ struct UpsweepCta
 		//---------------------------------------------------------------------
 
 		enum {
-			ELEMENTS_PER_TILE = LOADS_PER_TILE * LOAD_VEC_SIZE
+			LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
+			LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE
 		};
 
 
@@ -101,15 +104,10 @@ struct UpsweepCta
 		//---------------------------------------------------------------------
 
 		// Dequeued vertex ids
-		VertexId 	vertex_id[ELEMENTS_PER_TILE];
+		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Whether or not the corresponding vertex_id is valid for exploring
-		ValidFlag 	valid[ELEMENTS_PER_TILE];
-
-		// Temporary state for local culling
-		int 		hash[ELEMENTS_PER_TILE];			// Hash ids for vertex ids
-		bool 		duplicate[ELEMENTS_PER_TILE];		// Status as potential duplicate
-
+		ValidFlag 	valid[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		//---------------------------------------------------------------------
 		// Helper Structures
@@ -118,9 +116,20 @@ struct UpsweepCta
 		/**
 		 * Iterate over vertex id
 		 */
-		template <int COUNT, int TOTAL>
+		template <int LOAD, int VEC, int dummy = 0>
 		struct Iterate
 		{
+			/**
+			 * Init
+			 */
+			static __device__ __forceinline__ void Init(Tile *tile)
+			{
+				tile->valid[LOAD][VEC] = 1;
+
+				// Next
+				Iterate<LOAD, VEC + 1>::Init(tile);
+			}
+
 			/**
 			 * BitmaskCull
 			 */
@@ -128,13 +137,13 @@ struct UpsweepCta
 				UpsweepCta *cta,
 				Tile *tile)
 			{
-				if (tile->valid[COUNT]) {
+				if (tile->valid[LOAD][VEC]) {
 
 					// Location of mask byte to read
-					SizeT mask_byte_offset = tile->vertex_id[COUNT] >> 3;
+					SizeT mask_byte_offset = tile->vertex_id[LOAD][VEC] >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_id[COUNT] & 7);
+					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
 					// Read byte from from collision cache bitmask
 					CollisionMask mask_byte;
@@ -144,7 +153,7 @@ struct UpsweepCta
 					if (mask_bit & mask_byte) {
 
 						// Seen it
-						tile->valid[COUNT] = 0;
+						tile->valid[LOAD][VEC] = 0;
 
 					} else {
 
@@ -157,127 +166,117 @@ struct UpsweepCta
 				}
 
 				// Next
-				Iterate<COUNT + 1, TOTAL>::BitmaskCull(cta, tile);
+				Iterate<LOAD, VEC + 1>::BitmaskCull(cta, tile);
 			}
 
 
 			/**
-			 * HashInVertex
+			 * HistoryCull
 			 */
-			static __device__ __forceinline__ void HashInVertex(
+			static __device__ __forceinline__ void HistoryCull(
 				UpsweepCta *cta,
 				Tile *tile)
 			{
-				tile->hash[COUNT] = tile->vertex_id[COUNT] % SmemStorage::SMEM_POOL_VERTEX_IDS;
-				tile->duplicate[COUNT] = false;
+				if (tile->valid[LOAD][VEC]) {
 
-				// Hash the node-IDs into smem scratch
-				if (tile->valid[COUNT]) {
-					cta->s_vid_hashtable[tile->hash[COUNT]] = tile->vertex_id[COUNT];
-				}
+					int hash = tile->vertex_id[LOAD][VEC] % SmemStorage::HISTORY_HASH_ELEMENTS;
+					VertexId retrieved = cta->s_history[hash];
 
-				// Next
-				Iterate<COUNT + 1, TOTAL>::HashInVertex(cta, tile);
-			}
-
-
-			/**
-			 * HashOutVertex
-			 */
-			static __device__ __forceinline__ void HashOutVertex(
-				UpsweepCta *cta,
-				Tile *tile)
-			{
-				// Retrieve what vertices "won" at the hash locations. If a
-				// different node beat us to this hash cell; we must assume
-				// that we may not be a duplicate.  Otherwise assume that
-				// we are a duplicate... for now.
-
-				if (tile->valid[COUNT]) {
-					VertexId hashed_node = cta->s_vid_hashtable[tile->hash[COUNT]];
-					tile->duplicate[COUNT] = (hashed_node == tile->vertex_id[COUNT]);
-				}
-
-				// Next
-				Iterate<COUNT + 1, TOTAL>::HashOutVertex(cta, tile);
-			}
-
-
-			/**
-			 * HashInTid
-			 */
-			static __device__ __forceinline__ void HashInTid(
-				UpsweepCta *cta,
-				Tile *tile)
-			{
-				// For the possible-duplicates, hash in thread-IDs to select
-				// one of the threads to be the unique one
-				if (tile->duplicate[COUNT]) {
-					cta->s_tid_hashtable[tile->hash[COUNT]] = threadIdx.x;
-				}
-
-				// Next
-				Iterate<COUNT + 1, TOTAL>::HashInTid(cta, tile);
-			}
-
-
-			/**
-			 * HashOutTid
-			 */
-			static __device__ __forceinline__ void HashOutTid(
-				UpsweepCta *cta,
-				Tile *tile)
-			{
-				// See if our thread won out amongst everyone with similar node-IDs
-				if (tile->duplicate[COUNT]) {
-					// If not equal to our tid, we are not an authoritative thread
-					// for this node-ID
-					if (cta->s_tid_hashtable[tile->hash[COUNT]] != threadIdx.x) {
-						tile->valid[COUNT] = 0;
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
+						// Seen it
+						tile->valid[LOAD][VEC] = 0;
+					} else {
+						// Update it
+						cta->s_history[hash] = tile->vertex_id[LOAD][VEC];
 					}
 				}
 
 				// Next
-				Iterate<COUNT + 1, TOTAL>::HashOutTid(cta, tile);
+				Iterate<LOAD, VEC + 1>::HistoryCull(cta, tile);
 			}
 
 
 			/**
-			 * Init
+			 * WarpCull
 			 */
-			static __device__ __forceinline__ void Init(Tile *tile)
+			static __device__ __forceinline__ void WarpCull(
+				UpsweepCta *cta,
+				Tile *tile)
 			{
-				tile->valid[COUNT] = 1;
+				if (tile->valid[LOAD][VEC]) {
+
+					int warp_id 		= threadIdx.x >> 5;
+					int hash 			= tile->vertex_id[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
+
+					cta->s_vid_hashtable[warp_id][hash] = tile->vertex_id[LOAD][VEC];
+					VertexId retrieved = cta->s_vid_hashtable[warp_id][hash];
+
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
+
+						cta->s_vid_hashtable[warp_id][hash] = threadIdx.x;
+						VertexId tid = cta->s_vid_hashtable[warp_id][hash];
+						if (tid != threadIdx.x) {
+							tile->valid[LOAD][VEC] = 0;
+						}
+					}
+				}
 
 				// Next
-				Iterate<COUNT + 1, TOTAL>::Init(tile);
+				Iterate<LOAD, VEC + 1>::WarpCull(cta, tile);
 			}
 		};
 
 
 		/**
+		 * Iterate next load
+		 */
+		template <int LOAD, int dummy>
+		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+		{
+			// Init
+			static __device__ __forceinline__ void Init(Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::Init(tile);
+			}
+
+			// BitmaskCull
+			static __device__ __forceinline__ void BitmaskCull(UpsweepCta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::BitmaskCull(cta, tile);
+			}
+
+			// HistoryCull
+			static __device__ __forceinline__ void HistoryCull(UpsweepCta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::HistoryCull(cta, tile);
+			}
+
+			// WarpCull
+			static __device__ __forceinline__ void WarpCull(UpsweepCta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::WarpCull(cta, tile);
+			}
+		};
+
+
+
+		/**
 		 * Terminate iteration
 		 */
-		template <int TOTAL>
-		struct Iterate<TOTAL, TOTAL>
+		template <int dummy>
+		struct Iterate<LOADS_PER_TILE, 0, dummy>
 		{
+			// Init
+			static __device__ __forceinline__ void Init(Tile *tile) {}
+
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(UpsweepCta *cta, Tile *tile) {}
 
-			// HashInVertex
-			static __device__ __forceinline__ void HashInVertex(UpsweepCta *cta, Tile *tile) {}
+			// HistoryCull
+			static __device__ __forceinline__ void HistoryCull(UpsweepCta *cta, Tile *tile) {}
 
-			// HashOutVertex
-			static __device__ __forceinline__ void HashOutVertex(UpsweepCta *cta, Tile *tile) {}
-
-			// HashInTid
-			static __device__ __forceinline__ void HashInTid(UpsweepCta *cta, Tile *tile) {}
-
-			// HashOutTid
-			static __device__ __forceinline__ void HashOutTid(UpsweepCta *cta, Tile *tile) {}
-
-			// Init
-			static __device__ __forceinline__ void Init(Tile *tile) {}
+			// WarpCull
+			static __device__ __forceinline__ void WarpCull(UpsweepCta *cta, Tile *tile) {}
 		};
 
 
@@ -286,11 +285,11 @@ struct UpsweepCta
 		//---------------------------------------------------------------------
 
 		/**
-		 * Constructor
+		 * Initializer
 		 */
-		__device__ __forceinline__ Tile()
+		__device__ __forceinline__ void Init()
 		{
-			Iterate<0, ELEMENTS_PER_TILE>::Init(this);
+			Iterate<0, 0>::Init(this);
 		}
 
 		/**
@@ -299,7 +298,7 @@ struct UpsweepCta
 		 */
 		__device__ __forceinline__ void BitmaskCull(UpsweepCta *cta)
 		{
-			Iterate<0, ELEMENTS_PER_TILE>::BitmaskCull(cta, this);
+			Iterate<0, 0>::BitmaskCull(cta, this);
 		}
 
 		/**
@@ -308,25 +307,8 @@ struct UpsweepCta
 		 */
 		__device__ __forceinline__ void LocalCull(UpsweepCta *cta)
 		{
-			// Hash the node-IDs into smem scratch
-			Iterate<0, ELEMENTS_PER_TILE>::HashInVertex(cta, this);
-
-			__syncthreads();
-
-			// Retrieve what node-IDs "won" at those locations
-			Iterate<0, ELEMENTS_PER_TILE>::HashOutVertex(cta, this);
-
-			__syncthreads();
-
-			// For the winners, hash in thread-IDs to select one of the threads
-			Iterate<0, ELEMENTS_PER_TILE>::HashInTid(cta, this);
-
-			__syncthreads();
-
-			// See if our thread won out amongst everyone with similar node-IDs
-			Iterate<0, ELEMENTS_PER_TILE>::HashOutTid(cta, this);
-
-			__syncthreads();
+			Iterate<0, 0>::HistoryCull(cta, this);
+			Iterate<0, 0>::WarpCull(cta, this);
 		}
 	};
 
@@ -348,13 +330,18 @@ struct UpsweepCta
 		CollisionMask 	*d_collision_cache) :
 
 			carry(0),
-			s_vid_hashtable((VertexId *) smem_storage.smem_pool_int4s),
-			s_tid_hashtable((ThreadId *) smem_storage.smem_pool_int4s),
-			s_reduction_tree((SizeT *) smem_storage.smem_pool_int4s),
+			s_vid_hashtable(smem_storage.smem_pool.hashtables.vid_hashtable),
+			s_history(smem_storage.smem_pool.hashtables.history),
+			s_reduction_tree(smem_storage.smem_pool.reduction_tree),
 			d_in(d_in),
 			d_flags_out(d_flags_out),
 			d_spine(d_spine),
-			d_collision_cache(d_collision_cache) {}
+			d_collision_cache(d_collision_cache)
+	{
+		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelConfig::THREADS) {
+			s_history[offset] = -1;
+		}
+	}
 
 
 	/**
@@ -365,7 +352,8 @@ struct UpsweepCta
 	__device__ __forceinline__ void ProcessFullTile(
 		SizeT cta_offset)
 	{
-		Tile<KernelConfig::LOADS_PER_TILE, KernelConfig::LOAD_VEC_SIZE> tile;
+		Tile<KernelConfig::LOG_LOADS_PER_TILE, KernelConfig::LOG_LOAD_VEC_SIZE> tile;
+		tile.Init();
 
 		// Load full tile
 		util::io::LoadTile<
@@ -374,9 +362,8 @@ struct UpsweepCta
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(
-				reinterpret_cast<VertexId (*)[KernelConfig::LOAD_VEC_SIZE]>(tile.vertex_id),
-				d_in,
-				cta_offset);
+				tile.vertex_id,
+				d_in + cta_offset);
 
 		// Cull valid flags using global collision bitmask
 		tile.BitmaskCull(this);
@@ -391,14 +378,12 @@ struct UpsweepCta
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
 			true>::Invoke(
-				reinterpret_cast<ValidFlag (*)[KernelConfig::LOAD_VEC_SIZE]>(tile.valid),
-				d_flags_out,
-				cta_offset);
+				tile.valid,
+				d_flags_out + cta_offset);
 
 		// Reduce into carry
-		carry += util::reduction::SerialReduce<
-			ValidFlag,
-			KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(tile.valid);
+		carry += util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(
+			(ValidFlag *) tile.valid);
 	}
 
 
@@ -417,9 +402,10 @@ struct UpsweepCta
 		while (cta_offset < out_of_bounds) {
 
 			// Load single-load, single-vec tile
-			Tile <1, 1> tile;
+			Tile <0, 0> tile;
+			tile.Init();
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
-				tile.vertex_id[0],
+				tile.vertex_id[0][0],
 				d_in + cta_offset);
 
 			// Cull valid flags using global collision bitmask
@@ -427,11 +413,11 @@ struct UpsweepCta
 
 			// Store flags
 			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
-				tile.valid[0],
+				tile.valid[0][0],
 				d_flags_out + cta_offset);
 
 			// Reduce into carry
-			carry += tile.valid[0];
+			carry += tile.valid[0][0];
 
 			cta_offset += KernelConfig::THREADS;
 		}
@@ -447,6 +433,8 @@ struct UpsweepCta
 	 */
 	__device__ __forceinline__ void OutputToSpine()
 	{
+		__syncthreads();
+
 		carry = util::reduction::TreeReduce<
 			SizeT,
 			KernelConfig::LOG_THREADS,

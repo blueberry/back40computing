@@ -49,6 +49,7 @@
 #include <bfs_csr_problem.cu>
 //#include <bfs_single_grid.cu>
 //#include <bfs_level_grid.cu>
+//#include <bfs_hybrid.cu>
 #include <bfs_multi_gpu.cu>
 
 using namespace b40c;
@@ -64,6 +65,7 @@ using namespace bfs;
 bool g_verbose;
 bool g_verbose2;
 bool g_undirected;
+bool g_quick;			// Whether or not to perform CPU traversal as reference
 
 
 /******************************************************************************
@@ -461,14 +463,14 @@ void TestGpuBfs(
 	int 									num_gpus)
 {
 	// (Re)initialize distances
-	bfs_problem.Reset();
+	if (bfs_problem.Reset()) exit(1);
 
 	// Perform BFS
-	CpuTimer cpu_timer;
-	cpu_timer.Start();
+	GpuTimer gpu_timer;
+	gpu_timer.Start();
 	enactor.template EnactSearch<INSTRUMENT>(bfs_problem, src, max_grid_size, num_gpus);
-	cpu_timer.Stop();
-	float elapsed = cpu_timer.ElapsedMillis();
+	gpu_timer.Stop();
+	float elapsed = gpu_timer.ElapsedMillis();
 
 	// Copy out results
 	bfs_problem.CombineResults(h_source_path);
@@ -590,9 +592,9 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-//	LevelGridBfsEnactor 			bfs_lg_enactor(g_verbose);
+//	LevelGridBfsEnactor				bfs_lg_enactor(g_verbose);
 //	SingleGridBfsEnactor 			bfs_sg_enactor(g_verbose);
-//	ExpandCompactBfsEnactor 		bfs_ec_enactor(g_verbose);
+//	HybridBfsEnactor 				bfs_hy_enactor(g_verbose);
 	MultiGpuBfsEnactor				bfs_mg_enactor(g_verbose);
 
 	// Allocate problem on GPU
@@ -609,9 +611,12 @@ void RunTests(
 	}
 
 	// Initialize statistics
-	Stats stats[4];
+	Stats stats[5];
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("Multi-GPU, contract-expand GPU BFS");
+	stats[2] = Stats("Level-grid, contract-expand GPU BFS");
+	stats[3] = Stats("Single-grid, contract-expand GPU BFS");
+	stats[4] = Stats("Hybrid, contract-expand GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -628,9 +633,11 @@ void RunTests(
 		printf("---------------------------------------------------------------\n");
 
 		// Compute reference CPU BFS solution for source-distance
-		SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
-		printf("\n");
-		fflush(stdout);
+		if (!g_quick) {
+			SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
+			printf("\n");
+			fflush(stdout);
+		}
 
 		// Perform multi-GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
@@ -638,14 +645,54 @@ void RunTests(
 			bfs_problem,
 			src,
 			h_source_path,
-			reference_source_dist,
-//			(VertexId*) NULL,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
 			csr_graph,
 			stats[1],
 			max_grid_size,
 			num_gpus);
 		printf("\n");
 		fflush(stdout);
+
+/*
+		// Perform level-grid contract-expand GPU BFS search
+		TestGpuBfs<INSTRUMENT>(
+			bfs_lg_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
+			csr_graph,
+			stats[2],
+			max_grid_size);
+		printf("\n");
+		fflush(stdout);
+
+		// Perform single-grid contract-expand GPU BFS search
+		TestGpuBfs<INSTRUMENT>(
+			bfs_sg_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
+			csr_graph,
+			stats[3],
+			max_grid_size);
+		printf("\n");
+		fflush(stdout);
+
+		// Perform hybrid contract-expand GPU BFS search
+		TestGpuBfs<INSTRUMENT>(
+			bfs_hy_enactor,
+			bfs_problem,
+			src,
+			h_source_path,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
+			csr_graph,
+			stats[4],
+			max_grid_size);
+		printf("\n");
+		fflush(stdout);
+*/
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -670,7 +717,7 @@ void RunTests(
 	if (reference_source_dist) free(reference_source_dist);
 	if (h_source_path) free(h_source_path);
 
-	cudaThreadSynchronize();
+	cudaDeviceSynchronize();
 }
 
 
@@ -720,6 +767,7 @@ int main( int argc, char** argv)
 		}
 	}
 	g_undirected = args.CheckCmdLineFlag("undirected");
+	g_quick = args.CheckCmdLineFlag("quick");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
 	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
 	args.GetCmdLineArgument("i", test_iterations);

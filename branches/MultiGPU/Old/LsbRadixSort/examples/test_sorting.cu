@@ -51,6 +51,8 @@
 #include <float.h>
 #include <algorithm>
 
+#include <b40c/util/error_utils.cuh>
+
 // Sorting includes
 #include "radixsort_api_enactor_tuned.cuh"
 #include "radixsort_api_storage.cuh"
@@ -128,7 +130,7 @@ void TimedSort(
 	static const TunedGranularityEnum GENRE = SMALL_PROBLEM;
 
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
-	if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
+	if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
 		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 	sorting_enactor.DEBUG = true;
 	sorting_enactor.template EnactSort<0, 2, GENRE>(device_storage, g_max_ctas);
@@ -146,7 +148,7 @@ void TimedSort(
 	for (int i = 0; i < iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
-		if (B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
+		if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * device_storage.num_elements, cudaMemcpyHostToDevice),
 			"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start cuda timing record
@@ -175,7 +177,7 @@ void TimedSort(
 	cudaEventDestroy(stop_event);
 
     // Copy out data
-    if (B40CPerror(cudaMemcpy(h_keys, device_storage.d_keys[device_storage.selector], sizeof(K) * device_storage.num_elements, cudaMemcpyDeviceToHost),
+    if (util::B40CPerror(cudaMemcpy(h_keys, device_storage.d_keys[device_storage.selector], sizeof(K) * device_storage.num_elements, cudaMemcpyDeviceToHost),
 		"TimedSort cudaMemcpy device_storage.d_keys failed: ", __FILE__, __LINE__)) exit(1);
 }
 
@@ -213,13 +215,13 @@ void TestSort(
 	}
 
     // Run the timing test
-//	if (keys_only) {
+	if (keys_only) {
 
 		printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
 
 		// Allocate device storage
 		MultiCtaSortStorage<K> device_storage(num_elements);
-		if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
+		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		TimedSort<MultiCtaSortStorage<K> >(device_storage, h_keys, iterations);
@@ -227,16 +229,16 @@ void TestSort(
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
 	    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
-/*
+
 	} else {
 
 		printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 
 		// Allocate device storage
 		MultiCtaSortStorage<K, V> device_storage(num_elements);
-		if (B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
+		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
-		if (B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
+		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		TimedSort<MultiCtaSortStorage<K, V> >(device_storage, h_keys, iterations);
@@ -247,7 +249,7 @@ void TestSort(
 	    if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
 	    if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
 	}
-*/
+
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
     

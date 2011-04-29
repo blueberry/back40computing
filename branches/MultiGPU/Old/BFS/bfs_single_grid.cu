@@ -54,20 +54,18 @@ protected:
 	 * Mechanism for implementing software global barriers from within
 	 * a single grid invocation
 	 */
-	util::GlobalBarrierLifetime global_barrier;
+	util::GlobalBarrierLifetime 		global_barrier;
 
 	/**
 	 * CTA duty kernel stats
 	 */
-	util::KernelRuntimeStatsLifetime kernel_stats;
-	long long total_avg_live;
-	long long total_max_live;
+	util::KernelRuntimeStatsLifetime 	kernel_stats;
+	long long 							total_avg_live;
+	long long 							total_max_live;
+	long long 							total_queued;
 
-	volatile long long *iteration;
-	volatile long long *total_queued;
-
-	long long *d_iteration;
-	long long *d_total_queued;
+	volatile long long 					*iteration;
+	long long 							*d_iteration;
 
 public: 	
 	
@@ -77,23 +75,17 @@ public:
 	SingleGridBfsEnactor(bool DEBUG = false) :
 		BaseBfsEnactor(DEBUG),
 		iteration(NULL),
-		total_queued(NULL),
-		d_iteration(NULL),
-		d_total_queued(NULL)
+		d_iteration(NULL)
 	{
 		int flags = cudaHostAllocMapped;
 
 		// Allocate pinned memory
 		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
 			"SingleGridBfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
-		if (util::B40CPerror(cudaHostAlloc((void **)&total_queued, sizeof(long long) * 1, flags),
-			"SingleGridBfsEnactor cudaHostAlloc total_queued failed", __FILE__, __LINE__)) exit(1);
 
 		// Map into GPU space
 		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
 			"SingleGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_total_queued, (void *) total_queued, 0),
-			"SingleGridBfsEnactor cudaHostGetDevicePointer total_queued failed", __FILE__, __LINE__)) exit(1);
 	}
 
 
@@ -103,7 +95,6 @@ public:
 	virtual ~SingleGridBfsEnactor()
 	{
 		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "SingleGridBfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
-		if (total_queued) util::B40CPerror(cudaFreeHost((void *) total_queued), "SingleGridBfsEnactor cudaFreeHost total_queued failed", __FILE__, __LINE__);
 	}
 
 
@@ -116,7 +107,7 @@ public:
 		VertexId &search_depth,
 		double &avg_live)
     {
-    	total_queued = this->total_queued[0];
+    	total_queued = this->total_queued;
     	search_depth = iteration[0] - 1;
     	avg_live = double(total_avg_live) / total_max_live;
     }
@@ -137,7 +128,7 @@ public:
 		typedef typename BfsCsrProblem::SizeT SizeT;
 		typedef typename BfsCsrProblem::VertexId VertexId;
 
-		// Compaction tuning configuration
+		// Single-grid tuning configuration
 		typedef compact_expand::SweepKernelConfig<
 
 				typename BfsCsrProblem::ProblemType,
@@ -158,8 +149,7 @@ public:
 		int occupancy = KernelConfig::CTA_OCCUPANCY;
 		int grid_size = MaxGridSize(occupancy, max_grid_size);
 
-		printf("DEBUG: BFS occupancy %d, grid size %d\n",
-			occupancy, grid_size);
+		if (DEBUG) printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
 		fflush(stdout);
 
 		// Make barriers are initialized
@@ -169,13 +159,14 @@ public:
 		if (retval = kernel_stats.Setup(grid_size)) exit(1);
 
 		// Reset statistics
-		total_queued[0] 	= 0;
 		iteration[0] 		= 0;
 		total_avg_live 		= 0;
 		total_max_live 		= 0;
+		total_queued	 	= 0;
 
 		// Initiate single-grid kernel
-		compact_expand::SweepKernel<KernelConfig, INSTRUMENT><<<grid_size, KernelConfig::THREADS>>>(
+		compact_expand::SweepKernel<KernelConfig, INSTRUMENT, 0>
+				<<<grid_size, KernelConfig::THREADS>>>(
 			0,
 			src,
 
@@ -192,14 +183,12 @@ public:
 			this->global_barrier,
 
 			this->kernel_stats,
-			(VertexId *) d_iteration,
-			(SizeT *) d_total_queued);
+			(VertexId *) d_iteration);
 
-		if (retval = util::B40CPerror(cudaThreadSynchronize(),
-			"SweepKernel failed", __FILE__, __LINE__)) exit(1);
-
-		// expand barrier wait
-		kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live);
+		if (INSTRUMENT) {
+			// Get stats
+			kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live, total_queued);
+		}
 
 		return retval;
 	}

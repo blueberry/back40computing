@@ -70,14 +70,14 @@ struct SweepPass
 		if (work_limits.guarded_elements) {
 			cta.ProcessTile<false>(
 				work_limits.offset,
-				work_limits.out_of_bounds);
+				work_limits.guarded_elements);
 		}
 
 		// Cleanup any extra bytes
 		if ((sizeof(typename KernelConfig::T) > 1) && (blockIdx.x == gridDim.x - 1) && (threadIdx.x < extra_bytes)) {
 
-			unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + work_limits.out_of_bounds);
-			unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + work_limits.out_of_bounds);
+			unsigned char* d_in_bytes = (unsigned char *)(d_in + work_limits.guarded_elements);
+			unsigned char* d_out_bytes = (unsigned char *)(d_out + work_limits.guarded_elements);
 			unsigned char extra_byte;
 
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
@@ -140,13 +140,14 @@ struct SweepPass <KernelConfig, true>
 		// Last CTA does any extra, guarded work
 		if (blockIdx.x == gridDim.x - 1) {
 
-			cta.ProcessTile<false>(unguarded_elements, work_decomposition.num_elements);
+			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
+			cta.ProcessTile<false>(unguarded_elements, guarded_elements);
 
 			// Cleanup any extra bytes
 			if ((sizeof(typename KernelConfig::T) > 1) && (threadIdx.x < extra_bytes)) {
 
-				unsigned char* d_in_bytes = reinterpret_cast<unsigned char *>(d_in + work_decomposition.num_elements);
-				unsigned char* d_out_bytes = reinterpret_cast<unsigned char *>(d_out + work_decomposition.num_elements);
+				unsigned char* d_in_bytes = (unsigned char *)(d_in + work_decomposition.num_elements);
+				unsigned char* d_out_bytes = (unsigned char *)(d_out + work_decomposition.num_elements);
 				unsigned char extra_byte;
 
 				util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);

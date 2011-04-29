@@ -101,6 +101,7 @@ __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
 	typename KernelConfig::VertexId			iteration,
+	volatile int							*d_done,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::ValidFlag		*d_out_flag,
 	typename KernelConfig::SizeT			*d_spine,
@@ -123,6 +124,11 @@ void UpsweepKernel(
 	if (threadIdx.x == 0) {
 		// Obtain problem size
 		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+
+		// Signal to host that we're done
+		if ((num_elements == 0) && (d_done)) {
+			d_done[0] = 1;
+		}
 
 		// Initialize work decomposition in smem
 		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(

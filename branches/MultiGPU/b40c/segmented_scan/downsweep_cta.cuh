@@ -98,8 +98,8 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool_int4s,
-					smem_storage.smem_pool_int4s + SmemStorage::PARTIALS_RAKING_QUADS),
+					smem_storage.smem_pool.raking_elements.partials_raking_elements,
+					smem_storage.smem_pool.raking_elements.flags_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
@@ -118,7 +118,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		// Tiles of segmented scan elements and flags
 		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -130,7 +130,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(partials, d_partials_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(partials, d_partials_in + cta_offset, guarded_elements);
 
 		// Load tile of flags
 		util::io::LoadTile<
@@ -138,7 +138,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(flags, d_flags_in, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(flags, d_flags_in + cta_offset, guarded_elements);
 
 		// Scan tile with carry update in raking threads
 		util::scan::soa::CooperativeSoaTileScan<
@@ -157,7 +157,7 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(partials, d_partials_out, cta_offset, out_of_bounds);
+			FULL_TILE>::Invoke(partials, d_partials_out + cta_offset, guarded_elements);
 	}
 };
 

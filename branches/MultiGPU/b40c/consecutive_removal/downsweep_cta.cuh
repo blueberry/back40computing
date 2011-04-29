@@ -69,7 +69,7 @@ struct DownsweepCta : KernelConfig
 	T *d_out;
 
 	// Pool of storage for compacting a tile of values
-	T *smem_pool;
+	T *exchange;
 
 	// Operational details for SRTS scan grid
 	SrtsDetails srts_details;
@@ -91,10 +91,10 @@ struct DownsweepCta : KernelConfig
 		FlagCount spine_partial = 0) :
 
 			srts_details(
-				smem_storage.smem_pool_int4s,
+				smem_storage.smem_pool.raking_elements,
 				smem_storage.warpscan,
 				0),
-			smem_pool((T*) smem_storage.smem_pool_int4s),
+			exchange(smem_storage.smem_pool.exchange),
 			d_in(d_in),
 			d_out(d_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
@@ -108,7 +108,7 @@ struct DownsweepCta : KernelConfig
 	template <bool FULL_TILE, bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];					// Tile of elements
 		LocalFlagCount flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of discontinuity flags
@@ -121,7 +121,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			FULL_TILE>::template Invoke<FIRST_TILE>(
-				data, flags, d_in, cta_offset, out_of_bounds);
+				data, flags, d_in + cta_offset, guarded_elements);
 
 		// Copy discontinuity flags into ranks
 		util::io::InitializeTile<
@@ -136,6 +136,27 @@ struct DownsweepCta : KernelConfig
 			util::DefaultSum>::ScanTile(
 				srts_details, ranks);
 
+		//
+		// Scatter directly without first compacting in smem scratch
+		//
+
+		// Scatter valid vertex_id into smem exchange, predicated on flags (treat
+		// vertex_id, flags, and ranks as linear arrays)
+		util::io::ScatterTile<
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER>::Scatter(
+				d_out + carry,
+				reinterpret_cast<T*>(data),
+				reinterpret_cast<LocalFlagCount*>(flags),
+				reinterpret_cast<LocalFlagCount*>(ranks));
+
+/*
+
+		//
+		// Scatter by first compacting in smem scratch
+		//
+
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
 
@@ -145,7 +166,7 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::TILE_ELEMENTS_PER_THREAD,
 			KernelConfig::THREADS,
 			util::io::st::NONE>::Scatter(
-				smem_pool,
+				exchange,
 				reinterpret_cast<T*>(data),
 				reinterpret_cast<LocalFlagCount*>(flags),
 				reinterpret_cast<LocalFlagCount*>(ranks));
@@ -161,23 +182,23 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::THREADS,
 			util::io::ld::NONE,
 			false>::Invoke(								// Guarded loads
-					compacted_data, smem_pool, 0, unique_elements);
+					compacted_data, exchange, unique_elements);
 
 		// Scatter compacted data to global output
-		FlagCount scatter_out_of_bounds = carry + unique_elements;
 		util::io::StoreTile<
 			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
 			0, 											// Vec-1
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER,
 			false>::Invoke(								// Guarded stores
-				compacted_data, d_out, carry, scatter_out_of_bounds);
-
-		// Update running discontinuity count for CTA
-		carry = scatter_out_of_bounds;
+				compacted_data, d_out + carry, unique_elements);
 
 		// Barrier sync to protect smem exchange storage
 		__syncthreads();
+*/
+
+		// Update running discontinuity count for CTA
+		carry += unique_elements;
 	}
 };
 

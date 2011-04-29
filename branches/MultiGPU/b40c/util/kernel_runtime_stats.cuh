@@ -41,13 +41,20 @@ class KernelRuntimeStats
 {
 protected :
 
+	enum {
+		CLOCKS		= 0,
+		AGGREGATE,
+
+		TOTAL_COUNTERS,
+	};
 
 	// Counters in global device memory
-	clock_t* d_stat;
+	unsigned long long 		*d_stat;
 
-	// Start time
-	clock_t start;
-	clock_t accumulated;
+
+	clock_t 				start;				// Start time
+	clock_t 				clocks;				// Accumulated time
+	unsigned long long 		aggregate;			// General-purpose aggregate counter
 
 public:
 
@@ -56,7 +63,8 @@ public:
 	 */
 	KernelRuntimeStats() :
 		d_stat(NULL),
-		accumulated(0) {}
+		clocks(0),
+		aggregate(0) {}
 
 	/**
 	 * Marks start time.  Typically called by thread-0.
@@ -75,19 +83,34 @@ public:
 		clock_t runtime = (stop >= start) ?
 			stop - start :
 			stop + (((clock_t) -1) - start);
-		accumulated += runtime;
+		clocks += runtime;
 
 		if (complete) {
-			d_stat[blockIdx.x] = accumulated;
+			d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = clocks;
 		}
 	}
 
 	/**
-	 * Resets statistic. Typically called by thread-0.
+	 * Increments the aggregate counter by the specified amount.
+	 * Typically called by thread-0.
+	 */
+	template <typename T>
+	__device__ __forceinline__ void Aggregate(T increment, bool complete = true)
+	{
+		aggregate += increment;
+		if (complete) {
+			d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = aggregate;
+		}
+	}
+
+
+	/**
+	 * Resets statistics. Typically called by thread-0.
 	 */
 	__device__ __forceinline__ void Reset() const
 	{
-		d_stat[blockIdx.x] = 0;
+		d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = 0;
+		d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = 0;
 	}
 
 };
@@ -146,7 +169,7 @@ public:
 	{
 		cudaError_t retval = cudaSuccess;
 		do {
-			size_t new_stat_bytes = sweep_grid_size * sizeof(clock_t);
+			size_t new_stat_bytes = sweep_grid_size * sizeof(unsigned long long) * TOTAL_COUNTERS;
 			if (new_stat_bytes > stat_bytes) {
 
 				if (d_stat) {
@@ -160,7 +183,7 @@ public:
 					"KernelRuntimeStatsLifetime cudaMalloc d_stat failed", __FILE__, __LINE__)) break;
 
 				// Initialize to zero
-				util::MemsetKernel<clock_t><<<(sweep_grid_size + 128 - 1) / 128, 128>>>(
+				util::MemsetKernel<unsigned long long><<<(sweep_grid_size + 128 - 1) / 128, 128>>>(
 					d_stat, 0, sweep_grid_size);
 				if (retval = util::B40CPerror(cudaThreadSynchronize(),
 					"KernelRuntimeStatsLifetime MemsetKernel d_stat failed", __FILE__, __LINE__)) break;
@@ -176,18 +199,18 @@ public:
 	 */
 	double AvgLive(int sweep_grid_size)
 	{
-		clock_t *h_stat = (clock_t*) malloc(stat_bytes);
+		unsigned long long *h_stat = (unsigned long long*) malloc(stat_bytes);
 
 		util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
 			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
 
 		// Compute runtimes, find max
 		int ctas_with_work = 0;
-		clock_t max_runtime = 0;
+		unsigned long long max_runtime = 0;
 		unsigned long long total_runtimes = 0;
 		for (int block = 0; block < sweep_grid_size; block++) {
 
-			clock_t runtime = h_stat[block];
+			unsigned long long runtime = h_stat[(CLOCKS * sweep_grid_size) + block];
 
 			if (runtime > max_runtime) {
 				max_runtime = runtime;
@@ -213,20 +236,24 @@ public:
 	/**
 	 * Returns ratio of (avg cta runtime : total runtime)
 	 */
-	void Accumulate(int sweep_grid_size, long long &total_avg_live, long long &total_max_live)
+	cudaError_t Accumulate(
+		int sweep_grid_size,
+		long long &total_avg_live,
+		long long &total_max_live,
+		long long &total_aggregate)
 	{
-		clock_t *h_stat = (clock_t*) malloc(stat_bytes);
+		unsigned long long *h_stat = (unsigned long long*) malloc(stat_bytes);
 
-		util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
+		cudaError_t retval = util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
 			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
 
 		// Compute runtimes, find max
 		int ctas_with_work = 0;
-		clock_t max_runtime = 0;
+		unsigned long long max_runtime = 0;
 		unsigned long long total_runtimes = 0;
 		for (int block = 0; block < sweep_grid_size; block++) {
 
-			clock_t runtime = h_stat[block];
+			unsigned long long runtime = h_stat[(CLOCKS * sweep_grid_size) + block];
 
 			if (runtime > max_runtime) {
 				max_runtime = runtime;
@@ -241,10 +268,29 @@ public:
 			double(total_runtimes) / ctas_with_work :
 			0.0;
 
-		free(h_stat);
-
 		total_max_live += max_runtime;
 		total_avg_live += avg_runtime;
+
+		// Accumulate aggregates
+		for (int block = 0; block < sweep_grid_size; block++) {
+			total_aggregate += h_stat[(AGGREGATE * sweep_grid_size) + block];
+		}
+
+		free(h_stat);
+		return retval;
+	}
+
+
+	/**
+	 * Returns ratio of (avg cta runtime : total runtime)
+	 */
+	cudaError_t Accumulate(
+		int sweep_grid_size,
+		long long &total_avg_live,
+		long long &total_max_live)
+	{
+		long long total_aggregate = 0;
+		return Accumulate(sweep_grid_size, total_avg_live, total_max_live, total_aggregate);
 	}
 };
 

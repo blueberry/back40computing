@@ -60,7 +60,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	/**
 	 * Smem pool backing SRTS grid lanes
 	 */
-	uint4 *smem_pool;
+	T *smem_pool;
 
 	/**
 	 * Warpscan storage
@@ -83,7 +83,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool) :
+		T *smem_pool) :
 			smem_pool(smem_pool),
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool))						// set lane partial pointer
 	{
@@ -99,7 +99,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool,
+		T *smem_pool,
 		WarpscanStorage warpscan) :
 			smem_pool(smem_pool),
 			warpscan(warpscan),
@@ -117,7 +117,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool,
+		T *smem_pool,
 		WarpscanStorage warpscan,
 		T warpscan_identity) :
 			smem_pool(smem_pool),
@@ -147,7 +147,7 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	/**
 	 *
 	 */
-	__device__ __forceinline__ uint4 * SmemPool()
+	__device__ __forceinline__ T* SmemPool()
 	{
 		return smem_pool;
 	}
@@ -191,7 +191,7 @@ struct SrtsDetails : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool) :
+		T *smem_pool) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
 				smem_pool + SrtsGrid::RAKING_QUADS)
@@ -206,7 +206,7 @@ struct SrtsDetails : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool,
+		T *smem_pool,
 		WarpscanStorage warpscan) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
@@ -224,7 +224,7 @@ struct SrtsDetails : SrtsGrid
 	 * Constructor
 	 */
 	__device__ __forceinline__ SrtsDetails(
-		uint4 *smem_pool,
+		T *smem_pool,
 		WarpscanStorage warpscan,
 		T warpscan_identity) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
@@ -251,7 +251,7 @@ struct SrtsDetails : SrtsGrid
 	/**
 	 *
 	 */
-	__device__ __forceinline__ uint4 * SmemPool()
+	__device__ __forceinline__ T* SmemPool()
 	{
 		return secondary_details.SmemPool();
 	}

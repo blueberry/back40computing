@@ -96,7 +96,7 @@ struct SweepPass
 		if (work_limits.guarded_elements) {
 			cta.template ProcessTile<false>(
 				work_limits.offset,
-				work_limits.out_of_bounds);
+				work_limits.guarded_elements);
 		}
 	}
 };
@@ -172,7 +172,8 @@ struct SweepPass <KernelConfig, true>
 
 		// Last CTA does any extra, guarded work (first tile seen)
 		if (blockIdx.x == gridDim.x - 1) {
-			cta.template ProcessTile<false>(unguarded_elements, work_decomposition.num_elements);
+			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
+			cta.template ProcessTile<false>(unguarded_elements, guarded_elements);
 		}
 	}
 };
@@ -185,7 +186,7 @@ struct SweepPass <KernelConfig, true>
 /**
  * Sweep expansion kernel entry point
  */
-template <typename KernelConfig, bool INSTRUMENT>
+template <typename KernelConfig, bool INSTRUMENT, int SATURATION_QUIT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
@@ -194,6 +195,7 @@ void SweepKernel(
 	typename KernelConfig::VertexId 		iteration,
 	typename KernelConfig::VertexId 		sub_iteration,
 	typename KernelConfig::VertexId			num_gpus,
+	volatile int 							*d_done,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
 	typename KernelConfig::VertexId 		*d_out,
@@ -239,7 +241,7 @@ void SweepKernel(
 				}
 
 				// Initialize work decomposition in smem
-				smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.state.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
@@ -262,7 +264,7 @@ void SweepKernel(
 			d_row_offsets,
 			d_source_path,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 
 	} else {
@@ -270,8 +272,15 @@ void SweepKernel(
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
 
+			// Signal to host that we're done
+			if (d_done && ((num_elements == 0) ||
+				(SATURATION_QUIT && (num_elements <= gridDim.x * KernelConfig::TILE_ELEMENTS * SATURATION_QUIT))))
+			{
+				d_done[0] = 1;
+			}
+
 			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.state.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -297,7 +306,7 @@ void SweepKernel(
 			d_row_offsets,
 			d_source_path,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 	}
 

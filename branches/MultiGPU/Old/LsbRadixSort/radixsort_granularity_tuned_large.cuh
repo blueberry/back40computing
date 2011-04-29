@@ -104,6 +104,7 @@ struct TunedConfig<SM20, KeyType, ValueType, SizeT>
 		SizeT,					// SizeT
 
 		// Common
+		SM20,
 		4,						// RADIX_BITS: 					4-bit radix digits
 		10,						// LOG_SCHEDULE_GRANULARITY: 	1024 grain elements
 		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
@@ -151,6 +152,7 @@ struct TunedConfig<SM13, KeyType, ValueType, SizeT>
 		SizeT,					// SizeT
 
 		// Common
+		SM13,
 		4,						// RADIX_BITS: 					4-bit radix digits
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
 		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)
@@ -198,6 +200,7 @@ struct TunedConfig<SM10, KeyType, ValueType, SizeT>
 		SizeT,					// SizeT
 
 		// Common
+		SM10,
 		4,						// RADIX_BITS: 					4-bit radix digits
 		9,						// LOG_SCHEDULE_GRANULARITY: 	512 grain elements
 		util::io::ld::NONE,		// CACHE_MODIFIER: 				Default (CA: cache all levels)

@@ -58,7 +58,7 @@ struct SweepCta
 
 	typedef typename KernelConfig::VertexId 		VertexId;
 	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename SmemStorage::WarpComm 			WarpComm;
+	typedef typename SmemStorage::State::WarpComm 	WarpComm;
 
 	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelConfig::SoaTuple 		SoaTuple;
@@ -98,8 +98,8 @@ struct SweepCta
 	SizeT					&fine_enqueue_offset;
 
 	// Scratch pools for expanding and sharing neighbor gather offsets and parent vertices
-	SizeT					*offset_scratch_pool;
-	VertexId				*parent_scratch_pool;
+	SizeT					*offset_scratch;
+	VertexId				*parent_scratch;
 
 
 	//---------------------------------------------------------------------
@@ -305,8 +305,8 @@ struct SweepCta
 			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> 5; //B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
-				int lane_id = threadIdx.x & 31; //util::LaneId();
+				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
+				int lane_id = util::LaneId();
 
 				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
 
@@ -329,8 +329,8 @@ struct SweepCta
 						tile->row_length[LOAD][VEC] = 0;
 					}
 
-					SizeT coop_offset 	= cta->warp_comm[warp_id][0];
-					SizeT coop_rank 	= cta->warp_comm[warp_id][1];
+					SizeT coop_offset 	= cta->warp_comm[warp_id][0] + lane_id;
+					SizeT coop_rank 	= cta->warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->warp_comm[warp_id][2];
 
 					VertexId parent_id;
@@ -340,22 +340,18 @@ struct SweepCta
 
 					VertexId neighbor_id;
 					while (coop_offset < coop_oob) {
+						// Gather
+						util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
+							neighbor_id, cta->d_column_indices + coop_offset);
 
-						if (coop_offset + lane_id < coop_oob) {
+						// Scatter neighbor
+						util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
+							neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank);
 
-							// Gather
-							util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
-								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
-
-							// Scatter neighbor
+						if (KernelConfig::MARK_PARENTS) {
+							// Scatter parent
 							util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-								neighbor_id, cta->d_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-
-							if (KernelConfig::MARK_PARENTS) {
-								// Scatter parent
-								util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank + lane_id);
-							}
+								parent_id, cta->d_parent_out + cta->coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += B40C_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -379,14 +375,14 @@ struct SweepCta
 				SizeT scratch_offset = tile->fine_row_rank[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
 
 				while ((tile->row_progress[LOAD][VEC] < tile->row_length[LOAD][VEC]) &&
-					(scratch_offset < SmemStorage::SCRATCH_ELEMENTS))
+					(scratch_offset < SmemStorage::OFFSET_ELEMENTS))
 				{
 					// Put gather offset into scratch space
-					cta->offset_scratch_pool[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
+					cta->offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
 					if (KernelConfig::MARK_PARENTS) {
 						// Put dequeued vertex as the parent into scratch space
-						cta->parent_scratch_pool[scratch_offset] = tile->vertex_id[LOAD][VEC];
+						cta->parent_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -538,17 +534,17 @@ struct SweepCta
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool_int4s,
-					smem_storage.smem_pool_int4s + SmemStorage::COARSE_RAKING_QUADS),
+					smem_storage.smem_pool.raking_elements.coarse_raking_elements,
+					smem_storage.smem_pool.raking_elements.fine_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
-					smem_storage.coarse_warpscan,
-					smem_storage.fine_warpscan),
+					smem_storage.state.coarse_warpscan,
+					smem_storage.state.fine_warpscan),
 				KernelConfig::SoaTupleIdentity()),
-			warp_comm(smem_storage.warp_comm),
-			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
-			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
-			offset_scratch_pool((SizeT *) smem_storage.smem_pool_int4s),
-			parent_scratch_pool((VertexId *) (smem_storage.smem_pool_int4s + SmemStorage::OFFSET_QUADS)),
+			warp_comm(smem_storage.state.warp_comm),
+			coarse_enqueue_offset(smem_storage.state.coarse_enqueue_offset),
+			fine_enqueue_offset(smem_storage.state.fine_enqueue_offset),
+			offset_scratch(smem_storage.smem_pool.scratch.offset_scratch),
+			parent_scratch(smem_storage.smem_pool.scratch.parent_scratch),
 			iteration(iteration),
 			num_gpus(num_gpus),
 			d_in(d_in),
@@ -580,7 +576,7 @@ struct SweepCta
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds = 0)
+		SizeT guarded_elements = 0)
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
@@ -595,9 +591,8 @@ struct SweepCta
 			KernelConfig::QUEUE_READ_MODIFIER,
 			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
 				tile.vertex_id,
-				d_in,
-				cta_offset,
-				out_of_bounds);
+				d_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of parents
 		if (KernelConfig::MARK_PARENTS) {
@@ -609,9 +604,8 @@ struct SweepCta
 				KernelConfig::QUEUE_READ_MODIFIER,
 				FULL_TILE>::Invoke(
 					tile.parent_id,
-					d_parent_in,
-					cta_offset,
-					out_of_bounds);
+					d_parent_in + cta_offset,
+					guarded_elements);
 		}
 
 		// Inspect dequeued vertices, updating source path and obtaining
@@ -659,7 +653,7 @@ struct SweepCta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::SCRATCH_ELEMENTS, tile.fine_count - tile.progress);
+			int scratch_remainder = B40C_MIN(SmemStorage::OFFSET_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = threadIdx.x;
 				scratch_offset < scratch_remainder;
@@ -669,7 +663,7 @@ struct SweepCta
 				VertexId neighbor_id;
 				util::io::ModifiedLoad<KernelConfig::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_id,
-					d_column_indices + offset_scratch_pool[scratch_offset]);
+					d_column_indices + offset_scratch[scratch_offset]);
 
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
@@ -678,14 +672,14 @@ struct SweepCta
 
 				if (KernelConfig::MARK_PARENTS) {
 					// Scatter parent it into queue
-					VertexId parent_id = parent_scratch_pool[scratch_offset];
+					VertexId parent_id = parent_scratch[scratch_offset];
 					util::io::ModifiedStore<KernelConfig::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
 						d_parent_out + fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 
-			tile.progress += SmemStorage::SCRATCH_ELEMENTS;
+			tile.progress += SmemStorage::OFFSET_ELEMENTS;
 
 			__syncthreads();
 		}

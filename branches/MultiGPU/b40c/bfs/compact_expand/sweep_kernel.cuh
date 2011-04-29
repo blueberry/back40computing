@@ -95,7 +95,7 @@ struct SweepPass
 		if (work_limits.guarded_elements) {
 			cta.template ProcessTile<false>(
 				work_limits.offset,
-				work_limits.out_of_bounds);
+				work_limits.guarded_elements);
 		}
 	}
 };
@@ -170,7 +170,8 @@ struct SweepPass <KernelConfig, true>
 
 		// Last CTA does any extra, guarded work (first tile seen)
 		if (blockIdx.x == gridDim.x - 1) {
-			cta.template ProcessTile<false>(unguarded_elements, work_decomposition.num_elements);
+			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
+			cta.template ProcessTile<false>(unguarded_elements, guarded_elements);
 		}
 	}
 };
@@ -183,7 +184,7 @@ struct SweepPass <KernelConfig, true>
 /**
  * Sweep compact-expand kernel entry point
  */
-template <typename KernelConfig, bool INSTRUMENT>
+template <typename KernelConfig, bool INSTRUMENT, int SATURATION_QUIT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
 void SweepKernel(
@@ -202,8 +203,7 @@ void SweepKernel(
 	util::GlobalBarrier						global_barrier,
 
 	util::KernelRuntimeStats				kernel_stats,
-	typename KernelConfig::VertexId			*d_iteration,
-	typename KernelConfig::SizeT			*d_total_queued)
+	typename KernelConfig::VertexId			*d_iteration)
 {
 	typedef typename KernelConfig::VertexId VertexId;
 	typedef typename KernelConfig::SizeT SizeT;
@@ -217,9 +217,7 @@ void SweepKernel(
 		}
 	}
 
-	SizeT total_queued = 0;
-
-	if (blockIdx.x == 0) {
+	if (iteration == 0) {
 
 		if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
 
@@ -246,42 +244,65 @@ void SweepKernel(
 			}
 		}
 
-		// Barrier to protect work decomposition
-		__syncthreads();
+	} else {
 
-		// Don't do workstealing this iteration because without a
-		// global barrier after queue-reset, the queue may be inconsistent
-		// across CTAs
-		SweepPass<KernelConfig, false>::Invoke(
-			iteration,
-			d_in,
-			d_parent_in,
-			d_out,
-			d_parent_out,
-			d_column_indices,
-			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
-			work_progress,
-			smem_storage.work_decomposition,
-			smem_storage);
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
+
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			if (INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements, false);
+			}
+
+			// Initialize work decomposition in smem
+			smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+				num_elements, gridDim.x);
+
+			// Reset our next outgoing queue counter to zero
+			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+
+			// Reset our next workstealing counter to zero
+			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+
+		}
 	}
+
+	// Barrier to protect work decomposition
+	__syncthreads();
+
+	// Don't do workstealing this iteration because without a
+	// global barrier after queue-reset, the queue may be inconsistent
+	// across CTAs
+	SweepPass<KernelConfig, false>::Invoke(
+		iteration,
+		d_in,
+		d_parent_in,
+		d_out,
+		d_parent_out,
+		d_column_indices,
+		d_row_offsets,
+		d_source_path,
+		d_collision_cache,
+		work_progress,
+		smem_storage.work_decomposition,
+		smem_storage);
+
+	iteration++;
+
+	if (INSTRUMENT) {
+		if (threadIdx.x == 0) {
+			kernel_stats.MarkStop(false);
+		}
+	}
+
+	global_barrier.Sync();
 
 	while (true) {
 
 		//---------------------------------------------------------------------
-		// Second half
+		// Flip
 		//---------------------------------------------------------------------
-
-		iteration++;
-
-		if (INSTRUMENT) {
-			if (threadIdx.x == 0) {
-				kernel_stats.MarkStop(false);
-			}
-		}
-
-		global_barrier.Sync();
 
 		if (INSTRUMENT) {
 			if (threadIdx.x == 0) {
@@ -294,8 +315,8 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-			if (INSTRUMENT) {
-				total_queued += num_elements;
+			if (INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements, false);
 			}
 
 			// Initialize work decomposition in smem
@@ -313,7 +334,11 @@ void SweepKernel(
 		// Barrier to protect work decomposition
 		__syncthreads();
 
-		if (!smem_storage.work_decomposition.num_elements) break;
+		if ((!smem_storage.work_decomposition.num_elements) ||
+			(SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelConfig::TILE_ELEMENTS * SATURATION_QUIT)))
+		{
+			break;
+		}
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
@@ -329,10 +354,6 @@ void SweepKernel(
 			smem_storage.work_decomposition,
 			smem_storage);
 
-		//---------------------------------------------------------------------
-		// First half
-		//---------------------------------------------------------------------
-
 		iteration++;
 
 		if (INSTRUMENT) {
@@ -342,6 +363,10 @@ void SweepKernel(
 		}
 
 		global_barrier.Sync();
+
+		//---------------------------------------------------------------------
+		// Flop
+		//---------------------------------------------------------------------
 
 		if (INSTRUMENT) {
 			if (threadIdx.x == 0) {
@@ -354,8 +379,8 @@ void SweepKernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-			if (INSTRUMENT) {
-				total_queued += num_elements;
+			if (INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements, false);
 			}
 
 			// Initialize work decomposition in smem
@@ -372,7 +397,12 @@ void SweepKernel(
 		// Barrier to protect work decomposition
 		__syncthreads();
 
-		if (!smem_storage.work_decomposition.num_elements) break;
+		// Check if done
+		if ((!smem_storage.work_decomposition.num_elements) ||
+			(SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelConfig::TILE_ELEMENTS * SATURATION_QUIT)))
+		{
+			break;
+		}
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
@@ -388,6 +418,15 @@ void SweepKernel(
 			smem_storage.work_decomposition,
 			smem_storage);
 
+		iteration++;
+
+		if (INSTRUMENT) {
+			if (threadIdx.x == 0) {
+				kernel_stats.MarkStop(false);
+			}
+		}
+
+		global_barrier.Sync();
 	}
 
 	// Write out our final iteration
@@ -398,7 +437,7 @@ void SweepKernel(
 	if (INSTRUMENT) {
 		if (threadIdx.x == 0) {
 			kernel_stats.MarkStop(true);
-			d_total_queued[0] = total_queued;
+			kernel_stats.Aggregate(0, true);
 		}
 	}
 

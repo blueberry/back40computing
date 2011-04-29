@@ -130,28 +130,27 @@ struct KernelConfig : _ProblemType
 		true>									// There are prefix dependences between lanes
 			FlagsSrtsGrid;
 
+
 	/**
 	 * Shared memory structure
 	 */
 	struct SmemStorage
 	{
-		enum {
-			PARTIALS_RAKING_QUADS 		= PartialsSrtsGrid::TOTAL_RAKING_QUADS,
-			FLAGS_RAKING_QUADS 			= FlagsSrtsGrid::TOTAL_RAKING_QUADS
-		};
-
-		uint4 	smem_pool_int4s[PARTIALS_RAKING_QUADS + FLAGS_RAKING_QUADS];
 		T 		partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		Flag 	flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+
+		union {
+			struct {
+				T partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+				Flag flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+			} raking_elements;
+		} smem_pool;
 	};
 
 
 	enum {
-
-		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
-
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID 							= (CTA_OCCUPANCY > 0)

@@ -94,8 +94,8 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool_int4s,
-					smem_storage.smem_pool_int4s + SmemStorage::PARTIALS_RAKING_QUADS),
+					smem_storage.smem_pool.raking_elements.partials_raking_elements,
+					smem_storage.smem_pool.raking_elements.flags_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
@@ -123,7 +123,7 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(						// unguarded I/O
-				partials, d_partials_in, cta_offset);
+				partials, d_partials_in + cta_offset);
 
 		// Load tile of flags
 		util::io::LoadTile<
@@ -132,7 +132,7 @@ struct UpsweepCta : KernelConfig						// Derive from our config
 			KernelConfig::THREADS,
 			KernelConfig::READ_MODIFIER,
 			true>::Invoke(						// unguarded I/O
-				flags, d_flags_in, cta_offset);
+				flags, d_flags_in + cta_offset);
 
 		// Reduce tile with carry maintained by thread SrtsSoaDetails::CUMULATIVE_THREAD
 		util::reduction::soa::CooperativeSoaTileReduction<

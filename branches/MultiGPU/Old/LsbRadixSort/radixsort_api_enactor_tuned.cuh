@@ -45,15 +45,19 @@
 #include <stdio.h>
 #include <limits.h>
 
-#include "radixsort_common.cuh"
+#include <b40c/util/cta_work_distribution.cuh>
+
 #include "radixsort_api_enactor.cuh"
 #include "radixsort_api_granularity.cuh"
 #include "radixsort_granularity_tuned_large.cuh"
 #include "radixsort_granularity_tuned_small.cuh"
 
-namespace b40c {
+#include <b40c/radix_sort/distribution/upsweep/kernel.cuh>
+#include <b40c/radix_sort/distribution/upsweep/kernel_config.cuh>
+#include <b40c/radix_sort/distribution/downsweep/kernel.cuh>
+#include <b40c/radix_sort/distribution/downsweep/kernel_config.cuh>
 
-using namespace lsb_radix_sort;
+namespace b40c {
 
 
 /******************************************************************************
@@ -84,21 +88,21 @@ template <typename KeyType, typename ConvertedKeyType, typename ValueType, typen
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::UPSWEEP_OCCUPANCY))
-__global__ void TunedUpsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_in_keys, ConvertedKeyType *d_out_keys, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedUpsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_in_keys, ConvertedKeyType *d_out_keys, util::CtaWorkDistribution<SizeT> work_decomposition);
 
-// SpineScan
+// Spine
 template <typename KeyType, typename ValueType, typename SizeT, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::SPINESCAN_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::SPINESCAN_OCCUPANCY))
-__global__ void TunedSpineScanKernel(SizeT *d_spine, int spine_elements);
+__global__ void TunedSpineKernel(SizeT *d_spine, int spine_elements);
 
 // Downsweep
 template <typename KeyType, typename ConvertedKeyType, typename ValueType, typename SizeT, typename PreprocessTraits, typename PostprocessTraits, int CURRENT_PASS, int CURRENT_BIT, int GRANULARITY_ENUM>
 __launch_bounds__ (
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_THREADS),
 	(TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT>::DOWNSWEEP_OCCUPANCY))
-__global__ void TunedDownsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, CtaWorkDistribution<SizeT> work_decomposition);
+__global__ void TunedDownsweepKernel(int *d_selectors, SizeT *d_spine, ConvertedKeyType *d_keys0, ConvertedKeyType *d_keys1, ValueType *d_values0, ValueType *d_values1, util::CtaWorkDistribution<SizeT> work_decomposition);
 
 
 
@@ -154,11 +158,11 @@ protected:
 	 */
 	template <
 		typename SortingConfig,
-		typename Decomposition,
 		int CURRENT_PASS, 
 		int CURRENT_BIT, 
 		typename PreprocessTraits, 
-		typename PostprocessTraits>
+		typename PostprocessTraits,
+		typename Decomposition>
 	cudaError_t DigitPlacePass(Decomposition &work)
 	{
 		typedef typename Decomposition::KeyType KeyType;
@@ -167,8 +171,11 @@ protected:
 		typedef typename SortingConfig::ConvertedKeyType ConvertedKeyType;
 
 		int dynamic_smem[3] = {0, 0, 0};
-		int grid_size[3] = {work.sweep_grid_size, 1, work.sweep_grid_size};
-		int threads[3] = {1 << SortingConfig::Upsweep::LOG_THREADS, 1 << SortingConfig::SpineScan::LOG_THREADS, 1 << SortingConfig::Downsweep::LOG_THREADS};
+		int grid_size[3] = {work.grid_size, 1, work.grid_size};
+		int threads[3] = {
+			1 << SortingConfig::Upsweep::LOG_THREADS,
+			1 << SortingConfig::Spine::LOG_THREADS,
+			1 << SortingConfig::Downsweep::LOG_THREADS};
 
 		cudaError_t retval = cudaSuccess;
 		do {
@@ -179,29 +186,37 @@ protected:
 				// kernels end up allocating the same amount of smem per CTA
 
 				// Get kernel attributes
-				cudaFuncAttributes upsweep_kernel_attrs, spine_scan_kernel_attrs, downsweep_attrs;
+				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
 
-				if (retval = B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(
+						&upsweep_kernel_attrs,
+						TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
 					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = B40CPerror(cudaFuncGetAttributes(&spine_scan_kernel_attrs, TunedSpineScanKernel<KeyType, ValueType, SizeT, SortingConfig::GRANULARITY_ENUM>),
-					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = B40CPerror(cudaFuncGetAttributes(&downsweep_attrs, TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
-					"LsbSortEnactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(
+						&spine_kernel_attrs,
+						TunedSpineKernel<KeyType, ValueType, SizeT, SortingConfig::GRANULARITY_ENUM>),
+					"LsbSortEnactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(
+						&downsweep_kernel_attrs,
+						TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>),
+					"LsbSortEnactor cudaFuncGetAttributes downsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
 					upsweep_kernel_attrs.sharedSizeBytes,
-					B40C_MAX(spine_scan_kernel_attrs.sharedSizeBytes, downsweep_attrs.sharedSizeBytes));
+					B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
 
 				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[1] = max_static_smem - spine_scan_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[2] = max_static_smem - downsweep_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
 			}
 
 			// Tuning option for spine-scan kernel grid size
 			if (SortingConfig::UNIFORM_GRID_SIZE) {
 
 				// We need to make sure that all kernels launch the same number of CTAs
-				grid_size[1] = work.sweep_grid_size;
+				grid_size[1] = work.grid_size;
 			}
 /*
 			printf("\tSorting pass %d at bit %d launching %d CTAs\n",
@@ -215,16 +230,16 @@ protected:
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector],
 					(ConvertedKeyType *) work.problem_storage->d_keys[work.problem_storage->selector ^ 1],
 					work);
-			if (this->DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
+			if (this->DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactorTuned:: TunedUpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke spine scan kernel
-			TunedSpineScanKernel<KeyType, ValueType, SizeT, SortingConfig::GRANULARITY_ENUM>
+			TunedSpineKernel<KeyType, ValueType, SizeT, SortingConfig::GRANULARITY_ENUM>
 				<<<grid_size[1], threads[1], dynamic_smem[1], this->stream>>>(
 					(SizeT *) this->d_spine,
 					work.spine_elements);
-			if (this->DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
-				"LsbSortEnactorTuned:: TunedSpineScanKernel failed ", __FILE__, __LINE__))) break;
+			if (this->DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
+				"LsbSortEnactorTuned:: TunedSpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Invoke downsweep scan/scatter kernel
 			TunedDownsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
@@ -236,7 +251,7 @@ protected:
 					work.problem_storage->d_values[work.problem_storage->selector],
 					work.problem_storage->d_values[work.problem_storage->selector ^ 1],
 					work);
-			if (this->DEBUG && (retval = B40CPerror(cudaThreadSynchronize(),
+			if (this->DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
 				"LsbSortEnactorTuned:: TunedDownsweepKernel failed ", __FILE__, __LINE__))) break;
 
 		} while (0);
@@ -361,19 +376,19 @@ public:
 // Large-problem specialization of granularity config type
 template <int CUDA_ARCH, typename KeyType, typename ValueType, typename SizeT>
 struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH, KeyType, ValueType, SizeT>
-	: large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT>
+	: lsb_radix_sort::large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT>
 {
 	static const TunedGranularityEnum GRANULARITY_ENUM 	= LARGE_PROBLEM;
 
 	// Largely-unnecessary duplication of inner type data to accommodate
 	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
 	// properly support template specialization around kernel call sites.
-	typedef large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT> Base;
+	typedef lsb_radix_sort::large_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
-	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
+	static const int SPINESCAN_THREADS 					= 1 << Base::Spine::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
 	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
-	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
+	static const int SPINESCAN_OCCUPANCY 				= Base::Spine::CTA_OCCUPANCY;
 	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
 };
 
@@ -381,19 +396,19 @@ struct TunedGranularity<LARGE_PROBLEM, CUDA_ARCH, KeyType, ValueType, SizeT>
 // Small-problem specialization of granularity config type
 template <int CUDA_ARCH, typename KeyType, typename ValueType, typename SizeT>
 struct TunedGranularity<SMALL_PROBLEM, CUDA_ARCH, KeyType, ValueType, SizeT>
-	: small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT>
+	: lsb_radix_sort::small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT>
 {
 	static const TunedGranularityEnum GRANULARITY_ENUM 	= SMALL_PROBLEM;
 
 	// Largely-unnecessary duplication of inner type data to accommodate
 	// use in __launch_bounds__.   TODO: Section can be removed if CUDA Runtime is fixed to
 	// properly support template specialization around kernel call sites.
-	typedef small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT> Base;
+	typedef lsb_radix_sort::small_problem_tuning::TunedConfig<CUDA_ARCH, KeyType, ValueType, SizeT> Base;
 	static const int UPSWEEP_THREADS 					= 1 << Base::Upsweep::LOG_THREADS;
-	static const int SPINESCAN_THREADS 					= 1 << Base::SpineScan::LOG_THREADS;
+	static const int SPINESCAN_THREADS 					= 1 << Base::Spine::LOG_THREADS;
 	static const int DOWNSWEEP_THREADS 					= 1 << Base::Downsweep::LOG_THREADS;
 	static const int UPSWEEP_OCCUPANCY 					= Base::Upsweep::CTA_OCCUPANCY;
-	static const int SPINESCAN_OCCUPANCY 				= Base::SpineScan::CTA_OCCUPANCY;
+	static const int SPINESCAN_OCCUPANCY 				= Base::Spine::CTA_OCCUPANCY;
 	static const int DOWNSWEEP_OCCUPANCY 				= Base::Downsweep::CTA_OCCUPANCY;
 };
 
@@ -413,30 +428,46 @@ void TunedUpsweepKernel(
 	SizeT 						*d_spine,
 	ConvertedKeyType 			*d_in_keys,
 	ConvertedKeyType			*d_out_keys,
-	CtaWorkDistribution<SizeT>	work_decomposition)
+	util::CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	using namespace upsweep;
 	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT> SortingConfig;
-	typedef UpsweepKernelConfig<typename SortingConfig::Upsweep, PreprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
+
+	typedef radix_sort::distribution::upsweep::KernelConfig <
+		typename SortingConfig::Upsweep,
+		PreprocessTraits,
+		CURRENT_PASS,
+		CURRENT_BIT> KernelConfig;
+
+	// Shared memory pool
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
 	// Invoke the wrapped kernel logic
-	LsbUpsweep<KernelConfig>(d_selectors, d_spine, d_in_keys, d_out_keys, work_decomposition);
+	radix_sort::distribution::upsweep::UpsweepPass<KernelConfig>(
+		d_selectors,
+		d_spine,
+		d_in_keys,
+		d_out_keys,
+		work_decomposition,
+		smem_storage);
 }
 
-// SpineScan
+// Spine
 template <typename KeyType, typename ValueType, typename SizeT, int GRANULARITY_ENUM>
-void TunedSpineScanKernel(
+void TunedSpineKernel(
 	SizeT 		*d_spine,
-	int				spine_elements)
+	int			spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	using namespace spine_scan;
 	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT> SortingConfig;
-	typedef SpineScanKernelConfig<typename SortingConfig::SpineScan> KernelConfig;
+
+	typedef typename SortingConfig::Spine KernelConfig;
+
+	// Shared storage for the kernel
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
 	// Invoke the wrapped kernel logic
-	LsbSpineScan<KernelConfig>(d_spine, spine_elements);
+	scan::SpinePass<KernelConfig>(d_spine, d_spine, spine_elements, smem_storage);
 }
 
 // Downsweep
@@ -448,15 +479,31 @@ void TunedDownsweepKernel(
 	ConvertedKeyType 			*d_keys1,
 	ValueType 					*d_values0,
 	ValueType					*d_values1,
-	CtaWorkDistribution<SizeT>	work_decomposition)
+	util::CtaWorkDistribution<SizeT>	work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	using namespace downsweep;
 	typedef TunedGranularity<(TunedGranularityEnum) GRANULARITY_ENUM, __B40C_CUDA_ARCH__, KeyType, ValueType, SizeT> SortingConfig;
-	typedef DownsweepKernelConfig<typename SortingConfig::Downsweep, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT> KernelConfig;
+
+	typedef radix_sort::distribution::downsweep::KernelConfig<
+		typename SortingConfig::Downsweep,
+		PreprocessTraits,
+		PostprocessTraits,
+		CURRENT_PASS,
+		CURRENT_BIT> KernelConfig;
+
+	// Shared memory pool
+	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
 	// Invoke the wrapped kernel logic
-	LsbDownsweep<KernelConfig>(d_selectors, d_spine, d_keys0, d_keys1, d_values0, d_values1, work_decomposition);
+	radix_sort::distribution::downsweep::DownsweepPass<KernelConfig>(
+		d_selectors,
+		d_spine,
+		d_keys0,
+		d_keys1,
+		d_values0,
+		d_values1,
+		work_decomposition,
+		smem_storage);
 }
 
 
