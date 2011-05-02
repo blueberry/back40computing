@@ -61,7 +61,7 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct UpsweepKernelConfig : _ProblemType
+struct KernelConfig : _ProblemType
 {
 	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::T T;

@@ -32,16 +32,11 @@ namespace util {
 
 
 /**
- * Empty default transform function (leaves non-in_bounds values as they were)
+ * Empty default transform function
  */
 template <typename T>
-__device__ __forceinline__ void NopLdTransform(T &val, bool in_range) {}
+__device__ __forceinline__ void NopTransform(T &val) {}
 
-/**
- * Empty default transform function (leaves non-in_bounds values as they were)
- */
-template <typename T>
-__device__ __forceinline__ void NopStTransform(T &val) {}
 
 /**
  * Addition binary associative operator

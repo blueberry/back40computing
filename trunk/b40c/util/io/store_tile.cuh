@@ -36,89 +36,6 @@ namespace b40c {
 namespace util {
 namespace io {
 
-
-/**
- * Store a tile of items
- */
-template <
-	int LOG_STORES_PER_TILE, 
-	int LOG_STORE_VEC_SIZE,
-	int ACTIVE_THREADS,
-	st::CacheModifier CACHE_MODIFIER,
-	bool UNGUARDED_IO> 
-		struct StoreTile;
-
-/**
- * Store of a tile of items using unguarded stores 
- */
-template <
-	int LOG_STORES_PER_TILE, 
-	int LOG_STORE_VEC_SIZE,
-	int ACTIVE_THREADS,
-	st::CacheModifier CACHE_MODIFIER>
-struct StoreTile <
-	LOG_STORES_PER_TILE,
-	LOG_STORE_VEC_SIZE,
-	ACTIVE_THREADS,
-	CACHE_MODIFIER,
-	true>
-{
-	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
-	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
-	
-	// Iterate over stores
-	template <int STORE, int __dummy = 0>
-	struct Iterate 
-	{
-		template <typename VectorType>
-		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[], 
-			VectorType *d_in_vectors) 
-		{
-			ModifiedStore<CACHE_MODIFIER>::St(
-				vectors[STORE], d_in_vectors + threadIdx.x);
-			
-			Iterate<STORE + 1>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
-		}
-	};
-
-	// Terminate
-	template <int __dummy>
-	struct Iterate<STORES_PER_TILE, __dummy> 
-	{
-		template <typename VectorType>
-		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[], VectorType *d_in_vectors) {} 
-	};
-	
-	// Interface
-	template <typename T, typename SizeT>
-	static __device__ __forceinline__ void Invoke(
-		T data[][STORE_VEC_SIZE],
-		T *d_out,
-		const SizeT &guarded_elements)
-	{
-		// Aliased vector type
-		typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;
-
-		// Use an aliased pointer to keys array to perform built-in vector stores
-		VectorType *vectors = (VectorType *) data;
-		VectorType *d_in_vectors = (VectorType *) d_out;
-		
-		Iterate<0>::Invoke(vectors, d_in_vectors);
-	}
-
-	// Interface
-	template <typename T>
-	static __device__ __forceinline__ void Invoke(
-		T data[][STORE_VEC_SIZE],
-		T *d_out)
-	{
-		Invoke(data, d_out, 0);
-	}
-};
-	
-
 /**
  * Store of a tile of items using guarded stores 
  */
@@ -127,20 +44,32 @@ template <
 	int LOG_STORE_VEC_SIZE,
 	int ACTIVE_THREADS,
 	st::CacheModifier CACHE_MODIFIER>
-struct StoreTile <
-	LOG_STORES_PER_TILE,
-	LOG_STORE_VEC_SIZE,
-	ACTIVE_THREADS,
-	CACHE_MODIFIER,
-	false>
+struct StoreTile
 {
-	static const int STORES_PER_TILE = 1 << LOG_STORES_PER_TILE;
-	static const int STORE_VEC_SIZE = 1 << LOG_STORE_VEC_SIZE;
+	enum {
+		STORES_PER_TILE 	= 1 << LOG_STORES_PER_TILE,
+		STORE_VEC_SIZE 		= 1 << LOG_STORE_VEC_SIZE,
+		TILE_SIZE 			= STORES_PER_TILE * STORE_VEC_SIZE,
+	};
+
+	//---------------------------------------------------------------------
+	// Iteration Structures
+	//---------------------------------------------------------------------
 
 	// Iterate over vec-elements
 	template <int STORE, int VEC>
 	struct Iterate
 	{
+		// unguarded
+		template <typename VectorType>
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[],
+			VectorType *d_in_vectors)
+		{
+			Iterate<STORE, VEC + 1>::Invoke(vectors, d_in_vectors);
+		}
+
+		// guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
@@ -160,6 +89,19 @@ struct StoreTile <
 	template <int STORE>
 	struct Iterate<STORE, STORE_VEC_SIZE>
 	{
+		// unguarded
+		template <typename VectorType>
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[],
+			VectorType *d_in_vectors)
+		{
+			ModifiedStore<CACHE_MODIFIER>::St(
+				vectors[STORE], d_in_vectors + threadIdx.x);
+
+			Iterate<STORE + 1, 0>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+		}
+
+		// guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
@@ -174,6 +116,12 @@ struct StoreTile <
 	template <int VEC>
 	struct Iterate<STORES_PER_TILE, VEC>
 	{
+		// unguarded
+		template <typename VectorType>
+		static __device__ __forceinline__ void Invoke(
+			VectorType vectors[], VectorType *d_in_vectors) {}
+
+		// guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
 			T data[][STORE_VEC_SIZE],
@@ -181,14 +129,43 @@ struct StoreTile <
 			const SizeT &guarded_elements) {}
 	};
 
+
+	//---------------------------------------------------------------------
 	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Store a full tile
+	 */
+	template <typename T>
+	static __device__ __forceinline__ void Store(
+		T data[][STORE_VEC_SIZE],
+		T *d_out)
+	{
+		// Aliased vector type
+		typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;
+
+		// Use an aliased pointer to keys array to perform built-in vector stores
+		VectorType *vectors = (VectorType *) data;
+		VectorType *d_in_vectors = (VectorType *) d_out;
+
+		Iterate<0, 0>::Invoke(vectors, d_in_vectors);
+	}
+
+	/**
+	 * Store guarded_elements of a tile
+	 */
 	template <typename T, typename SizeT>
-	static __device__ __forceinline__ void Invoke(
+	static __device__ __forceinline__ void Store(
 		T data[][STORE_VEC_SIZE],
 		T *d_out,
 		const SizeT &guarded_elements)
 	{
-		Iterate<0, 0>::template Invoke<T, SizeT>(data, d_out, guarded_elements);
+		if (guarded_elements >= TILE_SIZE) {
+			Store(data, d_out);
+		} else {
+			Iterate<0, 0>::Invoke(data, d_out, guarded_elements);
+		}
 	} 
 };
 

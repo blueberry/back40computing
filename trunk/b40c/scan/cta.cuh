@@ -43,7 +43,7 @@ namespace scan {
  * routines state and routines
  */
 template <typename KernelConfig>
-struct DownsweepCta : KernelConfig
+struct Cta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -77,7 +77,7 @@ struct DownsweepCta : KernelConfig
 	 * Constructor
 	 */
 	template <typename SmemStorage>
-	__device__ __forceinline__ DownsweepCta(
+	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out,
@@ -95,10 +95,9 @@ struct DownsweepCta : KernelConfig
 	/**
 	 * Process a single tile
 	 */
-	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = 0)
+		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
 	{
 		// Tile of scan elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -108,8 +107,8 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(data, d_in + cta_offset, guarded_elements);
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				data, d_in + cta_offset, guarded_elements);
 
 		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
@@ -123,8 +122,8 @@ struct DownsweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(data, d_out + cta_offset, guarded_elements);
+			KernelConfig::WRITE_MODIFIER>::Store(
+				data, d_out + cta_offset, guarded_elements);
 	}
 };
 

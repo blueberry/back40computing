@@ -100,27 +100,21 @@ double TimedReduction(
 	reduction_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		// Call the reduction API routine
 		reduction_enactor.template Enact<T, BinaryOp, PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements, max_ctas);
 
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -129,10 +123,6 @@ double TimedReduction(
 	printf("\nB40C reduction: %d iterations, %lu elements, ", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, throughput * sizeof(T));
-
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
 
     // Copy out data
 	T h_dest[1];

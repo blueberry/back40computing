@@ -42,7 +42,7 @@ namespace reduction {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig>
-struct UpsweepCta : KernelConfig
+struct Cta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -75,7 +75,7 @@ struct UpsweepCta : KernelConfig
 	 * Constructor
 	 */
 	template <typename SmemStorage>
-	__device__ __forceinline__ UpsweepCta(
+	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out) :
@@ -102,8 +102,8 @@ struct UpsweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			true>::Invoke(data, d_in + cta_offset);
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				data, d_in + cta_offset);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::template Invoke<
