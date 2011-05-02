@@ -27,7 +27,7 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/upsweep_cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -48,11 +48,11 @@ struct UpsweepPass
 		util::CtaWorkProgress 										&work_progress,
 		SmemStorage													&smem_storage)
 	{
-		typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+		typedef Cta<KernelConfig> 				Cta;
 		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		UpsweepCta cta(smem_storage, d_in, d_out);
+		Cta cta(smem_storage, d_in, d_out);
 
 		// Determine our threadblock's work range
 		util::CtaWorkLimits<SizeT> work_limits;
@@ -132,11 +132,11 @@ struct UpsweepPass <KernelConfig, true>
 		util::CtaWorkProgress 										&work_progress,
 		SmemStorage													&smem_storage)
 	{
-		typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+		typedef Cta<KernelConfig> 				Cta;
 		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		UpsweepCta cta(smem_storage, d_in, d_out);
+		Cta cta(smem_storage, d_in, d_out);
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {

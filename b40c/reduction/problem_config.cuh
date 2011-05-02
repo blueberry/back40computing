@@ -27,7 +27,7 @@
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/reduction/upsweep_kernel_config.cuh>
+#include <b40c/reduction/kernel_config.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -74,7 +74,7 @@ struct ProblemConfig : _ProblemType
 	typedef _ProblemType ProblemType;
 
 	// Kernel config for the upsweep reduction kernel
-	typedef UpsweepKernelConfig <
+	typedef KernelConfig <
 		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -88,7 +88,7 @@ struct ProblemConfig : _ProblemType
 			Upsweep;
 
 	// Kernel config for the spine reduction kernel
-	typedef UpsweepKernelConfig <
+	typedef KernelConfig <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

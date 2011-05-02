@@ -62,7 +62,7 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct DownsweepKernelConfig : _ProblemType
+struct KernelConfig : _ProblemType
 {
 	typedef _ProblemType				ProblemType;
 	typedef typename ProblemType::T 	T;

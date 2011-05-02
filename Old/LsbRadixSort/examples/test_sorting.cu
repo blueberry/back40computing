@@ -210,7 +210,7 @@ void TestSort(
 		RandomBits<K>(h_keys[i], 0);
 		h_reference_keys[i] = h_keys[i];
 	}
-
+/*
     // Run the timing test
 	if (keys_only) {
 
@@ -228,7 +228,7 @@ void TestSort(
 	    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
 
 	} else {
-
+*/
 		printf("Key-values, %d iterations, %d elements", iterations, num_elements);
 
 		// Allocate device storage
@@ -245,7 +245,7 @@ void TestSort(
 	    if (device_storage.d_keys[1]) cudaFree(device_storage.d_keys[1]);
 	    if (device_storage.d_values[0]) cudaFree(device_storage.d_values[0]);
 	    if (device_storage.d_values[1]) cudaFree(device_storage.d_values[1]);
-	}
+//	}
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();

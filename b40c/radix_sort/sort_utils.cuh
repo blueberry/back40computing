@@ -105,9 +105,11 @@ struct UnsignedIntegerKeyConversion
 
 	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key, bool in_range) 
 	{
+/*
 		if (!in_range) {
 			converted_key = (UnsignedBits) -1;
 		}
+*/
 	}
 
 	__device__ __host__ __forceinline__ static void Postprocess(UnsignedBits &converted_key) {}  
@@ -126,8 +128,8 @@ struct SignedIntegerKeyConversion
 		if (in_range) {
 			const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
 			converted_key ^= HIGH_BIT;
-		} else {
-			converted_key = (UnsignedBits) -1;
+//		} else {
+//			converted_key = (UnsignedBits) -1;
 		}
 	}
 
@@ -152,8 +154,8 @@ struct FloatingPointKeyConversion
 			const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
 			UnsignedBits mask = (converted_key & HIGH_BIT) ? (UnsignedBits) -1 : HIGH_BIT; 
 			converted_key ^= mask;
-		} else {
-			converted_key = (UnsignedBits) -1;
+//		} else {
+//			converted_key = (UnsignedBits) -1;
 		}
 	}
 
