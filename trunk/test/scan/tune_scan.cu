@@ -120,8 +120,6 @@ enum TuningParam {
 
 	PARAM_BEGIN,
 
-		UNIFORM_GRID_SIZE,
-
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -129,17 +127,18 @@ enum TuningParam {
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 		DOWNSWEEP_LOG_LOADS_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
 
 	PARAM_END,
 
 	// Parameters below here are currently not part of the tuning sweep
+	UNIFORM_GRID_SIZE,
 
 	// These can be tuned, but we're currently not compelled to
 	UNIFORM_SMEM_ALLOCATION,
 	OVERSUBSCRIBED_GRID_SIZE,
 	READ_MODIFIER,
 	WRITE_MODIFIER,
-	DOWNSWEEP_LOG_RAKING_THREADS,
 
 	// Derive these from the others above
 	UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -180,8 +179,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
-			MIN = util::ld::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::ld::NONE,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -189,8 +188,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
-			MIN = util::st::NONE,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::st::NONE,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -383,15 +382,16 @@ public:
 	{
 		const int C_READ_MODIFIER =
 //			util::Access<ParamList, READ_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
-			util::ld::NONE;
+			util::io::ld::NONE;
 		const int C_WRITE_MODIFIER =
 //			util::Access<ParamList, WRITE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
-			util::ld::NONE;
+			util::io::ld::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 //			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
 			0;
 		const int C_UNIFORM_GRID_SIZE =
-			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+//			util::Access<ParamList, UNIFORM_GRID_SIZE>::VALUE;
+			0;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
 //			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
 			0;
@@ -413,8 +413,8 @@ public:
 		const int C_DOWNSWEEP_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, DOWNSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_DOWNSWEEP_LOG_RAKING_THREADS =
-//			util::Access<ParamList, DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
-			B40C_LOG_WARP_THREADS(TUNE_ARCH);
+			util::Access<ParamList, DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		
+//			B40C_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_DOWNSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, DOWNSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
 			B40C_SM_CTAS(TUNE_ARCH);
