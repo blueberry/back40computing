@@ -103,6 +103,7 @@ struct Tile
 		static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
 		{
 			cta->Bucket(tile->keys[LOAD][VEC]);
+			Iterate<LOAD, VEC + 1>::Bucket(cta, tile);
 		}
 	};
 

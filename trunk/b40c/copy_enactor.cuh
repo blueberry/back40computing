@@ -29,7 +29,7 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/copy/enactor.cuh>
 #include <b40c/copy/problem_config_tuned.cuh>
-#include <b40c/copy/sweep_kernel.cuh>
+#include <b40c/copy/kernel.cuh>
 
 namespace b40c {
 

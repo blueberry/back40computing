@@ -495,7 +495,7 @@ public:
 	cudaError_t Enact(Storage &problem_storage, int max_grid_size = 0)
 	{
 	    const int RADIX_BITS 			= SortingConfig::Upsweep::RADIX_BITS;
-		const int NUM_PASSES 			= (NUM_BITS - START_BIT + RADIX_BITS - 1) / RADIX_BITS;
+		const int NUM_PASSES 			= (NUM_BITS + RADIX_BITS - 1) / RADIX_BITS;
 		const int SCHEDULE_GRANULARITY 	= 1 << SortingConfig::Upsweep::LOG_SCHEDULE_GRANULARITY;
 		const int SPINE_TILE_ELEMENTS 	= 1 << 
 				(SortingConfig::Spine::LOG_THREADS +

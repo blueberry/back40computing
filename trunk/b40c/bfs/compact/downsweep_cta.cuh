@@ -107,27 +107,12 @@ struct DownsweepCta
 			d_parent_out(d_parent_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
 
-
-	/**
-	 * Converts out-of-bounds valid-flags to 0
-	 */
-	static __device__ __forceinline__ void LoadTransform(
-		ValidFlag &flag,
-		bool in_bounds)
-	{
-		if (!in_bounds) {
-			flag = 0;
-		}
-	}
-
-
 	/**
 	 * Process a single tile
 	 */
-	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = 0)
+		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
 	{
 		VertexId 		vertex_id[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of vertex ids
 		ValidFlag 		flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];		// Tile of valid flags
@@ -138,17 +123,21 @@ struct DownsweepCta
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(vertex_id, d_in + cta_offset, guarded_elements);
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				vertex_id,
+				d_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of valid flags
 		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::template Invoke<ValidFlag, LoadTransform>(
-				flags, d_flags_in + cta_offset, guarded_elements);
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				flags,
+				(ValidFlag) 0,
+				d_flags_in + cta_offset,
+				guarded_elements);
 
 		// Copy flags into ranks
 		util::io::InitializeTile<
@@ -186,8 +175,10 @@ struct DownsweepCta
 				KernelConfig::LOG_LOADS_PER_TILE,
 				KernelConfig::LOG_LOAD_VEC_SIZE,
 				KernelConfig::THREADS,
-				KernelConfig::READ_MODIFIER,
-				FULL_TILE>::Invoke(vertex_id, d_parent_in + cta_offset, guarded_elements);
+				KernelConfig::READ_MODIFIER>::LoadValid(
+					vertex_id,
+					d_parent_in + cta_offset,
+					guarded_elements);
 
 			// Scatter valid vertex_id into smem exchange, predicated on flags (treat
 			// vertex_id, flags, and ranks as linear arrays)

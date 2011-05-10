@@ -78,7 +78,7 @@ struct Tile
 	typedef typename KernelConfig::ValueType 				ValueType;
 	typedef typename KernelConfig::SizeT 					SizeT;
 
-	typedef typename util::If<util::Equals<Derived, util::NullType>::VALUE, Cta, Derived>::Type Dispatch;
+	typedef typename util::If<util::Equals<Derived, util::NullType>::VALUE, Tile, Derived>::Type Dispatch;
 
 	enum {
 		LOAD_VEC_SIZE 				= KernelConfig::LOAD_VEC_SIZE,
@@ -94,6 +94,8 @@ struct Tile
 
 
 	KeyType 	keys[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];					// The keys this thread will read this cycle
+	ValueType 	values[TILE_ELEMENTS_PER_THREAD];
+
 	int 		key_digits[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];			// Their decoded digits
 	int 		key_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];				// The tile rank of each key
 
@@ -139,7 +141,7 @@ struct Tile
 	/**
 	 * DecodeKeys
 	 */
-	template <bool VALIDITY_CULLING, int CYCLE, int LOAD, int VEC, typename Cta>
+	template <int CYCLE, int LOAD, int VEC, typename Cta>
 	__device__ __forceinline__ void DecodeKeys(Cta *cta)
 	{
 		const int PADDED_BYTES_PER_LANE 	= KernelConfig::Grid::ROWS_PER_LANE * KernelConfig::Grid::PADDED_PARTIALS_PER_ROW * 4;
@@ -161,7 +163,7 @@ struct Tile
 		counter_offsets[LOAD][VEC] = LOAD_OFFSET_BYTES + util::FastMul(lane, PADDED_BYTES_PER_LANE) + counter_byte;
 
 		// Overwrite partial
-		unsigned char *base_partial_chars = reinterpret_cast<unsigned char *>(cta->base_partial);
+		unsigned char *base_partial_chars = (unsigned char *) cta->base_partial;
 		base_partial_chars[counter_offsets[LOAD][VEC]] = partial;
 	}
 
@@ -172,7 +174,7 @@ struct Tile
 	template <int CYCLE, int LOAD, int VEC, typename Cta>
 	__device__ __forceinline__ void ExtractRanks(Cta *cta)
 	{
-		unsigned char *base_partial_chars = reinterpret_cast<unsigned char *>(cta->base_partial);
+		unsigned char *base_partial_chars = (unsigned char *) cta->base_partial;
 
 		key_ranks[CYCLE][LOAD][VEC] = base_partial_chars[counter_offsets[LOAD][VEC]] +
 			SameDigitCount::template Iterate<CYCLE, LOAD, VEC>::Invoke(
@@ -243,11 +245,11 @@ struct Tile
 	struct IterateCycleElements
 	{
 		// DecodeKeys
-		template <bool VALIDITY_CULLING, typename Cta, typename Tile>
+		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile)
 		{
-			tile->DecodeKeys<VALIDITY_CULLING, CYCLE, LOAD, VEC>(cta);
-			IterateCycleElements<CYCLE, LOAD, VEC + 1>::template DecodeKeys<VALIDITY_CULLING>(cta, tile);
+			tile->DecodeKeys<CYCLE, LOAD, VEC>(cta);
+			IterateCycleElements<CYCLE, LOAD, VEC + 1>::DecodeKeys(cta, tile);
 		}
 
 		// ExtractRanks
@@ -275,10 +277,10 @@ struct Tile
 	struct IterateCycleElements<CYCLE, LOAD, LOAD_VEC_SIZE, dummy>
 	{
 		// DecodeKeys
-		template <bool VALIDITY_CULLING, typename Cta, typename Tile>
+		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile)
 		{
-			IterateCycleElements<CYCLE, LOAD + 1, 0>::template DecodeKeys<VALIDITY_CULLING>(cta, tile);
+			IterateCycleElements<CYCLE, LOAD + 1, 0>::DecodeKeys(cta, tile);
 		}
 
 		// ExtractRanks
@@ -303,7 +305,7 @@ struct Tile
 	struct IterateCycleElements<CYCLE, LOADS_PER_CYCLE, 0, dummy>
 	{
 		// DecodeKeys
-		template <bool VALIDITY_CULLING, typename Cta, typename Tile>
+		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile) {}
 
 		// ExtractRanks
@@ -324,7 +326,7 @@ struct Tile
 	/**
 	 * Scan Cycle
 	 */
-	template <bool VALIDITY_CULLING, int CYCLE, typename Cta>
+	template <int CYCLE, typename Cta>
 	__device__ __forceinline__ void ScanCycle(Cta *cta)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
@@ -333,7 +335,7 @@ struct Tile
 		IterateCycleLanes<0>::ResetLanes(cta, dispatch);
 
 		// Decode digits and update 8-bit composite counters for the keys in this cycle
-		IterateCycleElements<CYCLE, 0, 0>::template DecodeKeys<VALIDITY_CULLING>(cta, dispatch);
+		IterateCycleElements<CYCLE, 0, 0>::DecodeKeys(cta, dispatch);
 
 		__syncthreads();
 
@@ -378,8 +380,8 @@ struct Tile
 	__device__ __forceinline__ void RecoverDigitCounts(
 		int my_base_lane, int my_quad_byte, Cta *cta)
 	{
-		unsigned char *composite_counter = reinterpret_cast<unsigned char *>(
-			&cta->smem_storage.lane_totals[CYCLE][my_base_lane + (KernelConfig::SCAN_LANES_PER_LOAD * LOAD)]);
+		unsigned char *composite_counter = (unsigned char *)
+			&cta->smem_storage.lane_totals[CYCLE][my_base_lane + (KernelConfig::SCAN_LANES_PER_LOAD * LOAD)];
 
 		digit_counts[CYCLE][LOAD] = composite_counter[my_quad_byte];
 
@@ -410,7 +412,7 @@ struct Tile
 	template <int ELEMENT, typename Cta>
 	__device__ __forceinline__ void ComputeScatterOffsets(Cta *cta)
 	{
-		KeyType *linear_keys = reinterpret_cast<KeyType *>(keys);
+		KeyType *linear_keys = (KeyType *) keys;
 		int digit = cta->DecodeDigit(linear_keys[ELEMENT]);
 		scatter_offsets[ELEMENT] = cta->smem_storage.digit_carry[digit] + (KernelConfig::THREADS * ELEMENT) + threadIdx.x;
 	}
@@ -435,11 +437,11 @@ struct Tile
 		}
 
 		// ScanCycles
-		template <bool VALIDITY_CULLING, typename Cta, typename Tile>
+		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile)
 		{
-			tile->ScanCycle<VALIDITY_CULLING, CYCLE>(cta);
-			IterateCycles<CYCLE + 1>::template ScanCycles<VALIDITY_CULLING>(cta, tile);
+			tile->ScanCycle<CYCLE>(cta);
+			IterateCycles<CYCLE + 1>::ScanCycles(cta, tile);
 		}
 	};
 
@@ -454,7 +456,7 @@ struct Tile
 		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile) {}
 
 		// ScanCycles
-		template <bool VALIDITY_CULLING, typename Cta, typename Tile>
+		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile) {}
 	};
 
@@ -565,32 +567,15 @@ struct Tile
 	//---------------------------------------------------------------------
 
 	/**
-	 * Process tile
+	 * Sort keys
 	 */
-	template <bool FULL_TILE, typename Cta>
-	__device__ __forceinline__ void Process(
-		Cta *cta,
-		SizeT cta_offset,
-		const SizeT &guarded_elements)
+	template <typename Cta>
+	__device__ __forceinline__ void SortKeys(Cta *cta)
 	{
-		const bool VALIDITY_CULLING = FULL_TILE;
-
 		Dispatch *dispatch = (Dispatch*) this;
 
-		// Read tile of keys
-		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
-			KernelConfig::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
-			KernelConfig::THREADS,							// Active threads that will be loading
-			KernelConfig::READ_MODIFIER,					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-			FULL_TILE>										// Assignment function to transform the loaded value (or provide default if out-of-bounds)
-				::template Invoke<KeyType, KernelConfig::PreprocessTraits::Preprocess>(
-					reinterpret_cast<KeyType (*)[KernelConfig::LOAD_VEC_SIZE]>(keys),
-					cta->d_in_keys + cta_offset,
-					guarded_elements);
-
 		// Scan cycles
-		IterateCycles<0>::template ScanCycles<VALIDITY_CULLING>(cta, dispatch);
+		IterateCycles<0>::ScanCycles(cta, dispatch);
 
 		// Scan across digits
 		if (threadIdx.x < KernelConfig::RADIX_DIGITS) {
@@ -630,17 +615,14 @@ struct Tile
 		// Update the key ranks in each load with the digit prefixes for the tile
 		IterateCycles<0>::UpdateRanks(cta, dispatch);
 
-		KeyType *linear_keys = reinterpret_cast<KeyType *>(keys);
-
 		// Scatter keys to smem
 		util::io::ScatterTile<
 			KernelConfig::TILE_ELEMENTS_PER_THREAD,
 			KernelConfig::THREADS,
-			util::io::st::NONE>::template Scatter<true>(
+			util::io::st::NONE>::Scatter(
 				cta->smem_storage.smem_pool.key_exchange,
-				linear_keys,
-				reinterpret_cast<int *>(key_ranks),
-				guarded_elements);
+				(KeyType *) keys,
+				(int *) key_ranks);
 
 		__syncthreads();
 
@@ -649,68 +631,92 @@ struct Tile
 			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
 			0,
 			KernelConfig::THREADS,
-			util::io::ld::NONE,
-			true>::Invoke(
-				reinterpret_cast<KeyType (*)[1]>(keys),
-				cta->smem_storage.smem_pool.key_exchange,
-				guarded_elements);
+			util::io::ld::NONE>::LoadValid(
+				(KeyType (*)[1]) keys,
+				cta->smem_storage.smem_pool.key_exchange);
+	}
+
+
+	/**
+	 * Sort values
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void SortValues(Cta *cta)
+	{
+		// Scatter values to smem
+		util::io::ScatterTile<
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
+			util::io::st::NONE>::Scatter(
+				cta->smem_storage.smem_pool.value_exchange,
+				values,
+				(int *) key_ranks);
+
+		__syncthreads();
+
+		// Gather values from smem (vec-1)
+		util::io::LoadTile<
+			KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
+			0,
+			KernelConfig::THREADS,
+			util::io::ld::NONE>::LoadValid(
+				(ValueType (*)[1]) values,
+				cta->smem_storage.smem_pool.value_exchange);
+	}
+
+
+	/**
+	 * Process full tile
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void Process(
+		Cta *cta,
+		SizeT cta_offset)
+	{
+		Dispatch *dispatch = (Dispatch*) this;
+
+		// Read tile of keys, use -1 if key is out-of-bounds
+		util::io::LoadTile<
+			KernelConfig::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
+			KernelConfig::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
+			KernelConfig::THREADS,							// Active threads that will be loading
+			KernelConfig::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+				::template LoadValid<KeyType, KernelConfig::PreprocessTraits::Preprocess>(
+					(KeyType (*)[KernelConfig::LOAD_VEC_SIZE]) keys,
+					cta->d_in_keys + cta_offset);
+
+		// Sort keys
+		SortKeys(cta);
 
 		__syncthreads();
 
 		// Compute global scatter offsets for gathered keys
 		IterateElements<0>::ComputeScatterOffsets(cta, dispatch);
 
+		// Scatter keys to global digit partitions
 		util::io::ScatterTile<
 			KernelConfig::TILE_ELEMENTS_PER_THREAD,
 			KernelConfig::THREADS,
 			KernelConfig::WRITE_MODIFIER>::template Scatter<
-				FULL_TILE,
 				KeyType,
 				KernelConfig::PostprocessTraits::Postprocess>(
 					cta->d_out_keys,
-					linear_keys,
-					scatter_offsets,
-					guarded_elements);
+					(KeyType *) keys,
+					scatter_offsets);
 
 		if (!util::Equals<ValueType, util::NullType>::VALUE) {
 
 			// Read values
-			ValueType values[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-			ValueType *linear_values = reinterpret_cast<ValueType *>(values);
-
 			util::io::LoadTile<
 				KernelConfig::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
 				KernelConfig::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
 				KernelConfig::THREADS,							// Active threads that will be loading
-				KernelConfig::READ_MODIFIER,					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-				FULL_TILE>										// Whether or not bounds-checking is to be done
-					::Invoke(
-						values,
-						cta->d_in_values + cta_offset,
-						guarded_elements);
+				KernelConfig::READ_MODIFIER>::LoadValid(		// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+					(ValueType (*)[KernelConfig::LOAD_VEC_SIZE]) values,
+					cta->d_in_values + cta_offset);
 
-			// Scatter values to smem
-			util::io::ScatterTile<
-				KernelConfig::TILE_ELEMENTS_PER_THREAD,
-				KernelConfig::THREADS,
-				util::io::st::NONE>::template Scatter<true>(
-					(ValueType*) cta->smem_storage.smem_pool.key_exchange,
-					linear_values,
-					reinterpret_cast<int *>(key_ranks),
-					guarded_elements);
-
-			__syncthreads();
-
-			// Gather values from smem (vec-1)
-			util::io::LoadTile<
-				KernelConfig::LOG_TILE_ELEMENTS_PER_THREAD,
-				0,
-				KernelConfig::THREADS,
-				util::io::ld::NONE,
-				true>::Invoke(
-					reinterpret_cast<ValueType (*)[1]>(values),
-					cta->smem_storage.smem_pool.value_exchange,
-					guarded_elements);
+			// Sort values
+			SortValues(cta);
 
 			__syncthreads();
 
@@ -718,12 +724,86 @@ struct Tile
 			util::io::ScatterTile<
 				KernelConfig::TILE_ELEMENTS_PER_THREAD,
 				KernelConfig::THREADS,
-				KernelConfig::WRITE_MODIFIER>::template Scatter<FULL_TILE>(
+				KernelConfig::WRITE_MODIFIER>::Scatter(
 					cta->d_out_values,
-					linear_values,
+					values,
+					scatter_offsets);
+		}
+
+	}
+
+
+
+	/**
+	 * Process partial tile
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void Process(
+		Cta *cta,
+		SizeT cta_offset,
+		const SizeT &guarded_elements)
+	{
+		Dispatch *dispatch = (Dispatch*) this;
+
+		// Read tile of keys, use -1 if key is out-of-bounds
+		util::io::LoadTile<
+			KernelConfig::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
+			KernelConfig::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
+			KernelConfig::THREADS,							// Active threads that will be loading
+			KernelConfig::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+				::template LoadValid<KeyType, KernelConfig::PreprocessTraits::Preprocess>(
+					(KeyType (*)[KernelConfig::LOAD_VEC_SIZE]) keys,
+					(KeyType) -1,
+					cta->d_in_keys + cta_offset,
+					guarded_elements);
+
+		// Sort keys
+		SortKeys(cta);
+
+		__syncthreads();
+
+		// Compute global scatter offsets for gathered keys
+		IterateElements<0>::ComputeScatterOffsets(cta, dispatch);
+
+		// Scatter keys to global digit partitions
+		util::io::ScatterTile<
+			KernelConfig::TILE_ELEMENTS_PER_THREAD,
+			KernelConfig::THREADS,
+			KernelConfig::WRITE_MODIFIER>::template Scatter<
+				KeyType,
+				KernelConfig::PostprocessTraits::Postprocess>(
+					cta->d_out_keys,
+					(KeyType *) keys,
+					scatter_offsets,
+					guarded_elements);
+
+		if (!util::Equals<ValueType, util::NullType>::VALUE) {
+
+			// Read values
+			util::io::LoadTile<
+				KernelConfig::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
+				KernelConfig::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
+				KernelConfig::THREADS,							// Active threads that will be loading
+				KernelConfig::READ_MODIFIER>::LoadValid(		// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
+					(ValueType (*)[KernelConfig::LOAD_VEC_SIZE]) values,
+					cta->d_in_values + cta_offset);
+
+			// Sort values
+			SortValues(cta);
+
+			__syncthreads();
+
+			// Scatter values to global digit partitions
+			util::io::ScatterTile<
+				KernelConfig::TILE_ELEMENTS_PER_THREAD,
+				KernelConfig::THREADS,
+				KernelConfig::WRITE_MODIFIER>::Scatter(
+					cta->d_out_values,
+					values,
 					scatter_offsets,
 					guarded_elements);
 		}
+
 	}
 };
 

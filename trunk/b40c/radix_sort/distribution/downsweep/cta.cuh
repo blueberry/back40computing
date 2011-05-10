@@ -140,6 +140,7 @@ struct Cta
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
 				my_digit_carry,
 				d_spine + spine_digit_offset);
+
 			smem_storage.digit_carry[threadIdx.x] = my_digit_carry;
 		}
 	}
@@ -165,17 +166,17 @@ struct Cta
 		SizeT cta_offset = smem_storage.work_limits.offset;
 
 		Tile<KernelConfig> tile;
+
 		while (cta_offset < smem_storage.work_limits.guarded_offset) {
-			tile.Process<true>(
+			tile.Process(
 				this,
-				cta_offset,
-				0);
+				cta_offset);
 
 			cta_offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		if (smem_storage.work_limits.guarded_elements) {
-			tile.Process<false>(
+			tile.Process(
 				this,
 				cta_offset,
 				smem_storage.work_limits.guarded_elements);

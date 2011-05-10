@@ -87,13 +87,13 @@ struct SweepPass
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
 
-			cta.template ProcessTile<true>(work_limits.offset);
+			cta.ProcessTile(work_limits.offset);
 			work_limits.offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-i/o
 		if (work_limits.guarded_elements) {
-			cta.template ProcessTile<false>(
+			cta.ProcessTile(
 				work_limits.offset,
 				work_limits.guarded_elements);
 		}
@@ -165,13 +165,13 @@ struct SweepPass <KernelConfig, true>
 		// Worksteal full tiles, if any
 		SizeT offset;
 		while ((offset = StealWork<SizeT>(work_progress, KernelConfig::TILE_ELEMENTS, iteration)) < unguarded_elements) {
-			cta.template ProcessTile<true>(offset);
+			cta.ProcessTile(offset);
 		}
 
 		// Last CTA does any extra, guarded work (first tile seen)
 		if (blockIdx.x == gridDim.x - 1) {
 			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
-			cta.template ProcessTile<false>(unguarded_elements, guarded_elements);
+			cta.ProcessTile(unguarded_elements, guarded_elements);
 		}
 	}
 };

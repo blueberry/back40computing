@@ -28,7 +28,7 @@
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/copy/sweep_cta.cuh>
+#include <b40c/copy/cta.cuh>
 
 namespace b40c {
 namespace copy {
@@ -46,12 +46,12 @@ struct SweepPass
 		util::CtaWorkProgress 										&work_progress,
 		int 														&extra_bytes)
 	{
-		typedef SweepCta<KernelConfig> 			SweepCta;
+		typedef Cta<KernelConfig> 				Cta;
 		typedef typename KernelConfig::T 		T;
 		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		SweepCta cta(d_in, d_out);
+		Cta cta(d_in, d_out);
 
 		// Determine our threadblock's work range
 		util::CtaWorkLimits<SizeT> work_limits;
@@ -62,13 +62,13 @@ struct SweepPass
 		// Process full tiles of tile_elements
 		while (work_limits.offset < work_limits.guarded_offset) {
 
-			cta.ProcessTile<true>(work_limits.offset);
+			cta.ProcessTile(work_limits.offset);
 			work_limits.offset += KernelConfig::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
-			cta.ProcessTile<false>(
+			cta.ProcessTile(
 				work_limits.offset,
 				work_limits.guarded_elements);
 		}
@@ -103,12 +103,12 @@ struct SweepPass <KernelConfig, true>
 		util::CtaWorkProgress 										&work_progress,
 		int 														&extra_bytes)
 	{
-		typedef SweepCta<KernelConfig> SweepCta;
-		typedef typename KernelConfig::T T;
-		typedef typename KernelConfig::SizeT SizeT;
+		typedef Cta<KernelConfig> 				Cta;
+		typedef typename KernelConfig::T 		T;
+		typedef typename KernelConfig::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		SweepCta cta(d_in, d_out);
+		Cta cta(d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
 		__shared__ SizeT offset;
@@ -134,14 +134,14 @@ struct SweepPass <KernelConfig, true>
 				break;
 			}
 
-			cta.ProcessTile<true>(offset);
+			cta.ProcessTile(offset);
 		}
 
 		// Last CTA does any extra, guarded work
 		if (blockIdx.x == gridDim.x - 1) {
 
 			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
-			cta.ProcessTile<false>(unguarded_elements, guarded_elements);
+			cta.ProcessTile(unguarded_elements, guarded_elements);
 
 			// Cleanup any extra bytes
 			if ((sizeof(typename KernelConfig::T) > 1) && (threadIdx.x < extra_bytes)) {

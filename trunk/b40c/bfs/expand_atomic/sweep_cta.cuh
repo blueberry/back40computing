@@ -110,8 +110,7 @@ struct SweepCta
 	 */
 	template <
 		int LOG_LOADS_PER_TILE,
-		int LOG_LOAD_VEC_SIZE,
-		bool FULL_TILE>
+		int LOG_LOAD_VEC_SIZE>
 	struct Tile
 	{
 		//---------------------------------------------------------------------
@@ -170,7 +169,7 @@ struct SweepCta
 			 */
 			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
 			{
-				if (FULL_TILE || (tile->vertex_id[LOAD][VEC] != -1)) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					// Load source path of node
 					VertexId source_path;
@@ -552,39 +551,24 @@ struct SweepCta
 
 
 	/**
-	 * Converts out-of-bounds vertex-ids to -1
-	 */
-	static __device__ __forceinline__ void LoadTransform(
-		VertexId &vertex_id,
-		bool in_bounds)
-	{
-		if (!in_bounds) {
-			vertex_id = -1;
-		}
-	}
-
-
-	/**
 	 * Process a single tile
 	 */
-	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = 0)
+		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
 	{
 		Tile<
 			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			FULL_TILE> tile;
+			KernelConfig::LOG_LOAD_VEC_SIZE> tile;
 
 		// Load tile
 		util::io::LoadTile<
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::QUEUE_READ_MODIFIER,
-			FULL_TILE>::template Invoke<VertexId, LoadTransform>(
+			KernelConfig::QUEUE_READ_MODIFIER>::LoadValid(
 				tile.vertex_id,
+				(VertexId) -1,
 				d_in + cta_offset,
 				guarded_elements);
 
@@ -595,8 +579,7 @@ struct SweepCta
 				KernelConfig::LOG_LOADS_PER_TILE,
 				KernelConfig::LOG_LOAD_VEC_SIZE,
 				KernelConfig::THREADS,
-				KernelConfig::QUEUE_READ_MODIFIER,
-				FULL_TILE>::Invoke(
+				KernelConfig::QUEUE_READ_MODIFIER>::LoadValid(
 					tile.parent_id,
 					d_parent_in + cta_offset,
 					guarded_elements);

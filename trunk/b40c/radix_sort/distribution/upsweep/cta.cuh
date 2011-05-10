@@ -161,7 +161,7 @@ struct Cta
 	__device__ __forceinline__ void Bucket(KeyType key) 
 	{
 		// Pre-process key with bit-twiddling functor if necessary
-		KernelConfig::PreprocessTraits::Preprocess(key, true);
+		KernelConfig::PreprocessTraits::Preprocess(key);
 
 		// Extract lane containing corresponding composite counter
 		int lane;
@@ -214,8 +214,8 @@ struct Cta
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			true>::Invoke(tile.keys, d_in_keys + cta_offset);
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				tile.keys, d_in_keys + cta_offset);
 
 		if (KernelConfig::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads
 

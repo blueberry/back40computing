@@ -27,7 +27,7 @@
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/copy/sweep_kernel_config.cuh>
+#include <b40c/copy/kernel_config.cuh>
 
 namespace b40c {
 namespace copy {
