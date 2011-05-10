@@ -49,7 +49,7 @@ struct StoreTile
 	enum {
 		STORES_PER_TILE 	= 1 << LOG_STORES_PER_TILE,
 		STORE_VEC_SIZE 		= 1 << LOG_STORE_VEC_SIZE,
-		TILE_SIZE 			= STORES_PER_TILE * STORE_VEC_SIZE,
+		TILE_SIZE 			= ACTIVE_THREADS * STORES_PER_TILE * STORE_VEC_SIZE,
 	};
 
 	//---------------------------------------------------------------------

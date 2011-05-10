@@ -699,7 +699,7 @@ void RunTests(
 	if (reference_source_dist) free(reference_source_dist);
 	if (h_source_path) free(h_source_path);
 	
-	cudaDeviceSynchronize();
+	cudaThreadSynchronize();
 }
 
 

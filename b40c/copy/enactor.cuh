@@ -28,7 +28,7 @@
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/copy/sweep_kernel.cuh>
+#include <b40c/copy/kernel.cuh>
 
 namespace b40c {
 namespace copy {

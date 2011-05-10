@@ -50,7 +50,7 @@ struct LoadTile
 	enum {
 		LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
 		LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE,
-		TILE_SIZE 			= LOADS_PER_TILE * LOAD_VEC_SIZE,
+		TILE_SIZE 			= ACTIVE_THREADS * LOADS_PER_TILE * LOAD_VEC_SIZE,
 	};
 	
 	//---------------------------------------------------------------------
@@ -66,28 +66,23 @@ struct LoadTile
 	struct Iterate<FIRST_TILE, LOAD, 0, dummy>
 	{
 		// Regular (unguarded)
-		template <typename T, void Transform(T&), typename Flag, typename VectorType>
-		static __device__ __forceinline__ void LoadValid(
+		template <typename T, void Transform(T&), typename VectorType>
+		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
 			ModifiedLoad<CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors);
 			Transform(data[LOAD][0]);		// Apply transform function with in_bounds = true
-			if (flags) {
-				flags[LOAD][0] = 1;
-			}
 
-			Iterate<FIRST_TILE, LOAD, 1>::template LoadValid<T, Transform>(
-				data, flags, vectors, d_in_vectors);
+			Iterate<FIRST_TILE, LOAD, 1>::template LoadVector<T, Transform>(
+				data, vectors, d_in_vectors);
 		}
 
 		// Regular (guarded)
-		template <typename T, void Transform(T&), typename Flag, typename SizeT>
+		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
@@ -96,17 +91,31 @@ struct LoadTile
 			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
 				Transform(data[LOAD][0]);
-				if (flags) {
-					flags[LOAD][0] = 1;
-				}
-			} else {
-				if (flags) {
-					flags[LOAD][0] = 0;
-				}
 			}
 
 			Iterate<FIRST_TILE, LOAD, 1>::template LoadValid<T, Transform>(
-				data, flags, d_in, guarded_elements);
+				data, d_in, guarded_elements);
+		}
+
+		// Regular (guarded with out-of-bounds default)
+		template <typename T, void Transform(T&), typename SizeT>
+		static __device__ __forceinline__ void LoadValid(
+			T data[][LOAD_VEC_SIZE],
+			const T &oob_default,
+			T *d_in,
+			const SizeT &guarded_elements)
+		{
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
+
+			if (thread_offset < guarded_elements) {
+				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
+				Transform(data[LOAD][0]);
+			} else {
+				data[LOAD][0] = oob_default;
+			}
+
+			Iterate<FIRST_TILE, LOAD, 1>::template LoadValid<T, Transform>(
+				data, oob_default, d_in, guarded_elements);
 		}
 
 		// With discontinuity flags (unguarded)
@@ -223,7 +232,8 @@ struct LoadTile
 
 				} else {
 
-					// Get the previous vector element (which is in range b/c this one is in range)
+					// Get the previous vector element (which is in range b/c
+					// this one is in range)
 					T previous;
 					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + thread_offset - 1);
 					flags[0][0] = (previous != data[0][0]);
@@ -246,27 +256,22 @@ struct LoadTile
 	struct Iterate
 	{
 		// Regular (unguarded)
-		template <typename T, void Transform(T&), typename Flag, typename VectorType>
-		static __device__ __forceinline__ void LoadValid(
+		template <typename T, void Transform(T&), typename VectorType>
+		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
-			Transform(data[LOAD][VEC]);	// Apply transform function with in_bounds = true
-			if (flags) {
-				flags[LOAD][VEC] = 1;
-			}
+			Transform(data[LOAD][VEC]);
 
-			Iterate<FIRST_TILE, LOAD, VEC + 1>::template LoadValid<T, Transform>(
-				data, flags, vectors, d_in_vectors);
+			Iterate<FIRST_TILE, LOAD, VEC + 1>::template LoadVector<T, Transform>(
+				data, vectors, d_in_vectors);
 		}
 
 		// Regular (guarded)
-		template <typename T, void Transform(T&), typename Flag, typename SizeT>
+		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
@@ -275,17 +280,31 @@ struct LoadTile
 			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
 				Transform(data[LOAD][VEC]);
-				if (flags) {
-					flags[LOAD][0] = 1;
-				}
-			} else {
-				if (flags) {
-					flags[LOAD][0] = 0;
-				}
 			}
 
 			Iterate<FIRST_TILE, LOAD, VEC + 1>::template LoadValid<T, Transform>(
-				data, flags, d_in, guarded_elements);
+				data, d_in, guarded_elements);
+		}
+
+		// Regular (guarded with out-of-bounds default)
+		template <typename T, void Transform(T&), typename SizeT>
+		static __device__ __forceinline__ void LoadValid(
+			T data[][LOAD_VEC_SIZE],
+			const T &oob_default,
+			T *d_in,
+			const SizeT &guarded_elements)
+		{
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
+
+			if (thread_offset < guarded_elements) {
+				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
+				Transform(data[LOAD][VEC]);
+			} else {
+				data[LOAD][VEC] = oob_default;
+			}
+
+			Iterate<FIRST_TILE, LOAD, VEC + 1>::template LoadValid<T, Transform>(
+				data, oob_default, d_in, guarded_elements);
 		}
 
 		// With discontinuity flags
@@ -339,27 +358,37 @@ struct LoadTile
 	struct Iterate<FIRST_TILE, LOAD, LOAD_VEC_SIZE, dummy>
 	{
 		// Regular (unguarded)
-		template <typename T, void Transform(T&), typename Flag, typename VectorType>
-		static __device__ __forceinline__ void LoadValid(
+		template <typename T, void Transform(T&), typename VectorType>
+		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
-			Iterate<FIRST_TILE, LOAD + 1, 0>::template LoadValid<T, Transform>(
-				data, flags, vectors, d_in_vectors + ACTIVE_THREADS);
+			Iterate<FIRST_TILE, LOAD + 1, 0>::template LoadVector<T, Transform>(
+				data, vectors, d_in_vectors + ACTIVE_THREADS);
 		}
 
 		// Regular (guarded)
-		template <typename T, void Transform(T&), typename Flag, typename SizeT>
+		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
 			Iterate<FIRST_TILE, LOAD + 1, 0>::template LoadValid<T, Transform>(
-				data, flags, d_in, guarded_elements);
+				data, d_in, guarded_elements);
+		}
+
+		// Regular (guarded with out-of-bounds default)
+		template <typename T, void Transform(T&), typename SizeT>
+		static __device__ __forceinline__ void LoadValid(
+			T data[][LOAD_VEC_SIZE],
+			const T &oob_default,
+			T *d_in,
+			const SizeT &guarded_elements)
+		{
+			Iterate<FIRST_TILE, LOAD + 1, 0>::template LoadValid<T, Transform>(
+				data, oob_default, d_in, guarded_elements);
 		}
 
 		// With discontinuity flags (unguarded)
@@ -394,18 +423,24 @@ struct LoadTile
 	struct Iterate<FIRST_TILE, LOADS_PER_TILE, 0, dummy>
 	{
 		// Regular (unguarded)
-		template <typename T, void Transform(T&), typename Flag, typename VectorType>
-		static __device__ __forceinline__ void LoadValid(
+		template <typename T, void Transform(T&), typename VectorType>
+		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors) {}
 
 		// Regular (guarded)
-		template <typename T, void Transform(T&), typename Flag, typename SizeT>
+		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
+			T *d_in,
+			const SizeT &guarded_elements) {}
+
+		// Regular (guarded with out-of-bounds default)
+		template <typename T, void Transform(T&), typename SizeT>
+		static __device__ __forceinline__ void LoadValid(
+			T data[][LOAD_VEC_SIZE],
+			const T &oob_default,
 			T *d_in,
 			const SizeT &guarded_elements) {}
 
@@ -433,15 +468,11 @@ struct LoadTile
 	//---------------------------------------------------------------------
 
 	/**
-	 * Load a full tile with transform and set valid flags
+	 * Load a full tile with transform
 	 */
-	template <
-		typename T,
-		void Transform(T&),
-		typename Flag>
+	template <typename T, void Transform(T&)>
 	static __device__ __forceinline__ void LoadValid(
 		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
 		T *d_in)
 	{
 		// Use an aliased pointer to keys array to perform built-in vector loads
@@ -450,31 +481,8 @@ struct LoadTile
 		VectorType *vectors = (VectorType *) data;
 		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 
-		Iterate<false, 0,0>::template LoadValid<T, Transform>(
-			data, flags, vectors, d_in_vectors);
-	}
-
-	/**
-	 * Load a full tile with transform
-	 */
-	template <typename T, void Transform(T&)>
-	static __device__ __forceinline__ void LoadValid(
-		T data[][LOAD_VEC_SIZE],
-		T *d_in)
-	{
-		LoadValid<T, Transform, int>(data, NULL, d_in);
-	}
-
-	/**
-	 * Load a full tile and set valid flags
-	 */
-	template <typename T, typename Flag>
-	static __device__ __forceinline__ void LoadValid(
-		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
-		T *d_in)
-	{
-		LoadValid<T, NopTransform<T> >(data, flags, d_in);
+		Iterate<false, 0, 0>::template LoadVector<T, Transform>(
+			data, vectors, d_in_vectors);
 	}
 
 	/**
@@ -485,29 +493,27 @@ struct LoadTile
 		T data[][LOAD_VEC_SIZE],
 		T *d_in)
 	{
-		int (*flags)[LOAD_VEC_SIZE] = NULL;
-		LoadValid(data, flags, d_in);
+		LoadValid<T, NopTransform<T> >(data, d_in);
 	}
 
 	/**
-	 * Load guarded_elements of a tile with transform and set valid flags
+	 * Load guarded_elements of a tile with transform and out-of-bounds default
 	 */
 	template <
 		typename T,
 		void Transform(T&),
-		typename Flag,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadValid(
 		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
+		const T &oob_default,
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
 		if (guarded_elements >= TILE_SIZE) {
-			LoadValid<T, Transform>(data, flags, d_in);
+			LoadValid<T, Transform>(data, d_in);
 		} else {
 			Iterate<false, 0, 0>::template LoadValid<T, Transform>(
-				data, flags, d_in, guarded_elements);
+				data, oob_default, d_in, guarded_elements);
 		}
 	}
 
@@ -523,29 +529,25 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		int (*flags)[LOAD_VEC_SIZE] = NULL;
 		if (guarded_elements >= TILE_SIZE) {
-			LoadValid<T, Transform, int>(data, flags, d_in, guarded_elements);
+			LoadValid<T, Transform>(data, d_in);
 		} else {
-			LoadValid<T, Transform, int>(data, flags, d_in);
+			Iterate<false, 0, 0>::template LoadValid<T, Transform>(
+				data, d_in, guarded_elements);
 		}
 	}
 
 	/**
-	 * Load guarded_elements of a tile and set valid flags
+	 * Load guarded_elements of a tile and out_of_bounds default
 	 */
-	template <typename T, typename Flag, typename SizeT>
+	template <typename T, typename SizeT>
 	static __device__ __forceinline__ void LoadValid(
 		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
+		const T &oob_default,
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		if (guarded_elements >= TILE_SIZE) {
-			LoadValid<T, NopTransform<T> >(data, flags, d_in, guarded_elements);
-		} else {
-			LoadValid<T, NopTransform<T> >(data, flags, d_in);
-		}
+		LoadValid<T, NopTransform<T> >(data, oob_default, d_in, guarded_elements);
 	}
 
 	/**
@@ -557,11 +559,7 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		if (guarded_elements >= TILE_SIZE) {
-			LoadValid<T, NopTransform<T>, int>(data, NULL, d_in);
-		} else {
-			LoadValid<T, NopTransform<T>, int>(data, NULL, d_in, guarded_elements);
-		}
+		LoadValid<T, NopTransform<T>, int>(data, d_in, guarded_elements);
 	}
 
 

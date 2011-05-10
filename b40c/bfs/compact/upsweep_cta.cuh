@@ -360,8 +360,7 @@ struct UpsweepCta
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			true>::Invoke(
+			KernelConfig::READ_MODIFIER>::LoadValid(
 				tile.vertex_id,
 				d_in + cta_offset);
 
@@ -376,8 +375,7 @@ struct UpsweepCta
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER,
-			true>::Invoke(
+			KernelConfig::WRITE_MODIFIER>::Store(
 				tile.valid,
 				d_flags_out + cta_offset);
 

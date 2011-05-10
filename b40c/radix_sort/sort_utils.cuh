@@ -91,11 +91,6 @@ struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS>
  * suitable for radix sorting  
  ******************************************************************************/
 
-//-----------------------------------------------------------------------------
-// Key-conversion operations.  If out of range, we assign the coverted key
-// to all 1's (i.e., it will put it at the end)
-//-----------------------------------------------------------------------------
-
 template <typename UnsignedBits> 
 struct UnsignedIntegerKeyConversion 
 {
@@ -103,14 +98,7 @@ struct UnsignedIntegerKeyConversion
 	
 	static const bool MustApply = false;		// We may early-exit this pass
 
-	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key, bool in_range) 
-	{
-/*
-		if (!in_range) {
-			converted_key = (UnsignedBits) -1;
-		}
-*/
-	}
+	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key) {}
 
 	__device__ __host__ __forceinline__ static void Postprocess(UnsignedBits &converted_key) {}  
 };
@@ -123,14 +111,10 @@ struct SignedIntegerKeyConversion
 
 	static const bool MustApply = true;		// We must not early-exit this pass (conversion necessary)
 
-	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key, bool in_range) 
+	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key)
 	{
-		if (in_range) {
-			const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
-			converted_key ^= HIGH_BIT;
-//		} else {
-//			converted_key = (UnsignedBits) -1;
-		}
+		const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+		converted_key ^= HIGH_BIT;
 	}
 
 	__device__ __host__ __forceinline__ static void Postprocess(UnsignedBits &converted_key)  
@@ -148,15 +132,11 @@ struct FloatingPointKeyConversion
 
 	static const bool MustApply = true;		// We must not early-exit this pass (conversion necessary)
 
-	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key, bool in_range) 
+	__device__ __host__ __forceinline__ static void Preprocess(UnsignedBits &converted_key)
 	{
-		if (in_range) {
-			const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
-			UnsignedBits mask = (converted_key & HIGH_BIT) ? (UnsignedBits) -1 : HIGH_BIT; 
-			converted_key ^= mask;
-//		} else {
-//			converted_key = (UnsignedBits) -1;
-		}
+		const UnsignedBits HIGH_BIT = ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+		UnsignedBits mask = (converted_key & HIGH_BIT) ? (UnsignedBits) -1 : HIGH_BIT;
+		converted_key ^= mask;
 	}
 
 	__device__ __host__ __forceinline__ static void Postprocess(UnsignedBits &converted_key) 

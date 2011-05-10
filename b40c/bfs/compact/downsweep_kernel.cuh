@@ -82,13 +82,13 @@ __device__ __forceinline__ void DownsweepPass(
 
 	// Process full tiles
 	while (work_limits.offset < work_limits.guarded_offset) {
-		cta.template ProcessTile<true>(work_limits.offset);
+		cta.ProcessTile(work_limits.offset);
 		work_limits.offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io (not first tile)
 	if (work_limits.guarded_elements) {
-		cta.template ProcessTile<false>(
+		cta.ProcessTile(
 			work_limits.offset,
 			work_limits.guarded_elements);
 	}

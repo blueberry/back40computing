@@ -30,7 +30,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/copy/sweep_kernel.cuh>
+#include <b40c/copy/kernel.cuh>
 #include <b40c/copy/problem_config.cuh>
 
 namespace b40c {

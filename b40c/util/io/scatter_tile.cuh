@@ -62,7 +62,7 @@ struct ScatterTile
 			T *dest,
 			T src[ELEMENTS_PER_THREAD],
 			SizeT scatter_offsets[ELEMENTS_PER_THREAD],
-			SizeT tile_size)
+			const SizeT &tile_size)
 		{
 			if (UNGUARDED_IO || ((ACTIVE_THREADS * LOAD) + threadIdx.x < tile_size)) {
 
@@ -104,7 +104,7 @@ struct ScatterTile
 			T *dest,
 			T src[ELEMENTS_PER_THREAD],
 			SizeT scatter_offsets[ELEMENTS_PER_THREAD],
-			SizeT tile_size) {}
+			const SizeT &tile_size) {}
 
 		// predicated on valid
 		template <typename T, void Transform(T&), typename Flag, typename SizeT>
@@ -120,12 +120,11 @@ struct ScatterTile
 	//---------------------------------------------------------------------
 
 	/**
-	 * Scatter to destination with transform.  If bounds-checking (!UNGUARDED_IO), the write is
+	 * Scatter to destination with transform.  The write is
 	 * predicated on the tile element's index in the CTA's tile not
 	 * exceeding tile_size
 	 */
 	template <
-		bool UNGUARDED_IO,
 		typename T,
 		void Transform(T&), 							// Assignment function to transform the stored value
 		typename SizeT>
@@ -133,28 +132,31 @@ struct ScatterTile
 		T *dest,
 		T src[ELEMENTS_PER_THREAD],
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD],
-		SizeT tile_size = 0)
+		const SizeT &tile_size = ELEMENTS_PER_THREAD * ACTIVE_THREADS)
 	{
-		Iterate<0, ELEMENTS_PER_THREAD>::template Invoke<UNGUARDED_IO, T, Transform, SizeT>(
-			dest, src, scatter_offsets, tile_size);
+		if (tile_size < ELEMENTS_PER_THREAD * ACTIVE_THREADS) {
+			// guarded IO
+			Iterate<0, ELEMENTS_PER_THREAD>::template Invoke<false, T, Transform, SizeT>(
+				dest, src, scatter_offsets, tile_size);
+		} else {
+			// unguarded IO
+			Iterate<0, ELEMENTS_PER_THREAD>::template Invoke<true, T, Transform, SizeT>(
+				dest, src, scatter_offsets, tile_size);
+		}
 	}
 
 	/**
-	 * Scatter to destination.  If bounds-checking (!UNGUARDED_IO), the write is
-	 * predicated on the tile element's index in the CTA's tile not
-	 * exceeding tile_size
+	 * Scatter to destination.  The write is predicated on the tile element's
+	 * index in the CTA's tile not exceeding tile_size
 	 */
-	template <
-		bool UNGUARDED_IO,
-		typename T,
-		typename SizeT>
+	template <typename T, typename SizeT>
 	static __device__ __forceinline__ void Scatter(
 		T *dest,
 		T src[ELEMENTS_PER_THREAD],
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD],
-		SizeT tile_size = 0)
+		const SizeT &tile_size = ELEMENTS_PER_THREAD * ACTIVE_THREADS)
 	{
-		Scatter<UNGUARDED_IO, T, NopStTransform<T>, SizeT>(
+		Scatter<T, NopTransform<T> >(
 			dest, src, scatter_offsets, tile_size);
 	}
 
@@ -186,7 +188,7 @@ struct ScatterTile
 		Flag valid_flags[ELEMENTS_PER_THREAD],
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD])
 	{
-		Scatter<T, NopStTransform<T>, Flag, SizeT>(
+		Scatter<T, NopTransform<T>, Flag, SizeT>(
 			dest, src, valid_flags, scatter_offsets);
 	}
 

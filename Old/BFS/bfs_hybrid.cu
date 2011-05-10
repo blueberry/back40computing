@@ -316,7 +316,7 @@ public:
 					(VertexId *) d_iteration);
 
 				// Synchronize to make sure we have a coherent iteration;
-				cudaDeviceSynchronize();
+				cudaThreadSynchronize();
 
 				if ((iteration[0] - phase_iteration) & 1) {
 					// An odd number of iterations passed: update selector

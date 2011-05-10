@@ -33,7 +33,7 @@
 #include <b40c/bfs/compact/downsweep_kernel_config.cuh>
 #include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
 
-#include <b40c/scan/downsweep_kernel_config.cuh>
+#include <b40c/scan/kernel_config.cuh>
 #include <b40c/scan/problem_type.cuh>
 
 
@@ -145,7 +145,7 @@ struct ProblemConfig : _ProblemType
 		util::DefaultSumIdentity<SizeT> > CompactSpineProblem;
 
 	// Kernel config for the BFS compaction spine kernel
-	typedef scan::DownsweepKernelConfig <
+	typedef scan::KernelConfig <
 		CompactSpineProblem,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

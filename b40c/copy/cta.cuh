@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SweepCta tile-processing functionality for copy kernels
+ * Cta tile-processing functionality for copy kernels
  ******************************************************************************/
 
 #pragma once
@@ -41,7 +41,7 @@ namespace copy {
  * routines
  */
 template <typename KernelConfig>
-struct SweepCta : KernelConfig
+struct Cta : KernelConfig
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -65,7 +65,7 @@ struct SweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ SweepCta(T *d_in, T *d_out) :
+	__device__ __forceinline__ Cta(T *d_in, T *d_out) :
 		d_in(d_in), d_out(d_out) {}
 
 
@@ -74,10 +74,9 @@ struct SweepCta : KernelConfig
 	 *
 	 * Each thread copys only the strided values it loads.
 	 */
-	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = 0)
+		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
 	{
 		// Tile of elements
 		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
@@ -87,8 +86,7 @@ struct SweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(data, d_in + cta_offset, guarded_elements);
+			KernelConfig::READ_MODIFIER>::LoadValid(data, d_in + cta_offset, guarded_elements);
 
 		__syncthreads();
 
@@ -97,8 +95,7 @@ struct SweepCta : KernelConfig
 			KernelConfig::LOG_LOADS_PER_TILE,
 			KernelConfig::LOG_LOAD_VEC_SIZE,
 			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(data, d_out + cta_offset, guarded_elements);
+			KernelConfig::WRITE_MODIFIER>::Store(data, d_out + cta_offset, guarded_elements);
 	}
 };
 
