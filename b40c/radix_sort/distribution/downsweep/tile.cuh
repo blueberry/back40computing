@@ -476,7 +476,7 @@ struct Tile
 		static __device__ __forceinline__ void RecoverDigitCounts(
 			int my_base_lane, int my_quad_byte, Cta *cta, Tile *tile)
 		{
-			tile->RecoverDigitCounts<CYCLE, LOAD>(my_base_lane, my_quad_byte, cta);
+			tile->template RecoverDigitCounts<CYCLE, LOAD>(my_base_lane, my_quad_byte, cta);
 			IterateCycleLoads<CYCLE, LOAD + 1>::RecoverDigitCounts(my_base_lane, my_quad_byte, cta, tile);
 		}
 
@@ -485,7 +485,7 @@ struct Tile
 		static __device__ __forceinline__ void UpdateDigitPrefixes(
 			int digit_prefix, Cta *cta, Tile *tile)
 		{
-			tile->UpdateDigitPrefixes<CYCLE, LOAD>(digit_prefix, cta);
+			tile->template UpdateDigitPrefixes<CYCLE, LOAD>(digit_prefix, cta);
 			IterateCycleLoads<CYCLE, LOAD + 1>::UpdateDigitPrefixes(digit_prefix, cta, tile);
 		}
 	};
