@@ -48,7 +48,7 @@ template <
 
 	// Common tunable params
 	int MAX_CTA_OCCUPANCY,
-	int LOG_THREADS,
+	int _LOG_THREADS,
 
 	// BFS expansion tunable params
 	int EXPAND_LOG_LOAD_VEC_SIZE,
@@ -84,7 +84,7 @@ struct KernelConfig : _ProblemType
 		ProblemType,
 		CUDA_ARCH,
 		MAX_CTA_OCCUPANCY,
-		LOG_THREADS,
+		_LOG_THREADS,
 		EXPAND_LOG_LOAD_VEC_SIZE,
 		EXPAND_LOG_LOADS_PER_TILE,
 		EXPAND_LOG_RAKING_THREADS,
@@ -107,7 +107,7 @@ struct KernelConfig : _ProblemType
 		ProblemType,
 		CUDA_ARCH,
 		MAX_CTA_OCCUPANCY,
-		LOG_THREADS,
+		_LOG_THREADS,
 		COMPACT_LOG_LOAD_VEC_SIZE,
 		COMPACT_LOG_LOADS_PER_TILE,
 		COMPACT_LOG_RAKING_THREADS,
@@ -128,9 +128,9 @@ struct KernelConfig : _ProblemType
 	};
 
 	enum {
-		LOG_THREADS 		= LOG_THREADS,
+		LOG_THREADS 		= _LOG_THREADS,
 		THREADS 			= 1 << LOG_THREADS,
-		CTA_OCCUPANCY		= B40C_MIN(ExpandConfig::CTA_OCCUPANCY ,CompactConfig::CTA_OCCUPANCY),
+		CTA_OCCUPANCY		= B40C_MIN((int) ExpandConfig::CTA_OCCUPANCY , (int) CompactConfig::CTA_OCCUPANCY),
 	};
 
 
