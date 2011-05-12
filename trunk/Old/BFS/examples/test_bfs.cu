@@ -593,9 +593,11 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
+/*
 	LevelGridBfsEnactor 	bfs_lg_enactor(g_verbose);
 	SingleGridBfsEnactor 	bfs_sg_enactor(g_verbose);
 	HybridBfsEnactor 		bfs_hy_enactor(g_verbose);
+*/
 	SG2BfsEnactor 			bfs_sg2_enactor(g_verbose);
 
 	// Allocate problem on GPU
@@ -639,7 +641,7 @@ void RunTests(
 			printf("\n");
 			fflush(stdout);
 		}
-
+/*
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
 			bfs_lg_enactor,
@@ -678,7 +680,7 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-
+*/
 		// Perform single-kernel contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
 			bfs_sg2_enactor,

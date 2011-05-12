@@ -55,6 +55,7 @@ using namespace b40c;
 bool g_verbose;
 int g_max_ctas = 0;
 int g_iterations = 0;
+bool g_verify;
 
 
 template <typename T>
@@ -348,13 +349,16 @@ public:
 		cudaEventDestroy(start_event);
 		cudaEventDestroy(stop_event);
 
-	    // Copy out data
-	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-			"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+		if (g_verify) {
+			// Copy out data
+			if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
+				"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-	    // Verify solution
-		CompareResults<T>(h_data, h_reference, num_elements, true);
-		printf("\n");
+			// Verify solution
+			CompareResults<T>(h_data, h_reference, num_elements, true);
+			printf("\n");
+		}
+
 		fflush(stdout);
 	}
 
@@ -566,6 +570,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
+    g_verify = args.CheckCmdLineFlag("verify");
 
 	util::CudaProperties cuda_props;
 
