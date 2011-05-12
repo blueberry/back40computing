@@ -27,7 +27,7 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/upsweep_cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -43,7 +43,7 @@ __device__ __forceinline__ void UpsweepPass(
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
 	SmemStorage													&smem_storage)
 {
-	typedef reduction::UpsweepCta<KernelConfig>		UpsweepCta;
+	typedef reduction::Cta<KernelConfig>			Cta;
 	typedef typename KernelConfig::SizeT 			SizeT;
 
 	// Quit if we're the last threadblock (no need for it in upsweep)
@@ -52,7 +52,7 @@ __device__ __forceinline__ void UpsweepPass(
 	}
 
 	// CTA processing abstraction
-	UpsweepCta cta(smem_storage, d_in, d_out);
+	Cta cta(smem_storage, d_in, d_out);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;

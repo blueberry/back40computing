@@ -114,6 +114,7 @@ BFS_DEPS = 		./Makefile \
 				$(wildcard ../../../b40c/bfs/*.cuh) \
 				$(wildcard ../../../b40c/bfs/compact/*.cuh) \
 				$(wildcard ../../../b40c/bfs/expand_atomic/*.cuh) \
+				$(wildcard ../../../b40c/bfs/compact_atomic/*.cuh) \
 				$(wildcard ../../../b40c/bfs/expand_compact/*.cuh) \
 				$(wildcard ../../../b40c/bfs/compact_expand/*.cuh) \
 				$(wildcard ../../../b40c/bfs/single_grid/*.cuh) \

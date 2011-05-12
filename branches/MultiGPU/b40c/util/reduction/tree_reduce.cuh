@@ -31,6 +31,7 @@
 #pragma once
 
 #include <b40c/util/basic_utils.cuh>
+#include <b40c/util/operators.cuh>
 
 namespace b40c {
 namespace util {
@@ -44,7 +45,7 @@ namespace reduction {
 template <
 	typename T,
 	int LOG_CTA_THREADS,
-	T ReductionOp(const T&, const T&)>
+	T ReductionOp(const T&, const T&) = util::DefaultSum<T> >
 struct TreeReduce
 {
 	static const int CTA_THREADS = 1 << LOG_CTA_THREADS;
@@ -168,7 +169,7 @@ struct TreeReduce
 	 * Perform a cooperative tree reduction.  Threads with ranks less than
 	 * num_elements contribute one reduction partial.
 	 */
-	template <bool ALL_RETURN>						// true: everyone returns the result (otherwise only thread-0)
+	template <bool ALL_RETURN>						// If true, everyone returns the result.  If false, only thread-0.
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,								// Input partial
 		volatile T reduction_tree[CTA_THREADS],		// Shared memory for tree scan
@@ -197,7 +198,7 @@ struct TreeReduce
 	 *
 	 * Assumes all threads contribute a valid element (no checks on num_elements)
 	 */
-	template <bool ALL_RETURN>						// true: everyone returns the result (otherwise only thread-0)
+	template <bool ALL_RETURN>						// If true, everyone returns the result.  If false, only thread-0.
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,								// Input partial
 		volatile T reduction_tree[CTA_THREADS])		// Shared memory for tree scan

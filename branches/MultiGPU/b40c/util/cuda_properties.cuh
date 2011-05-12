@@ -94,6 +94,14 @@ namespace util {
 										 (arch >= 130) ? B40C_SM12_SM_CTAS() : 	\
 												 	 	 B40C_SM10_SM_CTAS())
 
+// Max registers per SM
+#define B40C_SM20_SM_REGISTERS()		(32768)		// 32768 registers on SM2.0+
+#define B40C_SM12_SM_REGISTERS()		(16384)		// 16384 registers on SM1.2-SM1.3
+#define B40C_SM10_SM_REGISTERS()		(8192)		// 8192 registers on SM1.0-SM1.1
+#define B40C_SM_REGISTERS(arch)			((arch >= 200) ? B40C_SM20_SM_REGISTERS() : 	\
+										 (arch >= 130) ? B40C_SM12_SM_REGISTERS() : 	\
+												 	 	 B40C_SM10_SM_REGISTERS())
+
 /******************************************************************************
  * Inlined PTX helper macros
  ******************************************************************************/

@@ -218,10 +218,7 @@ protected:
 				// We need to make sure that all kernels launch the same number of CTAs
 				grid_size[1] = work.grid_size;
 			}
-/*
-			printf("\tSorting pass %d at bit %d launching %d CTAs\n",
-				CURRENT_PASS, CURRENT_BIT, grid_size[0]);
-*/
+
 			// Invoke upsweep reduction kernel
 			TunedUpsweepKernel<KeyType, ConvertedKeyType, ValueType, SizeT, PreprocessTraits, PostprocessTraits, CURRENT_PASS, CURRENT_BIT, SortingConfig::GRANULARITY_ENUM>
 				<<<grid_size[0], threads[0], dynamic_smem[0], this->stream>>>(

@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/upsweep_cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -41,7 +41,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelConfig::SizeT 	spine_elements,
 	SmemStorage						&smem_storage)
 {
-	typedef UpsweepCta<KernelConfig> 		UpsweepCta;
+	typedef Cta<KernelConfig> 				Cta;
 	typedef typename KernelConfig::T 		T;
 	typedef typename KernelConfig::SizeT 	SizeT;
 
@@ -49,7 +49,7 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	UpsweepCta cta(smem_storage, d_in, d_spine);
+	Cta cta(smem_storage, d_in, d_spine);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);

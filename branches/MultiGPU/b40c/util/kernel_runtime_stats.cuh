@@ -77,17 +77,13 @@ public:
 	/**
 	 * Marks stop time.  Typically called by thread-0.
 	 */
-	__device__ __forceinline__ void MarkStop(bool complete = true)
+	__device__ __forceinline__ void MarkStop()
 	{
 		clock_t stop = clock();
 		clock_t runtime = (stop >= start) ?
 			stop - start :
 			stop + (((clock_t) -1) - start);
 		clocks += runtime;
-
-		if (complete) {
-			d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = clocks;
-		}
 	}
 
 	/**
@@ -95,14 +91,19 @@ public:
 	 * Typically called by thread-0.
 	 */
 	template <typename T>
-	__device__ __forceinline__ void Aggregate(T increment, bool complete = true)
+	__device__ __forceinline__ void Aggregate(T increment)
 	{
 		aggregate += increment;
-		if (complete) {
-			d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = aggregate;
-		}
 	}
 
+	/**
+	 * Flushes statistics to global mem
+	 */
+	__device__ __forceinline__ void Flush()
+	{
+		d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = clocks;
+		d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = aggregate;
+	}
 
 	/**
 	 * Resets statistics. Typically called by thread-0.

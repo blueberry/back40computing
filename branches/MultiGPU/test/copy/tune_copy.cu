@@ -51,7 +51,7 @@ using namespace b40c;
 bool g_verbose;
 int g_max_ctas = 0;
 int g_iterations = 0;
-
+bool g_verify;
 
 
 /******************************************************************************
@@ -128,8 +128,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
-			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::NONE + 1,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::NONE + 1,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -137,8 +137,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
-			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::NONE + 1,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::NONE + 1,
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -251,12 +251,15 @@ public:
 		cudaEventDestroy(start_event);
 		cudaEventDestroy(stop_event);
 
-	    // Copy out data
-	    if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-			"TimedCopy cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-	    // Verify solution
-		CompareResults<T>(h_data, h_reference, num_elements, true);
+		if (g_verify) {
+			// Copy out data
+			if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
+				"TimedCopy cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	
+			// Verify solution
+			CompareResults<T>(h_data, h_reference, num_elements, true);
+		}
+	
 		printf("\n");
 		fflush(stdout);
 	}
@@ -285,7 +288,9 @@ public:
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE;
 		const int C_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, MAX_CTA_OCCUPANCY>::VALUE;
-			B40C_SM_CTAS(TUNE_ARCH);
+			B40C_MIN((B40C_SM_THREADS(TUNE_ARCH) / (1 << C_LOG_THREADS)),
+				B40C_MIN(B40C_SM_REGISTERS(TUNE_ARCH) / ((1 << (C_LOG_THREADS + C_LOG_LOAD_VEC_SIZE + C_LOG_LOADS_PER_TILE)) + 2),
+					B40C_SM_CTAS(TUNE_ARCH)));
 
 		const int C_LOG_SCHEDULE_GRANULARITY =
 			C_LOG_LOADS_PER_TILE +
@@ -393,6 +398,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
+    g_verify = args.CheckCmdLineFlag("verify");
 	g_verbose = args.CheckCmdLineFlag("v");
 
 	util::CudaProperties cuda_props;

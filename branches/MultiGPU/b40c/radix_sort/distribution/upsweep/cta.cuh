@@ -37,7 +37,7 @@
 
 
 /******************************************************************************
- * Upsweep CTA tile processing abstraction
+ * Upsweep CTA processing abstraction
  ******************************************************************************/
 
 #pragma once
@@ -51,6 +51,9 @@
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
 
+#include <b40c/radix_sort/distribution/upsweep/lanes.cuh>
+#include <b40c/radix_sort/distribution/upsweep/composites.cuh>
+#include <b40c/radix_sort/distribution/upsweep/tile.cuh>
 #include <b40c/radix_sort/sort_utils.cuh>
 
 namespace b40c {
@@ -63,7 +66,10 @@ namespace upsweep {
 /**
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
-template <typename KernelConfig, typename SmemStorage, typename Derived = util::NullType>
+template <
+	typename KernelConfig,
+	typename SmemStorage,
+	typename Derived = util::NullType>
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -95,103 +101,6 @@ struct Cta
 	//---------------------------------------------------------------------
 	// Helper Structures
 	//---------------------------------------------------------------------
-
-	struct Lanes;
-
-	struct Composites;
-
-	/**
-	 * Tile
-	 */
-	template <int LOG_LOADS_PER_TILE, int LOG_LOAD_VEC_SIZE>
-	struct Tile
-	{
-		//---------------------------------------------------------------------
-		// Typedefs and Constants
-		//---------------------------------------------------------------------
-
-		enum {
-			LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
-			LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE
-		};
-
-		//---------------------------------------------------------------------
-		// Members
-		//---------------------------------------------------------------------
-
-		// Dequeued vertex ids
-		KeyType 	keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-		//---------------------------------------------------------------------
-		// Internal Methods
-		//---------------------------------------------------------------------
-
-		/**
-		 * Buckets the key specified by LOAD and VEC
-		 */
-		template <int LOAD, int VEC>
-		__device__ __forceinline__ void Bucket(Cta *cta)
-		{
-			cta->Bucket(keys[LOAD][VEC]);
-		}
-
-
-		//---------------------------------------------------------------------
-		// Iteration Structures
-		//---------------------------------------------------------------------
-
-		/**
-		 * Iterate next vector element
-		 */
-		template <int LOAD, int VEC, int dummy = 0>
-		struct Iterate
-		{
-			// Bucket
-			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
-			{
-				tile->Bucket<LOAD, VEC>(cta);
-				Iterate<LOAD, VEC + 1>::Bucket(cta, tile);
-			}
-		};
-
-
-		/**
-		 * Iterate next load
-		 */
-		template <int LOAD, int dummy>
-		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
-		{
-			// Bucket
-			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::Bucket(cta, tile);
-			}
-		};
-
-		/**
-		 * Terminate iteration
-		 */
-		template <int dummy>
-		struct Iterate<LOADS_PER_TILE, 0, dummy>
-		{
-			// Bucket
-			static __device__ __forceinline__ void Bucket(Cta *cta, Tile *tile) {}
-		};
-
-
-		//---------------------------------------------------------------------
-		// Interface
-		//---------------------------------------------------------------------
-
-		/**
-		 * Decode keys in this tile and update the cta's corresponding composite counters
-		 */
-		__device__ __forceinline__ void Bucket(Cta *cta)
-		{
-			Iterate<0, 0>::Bucket(cta, this);
-		}
-	};
-
 
 	/**
 	 * Unrolled tile processing
@@ -246,34 +155,13 @@ struct Cta
 
 
 	/**
-	 * Processes a single, full tile
-	 */
-	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset)
-	{
-		Tile<KernelConfig::LOG_LOADS_PER_TILE, KernelConfig::LOG_LOAD_VEC_SIZE> tile;
-
-		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			true>::Invoke(tile.keys, d_in_keys + cta_offset);
-
-		if (KernelConfig::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads
-
-		// Bucket tile of keys
-		tile.Bucket(this);
-	}
-
-
-	/**
-	 * 
+	 * Decodes a key and places increments the corresponding composite
+	 * counter in the corresponding lane
 	 */
 	__device__ __forceinline__ void Bucket(KeyType key) 
 	{
 		// Pre-process key with bit-twiddling functor if necessary
-		KernelConfig::PreprocessTraits::Preprocess(key, true);
+		KernelConfig::PreprocessTraits::Preprocess(key);
 
 		// Extract lane containing corresponding composite counter
 		int lane;
@@ -310,10 +198,36 @@ struct Cta
 		}
 	}
 
+
+	/**
+	 * Processes a single, full tile
+	 */
+	__device__ __forceinline__ void ProcessFullTile(
+		SizeT cta_offset)
+	{
+		Tile<
+			KeyType,
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE> tile;
+
+		util::io::LoadTile<
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE,
+			KernelConfig::THREADS,
+			KernelConfig::READ_MODIFIER>::LoadValid(
+				tile.keys, d_in_keys + cta_offset);
+
+		if (KernelConfig::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads
+
+		// Bucket tile of keys
+		tile.Bucket((Dispatch*) this);
+	}
+
+
 	/**
 	 * Processes a single load (may have some threads masked off)
 	 */
-	__device__ __forceinline__ void ProcessPartialLoad(
+	__device__ __forceinline__ void ProcessSingleLoad(
 		SizeT cta_offset)
 	{
 		KeyType key;
@@ -330,8 +244,10 @@ struct Cta
 		SizeT cta_offset,
 		SizeT cta_out_of_bounds)
 	{
-		Composites::ResetCounters(this);
-		Lanes::ResetCompositeCounters(this);
+		Dispatch *dispatch = (Dispatch*) this;
+
+		Composites<KernelConfig>::ResetCounters(dispatch);
+		Lanes<KernelConfig>::ResetCompositeCounters(dispatch);
 
 		__syncthreads();
 
@@ -340,26 +256,26 @@ struct Cta
 		while (cta_offset < cta_out_of_bounds - UNROLLED_ELEMENTS) {
 
 			UnrollTiles::template Iterate<KernelConfig::UNROLL_COUNT>::ProcessTiles(
-				(Dispatch*) this,
+				dispatch,
 				cta_offset);
 			cta_offset += UNROLLED_ELEMENTS;
 
 			__syncthreads();
 
 			// Aggregate back into local_count registers to prevent overflow
-			Composites::ReduceComposites(this);
+			Composites<KernelConfig>::ReduceComposites(dispatch);
 
 			__syncthreads();
 
 			// Reset composite counters in lanes
-			Lanes::ResetCompositeCounters(this);
+			Lanes<KernelConfig>::ResetCompositeCounters(dispatch);
 		}
 
 		// Unroll single full tiles
 		while (cta_offset < cta_out_of_bounds - KernelConfig::TILE_ELEMENTS) {
 
 			UnrollTiles::template Iterate<1>::ProcessTiles(
-				(Dispatch*) this,
+				dispatch,
 				cta_offset);
 			cta_offset += KernelConfig::TILE_ELEMENTS;
 		}
@@ -368,20 +284,20 @@ struct Cta
 		cta_offset += threadIdx.x;
 		while (cta_offset < cta_out_of_bounds) {
 
-			ProcessPartialLoad(cta_offset);
+			dispatch->ProcessSingleLoad(cta_offset);
 			cta_offset += KernelConfig::THREADS;
 		}
 
 		__syncthreads();
 
 		// Aggregate back into local_count registers
-		Composites::ReduceComposites(this);
+		Composites<KernelConfig>::ReduceComposites(dispatch);
 
 		__syncthreads();
 
 		//Final raking reduction of counts by digit, output to spine.
 
-		Composites::PlacePartials(this);
+		Composites<KernelConfig>::PlacePartials(dispatch);
 
 		__syncthreads();
 
@@ -396,199 +312,6 @@ struct Cta
 			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
 					digit_count, d_spine + spine_digit_offset);
 		}
-	}
-};
-
-
-
-
-
-/**
- * Lanes
- */
-template <typename KernelConfig, typename SmemStorage, typename Derived>
-struct Cta<KernelConfig, SmemStorage, Derived>::Lanes
-{
-	enum {
-		COMPOSITE_LANES = KernelConfig::COMPOSITE_LANES
-	};
-
-	//---------------------------------------------------------------------
-	// Iteration Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate lane
-	 */
-	template <int LANE, int dummy = 0>
-	struct Iterate
-	{
-		// ResetCompositeCounters
-		static __device__ __forceinline__ void ResetCompositeCounters(Cta *cta)
-		{
-			cta->smem_storage.composite_counters.words[LANE][threadIdx.x] = 0;
-			Iterate<LANE + 1>::ResetCompositeCounters(cta);
-		}
-	};
-
-	/**
-	 * Terminate iteration
-	 */
-	template <int dummy>
-	struct Iterate<COMPOSITE_LANES, dummy>
-	{
-		// ResetCompositeCounters
-		static __device__ __forceinline__ void ResetCompositeCounters(Cta *cta) {}
-	};
-
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * ResetCompositeCounters
-	 */
-	static __device__ __forceinline__ void ResetCompositeCounters(Cta *cta)
-	{
-		Iterate<0>::ResetCompositeCounters(cta);
-	}
-};
-
-
-/**
- * Composites
- */
-template <typename KernelConfig, typename SmemStorage, typename Derived>
-struct Cta<KernelConfig, SmemStorage, Derived>::Composites
-{
-	enum {
-		LANES_PER_WARP 						= KernelConfig::LANES_PER_WARP,
-		COMPOSITES_PER_LANE_PER_THREAD 		= KernelConfig::COMPOSITES_PER_LANE_PER_THREAD
-	};
-
-
-	//---------------------------------------------------------------------
-	// Iteration Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate next composite
-	 */
-	template <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
-	struct Iterate
-	{
-		// ReduceComposites
-		static __device__ __forceinline__ void ReduceComposites(Cta *cta)
-		{
-			int lane				= (WARP_LANE * KernelConfig::WARPS) + cta->warp_id;
-			int composite			= (THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) + cta->warp_idx;
-
-			cta->local_counts[WARP_LANE][0] += cta->smem_storage.composite_counters.counters[lane][composite][0];
-			cta->local_counts[WARP_LANE][1] += cta->smem_storage.composite_counters.counters[lane][composite][1];
-			cta->local_counts[WARP_LANE][2] += cta->smem_storage.composite_counters.counters[lane][composite][2];
-			cta->local_counts[WARP_LANE][3] += cta->smem_storage.composite_counters.counters[lane][composite][3];
-
-			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::ReduceComposites(cta);
-		}
-
-		// PlacePartials
-		static __device__ __forceinline__ void PlacePartials(Cta *cta)
-		{
-			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::PlacePartials(cta);
-		}
-
-		// ResetCounters
-		static __device__ __forceinline__ void ResetCounters(Cta *cta)
-		{
-			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::ResetCounters(cta);
-		}
-	};
-
-
-	/**
-	 * Iterate next lane
-	 */
-	template <int WARP_LANE, int dummy>
-	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
-	{
-		// ReduceComposites
-		static __device__ __forceinline__ void ReduceComposites(Cta *cta)
-		{
-			Iterate<WARP_LANE + 1, 0>::ReduceComposites(cta);
-		}
-
-		// PlacePartials
-		static __device__ __forceinline__ void PlacePartials(Cta *cta)
-		{
-			int lane				= (WARP_LANE * KernelConfig::WARPS) + cta->warp_id;
-			int row 				= lane << 2;	// lane * 4;
-
-			cta->smem_storage.aggregate[row + 0][cta->warp_idx] = cta->local_counts[WARP_LANE][0];
-			cta->smem_storage.aggregate[row + 1][cta->warp_idx] = cta->local_counts[WARP_LANE][1];
-			cta->smem_storage.aggregate[row + 2][cta->warp_idx] = cta->local_counts[WARP_LANE][2];
-			cta->smem_storage.aggregate[row + 3][cta->warp_idx] = cta->local_counts[WARP_LANE][3];
-
-			Iterate<WARP_LANE + 1, 0>::PlacePartials(cta);
-		}
-
-		// ResetCounters
-		static __device__ __forceinline__ void ResetCounters(Cta *cta)
-		{
-			cta->local_counts[WARP_LANE][0] = 0;
-			cta->local_counts[WARP_LANE][1] = 0;
-			cta->local_counts[WARP_LANE][2] = 0;
-			cta->local_counts[WARP_LANE][3] = 0;
-
-			Iterate<WARP_LANE + 1, 0>::ResetCounters(cta);
-		}
-	};
-
-	/**
-	 * Terminate iteration
-	 */
-	template <int dummy>
-	struct Iterate<LANES_PER_WARP, 0, dummy>
-	{
-		// ReduceComposites
-		static __device__ __forceinline__ void ReduceComposites(Cta *cta) {}
-
-		// PlacePartials
-		static __device__ __forceinline__ void PlacePartials(Cta *cta) {}
-
-		// ResetCounters
-		static __device__ __forceinline__ void ResetCounters(Cta *cta) {}
-	};
-
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * ReduceComposites
-	 */
-	static __device__ __forceinline__ void ReduceComposites(Cta *cta)
-	{
-		if (cta->warp_id < KernelConfig::COMPOSITE_LANES) {
-			Iterate<0, 0>::ReduceComposites(cta);
-		}
-	}
-
-	/**
-	 * ReduceComposites
-	 */
-	static __device__ __forceinline__ void PlacePartials(Cta *cta)
-	{
-		if (cta->warp_id < KernelConfig::COMPOSITE_LANES) {
-			Iterate<0, 0>::PlacePartials(cta);
-		}
-	}
-
-	/**
-	 * ResetCounters
-	 */
-	static __device__ __forceinline__ void ResetCounters(Cta *cta)
-	{
-		Iterate<0, 0>::ResetCounters(cta);
 	}
 };
 

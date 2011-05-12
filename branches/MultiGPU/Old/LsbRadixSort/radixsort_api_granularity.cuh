@@ -51,7 +51,7 @@
 #include <b40c/radix_sort/sort_utils.cuh>
 
 #include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/downsweep_kernel_config.cuh>
+#include <b40c/scan/kernel_config.cuh>
 
 namespace b40c {
 namespace lsb_radix_sort {
@@ -139,7 +139,7 @@ struct LsbSortConfig
 		util::DefaultSumIdentity<SizeT> > SpineProblemType;
 
 	// Kernel config for spine scan
-	typedef scan::DownsweepKernelConfig <
+	typedef scan::KernelConfig <
 		SpineProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

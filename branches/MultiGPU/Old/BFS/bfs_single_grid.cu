@@ -31,11 +31,9 @@
 #include <b40c/util/kernel_runtime_stats.cuh>
 
 #include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/single_grid/problem_config.cuh>
-#include <b40c/bfs/single_grid/sweep_kernel.cuh>
 
-#include <b40c/bfs/compact_expand/sweep_kernel_config.cuh>
-#include <b40c/bfs/compact_expand/sweep_kernel.cuh>
+#include <b40c/bfs/compact_expand_atomic/kernel_config.cuh>
+#include <b40c/bfs/compact_expand_atomic/kernel.cuh>
 
 
 namespace b40c {
@@ -129,22 +127,21 @@ public:
 		typedef typename BfsCsrProblem::VertexId VertexId;
 
 		// Single-grid tuning configuration
-		typedef compact_expand::SweepKernelConfig<
-
-				typename BfsCsrProblem::ProblemType,
-				200,
-				8,
-				7,
-				0,
-				0,
-				5,
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-				false,					// WORK_STEALING
-				6> KernelConfig;
+		typedef compact_expand_atomic::KernelConfig<
+			typename BfsCsrProblem::ProblemType,
+			200,
+			8,
+			7,
+			0,
+			0,
+			5,
+			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+			false,					// WORK_STEALING
+			6> KernelConfig;
 
 		int occupancy = KernelConfig::CTA_OCCUPANCY;
 		int grid_size = MaxGridSize(occupancy, max_grid_size);
@@ -165,8 +162,9 @@ public:
 		total_queued	 	= 0;
 
 		// Initiate single-grid kernel
-		compact_expand::SweepKernel<KernelConfig, INSTRUMENT, 0>
+		compact_expand_atomic::Kernel<KernelConfig, INSTRUMENT, 0>
 				<<<grid_size, KernelConfig::THREADS>>>(
+			0,
 			0,
 			src,
 

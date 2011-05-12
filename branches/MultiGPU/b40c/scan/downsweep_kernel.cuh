@@ -27,7 +27,7 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/srts_details.cuh>
-#include <b40c/scan/downsweep_cta.cuh>
+#include <b40c/scan/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -44,7 +44,7 @@ __device__ __forceinline__ void DownsweepPass(
 	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 	SmemStorage							&smem_storage)
 {
-	typedef DownsweepCta<KernelConfig> 		DownsweepCta;
+	typedef Cta<KernelConfig> 				Cta;
 	typedef typename KernelConfig::T 		T;
 	typedef typename KernelConfig::SizeT 	SizeT;
 
@@ -70,7 +70,7 @@ __device__ __forceinline__ void DownsweepPass(
 	}
 
 	// CTA processing abstraction
-	DownsweepCta cta(smem_storage, d_in, d_out, spine_partial);
+	Cta cta(smem_storage, d_in, d_out, spine_partial);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -81,13 +81,13 @@ __device__ __forceinline__ void DownsweepPass(
 	// Process full tiles of tile_elements
 	while (work_limits.offset < work_limits.guarded_offset) {
 
-		cta.ProcessTile<true>(work_limits.offset);
+		cta.ProcessTile(work_limits.offset);
 		work_limits.offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (work_limits.guarded_elements) {
-		cta.ProcessTile<false>(
+		cta.ProcessTile(
 			work_limits.offset,
 			work_limits.guarded_elements);
 	}

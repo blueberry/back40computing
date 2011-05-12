@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/scan/downsweep_cta.cuh>
+#include <b40c/scan/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -41,7 +41,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelConfig::SizeT 	&spine_elements,
 	SmemStorage 					&smem_storage)
 {
-	typedef DownsweepCta<KernelConfig> 			DownsweepCta;
+	typedef Cta<KernelConfig> 					Cta;
 	typedef typename KernelConfig::SizeT 		SizeT;
 	typedef typename KernelConfig::T 			T;
 
@@ -49,7 +49,7 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	DownsweepCta cta(smem_storage, d_in, d_out);
+	Cta cta(smem_storage, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT cta_guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
@@ -60,13 +60,13 @@ __device__ __forceinline__ void SpinePass(
 	// Process full tiles of tile_elements
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
-		cta.ProcessTile<true>(cta_offset);
+		cta.ProcessTile(cta_offset);
 		cta_offset += KernelConfig::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
-		cta.ProcessTile<false>(cta_offset, spine_elements);
+		cta.ProcessTile(cta_offset, spine_elements);
 	}
 }
 

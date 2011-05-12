@@ -29,17 +29,14 @@
 
 #include <bfs_base.cu>
 
-#include <b40c/util/spine.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
 #include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/compact/problem_config.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
-#include <b40c/bfs/compact/upsweep_kernel.cuh>
-#include <b40c/bfs/compact/downsweep_kernel.cuh>
-
-#include <b40c/scan/spine_kernel.cuh>
+#include <b40c/bfs/compact_expand_atomic/kernel.cuh>
+#include <b40c/bfs/expand_atomic/kernel.cuh>
+#include <b40c/bfs/expand_atomic/kernel_config.cuh>
+#include <b40c/bfs/compact_atomic/kernel.cuh>
+#include <b40c/bfs/compact_atomic/kernel_config.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -60,12 +57,6 @@ protected:
 	 * a single grid invocation
 	 */
 	util::GlobalBarrierLifetime global_barrier;
-
-	/**
-	 * Temporary device storage needed for reducing partials produced
-	 * by separate CTAs
-	 */
-	util::Spine spine;
 
 	/**
 	 * CTA duty kernel stats
@@ -89,7 +80,7 @@ protected:
 	cudaEvent_t			throttle_event;
 
 	/**
-	 * Iteration.
+	 * Iteration
 	 */
 	volatile long long 	*iteration;
 	long long 			*d_iteration;
@@ -168,7 +159,7 @@ public:
 		int 								max_grid_size = 0)
 	{
 		// Single-grid tuning configuration
-		typedef compact_expand::SweepKernelConfig<
+		typedef compact_expand_atomic::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
 			8,
@@ -185,7 +176,7 @@ public:
 			6> SingleConfig;
 
 		// Expansion kernel config
-		typedef expand_atomic::SweepKernelConfig<
+		typedef expand_atomic::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
 			8,
@@ -202,37 +193,19 @@ public:
 			6> ExpandConfig;
 
 
-		// Compaction tuning configuration
-		typedef compact::ProblemConfig<
+		// Compaction kernel config
+		typedef compact_atomic::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
-			util::io::ld::NONE,
-			util::io::st::NONE,
-			9,
-
-			// Compact upsweep
 			8,
 			7,
 			0,
-			0,
-
-			// Compact spine
-			5,
 			2,
-			0,
 			5,
-
-			// Compact downsweep
-			8,
-			7,
-			1,
-			1,
-			5> CompactConfig;
-
-
-		typedef typename CompactConfig::CompactUpsweep 		CompactUpsweep;
-		typedef typename CompactConfig::CompactSpine 		CompactSpine;
-		typedef typename CompactConfig::CompactDownsweep 	CompactDownsweep;
+			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+			false,					// WORK_STEALING
+			9> CompactConfig;
 
 		typedef typename BfsCsrProblem::VertexId					VertexId;
 		typedef typename BfsCsrProblem::SizeT						SizeT;
@@ -249,7 +222,7 @@ public:
 		int expand_min_occupancy 		= ExpandConfig::CTA_OCCUPANCY;
 		int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-		int compact_min_occupancy		= B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
+		int compact_min_occupancy		= CompactConfig::CTA_OCCUPANCY;
 		int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
 		if (DEBUG) printf("BFS single min occupancy %d, level-grid size %d\n",
@@ -259,12 +232,8 @@ public:
 		if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
 			compact_min_occupancy, compact_grid_size);
 
-		// Make barriers are initialized
+		// Make sure barriers are initialized
 		if (retval = global_barrier.Setup(single_grid_size)) (exit(1));
-
-		// Make sure our spine is big enough
-		int spine_elements = compact_grid_size;
-		if (retval = spine.Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
 		// Make sure our runtime stats are good
 		if (retval = single_kernel_stats.Setup(single_grid_size)) exit(1);
@@ -288,16 +257,19 @@ public:
 
 		const int SATURATION_QUIT = 4;
 
+		VertexId queue_index = 0;
+
 		do {
 
-			long long phase_iteration = iteration[0];
+			VertexId phase_iteration = iteration[0];
 
 			if (queue_length <= single_grid_size * SingleConfig::TILE_ELEMENTS * SATURATION_QUIT) {
 
 				// Run single-grid, no-separate-compaction
-				compact_expand::SweepKernel<SingleConfig, INSTRUMENT, SATURATION_QUIT>
+				compact_expand_atomic::Kernel<SingleConfig, INSTRUMENT, SATURATION_QUIT>
 						<<<single_grid_size, SingleConfig::THREADS>>>(
 					iteration[0],
+					queue_index,
 					src,
 
 					d_queues[selector],
@@ -316,12 +288,14 @@ public:
 					(VertexId *) d_iteration);
 
 				// Synchronize to make sure we have a coherent iteration;
-				cudaDeviceSynchronize();
+				cudaThreadSynchronize();
 
 				if ((iteration[0] - phase_iteration) & 1) {
 					// An odd number of iterations passed: update selector
 					selector ^= 1;
 				}
+				// Update queue index by the number of elapsed iterations
+				queue_index += (iteration[0] - phase_iteration);
 
 				// Get queue length
 				if (this->work_progress.GetQueueLength(iteration[0], queue_length)) exit(0);
@@ -339,37 +313,20 @@ public:
 				while (!done[0]) {
 
 					// Run level-grid
-					// Upsweep
-					compact::UpsweepKernel<CompactUpsweep, INSTRUMENT><<<compact_grid_size, CompactUpsweep::THREADS>>>(
-						iteration[0],
+
+					// Compaction
+					compact_atomic::Kernel<CompactConfig, INSTRUMENT><<<compact_grid_size, CompactConfig::THREADS>>>(
+						queue_index,
 						d_done,
 						d_queues[selector],						// in
-						bfs_problem.d_keep,
-						(SizeT *) this->spine(),
+						d_parent_queues[selector],
+						d_queues[selector ^ 1],					// out
+						d_parent_queues[selector ^ 1],
 						bfs_problem.d_collision_cache,
 						this->work_progress,
 						this->compact_kernel_stats);
 
-					if (INSTRUMENT) {
-						// Get compact upsweep stats (i.e., duty %)
-						compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live);
-					}
-
-					// Spine
-					scan::SpineKernel<CompactSpine><<<1, CompactSpine::THREADS>>>(
-						(SizeT*) spine(), (SizeT*) spine(), spine_elements);
-
-					// Downsweep
-					compact::DownsweepKernel<CompactDownsweep, INSTRUMENT><<<compact_grid_size, CompactDownsweep::THREADS>>>(
-						iteration[0],
-						d_queues[selector],						// in
-						d_parent_queues[selector],
-						bfs_problem.d_keep,
-						d_queues[selector ^ 1],					// out
-						d_parent_queues[selector ^ 1],
-						(SizeT *) this->spine(),
-						this->work_progress,
-						this->compact_kernel_stats);
+					queue_index++;
 
 					if (INSTRUMENT) {
 						// Get compact downsweep stats (i.e., duty %)
@@ -378,11 +335,12 @@ public:
 						if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
 					}
 
-					// BFS iteration
-					expand_atomic::SweepKernel<ExpandConfig, INSTRUMENT, SATURATION_QUIT>
+					// Expansion
+					expand_atomic::Kernel<ExpandConfig, INSTRUMENT, 0>
 							<<<expand_grid_size, ExpandConfig::THREADS>>>(
 						src,
-						iteration[0],
+						(VertexId) iteration[0],
+						queue_index,
 						d_done,
 						d_queues[selector ^ 1],
 						d_parent_queues[selector ^ 1],
@@ -394,6 +352,7 @@ public:
 						this->work_progress,
 						this->expand_kernel_stats);
 
+					queue_index++;
 					iteration[0]++;
 
 					if (INSTRUMENT) {

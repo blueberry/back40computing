@@ -194,7 +194,7 @@ struct SrtsDetails : SrtsGrid
 		T *smem_pool) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::RAKING_QUADS)
+				smem_pool + SrtsGrid::RAKING_ELEMENTS)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
 			// Set raking segment pointer
@@ -210,7 +210,7 @@ struct SrtsDetails : SrtsGrid
 		WarpscanStorage warpscan) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::RAKING_QUADS,
+				smem_pool + SrtsGrid::RAKING_ELEMENTS,
 				warpscan)
 	{
 		if (threadIdx.x < SrtsGrid::RAKING_THREADS) {
@@ -229,7 +229,7 @@ struct SrtsDetails : SrtsGrid
 		T warpscan_identity) :
 			lane_partial(SrtsGrid::MyLanePartial(smem_pool)),							// set lane partial pointer
 			secondary_details(
-				smem_pool + SrtsGrid::RAKING_QUADS,
+				smem_pool + SrtsGrid::RAKING_ELEMENTS,
 				warpscan,
 				warpscan_identity)
 	{
