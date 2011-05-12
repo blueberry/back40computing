@@ -50,7 +50,6 @@
 #include <bfs_single_grid.cu>
 #include <bfs_level_grid.cu>
 #include <bfs_hybrid.cu>
-#include <bfs_sg2.cu>
 
 using namespace b40c;
 using namespace bfs;
@@ -593,12 +592,9 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-/*
 	LevelGridBfsEnactor 	bfs_lg_enactor(g_verbose);
 	SingleGridBfsEnactor 	bfs_sg_enactor(g_verbose);
 	HybridBfsEnactor 		bfs_hy_enactor(g_verbose);
-*/
-	SG2BfsEnactor 			bfs_sg2_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
@@ -614,12 +610,11 @@ void RunTests(
 	}
 	
 	// Initialize statistics
-	Stats stats[5];
+	Stats stats[4];
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("Level-grid, contract-expand GPU BFS");
 	stats[2] = Stats("Single-grid, contract-expand GPU BFS");
 	stats[3] = Stats("Hybrid, contract-expand GPU BFS");
-	stats[4] = Stats("Single-grid, separate compaction GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -641,7 +636,7 @@ void RunTests(
 			printf("\n");
 			fflush(stdout);
 		}
-/*
+
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
 			bfs_lg_enactor,
@@ -677,19 +672,6 @@ void RunTests(
 			(g_quick) ? (VertexId*) NULL : reference_source_dist,
 			csr_graph,
 			stats[3],
-			max_grid_size);
-		printf("\n");
-		fflush(stdout);
-*/
-		// Perform single-kernel contract-expand GPU BFS search
-		TestGpuBfs<INSTRUMENT>(
-			bfs_sg2_enactor,
-			bfs_problem,
-			src,
-			h_source_path,
-			(g_quick) ? (VertexId*) NULL : reference_source_dist,
-			csr_graph,
-			stats[4],
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
