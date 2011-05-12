@@ -39,14 +39,14 @@
 
 namespace b40c {
 namespace bfs {
-namespace compact_expand {
+namespace compact_expand_atomic {
 
 
 /**
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig, typename SmemStorage>
-struct SweepCta
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -77,6 +77,7 @@ struct SweepCta
 
 	// Current BFS iteration
 	VertexId 				iteration;
+	VertexId 				queue_index;
 
 	// Input and output device pointers
 	VertexId 				*d_in;
@@ -178,7 +179,7 @@ struct SweepCta
 			/**
 			 * Inspect
 			 */
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
@@ -244,7 +245,7 @@ struct SweepCta
 			/**
 			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
 				while (__syncthreads_or(tile->row_length[LOAD][VEC] >= KernelConfig::THREADS)) {
@@ -309,7 +310,7 @@ struct SweepCta
 			/**
 			 * Expand by warp
 			 */
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
 				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -376,7 +377,7 @@ struct SweepCta
 			/**
 			 * Expand by scan
 			 */
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				// Attempt to make further progress on this dequeued item's neighbor
 				// list if its current offset into local scratch is in range
@@ -407,7 +408,7 @@ struct SweepCta
 			 * BitmaskCull
 			 */
 			static __device__ __forceinline__ void BitmaskCull(
-				SweepCta *cta,
+				Cta *cta,
 				Tile *tile)
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
@@ -447,7 +448,7 @@ struct SweepCta
 			 * HashInVertex
 			 */
 			static __device__ __forceinline__ void HashInVertex(
-				SweepCta *cta,
+				Cta *cta,
 				Tile *tile)
 			{
 				tile->hash[LOAD][VEC] = tile->vertex_id[LOAD][VEC] % SmemStorage::HASH_ELEMENTS;
@@ -467,7 +468,7 @@ struct SweepCta
 			 * HashOutVertex
 			 */
 			static __device__ __forceinline__ void HashOutVertex(
-				SweepCta *cta,
+				Cta *cta,
 				Tile *tile)
 			{
 				// Retrieve what vertices "won" at the hash locations. If a
@@ -489,7 +490,7 @@ struct SweepCta
 			 * HashInTid
 			 */
 			static __device__ __forceinline__ void HashInTid(
-				SweepCta *cta,
+				Cta *cta,
 				Tile *tile)
 			{
 				// For the possible-duplicates, hash in thread-IDs to select
@@ -507,7 +508,7 @@ struct SweepCta
 			 * HashOutTid
 			 */
 			static __device__ __forceinline__ void HashOutTid(
-				SweepCta *cta,
+				Cta *cta,
 				Tile *tile)
 			{
 				// See if our thread won out amongst everyone with similar node-IDs
@@ -542,7 +543,7 @@ struct SweepCta
 			/**
 			 * Inspect
 			 */
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::Inspect(cta, tile);
 			}
@@ -550,7 +551,7 @@ struct SweepCta
 			/**
 			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
 			}
@@ -558,7 +559,7 @@ struct SweepCta
 			/**
 			 * Expand by warp
 			 */
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByWarp(cta, tile);
 			}
@@ -566,7 +567,7 @@ struct SweepCta
 			/**
 			 * Expand by scan
 			 */
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByScan(cta, tile);
 			}
@@ -575,7 +576,7 @@ struct SweepCta
 			/**
 			 * BitmaskCull
 			 */
-			static __device__ __forceinline__ void BitmaskCull(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::BitmaskCull(cta, tile);
 			}
@@ -583,7 +584,7 @@ struct SweepCta
 			/**
 			 * HashInVertex
 			 */
-			static __device__ __forceinline__ void HashInVertex(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void HashInVertex(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::HashInVertex(cta, tile);
 			}
@@ -591,7 +592,7 @@ struct SweepCta
 			/**
 			 * HashOutVertex
 			 */
-			static __device__ __forceinline__ void HashOutVertex(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void HashOutVertex(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::HashOutVertex(cta, tile);
 			}
@@ -599,7 +600,7 @@ struct SweepCta
 			/**
 			 * HashInTid
 			 */
-			static __device__ __forceinline__ void HashInTid(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void HashInTid(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::HashInTid(cta, tile);
 			}
@@ -607,7 +608,7 @@ struct SweepCta
 			/**
 			 * HashOutTid
 			 */
-			static __device__ __forceinline__ void HashOutTid(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void HashOutTid(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::HashOutTid(cta, tile);
 			}
@@ -623,31 +624,31 @@ struct SweepCta
 			static __device__ __forceinline__ void Init(Tile *tile) {}
 
 			// Inspect
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile) {}
 
 			// ExpandByCta
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile) {}
 
 			// ExpandByWarp
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile) {}
 
 			// ExpandByScan
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile) {}
 
 			// BitmaskCull
-			static __device__ __forceinline__ void BitmaskCull(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile) {}
 
 			// HashInVertex
-			static __device__ __forceinline__ void HashInVertex(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void HashInVertex(Cta *cta, Tile *tile) {}
 
 			// HashOutVertex
-			static __device__ __forceinline__ void HashOutVertex(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void HashOutVertex(Cta *cta, Tile *tile) {}
 
 			// HashInTid
-			static __device__ __forceinline__ void HashInTid(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void HashInTid(Cta *cta, Tile *tile) {}
 
 			// HashOutTid
-			static __device__ __forceinline__ void HashOutTid(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void HashOutTid(Cta *cta, Tile *tile) {}
 		};
 
 
@@ -667,7 +668,7 @@ struct SweepCta
 		 * Inspect dequeued vertices, updating source path if necessary and
 		 * obtaining edge-list details
 		 */
-		__device__ __forceinline__ void Inspect(SweepCta *cta)
+		__device__ __forceinline__ void Inspect(Cta *cta)
 		{
 			Iterate<0, 0>::Inspect(cta, this);
 		}
@@ -675,7 +676,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
 		 */
-		__device__ __forceinline__ void ExpandByCta(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByCta(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByCta(cta, this);
 		}
@@ -683,7 +684,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists for valid vertices a warp-expansion granularity
 		 */
-		__device__ __forceinline__ void ExpandByWarp(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByWarp(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByWarp(cta, this);
 		}
@@ -691,7 +692,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists by local scan rank
 		 */
-		__device__ __forceinline__ void ExpandByScan(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByScan(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByScan(cta, this);
 		}
@@ -700,7 +701,7 @@ struct SweepCta
 		 * Culls vertices based upon whether or not we've set a bit for them
 		 * in the d_collision_cache bitmask
 		 */
-		__device__ __forceinline__ void BitmaskCull(SweepCta *cta)
+		__device__ __forceinline__ void BitmaskCull(Cta *cta)
 		{
 			Iterate<0, 0>::BitmaskCull(cta, this);
 		}
@@ -709,7 +710,7 @@ struct SweepCta
 		 * Culls vertices based upon whether or not we've set a bit for them
 		 * in the d_collision_cache bitmask
 		 */
-		__device__ __forceinline__ void LocalCull(SweepCta *cta)
+		__device__ __forceinline__ void LocalCull(Cta *cta)
 		{
 			// Hash the node-IDs into smem scratch
 			Iterate<0, 0>::HashInVertex(cta, this);
@@ -741,8 +742,9 @@ struct SweepCta
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ SweepCta(
+	__device__ __forceinline__ Cta(
 		VertexId 				iteration,
+		VertexId				queue_index,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_parent_in,
@@ -769,6 +771,7 @@ struct SweepCta
 			parent_scratch_pool(smem_storage.smem_pool.gather_scratch.parents),
 			s_vid_hashtable(smem_storage.smem_pool.vid_hashtable),
 			iteration(iteration),
+			queue_index(queue_index),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
 			d_out(d_out),
@@ -845,7 +848,7 @@ struct SweepCta
 		if (threadIdx.x == 0) {
 			coarse_enqueue_offset = work_progress.Enqueue(
 				coarse_count + tile.fine_count,
-				iteration + 1);
+				queue_index + 1);
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}
 
@@ -906,7 +909,7 @@ struct SweepCta
 
 
 
-} // namespace compact_expand
+} // namespace compact_expand_atomic
 } // namespace bfs
 } // namespace b40c
 

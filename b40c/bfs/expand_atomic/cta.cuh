@@ -46,7 +46,7 @@ namespace expand_atomic {
  * Derivation of KernelConfig that encapsulates tile-processing routines
  */
 template <typename KernelConfig, typename SmemStorage>
-struct SweepCta
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -73,6 +73,7 @@ struct SweepCta
 
 	// Current BFS iteration
 	VertexId 				iteration;
+	VertexId 				queue_index;
 
 	// Input and output device pointers
 	VertexId 				*d_in;
@@ -167,7 +168,7 @@ struct SweepCta
 			/**
 			 * Inspect
 			 */
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
@@ -232,7 +233,7 @@ struct SweepCta
 			/**
 			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
 				while (__syncthreads_or(tile->row_length[LOAD][VEC] >= KernelConfig::THREADS)) {
@@ -297,7 +298,7 @@ struct SweepCta
 			/**
 			 * Expand by warp
 			 */
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
 				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelConfig::CUDA_ARCH);
@@ -363,7 +364,7 @@ struct SweepCta
 			/**
 			 * Expand by scan
 			 */
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				// Attempt to make further progress on this dequeued item's neighbor
 				// list if its current offset into local scratch is in range
@@ -407,7 +408,7 @@ struct SweepCta
 			/**
 			 * Inspect
 			 */
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::Inspect(cta, tile);
 			}
@@ -415,7 +416,7 @@ struct SweepCta
 			/**
 			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
 			}
@@ -423,7 +424,7 @@ struct SweepCta
 			/**
 			 * Expand by warp
 			 */
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByWarp(cta, tile);
 			}
@@ -431,7 +432,7 @@ struct SweepCta
 			/**
 			 * Expand by scan
 			 */
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile)
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByScan(cta, tile);
 			}
@@ -447,16 +448,16 @@ struct SweepCta
 			static __device__ __forceinline__ void Init(Tile *tile) {}
 
 			// Inspect
-			static __device__ __forceinline__ void Inspect(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile) {}
 
 			// ExpandByCta
-			static __device__ __forceinline__ void ExpandByCta(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile) {}
 
 			// ExpandByWarp
-			static __device__ __forceinline__ void ExpandByWarp(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile) {}
 
 			// ExpandByScan
-			static __device__ __forceinline__ void ExpandByScan(SweepCta *cta, Tile *tile) {}
+			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile) {}
 		};
 
 
@@ -476,7 +477,7 @@ struct SweepCta
 		 * Inspect dequeued vertices, updating source path if necessary and
 		 * obtaining edge-list details
 		 */
-		__device__ __forceinline__ void Inspect(SweepCta *cta)
+		__device__ __forceinline__ void Inspect(Cta *cta)
 		{
 			Iterate<0, 0>::Inspect(cta, this);
 		}
@@ -484,7 +485,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
 		 */
-		__device__ __forceinline__ void ExpandByCta(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByCta(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByCta(cta, this);
 		}
@@ -492,7 +493,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists for valid vertices a warp-expansion granularity
 		 */
-		__device__ __forceinline__ void ExpandByWarp(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByWarp(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByWarp(cta, this);
 		}
@@ -500,7 +501,7 @@ struct SweepCta
 		/**
 		 * Expands neighbor lists by local scan rank
 		 */
-		__device__ __forceinline__ void ExpandByScan(SweepCta *cta)
+		__device__ __forceinline__ void ExpandByScan(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByScan(cta, this);
 		}
@@ -514,8 +515,9 @@ struct SweepCta
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ SweepCta(
+	__device__ __forceinline__ Cta(
 		VertexId 				iteration,
+		VertexId 				queue_index,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_parent_in,
@@ -526,6 +528,8 @@ struct SweepCta
 		VertexId 				*d_source_path,
 		util::CtaWorkProgress	&work_progress) :
 
+			iteration(iteration),
+			queue_index(queue_index),
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
 					smem_storage.smem_pool.raking_elements.coarse_raking_elements,
@@ -539,7 +543,6 @@ struct SweepCta
 			fine_enqueue_offset(smem_storage.state.fine_enqueue_offset),
 			offset_scratch(smem_storage.smem_pool.scratch.offset_scratch),
 			parent_scratch(smem_storage.smem_pool.scratch.parent_scratch),
-			iteration(iteration),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
 			d_out(d_out),
@@ -601,10 +604,11 @@ struct SweepCta
 		SizeT coarse_count = totals.t0;
 		tile.fine_count = totals.t1;
 
+		// Use a single atomic add to reserve room in the queue
 		if (threadIdx.x == 0) {
 			coarse_enqueue_offset = work_progress.Enqueue(
 				coarse_count + tile.fine_count,
-				iteration + 1);
+				queue_index + 1);
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}
 
