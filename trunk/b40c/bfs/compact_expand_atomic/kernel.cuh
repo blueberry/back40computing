@@ -27,12 +27,12 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/bfs/compact_expand/sweep_cta.cuh>
+#include <b40c/bfs/compact_expand_atomic/cta.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
 namespace b40c {
 namespace bfs {
-namespace compact_expand {
+namespace compact_expand_atomic {
 
 
 /**
@@ -44,6 +44,7 @@ struct SweepPass
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
+		typename KernelConfig::VertexId 		&queue_index,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -56,7 +57,7 @@ struct SweepPass
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef SweepCta<KernelConfig, SmemStorage> 	SweepCta;
+		typedef Cta<KernelConfig, SmemStorage> 			Cta;
 		typedef typename KernelConfig::SizeT 			SizeT;
 
 		// Determine our threadblock's work range
@@ -71,8 +72,9 @@ struct SweepPass
 		}
 
 		// CTA processing abstraction
-		SweepCta cta(
+		Cta cta(
 			iteration,
+			queue_index,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -101,17 +103,17 @@ struct SweepPass
 };
 
 
-template <typename SizeT, typename IterationT>
+template <typename SizeT, typename QueueIndex>
 __device__ __forceinline__ SizeT StealWork(
 	util::CtaWorkProgress &work_progress,
 	int count,
-	IterationT iteration)
+	QueueIndex queue_index)
 {
 	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
 
 	// Thread zero atomically steals work from the progress counter
 	if (threadIdx.x == 0) {
-		s_offset = work_progress.Steal<SizeT>(count, iteration);
+		s_offset = work_progress.Steal<SizeT>(count, queue_index);
 	}
 
 	__syncthreads();		// Protect offset
@@ -130,6 +132,7 @@ struct SweepPass <KernelConfig, true>
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelConfig::VertexId 		&iteration,
+		typename KernelConfig::VertexId 		&queue_index,
 		typename KernelConfig::VertexId 		*&d_in,
 		typename KernelConfig::VertexId 		*&d_parent_in,
 		typename KernelConfig::VertexId 		*&d_out,
@@ -142,12 +145,13 @@ struct SweepPass <KernelConfig, true>
 		util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef SweepCta<KernelConfig, SmemStorage> 	SweepCta;
-		typedef typename KernelConfig::SizeT 			SizeT;
+		typedef Cta<KernelConfig, SmemStorage> 		Cta;
+		typedef typename KernelConfig::SizeT 		SizeT;
 
 		// CTA processing abstraction
-		SweepCta cta(
+		Cta cta(
 			iteration,
+			queue_index,
 			smem_storage,
 			d_in,
 			d_parent_in,
@@ -164,7 +168,7 @@ struct SweepPass <KernelConfig, true>
 
 		// Worksteal full tiles, if any
 		SizeT offset;
-		while ((offset = StealWork<SizeT>(work_progress, KernelConfig::TILE_ELEMENTS, iteration)) < unguarded_elements) {
+		while ((offset = StealWork<SizeT>(work_progress, KernelConfig::TILE_ELEMENTS, queue_index)) < unguarded_elements) {
 			cta.ProcessTile(offset);
 		}
 
@@ -187,8 +191,9 @@ struct SweepPass <KernelConfig, true>
 template <typename KernelConfig, bool INSTRUMENT, int SATURATION_QUIT>
 __launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
 __global__
-void SweepKernel(
+void Kernel(
 	typename KernelConfig::VertexId			iteration,
+	typename KernelConfig::VertexId			queue_index,
 	typename KernelConfig::VertexId 		src,
 	typename KernelConfig::VertexId 		*d_in,
 	typename KernelConfig::VertexId 		*d_parent_in,
@@ -211,10 +216,8 @@ void SweepKernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelConfig::SmemStorage smem_storage;
 
-	if (INSTRUMENT) {
-		if (threadIdx.x == 0) {
-			kernel_stats.MarkStart();
-		}
+	if (INSTRUMENT && (threadIdx.x == 0)) {
+		kernel_stats.MarkStart();
 	}
 
 	if (iteration == 0) {
@@ -250,9 +253,9 @@ void SweepKernel(
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 			if (INSTRUMENT && (blockIdx.x == 0)) {
-				kernel_stats.Aggregate(num_elements, false);
+				kernel_stats.Aggregate(num_elements);
 			}
 
 			// Initialize work decomposition in smem
@@ -260,10 +263,10 @@ void SweepKernel(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
 
 		}
 	}
@@ -276,6 +279,7 @@ void SweepKernel(
 	// across CTAs
 	SweepPass<KernelConfig, false>::Invoke(
 		iteration,
+		queue_index,
 		d_in,
 		d_parent_in,
 		d_out,
@@ -289,11 +293,10 @@ void SweepKernel(
 		smem_storage);
 
 	iteration++;
+	queue_index++;
 
-	if (INSTRUMENT) {
-		if (threadIdx.x == 0) {
-			kernel_stats.MarkStop(false);
-		}
+	if (INSTRUMENT && (threadIdx.x == 0)) {
+		kernel_stats.MarkStop();
 	}
 
 	global_barrier.Sync();
@@ -304,19 +307,17 @@ void SweepKernel(
 		// Flip
 		//---------------------------------------------------------------------
 
-		if (INSTRUMENT) {
-			if (threadIdx.x == 0) {
-				kernel_stats.MarkStart();
-			}
+		if (INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStart();
 		}
 
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 			if (INSTRUMENT && (blockIdx.x == 0)) {
-				kernel_stats.Aggregate(num_elements, false);
+				kernel_stats.Aggregate(num_elements);
 			}
 
 			// Initialize work decomposition in smem
@@ -324,10 +325,10 @@ void SweepKernel(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
 
 		}
 
@@ -342,6 +343,7 @@ void SweepKernel(
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
+			queue_index,
 			d_out,
 			d_parent_out,
 			d_in,
@@ -355,11 +357,10 @@ void SweepKernel(
 			smem_storage);
 
 		iteration++;
+		queue_index++;
 
-		if (INSTRUMENT) {
-			if (threadIdx.x == 0) {
-				kernel_stats.MarkStop(false);
-			}
+		if (INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStop();
 		}
 
 		global_barrier.Sync();
@@ -368,19 +369,17 @@ void SweepKernel(
 		// Flop
 		//---------------------------------------------------------------------
 
-		if (INSTRUMENT) {
-			if (threadIdx.x == 0) {
-				kernel_stats.MarkStart();
-			}
+		if (INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStart();
 		}
 
 		// Determine work decomposition
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 			if (INSTRUMENT && (blockIdx.x == 0)) {
-				kernel_stats.Aggregate(num_elements, false);
+				kernel_stats.Aggregate(num_elements);
 			}
 
 			// Initialize work decomposition in smem
@@ -388,10 +387,10 @@ void SweepKernel(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(iteration + 1);
+			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
 		}
 
 		// Barrier to protect work decomposition
@@ -406,6 +405,7 @@ void SweepKernel(
 
 		SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
 			iteration,
+			queue_index,
 			d_in,
 			d_parent_in,
 			d_out,
@@ -419,11 +419,10 @@ void SweepKernel(
 			smem_storage);
 
 		iteration++;
+		queue_index++;
 
-		if (INSTRUMENT) {
-			if (threadIdx.x == 0) {
-				kernel_stats.MarkStop(false);
-			}
+		if (INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStop();
 		}
 
 		global_barrier.Sync();
@@ -434,16 +433,13 @@ void SweepKernel(
 		d_iteration[0] = iteration;
 	}
 
-	if (INSTRUMENT) {
-		if (threadIdx.x == 0) {
-			kernel_stats.MarkStop(true);
-			kernel_stats.Aggregate(0, true);
-		}
+	if (INSTRUMENT && (threadIdx.x == 0)) {
+		kernel_stats.MarkStop();
+		kernel_stats.Flush();
 	}
-
 }
 
-} // namespace compact_expand
+} // namespace compact_expand_atomic
 } // namespace bfs
 } // namespace b40c
 

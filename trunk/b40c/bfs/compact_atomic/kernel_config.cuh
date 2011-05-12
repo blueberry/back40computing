@@ -28,12 +28,14 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/srts_grid.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
 namespace bfs {
-namespace compact {
+namespace compact_atomic {
 
 
 /**
@@ -59,11 +61,13 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
+	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
+	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct UpsweepKernelConfig : _ProblemType
+struct KernelConfig : _ProblemType
 {
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
@@ -72,6 +76,8 @@ struct UpsweepKernelConfig : _ProblemType
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+
+	static const bool WORK_STEALING								= _WORK_STEALING;
 
 	enum {
 
@@ -87,6 +93,9 @@ struct UpsweepKernelConfig : _ProblemType
 		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
 		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
 
+		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
 		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
@@ -100,49 +109,72 @@ struct UpsweepKernelConfig : _ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 	};
 
+
+	// SRTS grid type
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		SizeT,									// Partial type (valid counts)
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			SrtsGrid;
+
+
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+
+
 	/**
 	 * Shared memory structure
 	 */
 	struct SmemStorage
 	{
-		// Shared work-processing limits
-		util::CtaWorkDistribution<SizeT>		work_decomposition;
-
 		enum {
-			WARP_HASH_ELEMENTS			= 128,
-
-
-			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
-											- sizeof(util::CtaWorkDistribution<SizeT>)
-											- 64,
-
-			HISTORY_HASH_ELEMENTS		= (FULL_OCCUPANCY_BYTES - sizeof(VertexId[WARPS][WARP_HASH_ELEMENTS])) / sizeof(VertexId),
+			WARP_HASH_ELEMENTS					= 128,
 		};
 
-		// General pool for hashing & tree-reduction
-		union {
-			SizeT				reduction_tree[THREADS];
-			struct {
-				VertexId 		vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
-				VertexId		history[HISTORY_HASH_ELEMENTS];
-			} hashtables;
-		} smem_pool;
+		// Persistent shared state for the CTA
+		struct State {
+
+			// Shared work-processing limits
+			util::CtaWorkDistribution<SizeT>	work_decomposition;
+
+			// Storage for scanning local ranks
+			SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+
+			// General pool for hashing & tree-reduction
+			union {
+				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+				VertexId 						vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
+			} smem_pool;
+
+		} state;
+
+
+		enum {
+			// Amount of storage we can use for hashing scratch space under target occupancy
+			FULL_OCCUPANCY_BYTES				= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+													- sizeof(State)
+													- 72,
+
+			HISTORY_HASH_ELEMENTS				= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
+		};
+
+		// Fill the remainder of smem with a history-based hash-cache of seen vertex-ids
+		VertexId								history[HISTORY_HASH_ELEMENTS];
 	};
 
 	enum {
-		// Total number of smem quads needed by this kernel
-		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
+		THREAD_OCCUPANCY						= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY							= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		CTA_OCCUPANCY  							= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
-
-		VALID							= (CTA_OCCUPANCY > 0),
+		VALID									= (CTA_OCCUPANCY > 0),
 	};
 };
 
-} // namespace compact
+} // namespace compact_atomic
 } // namespace bfs
 } // namespace b40c
 

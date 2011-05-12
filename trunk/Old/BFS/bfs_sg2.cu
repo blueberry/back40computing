@@ -32,8 +32,8 @@
 
 #include <b40c/bfs/problem_type.cuh>
 
-#include <b40c/bfs/compact_expand_atomic/kernel_config.cuh>
-#include <b40c/bfs/compact_expand_atomic/kernel.cuh>
+#include <b40c/bfs/hybrid/kernel_config.cuh>
+#include <b40c/bfs/hybrid/kernel.cuh>
 
 
 namespace b40c {
@@ -43,7 +43,7 @@ namespace bfs {
 /**
  * Single-grid breadth-first-search enactor.
  */
-class SingleGridBfsEnactor : public BaseBfsEnactor
+class SG2BfsEnactor : public BaseBfsEnactor
 {
 
 protected:
@@ -70,7 +70,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	SingleGridBfsEnactor(bool DEBUG = false) :
+	SG2BfsEnactor(bool DEBUG = false) :
 		BaseBfsEnactor(DEBUG),
 		iteration(NULL),
 		d_iteration(NULL)
@@ -79,20 +79,20 @@ public:
 
 		// Allocate pinned memory
 		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
-			"SingleGridBfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
+			"SG2BfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
 
 		// Map into GPU space
 		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
-			"SingleGridBfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
+			"SG2BfsEnactor cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
 	}
 
 
 	/**
 	 * Destructor
 	 */
-	virtual ~SingleGridBfsEnactor()
+	virtual ~SG2BfsEnactor()
 	{
-		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "SingleGridBfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
+		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "SG2BfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
 	}
 
 
@@ -127,21 +127,25 @@ public:
 		typedef typename BfsCsrProblem::VertexId VertexId;
 
 		// Single-grid tuning configuration
-		typedef compact_expand_atomic::KernelConfig<
+		typedef hybrid::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			0,
-			5,
-			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+			200,					// CUDA_ARCH
+			8,						// MAX_CTA_OCCUPANCY
+			7,						// LOG_THREADS
+			0,						// EXPAND_LOG_LOAD_VEC_SIZE
+			0,						// EXPAND_LOG_LOADS_PER_TILE
+			5,						// EXPAND_LOG_RAKING_THREADS
 			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
 			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
 			false,					// WORK_STEALING
-			6> KernelConfig;
+			6,						// EXPAND_LOG_SCHEDULE_GRANULARITY
+			0,						// COMPACT_LOG_LOAD_VEC_SIZE,
+			2, 						// COMPACT_LOG_LOADS_PER_TILE,
+			5,						// COMPACT_LOG_RAKING_THREADS,
+			false,					// COMPACT_WORK_STEALING,
+			9						// COMPACT_LOG_SCHEDULE_GRANULARITY
+				> KernelConfig;
 
 		int occupancy = KernelConfig::CTA_OCCUPANCY;
 		int grid_size = MaxGridSize(occupancy, max_grid_size);
@@ -162,10 +166,8 @@ public:
 		total_queued	 	= 0;
 
 		// Initiate single-grid kernel
-		compact_expand_atomic::Kernel<KernelConfig, INSTRUMENT, 0>
+		hybrid::Kernel<KernelConfig, INSTRUMENT, 0>
 				<<<grid_size, KernelConfig::THREADS>>>(
-			0,
-			0,
 			src,
 
 			bfs_problem.d_expand_queue,

@@ -33,13 +33,10 @@
 #include <b40c/util/kernel_runtime_stats.cuh>
 
 #include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/compact/problem_config.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
-#include <b40c/bfs/compact/upsweep_kernel.cuh>
-#include <b40c/bfs/compact/downsweep_kernel.cuh>
-
-#include <b40c/scan/spine_kernel.cuh>
+#include <b40c/bfs/expand_atomic/kernel.cuh>
+#include <b40c/bfs/expand_atomic/kernel_config.cuh>
+#include <b40c/bfs/compact_atomic/kernel.cuh>
+#include <b40c/bfs/compact_atomic/kernel_config.cuh>
 
 namespace b40c {
 namespace bfs {
@@ -54,12 +51,6 @@ class LevelGridBfsEnactor : public BaseBfsEnactor
 {
 
 protected:
-
-	/**
-	 * Temporary device storage needed for reducing partials produced
-	 * by separate CTAs
-	 */
-	util::Spine spine;
 
 	/**
 	 * CTA duty kernel stats
@@ -145,7 +136,7 @@ public:
 		int 								max_grid_size = 0)
 	{
 		// Expansion kernel config
-		typedef expand_atomic::SweepKernelConfig<
+		typedef expand_atomic::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
 			8,
@@ -159,40 +150,21 @@ public:
 			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
 			true,					// WORK_STEALING
-			6> ExpandAtomicSweep;
+			6> ExpandConfig;
 
-
-		// Compaction tuning configuration
-		typedef compact::ProblemConfig<
+		// Compaction kernel config
+		typedef compact_atomic::KernelConfig<
 			typename BfsCsrProblem::ProblemType,
 			200,
-			util::io::ld::NONE,
-			util::io::st::NONE,
-			9,
-
-			// Compact upsweep
 			8,
 			7,
 			0,
-			0,
-
-			// Compact spine
-			5,
 			2,
-			0,
 			5,
-
-			// Compact downsweep
-			8,
-			7,
-			1,
-			1,
-			5> CompactProblemConfig;
-
-
-		typedef typename CompactProblemConfig::CompactUpsweep 		CompactUpsweep;
-		typedef typename CompactProblemConfig::CompactSpine 		CompactSpine;
-		typedef typename CompactProblemConfig::CompactDownsweep 	CompactDownsweep;
+			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+			false,					// WORK_STEALING
+			9> CompactConfig;
 
 		typedef typename BfsCsrProblem::VertexId					VertexId;
 		typedef typename BfsCsrProblem::SizeT						SizeT;
@@ -203,19 +175,15 @@ public:
 		// Determine grid size(s)
 		//
 
-		int expand_min_occupancy 		= ExpandAtomicSweep::CTA_OCCUPANCY;
+		int expand_min_occupancy 		= ExpandConfig::CTA_OCCUPANCY;
 		int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
-		int compact_min_occupancy		= B40C_MIN((int) CompactUpsweep::CTA_OCCUPANCY, (int) CompactDownsweep::CTA_OCCUPANCY);
+		int compact_min_occupancy		= CompactConfig::CTA_OCCUPANCY;
 		int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
 		if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
-				expand_min_occupancy, expand_grid_size);
+			expand_min_occupancy, expand_grid_size);
 		if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
 			compact_min_occupancy, compact_grid_size);
-
-		// Make sure our spine is big enough
-		int spine_elements = compact_grid_size;
-		if (retval = spine.Setup<SizeT>(compact_grid_size, spine_elements)) exit(1);
 
 		// Make sure our runtime stats are good
 		if (retval = expand_kernel_stats.Setup(expand_grid_size)) exit(1);
@@ -233,13 +201,16 @@ public:
 
 		SizeT queue_length;
 		VertexId iteration = 0;
+		VertexId queue_index = 0;
+
 		while (!done[0]) {
 
-			// BFS iteration
-			expand_atomic::SweepKernel<ExpandAtomicSweep, INSTRUMENT, 0>
-					<<<expand_grid_size, ExpandAtomicSweep::THREADS>>>(
+			// Expansion
+			expand_atomic::Kernel<ExpandConfig, INSTRUMENT, 0>
+					<<<expand_grid_size, ExpandConfig::THREADS>>>(
 				src,
 				iteration,
+				queue_index,
 				d_done,
 				bfs_problem.d_compact_queue,			// in
 				bfs_problem.d_compact_parent_queue,
@@ -251,54 +222,37 @@ public:
 				this->work_progress,
 				this->expand_kernel_stats);
 
+			queue_index++;
 			iteration++;
 
 			if (INSTRUMENT) {
 				// Get expansion queue length
-				if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
+				if (this->work_progress.GetQueueLength(queue_index, queue_length)) exit(0);
 				total_queued += queue_length;
-				printf("%lld", (long long) queue_length);
+				printf("Expansion queue length: %lld\n", (long long) queue_length);
 
 				// Get expand stats (i.e., duty %)
 				expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
 			}
 
-			// Upsweep
-			compact::UpsweepKernel<CompactUpsweep, INSTRUMENT><<<compact_grid_size, CompactUpsweep::THREADS>>>(
-				iteration,
+			// Compaction
+			compact_atomic::Kernel<CompactConfig, INSTRUMENT><<<compact_grid_size, CompactConfig::THREADS>>>(
+				queue_index,
 				d_done,
 				bfs_problem.d_expand_queue,				// in
-				bfs_problem.d_keep,
-				(SizeT *) this->spine(),
+				bfs_problem.d_expand_parent_queue,
+				bfs_problem.d_compact_queue,			// out
+				bfs_problem.d_compact_parent_queue,
 				bfs_problem.d_collision_cache,
 				this->work_progress,
 				this->compact_kernel_stats);
 
-			if (INSTRUMENT) {
-				// Get compact upsweep stats (i.e., duty %)
-				compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live);
-			}
-
-			// Spine
-			scan::SpineKernel<CompactSpine><<<1, CompactSpine::THREADS>>>(
-				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
-
-			// Downsweep
-			compact::DownsweepKernel<CompactDownsweep, INSTRUMENT><<<compact_grid_size, CompactDownsweep::THREADS>>>(
-				iteration,
-				bfs_problem.d_expand_queue,				// in
-				bfs_problem.d_expand_parent_queue,
-				bfs_problem.d_keep,
-				bfs_problem.d_compact_queue,			// out
-				bfs_problem.d_compact_parent_queue,
-				(SizeT *) this->spine(),
-				this->work_progress,
-				this->compact_kernel_stats);
+			queue_index++;
 
 			if (INSTRUMENT) {
 				// Get compaction queue length
 				if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
-				printf(", %lld\n", (long long) queue_length);
+				printf("Compaction queue length: %lld\n", (long long) queue_length);
 
 				// Get compact downsweep stats (i.e., duty %)
 				if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
