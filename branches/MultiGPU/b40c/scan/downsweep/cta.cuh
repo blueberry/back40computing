@@ -36,22 +36,24 @@
 
 namespace b40c {
 namespace scan {
+namespace downsweep {
 
 
 /**
- * Derivation of KernelConfig that encapsulates downsweep scan tile-processing
+ * Derivation of KernelPolicy that encapsulates downsweep scan tile-processing
  * routines state and routines
  */
-template <typename KernelConfig>
-struct Cta : KernelConfig
+template <typename KernelPolicy>
+struct Cta : KernelPolicy
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T 			T;
-	typedef typename KernelConfig::SizeT 		SizeT;
-	typedef typename KernelConfig::SrtsDetails 	SrtsDetails;
+	typedef typename KernelPolicy::T 			T;
+	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef typename KernelPolicy::SrtsDetails 	SrtsDetails;
+	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -76,17 +78,16 @@ struct Cta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
 		T *d_in,
 		T *d_out,
-		T spine_partial = KernelConfig::Identity()) :
+		T spine_partial = KernelPolicy::Identity()) :
 
 			srts_details(
 				smem_storage.smem_pool,
 				smem_storage.warpscan,
-				KernelConfig::Identity()),
+				KernelPolicy::Identity()),
 			d_in(d_in),
 			d_out(d_out),
 			carry(spine_partial) {}			// Seed carry with spine partial
@@ -97,38 +98,38 @@ struct Cta : KernelConfig
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
+		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tile of scan elements
-		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER>::LoadValid(
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
 				data, d_in + cta_offset, guarded_elements);
 
 		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
 			SrtsDetails,
-			KernelConfig::LOAD_VEC_SIZE,
-			KernelConfig::EXCLUSIVE,
-			KernelConfig::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
+			KernelPolicy::LOAD_VEC_SIZE,
+			KernelPolicy::EXCLUSIVE,
+			KernelPolicy::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
 
 		// Store tile
 		util::io::StoreTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER>::Store(
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Store(
 				data, d_out + cta_offset, guarded_elements);
 	}
 };
 
 
-
+} // namespace downsweep
 } // namespace scan
 } // namespace b40c
 

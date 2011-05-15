@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Base Scan Enactor
+ * Scan Enactor
  ******************************************************************************/
 
 #pragma once
@@ -28,24 +28,33 @@
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/scan/downsweep_kernel.cuh>
-#include <b40c/scan/spine_kernel.cuh>
-#include <b40c/scan/upsweep_kernel.cuh>
+#include <b40c/util/arch_dispatch.cuh>
+
+#include <b40c/scan/problem_type.cuh>
+#include <b40c/scan/policy.cuh>
+#include <b40c/scan/autotuned_policy.cuh>
+#include <b40c/scan/downsweep/kernel.cuh>
+#include <b40c/scan/spine/kernel.cuh>
+#include <b40c/scan/upsweep/kernel.cuh>
 
 namespace b40c {
 namespace scan {
 
 
-/******************************************************************************
- * Enactor Declaration
- ******************************************************************************/
-
 /**
- * Basic scan enactor class.
+ * Scan enactor class.
  */
 class Enactor : public util::EnactorBase
 {
 protected:
+
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
+	template <typename T, typename SizeT> 					struct Storage;
+	template <typename ProblemType> 						struct Detail;
+	template <ProbSizeGenre PROB_SIZE_GENRE> 			struct PolicyResolver;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -60,31 +69,16 @@ protected:
 	// Utility Routines
 	//-----------------------------------------------------------------------------
 
-	/**
-	 * Performs any lazy per-pass initialization work needed for this problem type
-	 */
-	template <typename ProblemConfig>
-	cudaError_t Setup(int sweep_grid_size, int spine_elements);
-
     /**
 	 * Performs a scan pass
 	 */
-	template <typename ProblemConfig>
+	template <typename Policy>
 	cudaError_t EnactPass(
-		typename ProblemConfig::T *d_dest,
-		typename ProblemConfig::T *d_src,
-		util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
-		typename ProblemConfig::SizeT spine_elements);
+		typename Policy::T *d_dest,
+		typename Policy::T *d_src,
+		util::CtaWorkDistribution<typename Policy::SizeT> &work,
+		typename Policy::SizeT spine_elements);
 
-	/**
-	 * Enacts a scan on the specified device data.
-	 */
-	template <typename ProblemConfig, typename EnactorType>
-	cudaError_t EnactInternal(
-		typename ProblemConfig::T *d_dest,
-		typename ProblemConfig::T *d_src,
-		typename ProblemConfig::SizeT num_elements,
-		int max_grid_size);
 
 public:
 
@@ -92,6 +86,64 @@ public:
 	 * Constructor
 	 */
 	Enactor() {}
+
+
+	/**
+	 * Enacts a scan operation on the specified device data using
+	 * a heuristic for selecting granularity configuration based upon
+	 * problem size.
+	 *
+	 * @param d_dest
+	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be scanned
+	 * @param num_elements
+	 * 		Number of elements to scan
+	 * @param max_grid_size
+	 * 		Optional upper-bound on the number of CTAs to launch.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <
+		typename T,
+		bool EXCLUSIVE,
+		T BinaryOp(const T&, const T&),
+		T Identity(),
+		typename SizeT>
+	cudaError_t Scan(
+		T *d_dest,
+		T *d_src,
+		SizeT num_elements,
+		int max_grid_size = 0);
+
+
+	/**
+	 * Enacts a scan operation on the specified device data using the
+	 * enumerated tuned granularity configuration
+	 *
+	 * @param d_dest
+	 * 		Pointer to result location
+	 * @param d_src
+	 * 		Pointer to array of elements to be scanned
+	 * @param num_elements
+	 * 		Number of elements to scan
+	 * @param max_grid_size
+	 * 		Optional upper-bound on the number of CTAs to launch.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <
+		typename T,
+		bool EXCLUSIVE,
+		T BinaryOp(const T&, const T&),
+		T Identity(),
+		ProbSizeGenre PROB_SIZE_GENRE,
+		typename SizeT>
+	cudaError_t Scan(
+		T *d_dest,
+		T *d_src,
+		SizeT num_elements,
+		int max_grid_size = 0);
 
 
 	/**
@@ -110,15 +162,117 @@ public:
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-	template <typename ProblemConfig>
-	cudaError_t Enact(
-		typename ProblemConfig::T *d_dest,
-		typename ProblemConfig::T *d_src,
-		typename ProblemConfig::SizeT num_elements,
+	template <typename Policy>
+	cudaError_t Scan(
+		typename Policy::T *d_dest,
+		typename Policy::T *d_src,
+		typename Policy::SizeT num_elements,
 		int max_grid_size = 0);
 };
 
 
+
+/******************************************************************************
+ * Helper structures
+ ******************************************************************************/
+
+/**
+ * Type for encapsulating operational details regarding an invocation
+ */
+template <typename ProblemType>
+struct Enactor::Detail
+{
+	typedef ProblemType Problem;
+
+	Enactor *enactor;
+	int max_grid_size;
+
+	// Constructor
+	Detail(Enactor *enactor, int max_grid_size = 0) :
+		enactor(enactor), max_grid_size(max_grid_size) {}
+};
+
+
+/**
+ * Type for encapsulating storage details regarding an invocation
+ */
+template <typename T, typename SizeT>
+struct Enactor::Storage
+{
+	T *d_dest;
+	T *d_src;
+	SizeT num_elements;
+
+	// Constructor
+	Storage(T *d_dest, T *d_src, SizeT num_elements) :
+		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
+};
+
+
+/**
+ * Helper structure for resolving and enacting tuning configurations
+ *
+ * Default specialization for problem type genres
+ */
+template <ProbSizeGenre PROB_SIZE_GENRE>
+struct Enactor::PolicyResolver
+{
+	/**
+	 * ArchDispatch call-back with static CUDA_ARCH
+	 */
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
+	{
+		typedef typename DetailType::Problem ProblemType;
+
+		// Obtain tuned granularity type
+		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
+
+		// Invoke base class enact with type
+		return detail.enactor->template Scan<AutotunedPolicy>(
+			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+	}
+};
+
+
+/**
+ * Helper structure for resolving and enacting tuning configurations
+ *
+ * Specialization for UNKNOWN problem type to select other problem type genres
+ * based upon problem size, etc.
+ */
+template <>
+struct Enactor::PolicyResolver <UNKNOWN_SIZE>
+{
+	/**
+	 * ArchDispatch call-back with static CUDA_ARCH
+	 */
+	template <int CUDA_ARCH, typename StorageType, typename DetailType>
+	static cudaError_t Enact(StorageType &storage, DetailType &detail)
+	{
+		typedef typename DetailType::Problem ProblemType;
+
+		// Obtain large tuned granularity type
+		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, LARGE_SIZE> LargePolicy;
+
+		// Identity the maximum problem size for which we can saturate loads
+		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
+			LargePolicy::Upsweep::CTA_OCCUPANCY *
+			detail.enactor->SmCount();
+
+		if (storage.num_elements < saturating_load) {
+
+			// Invoke base class enact with small-problem config type
+			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
+			return detail.enactor->template Scan<SmallPolicy>(
+				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+		}
+
+		// Invoke base class enact with type
+		return detail.enactor->template Scan<LargePolicy>(
+			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+	}
+};
 
 
 /******************************************************************************
@@ -127,38 +281,29 @@ public:
 
 
 /**
- * Performs any lazy initialization work needed for this problem type
- */
-template <typename ProblemConfig>
-cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
-{
-	typedef typename ProblemConfig::T T;
-
-	// Make sure our spine is big enough
-	return spine.Setup<T>(sweep_grid_size, spine_elements);
-}
-
-
-/**
  * Performs a scan pass
  */
-template <typename ProblemConfig>
+template <typename Policy>
 cudaError_t Enactor::EnactPass(
-	typename ProblemConfig::T *d_dest,
-	typename ProblemConfig::T *d_src,
-	util::CtaWorkDistribution<typename ProblemConfig::SizeT> &work,
-	typename ProblemConfig::SizeT spine_elements)
+	typename Policy::T *d_dest,
+	typename Policy::T *d_src,
+	util::CtaWorkDistribution<typename Policy::SizeT> &work,
+	typename Policy::SizeT spine_elements)
 {
-	typedef typename ProblemConfig::Upsweep Upsweep;
-	typedef typename ProblemConfig::Spine Spine;
-	typedef typename ProblemConfig::Downsweep Downsweep;
-	typedef typename ProblemConfig::T T;
+	typedef typename Policy::Upsweep 		Upsweep;
+	typedef typename Policy::Spine 			Spine;
+	typedef typename Policy::Downsweep 		Downsweep;
+	typedef typename Policy::T 				T;
+
+	typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
+	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
 
 	cudaError_t retval = cudaSuccess;
 	do {
 		if (work.grid_size == 1) {
 
-			SpineKernel<Spine><<<1, Spine::THREADS, 0>>>(
+			SpineKernel<<<1, Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
@@ -169,18 +314,18 @@ cudaError_t Enactor::EnactPass(
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
 			// Tuning option for dynamic smem allocation
-			if (ProblemConfig::UNIFORM_SMEM_ALLOCATION) {
+			if (Policy::UNIFORM_SMEM_ALLOCATION) {
 
 				// We need to compute dynamic smem allocations to ensure all three
 				// kernels end up allocating the same amount of smem per CTA
 
 				// Get kernel attributes
 				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel<Upsweep>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel),
 					"Enactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel<Spine>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
 					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel<Downsweep>),
+				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel),
 					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
 				int max_static_smem = B40C_MAX(
@@ -193,24 +338,24 @@ cudaError_t Enactor::EnactPass(
 			}
 
 			// Tuning option for spine-scan kernel grid size
-			if (ProblemConfig::UNIFORM_GRID_SIZE) {
+			if (Policy::UNIFORM_GRID_SIZE) {
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
 			// Upsweep scan into spine
-			UpsweepKernel<Upsweep><<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
+			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
 				d_src, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
-			SpineKernel<Spine><<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
+			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) spine(), (T*) spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan into spine
-			DownsweepKernel<Downsweep><<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
+			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
@@ -221,27 +366,27 @@ cudaError_t Enactor::EnactPass(
 	return retval;
 }
 
-    
+
 /**
  * Enacts a scan on the specified device data.
  */
-template <typename ProblemConfig, typename EnactorType>
-cudaError_t Enactor::EnactInternal(
-	typename ProblemConfig::T *d_dest,
-	typename ProblemConfig::T *d_src,
-	typename ProblemConfig::SizeT num_elements,
+template <typename Policy>
+cudaError_t Enactor::Scan(
+	typename Policy::T *d_dest,
+	typename Policy::T *d_src,
+	typename Policy::SizeT num_elements,
 	int max_grid_size)
 {
-	typedef typename ProblemConfig::Upsweep Upsweep;
-	typedef typename ProblemConfig::Spine Spine;
-	typedef typename ProblemConfig::Downsweep Downsweep;
-	typedef typename ProblemConfig::T T;
-	typedef typename ProblemConfig::SizeT SizeT;
+	typedef typename Policy::Upsweep 	Upsweep;
+	typedef typename Policy::Spine 		Spine;
+	typedef typename Policy::Downsweep 	Downsweep;
+	typedef typename Policy::T 			T;
+	typedef typename Policy::SizeT 		SizeT;
 
 	// Compute sweep grid size
 	const int MIN_OCCUPANCY = B40C_MIN(Downsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
-	int sweep_grid_size = (ProblemConfig::OVERSUBSCRIBED_GRID_SIZE) ?
+	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
 
@@ -280,12 +425,11 @@ cudaError_t Enactor::EnactInternal(
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		// Perform any lazy initialization work
-		if (retval = Setup<ProblemConfig>(sweep_grid_size, spine_elements)) break;
+		// Make sure our spine is big enough
+		if (retval = spine.Setup<T>(sweep_grid_size, spine_elements)) break;
 
 		// Invoke scan kernel
-		EnactorType *dipatch = static_cast<EnactorType *>(this);
-		if (retval = dipatch->template EnactPass<ProblemConfig>(d_dest, d_src, work, spine_elements)) break;
+		if (retval = EnactPass<Policy>(d_dest, d_src, work, spine_elements)) break;
 
 	} while (0);
 
@@ -294,18 +438,54 @@ cudaError_t Enactor::EnactInternal(
 
 
 /**
- * Enacts a scan on the specified device data.
+ * Enacts a scan operation on the specified device data using the
+ * enumerated tuned granularity configuration
  */
-template <typename ProblemConfig>
-cudaError_t Enactor::Enact(
-	typename ProblemConfig::T *d_dest,
-	typename ProblemConfig::T *d_src,
-	typename ProblemConfig::SizeT num_elements,
+template <
+	typename T,
+	bool EXCLUSIVE,
+	T BinaryOp(const T&, const T&),
+	T Identity(),
+	ProbSizeGenre PROB_SIZE_GENRE,
+	typename SizeT>
+cudaError_t Enactor::Scan(
+	T *d_dest,
+	T *d_src,
+	SizeT num_elements,
 	int max_grid_size)
 {
-	return EnactInternal<ProblemConfig, Enactor>(
+	typedef ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
+	typedef Detail<Problem> Detail;
+	typedef Storage<T, SizeT> Storage;
+	typedef PolicyResolver<PROB_SIZE_GENRE> Resolver;
+
+	Detail detail(this, max_grid_size);
+	Storage storage(d_dest, d_src, num_elements);
+
+	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
+}
+
+
+/**
+ * Enacts a scan operation on the specified device data using the
+ * LARGE granularity configuration
+ */
+template <
+	typename T,
+	bool EXCLUSIVE,
+	T BinaryOp(const T&, const T&),
+	T Identity(),
+	typename SizeT>
+cudaError_t Enactor::Scan(
+	T *d_dest,
+	T *d_src,
+	SizeT num_elements,
+	int max_grid_size)
+{
+	return Scan<T, EXCLUSIVE, BinaryOp, Identity, UNKNOWN_SIZE>(
 		d_dest, d_src, num_elements, max_grid_size);
 }
+
 
 
 } // namespace scan 

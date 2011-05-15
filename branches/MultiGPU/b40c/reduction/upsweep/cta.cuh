@@ -36,6 +36,7 @@
 
 namespace b40c {
 namespace reduction {
+namespace upsweep {
 
 
 /**
@@ -50,6 +51,7 @@ struct Cta : KernelPolicy
 
 	typedef typename KernelPolicy::T 		T;
 	typedef typename KernelPolicy::SizeT 	SizeT;
+	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -74,7 +76,6 @@ struct Cta : KernelPolicy
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
 		T *d_in,
@@ -199,6 +200,7 @@ struct Cta : KernelPolicy
 };
 
 
+} // namespace upsweep
 } // namespace reduction
 } // namespace b40c
 

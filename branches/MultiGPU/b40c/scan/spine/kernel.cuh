@@ -20,30 +20,31 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Spine scan kernel
+ * Spine kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/scan/cta.cuh>
+#include <b40c/scan/downsweep/cta.cuh>
 
 namespace b40c {
 namespace scan {
+namespace spine {
 
 
 /**
  * Spine scan pass
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
-	typename KernelConfig::T 		*&d_in,
-	typename KernelConfig::T 		*&d_out,
-	typename KernelConfig::SizeT 	&spine_elements,
-	SmemStorage 					&smem_storage)
+	typename KernelPolicy::T 				*&d_in,
+	typename KernelPolicy::T 				*&d_out,
+	typename KernelPolicy::SizeT 			&spine_elements,
+	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef Cta<KernelConfig> 					Cta;
-	typedef typename KernelConfig::SizeT 		SizeT;
-	typedef typename KernelConfig::T 			T;
+	typedef downsweep::Cta<KernelPolicy> 		Cta;
+	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef typename KernelPolicy::T 			T;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -52,7 +53,7 @@ __device__ __forceinline__ void SpinePass(
 	Cta cta(smem_storage, d_in, d_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
+	SizeT cta_guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
@@ -61,7 +62,7 @@ __device__ __forceinline__ void SpinePass(
 	SizeT cta_offset = 0;
 	while (cta_offset < cta_guarded_offset) {
 		cta.ProcessTile(cta_offset);
-		cta_offset += KernelConfig::TILE_ELEMENTS;
+		cta_offset += KernelPolicy::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -71,27 +72,23 @@ __device__ __forceinline__ void SpinePass(
 }
 
 
-/******************************************************************************
- * Spine Scan Kernel Entry-point
- ******************************************************************************/
-
 /**
  * Spine scan kernel entry point
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
-void SpineKernel(
-	typename KernelConfig::T			*d_in,
-	typename KernelConfig::T			*d_out,
-	typename KernelConfig::SizeT 		spine_elements)
+void Kernel(
+	typename KernelPolicy::T			*d_in,
+	typename KernelPolicy::T			*d_out,
+	typename KernelPolicy::SizeT 		spine_elements)
 {
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SpinePass<KernelConfig>(d_in, d_out, spine_elements, smem_storage);
+	SpinePass<KernelPolicy>(d_in, d_out, spine_elements, smem_storage);
 }
 
-
+} // namespace spine
 } // namespace scan
 } // namespace b40c
 

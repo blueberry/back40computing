@@ -27,21 +27,25 @@
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/reduction/kernel_config.cuh>
-#include <b40c/scan/kernel_config.cuh>
+
+#include <b40c/reduction/upsweep/kernel_policy.cuh>
+
+#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/upsweep/kernel.cuh>
+#include <b40c/scan/spine/kernel.cuh>
+#include <b40c/scan/downsweep/kernel.cuh>
 
 namespace b40c {
 namespace scan {
 
 
 /**
- * Unified scan granularity configuration type.
+ * Unified scan policy type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
- * parameters that define kernel-dispatch policy.  By encapsulating the tuning information
- * for dispatch and both kernels, we assure operational consistency over an entire
- * scan pass.
+ * parameters that define kernel-dispatch policy.   By encapsulating all of the
+ * kernel tuning policies, we assure operational consistency over an entire scan pass.
  */
 template <
 	// ProblemType type parameters
@@ -77,12 +81,26 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig : _ProblemType
+struct Policy : _ProblemType
 {
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
 	typedef _ProblemType ProblemType;
+	typedef typename ProblemType::T T;
+	typedef typename ProblemType::SizeT SizeT;
+
+	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
+	typedef void (*DownsweepKernelPtr)(T*, T*, T*, util::CtaWorkDistribution<SizeT>);
+
+	//---------------------------------------------------------------------
+	// Kernel Policies
+	//---------------------------------------------------------------------
 
 	// Kernel config for the upsweep reduction kernel
-	typedef reduction::KernelConfig <
+	typedef reduction::upsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -95,9 +113,17 @@ struct ProblemConfig : _ProblemType
 		LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
+	// Problem type for spine scan (ensures exclusive scan)
+	typedef scan::ProblemType<
+		T,
+		SizeT,
+		true,								// Exclusive
+		ProblemType::BinaryOp,
+		ProblemType::Identity> SpineProblemType;
+
 	// Kernel config for the spine scan kernel
-	typedef KernelConfig <
-		ProblemType,
+	typedef downsweep::KernelPolicy <
+		SpineProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
@@ -110,7 +136,7 @@ struct ProblemConfig : _ProblemType
 			Spine;
 
 	// Kernel config for the downsweep scan kernel
-	typedef KernelConfig <
+	typedef downsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
@@ -122,6 +148,28 @@ struct ProblemConfig : _ProblemType
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
+
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static UpsweepKernelPtr UpsweepKernel() {
+		return upsweep::Kernel<Upsweep>;
+	}
+
+	static SpineKernelPtr SpineKernel() {
+		return spine::Kernel<Spine>;
+	}
+
+	static DownsweepKernelPtr DownsweepKernel() {
+		return downsweep::Kernel<Downsweep>;
+	}
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
 
 	enum {
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,

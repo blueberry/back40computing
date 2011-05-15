@@ -61,7 +61,7 @@ void TemplatedSubroutineReduction(
 	T *d_src,
 	int num_elements)
 {
-	reduction_enactor.template Enact<T, BinaryOp>(d_dest, d_src, num_elements);
+	reduction_enactor.template Reduce<T, BinaryOp>(d_dest, d_src, num_elements);
 }
 
 
@@ -107,7 +107,7 @@ int main(int argc, char** argv)
 	//
 	// Example 1: Enact simple reduction using internal tuning heuristics
 	//
-	reduction_enactor.Enact<T, Max>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<T, Max>(d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Simple reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 	
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 	//
 	// Example 2: Enact simple reduction using "large problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, b40c::reduction::LARGE_SIZE>(
+	reduction_enactor.Reduce<T, Max, b40c::reduction::LARGE_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Large-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 	//
 	// Example 3: Enact simple reduction using "small problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, b40c::reduction::SMALL_SIZE>(
+	reduction_enactor.Reduce<T, Max, b40c::reduction::SMALL_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Small-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
@@ -155,7 +155,7 @@ int main(int argc, char** argv)
 		8, 7, 1, 2, 9,
 		8, 1, 1> CustomPolicy;
 	
-	reduction_enactor.Enact<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Custom reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 

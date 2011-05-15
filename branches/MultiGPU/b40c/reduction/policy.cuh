@@ -30,7 +30,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/reduction/kernel_policy.cuh>
+#include <b40c/reduction/upsweep/kernel_policy.cuh>
 #include <b40c/reduction/upsweep/kernel.cuh>
 #include <b40c/reduction/spine/kernel.cuh>
 
@@ -93,7 +93,7 @@ struct Policy : _ProblemType
 	/**
 	 * Kernel config for the upsweep reduction kernel
 	 */
-	typedef KernelPolicy <
+	typedef upsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -109,7 +109,7 @@ struct Policy : _ProblemType
 	/**
 	 * Kernel config for the spine reduction kernel
 	 */
-	typedef KernelPolicy <
+	typedef upsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

@@ -20,31 +20,32 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Upsweep reduction kernel for scan
+ * Upsweep kernel
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/cta.cuh>
+#include <b40c/reduction/upsweep/cta.cuh>
 
 namespace b40c {
 namespace scan {
+namespace upsweep {
 
 
 /**
  * Upsweep reduction pass
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelConfig::T 									*&d_in,
-	typename KernelConfig::T 									*&d_out,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	&work_decomposition,
-	SmemStorage													&smem_storage)
+	typename KernelPolicy::T 									*&d_in,
+	typename KernelPolicy::T 									*&d_out,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef reduction::Cta<KernelConfig>			Cta;
-	typedef typename KernelConfig::SizeT 			SizeT;
+	typedef reduction::upsweep::Cta<KernelPolicy>	Cta;
+	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	// Quit if we're the last threadblock (no need for it in upsweep)
 	if (blockIdx.x == gridDim.x - 1) {
@@ -57,18 +58,18 @@ __device__ __forceinline__ void UpsweepPass(
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
 	work_decomposition.template GetCtaWorkLimits<
-		KernelConfig::LOG_TILE_ELEMENTS,
-		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
+		KernelPolicy::LOG_TILE_ELEMENTS,
+		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// Since we're not the last block: process at least one full tile of tile_elements
 	cta.template ProcessFullTile<true>(work_limits.offset);
-	work_limits.offset += KernelConfig::TILE_ELEMENTS;
+	work_limits.offset += KernelPolicy::TILE_ELEMENTS;
 
 	// Process any other full tiles
 	while (work_limits.offset < work_limits.guarded_offset) {
 
 		cta.ProcessFullTile<false>(work_limits.offset);
-		work_limits.offset += KernelConfig::TILE_ELEMENTS;
+		work_limits.offset += KernelPolicy::TILE_ELEMENTS;
 	}
 
 	// Collectively reduce accumulated carry from each thread into output
@@ -84,21 +85,22 @@ __device__ __forceinline__ void UpsweepPass(
 /**
  * Upsweep reduction kernel entry point
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
-void UpsweepKernel(
-	typename KernelConfig::T 									*d_in,
-	typename KernelConfig::T 									*d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> 	work_decomposition)
+void Kernel(
+	typename KernelPolicy::T 									*d_in,
+	typename KernelPolicy::T 									*d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelConfig>(d_in, d_spine, work_decomposition, smem_storage);
+	UpsweepPass<KernelPolicy>(d_in, d_spine, work_decomposition, smem_storage);
 }
 
 
+} // namespace upsweep
 } // namespace scan
 } // namespace b40c
 

@@ -27,7 +27,8 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/cta.cuh>
+
+#include <b40c/reduction/upsweep/cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -37,16 +38,15 @@ namespace upsweep {
 /**
  * Upsweep reduction pass (non-workstealing)
  */
-template <typename KernelPolicy, bool WORK_STEALING>
+template <typename KernelPolicy, bool WORK_STEALING = KernelPolicy::WORK_STEALING>
 struct UpsweepPass
 {
-	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::T 									*&d_in,
 		typename KernelPolicy::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 		util::CtaWorkProgress 										&work_progress,
-		SmemStorage													&smem_storage)
+		typename KernelPolicy::SmemStorage							&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 				Cta;
 		typedef typename KernelPolicy::SizeT 	SizeT;
@@ -124,13 +124,12 @@ __device__ __forceinline__ SizeT StealWork(
 template <typename KernelPolicy>
 struct UpsweepPass <KernelPolicy, true>
 {
-	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::T 									*&d_in,
 		typename KernelPolicy::T 									*&d_out,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 		util::CtaWorkProgress 										&work_progress,
-		SmemStorage													&smem_storage)
+		typename KernelPolicy::SmemStorage							&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 				Cta;
 		typedef typename KernelPolicy::SizeT 	SizeT;
@@ -208,7 +207,7 @@ void Kernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+	UpsweepPass<KernelPolicy>::Invoke(
 		d_in,
 		d_spine,
 		work_decomposition,

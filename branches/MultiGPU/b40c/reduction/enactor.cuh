@@ -112,7 +112,7 @@ public:
 		typename T,
 		T BinaryOp(const T&, const T&),
 		typename SizeT>
-	cudaError_t Enact(
+	cudaError_t Reduce(
 		T *d_dest,
 		T *d_src,
 		SizeT num_elements,
@@ -142,7 +142,7 @@ public:
 		T BinaryOp(const T&, const T&),
 		ProbSizeGenre PROB_SIZE_GENRE,
 		typename SizeT>
-	cudaError_t Enact(
+	cudaError_t Reduce(
 		T *d_dest,
 		T *d_src,
 		SizeT num_elements,
@@ -166,7 +166,7 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Policy>
-	cudaError_t Enact(
+	cudaError_t Reduce(
 		typename Policy::T *d_dest,
 		typename Policy::T *d_src,
 		typename Policy::SizeT num_elements,
@@ -230,7 +230,7 @@ struct Enactor::PolicyResolver
 		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
 
 		// Invoke base class enact with type
-		return detail.enactor->template Enact<AutotunedPolicy>(
+		return detail.enactor->template Reduce<AutotunedPolicy>(
 			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
@@ -265,12 +265,12 @@ struct Enactor::PolicyResolver <UNKNOWN_SIZE>
 
 			// Invoke base class enact with small-problem config type
 			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
-			return detail.enactor->template Enact<SmallPolicy>(
+			return detail.enactor->template Reduce<SmallPolicy>(
 				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 		}
 
 		// Invoke base class enact with large-problem config type
-		return detail.enactor->template Enact<LargePolicy>(
+		return detail.enactor->template Reduce<LargePolicy>(
 			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
 	}
 };
@@ -357,7 +357,7 @@ cudaError_t Enactor::EnactPass(
  * Enacts a reduction on the specified device data.
  */
 template <typename Policy>
-cudaError_t Enactor::Enact(
+cudaError_t Enactor::Reduce(
 	typename Policy::T 			*d_dest,
 	typename Policy::T 			*d_src,
 	typename Policy::SizeT 		num_elements,
@@ -439,7 +439,7 @@ template <
 	T BinaryOp(const T&, const T&),
 	reduction::ProbSizeGenre PROB_SIZE_GENRE,
 	typename SizeT>
-cudaError_t Enactor::Enact(
+cudaError_t Enactor::Reduce(
 	T *d_dest,
 	T *d_src,
 	SizeT num_elements,
@@ -465,13 +465,13 @@ template <
 	typename T,
 	T BinaryOp(const T&, const T&),
 	typename SizeT>
-cudaError_t Enactor::Enact(
+cudaError_t Enactor::Reduce(
 	T *d_dest,
 	T *d_src,
 	SizeT num_elements,
 	int max_grid_size)
 {
-	return Enact<T, BinaryOp, reduction::UNKNOWN_SIZE>(
+	return Reduce<T, BinaryOp, reduction::UNKNOWN_SIZE>(
 		d_dest, d_src, num_elements, max_grid_size);
 }
 

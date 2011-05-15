@@ -20,23 +20,25 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction kernel configuration policy
+ * Scan kernel configuration policy
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/srts_grid.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
-namespace reduction {
+namespace scan {
+namespace downsweep {
 
 
 /**
  * A detailed kernel configuration policy type that specializes kernel
- * code for a specific reduction pass. It encapsulates our
+ * code for a specific scan pass. It encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *
  * The kernel is specialized for problem-type, SM-version, etc. by declaring
@@ -57,23 +59,20 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
+	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
-	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelPolicy : _ProblemType
 {
-	typedef _ProblemType 				ProblemType;
+	typedef _ProblemType				ProblemType;
 	typedef typename ProblemType::T 	T;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
-	static const bool WORK_STEALING		= _WORK_STEALING;
-
 	enum {
-
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -86,6 +85,9 @@ struct KernelPolicy : _ProblemType
 		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
 		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
 
+		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
 		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
@@ -96,30 +98,45 @@ struct KernelPolicy : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
 	};
+
+
+	// SRTS grid type
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		T,										// Partial type
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			SrtsGrid;
+
+
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+
 
 	/**
 	 * Shared memory structure
 	 */
 	struct SmemStorage
 	{
-		union {
-			T reduction_tree[THREADS];
-		} smem_pool;
+		T 		smem_pool[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+		T 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 	};
 
+
 	enum {
-		// Total number of smem quads needed by this kernel
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		VALID							= (CTA_OCCUPANCY > 0),
+		VALID							= (CTA_OCCUPANCY > 0)
 	};
 };
 
-
-} // namespace reduction
+} // namespace downsweep
+} // namespace scan
 } // namespace b40c
 

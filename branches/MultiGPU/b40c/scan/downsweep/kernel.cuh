@@ -20,54 +20,40 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Scan kernel
+ * Downsweep kernel
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/srts_details.cuh>
-#include <b40c/scan/cta.cuh>
+
+#include <b40c/scan/downsweep/cta.cuh>
 
 namespace b40c {
 namespace scan {
+namespace downsweep {
 
 
 /**
  * Downsweep scan pass
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
-	typename KernelConfig::T 			* &d_in,
-	typename KernelConfig::T 			* &d_out,
-	typename KernelConfig::T 			* &d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-	SmemStorage							&smem_storage)
+	typename KernelPolicy::T 									* &d_in,
+	typename KernelPolicy::T 									* &d_out,
+	typename KernelPolicy::T 									* &d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelConfig> 				Cta;
-	typedef typename KernelConfig::T 		T;
-	typedef typename KernelConfig::SizeT 	SizeT;
+	typedef Cta<KernelPolicy> 				Cta;
+	typedef typename KernelPolicy::T 		T;
+	typedef typename KernelPolicy::SizeT 	SizeT;
 
-	// We need the exclusive partial from our spine, regardless of whether
-	// we're exclusive/inclusive
-
+	// Obtain exclusive spine partial
 	T spine_partial;
-	if (KernelConfig::EXCLUSIVE) {
-
-		// Spine was an exclusive scan
-		util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
-			spine_partial, d_spine + blockIdx.x);
-
-	} else {
-
-		// Spine was in inclusive scan: load exclusive partial
-		if (blockIdx.x == 0) {
-			spine_partial = KernelConfig::Identity();
-		} else {
-			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
-				spine_partial, d_spine + blockIdx.x - 1);
-		}
-	}
+	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+		spine_partial, d_spine + blockIdx.x);
 
 	// CTA processing abstraction
 	Cta cta(smem_storage, d_in, d_out, spine_partial);
@@ -75,14 +61,14 @@ __device__ __forceinline__ void DownsweepPass(
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
 	work_decomposition.template GetCtaWorkLimits<
-		KernelConfig::LOG_TILE_ELEMENTS,
-		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
+		KernelPolicy::LOG_TILE_ELEMENTS,
+		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// Process full tiles of tile_elements
 	while (work_limits.offset < work_limits.guarded_offset) {
 
 		cta.ProcessTile(work_limits.offset);
-		work_limits.offset += KernelConfig::TILE_ELEMENTS;
+		work_limits.offset += KernelPolicy::TILE_ELEMENTS;
 	}
 
 	// Clean up last partial tile with guarded-io
@@ -94,27 +80,22 @@ __device__ __forceinline__ void DownsweepPass(
 }
 
 
-
-/******************************************************************************
- * Downsweep Scan Kernel Entrypoint
- ******************************************************************************/
-
 /**
  * Downsweep scan kernel entry point
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
-void DownsweepKernel(
-	typename KernelConfig::T 			* d_in,
-	typename KernelConfig::T 			* d_out,
-	typename KernelConfig::T 			* d_spine,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
+void Kernel(
+	typename KernelPolicy::T 			* d_in,
+	typename KernelPolicy::T 			* d_out,
+	typename KernelPolicy::T 			* d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	DownsweepPass<KernelConfig>(
+	DownsweepPass<KernelPolicy>(
 		d_in,
 		d_out,
 		d_spine,
@@ -122,7 +103,7 @@ void DownsweepKernel(
 		smem_storage);
 }
 
-
+} // namespace downsweep
 } // namespace scan
 } // namespace b40c
 
