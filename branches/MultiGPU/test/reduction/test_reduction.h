@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // Reduction includes
-#include <b40c/reduction_enactor.cuh>
+#include <b40c/reduction/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -87,7 +87,7 @@ double TimedReduction(
 		"TimedReduction cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	ReductionEnactor reduction_enactor;
+	reduction::Enactor reduction_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),

@@ -20,27 +20,31 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction Problem Granularity Configuration Meta-type
+ * Unified reduction policy
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/reduction/kernel_config.cuh>
+
+#include <b40c/reduction/kernel_policy.cuh>
+#include <b40c/reduction/upsweep/kernel.cuh>
+#include <b40c/reduction/spine/kernel.cuh>
 
 namespace b40c {
 namespace reduction {
 
 
 /**
- * Unified reduction problem granularity configuration type.
+ * Unified reduction policy type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep and spine kernels, this type includes enactor tuning parameters that
- * define kernel-dispatch policy.  By encapsulating the tuning information
- * for dispatch and both kernels, we assure operational consistency over an entire
- * reduction pass.
+ * define kernel-dispatch policy.  By encapsulating all of the kernel tuning policies,
+ * we assure operational consistency over an entire reduction pass.
  */
 template <
 	// ProblemType type parameters
@@ -69,12 +73,27 @@ template <
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE>
 
-struct ProblemConfig : _ProblemType
+struct Policy : _ProblemType
 {
-	typedef _ProblemType ProblemType;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
 
-	// Kernel config for the upsweep reduction kernel
-	typedef KernelConfig <
+	typedef _ProblemType ProblemType;
+	typedef typename ProblemType::T T;
+	typedef typename ProblemType::SizeT SizeT;
+
+	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
+	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
+
+	//---------------------------------------------------------------------
+	// Kernel Policies
+	//---------------------------------------------------------------------
+
+	/**
+	 * Kernel config for the upsweep reduction kernel
+	 */
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
@@ -87,8 +106,10 @@ struct ProblemConfig : _ProblemType
 		UPSWEEP_LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
-	// Kernel config for the spine reduction kernel
-	typedef KernelConfig <
+	/**
+	 * Kernel config for the spine reduction kernel
+	 */
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
@@ -101,12 +122,32 @@ struct ProblemConfig : _ProblemType
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static UpsweepKernelPtr UpsweepKernel() {
+		return upsweep::Kernel<Upsweep>;
+	}
+
+	static SpineKernelPtr SpineKernel() {
+		return spine::Kernel<Spine>;
+	}
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
+
 	enum {
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
 		VALID 						= Upsweep::VALID & Spine::VALID
 	};
+
+
 	static void Print()
 	{
 		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d",

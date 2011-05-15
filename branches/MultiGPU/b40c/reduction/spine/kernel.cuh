@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction spine kernel
+ * Spine reduction kernel
  ******************************************************************************/
 
 #pragma once
@@ -29,21 +29,22 @@
 
 namespace b40c {
 namespace reduction {
+namespace spine {
 
 
 /**
  * Spine reduction pass
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelPolicy, typename SmemStorage>
 __device__ __forceinline__ void SpinePass(
-	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_spine,
-	typename KernelConfig::SizeT 	spine_elements,
+	typename KernelPolicy::T 		*d_in,
+	typename KernelPolicy::T 		*d_spine,
+	typename KernelPolicy::SizeT 	spine_elements,
 	SmemStorage						&smem_storage)
 {
-	typedef Cta<KernelConfig> 				Cta;
-	typedef typename KernelConfig::T 		T;
-	typedef typename KernelConfig::SizeT 	SizeT;
+	typedef Cta<KernelPolicy> 				Cta;
+	typedef typename KernelPolicy::T 		T;
+	typedef typename KernelPolicy::SizeT 	SizeT;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -52,7 +53,7 @@ __device__ __forceinline__ void SpinePass(
 	Cta cta(smem_storage, d_in, d_spine);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT guarded_elements = spine_elements & (KernelConfig::TILE_ELEMENTS - 1);
+	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT guarded_offset = spine_elements - guarded_elements;
@@ -63,12 +64,12 @@ __device__ __forceinline__ void SpinePass(
 
 		// Process at least one full tile of tile_elements
 		cta.ProcessFullTile<true>(cta_offset);
-		cta_offset += KernelConfig::TILE_ELEMENTS;
+		cta_offset += KernelPolicy::TILE_ELEMENTS;
 
 		// Process more full tiles (not first tile)
 		while (cta_offset < guarded_offset) {
 			cta.ProcessFullTile<false>(cta_offset);
-			cta_offset += KernelConfig::TILE_ELEMENTS;
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
@@ -89,32 +90,27 @@ __device__ __forceinline__ void SpinePass(
 		// destination (not every thread may have a valid reduction partial)
 		cta.OutputToSpine(spine_elements);
 	}
-
 }
 
-
-/******************************************************************************
- * Spine Reduction Kernel Entry-point
- ******************************************************************************/
 
 /**
  * Spine reduction kernel entry point
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
-void SpineKernel(
-	typename KernelConfig::T 		*d_in,
-	typename KernelConfig::T 		*d_spine,
-	typename KernelConfig::SizeT 	spine_elements)
+void Kernel(
+	typename KernelPolicy::T 		*d_in,
+	typename KernelPolicy::T 		*d_spine,
+	typename KernelPolicy::SizeT 	spine_elements)
 {
 	// Shared storage for the kernel
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SpinePass<KernelConfig>(d_in, d_spine, spine_elements, smem_storage);
+	SpinePass<KernelPolicy>(d_in, d_spine, spine_elements, smem_storage);
 }
 
-
+} // namespace spine
 } // namespace reduction
 } // namespace b40c
 

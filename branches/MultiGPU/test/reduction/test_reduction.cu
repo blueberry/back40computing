@@ -102,11 +102,11 @@ void TestReduction(size_t num_elements)
 	size_t orig_num_elements = num_elements;
 	do {
 		printf("\nLARGE config:\t");
-		double large = TimedReduction<T, BinaryOp, reduction::LARGE>(
+		double large = TimedReduction<T, BinaryOp, reduction::LARGE_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedReduction<T, BinaryOp, reduction::SMALL>(
+		double small = TimedReduction<T, BinaryOp, reduction::SMALL_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {

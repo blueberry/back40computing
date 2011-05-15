@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for reduction kernels
+ * Reduction CTA processing abstraction
  ******************************************************************************/
 
 #pragma once
@@ -39,17 +39,17 @@ namespace reduction {
 
 
 /**
- * Derivation of KernelConfig that encapsulates tile-processing routines
+ * CTA
  */
-template <typename KernelConfig>
-struct Cta : KernelConfig
+template <typename KernelPolicy>
+struct Cta : KernelPolicy
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T 		T;
-	typedef typename KernelConfig::SizeT 	SizeT;
+	typedef typename KernelPolicy::T 		T;
+	typedef typename KernelPolicy::SizeT 	SizeT;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -95,19 +95,19 @@ struct Cta : KernelConfig
 		SizeT cta_offset)
 	{
 		// Tile of elements
-		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER>::LoadValid(
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
 				data, d_in + cta_offset);
 
 		// Reduce the data we loaded for this tile
-		T tile_partial = util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::template Invoke<
-			T, KernelConfig::BinaryOp>((T*) data);
+		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::template Invoke<
+			T, KernelPolicy::BinaryOp>((T*) data);
 
 		// Reduce into carry
 		if (FIRST_TILE) {
@@ -135,16 +135,16 @@ struct Cta : KernelConfig
 
 		if (FIRST_TILE) {
 			if (cta_offset < out_of_bounds) {
-				util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(carry, d_in + cta_offset);
-				cta_offset += KernelConfig::THREADS;
+				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(carry, d_in + cta_offset);
+				cta_offset += KernelPolicy::THREADS;
 			}
 		}
 
 		// Process loads singly
 		while (cta_offset < out_of_bounds) {
-			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
-			carry = KernelConfig::BinaryOp(carry, datum);
-			cta_offset += KernelConfig::THREADS;
+			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
+			carry = KernelPolicy::BinaryOp(carry, datum);
+			cta_offset += KernelPolicy::THREADS;
 		}
 	}
 
@@ -160,20 +160,20 @@ struct Cta : KernelConfig
 	{
 		carry = util::reduction::TreeReduce<
 			T,
-			KernelConfig::LOG_THREADS,
-			KernelConfig::BinaryOp>::Invoke<false>( 		// No need to return aggregate reduction in all threads
+			KernelPolicy::LOG_THREADS,
+			KernelPolicy::BinaryOp>::Invoke<false>( 		// No need to return aggregate reduction in all threads
 				carry,
 				(T*) reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				carry, d_out + blockIdx.x);
 		}
 	}
 
 	/**
-	 * Guarded ollective reduction across all threads, stores final reduction
+	 * Guarded collective reduction across all threads, stores final reduction
 	 * to output. Used to collectively reduce each thread's aggregate after striding through
 	 * the input.
 	 *
@@ -184,21 +184,19 @@ struct Cta : KernelConfig
 	{
 		carry = util::reduction::TreeReduce<
 			T,
-			KernelConfig::LOG_THREADS,
-			KernelConfig::BinaryOp>::Invoke<false>(			// No need to return aggregate reduction in all threads
+			KernelPolicy::LOG_THREADS,
+			KernelPolicy::BinaryOp>::Invoke<false>(			// No need to return aggregate reduction in all threads
 				carry,
 				reduction_tree,
 				num_elements);
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelConfig::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				carry, d_out + blockIdx.x);
 		}
 	}
-
 };
-
 
 
 } // namespace reduction

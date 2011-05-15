@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding reduction granularity configuration
+ * Reduction kernel configuration policy
  ******************************************************************************/
 
 #pragma once
@@ -33,13 +33,14 @@
 namespace b40c {
 namespace reduction {
 
+
 /**
- * Reduction kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * A detailed kernel configuration policy type that specializes kernel
+ * code for a specific reduction pass. It encapsulates our
+ * kernel-tuning parameters (they are reflected via the static fields).
  *
- * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
- * them with different performance-tuned parameterizations of this type.  By
+ * The kernel is specialized for problem-type, SM-version, etc. by declaring
+ * it with different performance-tuned parameterizations of this type.  By
  * incorporating this type into the kernel code itself, we guide the compiler in
  * expanding/unrolling the kernel code for specific architectures and problem
  * types.
@@ -61,10 +62,10 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : _ProblemType
+struct KernelPolicy : _ProblemType
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::T T;
+	typedef _ProblemType 				ProblemType;
+	typedef typename ProblemType::T 	T;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
