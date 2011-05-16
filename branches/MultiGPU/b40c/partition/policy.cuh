@@ -32,10 +32,6 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/partition/upsweep/tuning_policy.cuh>
-#include <b40c/partition/downsweep/tuning_policy.cuh>
-#include <b40c/radix_sort/sort_utils.cuh>
-
 #include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/downsweep/kernel_policy.cuh>
 #include <b40c/scan/spine/kernel.cuh>
@@ -59,35 +55,15 @@ template <
 
 	// Common
 	int CUDA_ARCH,
-	int LOG_BINS,
-	int LOG_SCHEDULE_GRANULARITY,
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
-	bool EARLY_EXIT,
-	bool _UNIFORM_SMEM_ALLOCATION,
-	bool _UNIFORM_GRID_SIZE,
-	bool _OVERSUBSCRIBED_GRID_SIZE,
-
-	// Upsweep
-	int UPSWEEP_CTA_OCCUPANCY,
-	int UPSWEEP_LOG_THREADS,
-	int UPSWEEP_LOG_LOAD_VEC_SIZE,
-	int UPSWEEP_LOG_LOADS_PER_TILE,
 	
 	// Spine-scan
 	int SPINE_CTA_OCCUPANCY,
 	int SPINE_LOG_THREADS,
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE,
-	int SPINE_LOG_RAKING_THREADS,
-
-	// Downsweep
-	int DOWNSWEEP_CTA_OCCUPANCY,
-	int DOWNSWEEP_LOG_THREADS,
-	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-	int DOWNSWEEP_LOG_LOADS_PER_CYCLE,
-	int DOWNSWEEP_LOG_CYCLES_PER_TILE,
-	int DOWNSWEEP_LOG_RAKING_THREADS>
+	int SPINE_LOG_RAKING_THREADS>
 
 struct Policy : ProblemType
 {
@@ -102,20 +78,6 @@ struct Policy : ProblemType
 	//---------------------------------------------------------------------
 	// Kernel Policies
 	//---------------------------------------------------------------------
-
-	typedef upsweep::TuningPolicy<
-		ProblemType,
-		CUDA_ARCH,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
-		UPSWEEP_CTA_OCCUPANCY,  
-		UPSWEEP_LOG_THREADS,
-		UPSWEEP_LOG_LOAD_VEC_SIZE,  	
-		UPSWEEP_LOG_LOADS_PER_TILE,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		EARLY_EXIT>
-			Upsweep;
 
 	// Problem type for spine scan
 	typedef scan::ProblemType<
@@ -139,23 +101,6 @@ struct Policy : ProblemType
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 	
-	typedef downsweep::TuningPolicy<
-		ProblemType,
-		CUDA_ARCH,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
-		DOWNSWEEP_CTA_OCCUPANCY,
-		DOWNSWEEP_LOG_THREADS,
-		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
-		DOWNSWEEP_LOG_CYCLES_PER_TILE,
-		DOWNSWEEP_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		EARLY_EXIT>
-			Downsweep;
-
-
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
 	//---------------------------------------------------------------------
@@ -164,15 +109,6 @@ struct Policy : ProblemType
 		return scan::spine::Kernel<Spine>;
 	}
 
-	//---------------------------------------------------------------------
-	// Constants
-	//---------------------------------------------------------------------
-
-	enum {
-		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
-		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
-		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-	};
 };
 		
 

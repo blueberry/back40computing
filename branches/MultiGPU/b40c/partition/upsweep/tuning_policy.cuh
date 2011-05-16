@@ -62,8 +62,7 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
-	bool _EARLY_EXIT>
+	util::io::st::CacheModifier _WRITE_MODIFIER>
 
 struct TuningPolicy : ProblemType
 {
@@ -75,7 +74,6 @@ struct TuningPolicy : ProblemType
 		LOG_THREADS 								= _LOG_THREADS,
 		LOG_LOAD_VEC_SIZE  							= _LOG_LOAD_VEC_SIZE,
 		LOG_LOADS_PER_TILE 							= _LOG_LOADS_PER_TILE,
-		EARLY_EXIT									= _EARLY_EXIT,
 
 		SCHEDULE_GRANULARITY						= 1 << LOG_SCHEDULE_GRANULARITY,
 		THREADS										= 1 << LOG_THREADS,

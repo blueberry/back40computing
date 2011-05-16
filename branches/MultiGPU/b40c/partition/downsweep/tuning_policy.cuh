@@ -31,6 +31,8 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/partition/downsweep/tuning_policy.cuh>
+
 namespace b40c {
 namespace partition {
 namespace downsweep {
@@ -39,25 +41,25 @@ namespace downsweep {
 /**
  * Downsweep tuning configuration policy.  This C++ type encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
- *  
+ *
  * The kernel is specialized for problem-type, SM-version, etc. by declaring
  * it with different performance-tuned parameterizations of this type.  By
- * incorporating this type into the kernel code itself, we guide the compiler in 
- * expanding/unrolling the kernel code for specific architectures and problem 
+ * incorporating this type into the kernel code itself, we guide the compiler in
+ * expanding/unrolling the kernel code for specific architectures and problem
  * types.
- * 
+ *
  * Constraints:
- * 		(i) 	A load can't contain more than 256 keys or we might overflow inside a lane of  
+ * 		(i) 	A load can't contain more than 256 keys or we might overflow inside a lane of
  * 				8-bit composite counters, i.e., (threads * load-vec-size <= 256), equivalently:
- * 
+ *
  * 					(LOG_THREADS + LOG_LOAD_VEC_SIZE <= 8)
- * 
- * 		(ii) 	We must have between one and one warp of raking threads per lane of composite 
+ *
+ * 		(ii) 	We must have between one and one warp of raking threads per lane of composite
  * 				counters, i.e., (1 <= raking-threads / (loads-per-cycle * bins / 4) <= 32),
  * 				equivalently:
- * 
+ *
  * 					(0 <= LOG_RAKING_THREADS - LOG_LOADS_PER_CYCLE - LOG_BINS + 2 <= B40C_LOG_WARP_THREADS(arch))
- *     
+ *
  * 		(iii) 	We must have more (or equal) threads than bins in the threadblock,
  * 				i.e., (threads >= bins) equivalently:
  * 
@@ -77,8 +79,7 @@ template <
 	int _LOG_CYCLES_PER_TILE,
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
-	bool _EARLY_EXIT>
+	util::io::st::CacheModifier _WRITE_MODIFIER>
 
 struct TuningPolicy : ProblemType
 {
@@ -92,7 +93,6 @@ struct TuningPolicy : ProblemType
 		LOG_LOADS_PER_CYCLE							= _LOG_LOADS_PER_CYCLE,
 		LOG_CYCLES_PER_TILE							= _LOG_CYCLES_PER_TILE,
 		LOG_RAKING_THREADS							= _LOG_RAKING_THREADS,
-		EARLY_EXIT									= _EARLY_EXIT,
 
 		SCHEDULE_GRANULARITY						= 1 << LOG_SCHEDULE_GRANULARITY,
 		THREADS										= 1 << LOG_THREADS,
@@ -102,6 +102,7 @@ struct TuningPolicy : ProblemType
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 };
+
 
 
 } // namespace downsweep

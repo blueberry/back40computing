@@ -674,34 +674,34 @@ struct Tile
 		// Scan across bins
 		if (threadIdx.x < KernelPolicy::BINS) {
 
-			// Recover bin-counts from lanes_warpscan padding
+			// Recover bin-counts from lane totals
 			int my_base_lane = threadIdx.x >> 2;
 			int my_quad_byte = threadIdx.x & 3;
 			IterateCycleLoads<0, 0>::RecoverBinCounts(my_base_lane, my_quad_byte, cta, dispatch);
 
 			// Scan across my bin counts for each load
-			int inclusive_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
+			int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
 				(int *) bin_counts, 0);
 
 			// Add the inclusive scan of bin counts from the previous tile to the running carry
 			SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x] + cta->smem_storage.bin_warpscan[1][threadIdx.x];
 
 			// Perform overflow-free inclusive SIMD Kogge-Stone across bins
-			int bin_prefix_inclusive = util::scan::WarpScan<KernelPolicy::LOG_BINS, false>::Invoke(
-				inclusive_total,
+			int tile_bin_inclusive = util::scan::WarpScan<KernelPolicy::LOG_BINS, false>::Invoke(
+				tile_bin_total,
 				cta->smem_storage.bin_warpscan);
 
 			// Save inclusive scan in bin_warpscan
-			cta->smem_storage.bin_warpscan[1][threadIdx.x] = bin_prefix_inclusive;
+			cta->smem_storage.bin_warpscan[1][threadIdx.x] = tile_bin_inclusive;
 
 			// Calculate exclusive scan
-			int bin_prefix_exclusive = bin_prefix_inclusive - inclusive_total;
+			int tile_bin_exclusive = tile_bin_inclusive - tile_bin_total;
 
 			// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
-			cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_prefix_exclusive;
+			cta->smem_storage.bin_carry[threadIdx.x] = my_carry - tile_bin_exclusive;
 
 			// Compute the bin prefixes for this tile for each load
-			IterateCycleLoads<0, 0>::UpdateBinPrefixes(bin_prefix_exclusive, cta, dispatch);
+			IterateCycleLoads<0, 0>::UpdateBinPrefixes(tile_bin_exclusive, cta, dispatch);
 		}
 
 		__syncthreads();

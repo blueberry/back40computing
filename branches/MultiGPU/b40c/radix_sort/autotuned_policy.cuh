@@ -31,7 +31,9 @@
 #include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/radix_sort/upsweep/kernel.cuh>
+#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/kernel.cuh>
+#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/policy.cuh>
 
 #include <b40c/scan/spine/kernel.cuh>

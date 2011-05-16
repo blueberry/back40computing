@@ -78,7 +78,7 @@ __device__ __forceinline__ void DownsweepPass(
 	typedef Cta<KernelPolicy> 							Cta;
 	typedef typename KernelPolicy::Grid::LanePartial	LanePartial;
 
-	LanePartial base_partial = KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
+	LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
 	int *raking_segment = 0;
 
 	if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {
@@ -149,7 +149,7 @@ __device__ __forceinline__ void DownsweepPass(
 			d_values1,
 			d_values0,
 			d_spine,
-			base_partial,
+			base_composite_counter,
 			raking_segment);
 
 		DownsweepPass<KernelPolicy>(cta, smem_storage);
@@ -164,7 +164,7 @@ __device__ __forceinline__ void DownsweepPass(
 			d_values0,
 			d_values1,
 			d_spine,
-			base_partial,
+			base_composite_counter,
 			raking_segment);
 
 		DownsweepPass<KernelPolicy>(cta, smem_storage);

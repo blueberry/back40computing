@@ -34,10 +34,16 @@
 
 #include <b40c/partition/policy.cuh>
 
+#include <b40c/radix_sort/upsweep/tuning_policy.cuh>
 #include <b40c/radix_sort/upsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/upsweep/kernel.cuh>
+#include <b40c/radix_sort/downsweep/tuning_policy.cuh>
 #include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/kernel.cuh>
+
+#include <b40c/scan/problem_type.cuh>
+#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -63,9 +69,9 @@ template <
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
 	bool EARLY_EXIT,
-	bool UNIFORM_SMEM_ALLOCATION,
-	bool UNIFORM_GRID_SIZE,
-	bool OVERSUBSCRIBED_GRID_SIZE,
+	bool _UNIFORM_SMEM_ALLOCATION,
+	bool _UNIFORM_GRID_SIZE,
+	bool _OVERSUBSCRIBED_GRID_SIZE,
 	
 	// Upsweep
 	int UPSWEEP_CTA_OCCUPANCY,
@@ -92,34 +98,13 @@ struct Policy :
 	partition::Policy<
 		ProblemType,
 		CUDA_ARCH,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		EARLY_EXIT,
-		UNIFORM_SMEM_ALLOCATION,
-		UNIFORM_GRID_SIZE,
-		OVERSUBSCRIBED_GRID_SIZE,
-
-		UPSWEEP_CTA_OCCUPANCY,
-		UPSWEEP_LOG_THREADS,
-		UPSWEEP_LOG_LOAD_VEC_SIZE,
-		UPSWEEP_LOG_LOADS_PER_TILE,
-
-		// Spine-scan
 		SPINE_CTA_OCCUPANCY,
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
-		SPINE_LOG_RAKING_THREADS,
-
-		// Downsweep
-		DOWNSWEEP_CTA_OCCUPANCY,
-		DOWNSWEEP_LOG_THREADS,
-		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
-		DOWNSWEEP_LOG_CYCLES_PER_TILE,
-		DOWNSWEEP_LOG_RAKING_THREADS>
+		SPINE_LOG_RAKING_THREADS>
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -131,6 +116,42 @@ struct Policy :
 
 	typedef void (*UpsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*DownsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
+
+
+	//---------------------------------------------------------------------
+	// Tuning Policies
+	//---------------------------------------------------------------------
+
+	typedef upsweep::TuningPolicy<
+		ProblemType,
+		CUDA_ARCH,
+		LOG_BINS,
+		LOG_SCHEDULE_GRANULARITY,
+		UPSWEEP_CTA_OCCUPANCY,
+		UPSWEEP_LOG_THREADS,
+		UPSWEEP_LOG_LOAD_VEC_SIZE,
+		UPSWEEP_LOG_LOADS_PER_TILE,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		EARLY_EXIT>
+			Upsweep;
+
+	typedef downsweep::TuningPolicy<
+		ProblemType,
+		CUDA_ARCH,
+		LOG_BINS,
+		LOG_SCHEDULE_GRANULARITY,
+		DOWNSWEEP_CTA_OCCUPANCY,
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+		DOWNSWEEP_LOG_CYCLES_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		EARLY_EXIT>
+			Downsweep;
+
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
@@ -145,6 +166,17 @@ struct Policy :
 	static DownsweepKernelPtr DownsweepKernel() {
 		return downsweep::Kernel<downsweep::KernelPolicy<typename Policy::Downsweep, PassPolicy> >;
 	}
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
+
+	enum {
+		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
+		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
+	};
 };
 		
 

@@ -98,11 +98,13 @@ struct KernelPolicy : TuningPolicy
 	struct SmemStorage
 	{
 		union {
+			// Composite counter storage
 			union {
 				char counters[COMPOSITE_LANES][THREADS][4];
 				int words[COMPOSITE_LANES][THREADS];
 			} composite_counters;
 
+			// Final bin reduction storage
 			typename TuningPolicy::SizeT aggregate[AGGREGATED_ROWS][PADDED_AGGREGATED_PARTIALS_PER_ROW];
 		};
 	};
