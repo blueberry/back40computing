@@ -72,11 +72,11 @@ struct Cta :
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		KeyType 		*d_out_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_out_values,
-		SizeT 			*d_spine,
+		KeyType 		*&d_in_keys,
+		KeyType 		*&d_out_keys,
+		ValueType 		*&d_in_values,
+		ValueType 		*&d_out_values,
+		SizeT 			*&d_spine,
 		LanePartial		base_composite_counter,
 		int				*raking_segment) :
 			Base(
