@@ -307,7 +307,7 @@ __global__ void TunedUpsweepKernel(
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
 	util::CtaWorkProgress										work_progress)
 {
-	// Load the tuned granularity type identified by the enum for this architecture
+	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedPolicy<
 		ProblemType,
 		__B40C_CUDA_ARCH__,
@@ -337,7 +337,7 @@ __global__ void TunedSpineKernel(
 	typename ProblemType::T 		*d_out,
 	typename ProblemType::SizeT 	spine_elements)
 {
-	// Load the tuned granularity type identified by the enum for this architecture
+	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedPolicy<
 		ProblemType,
 		__B40C_CUDA_ARCH__,

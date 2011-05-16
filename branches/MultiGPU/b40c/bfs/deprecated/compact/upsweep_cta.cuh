@@ -31,6 +31,7 @@
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
+#include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 
 #include <b40c/util/operators.cuh>
@@ -119,17 +120,6 @@ struct UpsweepCta
 		template <int LOAD, int VEC, int dummy = 0>
 		struct Iterate
 		{
-			/**
-			 * Init
-			 */
-			static __device__ __forceinline__ void Init(Tile *tile)
-			{
-				tile->valid[LOAD][VEC] = 1;
-
-				// Next
-				Iterate<LOAD, VEC + 1>::Init(tile);
-			}
-
 			/**
 			 * BitmaskCull
 			 */
@@ -233,12 +223,6 @@ struct UpsweepCta
 		template <int LOAD, int dummy>
 		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
 		{
-			// Init
-			static __device__ __forceinline__ void Init(Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::Init(tile);
-			}
-
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(UpsweepCta *cta, Tile *tile)
 			{
@@ -266,9 +250,6 @@ struct UpsweepCta
 		template <int dummy>
 		struct Iterate<LOADS_PER_TILE, 0, dummy>
 		{
-			// Init
-			static __device__ __forceinline__ void Init(Tile *tile) {}
-
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(UpsweepCta *cta, Tile *tile) {}
 
@@ -283,14 +264,6 @@ struct UpsweepCta
 		//---------------------------------------------------------------------
 		// Interface
 		//---------------------------------------------------------------------
-
-		/**
-		 * Initializer
-		 */
-		__device__ __forceinline__ void Init()
-		{
-			Iterate<0, 0>::Init(this);
-		}
 
 		/**
 		 * Culls vertices based upon whether or not we've set a bit for them
@@ -353,7 +326,11 @@ struct UpsweepCta
 		SizeT cta_offset)
 	{
 		Tile<KernelConfig::LOG_LOADS_PER_TILE, KernelConfig::LOG_LOAD_VEC_SIZE> tile;
-		tile.Init();
+
+		// Initialize valid flags
+		util::io::InitializeTile<
+			KernelConfig::LOG_LOADS_PER_TILE,
+			KernelConfig::LOG_LOAD_VEC_SIZE>::Init(tile.valid, 1);
 
 		// Load full tile
 		util::io::LoadTile<
@@ -401,7 +378,10 @@ struct UpsweepCta
 
 			// Load single-load, single-vec tile
 			Tile <0, 0> tile;
-			tile.Init();
+
+			// Initialize valid flags
+			util::io::InitializeTile<0, 0>::Init(tile.valid, 1);
+
 			util::io::ModifiedLoad<KernelConfig::READ_MODIFIER>::Ld(
 				tile.vertex_id[0][0],
 				d_in + cta_offset);

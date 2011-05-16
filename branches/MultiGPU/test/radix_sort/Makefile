@@ -134,65 +134,57 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_radixsort.h \
 				../b40c_test_util.h \
 				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/util/io/*.cuh) \
 				$(wildcard ../../b40c/util/reduction/*.cuh) \
-				$(wildcard ../../b40c/util/radixsort/*.cuh) \
-				$(wildcard ../../b40c/radixsort/*.cuh) 
+				$(wildcard ../../b40c/util/scan/*.cuh) \
+				$(wildcard ../../b40c/scan/*.cuh) \
+				$(wildcard ../../b40c/scan/spine/*.cuh) \
+				$(wildcard ../../b40c/scan/downsweep/*.cuh) \
+				$(wildcard ../../b40c/partition/*.cuh) \
+				$(wildcard ../../b40c/partition/upsweep/*.cuh) \
+				$(wildcard ../../b40c/partition/downsweep/*.cuh) \
+				$(wildcard ../../b40c/radix_sort/*.cuh) \
+				$(wildcard ../../b40c/radix_sort/upsweep/*.cuh) \
+				$(wildcard ../../b40c/radix_sort/downsweep/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# (make simple) Simple example driver for radixsort
+# (make simple) Simple example driver for 
 #-------------------------------------------------------------------------------
 
-simple: bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_radixsort.cu $(DEPS)
+
+
+#-------------------------------------------------------------------------------
+# (make test) Test driver for 
+#-------------------------------------------------------------------------------
+
+test: bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
-
-
-
-#-------------------------------------------------------------------------------
-# (make test) Test driver for radixsort
-#-------------------------------------------------------------------------------
-
-test: bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radixsort.cu $(DEPS) test_radixsort.h
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of radixsort configuration types
+# (make tune) Evaluates the space of sort configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
-
-bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_radixsort.cu $(DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------
-# (make compare) Compares radixsort performance against other libraries (e.g., Thrust)
+# (make compare) Compares sort performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_radixsort.cu $(DEPS) test_radixsort.h
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_radixsort_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_radixsort.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
-#
+#-------------------------------------------------------------------------------
 # Clean
-#
+#-------------------------------------------------------------------------------
 
 clean :
 	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 

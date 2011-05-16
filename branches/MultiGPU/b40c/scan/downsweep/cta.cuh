@@ -64,8 +64,8 @@ struct Cta : KernelPolicy
 	T carry;
 
 	// Input and output device pointers
-	T *d_in;
-	T *d_out;
+	T *&d_in;
+	T *&d_out;
 
 	// Operational details for SRTS scan grid
 	SrtsDetails srts_details;
@@ -80,8 +80,8 @@ struct Cta : KernelPolicy
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
-		T *d_in,
-		T *d_out,
+		T *&d_in,
+		T *&d_out,
 		T spine_partial = KernelPolicy::Identity()) :
 
 			srts_details(

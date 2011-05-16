@@ -319,7 +319,7 @@ __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition)
 {
-	// Load the tuned granularity type identified by the enum for this architecture
+	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelPolicy;
 
 	// Shared storage for the kernel
@@ -340,7 +340,7 @@ __global__ void TunedSpineKernel(
 	typename ProblemType::T 		* d_out,
 	typename ProblemType::SizeT 	spine_elements)
 {
-	// Load the tuned granularity type identified by the enum for this architecture
+	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
 
 	// Shared storage for the kernel
@@ -363,7 +363,7 @@ __global__ void TunedDownsweepKernel(
 	typename ProblemType::T 			* d_spine,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
 {
-	// Load the tuned granularity type identified by the enum for this architecture
+	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelPolicy;
 
 	// Shared storage for the kernel

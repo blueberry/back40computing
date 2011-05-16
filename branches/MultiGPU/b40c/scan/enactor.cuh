@@ -49,14 +49,6 @@ class Enactor : public util::EnactorBase
 protected:
 
 	//---------------------------------------------------------------------
-	// Helper Structures
-	//---------------------------------------------------------------------
-
-	template <typename T, typename SizeT> 					struct Storage;
-	template <typename ProblemType> 						struct Detail;
-	template <ProbSizeGenre PROB_SIZE_GENRE> 			struct PolicyResolver;
-
-	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
@@ -89,9 +81,8 @@ public:
 
 
 	/**
-	 * Enacts a scan operation on the specified device data using
-	 * a heuristic for selecting granularity configuration based upon
-	 * problem size.
+	 * Enacts a scan operation on the specified device data.  Uses
+	 * a heuristic for selecting an autotuning policy based upon problem size.
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
@@ -118,8 +109,11 @@ public:
 
 
 	/**
-	 * Enacts a scan operation on the specified device data using the
-	 * enumerated tuned granularity configuration
+	 * Enacts a scan operation on the specified device data.  Uses the
+	 * specified problem size genre enumeration to select autotuning policy.
+	 *
+	 * (Using this entrypoint can save compile time by not compiling tuned
+	 * kernels for each problem size genre.)
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
@@ -147,10 +141,8 @@ public:
 
 
 	/**
-	 * Enacts a scan on the specified device data.
-	 *
-	 * For generating scan kernels having computational granularities in accordance
-	 * with user-supplied granularity-specialization types.  (Useful for auto-tuning.)
+	 * Enacts a scan on the specified device data.  Uses the specified
+	 * kernel configuration policy.  (Useful for auto-tuning.)
 	 *
 	 * @param d_dest
 	 * 		Pointer to result location
@@ -179,33 +171,35 @@ public:
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ProblemType>
-struct Enactor::Detail
+template <
+	typename T,
+	typename SizeT,
+	bool EXCLUSIVE,
+	T BinaryOp(const T&, const T&),
+	T Identity()>
+struct Detail
 {
-	typedef ProblemType Problem;
+	typedef scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> ProblemType;
 
-	Enactor *enactor;
-	int max_grid_size;
+	Enactor 	*enactor;
+	T 			*d_dest;
+	T 			*d_src;
+	SizeT 		num_elements;
+	int 		max_grid_size;
 
 	// Constructor
-	Detail(Enactor *enactor, int max_grid_size = 0) :
-		enactor(enactor), max_grid_size(max_grid_size) {}
-};
-
-
-/**
- * Type for encapsulating storage details regarding an invocation
- */
-template <typename T, typename SizeT>
-struct Enactor::Storage
-{
-	T *d_dest;
-	T *d_src;
-	SizeT num_elements;
-
-	// Constructor
-	Storage(T *d_dest, T *d_src, SizeT num_elements) :
-		d_dest(d_dest), d_src(d_src), num_elements(num_elements) {}
+	Detail(
+		Enactor *enactor,
+		T *d_dest,
+		T *d_src,
+		SizeT num_elements,
+		int max_grid_size = 0) :
+			enactor(enactor),
+			d_dest(d_dest),
+			d_src(d_src),
+			num_elements(num_elements),
+			max_grid_size(max_grid_size)
+	{}
 };
 
 
@@ -215,22 +209,22 @@ struct Enactor::Storage
  * Default specialization for problem type genres
  */
 template <ProbSizeGenre PROB_SIZE_GENRE>
-struct Enactor::PolicyResolver
+struct PolicyResolver
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename StorageType, typename DetailType>
-	static cudaError_t Enact(StorageType &storage, DetailType &detail)
+	template <int CUDA_ARCH, typename Detail>
+	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename DetailType::Problem ProblemType;
+		typedef typename Detail::ProblemType ProblemType;
 
 		// Obtain tuned granularity type
 		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
 
 		// Invoke base class enact with type
 		return detail.enactor->template Scan<AutotunedPolicy>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}
 };
 
@@ -242,15 +236,15 @@ struct Enactor::PolicyResolver
  * based upon problem size, etc.
  */
 template <>
-struct Enactor::PolicyResolver <UNKNOWN_SIZE>
+struct PolicyResolver <UNKNOWN_SIZE>
 {
 	/**
 	 * ArchDispatch call-back with static CUDA_ARCH
 	 */
-	template <int CUDA_ARCH, typename StorageType, typename DetailType>
-	static cudaError_t Enact(StorageType &storage, DetailType &detail)
+	template <int CUDA_ARCH, typename Detail>
+	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename DetailType::Problem ProblemType;
+		typedef typename Detail::ProblemType ProblemType;
 
 		// Obtain large tuned granularity type
 		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, LARGE_SIZE> LargePolicy;
@@ -260,17 +254,17 @@ struct Enactor::PolicyResolver <UNKNOWN_SIZE>
 			LargePolicy::Upsweep::CTA_OCCUPANCY *
 			detail.enactor->SmCount();
 
-		if (storage.num_elements < saturating_load) {
+		if (detail.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
 			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
 			return detail.enactor->template Scan<SmallPolicy>(
-				storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+				detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 		}
 
 		// Invoke base class enact with type
 		return detail.enactor->template Scan<LargePolicy>(
-			storage.d_dest, storage.d_src, storage.num_elements, detail.max_grid_size);
+			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}
 };
 
@@ -354,7 +348,7 @@ cudaError_t Enactor::EnactPass(
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
-			// Downsweep scan into spine
+			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_src, d_dest, (T*) spine(), work);
 
@@ -383,9 +377,10 @@ cudaError_t Enactor::Scan(
 	typedef typename Policy::T 			T;
 	typedef typename Policy::SizeT 		SizeT;
 
-	// Compute sweep grid size
-	const int MIN_OCCUPANCY = B40C_MIN(Downsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
+	const int MIN_OCCUPANCY = B40C_MIN(Upsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
+
+	// Compute sweep grid size
 	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
@@ -403,24 +398,39 @@ cudaError_t Enactor::Scan(
 
 	// Obtain a CTA work distribution for copying items of type T
 	util::CtaWorkDistribution<SizeT> work;
-	work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
+	work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
 
 	if (DEBUG) {
 		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-			cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
+			cuda_props.device_sm_version,
+			cuda_props.kernel_ptx_version);
 		if (sweep_grid_size > 1) {
 			printf("Upsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
-				work.grid_size, Upsweep::THREADS, Upsweep::TILE_ELEMENTS);
+				work.grid_size,
+				Upsweep::THREADS,
+				Upsweep::TILE_ELEMENTS);
 			printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
-				Spine::THREADS, spine_elements, Spine::TILE_ELEMENTS);
+				Spine::THREADS,
+				spine_elements,
+				Spine::TILE_ELEMENTS);
 			printf("Downsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
-				work.grid_size, Downsweep::THREADS, Downsweep::TILE_ELEMENTS);
+				work.grid_size,
+				Downsweep::THREADS,
+				Downsweep::TILE_ELEMENTS);
 			printf("Work: \t\t[element bytes: %lu, SizeT %lu bytes, num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu]\n",
-				(unsigned long) sizeof(T), (unsigned long) sizeof(SizeT), (unsigned long) work.num_elements, Downsweep::SCHEDULE_GRANULARITY, (unsigned long) work.total_grains, (unsigned long) work.grains_per_cta, (unsigned long) work.extra_grains);
+				(unsigned long) sizeof(T),
+				(unsigned long) sizeof(SizeT),
+				(unsigned long) work.num_elements,
+				Downsweep::SCHEDULE_GRANULARITY,
+				(unsigned long) work.total_grains,
+				(unsigned long) work.grains_per_cta,
+				(unsigned long) work.extra_grains);
 		} else {
 			printf("Spine: \t\t[threads: %d, tile_elements: %d]\n",
-				Spine::THREADS, Spine::TILE_ELEMENTS);
+				Spine::THREADS,
+				Spine::TILE_ELEMENTS);
 		}
+		fflush(stdout);
 	}
 
 	cudaError_t retval = cudaSuccess;
@@ -438,8 +448,7 @@ cudaError_t Enactor::Scan(
 
 
 /**
- * Enacts a scan operation on the specified device data using the
- * enumerated tuned granularity configuration
+ * Enacts a scan operation on the specified device.
  */
 template <
 	typename T,
@@ -454,21 +463,18 @@ cudaError_t Enactor::Scan(
 	SizeT num_elements,
 	int max_grid_size)
 {
-	typedef ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Problem;
-	typedef Detail<Problem> Detail;
-	typedef Storage<T, SizeT> Storage;
+	typedef Detail<T, SizeT, EXCLUSIVE, BinaryOp, Identity> Detail;
 	typedef PolicyResolver<PROB_SIZE_GENRE> Resolver;
 
-	Detail detail(this, max_grid_size);
-	Storage storage(d_dest, d_src, num_elements);
+	Detail detail(this, d_dest, d_src, num_elements, max_grid_size);
 
-	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(storage, detail, PtxVersion());
+	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(
+		detail, PtxVersion());
 }
 
 
 /**
- * Enacts a scan operation on the specified device data using the
- * LARGE granularity configuration
+ * Enacts a scan operation on the specified device data.
  */
 template <
 	typename T,

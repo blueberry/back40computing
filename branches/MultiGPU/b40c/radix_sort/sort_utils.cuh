@@ -91,6 +91,18 @@ struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS>
  * suitable for radix sorting  
  ******************************************************************************/
 
+struct NopKeyConversion
+{
+	static const bool MustApply = false;		// We may early-exit this pass
+
+	template <typename T>
+	__device__ __host__ __forceinline__ static void Preprocess(T &key) {}
+
+	template <typename T>
+	__device__ __host__ __forceinline__ static void Postprocess(T &key) {}
+};
+
+
 template <typename UnsignedBits> 
 struct UnsignedIntegerKeyConversion 
 {
