@@ -48,10 +48,10 @@
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_one_phase.cuh>
+#include <b40c/graph/bfs/enactor_two_phase.cuh>
 /*
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
-#include <b40c/graph/bfs/enactor_two_phase.cuh>
 */
 
 using namespace b40c;
@@ -452,7 +452,7 @@ template <
 	typename VertexId,
 	typename Value,
 	typename SizeT>
-void TestGpuBfs(
+cudaError_t TestGpuBfs(
 	BfsEnactor 								&enactor,
 	ProblemStorage 							&csr_problem,
 	VertexId 								src,
@@ -462,34 +462,42 @@ void TestGpuBfs(
 	Stats									&stats,								// running statistics
 	int 									max_grid_size)
 {
-	// (Re)initialize distances
-	if (csr_problem.Reset()) exit(1);
+	cudaError_t retval;
 
-	// Perform BFS
-	GpuTimer gpu_timer;
-	gpu_timer.Start();
-	enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size);
-	gpu_timer.Stop();
-	float elapsed = gpu_timer.ElapsedMillis();
+	do {
 
-	// Copy out results
-	csr_problem.ExtractResults(h_source_path);
+		// (Re)initialize distances
+		if (retval = csr_problem.Reset()) break;
+
+		// Perform BFS
+		GpuTimer gpu_timer;
+		gpu_timer.Start();
+		if (retval = enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size)) break;
+		gpu_timer.Stop();
+		float elapsed = gpu_timer.ElapsedMillis();
+
+		// Copy out results
+		if (retval = csr_problem.ExtractResults(h_source_path)) break;
+
+		long long 	total_queued = 0;
+		VertexId	search_depth = 0;
+		double		avg_duty = 0.0;
+
+		enactor.GetStatistics(total_queued, search_depth, avg_duty);
+		DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
+			stats,
+			src,
+			h_source_path,
+			reference_source_dist,
+			csr_graph,
+			elapsed,
+			search_depth,
+			total_queued,
+			avg_duty);
+
+	} while (0);
 	
-	long long 	total_queued = 0;
-	VertexId	search_depth = 0;
-	double		avg_duty = 0.0;
-
-	enactor.GetStatistics(total_queued, search_depth, avg_duty);
-	DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
-		stats,
-		src,
-		h_source_path,
-		reference_source_dist,
-		csr_graph,
-		elapsed,
-		search_depth,
-		total_queued,
-		avg_duty);
+	return retval;
 }
 
 
@@ -593,7 +601,7 @@ void RunTests(
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	bfs::EnactorOnePhase 			one_phase_enactor(g_verbose);
-//	EnactorTwoPhase					two_phase_enactor(g_verbose);
+	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
 //	EnactorHybrid 					hybrid_enactor(g_verbose);
 //	EnactorMultiGpu					multi_gpu_enactor(g_verbose);
 
@@ -614,10 +622,10 @@ void RunTests(
 	// Initialize statistics
 	Stats stats[5];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("One-phase out-of-core GPU BFS");
-	stats[2] = Stats("Two-phase out-of-core GPU BFS");
-	stats[3] = Stats("Hybrid out-of-core GPU BFS");
-	stats[4] = Stats("Multi-GPU out-of-core GPU BFS");
+	stats[1] = Stats("One-phase GPU BFS");
+	stats[2] = Stats("Two-phase GPU BFS");
+	stats[3] = Stats("Hybrid GPU BFS");
+	stats[4] = Stats("Multi-GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -643,7 +651,7 @@ void RunTests(
 
 		if (num_gpus == 1) {
 			// Perform one-phase out-of-core BFS implementation (single grid launch)
-			TestGpuBfs<INSTRUMENT>(
+			if (TestGpuBfs<INSTRUMENT>(
 				one_phase_enactor,
 				csr_problem,
 				src,
@@ -651,25 +659,25 @@ void RunTests(
 				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
 				stats[1],
-				max_grid_size);
+				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-/*
-			// Perform level-grid contract-expand GPU BFS search
-			TestGpuBfs<INSTRUMENT>(
-				bfs_lg_enactor,
+
+			// Perform one-phase out-of-core BFS implementation (BFS level grid launch)
+			if (TestGpuBfs<INSTRUMENT>(
+				two_phase_enactor,
 				csr_problem,
 				src,
 				h_source_path,
 				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
 				stats[2],
-				max_grid_size);
+				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-
+/*
 			// Perform single-grid contract-expand GPU BFS search
-			TestGpuBfs<INSTRUMENT>(
+			if (TestGpuBfs<INSTRUMENT>(
 				bfs_sg_enactor,
 				csr_problem,
 				src,
@@ -677,26 +685,25 @@ void RunTests(
 				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
 				stats[3],
-				max_grid_size);
-			printf("\n");
-			fflush(stdout);
-*/
-		} else {
-/*
-			// Perform multi-GPU out-of-core BFS implementation
-			TestGpuBfs<INSTRUMENT>(
-				multi_gpu_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
-				csr_graph,
-				stats[4],
-				max_grid_size);
+				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
 */
 		}
+/*
+		// Perform multi-GPU out-of-core BFS implementation
+		if (TestGpuBfs<INSTRUMENT>(
+			multi_gpu_enactor,
+			csr_problem,
+			src,
+			h_source_path,
+			(g_quick) ? (VertexId*) NULL : reference_source_dist,
+			csr_graph,
+			stats[4],
+			max_grid_size)) exit(1);
+		printf("\n");
+		fflush(stdout);
+*/
 
 		if (g_verbose2) {
 			printf("Reference solution: ");

@@ -46,7 +46,9 @@ namespace bfs {
  * One-phase out-of-core breadth-first-search enactor.
  *
  * Performs all search iterations with single kernel launch (using
- * software global barriers).
+ * software global barriers).  For each BFS iteration, the kernel
+ * culls visited vertices and expands neighbor lists in a
+ * single tile-processing phase.
  */
 class EnactorOnePhase : public BaseBfsEnactor
 {
@@ -83,17 +85,7 @@ public:
 		BaseBfsEnactor(DEBUG),
 		iteration(NULL),
 		d_iteration(NULL)
-	{
-		int flags = cudaHostAllocMapped;
-
-		// Allocate pinned memory
-		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
-			"EnactorOnePhase cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
-
-		// Map into GPU space
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
-			"EnactorOnePhase cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) exit(1);
-	}
+	{}
 
 
 	/**
@@ -102,6 +94,48 @@ public:
 	virtual ~EnactorOnePhase()
 	{
 		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "EnactorOnePhase cudaFreeHost iteration failed", __FILE__, __LINE__);
+	}
+
+
+	/**
+	 * Search setup / lazy initialization
+	 */
+	cudaError_t Setup(int grid_size)
+    {
+    	cudaError_t retval;
+
+		do {
+
+			// Make sure iteration is initialized
+			if (!iteration) {
+
+				int flags = cudaHostAllocMapped;
+
+				// Allocate pinned memory
+				if (retval = util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
+					"EnactorOnePhase cudaHostAlloc iteration failed", __FILE__, __LINE__)) break;
+
+				// Map into GPU space
+				if (retval = util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
+					"EnactorOnePhase cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) break;
+			}
+
+			// Make sure barriers are initialized
+			if (retval = global_barrier.Setup(grid_size)) break;
+
+			// Make sure our runtime stats are initialized
+			if (retval = kernel_stats.Setup(grid_size)) break;
+
+			// Reset statistics
+			iteration[0] 		= 0;
+			total_avg_live 		= 0;
+			total_max_live 		= 0;
+			total_queued	 	= 0;
+
+
+		} while (0);
+
+		return retval;
 	}
 
 
@@ -130,64 +164,60 @@ public:
     	bool INSTRUMENT,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
-		CsrProblem 						&bfs_problem,
+		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
 		typedef typename CsrProblem::SizeT SizeT;
 		typedef typename CsrProblem::VertexId VertexId;
 
-		cudaError_t retval = cudaSuccess;
+		cudaError_t retval;
 
-		int occupancy = KernelPolicy::CTA_OCCUPANCY;
-		int grid_size = MaxGridSize(occupancy, max_grid_size);
+		do {
 
-		if (DEBUG) printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
-		fflush(stdout);
+			// Determine grid size
+			int occupancy = KernelPolicy::CTA_OCCUPANCY;
+			int grid_size = MaxGridSize(occupancy, max_grid_size);
 
-		// Make sure barriers are initialized
-		if (retval = global_barrier.Setup(grid_size)) exit(1);
+			if (DEBUG) printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
+			fflush(stdout);
 
-		// Make sure our runtime stats are good
-		if (retval = kernel_stats.Setup(grid_size)) exit(1);
+			// Setup / lazy initialization
+			if (retval = Setup(grid_size)) break;
 
-		// Reset statistics
-		iteration[0] 		= 0;
-		total_avg_live 		= 0;
-		total_max_live 		= 0;
-		total_queued	 	= 0;
+			// Single-gpu graph slice
+			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
-		// Single-gpu graph slice
-		typename CsrProblem::GraphSlice *graph_slice = bfs_problem.graph_slices[0];
+			// Initiate single-grid kernel
+			compact_expand_atomic::Kernel<KernelPolicy, INSTRUMENT, 0>
+					<<<grid_size, KernelPolicy::THREADS>>>(
+				0,
+				0,
+				src,
 
-		// Initiate single-grid kernel
-		compact_expand_atomic::Kernel<KernelPolicy, INSTRUMENT, 0>
-				<<<grid_size, KernelPolicy::THREADS>>>(
-			0,
-			0,
-			src,
+				graph_slice->frontier_queues.d_keys[0],
+				graph_slice->frontier_queues.d_keys[1],
+				graph_slice->frontier_queues.d_values[0],
+				graph_slice->frontier_queues.d_values[1],
 
-			graph_slice->frontier_queues.d_keys[0],
-			graph_slice->frontier_queues.d_keys[1],
-			graph_slice->frontier_queues.d_values[0],
-			graph_slice->frontier_queues.d_values[1],
+				graph_slice->d_column_indices,
+				graph_slice->d_row_offsets,
+				graph_slice->d_source_path,
+				graph_slice->d_collision_cache,
+				this->work_progress,
+				this->global_barrier,
 
-			graph_slice->d_column_indices,
-			graph_slice->d_row_offsets,
-			graph_slice->d_source_path,
-			graph_slice->d_collision_cache,
-			this->work_progress,
-			this->global_barrier,
+				this->kernel_stats,
+				(VertexId *) d_iteration);
 
-			this->kernel_stats,
-			(VertexId *) d_iteration);
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "EnactorOnePhase Kernel failed ", __FILE__, __LINE__))) break;
 
-		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "EnactorOnePhase Kernel failed ", __FILE__, __LINE__)))  exit(1);
+			if (INSTRUMENT) {
+				// Get stats
+				if (retval = kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live, total_queued)) break;
+			}
 
-		if (INSTRUMENT) {
-			// Get stats
-			if (retval = kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live, total_queued)) exit(1);
-		}
+		} while (0);
 
 		return retval;
 	}
@@ -199,13 +229,10 @@ public:
 	 */
     template <bool INSTRUMENT, typename CsrProblem>
 	cudaError_t EnactSearch(
-		CsrProblem 						&bfs_problem,
+		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-		typedef typename CsrProblem::SizeT SizeT;
-		typedef typename CsrProblem::VertexId VertexId;
-
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Single-grid tuning configuration
@@ -226,7 +253,7 @@ public:
 				6> KernelPolicy;
 
 			return EnactSearch<KernelPolicy, INSTRUMENT, CsrProblem>(
-				bfs_problem, src, max_grid_size);
+				csr_problem, src, max_grid_size);
 
 		} else {
 

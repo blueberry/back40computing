@@ -489,10 +489,12 @@ struct CsrProblem
 
 			// Allocate queues if necessary
 			SizeT queue_elements = double(graph_slices[gpu]->edges) * queue_sizing;
-			printf("GPU %d queue size: %d\n\n", graph_slices[gpu]->gpu, queue_elements);
-			fflush(stdout);
 
 			if (!graph_slices[gpu]->frontier_queues.d_keys[0]) {
+
+				printf("GPU %d queue size: %d\n\n", graph_slices[gpu]->gpu, queue_elements);
+				fflush(stdout);
+
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[gpu]->frontier_queues.d_keys[0],
 						queue_elements * sizeof(VertexId)),

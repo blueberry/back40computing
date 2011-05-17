@@ -56,7 +56,6 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
-	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;

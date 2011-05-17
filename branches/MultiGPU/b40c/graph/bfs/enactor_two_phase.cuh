@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Level-grid compact-expand BFS implementation
+ * Two-phase out-of-core BFS implementation (BFS level grid launch)
  ******************************************************************************/
 
 #pragma once
@@ -45,11 +45,14 @@ namespace bfs {
 
 
 /**
- * Level-grid breadth-first-search enactor.
+ * Two-phase out-of-core BFS implementation (BFS level grid launch)
  *  
- * Each iterations is performed by its own kernel-launch.  
+ * Each iteration is performed by its own kernel-launch.  For each BFS
+ * iteration, two separate kernels are launched to respectively perform
+ * (1) the visited-vertex culling (compaction) phase and (2) the expands
+ * neighbor list expansion phase, separately.
  */
-class LevelGridBfsEnactor : public BaseBfsEnactor
+class EnactorTwoPhase : public BaseBfsEnactor
 {
 
 protected:
@@ -79,36 +82,65 @@ public:
 	/**
 	 * Constructor
 	 */
-	LevelGridBfsEnactor(bool DEBUG = false) :
+	EnactorTwoPhase(bool DEBUG = false) :
 		BaseBfsEnactor(DEBUG),
 		search_depth(0),
 		total_queued(0),
 		done(NULL),
 		d_done(NULL)
-	{
-		int flags = cudaHostAllocMapped;
+	{}
 
-		// Allocate pinned memory for done
-		if (util::B40CPerror(cudaHostAlloc((void **)&done, sizeof(int) * 1, flags),
-			"LevelGridBfsEnactor cudaHostAlloc done failed", __FILE__, __LINE__)) exit(1);
+	/**
+	 * Search setup / lazy initialization
+	 */
+	cudaError_t Setup(int expand_grid_size, int compact_grid_size)
+    {
+    	cudaError_t retval;
 
-		// Map done into GPU space
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_done, (void *) done, 0),
-			"LevelGridBfsEnactor cudaHostGetDevicePointer done failed", __FILE__, __LINE__)) exit(1);
+		do {
 
-		// Create throttle event
-		if (util::B40CPerror(cudaEventCreateWithFlags(&throttle_event, cudaEventDisableTiming),
-			"LevelGridBfsEnactor cudaEventCreateWithFlags throttle_event failed", __FILE__, __LINE__)) exit(1);
+			if (!done) {
+				int flags = cudaHostAllocMapped;
+
+				// Allocate pinned memory for done
+				if (retval = util::B40CPerror(cudaHostAlloc((void **)&done, sizeof(int) * 1, flags),
+					"EnactorTwoPhase cudaHostAlloc done failed", __FILE__, __LINE__)) break;
+
+				// Map done into GPU space
+				if (retval = util::B40CPerror(cudaHostGetDevicePointer((void **)&d_done, (void *) done, 0),
+					"EnactorTwoPhase cudaHostGetDevicePointer done failed", __FILE__, __LINE__)) break;
+
+				// Create throttle event
+				if (retval = util::B40CPerror(cudaEventCreateWithFlags(&throttle_event, cudaEventDisableTiming),
+					"EnactorTwoPhase cudaEventCreateWithFlags throttle_event failed", __FILE__, __LINE__)) break;
+			}
+
+			// Make sure our runtime stats are good
+			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
+
+			// Reset statistics
+			total_queued 		= 0;
+			done[0] 			= 0;
+			total_avg_live 		= 0;
+			total_max_live 		= 0;
+
+		} while (0);
+
+		return retval;
 	}
 
 
 	/**
 	 * Destructor
 	 */
-	virtual ~LevelGridBfsEnactor()
+	virtual ~EnactorTwoPhase()
 	{
-		if (done) util::B40CPerror(cudaFreeHost((void *) done), "LevelGridBfsEnactor cudaFreeHost done failed", __FILE__, __LINE__);
-		util::B40CPerror(cudaEventDestroy(throttle_event), "LevelGridBfsEnactor cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
+		if (done) util::B40CPerror(cudaFreeHost((void *) done),
+			"EnactorTwoPhase cudaFreeHost done failed", __FILE__, __LINE__);
+
+		util::B40CPerror(cudaEventDestroy(throttle_event),
+			"EnactorTwoPhase cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
 	}
 
 
@@ -125,156 +157,186 @@ public:
     	search_depth = this->search_depth;
     	avg_live = double(total_avg_live) / total_max_live;
     }
+
     
 	/**
 	 * Enacts a breadth-first-search on the specified graph problem.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename CsrProblem>
+    template <
+    	typename ExpandPolicy,
+    	typename CompactPolicy,
+    	bool INSTRUMENT,
+    	typename CsrProblem>
 	cudaError_t EnactSearch(
-		CsrProblem 						&bfs_problem,
+		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
-		int 								max_grid_size = 0)
+		int 							max_grid_size = 0)
 	{
-		// Expansion kernel config
-		typedef expand_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			0,
-			5,
-			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			true,					// WORK_STEALING
-			6> ExpandConfig;
-
-		// Compaction kernel config
-		typedef compact_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			2,
-			5,
-			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
-			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-			false,					// WORK_STEALING
-			9> CompactConfig;
-
 		typedef typename CsrProblem::VertexId					VertexId;
 		typedef typename CsrProblem::SizeT						SizeT;
 
-		cudaError_t retval = cudaSuccess;
+		cudaError_t retval;
 
-		//
-		// Determine grid size(s)
-		//
+		do {
+			// Determine grid size(s)
+			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
+			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-		int expand_min_occupancy 		= ExpandConfig::CTA_OCCUPANCY;
-		int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
-		int compact_min_occupancy		= CompactConfig::CTA_OCCUPANCY;
-		int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
+			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
+			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
-		if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
-			expand_min_occupancy, expand_grid_size);
-		if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
-			compact_min_occupancy, compact_grid_size);
-
-		// Make sure our runtime stats are good
-		if (retval = expand_kernel_stats.Setup(expand_grid_size)) exit(1);
-		if (retval = compact_kernel_stats.Setup(compact_grid_size)) exit(1);
-
-		// Reset statistics
-		total_queued 		= 0;
-		done[0] 			= 0;
-		total_avg_live 		= 0;
-		total_max_live 		= 0;
-
-		if (INSTRUMENT) {
-			printf("1, 1\n");
-		}
-
-		SizeT queue_length;
-		VertexId iteration = 0;
-		VertexId queue_index = 0;
-
-		while (!done[0]) {
-
-			// Expansion
-			expand_atomic::Kernel<ExpandConfig, INSTRUMENT, 0>
-					<<<expand_grid_size, ExpandConfig::THREADS>>>(
-				src,
-				iteration,
-				queue_index,
-				d_done,
-				bfs_problem.d_compact_queue,			// in
-				bfs_problem.d_compact_parent_queue,
-				bfs_problem.d_expand_queue,				// out
-				bfs_problem.d_expand_parent_queue,
-				bfs_problem.d_column_indices,
-				bfs_problem.d_row_offsets,
-				bfs_problem.d_source_path,
-				this->work_progress,
-				this->expand_kernel_stats);
-
-			queue_index++;
-			iteration++;
+			if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
+				expand_min_occupancy, expand_grid_size);
+			if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
+				compact_min_occupancy, compact_grid_size);
 
 			if (INSTRUMENT) {
-				// Get expansion queue length
-				if (this->work_progress.GetQueueLength(queue_index, queue_length)) exit(0);
-				total_queued += queue_length;
-				printf("Expansion queue length: %lld\n", (long long) queue_length);
-
-				// Get expand stats (i.e., duty %)
-				expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
+				printf("Compaction queue, Expansion queue\n");
+				printf("1, \n");
 			}
 
-			// Compaction
-			compact_atomic::Kernel<CompactConfig, INSTRUMENT><<<compact_grid_size, CompactConfig::THREADS>>>(
-				queue_index,
-				d_done,
-				bfs_problem.d_expand_queue,				// in
-				bfs_problem.d_expand_parent_queue,
-				bfs_problem.d_compact_queue,			// out
-				bfs_problem.d_compact_parent_queue,
-				bfs_problem.d_collision_cache,
-				this->work_progress,
-				this->compact_kernel_stats);
+			SizeT queue_length;
+			VertexId iteration = 0;		// BFS iteration
+			VertexId queue_index = 0;	// Work stealing/queue index
 
-			queue_index++;
+			// Single-gpu graph slice
+			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
-			if (INSTRUMENT) {
-				// Get compaction queue length
-				if (this->work_progress.GetQueueLength(iteration, queue_length)) exit(0);
-				printf("Compaction queue length: %lld\n", (long long) queue_length);
+			// Setup / lazy initialization
+			if (retval = Setup(expand_grid_size, compact_grid_size)) break;
 
-				// Get compact downsweep stats (i.e., duty %)
-				if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
+			while (!done[0]) {
+
+				int selector = queue_index & 1;
+
+				// Expansion
+				expand_atomic::Kernel<ExpandPolicy, INSTRUMENT, 0>
+					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
+						src,
+						iteration,
+						queue_index,
+						d_done,
+						graph_slice->frontier_queues.d_keys[selector],
+						graph_slice->frontier_queues.d_keys[selector ^ 1],
+						graph_slice->frontier_queues.d_values[selector],
+						graph_slice->frontier_queues.d_values[selector ^ 1],
+						graph_slice->d_column_indices,
+						graph_slice->d_row_offsets,
+						graph_slice->d_source_path,
+						this->work_progress,
+						this->expand_kernel_stats);
+
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+				queue_index++;
+				iteration++;
+
+				if (INSTRUMENT) {
+					// Get expansion queue length
+					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
+					total_queued += queue_length;
+					printf("%lld\n", (long long) queue_length);
+
+					// Get expand stats (i.e., duty %)
+					if (retval = expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live)) break;
+				}
+
+				// Compaction
+				compact_atomic::Kernel<CompactPolicy, INSTRUMENT>
+					<<<compact_grid_size, CompactPolicy::THREADS>>>(
+						queue_index,
+						d_done,
+						graph_slice->frontier_queues.d_keys[selector ^ 1],
+						graph_slice->frontier_queues.d_keys[selector],
+						graph_slice->frontier_queues.d_values[selector ^ 1],
+						graph_slice->frontier_queues.d_values[selector],
+						graph_slice->d_collision_cache,
+						this->work_progress,
+						this->compact_kernel_stats);
+
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "compact_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+				queue_index++;
+
+				if (INSTRUMENT) {
+					// Get compaction queue length
+					if (retval = work_progress.GetQueueLength(iteration, queue_length)) break;
+					printf("%lld, ", (long long) queue_length);
+
+					// Get compact downsweep stats (i.e., duty %)
+					if (retval = compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) break;
+				}
+
+				// Throttle
+				if (iteration & 1) {
+					if (retval = util::B40CPerror(cudaEventRecord(throttle_event),
+						"EnactorTwoPhase cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
+				} else {
+					if (retval = util::B40CPerror(cudaEventSynchronize(throttle_event),
+						"EnactorTwoPhase cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
+				};
 			}
+			if (retval) break;
 
-			// Throttle
-			if (iteration & 1) {
-				if (util::B40CPerror(cudaEventRecord(throttle_event),
-					"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) exit(1);
-			} else {
-				if (util::B40CPerror(cudaEventSynchronize(throttle_event),
-					"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) exit(1);
-			};
-		}
-		printf("\n");
-
-		printf("Launched iterations: %d\n", iteration);
-		search_depth = iteration - 1;
+		} while(0);
 
 		return retval;
+	}
+
+
+    /**
+	 * Enacts a breadth-first-search on the specified graph problem.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+    template <bool INSTRUMENT, typename CsrProblem>
+	cudaError_t EnactSearch(
+		CsrProblem 						&csr_problem,
+		typename CsrProblem::VertexId 	src,
+		int 							max_grid_size = 0)
+	{
+		if (this->cuda_props.device_sm_version >= 200) {
+			// Expansion kernel config
+			typedef expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				0,
+				5,
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				true,					// WORK_STEALING
+				6> ExpandPolicy;
+
+			// Compaction kernel config
+			typedef compact_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				2,
+				5,
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				9> CompactPolicy;
+
+			return EnactSearch<ExpandPolicy, CompactPolicy, INSTRUMENT>(
+				csr_problem, src, max_grid_size);
+
+		} else {
+
+			printf("Not yet tuned for this architecture\n");
+			return cudaSuccess;
+		}
 	}
     
 };

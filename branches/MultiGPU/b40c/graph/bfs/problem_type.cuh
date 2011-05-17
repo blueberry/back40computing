@@ -37,11 +37,11 @@ namespace bfs {
  * Type of BFS problem
  */
 template <
-	typename 	_VertexId,
-	typename 	_SizeT,
-	typename 	_CollisionMask,
-	typename 	_ValidFlag,
-	bool 		_MARK_PARENTS>
+	typename 	_VertexId,						// Type of signed integer to use as vertex id (e.g., uint32)
+	typename 	_SizeT,							// Type of unsigned integer to use for array indexing (e.g., uint32)
+	typename 	_CollisionMask,					// Type of unsigned integer to use for collision bitmask (e.g., uint8)
+	typename 	_ValidFlag,						// Type of integer to use for compaction validity (e.g., uint8)
+	bool 		_MARK_PARENTS>					// Whether to mark parent-vertices during search vs. distance-from-source
 struct ProblemType : partition::ProblemType<
 	_VertexId, 																// KeyType
 	typename util::If<_MARK_PARENTS, _VertexId, util::NullType>::Type,		// ValueType
