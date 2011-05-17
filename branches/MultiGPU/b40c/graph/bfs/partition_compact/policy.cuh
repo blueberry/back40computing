@@ -1,0 +1,183 @@
+/******************************************************************************
+ * 
+ * Copyright 2010-2011 Duane Merrill
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ *
+ * For more information, see our Google Code project site: 
+ * http://code.google.com/p/back40computing/
+ * 
+ * Thanks!
+ * 
+ ******************************************************************************/
+
+
+/******************************************************************************
+ * Unified BFS partition/compaction policy
+ ******************************************************************************/
+
+#pragma once
+
+#include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/kernel_runtime_stats.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+
+#include <b40c/partition/policy.cuh>
+#include <b40c/partition/upsweep/tuning_policy.cuh>
+#include <b40c/partition/downsweep/tuning_policy.cuh>
+
+#include <b40c/bfs/partition_compact/upsweep/kernel.cuh>
+#include <b40c/bfs/partition_compact/downsweep/kernel.cuh>
+
+namespace b40c {
+namespace bfs {
+namespace partition_compact {
+
+/**
+ * Unified partition/compact policy type.
+ *
+ * In addition to kernel tuning parameters that guide the kernel compilation for
+ * upsweep, spine, and downsweep kernels, this type includes enactor tuning
+ * parameters that define kernel-dispatch policy.   By encapsulating all of the
+ * kernel tuning policies, we assure operational consistency over an entire
+ * partitioning pass.
+ */
+template <
+	// Problem Type
+	typename ProblemType,
+
+	// Common
+	int CUDA_ARCH,
+	int LOG_BINS,
+	int LOG_SCHEDULE_GRANULARITY,
+	util::io::ld::CacheModifier READ_MODIFIER,
+	util::io::st::CacheModifier WRITE_MODIFIER,
+
+	// Upsweep
+	int UPSWEEP_CTA_OCCUPANCY,
+	int UPSWEEP_LOG_THREADS,
+	int UPSWEEP_LOG_LOAD_VEC_SIZE,
+	int UPSWEEP_LOG_LOADS_PER_TILE,
+
+	// Spine-scan
+	int SPINE_CTA_OCCUPANCY,
+	int SPINE_LOG_THREADS,
+	int SPINE_LOG_LOAD_VEC_SIZE,
+	int SPINE_LOG_LOADS_PER_TILE,
+	int SPINE_LOG_RAKING_THREADS,
+
+	// Downsweep
+	int DOWNSWEEP_CTA_OCCUPANCY,
+	int DOWNSWEEP_LOG_THREADS,
+	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+	int DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+	int DOWNSWEEP_LOG_CYCLES_PER_TILE,
+	int DOWNSWEEP_LOG_RAKING_THREADS>
+
+struct Policy :
+	partition::Policy<
+		ProblemType,
+		CUDA_ARCH,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		SPINE_CTA_OCCUPANCY,
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		SPINE_LOG_RAKING_THREADS>
+{
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef typename ProblemType::VertexId 			VertexId;
+	typedef typename ProblemType::ParentId			ParentId;
+	typedef typename ProblemType::ValidFlag			ValidFlag;
+	typedef typename ProblemType::CollisionMask 	CollisionMask;
+	typedef typename ProblemType::SizeT 			SizeT;
+
+	// Upsweep kernel ptr
+	typedef void (*UpsweepKernelPtr)(
+		VertexId iteration,
+		VertexId *d_in,
+		ValidFlag *d_out_flag,
+		SizeT *d_spine,
+		CollisionMask *d_collision_cache,
+		util::CtaWorkProgress work_progress,
+		util::KernelRuntimeStats kernel_stats);
+
+	// Downsweep kernel ptr
+	typedef void (*DownsweepKernelPtr)(
+		VertexId iteration,
+		VertexId *d_in,
+		VertexId *d_out,
+		ParentId *d_parent_in,
+		ParentId *d_parent_out,
+		ValidFlag *d_flags_in,
+		SizeT *d_spine,
+		util::CtaWorkProgress work_progress,
+		util::KernelRuntimeStats kernel_stats);
+
+
+	//---------------------------------------------------------------------
+	// Kernel Policies
+	//---------------------------------------------------------------------
+
+	typedef upsweep::KernelPolicy<partition::upsweep::TuningPolicy<
+		ProblemType,
+		CUDA_ARCH,
+		LOG_BINS,
+		LOG_SCHEDULE_GRANULARITY,
+		UPSWEEP_CTA_OCCUPANCY,
+		UPSWEEP_LOG_THREADS,
+		UPSWEEP_LOG_LOAD_VEC_SIZE,
+		UPSWEEP_LOG_LOADS_PER_TILE,
+		READ_MODIFIER,
+		WRITE_MODIFIER> >
+			Upsweep;
+
+	typedef downsweep::KernelPolicy<partition::downsweep::TuningPolicy<
+		ProblemType,
+		CUDA_ARCH,
+		LOG_BINS,
+		LOG_SCHEDULE_GRANULARITY,
+		DOWNSWEEP_CTA_OCCUPANCY,
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+		DOWNSWEEP_LOG_CYCLES_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
+		READ_MODIFIER,
+		WRITE_MODIFIER> >
+			Downsweep;
+
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static UpsweepKernelPtr UpsweepKernel() {
+		return upsweep::Kernel<Upsweep>;
+	}
+
+	static DownsweepKernelPtr DownsweepKernel() {
+		return downsweep::Kernel<Downsweep>;
+	}
+};
+
+
+} // namespace partition_compact
+} // namespace bfs
+} // namespace b40c
+

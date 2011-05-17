@@ -94,6 +94,14 @@ struct Tile
 	__device__ __forceinline__ void LoadKeys(Cta *cta, SizeT cta_offset);
 
 
+	/**
+	 * Stores keys from the tile (if necessary)
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void StoreKeys(Cta *cta, SizeT cta_offset);
+
 
 	//---------------------------------------------------------------------
 	// Iteration Structures

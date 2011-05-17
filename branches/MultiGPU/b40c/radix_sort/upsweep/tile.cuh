@@ -107,6 +107,14 @@ struct Tile :
 					(KeyType (*)[Tile::LOAD_VEC_SIZE]) keys,
 					cta->d_in_keys + cta_offset);
 	}
+
+	/**
+	 * Stores keys from the tile (not necessary)
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void StoreKeys(
+		Cta *cta,
+		SizeT cta_offset) {}
 };
 
 

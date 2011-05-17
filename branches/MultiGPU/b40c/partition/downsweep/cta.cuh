@@ -127,7 +127,7 @@ struct Cta
 	/**
 	 * Process full tile
 	 */
-	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
+	__device__ __forceinline__ void ProcessTile(SizeT cta_offset)
 	{
 		Dispatch *dispatch = (Dispatch *) this;
 		Tile<KernelPolicy> tile;
@@ -173,7 +173,7 @@ struct Cta
 	/**
 	 * Process partial tile
 	 */
-	__device__ __forceinline__ void ProcessPartialTile(
+	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
 	{

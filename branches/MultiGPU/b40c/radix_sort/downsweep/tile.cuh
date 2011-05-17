@@ -95,7 +95,7 @@ struct Tile :
 		Cta *cta,
 		SizeT cta_offset)
 	{
-		// Read tile of keys, use -1 if key is out-of-bounds
+		// Read tile of keys
 		util::io::LoadTile<
 			KernelPolicy::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
 			KernelPolicy::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)

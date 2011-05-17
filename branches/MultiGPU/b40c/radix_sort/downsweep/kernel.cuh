@@ -41,20 +41,20 @@ namespace downsweep {
 /**
  * Downsweep scan-scatter pass
  */
-template <typename KernelPolicy, typename Cta, typename SmemStorage>
+template <typename KernelPolicy, typename Cta>
 __device__ __forceinline__ void DownsweepPass(
-	Cta &cta,
-	SmemStorage	&smem_storage)
+	Cta 									&cta,
+	typename KernelPolicy::SmemStorage 		&smem_storage)
 {
 	typename KernelPolicy::SizeT cta_offset = smem_storage.work_limits.offset;
 
 	while (cta_offset < smem_storage.work_limits.guarded_offset) {
-		cta.ProcessFullTile(cta_offset);
+		cta.ProcessTile(cta_offset);
 		cta_offset += KernelPolicy::TILE_ELEMENTS;
 	}
 
 	if (smem_storage.work_limits.guarded_elements) {
-		cta.ProcessPartialTile(cta_offset, smem_storage.work_limits.guarded_elements);
+		cta.ProcessTile(cta_offset, smem_storage.work_limits.guarded_elements);
 	}
 }
 
@@ -62,7 +62,7 @@ __device__ __forceinline__ void DownsweepPass(
 /**
  * Downsweep scan-scatter pass
  */
-template <typename KernelPolicy, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
 	int 								*&d_selectors,
 	typename KernelPolicy::SizeT 		*&d_spine,
@@ -71,7 +71,7 @@ __device__ __forceinline__ void DownsweepPass(
 	typename KernelPolicy::ValueType 	*&d_values0,
 	typename KernelPolicy::ValueType 	*&d_values1,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	SmemStorage	&smem_storage)
+	typename KernelPolicy::SmemStorage	&smem_storage)
 {
 	typedef typename KernelPolicy::KeyType 				KeyType;
 	typedef typename KernelPolicy::SizeT 				SizeT;

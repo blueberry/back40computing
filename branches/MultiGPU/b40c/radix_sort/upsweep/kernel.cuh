@@ -41,14 +41,14 @@ namespace upsweep {
 /**
  * Upsweep reduction pass
  */
-template <typename KernelPolicy, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	int 								*&d_selectors,
-	typename KernelPolicy::SizeT 		*&d_spine,
-	typename KernelPolicy::KeyType 		*&d_in_keys,
-	typename KernelPolicy::KeyType 		*&d_out_keys,
+	int 									*&d_selectors,
+	typename KernelPolicy::SizeT 			*&d_spine,
+	typename KernelPolicy::KeyType 			*&d_in_keys,
+	typename KernelPolicy::KeyType 			*&d_out_keys,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	SmemStorage							&smem_storage)
+	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef Cta<KernelPolicy> 						Cta;
 	typedef typename KernelPolicy::KeyType 			KeyType;

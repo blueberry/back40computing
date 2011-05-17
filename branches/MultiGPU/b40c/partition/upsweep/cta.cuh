@@ -165,6 +165,9 @@ struct Cta
 
 		// Bucket tile of keys
 		tile.Bucket(dispatch);
+
+		// Store keys (if necessary)
+		tile.StoreKeys(dispatch, cta_offset);
 	}
 
 
@@ -187,6 +190,9 @@ struct Cta
 
 			// Bucket tile of keys
 			tile.Bucket(dispatch);
+
+			// Store keys (if necessary)
+			tile.StoreKeys(dispatch, cta_offset);
 
 			cta_offset += KernelPolicy::THREADS;
 		}
