@@ -34,6 +34,7 @@
 #include <b40c/partition/downsweep/kernel_policy.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace downsweep {
@@ -76,6 +77,7 @@ struct KernelPolicy :
 } // namespace downsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 
 

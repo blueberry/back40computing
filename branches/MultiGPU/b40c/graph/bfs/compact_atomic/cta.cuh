@@ -40,27 +40,28 @@
 #include <b40c/util/reduction/tree_reduce.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace compact_atomic {
 
 
 /**
- * Derivation of KernelConfig that encapsulates tile-processing routines
+ * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
-template <typename KernelConfig, typename SmemStorage>
+template <typename KernelPolicy, typename SmemStorage>
 struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::VertexId 		VertexId;
-	typedef typename KernelConfig::VertexId 		VertexId;
-	typedef typename KernelConfig::ValidFlag		ValidFlag;
-	typedef typename KernelConfig::CollisionMask 	CollisionMask;
-	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename KernelConfig::ThreadId			ThreadId;
-	typedef typename KernelConfig::SrtsDetails 		SrtsDetails;
+	typedef typename KernelPolicy::VertexId 		VertexId;
+	typedef typename KernelPolicy::VertexId 		VertexId;
+	typedef typename KernelPolicy::ValidFlag		ValidFlag;
+	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::ThreadId			ThreadId;
+	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -366,7 +367,7 @@ struct Cta
 
 	{
 		// Initialize history duplicate-filter
-		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelConfig::THREADS) {
+		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
 			history[offset] = -1;
 		}
 	}
@@ -377,16 +378,16 @@ struct Cta
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		const SizeT &guarded_elements = KernelConfig::TILE_ELEMENTS)
+		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		Tile<KernelConfig::LOG_LOADS_PER_TILE, KernelConfig::LOG_LOAD_VEC_SIZE> tile;
+		Tile<KernelPolicy::LOG_LOADS_PER_TILE, KernelPolicy::LOG_LOAD_VEC_SIZE> tile;
 
 		// Load tile
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER>::LoadValid(
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
 				tile.vertex_ids,
 				(VertexId) -1,
 				d_in + cta_offset,
@@ -403,8 +404,8 @@ struct Cta
 
 		// Copy flags into ranks
 		util::io::InitializeTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE>::Copy(tile.ranks, tile.flags);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.ranks, tile.flags);
 
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();
@@ -413,7 +414,7 @@ struct Cta
 		// space in the compacted queue, seeding ranks
 		util::scan::CooperativeTileScan<
 			SrtsDetails,
-			KernelConfig::LOAD_VEC_SIZE,
+			KernelPolicy::LOAD_VEC_SIZE,
 			true,							// exclusive
 			util::DefaultSum>::ScanTileWithEnqueue(
 				srts_details,
@@ -426,22 +427,22 @@ struct Cta
 		// Scatter directly (without first compacting in smem scratch), predicated
 		// on flags (treat vertex_ids, flags, and ranks as linear arrays)
 		util::io::ScatterTile<
-			KernelConfig::TILE_ELEMENTS_PER_THREAD,
-			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER>::Scatter(
+			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				d_out,
 				(VertexId *) tile.vertex_ids,
 				(ValidFlag *) tile.flags,
 				(SizeT *) tile.ranks);
 
-		if (KernelConfig::MARK_PARENTS) {
+		if (KernelPolicy::MARK_PARENTS) {
 
 			// Compact parent vertices as well
 			util::io::LoadTile<
-				KernelConfig::LOG_LOADS_PER_TILE,
-				KernelConfig::LOG_LOAD_VEC_SIZE,
-				KernelConfig::THREADS,
-				KernelConfig::READ_MODIFIER>::LoadValid(
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::LoadValid(
 					tile.parent_ids,
 					d_parent_in + cta_offset,
 					guarded_elements);
@@ -449,9 +450,9 @@ struct Cta
 			// Scatter valid vertex_ids, predicated on flags (treat
 			// vertex_ids, flags, and ranks as linear arrays)
 			util::io::ScatterTile<
-				KernelConfig::TILE_ELEMENTS_PER_THREAD,
-				KernelConfig::THREADS,
-				KernelConfig::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					d_parent_out,
 					(VertexId *) tile.parent_ids,
 					(ValidFlag *) tile.flags,
@@ -463,5 +464,6 @@ struct Cta
 
 } // namespace compact_atomic
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 

@@ -31,6 +31,7 @@
 #include <b40c/partition/upsweep/kernel_policy.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace upsweep {
@@ -92,6 +93,7 @@ struct KernelPolicy :
 } // namespace upsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 
 

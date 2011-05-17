@@ -34,6 +34,7 @@
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace compact_atomic {
 
@@ -67,7 +68,7 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : _ProblemType
+struct KernelPolicy : _ProblemType
 {
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
@@ -176,5 +177,6 @@ struct KernelConfig : _ProblemType
 
 } // namespace compact_atomic
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 

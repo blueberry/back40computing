@@ -474,7 +474,7 @@ void TestGpuBfs(
 	float elapsed = gpu_timer.ElapsedMillis();
 
 	// Copy out results
-	bfs_problem.CombineResults(h_source_path);
+	bfs_problem.ExtractResults(h_source_path);
 	
 	long long 	total_queued = 0;
 	VertexId	search_depth = 0;

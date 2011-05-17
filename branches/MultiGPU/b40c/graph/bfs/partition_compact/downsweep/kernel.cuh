@@ -33,9 +33,10 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/device_intrinsics.cuh>
 
-#include <b40c/bfs/partition_compact/downsweep/cta.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/cta.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace downsweep {
@@ -206,4 +207,5 @@ void Kernel(
 } // namespace downsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c

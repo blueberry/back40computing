@@ -36,6 +36,7 @@
 #include <b40c/radix_sort/sort_utils.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace downsweep {
@@ -197,5 +198,6 @@ struct Tile :
 } // namespace downsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 

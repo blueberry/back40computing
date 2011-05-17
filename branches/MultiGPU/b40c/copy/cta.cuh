@@ -72,7 +72,7 @@ struct Cta : KernelPolicy
 	/**
 	 * Process a single tile
 	 *
-	 * Each thread copys only the strided values it loads.
+	 * Each thread copies only the strided values it loads.
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,

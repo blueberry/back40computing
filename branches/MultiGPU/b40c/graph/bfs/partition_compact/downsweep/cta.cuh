@@ -31,9 +31,10 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/partition/downsweep/cta.cuh>
 
-#include <b40c/bfs/partition_compact/downsweep/tile.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/tile.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace downsweep {
@@ -108,5 +109,6 @@ struct Cta :
 } // namespace downsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 

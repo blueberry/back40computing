@@ -31,9 +31,10 @@
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 
-#include <b40c/bfs/partition_compact/upsweep/cta.cuh>
+#include <b40c/graph/bfs/partition_compact/upsweep/cta.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace upsweep {
@@ -134,5 +135,6 @@ void UpsweepKernel(
 } // namespace upsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 

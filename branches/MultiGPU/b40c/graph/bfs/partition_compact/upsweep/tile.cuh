@@ -37,6 +37,7 @@
 #include <b40c/partition/upsweep/tile.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 namespace upsweep {
@@ -348,4 +349,5 @@ struct Tile :
 } // namespace upsweep
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c

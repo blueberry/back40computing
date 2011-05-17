@@ -37,10 +37,11 @@
 #include <b40c/partition/upsweep/tuning_policy.cuh>
 #include <b40c/partition/downsweep/tuning_policy.cuh>
 
-#include <b40c/bfs/partition_compact/upsweep/kernel.cuh>
-#include <b40c/bfs/partition_compact/downsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
 namespace partition_compact {
 
@@ -179,5 +180,6 @@ struct Policy :
 
 } // namespace partition_compact
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 
