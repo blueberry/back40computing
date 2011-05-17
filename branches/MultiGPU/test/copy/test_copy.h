@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // Copy includes
-#include <b40c/copy_enactor.cuh>
+#include <b40c/copy/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -61,7 +61,7 @@ double TimedCopy(
 		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	CopyEnactor copy_enactor;
+	copy::Enactor copy_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -69,32 +69,26 @@ double TimedCopy(
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	copy_enactor.DEBUG = true;
-	copy_enactor.template Enact<PROB_SIZE_GENRE>(
+	copy_enactor.template Copy<PROB_SIZE_GENRE>(
 		d_dest, d_src, num_elements * sizeof(T), max_ctas);
 	copy_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		// Call the copy API routine
-		copy_enactor.template Enact<PROB_SIZE_GENRE>(
+		copy_enactor.template Copy<PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements * sizeof(T), max_ctas);
 
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -103,10 +97,6 @@ double TimedCopy(
 	printf("\nB40C copy: %d iterations, %lu bytes, ", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 B/sec, ",
 		avg_runtime, throughput * sizeof(T) * 2);
-
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
 
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));

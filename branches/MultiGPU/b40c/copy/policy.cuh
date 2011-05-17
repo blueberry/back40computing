@@ -20,39 +20,40 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding copy granularity configuration
+ * Copy configuration policy
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/copy/problem_type.cuh>
 
 namespace b40c {
 namespace copy {
 
+
 /**
- * Copy kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * A detailed policy type that specializes kernel and dispatch
+ * code for a specific copy pass. It encapsulates our kernel-tuning
+ * parameters (they are reflected via the static fields).
  *
- * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
- * them with different performance-tuned parameterizations of this type.  By
+ * The kernel is specialized for problem-type, SM-version, etc. by declaring
+ * it with different performance-tuned parameterizations of this type.  By
  * incorporating this type into the kernel code itself, we guide the compiler in
  * expanding/unrolling the kernel code for specific architectures and problem
  * types.
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename _T,
+	typename _SizeT,
 
 	// Machine parameters
 	int CUDA_ARCH,
 
 	// Tunable parameters
+	int _LOG_SCHEDULE_GRANULARITY,
 	int _MAX_CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
@@ -60,17 +61,34 @@ template <
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	bool _WORK_STEALING,
-	int _LOG_SCHEDULE_GRANULARITY>
+	bool _OVERSUBSCRIBED_GRID_SIZE>
 
-struct SweepKernelConfig : _ProblemType
+struct Policy
 {
-	typedef _ProblemType ProblemType;
-	typedef typename ProblemType::T T;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef _T 			T;
+	typedef _SizeT 		SizeT;
+
+	typedef void (*KernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress, int);
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static KernelPtr Kernel() {
+		return copy::Kernel<Policy>;
+	}
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
-
-	static const bool WORK_STEALING		= _WORK_STEALING;
 
 	enum {
 
@@ -101,11 +119,14 @@ struct SweepKernelConfig : _ProblemType
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY)),
 
+		WORK_STEALING				 	= _WORK_STEALING,
+		OVERSUBSCRIBED_GRID_SIZE		= _OVERSUBSCRIBED_GRID_SIZE,
+
 		VALID 							= (CTA_OCCUPANCY > 0)
 	};
 };
+		
 
-
-} // namespace copy
-} // namespace b40c
+}// namespace copy
+}// namespace b40c
 

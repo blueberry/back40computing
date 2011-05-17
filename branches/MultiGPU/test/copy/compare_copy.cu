@@ -92,25 +92,19 @@ double TimedRuntimeCopy(
 	cudaMemcpy(d_dest, d_src, sizeof(T) * num_elements, cudaMemcpyDeviceToDevice);
 	
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < g_iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		cudaMemcpy(d_dest, d_src, sizeof(T) * num_elements, cudaMemcpyDeviceToDevice);
 		
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;		
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -120,10 +114,6 @@ double TimedRuntimeCopy(
     printf("%f GPU ms, %f x10^9 B/sec, ",
 		avg_runtime, throughput * sizeof(T) * 2);
 	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
     if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
@@ -181,12 +171,16 @@ void TestCopy(size_t num_elements)
 		h_reference[i] = h_data[i];
 	}
 
-
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedCopy<T, copy::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-	double runtime = TimedRuntimeCopy<T>(h_data, h_reference, num_elements);
+
+	double b40c = TimedCopy<T, copy::UNKNOWN_SIZE>(
+		h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+
+	double runtime = TimedRuntimeCopy<T>(
+		h_data, h_reference, num_elements);
+
 	printf("B40C speedup: %.2f\n", b40c/runtime);
 
 	// Free our allocated host memory 

@@ -32,7 +32,6 @@
 #include <b40c/util/arch_dispatch.cuh>
 
 #include <b40c/reduction/problem_type.cuh>
-#include <b40c/reduction/policy.cuh>
 #include <b40c/reduction/autotuned_policy.cuh>
 #include <b40c/reduction/upsweep/kernel.cuh>
 #include <b40c/reduction/spine/kernel.cuh>
@@ -218,7 +217,7 @@ struct PolicyResolver
 		// Obtain tuned granularity type
 		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
 
-		// Invoke base class enact with type
+		// Invoke enactor with type
 		return detail.enactor->template Reduce<AutotunedPolicy>(
 			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}
@@ -252,13 +251,13 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		if (detail.num_elements < saturating_load) {
 
-			// Invoke base class enact with small-problem config type
+			// Invoke enactor with small-problem config type
 			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
 			return detail.enactor->template Reduce<SmallPolicy>(
 				detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 		}
 
-		// Invoke base class enact with large-problem config type
+		// Invoke enactor with large-problem config type
 		return detail.enactor->template Reduce<LargePolicy>(
 			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}

@@ -99,11 +99,11 @@ void TestCopy(size_t num_elements)
 	size_t orig_num_elements = num_elements;
 	do {
 		printf("\nLARGE config:\t");
-		double large = TimedCopy<T, copy::LARGE>(
+		double large = TimedCopy<T, copy::LARGE_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedCopy<T, copy::SMALL>(
+		double small = TimedCopy<T, copy::SMALL_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {

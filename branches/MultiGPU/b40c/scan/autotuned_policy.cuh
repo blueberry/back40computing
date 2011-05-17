@@ -391,6 +391,10 @@ struct AutotunedPolicy : AutotunedGenre<
 	typename ProblemType::T,
 	1 << util::Log2<sizeof(typename ProblemType::T)>::VALUE>	// Round up to the nearest arch subword
 {
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
 	typedef typename ProblemType::T 		T;
 	typedef typename ProblemType::SizeT 	SizeT;
 

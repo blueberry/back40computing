@@ -20,18 +20,19 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuned Copy Problem Granularity Configuration Types
+ * Autotuned copy policy
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/copy/kernel.cuh>
-#include <b40c/copy/problem_config.cuh>
+#include <b40c/copy/policy.cuh>
 
 namespace b40c {
 namespace copy {
@@ -46,9 +47,9 @@ namespace copy {
  */
 enum ProbSizeGenre
 {
-	UNKNOWN = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
-	SMALL,					// Tuned @ 128KB input
-	LARGE					// Tuned @ 128MB input
+	UNKNOWN_SIZE = -1,			// Not actually specialized on: the enactor should use heuristics to select another size genre
+	SMALL_SIZE,					// Tuned @ 128KB input
+	LARGE_SIZE					// Tuned @ 128MB input
 };
 
 
@@ -67,36 +68,21 @@ enum ArchFamily
  * Classifies a given CUDA_ARCH into an architecture-family
  */
 template <int CUDA_ARCH>
-struct ArchFamilyClassifier
+struct ArchGenre
 {
 	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
 										(CUDA_ARCH < SM20) ? 	SM13 :
 																SM20;
 };
 
-
-/******************************************************************************
- * Granularity tuning types
- *
- * Specialized by family (and optionally by specific architecture) and by
- * problem size type
- *******************************************************************************/
-
 /**
- * Granularity parameterization type
+ * Autotuned policy type
  */
-template <int CUDA_ARCH, ProbSizeGenre PROB_SIZE_GENRE>
-struct TunedConfig;
-
-
-/**
- * Default, catch-all granularity parameterization type.  Defers to the
- * architecture "family" that we know we have specialization type(s) for below.
- */
-template <int CUDA_ARCH, ProbSizeGenre PROB_SIZE_GENRE>
-struct TunedConfig : TunedConfig<
-	ArchFamilyClassifier<CUDA_ARCH>::FAMILY,
-	PROB_SIZE_GENRE> {};
+template <
+	typename SizeT,
+	int CUDA_ARCH,
+	ProbSizeGenre PROB_SIZE_GENRE>
+struct AutotunedPolicy;
 
 
 //-----------------------------------------------------------------------------
@@ -104,21 +90,23 @@ struct TunedConfig : TunedConfig<
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <>
-struct TunedConfig<SM20, LARGE>
-	: ProblemConfig<unsigned long long, size_t, SM20, util::io::ld::cg, util::io::st::cg, true, false,
-	  8, 7, 1, 0, 8>
+template <typename SizeT>
+struct AutotunedPolicy<SizeT, SM20, LARGE_SIZE>
+	: Policy<unsigned long long, SizeT,
+	  SM20, 8, 8, 7, 1, 0,
+	  util::io::ld::cg, util::io::st::cg, true, false>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
 
 // Small problems
-template <>
-struct TunedConfig<SM20, SMALL>
-	: ProblemConfig<unsigned long long, size_t, SM20, util::io::ld::cg, util::io::st::cs, false, false,
-	  8, 6, 0, 0, 6>
+template <typename SizeT>
+struct AutotunedPolicy<SizeT, SM20, SMALL_SIZE>
+	: Policy<unsigned long long, SizeT,
+	  SM20, 6, 8, 6, 0, 0,
+	  util::io::ld::cg, util::io::st::cs, false, false>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
 
 
@@ -128,21 +116,23 @@ struct TunedConfig<SM20, SMALL>
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <>
-struct TunedConfig<SM13, LARGE>
-	: ProblemConfig<unsigned short, size_t, SM13, util::io::ld::NONE, util::io::st::NONE, false, false,
-	  8, 7, 2, 0, 9>
+template <typename SizeT>
+struct AutotunedPolicy<SizeT, SM13, LARGE_SIZE>
+	: Policy<unsigned short, SizeT,
+	  SM13, 8, 8, 7, 2, 0,
+	  util::io::ld::NONE, util::io::st::NONE, false, false>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
 
 // Small problems
-template <>
-struct TunedConfig<SM13, SMALL>
-	: ProblemConfig<unsigned long long, size_t, SM13, util::io::ld::NONE, util::io::st::NONE, false, false,
-	  8, 5, 0, 1, 6>
+template <typename SizeT>
+struct AutotunedPolicy<SizeT, SM13, SMALL_SIZE>
+	: Policy<unsigned long long, SizeT,
+	  SM13, 6, 8, 5, 0, 1,
+	  util::io::ld::NONE, util::io::st::NONE, false, false>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL;
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
 
 
@@ -168,31 +158,64 @@ struct TunedConfig<SM13, SMALL>
 /**
  * Tuned byte-copy kernel entry point
  */
-template <int PROB_SIZE_GENRE>
+template <typename SizeT, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Sweep::THREADS),
-	(TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::ProblemConfig::Sweep::CTA_OCCUPANCY))
-__global__ void TunedSweepKernel(
+	(AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
+	(AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
+__global__ void TunedKernel(
 	void 								*d_in,
 	void 								*d_out,
-	util::CtaWorkDistribution<size_t> 	work_decomposition,
-	util::CtaWorkProgress					work_progress,
+	util::CtaWorkDistribution<SizeT> 	work_decomposition,
+	util::CtaWorkProgress				work_progress,
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename TunedConfig<__B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Sweep KernelConfig;
-	typedef typename KernelConfig::T T;
+	typedef typename AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
+	typedef typename Policy::T T;
 
 	T* out = (T*)(d_out);
 	T* in = (T*)(d_in);
 
-	SweepPass<KernelConfig, KernelConfig::WORK_STEALING>::Invoke(
+	SweepPass<Policy, Policy::WORK_STEALING>::Invoke(
 		in,
 		out,
 		work_decomposition,
 		work_progress,
 		extra_bytes);
 }
+
+
+/******************************************************************************
+ * Autotuned reduction policy
+ *******************************************************************************/
+
+/**
+ * Autotuned policy type
+ */
+template <
+	typename SizeT,
+	int CUDA_ARCH,
+	ProbSizeGenre PROB_SIZE_GENRE>
+struct AutotunedPolicy :
+	AutotunedPolicy<
+		SizeT,
+		ArchGenre<CUDA_ARCH>::FAMILY,
+		PROB_SIZE_GENRE>
+{
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef void (*KernelPtr)(void*, void*, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress, int);
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static KernelPtr Kernel() {
+		return TunedKernel<SizeT, PROB_SIZE_GENRE>;
+	}
+};
 
 
 

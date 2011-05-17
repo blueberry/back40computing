@@ -222,7 +222,7 @@ struct PolicyResolver
 		// Obtain tuned granularity type
 		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
 
-		// Invoke base class enact with type
+		// Invoke enactor with type
 		return detail.enactor->template Scan<AutotunedPolicy>(
 			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}
@@ -256,13 +256,13 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		if (detail.num_elements < saturating_load) {
 
-			// Invoke base class enact with small-problem config type
+			// Invoke enactor with small-problem config type
 			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
 			return detail.enactor->template Scan<SmallPolicy>(
 				detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 		}
 
-		// Invoke base class enact with type
+		// Invoke enactor with type
 		return detail.enactor->template Scan<LargePolicy>(
 			detail.d_dest, detail.d_src, detail.num_elements, detail.max_grid_size);
 	}
