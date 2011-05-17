@@ -50,7 +50,7 @@ namespace bfs {
  * culls visited vertices and expands neighbor lists in a
  * single tile-processing phase.
  */
-class EnactorOnePhase : public BaseBfsEnactor
+class EnactorOnePhase : public EnactorBase
 {
 
 protected:
@@ -82,7 +82,7 @@ public:
 	 * Constructor
 	 */
 	EnactorOnePhase(bool DEBUG = false) :
-		BaseBfsEnactor(DEBUG),
+		EnactorBase(DEBUG),
 		iteration(NULL),
 		d_iteration(NULL)
 	{}
@@ -130,7 +130,7 @@ public:
 			iteration[0] 		= 0;
 			total_avg_live 		= 0;
 			total_max_live 		= 0;
-			total_queued	 	= 0;
+			total_queued 		= 0;
 
 
 		} while (0);

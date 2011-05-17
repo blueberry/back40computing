@@ -52,7 +52,7 @@ namespace bfs {
  * (1) the visited-vertex culling (compaction) phase and (2) the expands
  * neighbor list expansion phase, separately.
  */
-class EnactorTwoPhase : public BaseBfsEnactor
+class EnactorTwoPhase : public EnactorBase
 {
 
 protected:
@@ -83,12 +83,13 @@ public:
 	 * Constructor
 	 */
 	EnactorTwoPhase(bool DEBUG = false) :
-		BaseBfsEnactor(DEBUG),
+		EnactorBase(DEBUG),
 		search_depth(0),
 		total_queued(0),
 		done(NULL),
 		d_done(NULL)
 	{}
+
 
 	/**
 	 * Search setup / lazy initialization
@@ -120,10 +121,11 @@ public:
 			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
 
 			// Reset statistics
-			total_queued 		= 0;
 			done[0] 			= 0;
 			total_avg_live 		= 0;
 			total_max_live 		= 0;
+			total_queued 		= 0;
+			search_depth 		= 0;
 
 		} while (0);
 
@@ -136,11 +138,13 @@ public:
 	 */
 	virtual ~EnactorTwoPhase()
 	{
-		if (done) util::B40CPerror(cudaFreeHost((void *) done),
-			"EnactorTwoPhase cudaFreeHost done failed", __FILE__, __LINE__);
+		if (done) {
+			util::B40CPerror(cudaFreeHost((void *) done),
+					"EnactorTwoPhase cudaFreeHost done failed", __FILE__, __LINE__);
 
-		util::B40CPerror(cudaEventDestroy(throttle_event),
-			"EnactorTwoPhase cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
+			util::B40CPerror(cudaEventDestroy(throttle_event),
+				"EnactorTwoPhase cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
+		}
 	}
 
 
@@ -194,7 +198,7 @@ public:
 
 			if (INSTRUMENT) {
 				printf("Compaction queue, Expansion queue\n");
-				printf("1, \n");
+				printf("1, ");
 			}
 
 			SizeT queue_length;
@@ -262,7 +266,7 @@ public:
 
 				if (INSTRUMENT) {
 					// Get compaction queue length
-					if (retval = work_progress.GetQueueLength(iteration, queue_length)) break;
+					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
 					printf("%lld, ", (long long) queue_length);
 
 					// Get compact downsweep stats (i.e., duty %)
@@ -298,6 +302,7 @@ public:
 		int 							max_grid_size = 0)
 	{
 		if (this->cuda_props.device_sm_version >= 200) {
+
 			// Expansion kernel config
 			typedef expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,

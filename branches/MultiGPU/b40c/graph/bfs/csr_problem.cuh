@@ -54,7 +54,7 @@ struct CsrProblem
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	static const int DEFAULT_QUEUE_SIZING = 1.20;
+	static const float DEFAULT_QUEUE_SIZING;
 
 	typedef ProblemType<
 		_VertexId,				// VertexId
@@ -492,7 +492,10 @@ struct CsrProblem
 
 			if (!graph_slices[gpu]->frontier_queues.d_keys[0]) {
 
-				printf("GPU %d queue size: %d\n\n", graph_slices[gpu]->gpu, queue_elements);
+				printf("GPU %d queue size: %lld elements (%lld bytes)\n\n",
+					graph_slices[gpu]->gpu,
+					(unsigned long long) queue_elements,
+					(unsigned long long) queue_elements * sizeof(VertexId));
 				fflush(stdout);
 
 				if (retval = util::B40CPerror(cudaMalloc(
@@ -566,6 +569,10 @@ struct CsrProblem
 	}
 };
 
+
+// Whether to mark parents vs mark distance-from-source
+template <typename VertexId, typename SizeT, bool MARK_PARENTS>
+const float CsrProblem<VertexId, SizeT, MARK_PARENTS>::DEFAULT_QUEUE_SIZING = 1.25;
 
 
 } // namespace bfs

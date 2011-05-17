@@ -55,7 +55,7 @@ namespace bfs {
  *  
  * Each iterations is performed by its own kernel-launch.  
  */
-class MultiGpuBfsEnactor : public BaseBfsEnactor
+class MultiGpuBfsEnactor : public EnactorBase
 {
 
 protected:
@@ -87,7 +87,7 @@ public:
 	 */
 	MultiGpuBfsEnactor(
 		bool DEBUG = false) :
-			BaseBfsEnactor(DEBUG),
+			EnactorBase(DEBUG),
 			sorting_spines(NULL)
 	{
 		// Allocate pinned sorting spines

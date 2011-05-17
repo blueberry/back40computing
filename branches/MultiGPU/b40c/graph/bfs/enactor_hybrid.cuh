@@ -20,13 +20,10 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Level-grid compact-expand BFS implementation
+ * Hybrid out-of-core BFS implementation (Hybrid grid launch)
  ******************************************************************************/
 
 #pragma once
-
-#include <vector>
-
 
 #include <b40c/util/kernel_runtime_stats.cuh>
 
@@ -46,25 +43,25 @@ namespace bfs {
 
 
 /**
- * Level-grid breadth-first-search enactor.
+ * Hybrid out-of-core BFS implementation (Hybrid grid launch)
  *  
  * Each iterations is performed by its own kernel-launch.  
  */
-class HybridBfsEnactor : public BaseBfsEnactor
+class EnactorHybrid : public EnactorBase
 {
 
 protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
-	 * a single grid invocation
+	 * a one_phase grid invocation
 	 */
 	util::GlobalBarrierLifetime global_barrier;
 
 	/**
 	 * CTA duty kernel stats
 	 */
-	util::KernelRuntimeStatsLifetime 	single_kernel_stats;
+	util::KernelRuntimeStatsLifetime 	one_phase_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	compact_kernel_stats;
 	long long 							total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
@@ -83,7 +80,8 @@ protected:
 	cudaEvent_t			throttle_event;
 
 	/**
-	 * Iteration
+	 * Current iteration (mapped into GPU space so that it can
+	 * be modified by multi-iteration kernel launches)
 	 */
 	volatile long long 	*iteration;
 	long long 			*d_iteration;
@@ -93,51 +91,92 @@ public:
 	/**
 	 * Constructor
 	 */
-	HybridBfsEnactor(bool DEBUG = false) :
-		BaseBfsEnactor(DEBUG),
+	EnactorHybrid(bool DEBUG = false) :
+		EnactorBase(DEBUG),
+		iteration(NULL),
+		d_iteration(NULL),
 		search_depth(0),
 		total_queued(0),
 		done(NULL),
 		d_done(NULL)
-	{
-		int flags = cudaHostAllocMapped;
+	{}
 
-		// Allocate pinned memory for done
-		if (util::B40CPerror(cudaHostAlloc((void **)&done, sizeof(int) * 1, flags),
-			"HybridBfsEnactor cudaHostAlloc done failed", __FILE__, __LINE__)) exit(1);
 
-		// Map done into GPU space
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_done, (void *) done, 0),
-			"HybridBfsEnactor cudaHostGetDevicePointer done failed", __FILE__, __LINE__)) exit(1);
+	/**
+	 * Search setup / lazy initialization
+	 */
+	cudaError_t Setup(
+		int one_phase_grid_size,
+		int expand_grid_size,
+		int compact_grid_size)
+    {
+    	cudaError_t retval;
 
-		// Create throttle event
-		if (util::B40CPerror(cudaEventCreateWithFlags(&throttle_event, cudaEventDisableTiming),
-			"HybridBfsEnactor cudaEventCreateWithFlags throttle_event failed", __FILE__, __LINE__)) exit(1);
+		do {
 
-		// Allocate pinned memory for iteration
-		if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
-			"HybridBfsEnactor cudaHostAlloc iteration failed", __FILE__, __LINE__)) exit(1);
+			if (!done) {
+				int flags = cudaHostAllocMapped;
 
-		// Map iteration into GPU space
-		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
-			"HybridBfsEnactor cudaHostGetDevicePointer d_iteration failed", __FILE__, __LINE__)) exit(1);
+				// Allocate pinned memory for done
+				if (util::B40CPerror(cudaHostAlloc((void **)&done, sizeof(int) * 1, flags),
+					"EnactorHybrid cudaHostAlloc done failed", __FILE__, __LINE__)) break;
+
+				// Map done into GPU space
+				if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_done, (void *) done, 0),
+					"EnactorHybrid cudaHostGetDevicePointer done failed", __FILE__, __LINE__)) break;
+
+				// Create throttle event
+				if (util::B40CPerror(cudaEventCreateWithFlags(&throttle_event, cudaEventDisableTiming),
+					"EnactorHybrid cudaEventCreateWithFlags throttle_event failed", __FILE__, __LINE__)) break;
+
+				// Allocate pinned memory for iteration
+				if (util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
+					"EnactorHybrid cudaHostAlloc iteration failed", __FILE__, __LINE__)) break;
+
+				// Map iteration into GPU space
+				if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
+					"EnactorHybrid cudaHostGetDevicePointer d_iteration failed", __FILE__, __LINE__)) break;
+			}
+
+			// Make sure our runtime stats are good
+			if (retval = one_phase_kernel_stats.Setup(one_phase_grid_size)) break;
+			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
+
+			// Make sure barriers are initialized
+			if (retval = global_barrier.Setup(one_phase_grid_size)) break;
+
+			// Reset statistics
+			iteration[0]		= 0;
+			done[0] 			= 0;
+			total_avg_live 		= 0;
+			total_max_live 		= 0;
+			total_queued 		= 0;
+			search_depth 		= 0;
+
+		} while (0);
+
+		return retval;
 	}
+
 
 
 	/**
 	 * Destructor
 	 */
-	virtual ~HybridBfsEnactor()
+	virtual ~EnactorHybrid()
 	{
-		if (done) util::B40CPerror(cudaFreeHost((void *) done), "HybridBfsEnactor cudaFreeHost done failed", __FILE__, __LINE__);
-		util::B40CPerror(cudaEventDestroy(throttle_event), "HybridBfsEnactor cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
+		if (done) {
+			util::B40CPerror(cudaFreeHost((void *) done), "EnactorHybrid cudaFreeHost done failed", __FILE__, __LINE__);
+			util::B40CPerror(cudaEventDestroy(throttle_event), "EnactorHybrid cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
+		}
 
-		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "HybridBfsEnactor cudaFreeHost iteration failed", __FILE__, __LINE__);
+		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "EnactorHybrid cudaFreeHost iteration failed", __FILE__, __LINE__);
 	}
 
 
     /**
-     * Obtain statistics about the last BFS search enacted 
+     * Obtain statistics about the last BFS search enacted
      */
 	template <typename VertexId>
     void GetStatistics(
@@ -145,11 +184,209 @@ public:
     	VertexId &search_depth,
     	double &avg_live)
     {
-    	total_queued = this->total_queued;
-    	search_depth = this->search_depth;
+    	total_queued = total_queued;
+    	search_depth = search_depth;
     	avg_live = double(total_avg_live) / total_max_live;
     }
+
+	/**
+	 * Enacts a breadth-first-search on the specified graph problem.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+    template <
+    	typename OnePhasePolicy,
+    	typename ExpandPolicy,
+    	typename CompactPolicy,
+    	bool INSTRUMENT,
+    	typename CsrProblem>
+	cudaError_t EnactSearch(
+		CsrProblem 						&csr_problem,
+		typename CsrProblem::VertexId 	src,
+		int 							max_grid_size = 0)
+	{
+    	// Multiplier of (one_phase_grid_size * OnePhasePolicy::TILE_SIZE) above which
+    	// we transition from from one-phase to two-phase
+    	const int SATURATION_QUIT = 4;
+
+		typedef typename CsrProblem::VertexId					VertexId;
+		typedef typename CsrProblem::SizeT						SizeT;
+
+		cudaError_t retval = cudaSuccess;
+
+		do {
+
+			//
+			// Determine grid size(s)
+			//
+
+			int one_phase_min_occupancy 	= OnePhasePolicy::CTA_OCCUPANCY;
+			int one_phase_grid_size 		= MaxGridSize(one_phase_min_occupancy, max_grid_size);
+
+			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
+			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
+
+			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
+			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
+
+			if (DEBUG) printf("BFS one_phase min occupancy %d, level-grid size %d\n",
+					one_phase_min_occupancy, one_phase_grid_size);
+			if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
+					expand_min_occupancy, expand_grid_size);
+			if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
+				compact_min_occupancy, compact_grid_size);
+
+			if (INSTRUMENT) {
+				printf("Iteration, Queue Size\n");
+				printf("1, 1\n");
+			}
+
+			VertexId queue_index 			= 0;	// Work stealing/queue index
+			SizeT queue_length 				= 0;
+			int selector 					= 0;
+
+			// Setup / lazy initialization
+			if (retval = Setup(one_phase_grid_size, expand_grid_size, compact_grid_size)) break;
+
+			// Single-gpu graph slice
+			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
+
+			do {
+
+				VertexId phase_iteration = iteration[0];
+
+				if (queue_length <= one_phase_grid_size * OnePhasePolicy::TILE_ELEMENTS * SATURATION_QUIT) {
+
+					// Run one_phase-grid, no-separate-compaction
+					compact_expand_atomic::Kernel<OnePhasePolicy, INSTRUMENT, SATURATION_QUIT>
+						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
+							iteration[0],
+							queue_index,
+							src,
+
+							graph_slice->frontier_queues.d_keys[selector],
+							graph_slice->frontier_queues.d_keys[selector ^ 1],
+							graph_slice->frontier_queues.d_values[selector],
+							graph_slice->frontier_queues.d_values[selector ^ 1],
+
+							graph_slice->d_column_indices,
+							graph_slice->d_row_offsets,
+							graph_slice->d_source_path,
+							graph_slice->d_collision_cache,
+							work_progress,
+							global_barrier,
+
+							one_phase_kernel_stats,
+							(VertexId *) d_iteration);
+
+					// Synchronize to make sure we have a coherent iteration;
+					if (retval = util::B40CPerror(cudaThreadSynchronize(),
+						"expand_atomic::Kernel failed ", __FILE__, __LINE__)) break;
+
+					if ((iteration[0] - phase_iteration) & 1) {
+						// An odd number of iterations passed: update selector
+						selector ^= 1;
+					}
+					// Update queue index by the number of elapsed iterations
+					queue_index += (iteration[0] - phase_iteration);
+
+					// Get queue length
+					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
+
+					if (INSTRUMENT) {
+						// Get stats
+						if (retval = one_phase_kernel_stats.Accumulate(
+							one_phase_grid_size, total_avg_live, total_max_live, total_queued)) break;
+						total_queued += queue_length;
+						printf("%lld, %lld\n", iteration[0], (long long) queue_length);
+					}
+
+				} else {
+
+					done[0] = 0;
+					while (!done[0]) {
+
+						// Run level-grid
+
+						// Compaction
+						compact_atomic::Kernel<CompactPolicy, INSTRUMENT>
+							<<<compact_grid_size, CompactPolicy::THREADS>>>(
+								queue_index,
+								d_done,
+								graph_slice->frontier_queues.d_keys[selector],
+								graph_slice->frontier_queues.d_keys[selector ^ 1],
+								graph_slice->frontier_queues.d_values[selector],
+								graph_slice->frontier_queues.d_values[selector ^ 1],
+								graph_slice->d_collision_cache,
+								work_progress,
+								compact_kernel_stats);
+
+						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "compact_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+						queue_index++;
+
+						if (INSTRUMENT) {
+							// Get compact downsweep stats (i.e., duty %)
+							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
+							printf("%lld, %lld", iteration[0], (long long) queue_length);
+							if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) break;
+						}
+
+						// Expansion
+						expand_atomic::Kernel<ExpandPolicy, INSTRUMENT, 0>
+							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
+								src,
+								(VertexId) iteration[0],
+								queue_index,
+								d_done,
+								graph_slice->frontier_queues.d_keys[selector ^ 1],
+								graph_slice->frontier_queues.d_keys[selector],
+								graph_slice->frontier_queues.d_values[selector ^ 1],
+								graph_slice->frontier_queues.d_values[selector],
+								graph_slice->d_column_indices,
+								graph_slice->d_row_offsets,
+								graph_slice->d_source_path,
+								work_progress,
+								expand_kernel_stats);
+
+						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+						queue_index++;
+						iteration[0]++;
+
+						if (INSTRUMENT) {
+							// Get expand stats (i.e., duty %)
+							expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
+							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
+							total_queued += queue_length;
+							printf(", %lld\n", (long long) queue_length);
+						}
+
+						// Throttle
+						if ((iteration[0] - phase_iteration) & 1) {
+							if (util::B40CPerror(cudaEventRecord(throttle_event),
+								"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
+						} else {
+							if (util::B40CPerror(cudaEventSynchronize(throttle_event),
+								"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
+						};
+					}
+
+					// Get queue length
+					if (work_progress.GetQueueLength(iteration[0], queue_length)) break;
+				}
+
+			} while (queue_length > 0);
+			if (retval) break;
+
+			search_depth = iteration[0] - 1;
+
+		} while (0);
+
+		return retval;
+	}
     
+
 	/**
 	 * Enacts a breadth-first-search on the specified graph problem.
 	 *
@@ -157,237 +394,71 @@ public:
 	 */
     template <bool INSTRUMENT, typename CsrProblem>
 	cudaError_t EnactSearch(
-		CsrProblem 						&bfs_problem,
+		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
-		int 								max_grid_size = 0)
+		int 							max_grid_size = 0)
 	{
-		// Single-grid tuning configuration
-		typedef compact_expand_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			0,
-			5,
-			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			false,					// WORK_STEALING
-			6> SingleConfig;
+		if (cuda_props.device_sm_version >= 200) {
 
-		// Expansion kernel config
-		typedef expand_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			0,
-			5,
-			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-			true,					// WORK_STEALING
-			6> ExpandConfig;
+			// Single-grid tuning configuration
+			typedef compact_expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				0,
+				5,
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				6> OnePhasePolicy;
+
+			// Expansion kernel config
+			typedef expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				0,
+				5,
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				true,					// WORK_STEALING
+				6> ExpandPolicy;
 
 
-		// Compaction kernel config
-		typedef compact_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			8,
-			7,
-			0,
-			2,
-			5,
-			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
-			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-			false,					// WORK_STEALING
-			9> CompactConfig;
+			// Compaction kernel config
+			typedef compact_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				8,
+				7,
+				0,
+				2,
+				5,
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				9> CompactPolicy;
 
-		typedef typename CsrProblem::VertexId					VertexId;
-		typedef typename CsrProblem::SizeT						SizeT;
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
+				csr_problem, src, max_grid_size);
 
-		cudaError_t retval = cudaSuccess;
+		} else {
 
-		//
-		// Determine grid size(s)
-		//
-
-		int single_min_occupancy 		= SingleConfig::CTA_OCCUPANCY;
-		int single_grid_size 			= MaxGridSize(single_min_occupancy, max_grid_size);
-
-		int expand_min_occupancy 		= ExpandConfig::CTA_OCCUPANCY;
-		int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
-
-		int compact_min_occupancy		= CompactConfig::CTA_OCCUPANCY;
-		int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
-
-		if (DEBUG) printf("BFS single min occupancy %d, level-grid size %d\n",
-				single_min_occupancy, single_grid_size);
-		if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
-				expand_min_occupancy, expand_grid_size);
-		if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
-			compact_min_occupancy, compact_grid_size);
-
-		// Make sure barriers are initialized
-		if (retval = global_barrier.Setup(single_grid_size)) (exit(1));
-
-		// Make sure our runtime stats are good
-		if (retval = single_kernel_stats.Setup(single_grid_size)) exit(1);
-		if (retval = expand_kernel_stats.Setup(expand_grid_size)) exit(1);
-		if (retval = compact_kernel_stats.Setup(compact_grid_size)) exit(1);
-
-		// Reset statistics
-		total_queued 		= 0;
-		total_avg_live 		= 0;
-		total_max_live 		= 0;
-		iteration[0] 		= 0;
-
-		SizeT queue_length 				= 0;
-		int selector 					= 0;
-		VertexId *d_queues[2] 			= {bfs_problem.d_compact_queue, 		bfs_problem.d_expand_queue};
-		VertexId *d_parent_queues[2] 	= {bfs_problem.d_compact_parent_queue, 	bfs_problem.d_expand_parent_queue};
-
-		if (INSTRUMENT) {
-			printf("1, 1\n");
+			printf("Not yet tuned for this architecture\n");
+			return cudaSuccess;
 		}
-
-		const int SATURATION_QUIT = 4;
-
-		VertexId queue_index = 0;
-
-		do {
-
-			VertexId phase_iteration = iteration[0];
-
-			if (queue_length <= single_grid_size * SingleConfig::TILE_ELEMENTS * SATURATION_QUIT) {
-
-				// Run single-grid, no-separate-compaction
-				compact_expand_atomic::Kernel<SingleConfig, INSTRUMENT, SATURATION_QUIT>
-						<<<single_grid_size, SingleConfig::THREADS>>>(
-					iteration[0],
-					queue_index,
-					src,
-
-					d_queues[selector],
-					d_parent_queues[selector],
-					d_queues[selector ^ 1],
-					d_parent_queues[selector ^ 1],
-
-					bfs_problem.d_column_indices,
-					bfs_problem.d_row_offsets,
-					bfs_problem.d_source_path,
-					bfs_problem.d_collision_cache,
-					this->work_progress,
-					this->global_barrier,
-
-					this->single_kernel_stats,
-					(VertexId *) d_iteration);
-
-				// Synchronize to make sure we have a coherent iteration;
-				cudaThreadSynchronize();
-
-				if ((iteration[0] - phase_iteration) & 1) {
-					// An odd number of iterations passed: update selector
-					selector ^= 1;
-				}
-				// Update queue index by the number of elapsed iterations
-				queue_index += (iteration[0] - phase_iteration);
-
-				// Get queue length
-				if (this->work_progress.GetQueueLength(iteration[0], queue_length)) exit(0);
-
-				if (INSTRUMENT) {
-					// Get stats
-					single_kernel_stats.Accumulate(single_grid_size, total_avg_live, total_max_live, total_queued);
-					total_queued += queue_length;
-					printf("%lld, %lld\n", iteration[0], (long long) queue_length);
-				}
-
-			} else {
-
-				done[0] = 0;
-				while (!done[0]) {
-
-					// Run level-grid
-
-					// Compaction
-					compact_atomic::Kernel<CompactConfig, INSTRUMENT><<<compact_grid_size, CompactConfig::THREADS>>>(
-						queue_index,
-						d_done,
-						d_queues[selector],						// in
-						d_parent_queues[selector],
-						d_queues[selector ^ 1],					// out
-						d_parent_queues[selector ^ 1],
-						bfs_problem.d_collision_cache,
-						this->work_progress,
-						this->compact_kernel_stats);
-
-					queue_index++;
-
-					if (INSTRUMENT) {
-						// Get compact downsweep stats (i.e., duty %)
-						if (this->work_progress.GetQueueLength(iteration[0], queue_length)) exit(0);
-						printf("%lld, %lld", iteration[0], (long long) queue_length);
-						if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) exit(0);
-					}
-
-					// Expansion
-					expand_atomic::Kernel<ExpandConfig, INSTRUMENT, 0>
-							<<<expand_grid_size, ExpandConfig::THREADS>>>(
-						src,
-						(VertexId) iteration[0],
-						queue_index,
-						d_done,
-						d_queues[selector ^ 1],
-						d_parent_queues[selector ^ 1],
-						d_queues[selector],
-						d_parent_queues[selector],
-						bfs_problem.d_column_indices,
-						bfs_problem.d_row_offsets,
-						bfs_problem.d_source_path,
-						this->work_progress,
-						this->expand_kernel_stats);
-
-					queue_index++;
-					iteration[0]++;
-
-					if (INSTRUMENT) {
-						// Get expand stats (i.e., duty %)
-						expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
-						if (this->work_progress.GetQueueLength(iteration[0], queue_length)) exit(0);
-						total_queued += queue_length;
-						printf(", %lld\n", (long long) queue_length);
-					}
-
-					// Throttle
-					if ((iteration[0] - phase_iteration) & 1) {
-						if (util::B40CPerror(cudaEventRecord(throttle_event),
-							"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) exit(1);
-					} else {
-						if (util::B40CPerror(cudaEventSynchronize(throttle_event),
-							"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) exit(1);
-					};
-				}
-
-				// Get queue length
-				if (this->work_progress.GetQueueLength(iteration[0], queue_length)) exit(0);
-			}
-
-		} while (queue_length > 0);
-
-		search_depth = iteration[0] - 1;
-		printf("\n");
-
-		return retval;
 	}
-    
+
 };
 
 

@@ -43,7 +43,7 @@ namespace bfs {
  * to the nodes discovered by the previous iteration.  The first iteration 
  * discovers the source node. 
  */
-class BaseBfsEnactor 
+class EnactorBase
 {
 protected:	
 
@@ -63,7 +63,7 @@ protected:
 	/**
 	 * Constructor.
 	 */
-	BaseBfsEnactor(bool DEBUG) : DEBUG(DEBUG)
+	EnactorBase(bool DEBUG) : DEBUG(DEBUG)
 	{
 		// Setup work progress (only needs doing once since we maintain
 		// it in our kernel code)

@@ -49,8 +49,8 @@
 #include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_one_phase.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
-/*
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
+/*
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
 */
 
@@ -602,7 +602,7 @@ void RunTests(
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
 	bfs::EnactorOnePhase 			one_phase_enactor(g_verbose);
 	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
-//	EnactorHybrid 					hybrid_enactor(g_verbose);
+	bfs::EnactorHybrid 				hybrid_enactor(g_verbose);
 //	EnactorMultiGpu					multi_gpu_enactor(g_verbose);
 
 	// Allocate problem on GPU
@@ -650,6 +650,7 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
+
 			// Perform one-phase out-of-core BFS implementation (single grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
 				one_phase_enactor,
@@ -675,10 +676,10 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-/*
+
 			// Perform single-grid contract-expand GPU BFS search
 			if (TestGpuBfs<INSTRUMENT>(
-				bfs_sg_enactor,
+				hybrid_enactor,
 				csr_problem,
 				src,
 				h_source_path,
@@ -688,7 +689,6 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-*/
 		}
 /*
 		// Perform multi-GPU out-of-core BFS implementation
