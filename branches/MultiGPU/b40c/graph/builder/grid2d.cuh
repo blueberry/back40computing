@@ -19,17 +19,23 @@
  * Thanks!
  ******************************************************************************/
 
+
+/******************************************************************************
+ * 2D Grid Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
-/******************************************************************************
- * 2D Grid Graph Construction Routines
- ******************************************************************************/
+namespace b40c {
+namespace graph {
+namespace builder {
+
 
 /**
  * Builds a square 2D grid CSR graph.  Interior nodes have degree 5 (including
@@ -114,3 +120,6 @@ int BuildGrid2dGraph(
 	return 0;
 }
 
+} // namespace builder
+} // namespace graph
+} // namespace b40c

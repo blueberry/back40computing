@@ -135,20 +135,14 @@ endif
 
 DEPS = 			./Makefile \
 				../b40c_test_util.h \
-				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/util/io/*.cuh) \
-				$(wildcard ../../b40c/util/reduction/*.cuh) \
-				$(wildcard ../../b40c/util/scan/*.cuh) \
+				$(wildcard ../../b40c/util/**/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) \
-				$(wildcard ../../b40c/scan/spine/*.cuh) \
-				$(wildcard ../../b40c/scan/downsweep/*.cuh) \
+				$(wildcard ../../b40c/scan/**/*.cuh) \
 				$(wildcard ../../b40c/partition/*.cuh) \
-				$(wildcard ../../b40c/partition/upsweep/*.cuh) \
-				$(wildcard ../../b40c/partition/downsweep/*.cuh) \
+				$(wildcard ../../b40c/partition/**/*.cuh) \
 				$(wildcard ../../b40c/radix_sort/*.cuh) \
-				$(wildcard ../../b40c/radix_sort/upsweep/*.cuh) \
-				$(wildcard ../../b40c/radix_sort/downsweep/*.cuh) 
+				$(wildcard ../../b40c/radix_sort/**/*.cuh) 
 				 
 
 

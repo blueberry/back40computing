@@ -37,7 +37,9 @@
 
 
 namespace b40c {
+namespace graph {
 namespace bfs {
+
 
 
 /**
@@ -115,20 +117,20 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename BfsCsrProblem>
+    template <bool INSTRUMENT, typename CsrProblem>
 	cudaError_t EnactSearch(
-		BfsCsrProblem 						&bfs_problem,
-		typename BfsCsrProblem::VertexId 	src,
+		CsrProblem 						&bfs_problem,
+		typename CsrProblem::VertexId 	src,
 		int 								max_grid_size = 0)
 	{
 		cudaError_t retval = cudaSuccess;
 
-		typedef typename BfsCsrProblem::SizeT SizeT;
-		typedef typename BfsCsrProblem::VertexId VertexId;
+		typedef typename CsrProblem::SizeT SizeT;
+		typedef typename CsrProblem::VertexId VertexId;
 
 		// Single-grid tuning configuration
 		typedef compact_expand_atomic::KernelConfig<
-			typename BfsCsrProblem::ProblemType,
+			typename CsrProblem::ProblemType,
 			200,
 			8,
 			7,
@@ -195,7 +197,6 @@ public:
 
 
 
-
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
-

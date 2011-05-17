@@ -19,18 +19,23 @@
  * Thanks!
  ******************************************************************************/
 
+
+/******************************************************************************
+ * Random-regular(ish) Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
+namespace b40c {
+namespace graph {
+namespace builder {
 
-/******************************************************************************
- * Random Graph Construction Routines
- ******************************************************************************/
 
 /**
  * A random graph where each node has a guaranteed degree of random neighbors.
@@ -80,3 +85,7 @@ int BuildRandomRegularishGraph(
 	return 0;
 }
 
+
+} // namespace builder
+} // namespace graph
+} // namespace b40c

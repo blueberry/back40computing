@@ -30,7 +30,9 @@
 #include <b40c/util/error_utils.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
+
 
 
 /**
@@ -110,5 +112,5 @@ protected:
 
 
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
-

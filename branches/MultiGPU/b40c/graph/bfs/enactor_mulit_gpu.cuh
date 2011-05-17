@@ -54,7 +54,9 @@
 
 
 namespace b40c {
+namespace graph {
 namespace bfs {
+
 
 
 /**
@@ -138,19 +140,19 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename BfsCsrProblem>
+    template <bool INSTRUMENT, typename CsrProblem>
 	cudaError_t EnactSearch(
-		BfsCsrProblem 						&bfs_problem,
-		typename BfsCsrProblem::VertexId 	src,
+		CsrProblem 						&bfs_problem,
+		typename CsrProblem::VertexId 	src,
 		int 								max_grid_size = 0,
 		int 								num_gpus = 0)
 	{
-		typedef typename BfsCsrProblem::VertexId					VertexId;
-		typedef typename BfsCsrProblem::SizeT						SizeT;
+		typedef typename CsrProblem::VertexId					VertexId;
+		typedef typename CsrProblem::SizeT						SizeT;
 
 		// Expansion kernel config
 		typedef expand_atomic::SweepKernelConfig<
-			typename BfsCsrProblem::ProblemType,
+			typename CsrProblem::ProblemType,
 			200,
 			8,
 			7,
@@ -168,7 +170,7 @@ public:
 
 		// Compaction tuning configuration
 		typedef compact::ProblemConfig<
-			typename BfsCsrProblem::ProblemType,
+			typename CsrProblem::ProblemType,
 			200,
 			util::io::ld::NONE,
 			util::io::st::NONE,
@@ -201,7 +203,7 @@ public:
 
 		// Radix sorting upsweep and downsweep configs
 		typedef typename util::If<
-			BfsCsrProblem::ProblemType::MARK_PARENTS,
+			CsrProblem::ProblemType::MARK_PARENTS,
 			VertexId,
 			util::NullType>::Type									SortValueType;
 
@@ -553,7 +555,6 @@ public:
 
 
 
-
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
-

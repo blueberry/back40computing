@@ -19,18 +19,22 @@
  * Thanks!
  ******************************************************************************/
 
+/******************************************************************************
+ * MARKET Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
+namespace b40c {
+namespace graph {
+namespace builder {
 
-/******************************************************************************
- * MARKET Graph Construction Routines
- ******************************************************************************/
 
 /**
  * Reads a MARKET graph from an input-stream into a CSR sparse format
@@ -193,3 +197,6 @@ int BuildMarketGraph(
 }
 
 
+} // namespace builder
+} // namespace graph
+} // namespace b40c

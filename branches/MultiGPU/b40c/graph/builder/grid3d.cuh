@@ -19,18 +19,23 @@
  * Thanks!
  ******************************************************************************/
 
+
+/******************************************************************************
+ * 3D Grid Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
+namespace b40c {
+namespace graph {
+namespace builder {
 
-/******************************************************************************
- * 3D Grid Graph Construction Routines
- ******************************************************************************/
 
 /**
  * Builds a square 3D grid CSR graph.  Interior nodes have degree 7 (including
@@ -131,3 +136,6 @@ int BuildGrid3dGraph(
 }
 
 
+} // namespace builder
+} // namespace graph
+} // namespace b40c

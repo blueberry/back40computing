@@ -19,6 +19,11 @@
  * Thanks!
  ******************************************************************************/
 
+
+/******************************************************************************
+ * DIMACS Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
@@ -26,13 +31,12 @@
 #include <stdio.h>
 
 #include <b40c/util/basic_utils.cuh>
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
+namespace b40c {
+namespace graph {
+namespace builder {
 
-
-/******************************************************************************
- * DIMACS Graph Construction Routines
- ******************************************************************************/
 
 /**
  * Reads a DIMACS graph from an input-stream into a CSR sparse format 
@@ -43,7 +47,7 @@ int ReadDimacsStream(
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 {
-	typedef typename b40c::util::If<LOAD_VALUES, Value, NoValue>::Type TupleValue;
+	typedef typename util::If<LOAD_VALUES, Value, util::NullType>::Type TupleValue;
 	typedef CooEdgeTuple<VertexId, TupleValue> EdgeTupleType;
 	
 	SizeT edges_read = 0;
@@ -201,3 +205,6 @@ int BuildDimacsGraph(
 	return 0;
 }
 
+} // namespace builder
+} // namespace graph
+} // namespace b40c

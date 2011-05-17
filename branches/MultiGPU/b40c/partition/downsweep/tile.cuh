@@ -683,7 +683,7 @@ struct Tile
 			int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
 				(int *) bin_counts, 0);
 
-			// Add the inclusive scan of bin counts from the previous tile to the running carry
+			// Add the previous tile's inclusive-scan to the running bin-carry
 			SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x] + cta->smem_storage.bin_warpscan[1][threadIdx.x];
 
 			// Perform overflow-free inclusive SIMD Kogge-Stone across bins

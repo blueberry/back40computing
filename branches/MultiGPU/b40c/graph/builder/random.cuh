@@ -19,18 +19,22 @@
  * Thanks!
  ******************************************************************************/
 
+/******************************************************************************
+ * Random Graph Construction Routines
+ ******************************************************************************/
+
 #pragma once
 
 #include <math.h>
 #include <time.h>
 #include <stdio.h>
 
-#include <test_utils.cu>
+#include <b40c/graph/builder/utils.cuh>
 
+namespace b40c {
+namespace graph {
+namespace builder {
 
-/******************************************************************************
- * Random Graph Construction Routines
- ******************************************************************************/
 
 /**
  * Builds a random CSR graph by adding edges edges to nodes nodes by randomly choosing
@@ -100,3 +104,7 @@ int BuildRandomGraph(
 	return 0;
 }
 
+
+} // namespace builder
+} // namespace graph
+} // namespace b40c

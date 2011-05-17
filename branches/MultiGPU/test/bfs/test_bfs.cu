@@ -34,26 +34,28 @@
 #include <iostream>
 
 // Utilities and correctness-checking
-#include <test_utils.cu>
+#include <b40c_test_util.h>
 
-// Graph utils
-#include <dimacs.cu>
-#include <grid2d.cu>
-#include <grid3d.cu>
-#include <market.cu>
-#include <metis.cu>
-#include <random.cu>
-#include <rr.cu>
+// Graph construction utils
+#include <b40c/graph/builder/dimacs.cuh>
+#include <b40c/graph/builder/grid2d.cuh>
+#include <b40c/graph/builder/grid3d.cuh>
+#include <b40c/graph/builder/market.cuh>
+#include <b40c/graph/builder/metis.cuh>
+#include <b40c/graph/builder/random.cuh>
+#include <b40c/graph/builder/rr.cuh>
 
-// BFS enactor includes
-#include <bfs_csr_problem.cu>
-//#include <bfs_single_grid.cu>
-//#include <bfs_level_grid.cu>
-//#include <bfs_hybrid.cu>
-#include <bfs_multi_gpu.cu>
+// BFS includes
+#include <b40c/graph/bfs/csr_problem.cuh>
+/*
+#include <b40c/graph/bfs/enactor_hybrid.cuh>
+#include <b40c/graph/bfs/enactor_mulit_gpu.cuh>
+#include <b40c/graph/bfs/enactor_one_phase.cuh>
+#include <b40c/graph/bfs/enactor_two_phase.cuh>
+*/
 
 using namespace b40c;
-using namespace bfs;
+using namespace graph;
 
 
 /******************************************************************************
@@ -207,8 +209,10 @@ struct HistogramLevel
 	HistogramLevel() : discovered(0), expanded(0), unique_expanded(0) {}
 };
 
+
 /**
- *
+ * Displays a histogram of search behavior by level depth, i.e., expanded,
+ * unique, and newly-discovered nodes at each level
  */
 template <
 	typename VertexId,
@@ -284,9 +288,6 @@ void Histogram(
 	}
 	printf("\n\n");
 }
-
-
-
 
 
 /**
@@ -587,6 +588,7 @@ void RunTests(
 	double queue_sizing,
 	bool stream_from_host)
 {
+/*
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
 	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
@@ -598,7 +600,7 @@ void RunTests(
 	MultiGpuBfsEnactor				bfs_mg_enactor(g_verbose);
 
 	// Allocate problem on GPU
-	BfsCsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
+	CsrProblem<VertexId, SizeT, MARK_PARENTS> bfs_problem;
 	if (bfs_problem.FromHostProblem(
 		csr_graph.nodes,
 		csr_graph.edges,
@@ -653,7 +655,6 @@ void RunTests(
 		printf("\n");
 		fflush(stdout);
 
-/*
 		// Perform level-grid contract-expand GPU BFS search
 		TestGpuBfs<INSTRUMENT>(
 			bfs_lg_enactor,
@@ -692,7 +693,6 @@ void RunTests(
 			max_grid_size);
 		printf("\n");
 		fflush(stdout);
-*/
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -718,6 +718,7 @@ void RunTests(
 	if (h_source_path) free(h_source_path);
 
 	cudaDeviceSynchronize();
+*/
 }
 
 
@@ -727,20 +728,20 @@ void RunTests(
 
 int main( int argc, char** argv)  
 {
-	typedef int VertexId;						// Use as the node identifier type
-	typedef int Value;							// Use as the value type
-	typedef int SizeT;							// Use as the graph size type
+	typedef int VertexId;							// Use as the node identifier type
+	typedef int Value;								// Use as the value type
+	typedef int SizeT;								// Use as the graph size type
 	
-	VertexId 	src 				= -1;			// Use whatever default for the specified graph-type
+	VertexId 	src 				= -1;			// Use whatever the specified graph-type's default is
 	char* 		src_str				= NULL;
-	bool 		randomized_src		= false;
-	bool 		instrumented		= false;
-	bool 		mark_parents		= false;
-	bool		stream_from_host	= false;
+	bool 		randomized_src		= false;		// Whether or not to select a new random src for each test iteration
+	bool 		instrumented		= false;		// Whether or not to collect instrumentation from kernels
+	bool 		mark_parents		= false;		// Whether or not to mark src-distance vs. parent vertices
+	bool		stream_from_host	= false;		// Whether or not to stream CSR representation from host mem
 	int 		test_iterations 	= 1;
-	int 		max_grid_size 		= 0;			// Default: leave it up to the enactor
-	int 		num_gpus			= 1;			// Default: 1 gpu
-	double 		queue_sizing		= 0.0;			// Default: the size of the edge list * 1.15
+	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
+	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
+	double 		queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
@@ -783,11 +784,11 @@ int main( int argc, char** argv)
 	int graph_args = argc - flags - 1;
 
 	
-	// Enable symmetric peer access
+	// Enable symmetric peer access between gpus
 	for (int gpu = 0; gpu < num_gpus; gpu++) {
 		for (int other_gpu = (gpu + 1) % num_gpus;
-				other_gpu != gpu;
-				other_gpu = (other_gpu + 1) % num_gpus)
+			other_gpu != gpu;
+			other_gpu = (other_gpu + 1) % num_gpus)
 		{
 			// Set device
 			if (util::B40CPerror(cudaSetDevice(gpu),
@@ -819,7 +820,7 @@ int main( int argc, char** argv)
 		// Two-dimensional regular lattice grid (degree 4)
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (BuildGrid2dGraph<false>(width, src, csr_graph) != 0) {
+		if (builder::BuildGrid2dGraph<false>(width, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -827,7 +828,7 @@ int main( int argc, char** argv)
 		// Three-dimensional regular lattice grid (degree 6)
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (BuildGrid3dGraph<false>(width, src, csr_graph) != 0) {
+		if (builder::BuildGrid3dGraph<false>(width, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -835,7 +836,7 @@ int main( int argc, char** argv)
 		// DIMACS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildDimacsGraph<false>(dimacs_filename, src, csr_graph, g_undirected) != 0) {
+		if (builder::BuildDimacsGraph<false>(dimacs_filename, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 		
@@ -843,7 +844,7 @@ int main( int argc, char** argv)
 		// METIS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildMetisGraph<false>(metis_filename, src, csr_graph) != 0) {
+		if (builder::BuildMetisGraph<false>(metis_filename, src, csr_graph) != 0) {
 			return 1;
 		}
 		
@@ -851,7 +852,7 @@ int main( int argc, char** argv)
 		// Matrix-market coordinate-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
+		if (builder::BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
 			return 1;
 		}
 
@@ -860,7 +861,7 @@ int main( int argc, char** argv)
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		SizeT edges = atol(argv[3]);
-		if (BuildRandomGraph<false>(nodes, edges, src, csr_graph, g_undirected) != 0) {
+		if (builder::BuildRandomGraph<false>(nodes, edges, src, csr_graph, g_undirected) != 0) {
 			return 1;
 		}
 
@@ -869,7 +870,7 @@ int main( int argc, char** argv)
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		int degree = atol(argv[3]);
-		if (BuildRandomRegularishGraph<false>(nodes, degree, src, csr_graph) != 0) {
+		if (builder::BuildRandomRegularishGraph<false>(nodes, degree, src, csr_graph) != 0) {
 			return 1;
 		}
 

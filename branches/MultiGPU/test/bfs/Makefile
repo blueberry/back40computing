@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# Copyright 2010 Duane Merrill
+# Copyright 2010-2011 Duane Merrill
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,11 +13,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License. 
-#
+#  
 #  For more information, see our Google Code project site: 
 #  http://code.google.com/p/back40computing/
 #  
-#  Thanks!
 #-------------------------------------------------------------------------------
  
 #-------------------------------------------------------------------------------
@@ -27,9 +26,10 @@
 NVCC = "$(shell which nvcc)"
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
 
+KERNELS = 
+
 # detect OS
 OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
-
 
 #-------------------------------------------------------------------------------
 # Gen targets
@@ -38,31 +38,58 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
+#SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
 SM_TARGETS = $(GEN_SM20) 
+
+#-------------------------------------------------------------------------------
+# Tune arch
+#-------------------------------------------------------------------------------
+
+ifdef tunearch
+    TUNE_ARCH = $(tunearch)
+else 
+	TUNE_ARCH = 200
+endif
+
+ifeq ($(TUNE_ARCH), 200) 
+	TUNE_SM_TARGETS = $(GEN_SM20)
+endif
+ifeq ($(TUNE_ARCH), 130) 
+	TUNE_SM_TARGETS = $(GEN_SM13)
+endif
+ifeq ($(TUNE_ARCH), 100) 
+	TUNE_SM_TARGETS = $(GEN_SM10)
+endif
+
+#-------------------------------------------------------------------------------
+# Tune size
+#-------------------------------------------------------------------------------
+
+ifdef tunesize
+    TUNE_SIZE = $(tunesize)
+else 
+	TUNE_SIZE = 4
+endif
+
 
 #-------------------------------------------------------------------------------
 # Libs
 #-------------------------------------------------------------------------------
 
-CUDA_LIB = -L$(shell dirname $(NVCC))/../lib32 -L$(shell dirname $(NVCC))/../lib -L$(shell dirname $(NVCC))/../lib64
 
 #-------------------------------------------------------------------------------
 # Includes
 #-------------------------------------------------------------------------------
 
+THRUST_INC = "../../../Thrust"
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I. -I$(CUDA_INC) -I.. -I../../.. -I../../LsbRadixSort -I../../Common
+INC = -I$(CUDA_INC) -I.. -I../.. 
 
 #-------------------------------------------------------------------------------
 # Defines
 #-------------------------------------------------------------------------------
 
 DEFINES = 
-
-
-#-------------------------------------------------------------------------------
-# Compiler Flags
-#-------------------------------------------------------------------------------
 
 #-------------------------------------------------------------------------------
 # Compiler Flags
@@ -86,16 +113,16 @@ endif
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
-	NVCCFLAGS += -Xptxas -abi=no 
+	NVCCFLAGS += -Xptxas -abi=no
 endif
-endif
-
-ifeq ($(keep), 1)
-    NVCCFLAGS += -keep
 endif
 
 ifeq ($(verbose), 1)
     NVCCFLAGS += -v
+endif
+
+ifeq ($(keep), 1)
+    NVCCFLAGS += -keep
 endif
 
 ifdef maxregisters
@@ -106,34 +133,46 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-BFS_DEPS = 		./Makefile \
-				$(wildcard *.cu) \
-				$(wildcard ../../Common/*.cuh) \
-				$(wildcard ../../../b40c/util/*.cuh) \
-				$(wildcard ../../../b40c/util/io/*.cuh) \
-				$(wildcard ../../../b40c/bfs/*.cuh) \
-				$(wildcard ../../../b40c/bfs/compact/*.cuh) \
-				$(wildcard ../../../b40c/bfs/expand_atomic/*.cuh) \
-				$(wildcard ../../../b40c/bfs/compact_atomic/*.cuh) \
-				$(wildcard ../../../b40c/bfs/expand_compact/*.cuh) \
-				$(wildcard ../../../b40c/bfs/compact_expand/*.cuh) \
-				$(wildcard ../../../b40c/bfs/single_grid/*.cuh) \
-				$(wildcard ../kernel/*.cu) \
-				$(wildcard ../*.cu) \
-				$(wildcard ../../LsbRadixSort/*.cuh) 
+DEPS = 			./Makefile \
+				../b40c_test_util.h \
+				$(wildcard ../../b40c/util/*.cuh) \
+				$(wildcard ../../b40c/util/**/*.cuh) \
+				$(wildcard ../../b40c/graph/*.cuh) \
+				$(wildcard ../../b40c/graph/**/*.cuh) \
+				$(wildcard ../../b40c/scan/*.cuh) \
+				$(wildcard ../../b40c/scan/**/*.cuh) \
+				$(wildcard ../../b40c/partition/*.cuh) \
+				$(wildcard ../../b40c/partition/**/*.cuh) 
 				 
 
 
 #-------------------------------------------------------------------------------
-# Simple test driver 
+# (make simple) Simple example driver for 
 #-------------------------------------------------------------------------------
 
-bfs: bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu test_utils.cu $(BFS_DEPS)
+
+
+#-------------------------------------------------------------------------------
+# (make test) Test driver for 
+#-------------------------------------------------------------------------------
+
+test: bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_bfs.cu $(NVCCFLAGS) $(ARCH) $(INC) -DUNIX -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_bfs.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
 	
+#-------------------------------------------------------------------------------
+# (make tune) Evaluates the space of bfs configuration types
+#-------------------------------------------------------------------------------
+
+
+
+#-------------------------------------------------------------------------------
+# (make compare) Compares bfs performance against other libraries (e.g., Thrust)
+#-------------------------------------------------------------------------------
 
 
 
@@ -142,7 +181,7 @@ bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu test_utils.cu $(BFS_DE
 #-------------------------------------------------------------------------------
 
 clean :
-	rm -f bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) 
+	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

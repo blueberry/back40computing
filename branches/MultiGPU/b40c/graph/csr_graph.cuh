@@ -19,6 +19,11 @@
  * Thanks!
  ******************************************************************************/
 
+
+/******************************************************************************
+ * Simple CSR sparse graph data structure
+ ******************************************************************************/
+
 #pragma once
 
 #include <time.h>
@@ -27,85 +32,10 @@
 #include <algorithm>
 
 #include <b40c/util/error_utils.cuh>
-#include <test/b40c_test_util.h>
 
+namespace b40c {
+namespace graph {
 
-/******************************************************************************
- * General utility routines
- ******************************************************************************/
-
-/**
- * Returns a random node-ID in the range of [0, num_nodes) 
- */
-template<typename SizeT>
-SizeT RandomNode(SizeT num_nodes) {
-	SizeT node_id;
-	b40c::RandomBits(node_id);
-	if (node_id < 0) node_id *= -1;
-	return node_id % num_nodes;
-}
-
-
-/******************************************************************************
- * Simple COO sparse graph datastructure
- ******************************************************************************/
-
-struct NoValue {};
-
-/**
- * COO sparse format edge.  (A COO graph is just a list/array/vector of these.)
- */
-template<typename VertexId, typename Value>
-struct CooEdgeTuple {
-	VertexId row;
-	VertexId col;
-	Value val;
-
-	CooEdgeTuple(VertexId row, VertexId col, Value val) : row(row), col(col), val(val) {}
-
-	void Val(Value &value)
-	{
-		value = val;
-	}
-};
-
-template<typename VertexId>
-struct CooEdgeTuple<VertexId, NoValue> {
-	VertexId row;
-	VertexId col;
-
-	template <typename Value>
-	CooEdgeTuple(VertexId row, VertexId col, Value val) : row(row), col(col) {}
-
-	template <typename Value>
-	void Val(Value &value) {}
-};
-
-/**
- * Comparator for sorting COO sparse format edges
- */
-template<typename Tuple>
-bool DimacsTupleCompare (
-	Tuple elem1,
-	Tuple elem2)
-{
-	if (elem1.row < elem2.row) {
-		// Sort edges by source node (to make rows)
-		return true;
-/*
-	} else if ((elem1.row == elem2.row) && (elem1.col < elem2.col)) {
-		// Sort edgelists as well for coherence
-		return true;
-*/
-	} 
-	
-	return false;
-}
-
-
-/******************************************************************************
- * Simple CSR sparse graph datastructure
- ******************************************************************************/
 
 /**
  * CSR sparse format graph
@@ -123,9 +53,9 @@ struct CsrGraph
 	bool 		pinned;
 
 	/**
-	 * Empty constructor
+	 * Constructor
 	 */
-	CsrGraph(bool pinned)
+	CsrGraph(bool pinned = false)
 	{
 		nodes = 0;
 		edges = 0;
@@ -248,6 +178,7 @@ struct CsrGraph
 		fflush(stdout);
 	}
 
+
 	/**
 	 * Display CSR graph to console
 	 */
@@ -266,6 +197,9 @@ struct CsrGraph
 
 	}
 
+	/**
+	 * Deallocates graph
+	 */
 	void Free()
 	{
 		if (row_offsets) {
@@ -290,6 +224,9 @@ struct CsrGraph
 		edges = 0;
 	}
 	
+	/**
+	 * Destructor
+	 */
 	~CsrGraph()
 	{
 		Free();
@@ -297,3 +234,5 @@ struct CsrGraph
 };
 
 
+} // namespace graph
+} // namespace b40c

@@ -176,7 +176,7 @@ void TestReduction(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(h_data[i], 0);
+		// util::RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :

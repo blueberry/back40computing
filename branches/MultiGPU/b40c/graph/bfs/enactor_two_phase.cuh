@@ -39,7 +39,9 @@
 #include <b40c/bfs/compact_atomic/kernel_config.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
+
 
 
 /**
@@ -129,15 +131,15 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename BfsCsrProblem>
+    template <bool INSTRUMENT, typename CsrProblem>
 	cudaError_t EnactSearch(
-		BfsCsrProblem 						&bfs_problem,
-		typename BfsCsrProblem::VertexId 	src,
+		CsrProblem 						&bfs_problem,
+		typename CsrProblem::VertexId 	src,
 		int 								max_grid_size = 0)
 	{
 		// Expansion kernel config
 		typedef expand_atomic::KernelConfig<
-			typename BfsCsrProblem::ProblemType,
+			typename CsrProblem::ProblemType,
 			200,
 			8,
 			7,
@@ -154,7 +156,7 @@ public:
 
 		// Compaction kernel config
 		typedef compact_atomic::KernelConfig<
-			typename BfsCsrProblem::ProblemType,
+			typename CsrProblem::ProblemType,
 			200,
 			8,
 			7,
@@ -166,8 +168,8 @@ public:
 			false,					// WORK_STEALING
 			9> CompactConfig;
 
-		typedef typename BfsCsrProblem::VertexId					VertexId;
-		typedef typename BfsCsrProblem::SizeT						SizeT;
+		typedef typename CsrProblem::VertexId					VertexId;
+		typedef typename CsrProblem::SizeT						SizeT;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -279,7 +281,6 @@ public:
 
 
 
-
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
-

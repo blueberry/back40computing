@@ -188,7 +188,7 @@ void TestSort(
 
 	// Use random bits
 	for (unsigned int i = 0; i < num_elements; ++i) {
-		RandomBits<K>(h_keys[i], 0);
+		util::RandomBits<K>(h_keys[i], 0);
 		h_reference_keys[i] = h_keys[i];
 	}
 
