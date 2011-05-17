@@ -27,16 +27,17 @@
 
 #include <vector>
 
-#include <bfs_base.cu>
 
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/compact_expand_atomic/kernel.cuh>
-#include <b40c/bfs/expand_atomic/kernel.cuh>
-#include <b40c/bfs/expand_atomic/kernel_config.cuh>
-#include <b40c/bfs/compact_atomic/kernel.cuh>
-#include <b40c/bfs/compact_atomic/kernel_config.cuh>
+#include <b40c/graph/bfs/enactor_base.cuh>
+#include <b40c/graph/bfs/problem_type.cuh>
+
+#include <b40c/graph/bfs/compact_expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/compact_atomic/kernel.cuh>
+#include <b40c/graph/bfs/compact_atomic/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -161,7 +162,7 @@ public:
 		int 								max_grid_size = 0)
 	{
 		// Single-grid tuning configuration
-		typedef compact_expand_atomic::KernelConfig<
+		typedef compact_expand_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			8,
@@ -178,7 +179,7 @@ public:
 			6> SingleConfig;
 
 		// Expansion kernel config
-		typedef expand_atomic::KernelConfig<
+		typedef expand_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			8,
@@ -196,7 +197,7 @@ public:
 
 
 		// Compaction kernel config
-		typedef compact_atomic::KernelConfig<
+		typedef compact_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			8,

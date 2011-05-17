@@ -27,31 +27,22 @@
 
 #include <vector>
 
-#include <bfs_base.cu>
 
 #include <b40c/util/spine.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 
-#include <b40c/bfs/problem_type.cuh>
-#include <b40c/bfs/compact/problem_config.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel.cuh>
-#include <b40c/bfs/expand_atomic/sweep_kernel_config.cuh>
-#include <b40c/bfs/compact/upsweep_kernel.cuh>
-#include <b40c/bfs/compact/downsweep_kernel.cuh>
+#include <b40c/graph/bfs/enactor_base.cuh>
+#include <b40c/graph/bfs/problem_type.cuh>
 
-#include <b40c/bfs/sort_compact/problem_config.cuh>
-#include <b40c/bfs/sort_compact/downsweep/kernel.cuh>
-#include <b40c/bfs/sort_compact/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
 
-#include <b40c/radix_sort/distribution/downsweep/kernel_config.cuh>
-#include <b40c/radix_sort/distribution/upsweep/kernel_config.cuh>
-
-#include <b40c/scan/spine_kernel.cuh>
-
-#include <radixsort_api_storage.cuh>
-
-
+#include <b40c/graph/bfs/partition_compact/policy.cuh>
+#include <b40c/graph/bfs/partition_compact/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/upsweep/kernel_policy.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -243,7 +234,7 @@ public:
 				SortCompactTuneConfig;
 
 		// SortCompact upsweep kernel config
-		typedef radix_sort::distribution::upsweep::KernelConfig<
+		typedef radix_sort::distribution::upsweep::KernelPolicy<
 				typename SortCompactTuneConfig::Upsweep,
 				util::NullType,
 				0,
@@ -253,7 +244,7 @@ public:
 		typedef typename SortCompactTuneConfig::Spine SortSpine;
 
 		// SortCompact downsweep kernel config
-		typedef radix_sort::distribution::downsweep::KernelConfig<
+		typedef radix_sort::distribution::downsweep::KernelPolicy<
 				typename SortCompactTuneConfig::Downsweep,
 				util::NullType,
 				util::NullType,

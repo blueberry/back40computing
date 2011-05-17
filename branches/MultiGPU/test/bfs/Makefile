@@ -138,7 +138,8 @@ DEPS = 			./Makefile \
 				$(wildcard ../../b40c/util/*.cuh) \
 				$(wildcard ../../b40c/util/**/*.cuh) \
 				$(wildcard ../../b40c/graph/*.cuh) \
-				$(wildcard ../../b40c/graph/**/*.cuh) \
+				$(wildcard ../../b40c/graph/bfs/*.cuh) \
+				$(wildcard ../../b40c/graph/bfs/**/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) \
 				$(wildcard ../../b40c/scan/**/*.cuh) \
 				$(wildcard ../../b40c/partition/*.cuh) \

@@ -55,7 +55,8 @@ struct Cta
 
 	// Row-length cutoff below which we expand neighbors by writing gather
 	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
-	static const int SCAN_EXPAND_CUTOFF = KernelPolicy::THREADS; //B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+	static const int SCAN_EXPAND_CUTOFF 			= KernelPolicy::THREADS;							// It currently doesn't pay to ExpandByWarp in one-phase compact-expand
+//	static const int SCAN_EXPAND_CUTOFF 			= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
@@ -82,8 +83,8 @@ struct Cta
 
 	// Input and output device pointers
 	VertexId 				*d_in;
-	VertexId 				*d_parent_in;
 	VertexId 				*d_out;
+	VertexId 				*d_parent_in;
 	VertexId 				*d_parent_out;
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
@@ -748,8 +749,8 @@ struct Cta
 		VertexId				queue_index,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
-		VertexId 				*d_parent_in,
 		VertexId 				*d_out,
+		VertexId 				*d_parent_in,
 		VertexId 				*d_parent_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
@@ -774,8 +775,8 @@ struct Cta
 			iteration(iteration),
 			queue_index(queue_index),
 			d_in(d_in),
-			d_parent_in(d_parent_in),
 			d_out(d_out),
+			d_parent_in(d_parent_in),
 			d_parent_out(d_parent_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
