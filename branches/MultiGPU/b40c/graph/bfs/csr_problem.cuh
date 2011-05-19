@@ -467,11 +467,11 @@ struct CsrProblem
 					// Cleanup host construction arrays
 					if (slice_row_offsets[i]) delete slice_row_offsets[i];
 					if (slice_column_indices[i]) delete slice_column_indices[i];
-
-					delete slice_row_offsets;
-					delete slice_column_indices;
 				}
 				if (retval) break;
+
+				if (slice_row_offsets) delete slice_row_offsets;
+				if (slice_column_indices) delete slice_column_indices;
 			}
 
 		} while (0);
