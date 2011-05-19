@@ -406,7 +406,7 @@ cudaError_t Enactor::Reduce(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spine is big enough
-		if (retval = spine.Setup<T>(sweep_grid_size, spine_elements)) break;
+		if (retval = spine.Setup<T>(spine_elements)) break;
 
 		// If we're work-stealing, make sure our work progress is set up
 		// for the next pass

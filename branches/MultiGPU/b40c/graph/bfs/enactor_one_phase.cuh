@@ -102,7 +102,7 @@ public:
 	 */
 	cudaError_t Setup(int grid_size)
     {
-    	cudaError_t retval;
+    	cudaError_t retval = cudaSuccess;
 
 		do {
 
@@ -171,7 +171,7 @@ public:
 		typedef typename CsrProblem::SizeT SizeT;
 		typedef typename CsrProblem::VertexId VertexId;
 
-		cudaError_t retval;
+		cudaError_t retval = cudaSuccess;
 
 		do {
 
@@ -189,7 +189,7 @@ public:
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
 			// Initiate single-grid kernel
-			compact_expand_atomic::Kernel<KernelPolicy, INSTRUMENT, 0>
+			compact_expand_atomic::Kernel<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(
 				0,
 				0,
@@ -239,11 +239,13 @@ public:
 			typedef compact_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				0,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
 				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
@@ -258,7 +260,7 @@ public:
 		} else {
 
 			printf("Not yet tuned for this architecture\n");
-			return cudaSuccess;
+			return cudaErrorInvalidConfiguration;
 		}
 	}
     

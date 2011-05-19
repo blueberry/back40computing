@@ -46,6 +46,7 @@ struct SweepPass
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		int								 		&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -75,6 +76,7 @@ struct SweepPass
 		Cta cta(
 			iteration,
 			queue_index,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
@@ -132,6 +134,7 @@ struct SweepPass <KernelPolicy, true>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -150,6 +153,7 @@ struct SweepPass <KernelPolicy, true>
 		Cta cta(
 			iteration,
 			queue_index,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
@@ -185,13 +189,15 @@ struct SweepPass <KernelPolicy, true>
 /**
  * Sweep expansion kernel entry point
  */
-template <typename KernelPolicy, bool INSTRUMENT, int SATURATION_QUIT>
+template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
 	typename KernelPolicy::VertexId 		src,
+	typename KernelPolicy::SizeT			num_elements,
 	typename KernelPolicy::VertexId 		iteration,
 	typename KernelPolicy::VertexId 		queue_index,
+	int										num_gpus,
 	volatile int 							*d_done,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
@@ -208,7 +214,7 @@ void Kernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStart();
 	}
 
@@ -233,7 +239,7 @@ void Kernel(
 				}
 
 				// Initialize work decomposition in smem
-				SizeT num_elements = 1;
+				if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) num_elements = 1;
 				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
@@ -248,6 +254,7 @@ void Kernel(
 		SweepPass<KernelPolicy, false>::Invoke(
 			iteration,
 			queue_index,
+			num_gpus,
 			d_in,
 			d_out,
 			d_parent_in,
@@ -265,13 +272,13 @@ void Kernel(
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 
 			// Signal to host that we're done
 			if ((num_elements == 0) ||
-				(SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::TILE_ELEMENTS * SATURATION_QUIT)))
+				(KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
 			{
-				d_done[0] = 1;
+				if (d_done) d_done[0] = 1;
 			}
 
 			// Initialize work decomposition in smem
@@ -292,6 +299,7 @@ void Kernel(
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
+			num_gpus,
 			d_in,
 			d_out,
 			d_parent_in,
@@ -304,7 +312,7 @@ void Kernel(
 			smem_storage);
 	}
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
 		kernel_stats.Flush();
 	}

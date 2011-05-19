@@ -105,7 +105,15 @@ struct KernelPolicy : TuningPolicy
 		SizeT							bin_carry[BINS];
 		int 							bin_warpscan[2][BINS];
 		int 							bin_prefixes[CYCLES_PER_TILE][LOADS_PER_CYCLE][BINS];
-		int 							lane_totals[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE];
+		union {
+			int 							lane_totals[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE];
+			unsigned char					lane_totals_c[CYCLES_PER_TILE][LOADS_PER_CYCLE][SCAN_LANES_PER_LOAD][4];
+		};
+		union {
+			int 							lane_p[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE];
+			unsigned char					lane_p_c[CYCLES_PER_TILE][LOADS_PER_CYCLE][SCAN_LANES_PER_LOAD][4];
+		};
+
 		bool 							non_trivial_pass;
 		int 							selector;
 		util::CtaWorkLimits<SizeT> 		work_limits;

@@ -190,7 +190,7 @@ struct SweepPass <KernelPolicy, true>
 /**
  * Sweep compact-expand kernel entry point
  */
-template <typename KernelPolicy, bool INSTRUMENT, int SATURATION_QUIT>
+template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
@@ -218,7 +218,7 @@ void Kernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStart();
 	}
 
@@ -256,7 +256,7 @@ void Kernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
-			if (INSTRUMENT && (blockIdx.x == 0)) {
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
 				kernel_stats.Aggregate(num_elements);
 			}
 
@@ -297,7 +297,7 @@ void Kernel(
 	iteration++;
 	queue_index++;
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
 	}
 
@@ -309,7 +309,7 @@ void Kernel(
 		// Flip
 		//---------------------------------------------------------------------
 
-		if (INSTRUMENT && (threadIdx.x == 0)) {
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStart();
 		}
 
@@ -318,7 +318,7 @@ void Kernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
-			if (INSTRUMENT && (blockIdx.x == 0)) {
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
 				kernel_stats.Aggregate(num_elements);
 			}
 
@@ -338,7 +338,7 @@ void Kernel(
 		__syncthreads();
 
 		if ((!smem_storage.work_decomposition.num_elements) ||
-			(SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * SATURATION_QUIT)))
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
 		{
 			break;
 		}
@@ -361,7 +361,7 @@ void Kernel(
 		iteration++;
 		queue_index++;
 
-		if (INSTRUMENT && (threadIdx.x == 0)) {
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStop();
 		}
 
@@ -371,7 +371,7 @@ void Kernel(
 		// Flop
 		//---------------------------------------------------------------------
 
-		if (INSTRUMENT && (threadIdx.x == 0)) {
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStart();
 		}
 
@@ -380,7 +380,7 @@ void Kernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
-			if (INSTRUMENT && (blockIdx.x == 0)) {
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
 				kernel_stats.Aggregate(num_elements);
 			}
 
@@ -400,7 +400,7 @@ void Kernel(
 
 		// Check if done
 		if ((!smem_storage.work_decomposition.num_elements) ||
-			(SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * SATURATION_QUIT)))
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
 		{
 			break;
 		}
@@ -423,7 +423,7 @@ void Kernel(
 		iteration++;
 		queue_index++;
 
-		if (INSTRUMENT && (threadIdx.x == 0)) {
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStop();
 		}
 
@@ -435,7 +435,7 @@ void Kernel(
 		d_iteration[0] = iteration;
 	}
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
 		kernel_stats.Flush();
 	}

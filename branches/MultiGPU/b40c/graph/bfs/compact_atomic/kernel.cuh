@@ -174,7 +174,7 @@ struct SweepPass <KernelPolicy, true>
 /**
  * Compaction kernel entry point
  */
-template <typename KernelPolicy, bool INSTRUMENT>
+template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
@@ -193,7 +193,7 @@ void Kernel(
 	// Shared storage for CTA processing
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStart();
 	}
 
@@ -232,7 +232,7 @@ void Kernel(
 		smem_storage.state.work_decomposition,
 		smem_storage);
 
-	if (INSTRUMENT && (threadIdx.x == 0)) {
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
 		kernel_stats.Flush();
 	}

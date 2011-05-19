@@ -36,6 +36,8 @@
 
 #include <b40c/partition/upsweep/tile.cuh>
 
+#include <b40c/radix_sort/sort_utils.cuh>
+
 namespace b40c {
 namespace graph {
 namespace bfs {
@@ -139,7 +141,7 @@ struct Tile :
 		{
 			if (tile->valid[LOAD][VEC]) {
 
-				int hash = tile->keys[LOAD][VEC] % SmemStorage::HISTORY_HASH_ELEMENTS;
+				int hash = tile->keys[LOAD][VEC] % Cta::SmemStorage::HISTORY_HASH_ELEMENTS;
 				VertexId retrieved = cta->history[hash];
 
 				if (retrieved == tile->keys[LOAD][VEC]) {
@@ -167,7 +169,7 @@ struct Tile :
 			if (tile->valid[LOAD][VEC]) {
 
 				int warp_id 		= threadIdx.x >> 5;
-				int hash 			= tile->keys[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
+				int hash 			= tile->keys[LOAD][VEC] & (Cta::SmemStorage::WARP_HASH_ELEMENTS - 1);
 
 				cta->vid_hashtable[warp_id][hash] = tile->keys[LOAD][VEC];
 				VertexId retrieved = cta->vid_hashtable[warp_id][hash];
@@ -274,7 +276,7 @@ struct Tile :
 	__device__ __forceinline__ int DecodeBin(KeyType key)
 	{
 		int bin;
-		ExtractKeyBits<
+		radix_sort::ExtractKeyBits<
 			KeyType,
 			0,												// low order bits
 			KernelPolicy::LOG_BINS>::Extract(bin, key);
@@ -313,8 +315,8 @@ struct Tile :
 
 		// Initialize valid flags
 		util::io::InitializeTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Init(valid, 1);
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE>::Init(valid, 1);
 
 		// Cull valid flags using global collision bitmask
 		BitmaskCull(cta);
@@ -334,13 +336,12 @@ struct Tile :
 	{
 		// Store flags
 		util::io::StoreTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER>::Store(
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Store(
 				valid,
 				cta->d_flags_out + cta_offset);
-
 	}
 };
 

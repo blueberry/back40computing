@@ -50,9 +50,7 @@
 #include <b40c/graph/bfs/enactor_one_phase.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
-/*
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
-*/
 
 using namespace b40c;
 using namespace graph;
@@ -603,7 +601,7 @@ void RunTests(
 	bfs::EnactorOnePhase 			one_phase_enactor(g_verbose);
 	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
 	bfs::EnactorHybrid 				hybrid_enactor(g_verbose);
-//	EnactorMultiGpu					multi_gpu_enactor(g_verbose);
+	bfs::EnactorMultiGpu			multi_gpu_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	bfs::CsrProblem<VertexId, SizeT, MARK_PARENTS> csr_problem;
@@ -650,7 +648,7 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
-
+/*
 			// Perform one-phase out-of-core BFS implementation (single grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
 				one_phase_enactor,
@@ -689,8 +687,9 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
+*/
 		}
-/*
+
 		// Perform multi-GPU out-of-core BFS implementation
 		if (TestGpuBfs<INSTRUMENT>(
 			multi_gpu_enactor,
@@ -703,7 +702,7 @@ void RunTests(
 			max_grid_size)) exit(1);
 		printf("\n");
 		fflush(stdout);
-*/
+
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -793,7 +792,6 @@ int main( int argc, char** argv)
 	int flags = args.ParsedArgc();
 	int graph_args = argc - flags - 1;
 
-	
 	// Enable symmetric peer access between gpus
 	for (int gpu = 0; gpu < num_gpus; gpu++) {
 		for (int other_gpu = (gpu + 1) % num_gpus;

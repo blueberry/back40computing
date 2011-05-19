@@ -64,7 +64,6 @@ struct Cta :
 
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
-	typedef typename KernelPolicy::SmemStorage				SmemStorage;
 
 
 	//---------------------------------------------------------------------
@@ -99,11 +98,11 @@ struct Cta :
 				d_spine),
 			d_flags_out(d_flags_out),
 			d_collision_cache(d_collision_cache),
-			vid_hashtable(smem_storage.smem_pool.hashtables.vid_hashtable),
-			history(smem_storage.smem_pool.hashtables.history)
+			vid_hashtable(smem_storage.vid_hashtable),
+			history(smem_storage.history)
 	{
 		// Initialize history filter
-		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelConfig::THREADS) {
+		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
 			history[offset] = -1;
 		}
 	}

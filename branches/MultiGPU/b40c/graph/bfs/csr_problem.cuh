@@ -113,6 +113,8 @@ struct CsrProblem
 			d_source_path(NULL),
 			d_collision_cache(NULL),
 			d_keep(NULL),
+			nodes(0),
+			edges(0),
 			stream(stream)
 		{}
 
@@ -122,24 +124,22 @@ struct CsrProblem
 		virtual ~GraphSlice()
 		{
 			// Set device
-			if (util::B40CPerror(cudaSetDevice(gpu),
-				"GpuSlice cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+			util::B40CPerror(cudaSetDevice(gpu), "GpuSlice cudaSetDevice failed", __FILE__, __LINE__);
 
 			// Free pointers
-			if (d_column_indices) 				cudaFree(d_column_indices);
-			if (d_row_offsets) 					cudaFree(d_row_offsets);
-			if (d_source_path) 					cudaFree(d_source_path);
-			if (d_collision_cache) 				cudaFree(d_collision_cache);
-			if (d_keep) 						cudaFree(d_keep);
-			if (frontier_queues.d_keys[0]) 		cudaFree(frontier_queues.d_keys[0]);
-			if (frontier_queues.d_keys[1]) 		cudaFree(frontier_queues.d_keys[1]);
-			if (frontier_queues.d_values[0]) 	cudaFree(frontier_queues.d_values[0]);
-			if (frontier_queues.d_values[1]) 	cudaFree(frontier_queues.d_values[1]);
+			if (d_column_indices) 				util::B40CPerror(cudaFree(d_column_indices), "GpuSlice cudaFree d_column_indices failed", __FILE__, __LINE__);
+			if (d_row_offsets) 					util::B40CPerror(cudaFree(d_row_offsets), "GpuSlice cudaFree d_row_offsets failed", __FILE__, __LINE__);
+			if (d_source_path) 					util::B40CPerror(cudaFree(d_source_path), "GpuSlice cudaFree d_source_path failed", __FILE__, __LINE__);
+			if (d_collision_cache) 				util::B40CPerror(cudaFree(d_collision_cache), "GpuSlice cudaFree d_collision_cache failed", __FILE__, __LINE__);
+			if (d_keep) 						util::B40CPerror(cudaFree(d_keep), "GpuSlice cudaFree d_keep failed", __FILE__, __LINE__);
+			if (frontier_queues.d_keys[0]) 		util::B40CPerror(cudaFree(frontier_queues.d_keys[0]), "GpuSlice cudaFree frontier_queues.d_keys[0] failed", __FILE__, __LINE__);
+			if (frontier_queues.d_keys[1]) 		util::B40CPerror(cudaFree(frontier_queues.d_keys[1]), "GpuSlice cudaFree frontier_queues.d_keys[1] failed", __FILE__, __LINE__);
+			if (frontier_queues.d_values[0]) 	util::B40CPerror(cudaFree(frontier_queues.d_values[0]), "GpuSlice cudaFree frontier_queues.d_values[0] failed", __FILE__, __LINE__);
+			if (frontier_queues.d_values[1]) 	util::B40CPerror(cudaFree(frontier_queues.d_values[1]), "GpuSlice cudaFree frontier_queues.d_values[1] failed", __FILE__, __LINE__);
 
 	        // Destroy stream
 			if (stream) {
-				if (util::B40CPerror(cudaStreamDestroy(stream),
-					"GpuSlice cudaStreamDestroy failed", __FILE__, __LINE__)) exit(1);
+				util::B40CPerror(cudaStreamDestroy(stream), "GpuSlice cudaStreamDestroy failed", __FILE__, __LINE__);
 			}
 		}
 	};
@@ -200,7 +200,16 @@ struct CsrProblem
 	template <typename VertexId>
 	int GpuIndex(VertexId vertex)
 	{
-		return vertex & (num_gpus - 1);
+		if (graph_slices.size() == 1) {
+
+			// Special case for only one GPU, which may be set as with
+			// an ordinal other than 0.
+			return graph_slices[0]->gpu;
+
+		} else {
+
+			return vertex & (num_gpus - 1);
+		}
 	}
 
 
@@ -223,38 +232,59 @@ struct CsrProblem
 	{
 		cudaError_t retval = cudaSuccess;
 
-		VertexId **gpu_source_paths = new VertexId*[num_gpus];
+		do {
+			if (graph_slices.size() == 1) {
 
-		// Copy out
-		for (int gpu = 0; gpu < num_gpus; gpu++) {
+				// Set device
+				if (util::B40CPerror(cudaSetDevice(graph_slices[0]->gpu),
+					"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;;
 
-			// Set device
-			if (util::B40CPerror(cudaSetDevice(graph_slices[gpu]->gpu),
-				"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+				// Special case for only one GPU, which may be set as with
+				// an ordinal other than 0.
+				if (retval = util::B40CPerror(cudaMemcpy(
+						h_source_path,
+						graph_slices[0]->d_source_path,
+						sizeof(VertexId) * graph_slices[0]->nodes,
+						cudaMemcpyDeviceToHost),
+					"CsrProblem cudaMemcpy d_source_path failed", __FILE__, __LINE__)) break;
 
-			// Allocate and copy out
-			gpu_source_paths[gpu] = new VertexId[graph_slices[gpu]->nodes];
+			} else {
 
-			if (retval = util::B40CPerror(cudaMemcpy(
-					gpu_source_paths[gpu],
-					graph_slices[gpu]->d_source_path,
-					sizeof(VertexId) * graph_slices[gpu]->nodes,
-					cudaMemcpyDeviceToHost),
-				"CsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
-		}
+				VertexId **gpu_source_paths = new VertexId*[num_gpus];
 
-		// Combine
-		for (VertexId node = 0; node < nodes; node++) {
-			int gpu = GpuIndex(node);
-			VertexId slice_row = GraphSliceRow(node);
-			h_source_path[node] = gpu_source_paths[gpu][slice_row];
-		}
+				// Copy out
+				for (int i = 0; i < num_gpus; i++) {
 
-		// Clean up
-		for (int gpu = 0; gpu < num_gpus; gpu++) {
-			if (gpu_source_paths[gpu]) delete gpu_source_paths[gpu];
-		}
-		delete gpu_source_paths;
+					// Set device
+					if (util::B40CPerror(cudaSetDevice(graph_slices[i]->gpu),
+						"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;;
+
+					// Allocate and copy out
+					gpu_source_paths[i] = new VertexId[graph_slices[i]->nodes];
+
+					if (retval = util::B40CPerror(cudaMemcpy(
+							gpu_source_paths[i],
+							graph_slices[i]->d_source_path,
+							sizeof(VertexId) * graph_slices[i]->nodes,
+							cudaMemcpyDeviceToHost),
+						"CsrProblem cudaMemcpy d_source_path failed", __FILE__, __LINE__)) break;
+				}
+				if (retval) break;
+
+				// Combine
+				for (VertexId node = 0; node < nodes; node++) {
+					int gpu = GpuIndex(node);
+					VertexId slice_row = GraphSliceRow(node);
+					h_source_path[node] = gpu_source_paths[gpu][slice_row];
+				}
+
+				// Clean up
+				for (int i = 0; i < num_gpus; i++) {
+					if (gpu_source_paths[i]) delete gpu_source_paths[i];
+				}
+				delete gpu_source_paths;
+			}
+		} while(0);
 
 		return retval;
 	}
@@ -282,10 +312,9 @@ struct CsrProblem
 			queue_sizing;
 
 		do {
-
 			if (num_gpus <= 1) {
 
-				// Create a single GPU slice
+				// Create a single GPU slice for the currently-set gpu
 				int gpu;
 				if (retval = util::B40CPerror(cudaGetDevice(&gpu), "CsrProblem cudaGetDevice failed", __FILE__, __LINE__)) break;
 				graph_slices.push_back(new GraphSlice(gpu, 0));
@@ -339,10 +368,10 @@ struct CsrProblem
 			} else {
 
 				// Create multiple GPU graph slices
-				for (int gpu = 0; gpu < num_gpus; gpu++) {
+				for (int i = 0; i < num_gpus; i++) {
 
 					// Set device
-					if (retval = util::B40CPerror(cudaSetDevice(graph_slices[gpu]->gpu),
+					if (retval = util::B40CPerror(cudaSetDevice(i),
 						"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 					// Create stream
@@ -351,7 +380,7 @@ struct CsrProblem
 						"CsrProblem cudaStreamCreate failed", __FILE__, __LINE__)) break;
 
 					// Create slice
-					graph_slices.push_back(new GraphSlice(gpu, stream));
+					graph_slices.push_back(new GraphSlice(i, stream));
 				}
 				if (retval) break;
 
@@ -365,19 +394,19 @@ struct CsrProblem
 				// Allocate data structures for gpu on host
 				SizeT **slice_row_offsets 			= new SizeT*[num_gpus];
 				VertexId **slice_column_indices 	= new VertexId*[num_gpus];
-				for (int gpu = 0; gpu < num_gpus; gpu++) {
+				for (int i = 0; i < num_gpus; i++) {
 
 					printf("GPU %d gets %d vertices and %d edges\n",
-						gpu, graph_slices[gpu]->nodes, graph_slices[gpu]->edges);
+						i, graph_slices[i]->nodes, graph_slices[i]->edges);
 					fflush(stdout);
 
-					slice_row_offsets[gpu] = new SizeT[graph_slices[gpu]->nodes + 1];
-					slice_row_offsets[gpu][0] = 0;
+					slice_row_offsets[i] = new SizeT[graph_slices[i]->nodes + 1];
+					slice_row_offsets[i][0] = 0;
 
-					slice_column_indices[gpu] = new VertexId[graph_slices[gpu]->edges];
+					slice_column_indices[i] = new VertexId[graph_slices[i]->edges];
 
 					// Reset for construction
-					graph_slices[gpu]->edges = 0;
+					graph_slices[i]->edges = 0;
 				}
 
 				printf("Done allocating gpu data structures\n");
@@ -403,41 +432,41 @@ struct CsrProblem
 				fflush(stdout);
 
 				// Initialize data structures on GPU
-				for (int gpu = 0; gpu < num_gpus; gpu++) {
+				for (int i = 0; i < num_gpus; i++) {
 
 					// Set device
-					if (util::B40CPerror(cudaSetDevice(graph_slices[gpu]->gpu),
-						"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+					if (util::B40CPerror(cudaSetDevice(graph_slices[i]->gpu),
+						"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 					// Allocate and initialize d_row_offsets: copy and adjust by gpu offset
 					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->d_row_offsets,
-							(graph_slices[gpu]->nodes + 1) * sizeof(SizeT)),
+							(void**) &graph_slices[i]->d_row_offsets,
+							(graph_slices[i]->nodes + 1) * sizeof(SizeT)),
 						"CsrProblem cudaMalloc d_row_offsets failed", __FILE__, __LINE__)) break;
 
 					if (retval = util::B40CPerror(cudaMemcpy(
-							graph_slices[gpu]->d_row_offsets,
-							slice_row_offsets[gpu],
-							(graph_slices[gpu]->nodes + 1) * sizeof(SizeT),
+							graph_slices[i]->d_row_offsets,
+							slice_row_offsets[i],
+							(graph_slices[i]->nodes + 1) * sizeof(SizeT),
 							cudaMemcpyHostToDevice),
 						"CsrProblem cudaMemcpy d_row_offsets failed", __FILE__, __LINE__)) break;
 
 					// Allocate and initialize d_column_indices
 					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->d_column_indices,
-							graph_slices[gpu]->edges * sizeof(VertexId)),
+							(void**) &graph_slices[i]->d_column_indices,
+							graph_slices[i]->edges * sizeof(VertexId)),
 						"CsrProblem cudaMalloc d_column_indices failed", __FILE__, __LINE__)) break;
 
 					if (retval = util::B40CPerror(cudaMemcpy(
-							graph_slices[gpu]->d_column_indices,
-							slice_column_indices[gpu],
-							graph_slices[gpu]->edges * sizeof(VertexId),
+							graph_slices[i]->d_column_indices,
+							slice_column_indices[i],
+							graph_slices[i]->edges * sizeof(VertexId),
 							cudaMemcpyHostToDevice),
 						"CsrProblem cudaMemcpy d_column_indices failed", __FILE__, __LINE__)) break;
 
 					// Cleanup host construction arrays
-					if (slice_row_offsets[gpu]) delete slice_row_offsets[gpu];
-					if (slice_column_indices[gpu]) delete slice_column_indices[gpu];
+					if (slice_row_offsets[i]) delete slice_row_offsets[i];
+					if (slice_column_indices[i]) delete slice_column_indices[i];
 
 					delete slice_row_offsets;
 					delete slice_column_indices;
@@ -459,77 +488,77 @@ struct CsrProblem
 	{
 		cudaError_t retval = cudaSuccess;
 
-		for (int gpu = 0; gpu < num_gpus; gpu++) {
+		for (int i = 0; i < num_gpus; i++) {
 
 			// Set device
-			if (util::B40CPerror(cudaSetDevice(graph_slices[gpu]->gpu),
-				"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+			if (util::B40CPerror(cudaSetDevice(graph_slices[i]->gpu),
+				"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 			//
 			// Allocate ancillary storage if necessary
 			//
 
 			// Allocate d_source_path if necessary
-			if (!graph_slices[gpu]->d_source_path) {
+			if (!graph_slices[i]->d_source_path) {
 				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->d_source_path,
-						graph_slices[gpu]->nodes * sizeof(VertexId)),
+						(void**) &graph_slices[i]->d_source_path,
+						graph_slices[i]->nodes * sizeof(VertexId)),
 					"CsrProblem cudaMalloc d_source_path failed", __FILE__, __LINE__)) break;
 			}
 
 			// Allocate d_collision_cache for the entire graph if necessary
 			int bitmask_bytes 			= ((nodes * sizeof(CollisionMask)) + 8 - 1) / 8;					// round up to the nearest CollisionMask
 			int bitmask_elements		= bitmask_bytes * sizeof(CollisionMask);
-			if (!graph_slices[gpu]->d_collision_cache) {
+			if (!graph_slices[i]->d_collision_cache) {
 				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->d_collision_cache,
+						(void**) &graph_slices[i]->d_collision_cache,
 						bitmask_bytes),
 					"CsrProblem cudaMalloc d_collision_cache failed", __FILE__, __LINE__)) break;
 			}
 
 			// Allocate queues if necessary
-			SizeT queue_elements = double(graph_slices[gpu]->edges) * queue_sizing;
+			SizeT queue_elements = double(graph_slices[i]->edges) * queue_sizing;
 
-			if (!graph_slices[gpu]->frontier_queues.d_keys[0]) {
+			if (!graph_slices[i]->frontier_queues.d_keys[0]) {
 
 				printf("GPU %d queue size: %lld elements (%lld bytes)\n\n",
-					graph_slices[gpu]->gpu,
+					graph_slices[i]->gpu,
 					(unsigned long long) queue_elements,
 					(unsigned long long) queue_elements * sizeof(VertexId));
 				fflush(stdout);
 
 				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->frontier_queues.d_keys[0],
+						(void**) &graph_slices[i]->frontier_queues.d_keys[0],
 						queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[0] failed", __FILE__, __LINE__)) break;
 			}
-			if (!graph_slices[gpu]->frontier_queues.d_keys[1]) {
+			if (!graph_slices[i]->frontier_queues.d_keys[1]) {
 				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->frontier_queues.d_keys[1],
+						(void**) &graph_slices[i]->frontier_queues.d_keys[1],
 						queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[1] failed", __FILE__, __LINE__)) break;
 			}
 
 			if (MARK_PARENTS) {
 				// Allocate parent vertex queues if necessary
-				if (!graph_slices[gpu]->frontier_queues.d_values[0]) {
+				if (!graph_slices[i]->frontier_queues.d_values[0]) {
 					if (retval = util::B40CPerror(
-							cudaMalloc((void**) &graph_slices[gpu]->frontier_queues.d_values[0],
+							cudaMalloc((void**) &graph_slices[i]->frontier_queues.d_values[0],
 							queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[0] failed", __FILE__, __LINE__)) break;
 				}
-				if (!graph_slices[gpu]->frontier_queues.d_values[1]) {
+				if (!graph_slices[i]->frontier_queues.d_values[1]) {
 					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->frontier_queues.d_values[1],
+							(void**) &graph_slices[i]->frontier_queues.d_values[1],
 							queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
 			}
 
 			// Allocate d_keep if necessary
-			if (!graph_slices[gpu]->d_keep) {
+			if (!graph_slices[i]->d_keep) {
 				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->d_keep,
+						(void**) &graph_slices[i]->d_keep,
 						queue_elements * sizeof(ValidFlag)),
 					"CsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
@@ -544,19 +573,19 @@ struct CsrProblem
 			int memset_grid_size;
 
 			// Initialize d_source_path elements to -1
-			memset_grid_size = B40C_MIN(memset_grid_size_max, (graph_slices[gpu]->nodes + memset_block_size - 1) / memset_block_size);
-			util::MemsetKernel<VertexId><<<memset_grid_size, memset_block_size, 0, graph_slices[gpu]->stream>>>(
-				graph_slices[gpu]->d_source_path,
+			memset_grid_size = B40C_MIN(memset_grid_size_max, (graph_slices[i]->nodes + memset_block_size - 1) / memset_block_size);
+			util::MemsetKernel<VertexId><<<memset_grid_size, memset_block_size, 0, graph_slices[i]->stream>>>(
+				graph_slices[i]->d_source_path,
 				-1,
-				graph_slices[gpu]->nodes);
+				graph_slices[i]->nodes);
 
 			if (retval = util::B40CPerror(cudaThreadSynchronize(),
 				"MemsetKernel failed", __FILE__, __LINE__)) break;
 
 			// Initialize d_collision_cache elements to 0
 			memset_grid_size = B40C_MIN(memset_grid_size_max, (bitmask_elements + memset_block_size - 1) / memset_block_size);
-			util::MemsetKernel<CollisionMask><<<memset_grid_size, memset_block_size, 0, graph_slices[gpu]->stream>>>(
-				graph_slices[gpu]->d_collision_cache,
+			util::MemsetKernel<CollisionMask><<<memset_grid_size, memset_block_size, 0, graph_slices[i]->stream>>>(
+				graph_slices[i]->d_collision_cache,
 				0,
 				bitmask_elements);
 

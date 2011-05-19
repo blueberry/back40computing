@@ -595,7 +595,7 @@ cudaError_t Enactor::PreSort(Detail &detail)
 		}
 
 		// Make sure our spine is big enough
-		if (retval = spine.Setup<SizeT>(detail.work.grid_size, detail.spine_elements)) break;
+		if (retval = spine.Setup<SizeT>(detail.spine_elements)) break;
 
 	} while (0);
 
@@ -652,7 +652,7 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 	typedef typename Policy::SizeT 		SizeT;
 
 	const int NUM_PASSES 				= (Detail::NUM_BITS + Downsweep::LOG_BINS - 1) / Downsweep::LOG_BINS;
-	const int MIN_OCCUPANCY 			= B40C_MIN(Downsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
+	const int MIN_OCCUPANCY 			= B40C_MIN(Upsweep::MAX_CTA_OCCUPANCY, Downsweep::MAX_CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
 	// Compute sweep grid size

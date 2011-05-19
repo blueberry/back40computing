@@ -47,11 +47,11 @@ namespace downsweep {
  */
 template <typename KernelPolicy, typename SmemStorage>
 __device__ __forceinline__ void DownsweepPass(
-	int 										&iteration,
+	int 										&queue_index,
 	typename KernelPolicy::VertexId 			*&d_in,
 	typename KernelPolicy::VertexId 			*&d_out,
-	typename KernelPolicy::ParentId 			*&d_parent_in,
-	typename KernelPolicy::ParentId 			*&d_parent_out,
+	typename KernelPolicy::VertexId 			*&d_parent_in,
+	typename KernelPolicy::VertexId 			*&d_parent_out,
 	typename KernelPolicy::ValidFlag			*&d_flags_in,
 	typename KernelPolicy::SizeT 				*&d_spine,
 	util::CtaWorkProgress 						&work_progress,
@@ -73,11 +73,6 @@ __device__ __forceinline__ void DownsweepPass(
 		return;
 	}
 
-	// We need the exclusive partial from our spine
-	SizeT spine_partial;
-	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
-		spine_partial, d_spine + blockIdx.x);
-
 	// Location of base composite counter in SRTS grid
 	LanePartial base_composite_counter =
 		KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
@@ -90,7 +85,7 @@ __device__ __forceinline__ void DownsweepPass(
 		d_parent_in,
 		d_parent_out,
 		d_flags_in,
-		spine_partial,
+		d_spine,
 		base_composite_counter,
 		raking_segment);
 
@@ -106,28 +101,21 @@ __device__ __forceinline__ void DownsweepPass(
 			work_limits.offset,
 			work_limits.guarded_elements);
 	}
-
-	// Last block with work writes out compacted length
-	if (work_limits.last_block && (threadIdx.x == 0)) {
-
-		SizeT compacted_length =
-			smem_storage.bin_carry[KernelPolicy::Bins - 1] +
-			smem_storage.bin_warpscan[1][KernelPolicy::Bins - 1];
-
-		work_progress.StoreQueueLength(compacted_length, iteration);
-	}
 }
 
 
 /**
  * Downsweep scan-scatter kernel entry point
  */
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
+__global__
 void Kernel(
-	typename KernelPolicy::VertexId			iteration,
+	typename KernelPolicy::VertexId			queue_index,
 	typename KernelPolicy::VertexId 		* d_in,
 	typename KernelPolicy::VertexId 		* d_out,
-	typename KernelPolicy::ParentId 		* d_parent_in,
-	typename KernelPolicy::ParentId 		* d_parent_out,
+	typename KernelPolicy::VertexId 		* d_parent_in,
+	typename KernelPolicy::VertexId 		* d_parent_out,
 	typename KernelPolicy::ValidFlag		* d_flags_in,
 	typename KernelPolicy::SizeT			* d_spine,
 	util::CtaWorkProgress 					work_progress,
@@ -138,7 +126,7 @@ void Kernel(
 	// Shared storage for CTA processing
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	if (INSTRUMENT) {
+	if (KernelPolicy::INSTRUMENT) {
 		if (threadIdx.x == 0) {
 			kernel_stats.MarkStart();
 		}
@@ -163,7 +151,7 @@ void Kernel(
 			smem_storage.bin_warpscan[0][threadIdx.x] = 0;
 
 			// Determine our threadblock's work range
-			work_decomposition.template GetCtaWorkLimits<
+			smem_storage.work_decomposition.template GetCtaWorkLimits<
 				KernelPolicy::LOG_TILE_ELEMENTS,
 				KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
 
@@ -171,7 +159,7 @@ void Kernel(
 			if (threadIdx.x == 0) {
 
 				// Obtain problem size
-				SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+				SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 
 				// Initialize work decomposition in smem
 				smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
@@ -184,7 +172,7 @@ void Kernel(
 	__syncthreads();
 
 	DownsweepPass<KernelPolicy>(
-		iteration,
+		queue_index,
 		d_in,
 		d_out,
 		d_parent_in,
@@ -195,7 +183,7 @@ void Kernel(
 		smem_storage,
 		raking_segment);
 
-	if (INSTRUMENT) {
+	if (KernelPolicy::INSTRUMENT) {
 		if (threadIdx.x == 0) {
 			kernel_stats.MarkStop();
 		}

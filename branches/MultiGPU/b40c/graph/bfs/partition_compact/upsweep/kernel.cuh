@@ -43,30 +43,25 @@ namespace upsweep {
 /**
  * Upsweep compaction pass
  */
-template <typename KernelConfig>
+template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelConfig::VertexId 				*&d_in,
-	typename KernelConfig::ValidFlag				*&d_out_flag,
-	typename KernelConfig::SizeT 					*&d_spine,
-	typename KernelConfig::CollisionMask 			*&d_collision_cache,
-	typename KernelConfig::SmemStorage				&smem_storage)
+	typename KernelPolicy::VertexId 				*&d_in,
+	typename KernelPolicy::ValidFlag				*&d_out_flag,
+	typename KernelPolicy::SizeT 					*&d_spine,
+	typename KernelPolicy::CollisionMask 			*&d_collision_cache,
+	typename KernelPolicy::SmemStorage				&smem_storage)
 {
-	typedef Cta<KernelConfig, SmemStorage> 	UpsweepCta;
-	typedef typename KernelConfig::SizeT 			SizeT;
+	typedef Cta<KernelPolicy> 					Cta;
+	typedef typename KernelPolicy::SizeT 		SizeT;
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
 	smem_storage.work_decomposition.template GetCtaWorkLimits<
-		KernelConfig::LOG_TILE_ELEMENTS,
-		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
-
-	// Return if we have no work to do
-	if (!work_limits.elements) {
-		return;
-	}
+		KernelPolicy::LOG_TILE_ELEMENTS,
+		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// CTA processing abstraction
-	UpsweepCta cta(
+	Cta cta(
 		smem_storage,
 		d_in,
 		d_out_flag,
@@ -81,24 +76,24 @@ __device__ __forceinline__ void UpsweepPass(
 /**
  * Upsweep compaction kernel entry point
  */
-template <typename KernelConfig, bool INSTRUMENT>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
-void UpsweepKernel(
-	typename KernelConfig::VertexId			iteration,
-	typename KernelConfig::VertexId 		*d_in,
-	typename KernelConfig::ValidFlag		*d_out_flag,
-	typename KernelConfig::SizeT			*d_spine,
-	typename KernelConfig::CollisionMask 	*d_collision_cache,
+void Kernel(
+	typename KernelPolicy::VertexId			queue_index,
+	typename KernelPolicy::VertexId 		*d_in,
+	typename KernelPolicy::ValidFlag		*d_out_flag,
+	typename KernelPolicy::SizeT			*d_spine,
+	typename KernelPolicy::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
-	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelPolicy::SizeT SizeT;
 
 	// Shared storage for CTA processing
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	if (INSTRUMENT) {
+	if (KernelPolicy::INSTRUMENT) {
 		if (threadIdx.x == 0) {
 			kernel_stats.MarkStart();
 		}
@@ -107,24 +102,24 @@ void UpsweepKernel(
 	// Determine work decomposition
 	if (threadIdx.x == 0) {
 		// Obtain problem size
-		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 
 		// Initialize work decomposition in smem
-		smem_storage.work_decomposition.template Init<KernelConfig::LOG_SCHEDULE_GRANULARITY>(
+		smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 			num_elements, gridDim.x);
 	}
 
 	// Barrier to protect work decomposition
 	__syncthreads();
 
-	UpsweepPass<KernelConfig>(
+	UpsweepPass<KernelPolicy>(
 		d_in,
 		d_out_flag,
 		d_spine,
 		d_collision_cache,
 		smem_storage);
 
-	if (INSTRUMENT) {
+	if (KernelPolicy::INSTRUMENT) {
 		if (threadIdx.x == 0) {
 			kernel_stats.MarkStop();
 		}

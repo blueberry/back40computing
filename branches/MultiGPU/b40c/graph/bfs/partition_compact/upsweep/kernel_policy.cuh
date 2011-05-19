@@ -42,22 +42,18 @@ namespace upsweep {
  * code for a specific compaction pass. It encapsulates tuning configuration
  * policy details derived from TuningPolicy.
  */
-template <TuningPolicy>
+template <
+	typename TuningPolicy,				// Partition policy
+
+	// Behavioral control parameters
+	bool _INSTRUMENT>					// Whether or not we want instrumentation logic generated
 struct KernelPolicy :
 	partition::upsweep::KernelPolicy<TuningPolicy>
 {
-	//---------------------------------------------------------------------
-	// Typedefs
-	//---------------------------------------------------------------------
-
 	typedef partition::upsweep::KernelPolicy<TuningPolicy> 		Base;			// Base class
 	typedef typename TuningPolicy::VertexId 					VertexId;
 	typedef typename TuningPolicy::SizeT 						SizeT;
 
-
-	//---------------------------------------------------------------------
-	// Storage
-	//---------------------------------------------------------------------
 
 	/**
 	 * Shared storage
@@ -74,7 +70,7 @@ struct KernelPolicy :
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
 												- sizeof(Base::SmemStorage)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(VertexId[KernelPolicy::WARPS][WARP_HASH_ELEMENTS])
@@ -85,6 +81,22 @@ struct KernelPolicy :
 
 		// General pool for hashing
 		VertexId 							history[HISTORY_HASH_ELEMENTS];
+	};
+
+
+
+	enum {
+		INSTRUMENT								= _INSTRUMENT,
+
+		CUDA_ARCH 								= KernelPolicy::CUDA_ARCH,
+		LOG_THREADS 							= KernelPolicy::LOG_THREADS,
+		MAX_CTA_OCCUPANCY 						= KernelPolicy::MAX_CTA_OCCUPANCY,
+		THREAD_OCCUPANCY						= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY							= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		CTA_OCCUPANCY  							= B40C_MIN(MAX_CTA_OCCUPANCY,
+													B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+
+		VALID									= (CTA_OCCUPANCY > 0),
 	};
 };
 	

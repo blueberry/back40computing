@@ -57,6 +57,10 @@ template <
 	// Machine parameters
 	int CUDA_ARCH,
 
+	// Behavioral control parameters
+	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
+	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
+
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
 	int _LOG_THREADS,
@@ -81,6 +85,9 @@ struct KernelPolicy : _ProblemType
 	static const bool WORK_STEALING								= _WORK_STEALING;
 
 	enum {
+
+		INSTRUMENT						= _INSTRUMENT,
+		SATURATION_QUIT					= _SATURATION_QUIT,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,

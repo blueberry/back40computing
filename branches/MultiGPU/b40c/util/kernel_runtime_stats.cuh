@@ -130,12 +130,18 @@ protected:
 	// Number of bytes backed by d_stat
 	size_t stat_bytes;
 
+	// GPU d_counters was allocated on
+	int gpu;
+
 public:
 
 	/**
 	 * Constructor
 	 */
-	KernelRuntimeStatsLifetime() : KernelRuntimeStats(), stat_bytes(0) {}
+	KernelRuntimeStatsLifetime() :
+		KernelRuntimeStats(),
+		stat_bytes(0),
+		gpu(B40C_INVALID_DEVICE) {}
 
 
 	/**
@@ -144,11 +150,34 @@ public:
 	cudaError_t HostReset()
 	{
 		cudaError_t retval = cudaSuccess;
-		if (d_stat) {
-			retval = util::B40CPerror(cudaFree(d_stat), "KernelRuntimeStatsLifetime cudaFree d_stat failed: ", __FILE__, __LINE__);
-			d_stat = NULL;
-		}
-		stat_bytes = 0;
+
+		do {
+
+			if (d_stat) {
+
+				// Save current gpu
+				int current_gpu;
+				if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
+					"KernelRuntimeStatsLifetime cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+
+				// Deallocate
+				if (retval = util::B40CPerror(cudaSetDevice(gpu),
+					"KernelRuntimeStatsLifetime cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFree(d_stat),
+					"KernelRuntimeStatsLifetime cudaFree d_stat failed: ", __FILE__, __LINE__)) break;
+
+				d_stat = NULL;
+				gpu = B40C_INVALID_DEVICE;
+
+				// Restore current gpu
+				if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
+					"KernelRuntimeStatsLifetime cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+			}
+
+			stat_bytes = 0;
+
+		} while (0);
+
 		return retval;
 	}
 
@@ -166,26 +195,29 @@ public:
 	 * Sets up the progress counters for the next kernel launch (lazily
 	 * allocating and initializing them if necessary)
 	 */
-	cudaError_t Setup(int sweep_grid_size)
+	cudaError_t Setup(int grid_size)
 	{
 		cudaError_t retval = cudaSuccess;
 		do {
-			size_t new_stat_bytes = sweep_grid_size * sizeof(unsigned long long) * TOTAL_COUNTERS;
+			size_t new_stat_bytes = grid_size * sizeof(unsigned long long) * TOTAL_COUNTERS;
 			if (new_stat_bytes > stat_bytes) {
 
-				if (d_stat) {
-					if (retval = util::B40CPerror(cudaFree(d_stat),
-						"KernelRuntimeStatsLifetime cudaFree d_stat failed", __FILE__, __LINE__)) break;
-				}
+				// Deallocate if exists
+				if (retval = HostReset()) break;
 
+				// Remember device
+				if (retval = util::B40CPerror(cudaGetDevice(&gpu),
+					"KernelRuntimeStatsLifetime cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+
+				// Reallocate
 				stat_bytes = new_stat_bytes;
 
 				if (retval = util::B40CPerror(cudaMalloc((void**) &d_stat, stat_bytes),
 					"KernelRuntimeStatsLifetime cudaMalloc d_stat failed", __FILE__, __LINE__)) break;
 
 				// Initialize to zero
-				util::MemsetKernel<unsigned long long><<<(sweep_grid_size + 128 - 1) / 128, 128>>>(
-					d_stat, 0, sweep_grid_size);
+				util::MemsetKernel<unsigned long long><<<(grid_size + 128 - 1) / 128, 128>>>(
+					d_stat, 0, grid_size);
 				if (retval = util::B40CPerror(cudaThreadSynchronize(),
 					"KernelRuntimeStatsLifetime MemsetKernel d_stat failed", __FILE__, __LINE__)) break;
 			}
@@ -196,102 +228,83 @@ public:
 
 
 	/**
-	 * Returns ratio of (avg cta runtime : total runtime)
-	 */
-	double AvgLive(int sweep_grid_size)
-	{
-		unsigned long long *h_stat = (unsigned long long*) malloc(stat_bytes);
-
-		util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
-			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
-
-		// Compute runtimes, find max
-		int ctas_with_work = 0;
-		unsigned long long max_runtime = 0;
-		unsigned long long total_runtimes = 0;
-		for (int block = 0; block < sweep_grid_size; block++) {
-
-			unsigned long long runtime = h_stat[(CLOCKS * sweep_grid_size) + block];
-
-			if (runtime > max_runtime) {
-				max_runtime = runtime;
-			}
-
-			total_runtimes += runtime;
-			ctas_with_work++;
-		}
-
-		// Compute avg runtime
-		double avg_runtime = (ctas_with_work > 0) ?
-			double(total_runtimes) / ctas_with_work :
-			0.0;
-
-		free(h_stat);
-
-		return (max_runtime > 0) ?
-			avg_runtime / max_runtime :
-			0.0;
-	}
-
-
-	/**
-	 * Returns ratio of (avg cta runtime : total runtime)
+	 * Accumulates avg live, max live, and total aggregate
 	 */
 	cudaError_t Accumulate(
-		int sweep_grid_size,
+		int grid_size,
 		long long &total_avg_live,
 		long long &total_max_live,
 		long long &total_aggregate)
 	{
-		unsigned long long *h_stat = (unsigned long long*) malloc(stat_bytes);
+		cudaError_t retval = cudaSuccess;
 
-		cudaError_t retval = util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
-			"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__);
+		do {
 
-		// Compute runtimes, find max
-		int ctas_with_work = 0;
-		unsigned long long max_runtime = 0;
-		unsigned long long total_runtimes = 0;
-		for (int block = 0; block < sweep_grid_size; block++) {
+			unsigned long long *h_stat = (unsigned long long*) malloc(stat_bytes);
 
-			unsigned long long runtime = h_stat[(CLOCKS * sweep_grid_size) + block];
+			// Save current gpu
+			int current_gpu;
+			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
+				"KernelRuntimeStatsLifetime cudaGetDevice failed: ", __FILE__, __LINE__)) break;
 
-			if (runtime > max_runtime) {
-				max_runtime = runtime;
+			if (retval = util::B40CPerror(cudaSetDevice(gpu),
+				"KernelRuntimeStatsLifetime cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+
+			// Copy out stats
+			if (retval = util::B40CPerror(cudaMemcpy(h_stat, d_stat, stat_bytes, cudaMemcpyDeviceToHost),
+				"KernelRuntimeStatsLifetime d_stat failed", __FILE__, __LINE__)) break;
+
+			// Restore current gpu
+			if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
+				"KernelRuntimeStatsLifetime cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+
+			// Compute runtimes, find max
+			int ctas_with_work = 0;
+			unsigned long long max_runtime = 0;
+			unsigned long long total_runtimes = 0;
+			for (int block = 0; block < grid_size; block++) {
+
+				unsigned long long runtime = h_stat[(CLOCKS * grid_size) + block];
+
+				if (runtime > max_runtime) {
+					max_runtime = runtime;
+				}
+
+				total_runtimes += runtime;
+				ctas_with_work++;
 			}
 
-			total_runtimes += runtime;
-			ctas_with_work++;
-		}
+			// Compute avg runtime
+			double avg_runtime = (ctas_with_work > 0) ?
+				double(total_runtimes) / ctas_with_work :
+				0.0;
 
-		// Compute avg runtime
-		double avg_runtime = (ctas_with_work > 0) ?
-			double(total_runtimes) / ctas_with_work :
-			0.0;
+			total_max_live += max_runtime;
+			total_avg_live += avg_runtime;
 
-		total_max_live += max_runtime;
-		total_avg_live += avg_runtime;
+			// Accumulate aggregates
+			for (int block = 0; block < grid_size; block++) {
+				total_aggregate += h_stat[(AGGREGATE * grid_size) + block];
+			}
 
-		// Accumulate aggregates
-		for (int block = 0; block < sweep_grid_size; block++) {
-			total_aggregate += h_stat[(AGGREGATE * sweep_grid_size) + block];
-		}
+			free(h_stat);
 
-		free(h_stat);
+		} while (0);
+
 		return retval;
 	}
 
 
 	/**
-	 * Returns ratio of (avg cta runtime : total runtime)
+	 * Accumulates avg live, max live
 	 */
 	cudaError_t Accumulate(
-		int sweep_grid_size,
+		int grid_size,
 		long long &total_avg_live,
 		long long &total_max_live)
 	{
 		long long total_aggregate = 0;
-		return Accumulate(sweep_grid_size, total_avg_live, total_max_live, total_aggregate);
+		return Accumulate(grid_size, total_avg_live, total_max_live, total_aggregate);
 	}
 };
 

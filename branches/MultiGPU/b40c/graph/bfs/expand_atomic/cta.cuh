@@ -75,6 +75,7 @@ struct Cta
 	// Current BFS iteration
 	VertexId 				iteration;
 	VertexId 				queue_index;
+	int 					num_gpus;
 
 	// Input and output device pointers
 	VertexId 				*d_in;
@@ -173,30 +174,33 @@ struct Cta
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
+					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
+					VertexId row_id = tile->vertex_id[LOAD][VEC] / cta->num_gpus;
+
 					// Load source path of node
 					VertexId source_path;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						source_path,
-						cta->d_source_path + tile->vertex_id[LOAD][VEC]);
+						cta->d_source_path + row_id);
 
 					// Load neighbor row range from d_row_offsets
 					Vec2SizeT row_range;
-					if (tile->vertex_id[LOAD][VEC] & 1) {
+					if (row_id & 1) {
 
 						// Misaligned: load separately
 						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
 							row_range.x,
-							cta->d_row_offsets + tile->vertex_id[LOAD][VEC]);
+							cta->d_row_offsets + row_id);
 
 						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
 							row_range.y,
-							cta->d_row_offsets + tile->vertex_id[LOAD][VEC] + 1);
+							cta->d_row_offsets + row_id + 1);
 
 					} else {
 						// Aligned: load together
 						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_ALIGNED_READ_MODIFIER>::Ld(
 							row_range,
-							reinterpret_cast<Vec2SizeT*>(cta->d_row_offsets + tile->vertex_id[LOAD][VEC]));
+							reinterpret_cast<Vec2SizeT*>(cta->d_row_offsets + row_id));
 					}
 
 					if (source_path == -1) {
@@ -210,13 +214,13 @@ struct Cta
 							// Update source path with parent vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								tile->parent_id[LOAD][VEC],
-								cta->d_source_path + tile->vertex_id[LOAD][VEC]);
+								cta->d_source_path + row_id);
 						} else {
 
 							// Update source path with current iteration
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								cta->iteration,
-								cta->d_source_path + tile->vertex_id[LOAD][VEC]);
+								cta->d_source_path + row_id);
 						}
 					}
 				}
@@ -519,6 +523,7 @@ struct Cta
 	__device__ __forceinline__ Cta(
 		VertexId 				iteration,
 		VertexId 				queue_index,
+		int						num_gpus,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
@@ -531,6 +536,7 @@ struct Cta
 
 			iteration(iteration),
 			queue_index(queue_index),
+			num_gpus(num_gpus),
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
 					smem_storage.smem_pool.raking_elements.coarse_raking_elements,
@@ -607,9 +613,12 @@ struct Cta
 
 		// Use a single atomic add to reserve room in the queue
 		if (threadIdx.x == 0) {
+
+			VertexId index = (KernelPolicy::ENQUEUE_BY_ITERATION) ? iteration : queue_index;
+
 			coarse_enqueue_offset = work_progress.Enqueue(
 				coarse_count + tile.fine_count,
-				queue_index + 1);
+				index + 1);
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}
 

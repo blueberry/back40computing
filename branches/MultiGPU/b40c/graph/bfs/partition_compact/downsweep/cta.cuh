@@ -60,11 +60,13 @@ struct Cta :
 	typedef partition::downsweep::Cta<KernelPolicy, Cta, Tile> Base;
 
 	typedef typename KernelPolicy::VertexId 				VertexId;
-	typedef typename KernelPolicy::ParentId 				ParentId;
 	typedef typename KernelPolicy::ValidFlag				ValidFlag;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
 	typedef typename KernelPolicy::Grid::LanePartial		LanePartial;
+
+	typedef typename KernelPolicy::KeyType 					KeyType;
+	typedef typename KernelPolicy::ValueType				ValueType;
 
 
 	//---------------------------------------------------------------------
@@ -86,18 +88,18 @@ struct Cta :
 		SmemStorage 	&smem_storage,
 		VertexId 		*&d_in,
 		VertexId 		*&d_out,
-		ParentId 		*&d_parent_in,
-		ParentId 		*&d_parent_out,
-		SizeT 			*&d_spine,
+		VertexId 		*&d_parent_in,
+		VertexId 		*&d_parent_out,
 		ValidFlag		*&d_flags_in,
+		SizeT 			*&d_spine,
 		LanePartial		base_composite_counter,
 		int				*raking_segment) :
 			Base(
 				smem_storage,
-				d_in,						// d_in_keys
-				d_out,						// d_out_keys
-				d_parent_in,				// d_in_values
-				d_parent_out,				// d_out_values
+				d_in,							// d_in_keys
+				d_out,							// d_out_keys
+				(ValueType *&) d_parent_in,		// d_in_values
+				(ValueType *&) d_parent_out,	// d_out_values
 				d_spine,
 				base_composite_counter,
 				raking_segment),

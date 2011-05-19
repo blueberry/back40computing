@@ -38,7 +38,9 @@
 #include <b40c/partition/downsweep/tuning_policy.cuh>
 
 #include <b40c/graph/bfs/partition_compact/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/upsweep/kernel_policy.cuh>
 #include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_compact/downsweep/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -58,8 +60,13 @@ template <
 	// Problem Type
 	typename ProblemType,
 
-	// Common
+	// Machine parameters
 	int CUDA_ARCH,
+
+	// Behavioral control parameters
+	bool INSTRUMENT,								// Whether or not we want instrumentation logic generated
+
+	// Common tunable parameters
 	int LOG_BINS,
 	int LOG_SCHEDULE_GRANULARITY,
 	util::io::ld::CacheModifier READ_MODIFIER,
@@ -103,11 +110,14 @@ struct Policy :
 	//---------------------------------------------------------------------
 
 	typedef typename ProblemType::VertexId 			VertexId;
-	typedef typename ProblemType::ParentId			ParentId;
 	typedef typename ProblemType::ValidFlag			ValidFlag;
 	typedef typename ProblemType::CollisionMask 	CollisionMask;
 	typedef typename ProblemType::SizeT 			SizeT;
 
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType 		ValueType;
+
+/*
 	// Upsweep kernel ptr
 	typedef void (*UpsweepKernelPtr)(
 		VertexId iteration,
@@ -123,58 +133,50 @@ struct Policy :
 		VertexId iteration,
 		VertexId *d_in,
 		VertexId *d_out,
-		ParentId *d_parent_in,
-		ParentId *d_parent_out,
+		ValueType *d_parent_in,
+		ValueType *d_parent_out,
 		ValidFlag *d_flags_in,
 		SizeT *d_spine,
 		util::CtaWorkProgress work_progress,
 		util::KernelRuntimeStats kernel_stats);
-
+*/
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
 	//---------------------------------------------------------------------
 
-	typedef upsweep::KernelPolicy<partition::upsweep::TuningPolicy<
-		ProblemType,
-		CUDA_ARCH,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
-		UPSWEEP_CTA_OCCUPANCY,
-		UPSWEEP_LOG_THREADS,
-		UPSWEEP_LOG_LOAD_VEC_SIZE,
-		UPSWEEP_LOG_LOADS_PER_TILE,
-		READ_MODIFIER,
-		WRITE_MODIFIER> >
+	typedef upsweep::KernelPolicy<
+		partition::upsweep::TuningPolicy<
+			ProblemType,
+			CUDA_ARCH,
+			LOG_BINS,
+			LOG_SCHEDULE_GRANULARITY,
+			UPSWEEP_CTA_OCCUPANCY,
+			UPSWEEP_LOG_THREADS,
+			UPSWEEP_LOG_LOAD_VEC_SIZE,
+			UPSWEEP_LOG_LOADS_PER_TILE,
+			READ_MODIFIER,
+			WRITE_MODIFIER>,
+		INSTRUMENT>
 			Upsweep;
 
-	typedef downsweep::KernelPolicy<partition::downsweep::TuningPolicy<
-		ProblemType,
-		CUDA_ARCH,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
-		DOWNSWEEP_CTA_OCCUPANCY,
-		DOWNSWEEP_LOG_THREADS,
-		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-		DOWNSWEEP_LOG_LOADS_PER_CYCLE,
-		DOWNSWEEP_LOG_CYCLES_PER_TILE,
-		DOWNSWEEP_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER> >
+	typedef downsweep::KernelPolicy<
+		partition::downsweep::TuningPolicy<
+			ProblemType,
+			CUDA_ARCH,
+			LOG_BINS,
+			LOG_SCHEDULE_GRANULARITY,
+			DOWNSWEEP_CTA_OCCUPANCY,
+			DOWNSWEEP_LOG_THREADS,
+			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+			DOWNSWEEP_LOG_LOADS_PER_CYCLE,
+			DOWNSWEEP_LOG_CYCLES_PER_TILE,
+			DOWNSWEEP_LOG_RAKING_THREADS,
+			READ_MODIFIER,
+			WRITE_MODIFIER>,
+		INSTRUMENT>
 			Downsweep;
 
-
-	//---------------------------------------------------------------------
-	// Kernel function pointer retrieval
-	//---------------------------------------------------------------------
-
-	static UpsweepKernelPtr UpsweepKernel() {
-		return upsweep::Kernel<Upsweep>;
-	}
-
-	static DownsweepKernelPtr DownsweepKernel() {
-		return downsweep::Kernel<Downsweep>;
-	}
 };
 
 

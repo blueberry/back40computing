@@ -135,12 +135,12 @@ public:
  * Performs any lazy initialization work needed for this problem type
  */
 template <typename ProblemConfig>
-cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
+cudaError_t Enactor::Setup(int spine_elements)
 {
 	typedef typename ProblemConfig::Upsweep::FlagCount FlagCount;
 
 	// Make sure our spine is big enough
-	return spine.Setup<FlagCount>(sweep_grid_size, spine_elements);
+	return spine.Setup<FlagCount>(spine_elements);
 }
 
 
@@ -291,7 +291,7 @@ cudaError_t Enactor::EnactInternal(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Perform any lazy initialization work
-		if (retval = Setup<ProblemConfig>(sweep_grid_size, spine_elements)) break;
+		if (retval = Setup<ProblemConfig>(spine_elements)) break;
 
 		// Invoke consecutive removal kernel
 		EnactorType *dipatch = static_cast<EnactorType *>(this);

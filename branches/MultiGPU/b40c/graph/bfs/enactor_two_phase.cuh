@@ -25,9 +25,6 @@
 
 #pragma once
 
-#include <vector>
-
-
 #include <b40c/util/spine.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
@@ -96,7 +93,7 @@ public:
 	 */
 	cudaError_t Setup(int expand_grid_size, int compact_grid_size)
     {
-    	cudaError_t retval;
+    	cudaError_t retval = cudaSuccess;
 
 		do {
 
@@ -181,7 +178,7 @@ public:
 		typedef typename CsrProblem::VertexId					VertexId;
 		typedef typename CsrProblem::SizeT						SizeT;
 
-		cudaError_t retval;
+		cudaError_t retval = cudaSuccess;
 
 		do {
 			// Determine grid size(s)
@@ -216,11 +213,13 @@ public:
 				int selector = queue_index & 1;
 
 				// Expansion
-				expand_atomic::Kernel<ExpandPolicy, INSTRUMENT, 0>
+				expand_atomic::Kernel<ExpandPolicy>
 					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						src,
+						0,											// num_elements (unused: we obtain this from device-side counters instead)
 						iteration,
 						queue_index,
+						1,											// number of GPUs
 						d_done,
 						graph_slice->frontier_queues.d_keys[selector],
 						graph_slice->frontier_queues.d_keys[selector ^ 1],
@@ -248,7 +247,7 @@ public:
 				}
 
 				// Compaction
-				compact_atomic::Kernel<CompactPolicy, INSTRUMENT>
+				compact_atomic::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
 						queue_index,
 						d_done,
@@ -307,11 +306,15 @@ public:
 			typedef expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				0,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				true, 					// DEQUEUE_PROBLEM_SIZE
+				false,					// ENQUEUE_BY_ITERATION
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
 				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
@@ -324,11 +327,13 @@ public:
 			typedef compact_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				2,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				2,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
@@ -338,9 +343,8 @@ public:
 				csr_problem, src, max_grid_size);
 
 		} else {
-
 			printf("Not yet tuned for this architecture\n");
-			return cudaSuccess;
+			return cudaErrorInvalidConfiguration;
 		}
 	}
     

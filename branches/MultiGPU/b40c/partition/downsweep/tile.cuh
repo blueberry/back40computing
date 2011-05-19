@@ -435,7 +435,9 @@ struct Tile
 
 			// Save off each lane's warpscan total for this cycle
 			if (warpscan_tid == KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1) {
-				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = inclusive_prefix;
+//				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = inclusive_prefix;
+				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = exclusive_prefix;
+				cta->smem_storage.lane_p[CYCLE][warpscan_lane] = partial;
 			}
 
 			// Downsweep rake
@@ -460,19 +462,22 @@ struct Tile
 	__device__ __forceinline__ void RecoverBinCounts(
 		int my_base_lane, int my_quad_byte, Cta *cta)
 	{
-		unsigned char *composite_counter = (unsigned char *)
-			&cta->smem_storage.lane_totals[CYCLE][my_base_lane + (KernelPolicy::SCAN_LANES_PER_LOAD * LOAD)];
-
-		bin_counts[CYCLE][LOAD] = composite_counter[my_quad_byte];
-
+		bin_counts[CYCLE][LOAD] =
+			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][my_quad_byte] +
+			cta->smem_storage.lane_p_c[CYCLE][LOAD][my_base_lane][my_quad_byte];
+/*
 		// Correct for possible overflow
 		if (util::WarpVoteAll<KernelPolicy::LOG_BINS>(bin_counts[CYCLE][LOAD] <= 1)) {
 
-			// We overflowed in this load: all keys for this load have same
-			// bin, i.e., whoever owns the bin matching one of their own
-			// key's bin gets all 256 counts
-			bin_counts[CYCLE][LOAD] = (threadIdx.x == key_bins[CYCLE][LOAD][0]) ? 256 : 0;
+			// We've potentially overflowed in this load (i.e., all keys for this
+			// load have same bin.  Since keys all have the same bin, whichever bin-thread
+			// has binned a key into its own bin gets all 256 counts (if that key was valid).
+			Dispatch *dispatch = (Dispatch*) this;
+			bin_counts[CYCLE][LOAD] = ((threadIdx.x == key_bins[CYCLE][LOAD][0]) && (dispatch->template IsValid<CYCLE, LOAD, 0>())) ?
+				256 :
+				0;
 		}
+*/
 	}
 
 

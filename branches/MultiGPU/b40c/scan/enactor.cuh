@@ -436,7 +436,7 @@ cudaError_t Enactor::Scan(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spine is big enough
-		if (retval = spine.Setup<T>(sweep_grid_size, spine_elements)) break;
+		if (retval = spine.Setup<T>(spine_elements)) break;
 
 		// Invoke scan kernel
 		if (retval = EnactPass<Policy>(d_dest, d_src, work, spine_elements)) break;

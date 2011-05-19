@@ -110,7 +110,7 @@ public:
 		int expand_grid_size,
 		int compact_grid_size)
     {
-    	cudaError_t retval;
+    	cudaError_t retval = cudaSuccess;
 
 		do {
 
@@ -205,10 +205,6 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-    	// Multiplier of (one_phase_grid_size * OnePhasePolicy::TILE_SIZE) above which
-    	// we transition from from one-phase to two-phase
-    	const int SATURATION_QUIT = 4;
-
 		typedef typename CsrProblem::VertexId					VertexId;
 		typedef typename CsrProblem::SizeT						SizeT;
 
@@ -251,14 +247,19 @@ public:
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
+			// Saturation boundary between one-phase and two-phase operation
+			int saturation_boundary = one_phase_grid_size *
+					OnePhasePolicy::TILE_ELEMENTS *
+					OnePhasePolicy::SATURATION_QUIT;
+
 			do {
 
 				VertexId phase_iteration = iteration[0];
 
-				if (queue_length <= one_phase_grid_size * OnePhasePolicy::TILE_ELEMENTS * SATURATION_QUIT) {
+				if (queue_length <= saturation_boundary) {
 
 					// Run one_phase-grid, no-separate-compaction
-					compact_expand_atomic::Kernel<OnePhasePolicy, INSTRUMENT, SATURATION_QUIT>
+					compact_expand_atomic::Kernel<OnePhasePolicy>
 						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
 							iteration[0],
 							queue_index,
@@ -309,7 +310,7 @@ public:
 						// Run level-grid
 
 						// Compaction
-						compact_atomic::Kernel<CompactPolicy, INSTRUMENT>
+						compact_atomic::Kernel<CompactPolicy>
 							<<<compact_grid_size, CompactPolicy::THREADS>>>(
 								queue_index,
 								d_done,
@@ -333,11 +334,13 @@ public:
 						}
 
 						// Expansion
-						expand_atomic::Kernel<ExpandPolicy, INSTRUMENT, 0>
+						expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 								src,
+								0,											// num_elements (unused: we obtain this from device-side counters instead)
 								(VertexId) iteration[0],
 								queue_index,
+								1,											// number of GPUs
 								d_done,
 								graph_slice->frontier_queues.d_keys[selector ^ 1],
 								graph_slice->frontier_queues.d_keys[selector],
@@ -398,17 +401,23 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-		if (cuda_props.device_sm_version >= 200) {
+    	// Multiplier of (one_phase_grid_size * OnePhasePolicy::TILE_SIZE) above which
+    	// we transition from from one-phase to two-phase
+    	const int SATURATION_QUIT = 4;
+
+    	if (cuda_props.device_sm_version >= 200) {
 
 			// Single-grid tuning configuration
 			typedef compact_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				0,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT,		// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
 				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
@@ -421,11 +430,15 @@ public:
 			typedef expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				0,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT, 		// SATURATION_QUIT
+				true, 					// DEQUEUE_PROBLEM_SIZE
+				false,					// ENQUEUE_BY_ITERATION
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
 				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
@@ -439,11 +452,13 @@ public:
 			typedef compact_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
-				8,
-				7,
-				0,
-				2,
-				5,
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT, 		// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				2,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
@@ -455,7 +470,7 @@ public:
 		} else {
 
 			printf("Not yet tuned for this architecture\n");
-			return cudaSuccess;
+			return cudaErrorInvalidConfiguration;
 		}
 	}
 

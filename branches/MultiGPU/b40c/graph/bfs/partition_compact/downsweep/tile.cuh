@@ -83,6 +83,7 @@ struct Tile :
 			KeyType,
 			0,												// Extract from low order bits
 			KernelPolicy::LOG_BINS>::Extract(bin, key);
+
 		return bin;
 	}
 
@@ -150,10 +151,10 @@ struct Tile :
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-					(ValidFlag (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
-					0,
-					cta->d_flags_in + cta_offset,
-					guarded_elements);
+				(ValidFlag (*)[KernelPolicy::LOAD_VEC_SIZE]) flags,
+				(ValidFlag) 0,
+				cta->d_flags_in + cta_offset,
+				guarded_elements);
 	}
 
 
@@ -163,14 +164,17 @@ struct Tile :
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterKeys(Cta *cta)
 	{
-		// Scatter keys to global bin partitions
+		int num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
+
+		// Scatter only the compacted keys to global bin partitions
 		util::io::ScatterTile<
 			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_keys,
 				(KeyType *) keys,
-				scatter_offsets);
+				scatter_offsets,
+				num_compacted);
 	}
 
 
@@ -182,15 +186,7 @@ struct Tile :
 		Cta *cta,
 		const SizeT &guarded_elements)
 	{
-		// Scatter keys to global bin partitions
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Scatter(
-				cta->d_out_keys,
-				(KeyType *) keys,
-				scatter_offsets,
-				guarded_elements);
+		ScatterKeys(cta);
 	}
 };
 
