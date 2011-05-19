@@ -523,12 +523,12 @@ public:
 						"EnactorMultiGpu cudaDeviceSynchronize failed", __FILE__, __LINE__)) break;
 
 					SizeT *spine = (SizeT *) control->spine.h_spine;
-					if (spine[control->partition_grid_size]) done = false;
+					if (spine[control->spine_elements - 1]) done = false;
 
 					printf("Iteration %lld GPU %d partition compacted %lld\n",
 						(long long) control->iteration,
 						control->gpu,
-						(long long) spine[control->partition_grid_size]);
+						(long long) spine[control->spine_elements - 1]);
 
 					if (DEBUG2) {
 						printf("Compacted queue on gpu %d (%d elements):\n",
