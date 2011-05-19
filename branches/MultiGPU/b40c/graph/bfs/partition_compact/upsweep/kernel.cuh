@@ -86,7 +86,7 @@ void Kernel(
 	typename KernelPolicy::SizeT			*d_spine,
 	typename KernelPolicy::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 

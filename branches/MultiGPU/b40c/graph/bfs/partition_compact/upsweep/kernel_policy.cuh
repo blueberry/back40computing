@@ -74,7 +74,7 @@ struct KernelPolicy :
 												- sizeof(Base::SmemStorage)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(VertexId[KernelPolicy::WARPS][WARP_HASH_ELEMENTS])
-												- 64,
+												- 128,
 
 			HISTORY_HASH_ELEMENTS			= FULL_OCCUPANCY_BYTES /sizeof(VertexId),
 		};
