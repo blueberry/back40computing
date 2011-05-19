@@ -119,7 +119,7 @@ void Kernel(
 	typename KernelPolicy::ValidFlag		* d_flags_in,
 	typename KernelPolicy::SizeT			* d_spine,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 
