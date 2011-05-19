@@ -283,7 +283,12 @@ public:
 
 				ResetControlBlocks();
 
-				for (int i = 0; i < csr_problem.num_gpus; i++) {
+				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+
+					// Set device
+					if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
+						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
+
 					control_blocks.push_back(
 						new GpuControlBlock(csr_problem.graph_slices[i]->gpu,
 						DEBUG));
@@ -291,7 +296,12 @@ public:
 			}
 
 			// Setup control blocks
-			for (int i = 0; i < csr_problem.num_gpus; i++) {
+			for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+
+				// Set device
+				if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
+					"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
+
 				if (retval = control_blocks[i]->template Setup<ExpandPolicy, PartitionPolicy>(
 					max_grid_size, csr_problem.num_gpus)) break;
 			}
@@ -566,9 +576,9 @@ public:
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 					// Stream in and expand inputs from all gpus (including ourselves)
-					for (int j = 0; j < csr_problem.num_gpus; j++) {
+					for (volatile int j = 0; j < csr_problem.num_gpus; j++) {
 
-						int peer 							= (i + j) % csr_problem.num_gpus;
+						int peer 							= j % csr_problem.num_gpus;
 						GpuControlBlock *peer_control 		= control_blocks[peer];
 						GraphSlice *peer_slice 				= csr_problem.graph_slices[peer];
 						SizeT *peer_spine 					= (SizeT*) peer_control->spine.h_spine;

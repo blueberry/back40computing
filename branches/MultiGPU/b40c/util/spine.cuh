@@ -98,8 +98,17 @@ struct Spine
 		cudaError_t retval = cudaSuccess;
 		do {
 
-			if (host_mapped) {
+			if (gpu == B40C_INVALID_DEVICE) return retval;
 
+			// Save current gpu
+			int current_gpu;
+			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
+				"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+
+			if (retval = util::B40CPerror(cudaSetDevice(gpu),
+				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+
+			if (host_mapped) {
 				if (h_spine) {
 					// Deallocate
 					if (retval = util::B40CPerror(cudaFreeHost((void *) h_spine),
@@ -107,27 +116,15 @@ struct Spine
 
 					h_spine = NULL;
 				}
-
-			} else if (gpu != B40C_INVALID_DEVICE) {
-
-				if (d_spine) {
-
-					// Save current gpu
-					int current_gpu;
-					if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
-						"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
-
-					// Deallocate
-					if (retval = util::B40CPerror(cudaSetDevice(gpu),
-						"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
-					if (retval = util::B40CPerror(cudaFree(d_spine),
-						"Spine cudaFree d_spine failed: ", __FILE__, __LINE__)) break;
-
-					// Restore current gpu
-					if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
-						"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
-				}
+			} else if (d_spine) {
+				// Deallocate
+				if (retval = util::B40CPerror(cudaFree(d_spine),
+					"Spine cudaFree d_spine failed: ", __FILE__, __LINE__)) break;
 			}
+
+			// Restore current gpu
+			if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
+				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 
 			d_spine 		= NULL;
 			gpu 			= B40C_INVALID_DEVICE;
@@ -171,14 +168,19 @@ struct Spine
 		do {
 			size_t problem_spine_bytes = spine_elements * sizeof(T);
 
-			if (problem_spine_bytes > spine_bytes) {
+			// Get current gpu
+			int current_gpu;
+			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
+				"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+
+			// Check if big enough and if lives on proper GPU
+			if ((problem_spine_bytes > spine_bytes) || (gpu != current_gpu)) {
 
 				// Deallocate if exists
 				if (retval = HostReset()) break;
 
 				// Remember device
-				if (retval = util::B40CPerror(cudaGetDevice(&gpu),
-					"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+				gpu = current_gpu;
 
 				// Reallocate
 				spine_bytes = problem_spine_bytes;
