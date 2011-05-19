@@ -619,6 +619,7 @@ struct Cta
 			coarse_enqueue_offset = work_progress.Enqueue(
 				coarse_count + tile.fine_count,
 				index + 1);
+
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}
 

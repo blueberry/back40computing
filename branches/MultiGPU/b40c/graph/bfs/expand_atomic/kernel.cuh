@@ -207,7 +207,7 @@ void Kernel(
 	typename KernelPolicy::SizeT			*d_row_offsets,
 	typename KernelPolicy::VertexId			*d_source_path,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 
@@ -272,7 +272,13 @@ void Kernel(
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
+				if (KernelPolicy::ENQUEUE_BY_ITERATION) {
+					num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
+				} else {
+					num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+				}
+			}
 
 			// Signal to host that we're done
 			if ((num_elements == 0) ||
@@ -286,7 +292,11 @@ void Kernel(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+			if (KernelPolicy::ENQUEUE_BY_ITERATION) {
+				work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
+			} else {
+				work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+			}
 
 			// Reset our next workstealing counter to zero
 			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
