@@ -227,6 +227,9 @@ struct Tile
 			// Overwrite partial
 			unsigned char *base_partial_chars = (unsigned char *) cta->base_composite_counter;
 			base_partial_chars[counter_offsets[LOAD][VEC]] = partial;
+
+		} else {
+			key_bins[CYCLE][LOAD][VEC] = -1;
 		}
 	}
 
@@ -465,6 +468,7 @@ struct Tile
 		bin_counts[CYCLE][LOAD] =
 			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][my_quad_byte] +
 			cta->smem_storage.lane_p_c[CYCLE][LOAD][my_base_lane][my_quad_byte];
+
 /*
 		// Correct for possible overflow
 		if (util::WarpVoteAll<KernelPolicy::LOG_BINS>(bin_counts[CYCLE][LOAD] <= 1)) {

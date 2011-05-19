@@ -404,12 +404,10 @@ public:
 					// Update queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 
-					if (DEBUG) {
-						printf("Iteration %lld GPU %d partition enqueued %lld\n",
-							(long long) control->iteration - 1,
-							control->gpu,
-							(long long) control->queue_length);
-					}
+					printf("Iteration %lld GPU %d partition enqueued %lld\n",
+						(long long) control->iteration - 1,
+						control->gpu,
+						(long long) control->queue_length);
 
 					// Check if this gpu is not done
 					if (control->queue_length) done = false;
@@ -432,7 +430,7 @@ public:
 
 				// Check if all done in all GPUs
 				if (done) break;
-
+				printf("\n");
 
 				//---------------------------------------------------------------------
 				// Partition/compact work queues
@@ -471,7 +469,7 @@ public:
 					}
 
 					// Spine
-					PartitionPolicy::SpineKernel()<<<1, PartitionSpine::THREADS>>>(
+					PartitionPolicy::SpineKernel()<<<1, PartitionSpine::THREADS, 0, slice->stream>>>(
 						(SizeT*) control->spine(),
 						(SizeT*) control->spine(),
 						control->spine_elements);
@@ -513,6 +511,7 @@ public:
 				// Synchronization point (to make spines coherent)
 				//---------------------------------------------------------------------
 
+				done = true;
 				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
@@ -523,8 +522,15 @@ public:
 					if (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu cudaDeviceSynchronize failed", __FILE__, __LINE__)) break;
 
+					SizeT *spine = (SizeT *) control->spine.h_spine;
+					if (spine[control->partition_grid_size]) done = false;
+
+					printf("Iteration %lld GPU %d partition compacted %lld\n",
+						(long long) control->iteration,
+						control->gpu,
+						(long long) spine[control->partition_grid_size]);
+
 					if (DEBUG2) {
-						SizeT *spine = (SizeT *) control->spine.h_spine;
 						printf("Compacted queue on gpu %d (%d elements):\n",
 							control->gpu, spine[control->spine_elements - 1]);
 						DisplayDeviceResults(
@@ -536,17 +542,20 @@ public:
 							slice->d_source_path,
 							slice->nodes);
 */
-						printf("---------------------------------------------------------\n");
 					}
 				}
 				if (retval) break;
 
+				// Check if all done in all GPUs
+				if (done) break;
+
+				if (DEBUG2) printf("---------------------------------------------------------");
+				printf("\n");
 
 				//---------------------------------------------------------------------
 				// Expand work queues
 				//---------------------------------------------------------------------
 
-				done = true;
 				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
@@ -555,10 +564,6 @@ public:
 					// Set device
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
-
-					// Check if this gpu is not done by looking at the partitioning aggregate in the spine
-					SizeT *spine = (SizeT *) control->spine.h_spine;
-					if (spine[control->partition_grid_size]) done = false;
 
 					// Stream in and expand inputs from all gpus (including ourselves)
 					for (int j = 0; j < csr_problem.num_gpus; j++) {
@@ -613,9 +618,6 @@ public:
 					control->iteration++;
 				}
 				if (retval) break;
-
-				// Check if all done in all GPUs
-				if (done) break;
 			}
 
 		} while (0);
@@ -678,19 +680,22 @@ public:
 				9,						// LOG_SCHEDULE_GRANULARITY
 				util::io::ld::NONE,		// CACHE_MODIFIER
 				util::io::st::NONE,		// CACHE_MODIFIER
+
 				8,						// UPSWEEP_CTA_OCCUPANCY
 				7,						// UPSWEEP_LOG_THREADS
-				1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-				0,						// UPSWEEP_LOG_LOADS_PER_TILE
+				0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+				2,						// UPSWEEP_LOG_LOADS_PER_TILE
+
 				1,						// SPINE_CTA_OCCUPANCY
-				8,						// SPINE_LOG_THREADS
+				7,						// SPINE_LOG_THREADS
 				2,						// SPINE_LOG_LOAD_VEC_SIZE
 				0,						// SPINE_LOG_LOADS_PER_TILE
 				5,						// SPINE_LOG_RAKING_THREADS
-				4,						// DOWNSWEEP_CTA_OCCUPANCY
-				8,						// DOWNSWEEP_LOG_THREADS
-				0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-				1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+
+				8,						// DOWNSWEEP_CTA_OCCUPANCY
+				7,						// DOWNSWEEP_LOG_THREADS
+				1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+				0,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
 				0,						// DOWNSWEEP_LOG_CYCLES_PER_TILE
 				5> PartitionPolicy;		// DOWNSWEEP_LOG_RAKING_THREADS
 
