@@ -144,7 +144,7 @@ DEPS = 			./Makefile \
 				$(wildcard ../../b40c/reduction/*.cuh) \
 				$(wildcard ../../b40c/reduction/upsweep/*.cuh) \
 				$(wildcard ../../b40c/reduction/spine/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) \ 
+				$(wildcard ../../b40c/scan/*.cuh) \
 				$(wildcard ../../b40c/scan/upsweep/*.cuh) \
 				$(wildcard ../../b40c/scan/spine/*.cuh) \
 				$(wildcard ../../b40c/scan/downsweep/*.cuh) 

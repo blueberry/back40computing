@@ -76,13 +76,18 @@ struct ArchGenre
 };
 
 /**
- * Autotuned policy type
+ * Autotuned genre type
  */
 template <
 	typename SizeT,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedPolicy;
+struct AutotunedGenre :
+	AutotunedGenre<
+		SizeT,
+		ArchGenre<CUDA_ARCH>::FAMILY,
+		PROB_SIZE_GENRE>
+{};
 
 
 //-----------------------------------------------------------------------------
@@ -91,7 +96,7 @@ struct AutotunedPolicy;
 
 // Large problems
 template <typename SizeT>
-struct AutotunedPolicy<SizeT, SM20, LARGE_SIZE>
+struct AutotunedGenre<SizeT, SM20, LARGE_SIZE>
 	: Policy<unsigned long long, SizeT,
 	  SM20, 8, 8, 7, 1, 0,
 	  util::io::ld::cg, util::io::st::cg, true, false>
@@ -101,7 +106,7 @@ struct AutotunedPolicy<SizeT, SM20, LARGE_SIZE>
 
 // Small problems
 template <typename SizeT>
-struct AutotunedPolicy<SizeT, SM20, SMALL_SIZE>
+struct AutotunedGenre<SizeT, SM20, SMALL_SIZE>
 	: Policy<unsigned long long, SizeT,
 	  SM20, 6, 8, 6, 0, 0,
 	  util::io::ld::cg, util::io::st::cs, false, false>
@@ -117,7 +122,7 @@ struct AutotunedPolicy<SizeT, SM20, SMALL_SIZE>
 
 // Large problems
 template <typename SizeT>
-struct AutotunedPolicy<SizeT, SM13, LARGE_SIZE>
+struct AutotunedGenre<SizeT, SM13, LARGE_SIZE>
 	: Policy<unsigned short, SizeT,
 	  SM13, 8, 8, 7, 2, 0,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
@@ -127,7 +132,7 @@ struct AutotunedPolicy<SizeT, SM13, LARGE_SIZE>
 
 // Small problems
 template <typename SizeT>
-struct AutotunedPolicy<SizeT, SM13, SMALL_SIZE>
+struct AutotunedGenre<SizeT, SM13, SMALL_SIZE>
 	: Policy<unsigned long long, SizeT,
 	  SM13, 6, 8, 5, 0, 1,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
@@ -160,8 +165,8 @@ struct AutotunedPolicy<SizeT, SM13, SMALL_SIZE>
  */
 template <typename SizeT, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
-	(AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
+	(AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
+	(AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
 __global__ void TunedKernel(
 	void 								*d_in,
 	void 								*d_out,
@@ -170,7 +175,7 @@ __global__ void TunedKernel(
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
+	typedef AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
 	typedef typename Policy::T T;
 
 	T* out = (T*)(d_out);
@@ -197,9 +202,9 @@ template <
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
 struct AutotunedPolicy :
-	AutotunedPolicy<
+	AutotunedGenre<
 		SizeT,
-		ArchGenre<CUDA_ARCH>::FAMILY,
+		CUDA_ARCH,
 		PROB_SIZE_GENRE>
 {
 	//---------------------------------------------------------------------

@@ -102,7 +102,7 @@ struct SerialScan
 		T partials[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Invoke<T, DefaultSum>(partials, exclusive_partial);
+		return Invoke<T, Operators<T>::Sum>(partials, exclusive_partial);
 	}
 
 
@@ -131,7 +131,7 @@ struct SerialScan
 		T results[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Invoke<T, DefaultSum>(partials, results, exclusive_partial);
+		return Invoke<T, Operators<T>::Sum>(partials, results, exclusive_partial);
 	}
 };
 

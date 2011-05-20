@@ -102,7 +102,7 @@ struct Tile :
 			KernelPolicy::THREADS,							// Active threads that will be loading
 			KernelPolicy::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
 					cta->d_in_keys + cta_offset);
 	}
 
@@ -122,7 +122,7 @@ struct Tile :
 			KernelPolicy::THREADS,							// Active threads that will be loading
 			KernelPolicy::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
 					(KeyType) -1,
 					cta->d_in_keys + cta_offset,
 					guarded_elements);
@@ -143,8 +143,8 @@ struct Tile :
 				KeyType,
 				KernelPolicy::PostprocessTraits::Postprocess>(
 					cta->d_out_keys,
-					(KeyType *) keys,
-					scatter_offsets);
+					(KeyType *) this->keys,
+					this->scatter_offsets);
 	}
 
 
@@ -164,8 +164,8 @@ struct Tile :
 				KeyType,
 				KernelPolicy::PostprocessTraits::Postprocess>(
 					cta->d_out_keys,
-					(KeyType *) keys,
-					scatter_offsets,
+					(KeyType *) this->keys,
+					this->scatter_offsets,
 					guarded_elements);
 	}
 };

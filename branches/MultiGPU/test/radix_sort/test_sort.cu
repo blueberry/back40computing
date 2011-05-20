@@ -95,7 +95,10 @@ void Usage()
  * Uses the GPU to sort the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  */
-template <typename PingPongStorage, typename SizeT>
+template <
+	radix_sort::ProbSizeGenre GENRE,
+	typename PingPongStorage,
+	typename SizeT>
 void TimedSort(
 	PingPongStorage 						&device_storage,
 	SizeT 									num_elements,
@@ -106,8 +109,6 @@ void TimedSort(
 
 	// Create sorting enactor
 	radix_sort::Enactor sorting_enactor;
-
-	static const radix_sort::ProbSizeGenre GENRE = radix_sort::LARGE_SIZE;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
@@ -172,7 +173,9 @@ void TimedSort(
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
  */
-template<typename K, typename V>
+template<
+	typename K,
+	typename V>
 void TestSort(
 	int iterations,
 	int num_elements,
@@ -203,7 +206,8 @@ void TestSort(
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort(device_storage, num_elements, h_keys, iterations);
+		TimedSort<radix_sort::LARGE_SIZE>(
+			device_storage, num_elements, h_keys, iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -221,7 +225,7 @@ void TestSort(
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort(device_storage, num_elements, h_keys, iterations);
+		TimedSort<radix_sort::LARGE_SIZE>(device_storage, num_elements, h_keys, iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);

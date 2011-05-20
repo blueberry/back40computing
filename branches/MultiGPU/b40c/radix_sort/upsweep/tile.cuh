@@ -104,7 +104,7 @@ struct Tile :
 			KernelPolicy::THREADS,							// Active threads that will be loading
 			KernelPolicy::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
-					(KeyType (*)[Tile::LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[Tile::LOAD_VEC_SIZE]) this->keys,
 					cta->d_in_keys + cta_offset);
 	}
 

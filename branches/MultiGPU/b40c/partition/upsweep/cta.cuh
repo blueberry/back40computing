@@ -57,7 +57,7 @@ template <
 	template <
 		int LOG_LOADS_PER_TILE,
 		int LOG_LOAD_VEC_SIZE,
-		typename KernelPolicy> class Tile>			// Derived Tile class to use
+		typename Policy> class Tile>			// Derived Tile class to use
 struct Cta
 {
 	//---------------------------------------------------------------------

@@ -156,7 +156,7 @@ struct ScatterTile
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD],
 		const SizeT &tile_size = ELEMENTS_PER_THREAD * ACTIVE_THREADS)
 	{
-		Scatter<T, NopTransform<T> >(
+		Scatter<T, Operators<T>::NopTransform>(
 			dest, src, scatter_offsets, tile_size);
 	}
 
@@ -188,7 +188,7 @@ struct ScatterTile
 		Flag valid_flags[ELEMENTS_PER_THREAD],
 		SizeT scatter_offsets[ELEMENTS_PER_THREAD])
 	{
-		Scatter<T, NopTransform<T>, Flag, SizeT>(
+		Scatter<T, Operators<T>::NopTransform, Flag, SizeT>(
 			dest, src, valid_flags, scatter_offsets);
 	}
 

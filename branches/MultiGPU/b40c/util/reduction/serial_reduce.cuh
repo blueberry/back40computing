@@ -102,7 +102,7 @@ struct SerialReduce
 	template <typename T>
 	static __device__ __forceinline__ T Invoke(T *partials)
 	{
-		return Invoke<T, DefaultSum>(partials);
+		return Invoke<T, Operators<T>::Sum>(partials);
 	}
 
 	/**

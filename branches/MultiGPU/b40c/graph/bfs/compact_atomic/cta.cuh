@@ -415,7 +415,7 @@ struct Cta
 			SrtsDetails,
 			KernelPolicy::LOAD_VEC_SIZE,
 			true,							// exclusive
-			util::DefaultSum>::ScanTileWithEnqueue(
+			util::Operators<SizeT>::Sum>::ScanTileWithEnqueue(
 				srts_details,
 				tile.ranks,
 				work_progress.GetQueueCounter<SizeT>(queue_index + 1));

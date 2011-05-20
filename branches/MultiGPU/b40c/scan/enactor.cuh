@@ -377,7 +377,7 @@ cudaError_t Enactor::Scan(
 	typedef typename Policy::T 			T;
 	typedef typename Policy::SizeT 		SizeT;
 
-	const int MIN_OCCUPANCY = B40C_MIN(Upsweep::CTA_OCCUPANCY, Downsweep::CTA_OCCUPANCY);
+	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
 	// Compute sweep grid size

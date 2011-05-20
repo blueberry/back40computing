@@ -153,7 +153,7 @@ protected:
 				int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 				expand_grid_size 				= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-				int partition_min_occupancy		= B40C_MIN(PartitionPolicy::Upsweep::CTA_OCCUPANCY, PartitionPolicy::Downsweep::CTA_OCCUPANCY);
+				int partition_min_occupancy		= B40C_MIN((int) PartitionPolicy::Upsweep::CTA_OCCUPANCY, (int) PartitionPolicy::Downsweep::CTA_OCCUPANCY);
 				partition_grid_size 			= MaxGridSize(partition_min_occupancy, max_grid_size);
 
 				// Setup partitioning spine
@@ -423,8 +423,8 @@ public:
 					if (control->queue_length) done = false;
 
 					if (DEBUG2) {
-						printf("Expanded queue on gpu %d (%d elements):\n",
-							control->gpu, control->queue_length);
+						printf("Expanded queue on gpu %d (%lld elements):\n",
+							control->gpu, (long long) control->queue_length);
 						DisplayDeviceResults(
 							slice->frontier_queues.d_keys[control->selector],
 							control->queue_length);
@@ -470,9 +470,9 @@ public:
 						"EnactorMultiGpu partition_compact::upsweep::Kernel failed", __FILE__, __LINE__))) break;
 
 					if (DEBUG2) {
-						printf("Presorted spine on gpu %d (%d elements):\n",
+						printf("Presorted spine on gpu %d (%lld elements):\n",
 							control->gpu,
-							control->spine_elements);
+							(long long) control->spine_elements);
 						DisplayDeviceResults(
 							(SizeT *) control->spine.d_spine,
 							control->spine_elements);
@@ -488,9 +488,9 @@ public:
 						"EnactorMultiGpu SpineKernel failed", __FILE__, __LINE__))) break;
 
 					if (DEBUG2) {
-						printf("Postsorted spine on gpu %d (%d elements):\n",
+						printf("Postsorted spine on gpu %d (%lld elements):\n",
 							control->gpu,
-							control->spine_elements);
+							(long long) control->spine_elements);
 						DisplayDeviceResults(
 							(SizeT *) control->spine.d_spine,
 							control->spine_elements);
@@ -541,8 +541,9 @@ public:
 						(long long) spine[control->spine_elements - 1]);
 
 					if (DEBUG2) {
-						printf("Compacted queue on gpu %d (%d elements):\n",
-							control->gpu, spine[control->spine_elements - 1]);
+						printf("Compacted queue on gpu %d (%lld elements):\n",
+							control->gpu,
+							(long long) spine[control->spine_elements - 1]);
 						DisplayDeviceResults(
 							slice->frontier_queues.d_keys[control->selector],
 							spine[control->spine_elements - 1]);

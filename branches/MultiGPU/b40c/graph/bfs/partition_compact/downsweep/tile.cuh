@@ -112,7 +112,7 @@ struct Tile :
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
 					cta->d_in_keys + cta_offset);
 
 		// Read tile of flags
@@ -140,7 +140,7 @@ struct Tile :
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
 					(KeyType) -1,
 					cta->d_in_keys + cta_offset,
 					guarded_elements);
@@ -170,8 +170,8 @@ struct Tile :
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_keys,
-				(KeyType *) keys,
-				scatter_offsets,
+				(KeyType *) this->keys,
+				this->scatter_offsets,
 				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
 	}
 
@@ -202,8 +202,8 @@ struct Tile :
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_values,
-				values,
-				scatter_offsets,
+				this->values,
+				this->scatter_offsets,
 				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
 	}
 

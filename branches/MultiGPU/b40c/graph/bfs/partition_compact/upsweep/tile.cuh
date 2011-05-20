@@ -194,7 +194,7 @@ struct Tile :
 	 * Iterate next load
 	 */
 	template <int LOAD, int dummy>
-	struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+	struct Iterate<LOAD, Tile::LOAD_VEC_SIZE, dummy>
 	{
 		// BitmaskCull
 		template <typename Cta>
@@ -224,7 +224,7 @@ struct Tile :
 	 * Terminate iteration
 	 */
 	template <int dummy>
-	struct Iterate<LOADS_PER_TILE, 0, dummy>
+	struct Iterate<Tile::LOADS_PER_TILE, 0, dummy>
 	{
 		// BitmaskCull
 		template <typename Cta>
@@ -310,7 +310,7 @@ struct Tile :
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-				(KeyType (*)[Tile::LOAD_VEC_SIZE]) keys,
+				(KeyType (*)[Tile::LOAD_VEC_SIZE]) this->keys,
 				cta->d_in_keys + cta_offset);
 
 		// Initialize valid flags

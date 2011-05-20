@@ -46,7 +46,7 @@ namespace downsweep {
 template <
 	typename KernelPolicy,
 	typename DerivedCta,									// Derived CTA class
-	template <typename KernelPolicy> class Tile>			// Derived Tile class to use
+	template <typename Policy> class Tile>			// Derived Tile class to use
 struct Cta
 {
 	//---------------------------------------------------------------------

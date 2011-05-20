@@ -84,8 +84,8 @@ struct Policy : ProblemType
 		SizeT,								// spine scan type T
 		int,								// spine scan SizeT
 		true,								// exclusive
-		util::DefaultSum<SizeT>,
-		util::DefaultSumIdentity<SizeT> > SpineProblemType;
+		util::Operators<SizeT>::Sum,
+		util::Operators<SizeT>::SumIdentity> SpineProblemType;
 
 	// Kernel config for spine scan
 	typedef scan::downsweep::KernelPolicy <

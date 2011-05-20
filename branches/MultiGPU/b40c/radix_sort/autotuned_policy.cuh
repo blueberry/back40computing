@@ -87,17 +87,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedGenre;
-
-
-/**
- * Autotuned policy type, derives from autotuned genre
- */
-template <
-	typename ProblemType,
-	int CUDA_ARCH,
-	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedPolicy;
+struct AutotunedGenre :
+	AutotunedGenre<ProblemType, ArchGenre<CUDA_ARCH>::FAMILY, PROB_SIZE_GENRE>
+{};
 
 
 //-----------------------------------------------------------------------------
@@ -394,8 +386,8 @@ struct AutotunedGenre<ProblemType, SM10, SMALL_SIZE> : Policy<
  */
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::THREADS),
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::MAX_CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::MAX_CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,
@@ -404,7 +396,7 @@ __global__ void TunedUpsweepKernel(
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition)
 {
 	// Load the kernel policy type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep TuningPolicy;
+	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep TuningPolicy;
 	typedef upsweep::KernelPolicy<TuningPolicy, PassPolicy> KernelPolicy;
 
 	// Shared storage for the kernel
@@ -424,15 +416,15 @@ __global__ void TunedUpsweepKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::THREADS),
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
 	typename ProblemType::SizeT 		*d_spine_in,
 	typename ProblemType::SizeT 		*d_spine_out,
 	int									spine_elements)
 {
 	// Load the kernel policy type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
+	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
 
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -447,8 +439,18 @@ __global__ void TunedSpineKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Downsweep::THREADS),
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Downsweep::MAX_CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::MAX_CTA_OCCUPANCY))
+__global__ void TunedDownsweepKernel(
+	int 													*d_selectors,
+	typename ProblemType::SizeT 							*d_spine,
+	typename ProblemType::KeyType 							*d_keys0,
+	typename ProblemType::KeyType 							*d_keys1,
+	typename ProblemType::ValueType 						*d_values0,
+	typename ProblemType::ValueType							*d_values1,
+	util::CtaWorkDistribution<typename ProblemType::SizeT>	work_decomposition);
+
+template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __global__ void TunedDownsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,
@@ -459,7 +461,7 @@ __global__ void TunedDownsweepKernel(
 	util::CtaWorkDistribution<typename ProblemType::SizeT>	work_decomposition)
 {
 	// Load the kernel policy type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep TuningPolicy;
+	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep TuningPolicy;
 	typedef downsweep::KernelPolicy<TuningPolicy, PassPolicy> KernelPolicy;
 
 	// Shared storage for the kernel
@@ -482,17 +484,20 @@ __global__ void TunedDownsweepKernel(
  * Autotuned scan policy
  *******************************************************************************/
 
+
+
 /**
- * Autotuned policy type
+ * Autotuned policy type, derives from autotuned genre
  */
 template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedPolicy : AutotunedGenre<
-	ProblemType,
-	ArchGenre<CUDA_ARCH>::FAMILY,
-	PROB_SIZE_GENRE>
+struct AutotunedPolicy :
+	AutotunedGenre<
+		ProblemType,
+		CUDA_ARCH,
+		PROB_SIZE_GENRE>
 {
 	typedef typename ProblemType::KeyType 		KeyType;
 	typedef typename ProblemType::ValueType 	ValueType;
@@ -507,20 +512,22 @@ struct AutotunedPolicy : AutotunedGenre<
 	//---------------------------------------------------------------------
 
 	template <typename PassPolicy>
-	static UpsweepKernelPtr UpsweepKernel() {
+	static UpsweepKernelPtr UpsweepKernel()
+	{
 		return TunedUpsweepKernel<ProblemType, PROB_SIZE_GENRE, PassPolicy>;
 	}
 
-	static SpineKernelPtr SpineKernel() {
+	static SpineKernelPtr SpineKernel()
+	{
 		return TunedSpineKernel<ProblemType, PROB_SIZE_GENRE>;
 	}
 
 	template <typename PassPolicy>
-	static DownsweepKernelPtr DownsweepKernel() {
+	static DownsweepKernelPtr DownsweepKernel()
+	{
 		return TunedDownsweepKernel<ProblemType, PROB_SIZE_GENRE, PassPolicy>;
 	}
 };
-
 
 
 

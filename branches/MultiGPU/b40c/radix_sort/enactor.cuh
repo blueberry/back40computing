@@ -264,7 +264,7 @@ struct Detail
 	static const int NUM_BITS 		= _NUM_BITS;
 
 	// Key conversion trait type
-	typedef typename KeyTraits<typename PingPongStorage::KeyType> KeyTraits;
+	typedef KeyTraits<typename PingPongStorage::KeyType> KeyTraits;
 
 	// Problem type is on unsigned keys (converted key type)
 	typedef partition::ProblemType<
@@ -481,12 +481,13 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 	typedef typename Policy::SizeT 							SizeT;
 	typedef typename Detail::KeyTraits::ConvertedKeyType 	ConvertedKeyType;
 
+	cudaError_t retval = cudaSuccess;
+
 	// Kernel pointers
 	typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::template UpsweepKernel<PassPolicy>();
 	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
 	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
 
-	cudaError_t retval = cudaSuccess;
 
 	do {
 
@@ -652,7 +653,7 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 	typedef typename Policy::SizeT 		SizeT;
 
 	const int NUM_PASSES 				= (Detail::NUM_BITS + Downsweep::LOG_BINS - 1) / Downsweep::LOG_BINS;
-	const int MIN_OCCUPANCY 			= B40C_MIN(Upsweep::MAX_CTA_OCCUPANCY, Downsweep::MAX_CTA_OCCUPANCY);
+	const int MIN_OCCUPANCY 			= B40C_MIN((int) Upsweep::MAX_CTA_OCCUPANCY, (int) Downsweep::MAX_CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
 	// Compute sweep grid size

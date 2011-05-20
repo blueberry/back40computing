@@ -648,7 +648,7 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
-/*
+
 			// Perform one-phase out-of-core BFS implementation (single grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
 				one_phase_enactor,
@@ -674,7 +674,7 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-*/
+
 			// Perform hybrid-phase out-of-core BFS implementation
 			if (TestGpuBfs<INSTRUMENT>(
 				hybrid_enactor,

@@ -84,19 +84,16 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename T,
-	int T_SIZE>
-struct AutotunedGenre;
-
-
-/**
- * Autotuned policy type, derives from autotuned genre
- */
-template <
-	typename ProblemType,
-	int CUDA_ARCH,
-	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedPolicy;
+	typename T = typename ProblemType::T,
+	int T_SIZE = sizeof(T)>
+struct AutotunedGenre :
+	AutotunedGenre<
+		ProblemType,
+		ArchGenre<CUDA_ARCH>::FAMILY,
+		PROB_SIZE_GENRE,
+		T,
+		1 << util::Log2<sizeof(T)>::VALUE> // Round up to the nearest arch subword
+{};
 
 
 //-----------------------------------------------------------------------------
@@ -299,8 +296,8 @@ struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE, T, 1>
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::THREADS),
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
@@ -308,7 +305,7 @@ __global__ void TunedUpsweepKernel(
 	util::CtaWorkProgress										work_progress)
 {
 	// Load the kernel policy type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<
+	typedef typename AutotunedGenre<
 		ProblemType,
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelPolicy;
@@ -330,15 +327,15 @@ __global__ void TunedUpsweepKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::THREADS),
-	(AutotunedPolicy<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
 	typename ProblemType::T 		*d_spine,
 	typename ProblemType::T 		*d_out,
 	typename ProblemType::SizeT 	spine_elements)
 {
 	// Load the kernel policy type identified by the enum for this architecture
-	typedef typename AutotunedPolicy<
+	typedef typename AutotunedGenre<
 		ProblemType,
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
@@ -362,12 +359,11 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedPolicy : AutotunedGenre<
-	ProblemType,
-	ArchGenre<CUDA_ARCH>::FAMILY,
-	PROB_SIZE_GENRE,
-	typename ProblemType::T,
-	1 << util::Log2<sizeof(typename ProblemType::T)>::VALUE>	// Round up to the nearest arch subword
+struct AutotunedPolicy :
+	AutotunedGenre<
+		ProblemType,
+		CUDA_ARCH,
+		PROB_SIZE_GENRE>
 {
 	//---------------------------------------------------------------------
 	// Typedefs
