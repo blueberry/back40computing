@@ -204,7 +204,8 @@ struct Cta
 	 */
 	__device__ __forceinline__ void ProcessTiles(
 		SizeT cta_offset,
-		SizeT cta_out_of_bounds)
+		const SizeT &guarded_offset,
+		const SizeT &cta_out_of_bounds)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
 
@@ -212,7 +213,7 @@ struct Cta
 		Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 
 		__syncthreads();
-
+/*
 		// Unroll batches of full tiles
 		const int UNROLLED_ELEMENTS = KernelPolicy::UNROLL_COUNT * KernelPolicy::TILE_ELEMENTS;
 		while (cta_offset < cta_out_of_bounds - UNROLLED_ELEMENTS) {
@@ -232,14 +233,26 @@ struct Cta
 			// Reset composite counters in lanes
 			Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 		}
-
+*/
 		// Unroll single full tiles
-		while (cta_offset < cta_out_of_bounds - KernelPolicy::TILE_ELEMENTS) {
+		while (cta_offset < guarded_offset) {
 
-			UnrollTiles::template Iterate<1>::ProcessTiles(
-				dispatch,
-				cta_offset);
+			ProcessFullTile(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
+
+			const int TRIP_MASK = KernelPolicy::UNROLL_COUNT << KernelPolicy::LOG_TILE_ELEMENTS;
+			if (cta_offset & TRIP_MASK == TRIP_MASK) {
+
+				__syncthreads();
+
+				// Aggregate back into local_count registers to prevent overflow
+				Composites<KernelPolicy>::ReduceComposites(dispatch);
+
+				__syncthreads();
+
+				// Reset composite counters in lanes
+				Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
+			}
 		}
 
 		// Process partial tile if necessary

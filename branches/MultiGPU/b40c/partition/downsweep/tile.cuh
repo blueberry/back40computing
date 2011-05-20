@@ -70,6 +70,8 @@ struct Tile
 		CYCLES_PER_TILE 			= KernelPolicy::CYCLES_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
+
+		INVALID_BIN					= -1,
 	};
 
 	//---------------------------------------------------------------------
@@ -196,14 +198,14 @@ struct Tile
 	template <int CYCLE, int LOAD, int VEC, typename Cta>
 	__device__ __forceinline__ void DecodeKeys(Cta *cta)
 	{
-		const int PADDED_BYTES_PER_LANE 	= KernelPolicy::Grid::ROWS_PER_LANE * KernelPolicy::Grid::PADDED_PARTIALS_PER_ROW * 4;
-		const int LOAD_OFFSET_BYTES 		= LOAD * KernelPolicy::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
-		const KeyType COUNTER_BYTE_MASK 	= (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
-
 		Dispatch *dispatch = (Dispatch *) this;
 
 		// Update composite-counter
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
+
+			const int PADDED_BYTES_PER_LANE 	= KernelPolicy::Grid::ROWS_PER_LANE * KernelPolicy::Grid::PADDED_PARTIALS_PER_ROW * 4;
+			const int LOAD_OFFSET_BYTES 		= LOAD * KernelPolicy::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
+			const KeyType COUNTER_BYTE_MASK 	= (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
 			// Decode the bin for this key
 			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(keys[CYCLE][LOAD][VEC]);
@@ -229,7 +231,8 @@ struct Tile
 			base_partial_chars[counter_offsets[LOAD][VEC]] = partial;
 
 		} else {
-			key_bins[CYCLE][LOAD][VEC] = -1;
+
+			key_bins[CYCLE][LOAD][VEC] = INVALID_BIN;
 		}
 	}
 

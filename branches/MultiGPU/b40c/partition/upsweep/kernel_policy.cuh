@@ -88,8 +88,9 @@ struct KernelPolicy : TuningPolicy
 		AGGREGATED_PARTIALS_PER_ROW 		= B40C_WARP_THREADS(TuningPolicy::CUDA_ARCH),
 		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
 
-		// Unroll tiles in batches of 64 elements per thread (255 is maximum without risking overflow)
-		UNROLL_COUNT 						= 64 / TILE_ELEMENTS_PER_THREAD,
+		// Unroll tiles in batches of X elements per thread (255 is maximum without risking overflow)
+		LOG_UNROLL_COUNT 					= 8 - LOG_TILE_ELEMENTS_PER_THREAD,
+		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
 	/**
