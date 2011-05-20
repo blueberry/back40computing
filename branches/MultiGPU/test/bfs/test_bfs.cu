@@ -662,7 +662,7 @@ void RunTests(
 			printf("\n");
 			fflush(stdout);
 
-			// Perform one-phase out-of-core BFS implementation (BFS level grid launch)
+			// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
 				two_phase_enactor,
 				csr_problem,
@@ -674,8 +674,8 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-
-			// Perform single-grid contract-expand GPU BFS search
+*/
+			// Perform hybrid-phase out-of-core BFS implementation
 			if (TestGpuBfs<INSTRUMENT>(
 				hybrid_enactor,
 				csr_problem,
@@ -687,7 +687,6 @@ void RunTests(
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
-*/
 		}
 
 		// Perform multi-GPU out-of-core BFS implementation

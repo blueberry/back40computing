@@ -671,11 +671,11 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
 				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				true,					// WORK_STEALING
 				6> ExpandPolicy;
 
