@@ -703,11 +703,11 @@ public:
 				5,						// SPINE_LOG_RAKING_THREADS
 
 				8,						// DOWNSWEEP_CTA_OCCUPANCY
-				7,						// DOWNSWEEP_LOG_THREADS
+				6,						// DOWNSWEEP_LOG_THREADS
 				1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-				0,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+				2,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
 				0,						// DOWNSWEEP_LOG_CYCLES_PER_TILE
-				5> PartitionPolicy;		// DOWNSWEEP_LOG_RAKING_THREADS
+				6> PartitionPolicy;		// DOWNSWEEP_LOG_RAKING_THREADS
 
 			return EnactSearch<ExpandPolicy, PartitionPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);

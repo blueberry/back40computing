@@ -159,13 +159,7 @@ struct Cta
 			tile.PartitionValues(dispatch);
 
 			// Scatter values to global bin partitions
-			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					d_out_values,
-					tile.values,
-					tile.scatter_offsets);
+			tile.ScatterValues(dispatch);
 		}
 	}
 
@@ -207,14 +201,7 @@ struct Cta
 			tile.PartitionValues(dispatch);
 
 			// Scatter values to global bin partitions
-			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					d_out_values,
-					tile.values,
-					tile.scatter_offsets,
-					guarded_elements);
+			tile.ScatterValues(dispatch, guarded_elements);
 		}
 	}
 };

@@ -164,8 +164,6 @@ struct Tile :
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterKeys(Cta *cta)
 	{
-		int num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
-
 		// Scatter only the compacted keys to global bin partitions
 		util::io::ScatterTile<
 			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
@@ -174,7 +172,7 @@ struct Tile :
 				cta->d_out_keys,
 				(KeyType *) keys,
 				scatter_offsets,
-				num_compacted);
+				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
 	}
 
 
@@ -187,6 +185,40 @@ struct Tile :
 		const SizeT &guarded_elements)
 	{
 		ScatterKeys(cta);
+	}
+
+
+	/**
+	 * Scatter values from the tile
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void ScatterValues(Cta *cta)
+	{
+		// Scatter values to global bin partitions
+		util::io::ScatterTile<
+			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Scatter(
+				cta->d_out_values,
+				values,
+				scatter_offsets,
+				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
+	}
+
+
+	/**
+	 * Scatter values from the tile
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void ScatterValues(
+		Cta *cta,
+		const SizeT &guarded_elements)
+	{
+		ScatterValues(cta);
 	}
 };
 

@@ -154,6 +154,47 @@ struct Tile
 		const SizeT &guarded_elements);
 
 
+	/**
+	 * Scatter values from the tile
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void ScatterValues(Cta *cta)
+	{
+		// Scatter values to global bin partitions
+		util::io::ScatterTile<
+			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Scatter(
+				cta->d_out_values,
+				values,
+				scatter_offsets);
+	}
+
+
+	/**
+	 * Scatter values from the tile
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void ScatterValues(
+		Cta *cta,
+		const SizeT &guarded_elements)
+	{
+		// Scatter values to global bin partitions
+		util::io::ScatterTile<
+			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Scatter(
+				cta->d_out_values,
+				values,
+				scatter_offsets,
+				guarded_elements);
+	}
+
+
 	//---------------------------------------------------------------------
 	// Helper Structures
 	//---------------------------------------------------------------------
@@ -442,8 +483,8 @@ struct Tile
 			// Save off each lane's warpscan total for this cycle
 			if (warpscan_tid == KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1) {
 //				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = inclusive_prefix;
-				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = exclusive_prefix;
-				cta->smem_storage.lane_p[CYCLE][warpscan_lane] = partial;
+				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][0] = exclusive_prefix;
+				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][1] = partial;
 			}
 
 			// Downsweep rake
@@ -469,8 +510,8 @@ struct Tile
 		int my_base_lane, int my_quad_byte, Cta *cta)
 	{
 		bin_counts[CYCLE][LOAD] =
-			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][my_quad_byte] +
-			cta->smem_storage.lane_p_c[CYCLE][LOAD][my_base_lane][my_quad_byte];
+			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][0][my_quad_byte] +
+			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][1][my_quad_byte];
 
 /*
 		// Correct for possible overflow
