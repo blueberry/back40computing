@@ -40,7 +40,7 @@ namespace reduction {
 
 
 /******************************************************************************
- * Tuning classifiers to specialize granularity types on
+ * Tuning classifiers to specialize policy-genre types on
  ******************************************************************************/
 
 /**

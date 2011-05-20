@@ -40,7 +40,7 @@ namespace scan {
 
 
 /******************************************************************************
- * Tuning classifiers to specialize granularity types on
+ * Tuning classifiers to policy-genre granularity types on
  ******************************************************************************/
 
 /**
