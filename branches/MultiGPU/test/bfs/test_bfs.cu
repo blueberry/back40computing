@@ -468,7 +468,7 @@ cudaError_t TestGpuBfs(
 		if (retval = csr_problem.Reset()) break;
 
 		// Perform BFS
-		GpuTimer gpu_timer;
+		CpuTimer gpu_timer;
 		gpu_timer.Start();
 		if (retval = enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size)) break;
 		gpu_timer.Stop();
@@ -713,7 +713,14 @@ void RunTests(
 		}
 		
 		if (randomized_src) {
-			test_iteration = B40C_MAX(stats[0].rate.count, B40C_MAX(stats[1].rate.count, stats[2].rate.count));
+			// Valid test_iterations is the maximum of any of the
+			// test-statistic-structure's sample-counts
+			test_iteration = 0;
+			for (int i = 0; i < sizeof(stats) / sizeof(Stats); i++) {
+				if (stats[i].rate.count > test_iteration) {
+					test_iteration = stats[i].rate.count;
+				}
+			}
 		} else {
 			test_iteration++;
 		}
@@ -897,6 +904,7 @@ int main( int argc, char** argv)
 	csr_graph.PrintHistogram();
 
 	// Run tests
+/*
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
@@ -907,6 +915,7 @@ int main( int argc, char** argv)
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
 	} else {
+*/
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
@@ -915,5 +924,5 @@ int main( int argc, char** argv)
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
-	}
+//	}
 }
