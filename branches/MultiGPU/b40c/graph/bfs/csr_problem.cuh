@@ -517,25 +517,30 @@ struct CsrProblem
 			}
 
 			// Allocate queues if necessary
-			SizeT queue_elements = double(graph_slices[i]->edges) * queue_sizing;
+			SizeT expand_queue_elements = double(graph_slices[i]->edges) * queue_sizing;
+			SizeT compact_queue_elements = (num_gpus > 1) ?
+				double(graph_slices[i]->nodes) * 2 :			// For multi-gpu, we have a clear expand/compact queue where the compact queue can be O(nodes)
+				expand_queue_elements;
 
 			if (!graph_slices[i]->frontier_queues.d_keys[0]) {
 
-				printf("GPU %d queue size: %lld elements (%lld bytes)\n\n",
+				printf("GPU %d queue sizes:\n\t compact %lld elements (%lld bytes)\n\t expand %lld elements (%lld bytes)\n\n",
 					graph_slices[i]->gpu,
-					(unsigned long long) queue_elements,
-					(unsigned long long) queue_elements * sizeof(VertexId));
+					(unsigned long long) compact_queue_elements,
+					(unsigned long long) compact_queue_elements * sizeof(VertexId),
+					(unsigned long long) expand_queue_elements,
+					(unsigned long long) expand_queue_elements * sizeof(VertexId));
 				fflush(stdout);
 
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->frontier_queues.d_keys[0],
-						queue_elements * sizeof(VertexId)),
+						compact_queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[0] failed", __FILE__, __LINE__)) break;
 			}
 			if (!graph_slices[i]->frontier_queues.d_keys[1]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->frontier_queues.d_keys[1],
-						queue_elements * sizeof(VertexId)),
+						expand_queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[1] failed", __FILE__, __LINE__)) break;
 			}
 
@@ -544,13 +549,13 @@ struct CsrProblem
 				if (!graph_slices[i]->frontier_queues.d_values[0]) {
 					if (retval = util::B40CPerror(
 							cudaMalloc((void**) &graph_slices[i]->frontier_queues.d_values[0],
-							queue_elements * sizeof(VertexId)),
+							compact_queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[0] failed", __FILE__, __LINE__)) break;
 				}
 				if (!graph_slices[i]->frontier_queues.d_values[1]) {
 					if (retval = util::B40CPerror(cudaMalloc(
 							(void**) &graph_slices[i]->frontier_queues.d_values[1],
-							queue_elements * sizeof(VertexId)),
+							expand_queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
 			}
@@ -559,7 +564,7 @@ struct CsrProblem
 			if (!graph_slices[i]->d_keep) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->d_keep,
-						queue_elements * sizeof(ValidFlag)),
+						expand_queue_elements * sizeof(ValidFlag)),
 					"CsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
 

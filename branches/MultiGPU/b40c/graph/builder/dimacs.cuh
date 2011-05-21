@@ -63,6 +63,8 @@ int ReadDimacsStream(
 	char line[1024];
 	char problem_type[1024];
 
+	bool ordered_rows = true;
+
 	while(true) {
 
 		if (fscanf(f_in, "%[^\n]\n", line) <= 0) {
@@ -110,12 +112,20 @@ int ReadDimacsStream(
 				ll_col - 1,	// zero-based array
 				ll_val);
 
+			if (edges_read) {
+				if (coo[edges_read].row < coo[edges_read - 1].row) {
+					ordered_rows = false;
+				}
+			}
+
 			if (undirected) {
 				// Reverse edge
 				coo[edges + edges_read] = EdgeTupleType(
 					ll_col - 1,	// zero-based array
 					ll_row - 1,	// zero-based array
 					ll_val);
+
+				ordered_rows = false;
 			}
 
 			edges_read++;
@@ -144,7 +154,7 @@ int ReadDimacsStream(
 	fflush(stdout);
 	
 	// Convert sorted COO to CSR
-	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges);
+	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges, ordered_rows);
 	free(coo);
 
 	fflush(stdout);

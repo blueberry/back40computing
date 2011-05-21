@@ -678,7 +678,7 @@ public:
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				true,					// WORK_STEALING
-				6> ExpandPolicy;
+				6> ExpandPolicy;		// LOG_SCHEDULE_GRANULARITY
 
 
 			// Make sure we satisfy the tuning constraints in partition::[up|down]sweep::tuning_policy.cuh

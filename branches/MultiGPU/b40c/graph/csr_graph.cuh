@@ -102,7 +102,8 @@ struct CsrGraph
 	void FromCoo(
 		Tuple *coo,
 		SizeT coo_nodes,
-		SizeT coo_edges)
+		SizeT coo_edges,
+		bool ordered_rows = false)
 	{
 		printf("  Converting to CSR format... ");
 		time_t mark1 = time(NULL);
@@ -110,8 +111,10 @@ struct CsrGraph
 		
 		FromScratch<LOAD_VALUES>(coo_nodes, coo_edges);
 		
-		// Sort COO by row, then by col
-		std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<Tuple>);
+		// Sort COO by row
+		if (!ordered_rows) {
+			std::stable_sort(coo, coo + coo_edges, DimacsTupleCompare<Tuple>);
+		}
 
 		VertexId prev_row = -1;
 		for (SizeT edge = 0; edge < edges; edge++) {
