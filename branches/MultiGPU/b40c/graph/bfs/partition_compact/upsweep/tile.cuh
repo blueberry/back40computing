@@ -71,13 +71,17 @@ struct Tile :
 	typedef typename KernelPolicy::KeyType 			KeyType;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
+	enum {
+		LOAD_VEC_SIZE 		= Tile::LOAD_VEC_SIZE,
+		LOADS_PER_TILE 		= Tile::LOADS_PER_TILE,
+	};
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// Whether or not the corresponding vertex_id is valid for exploring
-	ValidFlag 	valid[Tile::LOADS_PER_TILE][Tile::LOAD_VEC_SIZE];
+	ValidFlag 	valid[Tile::LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 
 	//---------------------------------------------------------------------
@@ -194,7 +198,7 @@ struct Tile :
 	 * Iterate next load
 	 */
 	template <int LOAD, int dummy>
-	struct Iterate<LOAD, Tile::LOAD_VEC_SIZE, dummy>
+	struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
 	{
 		// BitmaskCull
 		template <typename Cta>
@@ -224,7 +228,7 @@ struct Tile :
 	 * Terminate iteration
 	 */
 	template <int dummy>
-	struct Iterate<Tile::LOADS_PER_TILE, 0, dummy>
+	struct Iterate<LOADS_PER_TILE, 0, dummy>
 	{
 		// BitmaskCull
 		template <typename Cta>
@@ -310,7 +314,7 @@ struct Tile :
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-				(KeyType (*)[Tile::LOAD_VEC_SIZE]) this->keys,
+				(KeyType (*)[LOAD_VEC_SIZE]) this->keys,
 				cta->d_in_keys + cta_offset);
 
 		// Initialize valid flags

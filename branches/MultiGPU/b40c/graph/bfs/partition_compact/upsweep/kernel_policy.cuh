@@ -62,6 +62,7 @@ struct KernelPolicy :
 	{
 		enum {
 			WARP_HASH_ELEMENTS				= 128,
+			CUDA_ARCH						= KernelPolicy::CUDA_ARCH,
 		};
 
 		// Shared work-processing limits
@@ -70,7 +71,7 @@ struct KernelPolicy :
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(KernelPolicy::CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
 												- sizeof(typename Base::SmemStorage)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(VertexId[KernelPolicy::WARPS][WARP_HASH_ELEMENTS])
