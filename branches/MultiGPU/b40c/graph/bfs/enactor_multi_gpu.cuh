@@ -414,10 +414,12 @@ public:
 					// Update queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 
-					printf("Iteration %lld GPU %d partition enqueued %lld\n",
-						(long long) control->iteration - 1,
-						control->gpu,
-						(long long) control->queue_length);
+					if (INSTRUMENT) {
+						printf("Iteration %lld GPU %d partition enqueued %lld\n",
+							(long long) control->iteration - 1,
+							control->gpu,
+							(long long) control->queue_length);
+					}
 
 					// Check if this gpu is not done
 					if (control->queue_length) done = false;
@@ -428,19 +430,18 @@ public:
 						DisplayDeviceResults(
 							slice->frontier_queues.d_keys[control->selector],
 							control->queue_length);
-/*
 						printf("Source distance vector on gpu %d:\n", control->gpu);
 						DisplayDeviceResults(
 							slice->d_source_path,
 							slice->nodes);
-*/
 					}
 				}
 				if (retval) break;
 
 				// Check if all done in all GPUs
 				if (done) break;
-				printf("\n");
+
+				if (INSTRUMENT) printf("\n");
 
 				//---------------------------------------------------------------------
 				// Partition/compact work queues
@@ -535,10 +536,12 @@ public:
 					SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
 
-					printf("Iteration %lld GPU %d partition compacted %lld\n",
-						(long long) control->iteration,
-						control->gpu,
-						(long long) spine[control->spine_elements - 1]);
+					if (INSTRUMENT) {
+						printf("Iteration %lld GPU %d partition compacted %lld\n",
+							(long long) control->iteration,
+							control->gpu,
+							(long long) spine[control->spine_elements - 1]);
+					}
 
 					if (DEBUG2) {
 						printf("Compacted queue on gpu %d (%lld elements):\n",
@@ -547,12 +550,10 @@ public:
 						DisplayDeviceResults(
 							slice->frontier_queues.d_keys[control->selector],
 							spine[control->spine_elements - 1]);
-/*
 						printf("Source distance vector on gpu %d:\n", control->gpu);
 						DisplayDeviceResults(
 							slice->d_source_path,
 							slice->nodes);
-*/
 					}
 				}
 				if (retval) break;
@@ -561,7 +562,7 @@ public:
 				if (done) break;
 
 				if (DEBUG2) printf("---------------------------------------------------------");
-				printf("\n");
+				if (INSTRUMENT) printf("\n");
 
 				//---------------------------------------------------------------------
 				// Expand work queues
