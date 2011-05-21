@@ -468,7 +468,7 @@ cudaError_t TestGpuBfs(
 		if (retval = csr_problem.Reset()) break;
 
 		// Perform BFS
-		CpuTimer gpu_timer;
+		GpuTimer gpu_timer;
 		gpu_timer.Start();
 		if (retval = enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size)) break;
 		gpu_timer.Stop();
