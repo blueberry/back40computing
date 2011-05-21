@@ -376,7 +376,7 @@ public:
 					}
 
 					// Get queue length
-					if (work_progress.GetQueueLength(iteration[0], queue_length)) break;
+					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 				}
 
 			} while (queue_length > 0);
