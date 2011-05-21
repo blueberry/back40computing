@@ -89,7 +89,7 @@ struct KernelPolicy : TuningPolicy
 		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
 
 		// Unroll tiles in batches of X elements per thread (255 is maximum without risking overflow)
-		LOG_UNROLL_COUNT 					= 8 - LOG_TILE_ELEMENTS_PER_THREAD,
+		LOG_UNROLL_COUNT 					= 7 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 

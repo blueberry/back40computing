@@ -240,8 +240,8 @@ struct Cta
 			ProcessFullTile(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
 
-			const int TRIP_MASK = KernelPolicy::UNROLL_COUNT << KernelPolicy::LOG_TILE_ELEMENTS;
-			if (cta_offset & TRIP_MASK == TRIP_MASK) {
+			const SizeT UNROLL_MASK = (KernelPolicy::UNROLL_COUNT - 1) << KernelPolicy::LOG_TILE_ELEMENTS;
+			if ((cta_offset & UNROLL_MASK) == 0) {
 
 				__syncthreads();
 
