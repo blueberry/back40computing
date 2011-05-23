@@ -216,7 +216,7 @@ public:
 				expand_atomic::Kernel<ExpandPolicy>
 					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						src,
-						0,											// num_elements (unused: we obtain this from device-side counters instead)
+						1,											// num_elements (unused if not first iteration: we obtain this from device-side counters instead)
 						iteration,
 						queue_index,
 						queue_index,								// also serves as steal_index
