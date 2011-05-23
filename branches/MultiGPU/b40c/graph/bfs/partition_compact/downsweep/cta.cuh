@@ -76,6 +76,8 @@ struct Cta :
 	// Validity flags
 	ValidFlag 			*&d_flags_in;
 
+	// Number of GPUs to partition the frontier into
+	int num_gpus;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -86,6 +88,7 @@ struct Cta :
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
+		int 			num_gpus,
 		VertexId 		*&d_in,
 		VertexId 		*&d_out,
 		VertexId 		*&d_parent_in,
@@ -103,7 +106,8 @@ struct Cta :
 				d_spine,
 				base_composite_counter,
 				raking_segment),
-			d_flags_in(d_flags_in)
+			d_flags_in(d_flags_in),
+			num_gpus(num_gpus)
 	{}
 };
 

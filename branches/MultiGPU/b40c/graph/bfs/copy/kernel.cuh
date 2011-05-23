@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Upsweep BFS Compaction kernel
+ * Upsweep BFS Copy kernel
  ******************************************************************************/
 
 #pragma once
@@ -29,12 +29,12 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/compact_atomic/cta.cuh>
+#include <b40c/graph/bfs/copy/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace compact_atomic {
+namespace copy {
 
 
 /**
@@ -44,16 +44,11 @@ template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
-		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-		typename KernelPolicy::SmemStorage		&smem_storage)
+		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
 		typedef typename KernelPolicy::SizeT 		SizeT;
@@ -70,15 +65,7 @@ struct SweepPass
 		}
 
 		// CTA processing abstraction
-		Cta cta(
-			queue_index,
-			smem_storage,
-			d_in,
-			d_out,
-			d_parent_in,
-			d_parent_out,
-			d_collision_cache,
-			work_progress);
+		Cta cta(d_in, d_out);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -124,30 +111,17 @@ template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
-		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-		typename KernelPolicy::SmemStorage		&smem_storage)
+		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
 		typedef typename KernelPolicy::SizeT 		SizeT;
 
 		// CTA processing abstraction
-		Cta cta(
-			queue_index,
-			smem_storage,
-			d_in,
-			d_out,
-			d_parent_in,
-			d_parent_out,
-			d_collision_cache,
-			work_progress);
+		Cta cta(d_in, d_out);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -168,32 +142,27 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Sweep Compaction Kernel Entrypoint
+ * Sweep Copy Kernel Entrypoint
  ******************************************************************************/
 
 /**
- * Compaction kernel entry point
+ * Copy kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
 	typename KernelPolicy::SizeT			num_elements,
-	typename KernelPolicy::VertexId			queue_index,
-	typename KernelPolicy::VertexId			steal_index,
-	volatile int							*d_done,
+	typename KernelPolicy::VertexId 		queue_index,
+	typename KernelPolicy::VertexId 		steal_index,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId 		*d_parent_out,
-	typename KernelPolicy::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 
-	// Shared storage for CTA processing
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
+	__shared__ util::CtaWorkDistribution<SizeT> work_decomposition;
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStart();
@@ -207,13 +176,8 @@ void Kernel(
 			num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 		}
 
-		// Signal to host that we're done
-		if (num_elements == 0) {
-			if (d_done) d_done[0] = 1;
-		}
-
 		// Initialize work decomposition in smem
-		smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+		work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 			num_elements, gridDim.x);
 
 		// Reset our next outgoing queue counter to zero
@@ -227,16 +191,17 @@ void Kernel(
 	__syncthreads();
 
 	SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
-		queue_index,
 		steal_index,
 		d_in,
 		d_out,
-		d_parent_in,
-		d_parent_out,
-		d_collision_cache,
 		work_progress,
-		smem_storage.state.work_decomposition,
-		smem_storage);
+		work_decomposition);
+
+	// Enqueue copied amount
+	if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
+		SizeT outgoing_length = work_progress.template LoadQueueLength<SizeT>(queue_index + 1);
+		work_progress.template StoreQueueLength<SizeT>(outgoing_length + num_elements, queue_index + 1);
+	}
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
@@ -245,7 +210,7 @@ void Kernel(
 }
 
 
-} // namespace compact_atomic
+} // namespace copy
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

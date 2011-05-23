@@ -100,7 +100,8 @@ struct Tile
 	 *
 	 * To be overloaded
 	 */
-	__device__ __forceinline__ int DecodeBin(KeyType key);
+	template <typename Cta>
+	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key);
 
 
 	/**
@@ -249,7 +250,7 @@ struct Tile
 			const KeyType COUNTER_BYTE_MASK 	= (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
 			// Decode the bin for this key
-			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(keys[CYCLE][LOAD][VEC]);
+			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(cta, keys[CYCLE][LOAD][VEC]);
 
 			// Decode composite-counter lane and sub-counter from bin
 			int lane = key_bins[CYCLE][LOAD][VEC] >> 2;										// extract composite counter lane
@@ -551,7 +552,7 @@ struct Tile
 		Dispatch *dispatch = (Dispatch*) this;
 
 		KeyType *linear_keys = (KeyType *) keys;
-		int bin = dispatch->DecodeBin(linear_keys[ELEMENT]);
+		int bin = dispatch->DecodeBin(cta, linear_keys[ELEMENT]);
 		scatter_offsets[ELEMENT] = cta->smem_storage.bin_carry[bin] + (KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
 	}
 

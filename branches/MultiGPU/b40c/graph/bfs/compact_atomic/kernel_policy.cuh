@@ -59,6 +59,7 @@ template <
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
+	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -86,6 +87,7 @@ struct KernelPolicy : _ProblemType
 	enum {
 
 		INSTRUMENT						= _INSTRUMENT,
+		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,

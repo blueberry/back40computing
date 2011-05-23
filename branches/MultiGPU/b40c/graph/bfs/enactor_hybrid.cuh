@@ -263,6 +263,7 @@ public:
 						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
 							iteration[0],
 							queue_index,
+							queue_index,												// also serves as steal_index
 							src,
 
 							graph_slice->frontier_queues.d_keys[selector],
@@ -312,7 +313,10 @@ public:
 						// Compaction
 						compact_atomic::Kernel<CompactPolicy>
 							<<<compact_grid_size, CompactPolicy::THREADS>>>(
+								0,														// num_elements (unused: we obtain this from device-side counters instead)
+								(VertexId) iteration[0],
 								queue_index,
+								queue_index,											// also serves as steal_index
 								d_done,
 								graph_slice->frontier_queues.d_keys[selector],
 								graph_slice->frontier_queues.d_keys[selector ^ 1],
@@ -337,10 +341,11 @@ public:
 						expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 								src,
-								0,											// num_elements (unused: we obtain this from device-side counters instead)
+								0,														// num_elements (unused: we obtain this from device-side counters instead)
 								(VertexId) iteration[0],
 								queue_index,
-								1,											// number of GPUs
+								queue_index,											// also serves as steal_index
+								1,														// number of GPUs
 								d_done,
 								graph_slice->frontier_queues.d_keys[selector ^ 1],
 								graph_slice->frontier_queues.d_keys[selector],
@@ -433,7 +438,6 @@ public:
 				INSTRUMENT, 			// INSTRUMENT
 				SATURATION_QUIT, 		// SATURATION_QUIT
 				true, 					// DEQUEUE_PROBLEM_SIZE
-				false,					// ENQUEUE_BY_ITERATION
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
@@ -453,6 +457,7 @@ public:
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
+				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE

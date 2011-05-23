@@ -35,6 +35,9 @@
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
 
+#include <b40c/graph/bfs/compact_atomic/kernel.cuh>
+#include <b40c/graph/bfs/compact_atomic/kernel_policy.cuh>
+
 #include <b40c/graph/bfs/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
 
@@ -43,6 +46,10 @@
 #include <b40c/graph/bfs/partition_compact/upsweep/kernel_policy.cuh>
 #include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
 #include <b40c/graph/bfs/partition_compact/downsweep/kernel_policy.cuh>
+
+#include <b40c/graph/bfs/copy/kernel.cuh>
+#include <b40c/graph/bfs/copy/kernel_policy.cuh>
+
 
 namespace b40c {
 namespace graph {
@@ -90,17 +97,22 @@ protected:
 		util::Spine spine;
 		int spine_elements;
 
+		int compact_grid_size;			// Compaction grid size
 		int expand_grid_size;			// Expansion grid size
-		int partition_grid_size;		// Partition/partition grid size
+		int partition_grid_size;		// Partition/compact grid size
+		int copy_grid_size;				// Copy grid size
 
 		long long iteration;			// BFS iteration
-		int selector;					// Queue selector
-		int queue_index;				// Work stealing/queue index
+		long long queue_index;			// Queuing index
+		long long steal_index;			// Work stealing index
 		long long queue_length;			// Current queue size
+		int selector;					// Ping-pong storage selector
 
 		// Kernel duty stats
-		util::KernelRuntimeStatsLifetime expand_kernel_stats;
 		util::KernelRuntimeStatsLifetime compact_kernel_stats;
+		util::KernelRuntimeStatsLifetime expand_kernel_stats;
+		util::KernelRuntimeStatsLifetime partition_kernel_stats;
+		util::KernelRuntimeStatsLifetime copy_kernel_stats;
 
 
 		//---------------------------------------------------------------------
@@ -116,10 +128,13 @@ protected:
 			cuda_props(gpu),
 			spine(true),				// Host-mapped spine
 			spine_elements(0),
+			compact_grid_size(0),
 			expand_grid_size(0),
 			partition_grid_size(0),
+			copy_grid_size(0),
 			iteration(0),
 			selector(0),
+			steal_index(0),
 			queue_index(0),
 			queue_length(0)
 		{}
@@ -143,27 +158,41 @@ protected:
 		/**
 		 * Setup / lazy initialization
 		 */
-	    template <typename ExpandPolicy, typename PartitionPolicy>
+	    template <
+	    	typename CompactPolicy,
+	    	typename ExpandPolicy,
+	    	typename PartitionPolicy,
+	    	typename CopyPolicy>
 		cudaError_t Setup(int max_grid_size, int num_gpus)
 		{
 	    	cudaError_t retval = cudaSuccess;
 
 			do {
 		    	// Determine grid size(s)
+				int compact_min_occupancy 		= CompactPolicy::CTA_OCCUPANCY;
+				compact_grid_size 				= MaxGridSize(compact_min_occupancy, max_grid_size);
+
 				int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 				expand_grid_size 				= MaxGridSize(expand_min_occupancy, max_grid_size);
 
 				int partition_min_occupancy		= B40C_MIN((int) PartitionPolicy::Upsweep::CTA_OCCUPANCY, (int) PartitionPolicy::Downsweep::CTA_OCCUPANCY);
 				partition_grid_size 			= MaxGridSize(partition_min_occupancy, max_grid_size);
 
+				int copy_min_occupancy			= CopyPolicy::CTA_OCCUPANCY;
+				copy_grid_size 			= MaxGridSize(copy_min_occupancy, max_grid_size);
+
 				// Setup partitioning spine
 				spine_elements = (partition_grid_size * PartitionPolicy::Upsweep::BINS) + 1;
 				if (retval = spine.template Setup<typename PartitionPolicy::SizeT>(spine_elements)) break;
 
+				if (DEBUG) printf("Gpu %d compact  min occupancy %d, grid size %d\n",
+					gpu, compact_min_occupancy, compact_grid_size);
 				if (DEBUG) printf("Gpu %d expand min occupancy %d, grid size %d\n",
 					gpu, expand_min_occupancy, expand_grid_size);
 				if (DEBUG) printf("Gpu %d partition min occupancy %d, grid size %d, spine elements %d\n",
 					gpu, partition_min_occupancy, partition_grid_size, spine_elements);
+				if (DEBUG) printf("Gpu %d copy min occupancy %d, grid size %d\n",
+					gpu, copy_min_occupancy, copy_grid_size);
 
 				// Setup work progress
 				if (retval = work_progress.Setup()) break;
@@ -174,6 +203,7 @@ protected:
 			iteration = 0;
 			selector = 0;
 			queue_index = 0;
+			steal_index = 0;
 			queue_length = 0;
 
 			return retval;
@@ -189,7 +219,7 @@ protected:
 	    cudaError_t UpdateQueueLength()
 	    {
 	    	SizeT length;
-	    	cudaError_t retval = work_progress.GetQueueLength(iteration, length);
+	    	cudaError_t retval = work_progress.GetQueueLength(queue_index, length);
 	    	queue_length = length;
 
 	    	return retval;
@@ -267,8 +297,10 @@ public:
 	 * Search setup / lazy initialization
 	 */
     template <
+    	typename CompactPolicy,
     	typename ExpandPolicy,
     	typename PartitionPolicy,
+    	typename CopyPolicy,
     	typename CsrProblem>
 	cudaError_t Setup(
 		CsrProblem 		&csr_problem,
@@ -302,7 +334,7 @@ public:
 				if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
 					"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-				if (retval = control_blocks[i]->template Setup<ExpandPolicy, PartitionPolicy>(
+				if (retval = control_blocks[i]->template Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
 					max_grid_size, csr_problem.num_gpus)) break;
 			}
 			if (retval) break;
@@ -319,8 +351,10 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
     template <
+    	typename CompactPolicy,
     	typename ExpandPolicy,
     	typename PartitionPolicy,
+    	typename CopyPolicy,
     	bool INSTRUMENT,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
@@ -337,15 +371,19 @@ public:
 		typedef typename PartitionPolicy::Downsweep		PartitionDownsweep;
 
 		cudaError_t retval = cudaSuccess;
+		bool done;
 
 		do {
 
 			// Number of partitioning bins per GPU (in case we over-partition)
-			int bins_per_gpu = PartitionPolicy::Upsweep::BINS / csr_problem.num_gpus;
+			int bins_per_gpu = (csr_problem.num_gpus == 1) ?
+				PartitionPolicy::Upsweep::BINS :
+				1;
 			printf("Partition bins per GPU: %d\n", bins_per_gpu);
 
 			// Search setup / lazy initialization
-			if (retval = Setup<ExpandPolicy, PartitionPolicy>(csr_problem, max_grid_size)) break;
+			if (retval = Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
+				csr_problem, max_grid_size)) break;
 
 
 			//---------------------------------------------------------------------
@@ -369,10 +407,11 @@ public:
 				// Expansion
 				expand_atomic::Kernel<ExpandPolicy>
 						<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
-					(owns_source) ? src : -1,													// source
+					src,
 					(owns_source) ? 1 : 0,														// num_elements
 					control->iteration,
 					control->queue_index,
+					control->steal_index,
 					csr_problem.num_gpus,
 					NULL,																		// d_done (not used)
 					slice->frontier_queues.d_keys[control->selector],							// sorted in
@@ -391,57 +430,12 @@ public:
 				control->selector ^= 1;
 				control->iteration++;
 				control->queue_index++;
+				control->steal_index++;
 			}
 			if (retval) break;
 
 			// BFS passes
 			while (true) {
-
-				//---------------------------------------------------------------------
-				// Synchronization point
-				//---------------------------------------------------------------------
-
-				bool done = true;
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
-
-					GpuControlBlock *control 	= control_blocks[i];
-					GraphSlice *slice 			= csr_problem.graph_slices[i];
-
-					// Set device
-					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
-						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
-
-					// Update queue length
-					if (retval = control->template UpdateQueueLength<SizeT>()) break;
-
-					if (INSTRUMENT) {
-						printf("Iteration %lld GPU %d partition enqueued %lld\n",
-							(long long) control->iteration - 1,
-							control->gpu,
-							(long long) control->queue_length);
-					}
-
-					// Check if this gpu is not done
-					if (control->queue_length) done = false;
-
-					if (DEBUG2) {
-						printf("Expanded queue on gpu %d (%lld elements):\n",
-							control->gpu, (long long) control->queue_length);
-						DisplayDeviceResults(
-							slice->frontier_queues.d_keys[control->selector],
-							control->queue_length);
-						printf("Source distance vector on gpu %d:\n", control->gpu);
-						DisplayDeviceResults(
-							slice->d_source_path,
-							slice->nodes);
-					}
-				}
-				if (retval) break;
-
-				// Check if all done in all GPUs
-				if (done) break;
-
-				if (INSTRUMENT) printf("\n");
 
 				//---------------------------------------------------------------------
 				// Partition/compact work queues
@@ -459,13 +453,14 @@ public:
 					// Upsweep
 					partition_compact::upsweep::Kernel<PartitionUpsweep>
 							<<<control->partition_grid_size, PartitionUpsweep::THREADS, 0, slice->stream>>>(
-						control->iteration,
+						control->queue_index,
+						csr_problem.num_gpus,
 						slice->frontier_queues.d_keys[control->selector],
 						slice->d_keep,
 						(SizeT *) control->spine(),
 						slice->d_collision_cache,
 						control->work_progress,
-						control->compact_kernel_stats);
+						control->partition_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu partition_compact::upsweep::Kernel failed", __FILE__, __LINE__))) break;
@@ -500,7 +495,8 @@ public:
 					// Downsweep
 					partition_compact::downsweep::Kernel<PartitionDownsweep>
 							<<<control->partition_grid_size, PartitionDownsweep::THREADS, 0, slice->stream>>>(
-						control->iteration,
+						control->queue_index,
+						csr_problem.num_gpus,
 						slice->frontier_queues.d_keys[control->selector],						// expanded in
 						slice->frontier_queues.d_keys[control->selector ^ 1],					// partitioned out
 						(VertexId *) slice->frontier_queues.d_values[control->selector],		// expanded parents in
@@ -508,15 +504,15 @@ public:
 						slice->d_keep,
 						(SizeT *) control->spine(),
 						control->work_progress,
-						control->compact_kernel_stats);
+						control->partition_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu DownsweepKernel failed", __FILE__, __LINE__))) break;
 
 					control->selector ^= 1;
+					control->queue_index++;
 				}
 				if (retval) break;
-
 
 				//---------------------------------------------------------------------
 				// Synchronization point (to make spines coherent)
@@ -544,7 +540,8 @@ public:
 					}
 
 					if (DEBUG2) {
-						printf("Compacted queue on gpu %d (%lld elements):\n",
+						printf("Iteration %lld sort-compacted queue on gpu %d (%lld elements):\n",
+							(long long) control->iteration,
 							control->gpu,
 							(long long) spine[control->spine_elements - 1]);
 						DisplayDeviceResults(
@@ -564,8 +561,9 @@ public:
 				if (DEBUG2) printf("---------------------------------------------------------");
 				if (INSTRUMENT) printf("\n");
 
+
 				//---------------------------------------------------------------------
-				// Expand work queues
+				// Stream-compact work queues
 				//---------------------------------------------------------------------
 
 				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
@@ -580,7 +578,7 @@ public:
 					// Stream in and expand inputs from all gpus (including ourselves)
 					for (volatile int j = 0; j < csr_problem.num_gpus; j++) {
 
-						int peer 							= j % csr_problem.num_gpus;
+						int peer 							= (i + j) % csr_problem.num_gpus;
 						GpuControlBlock *peer_control 		= control_blocks[peer];
 						GraphSlice *peer_slice 				= csr_problem.graph_slices[peer];
 						SizeT *peer_spine 					= (SizeT*) peer_control->spine.h_spine;
@@ -602,32 +600,143 @@ public:
 							fflush(stdout);
 						}
 
-						expand_atomic::Kernel<ExpandPolicy>
-								<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
-							-1,							// source (not used)
-							num_elements,
-							control->iteration,
-							control->queue_index,
-							csr_problem.num_gpus,
-							NULL,						// d_done (not used)
-							peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,
-							slice->frontier_queues.d_keys[control->selector ^ 1],
-							(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,
-							(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],
-							slice->d_column_indices,
-							slice->d_row_offsets,
-							slice->d_source_path,
-							control->work_progress,
-							control->expand_kernel_stats);
+						if (slice->gpu == peer_slice->gpu) {
 
-						if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
-							"EnactorMultiGpu expand_atomic::Kernel failed", __FILE__, __LINE__))) break;
+							util::CtaWorkDistribution<SizeT> work_decomposition;
+							work_decomposition.template Init<CopyPolicy::LOG_SCHEDULE_GRANULARITY>(
+								num_elements, control->copy_grid_size);
 
-						control->queue_index++;
+							// Simply copy
+							copy::Kernel<CopyPolicy>
+								<<<control->copy_grid_size, CopyPolicy::THREADS, 0, slice->stream>>>(
+									num_elements,
+									control->queue_index,
+									control->steal_index,
+									peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,
+									slice->frontier_queues.d_keys[control->selector ^ 1],
+									control->work_progress,
+									control->copy_kernel_stats);
+
+							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
+								"EnactorMultiGpu copy::Kernel failed ", __FILE__, __LINE__))) break;
+
+						} else {
+
+							// Compaction
+							compact_atomic::Kernel<CompactPolicy>
+								<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
+									num_elements,
+									control->queue_index,
+									control->steal_index,
+									NULL,						// d_done (not used)
+									peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,
+									slice->frontier_queues.d_keys[control->selector ^ 1],
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,
+									(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],
+									slice->d_collision_cache,
+									control->work_progress,
+									control->expand_kernel_stats);
+
+							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
+								"EnactorMultiGpu compact_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+						}
+						control->steal_index++;
 					}
 
 					control->selector ^= 1;
+					control->queue_index++;
+				}
+				if (retval) break;
+
+
+				//---------------------------------------------------------------------
+				// Synchronization point
+				//---------------------------------------------------------------------
+
+				done = true;
+				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+
+					GpuControlBlock *control 	= control_blocks[i];
+					GraphSlice *slice 			= csr_problem.graph_slices[i];
+
+					// Set device
+					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
+						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
+
+					// Update queue length
+					if (retval = control->template UpdateQueueLength<SizeT>()) break;
+
+					if (INSTRUMENT) {
+						printf("Iteration %lld GPU %d partition enqueued %lld\n",
+							(long long) control->iteration - 1,
+							control->gpu,
+							(long long) control->queue_length);
+					}
+
+					// Check if this gpu is not done
+					if (control->queue_length) done = false;
+
+					if (DEBUG2) {
+						printf("Iteration %lld stream-compacted queue on gpu %d (%lld elements):\n",
+							(long long) control->iteration,
+							control->gpu, (long long) control->queue_length);
+						DisplayDeviceResults(
+							slice->frontier_queues.d_keys[control->selector],
+							control->queue_length);
+						printf("Source distance vector on gpu %d:\n", control->gpu);
+						DisplayDeviceResults(
+							slice->d_source_path,
+							slice->nodes);
+					}
+				}
+				if (retval) break;
+
+				// Check if all done in all GPUs
+				if (done) break;
+
+				if (INSTRUMENT) printf("\n");
+
+
+				//---------------------------------------------------------------------
+				// Expand work queues
+				//---------------------------------------------------------------------
+
+				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+
+					GpuControlBlock *control 	= control_blocks[i];
+					GraphSlice *slice 			= csr_problem.graph_slices[i];
+
+					// Set device
+					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
+						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
+
+					expand_atomic::Kernel<ExpandPolicy>
+							<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
+						-1,														// source (not used)
+						0,														// num_elements (unused: we obtain this from device-side counters instead)
+						control->iteration,
+						control->queue_index,
+						control->steal_index,
+						csr_problem.num_gpus,
+						NULL,													// d_done (not used)
+						slice->frontier_queues.d_keys[control->selector],
+						slice->frontier_queues.d_keys[control->selector ^ 1],
+						slice->frontier_queues.d_values[control->selector],
+						slice->frontier_queues.d_values[control->selector ^ 1],
+						slice->d_column_indices,
+						slice->d_row_offsets,
+						slice->d_source_path,
+						control->work_progress,
+						control->expand_kernel_stats);
+
+					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
+						"EnactorMultiGpu expand_atomic::Kernel failed", __FILE__, __LINE__))) break;
+
+					control->selector ^= 1;
 					control->iteration++;
+					control->queue_index++;
+					control->steal_index++;
 				}
 				if (retval) break;
 			}
@@ -649,7 +758,10 @@ public:
 		typename CsrProblem::VertexId 		src,
 		int 								max_grid_size = 0)
 	{
-    	// Maximum two GPUs
+		typedef typename CsrProblem::VertexId			VertexId;
+		typedef typename CsrProblem::SizeT				SizeT;
+
+		// Maximum two GPUs (mooch)
     	static const int LOG_MAX_GPUS = 1;
 
     	// Enforce power-of-two gpus
@@ -660,14 +772,29 @@ public:
 
 		if (this->cuda_props.device_sm_version >= 200) {
 
+			// Compaction kernel config
+			typedef compact_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				INSTRUMENT, 			// INSTRUMENT
+				false, 					// DEQUEUE_PROBLEM_SIZE
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				2,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				9> CompactPolicy;		// LOG_SCHEDULE_GRANULARITY
+
 			// Expansion kernel config
 			typedef expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
-				false, 					// DEQUEUE_PROBLEM_SIZE
-				true,					// ENQUEUE_BY_ITERATION
+				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
@@ -711,7 +838,22 @@ public:
 				0,						// DOWNSWEEP_LOG_CYCLES_PER_TILE
 				6> PartitionPolicy;		// DOWNSWEEP_LOG_RAKING_THREADS
 
-			return EnactSearch<ExpandPolicy, PartitionPolicy, INSTRUMENT>(
+			// Copy kernel config
+			typedef copy::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				INSTRUMENT, 			// INSTRUMENT
+				false, 					// DEQUEUE_PROBLEM_SIZE
+				8,						// CTA_OCCUPANCY
+				6,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				6> CopyPolicy;			// LOG_SCHEDULE_GRANULARITY
+
+			return EnactSearch<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
 
 		} else {

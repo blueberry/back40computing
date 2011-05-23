@@ -614,11 +614,9 @@ struct Cta
 		// Use a single atomic add to reserve room in the queue
 		if (threadIdx.x == 0) {
 
-			VertexId index = (KernelPolicy::ENQUEUE_BY_ITERATION) ? iteration : queue_index;
-
 			coarse_enqueue_offset = work_progress.Enqueue(
 				coarse_count + tile.fine_count,
-				index + 1);
+				queue_index + 1);
 
 			fine_enqueue_offset = coarse_enqueue_offset + coarse_count;
 		}

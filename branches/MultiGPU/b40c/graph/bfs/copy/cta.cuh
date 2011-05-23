@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,41 +22,32 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Cta tile-processing functionality for copy kernels
+ * Tile-processing functionality for BFS copy kernels
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/io/modified_store.cuh>
-#include <b40c/util/io/load_tile.cuh>
-#include <b40c/util/io/store_tile.cuh>
+#include <b40c/copy/cta.cuh>
 
 namespace b40c {
+namespace graph {
+namespace bfs {
 namespace copy {
 
 
 /**
- * Derivation of KernelPolicy that encapsulates tile-processing
- * routines
+ * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
 template <typename KernelPolicy>
-struct Cta : KernelPolicy
+struct Cta :
+	b40c::copy::Cta<KernelPolicy>
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T T;
-	typedef typename KernelPolicy::SizeT SizeT;
-
-	//---------------------------------------------------------------------
-	// Members
-	//---------------------------------------------------------------------
-
-	// Input and output device pointers
-	T* d_in;
-	T* d_out;
+	typedef typename KernelPolicy::VertexId 		VertexId;
+	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -66,44 +57,18 @@ struct Cta : KernelPolicy
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		T *d_in,
-		T *d_out) :
-			d_in(d_in),
-			d_out(d_out) {}
-
-
-	/**
-	 * Process a single tile
-	 *
-	 * Each thread copies only the strided values it loads.
-	 */
-	__device__ __forceinline__ void ProcessTile(
-		SizeT cta_offset,
-		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
-	{
-		// Tile of elements
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-
-		// Load tile
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(data, d_in + cta_offset, guarded_elements);
-
-		__syncthreads();
-
-		// Store tile
-		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(data, d_out + cta_offset, guarded_elements);
-	}
+		VertexId 				*d_in,
+		VertexId 				*d_out) :
+			b40c::copy::Cta<KernelPolicy> (
+				d_in,
+				d_out)
+	{}
 };
 
 
 
 } // namespace copy
+} // namespace bfs
+} // namespace graph
 } // namespace b40c
 

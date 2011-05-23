@@ -47,6 +47,7 @@ struct SweepPass
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -105,17 +106,17 @@ struct SweepPass
 };
 
 
-template <typename SizeT, typename QueueIndex>
+template <typename SizeT, typename StealIndex>
 __device__ __forceinline__ SizeT StealWork(
 	util::CtaWorkProgress &work_progress,
 	int count,
-	QueueIndex queue_index)
+	StealIndex steal_index)
 {
 	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
 
 	// Thread zero atomically steals work from the progress counter
 	if (threadIdx.x == 0) {
-		s_offset = work_progress.Steal<SizeT>(count, queue_index);
+		s_offset = work_progress.Steal<SizeT>(count, steal_index);
 	}
 
 	__syncthreads();		// Protect offset
@@ -135,6 +136,7 @@ struct SweepPass <KernelPolicy, true>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -170,7 +172,7 @@ struct SweepPass <KernelPolicy, true>
 
 		// Worksteal full tiles, if any
 		SizeT offset;
-		while ((offset = StealWork<SizeT>(work_progress, KernelPolicy::TILE_ELEMENTS, queue_index)) < unguarded_elements) {
+		while ((offset = StealWork<SizeT>(work_progress, KernelPolicy::TILE_ELEMENTS, steal_index)) < unguarded_elements) {
 			cta.ProcessTile(offset);
 		}
 
@@ -196,6 +198,7 @@ __global__
 void Kernel(
 	typename KernelPolicy::VertexId			iteration,
 	typename KernelPolicy::VertexId			queue_index,
+	typename KernelPolicy::VertexId			steal_index,
 	typename KernelPolicy::VertexId 		src,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
@@ -268,7 +271,7 @@ void Kernel(
 			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
 
 		}
 	}
@@ -282,6 +285,7 @@ void Kernel(
 	SweepPass<KernelPolicy, false>::Invoke(
 		iteration,
 		queue_index,
+		steal_index,
 		d_in,
 		d_out,
 		d_parent_in,
@@ -296,6 +300,7 @@ void Kernel(
 
 	iteration++;
 	queue_index++;
+	steal_index++;
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();
@@ -330,7 +335,7 @@ void Kernel(
 			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
 
 		}
 
@@ -346,6 +351,7 @@ void Kernel(
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
+			steal_index,
 			d_out,
 			d_in,
 			d_parent_out,
@@ -360,6 +366,7 @@ void Kernel(
 
 		iteration++;
 		queue_index++;
+		steal_index++;
 
 		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStop();
@@ -392,7 +399,7 @@ void Kernel(
 			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
 		}
 
 		// Barrier to protect work decomposition
@@ -408,6 +415,7 @@ void Kernel(
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
+			steal_index,
 			d_in,
 			d_out,
 			d_parent_in,

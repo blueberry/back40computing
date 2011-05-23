@@ -78,6 +78,9 @@ struct Cta :
 	volatile VertexId 		(*vid_hashtable)[SmemStorage::WARP_HASH_ELEMENTS];
 	volatile VertexId		*history;
 
+	// Number of GPUs to partition the frontier into
+	int num_gpus;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -88,6 +91,7 @@ struct Cta :
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
+		int 			num_gpus,
 		VertexId 		*d_in,
 		ValidFlag		*d_flags_out,
 		SizeT 			*d_spine,
@@ -99,7 +103,8 @@ struct Cta :
 			d_flags_out(d_flags_out),
 			d_collision_cache(d_collision_cache),
 			vid_hashtable(smem_storage.vid_hashtable),
-			history(smem_storage.history)
+			history(smem_storage.history),
+			num_gpus(num_gpus)
 	{
 		// Initialize history filter
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {

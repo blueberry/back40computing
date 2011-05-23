@@ -45,6 +45,7 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
+	int												&num_gpus,
 	typename KernelPolicy::VertexId 				*&d_in,
 	typename KernelPolicy::ValidFlag				*&d_out_flag,
 	typename KernelPolicy::SizeT 					*&d_spine,
@@ -63,6 +64,7 @@ __device__ __forceinline__ void UpsweepPass(
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
+		num_gpus,
 		d_in,
 		d_out_flag,
 		d_spine,
@@ -84,6 +86,7 @@ __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
 	typename KernelPolicy::VertexId			queue_index,
+	int 									num_gpus,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::ValidFlag		*d_out_flag,
 	typename KernelPolicy::SizeT			*d_spine,
@@ -116,6 +119,7 @@ void Kernel(
 	__syncthreads();
 
 	UpsweepPass<KernelPolicy>(
+		num_gpus,
 		d_in,
 		d_out_flag,
 		d_spine,

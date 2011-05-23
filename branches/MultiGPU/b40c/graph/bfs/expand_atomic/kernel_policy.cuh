@@ -61,7 +61,6 @@ template <
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
 	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
 	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
-	bool _ENQUEUE_BY_ITERATION,			// Whether to use BFS iteration to index into enqueue counter (true) or queue_index (false)
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -96,7 +95,6 @@ struct KernelPolicy : _ProblemType
 		INSTRUMENT						= _INSTRUMENT,
 		SATURATION_QUIT					= _SATURATION_QUIT,
 		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
-		ENQUEUE_BY_ITERATION			= _ENQUEUE_BY_ITERATION,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,

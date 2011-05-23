@@ -46,6 +46,7 @@ struct SweepPass
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		typename KernelPolicy::VertexId 		&steal_index,
 		int								 		&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
@@ -104,17 +105,17 @@ struct SweepPass
 };
 
 
-template <typename SizeT, typename QueueIndex>
+template <typename SizeT, typename StealIndex>
 __device__ __forceinline__ SizeT StealWork(
 	util::CtaWorkProgress &work_progress,
 	int count,
-	QueueIndex queue_index)
+	StealIndex steal_index)
 {
 	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
 
 	// Thread zero atomically steals work from the progress counter
 	if (threadIdx.x == 0) {
-		s_offset = work_progress.Steal<SizeT>(count, queue_index);
+		s_offset = work_progress.Steal<SizeT>(count, steal_index);
 	}
 
 	__syncthreads();		// Protect offset
@@ -134,6 +135,7 @@ struct SweepPass <KernelPolicy, true>
 	static __device__ __forceinline__ void Invoke(
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
+		typename KernelPolicy::VertexId 		&steal_index,
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
@@ -169,7 +171,7 @@ struct SweepPass <KernelPolicy, true>
 
 		// Worksteal full tiles, if any
 		SizeT offset;
-		while ((offset = StealWork<SizeT>(work_progress, KernelPolicy::TILE_ELEMENTS, queue_index)) < unguarded_elements) {
+		while ((offset = StealWork<SizeT>(work_progress, KernelPolicy::TILE_ELEMENTS, steal_index)) < unguarded_elements) {
 			cta.ProcessTile(offset);
 		}
 
@@ -197,6 +199,7 @@ void Kernel(
 	typename KernelPolicy::SizeT			num_elements,
 	typename KernelPolicy::VertexId 		iteration,
 	typename KernelPolicy::VertexId 		queue_index,
+	typename KernelPolicy::VertexId 		steal_index,
 	int										num_gpus,
 	volatile int 							*d_done,
 	typename KernelPolicy::VertexId 		*d_in,
@@ -228,18 +231,20 @@ void Kernel(
 			// Determine work decomposition for first iteration
 			if (threadIdx.x == 0) {
 
-				// We'll be the only block with active work this iteration.
-				// Enqueue the source for us to subsequently process.
-				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+				if (num_elements) {
 
-				if (KernelPolicy::MARK_PARENTS) {
-					// Enqueue parent of source
-					typename KernelPolicy::VertexId parent = -2;
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+					// We'll be the only block with active work this iteration.
+					// Enqueue the source for us to subsequently process.
+					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+
+					if (KernelPolicy::MARK_PARENTS) {
+						// Enqueue parent of source
+						typename KernelPolicy::VertexId parent = -2;
+						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+					}
 				}
 
 				// Initialize work decomposition in smem
-				if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) num_elements = 1;
 				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
@@ -254,6 +259,7 @@ void Kernel(
 		SweepPass<KernelPolicy, false>::Invoke(
 			iteration,
 			queue_index,
+			steal_index,
 			num_gpus,
 			d_in,
 			d_out,
@@ -273,11 +279,7 @@ void Kernel(
 
 			// Obtain problem size
 			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
-				if (KernelPolicy::ENQUEUE_BY_ITERATION) {
-					num_elements = work_progress.template LoadQueueLength<SizeT>(iteration);
-				} else {
-					num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
-				}
+				num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 			}
 
 			// Signal to host that we're done
@@ -292,14 +294,10 @@ void Kernel(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
-			if (KernelPolicy::ENQUEUE_BY_ITERATION) {
-				work_progress.template StoreQueueLength<SizeT>(0, iteration + 2);
-			} else {
-				work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
-			}
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
 
 			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(queue_index + 1);
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
 
 		}
 
@@ -309,6 +307,7 @@ void Kernel(
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
+			steal_index,
 			num_gpus,
 			d_in,
 			d_out,

@@ -191,8 +191,9 @@ public:
 			// Initiate single-grid kernel
 			compact_expand_atomic::Kernel<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(
-				0,
-				0,
+				0,												// iteration
+				0,												// queue_index
+				0,												// steal_index
 				src,
 
 				graph_slice->frontier_queues.d_keys[0],

@@ -277,7 +277,8 @@ struct Tile :
 	/**
 	 * Returns the bin into which the specified key (vertex-id) is to be placed
 	 */
-	__device__ __forceinline__ int DecodeBin(KeyType key)
+	template <typename Cta>
+	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key)
 	{
 		int bin;
 		radix_sort::ExtractKeyBits<

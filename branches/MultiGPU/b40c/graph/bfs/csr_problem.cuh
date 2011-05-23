@@ -92,6 +92,8 @@ struct CsrProblem
 
 		// Frontier queues (keys track work, values optionally track parents)
 		util::PingPongStorage<VertexId, VertexId> frontier_queues;
+		SizeT expand_queue_elements;
+		SizeT compact_queue_elements;
 
 		// Vector of valid flags for elements in the frontier queue
 		ValidFlag 		*d_keep;
@@ -113,6 +115,8 @@ struct CsrProblem
 			d_source_path(NULL),
 			d_collision_cache(NULL),
 			d_keep(NULL),
+			expand_queue_elements(0),
+			compact_queue_elements(0),
 			nodes(0),
 			edges(0),
 			stream(stream)
@@ -154,6 +158,7 @@ struct CsrProblem
 
 	// Maximum size factor (in terms of total edges) of the queues
 	double 						queue_sizing;
+	bool 						uneven;
 
 	// Size of the graph
 	SizeT 						nodes;
@@ -174,7 +179,8 @@ struct CsrProblem
 		num_gpus(0),
 		queue_sizing(DEFAULT_QUEUE_SIZING),
 		nodes(0),
-		edges(0)
+		edges(0),
+		uneven(false)
 	{}
 
 
@@ -300,12 +306,15 @@ struct CsrProblem
 		VertexId 	*h_column_indices,
 		SizeT 		*h_row_offsets,
 		double 		queue_sizing,
+		bool 		uneven,
 		int 		num_gpus)
 	{
 		cudaError_t retval 				= cudaSuccess;
 		this->nodes						= nodes;
 		this->edges 					= edges;
 		this->num_gpus 					= num_gpus;
+		this->uneven					= uneven;
+//		this->uneven					= uneven || (num_gpus > 1);		// mooch
 
 		this->queue_sizing = (queue_sizing <= 0.0) ?
 			DEFAULT_QUEUE_SIZING :
@@ -517,30 +526,30 @@ struct CsrProblem
 			}
 
 			// Allocate queues if necessary
-			SizeT expand_queue_elements = double(graph_slices[i]->edges) * queue_sizing;
-			SizeT compact_queue_elements = (num_gpus > 1) ?
+			graph_slices[i]->expand_queue_elements = double(graph_slices[i]->edges) * queue_sizing;
+			graph_slices[i]->compact_queue_elements = (uneven) ?
 				double(graph_slices[i]->nodes) * 2 :			// For multi-gpu, we have a clear expand/compact queue where the compact queue can be O(nodes)
-				expand_queue_elements;
+				graph_slices[i]->expand_queue_elements;
 
 			if (!graph_slices[i]->frontier_queues.d_keys[0]) {
 
 				printf("GPU %d queue sizes:\n\t compact %lld elements (%lld bytes)\n\t expand %lld elements (%lld bytes)\n\n",
 					graph_slices[i]->gpu,
-					(unsigned long long) compact_queue_elements,
-					(unsigned long long) compact_queue_elements * sizeof(VertexId),
-					(unsigned long long) expand_queue_elements,
-					(unsigned long long) expand_queue_elements * sizeof(VertexId));
+					(unsigned long long) graph_slices[i]->compact_queue_elements,
+					(unsigned long long) graph_slices[i]->compact_queue_elements * sizeof(VertexId),
+					(unsigned long long) graph_slices[i]->expand_queue_elements,
+					(unsigned long long) graph_slices[i]->expand_queue_elements * sizeof(VertexId));
 				fflush(stdout);
 
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->frontier_queues.d_keys[0],
-						compact_queue_elements * sizeof(VertexId)),
+						graph_slices[i]->compact_queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[0] failed", __FILE__, __LINE__)) break;
 			}
 			if (!graph_slices[i]->frontier_queues.d_keys[1]) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->frontier_queues.d_keys[1],
-						expand_queue_elements * sizeof(VertexId)),
+						graph_slices[i]->expand_queue_elements * sizeof(VertexId)),
 					"CsrProblem cudaMalloc frontier_queues.d_keys[1] failed", __FILE__, __LINE__)) break;
 			}
 
@@ -549,13 +558,13 @@ struct CsrProblem
 				if (!graph_slices[i]->frontier_queues.d_values[0]) {
 					if (retval = util::B40CPerror(
 							cudaMalloc((void**) &graph_slices[i]->frontier_queues.d_values[0],
-							compact_queue_elements * sizeof(VertexId)),
+							graph_slices[i]->compact_queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[0] failed", __FILE__, __LINE__)) break;
 				}
 				if (!graph_slices[i]->frontier_queues.d_values[1]) {
 					if (retval = util::B40CPerror(cudaMalloc(
 							(void**) &graph_slices[i]->frontier_queues.d_values[1],
-							expand_queue_elements * sizeof(VertexId)),
+							graph_slices[i]->expand_queue_elements * sizeof(VertexId)),
 						"CsrProblem cudaMalloc frontier_queues.d_values[1] failed", __FILE__, __LINE__)) break;
 				}
 			}
@@ -564,7 +573,7 @@ struct CsrProblem
 			if (!graph_slices[i]->d_keep) {
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->d_keep,
-						expand_queue_elements * sizeof(ValidFlag)),
+						graph_slices[i]->expand_queue_elements * sizeof(ValidFlag)),
 					"CsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
 
@@ -606,7 +615,7 @@ struct CsrProblem
 
 // Whether to mark parents vs mark distance-from-source
 template <typename VertexId, typename SizeT, bool MARK_PARENTS>
-const float CsrProblem<VertexId, SizeT, MARK_PARENTS>::DEFAULT_QUEUE_SIZING = 1.25;
+const float CsrProblem<VertexId, SizeT, MARK_PARENTS>::DEFAULT_QUEUE_SIZING = 1.15;
 
 
 } // namespace bfs

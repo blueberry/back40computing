@@ -47,7 +47,8 @@ namespace downsweep {
  */
 template <typename KernelPolicy, typename SmemStorage>
 __device__ __forceinline__ void DownsweepPass(
-	int 										&queue_index,
+	typename KernelPolicy::VertexId 			&queue_index,
+	int											&num_gpus,
 	typename KernelPolicy::VertexId 			*&d_in,
 	typename KernelPolicy::VertexId 			*&d_out,
 	typename KernelPolicy::VertexId 			*&d_parent_in,
@@ -80,6 +81,7 @@ __device__ __forceinline__ void DownsweepPass(
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
+		num_gpus,
 		d_in,
 		d_out,
 		d_parent_in,
@@ -112,6 +114,7 @@ __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
 	typename KernelPolicy::VertexId			queue_index,
+	int										num_gpus,
 	typename KernelPolicy::VertexId 		* d_in,
 	typename KernelPolicy::VertexId 		* d_out,
 	typename KernelPolicy::VertexId 		* d_parent_in,
@@ -173,6 +176,7 @@ void Kernel(
 
 	DownsweepPass<KernelPolicy>(
 		queue_index,
+		num_gpus,
 		d_in,
 		d_out,
 		d_parent_in,

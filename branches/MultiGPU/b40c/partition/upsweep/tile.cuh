@@ -73,7 +73,8 @@ struct Tile
 	/**
 	 * Returns the bin into which the specified key is to be placed
 	 */
-	__device__ __forceinline__ int DecodeBin(KeyType key);
+	template <typename Cta>
+	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key);
 
 
 	/**
@@ -122,7 +123,7 @@ struct Tile
 				const KeyType COUNTER_BYTE_MASK = (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
 				// Decode the bin for this key
-				int bin = tile->DecodeBin(tile->keys[LOAD][VEC]);
+				int bin = tile->DecodeBin(cta, tile->keys[LOAD][VEC]);
 
 				// Decode composite-counter lane and sub-counter from bin
 				int lane = bin >> 2;										// extract composite counter lane

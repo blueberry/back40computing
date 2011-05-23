@@ -48,7 +48,7 @@ namespace compact_atomic {
 /**
  * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
-template <typename KernelPolicy, typename SmemStorage>
+template <typename KernelPolicy>
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -61,6 +61,7 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::ThreadId			ThreadId;
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
+	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members

@@ -66,6 +66,7 @@ bool g_verbose;
 bool g_verbose2;
 bool g_undirected;
 bool g_quick;			// Whether or not to perform CPU traversal as reference
+bool g_uneven;
 
 
 /******************************************************************************
@@ -415,7 +416,7 @@ void DisplayStats(
 		printf("\n");
 
 		// Display the aggregate sample statistics
-		printf("\tSummary after %d test iterations (bias-corrected):\n", stats.rate.count + 1); 
+		printf("\tSummary after %lld test iterations (bias-corrected):\n", (long long) stats.rate.count + 1);
 
 		double search_depth_stddev = sqrt(stats.search_depth.Update((double) search_depth));
 		if (search_depth > 0) printf(			"\t\t[Search depth]:           u: %.1f, s: %.1f, cv: %.4f\n",
@@ -612,6 +613,7 @@ void RunTests(
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
 		queue_sizing,
+		g_uneven,
 		num_gpus))
 	{
 		exit(1);
@@ -647,20 +649,23 @@ void RunTests(
 			fflush(stdout);
 		}
 
+/*
 		if (num_gpus == 1) {
+			if (!csr_problem.uneven) {
 
-			// Perform one-phase out-of-core BFS implementation (single grid launch)
-			if (TestGpuBfs<INSTRUMENT>(
-				one_phase_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
-				csr_graph,
-				stats[1],
-				max_grid_size)) exit(1);
-			printf("\n");
-			fflush(stdout);
+				// Perform one-phase out-of-core BFS implementation (single grid launch)
+				if (TestGpuBfs<INSTRUMENT>(
+					one_phase_enactor,
+					csr_problem,
+					src,
+					h_source_path,
+					(g_quick) ? (VertexId*) NULL : reference_source_dist,
+					csr_graph,
+					stats[1],
+					max_grid_size)) exit(1);
+				printf("\n");
+				fflush(stdout);
+			}
 
 			// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
@@ -675,20 +680,23 @@ void RunTests(
 			printf("\n");
 			fflush(stdout);
 
-			// Perform hybrid-phase out-of-core BFS implementation
-			if (TestGpuBfs<INSTRUMENT>(
-				hybrid_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
-				csr_graph,
-				stats[3],
-				max_grid_size)) exit(1);
-			printf("\n");
-			fflush(stdout);
-		}
+			if (!csr_problem.uneven) {
 
+				// Perform hybrid-phase out-of-core BFS implementation
+				if (TestGpuBfs<INSTRUMENT>(
+					hybrid_enactor,
+					csr_problem,
+					src,
+					h_source_path,
+					(g_quick) ? (VertexId*) NULL : reference_source_dist,
+					csr_graph,
+					stats[3],
+					max_grid_size)) exit(1);
+				printf("\n");
+				fflush(stdout);
+			}
+		}
+*/
 		// Perform multi-GPU out-of-core BFS implementation
 		if (TestGpuBfs<INSTRUMENT>(
 			multi_gpu_enactor,
@@ -701,7 +709,6 @@ void RunTests(
 			max_grid_size)) exit(1);
 		printf("\n");
 		fflush(stdout);
-
 
 		if (g_verbose2) {
 			printf("Reference solution: ");
@@ -786,6 +793,7 @@ int main( int argc, char** argv)
 	g_quick = args.CheckCmdLineFlag("quick");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
 	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
+	g_uneven = args.CheckCmdLineFlag("uneven");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("num-gpus", num_gpus);
