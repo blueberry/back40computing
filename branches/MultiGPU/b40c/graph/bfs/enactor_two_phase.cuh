@@ -251,7 +251,6 @@ public:
 				compact_atomic::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
 						0,											// num_elements (unused: we obtain this from device-side counters instead)
-						iteration,
 						queue_index,
 						queue_index,								// also serves as steal_index
 						d_done,
