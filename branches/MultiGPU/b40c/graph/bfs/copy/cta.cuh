@@ -27,7 +27,10 @@
 
 #pragma once
 
-#include <b40c/copy/cta.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/store_tile.cuh>
 
 namespace b40c {
 namespace graph {
@@ -39,8 +42,7 @@ namespace copy {
  * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
 template <typename KernelPolicy>
-struct Cta :
-	b40c::copy::Cta<KernelPolicy>
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -48,6 +50,16 @@ struct Cta :
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+
+	// Input and output device pointers
+	VertexId* d_in;
+	VertexId* d_out;
+	VertexId* d_parent_in;
+	VertexId* d_parent_out;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -58,14 +70,68 @@ struct Cta :
 	 */
 	__device__ __forceinline__ Cta(
 		VertexId 				*d_in,
-		VertexId 				*d_out) :
-			b40c::copy::Cta<KernelPolicy> (
-				d_in,
-				d_out)
+		VertexId 				*d_out,
+		VertexId 				*d_parent_in,
+		VertexId 				*d_parent_out) :
+			d_in(d_in),
+			d_out(d_out),
+			d_parent_in(d_parent_in),
+			d_parent_out(d_parent_out)
 	{}
+
+
+	/**
+	 * Process a single tile
+	 *
+	 * Each thread copies only the strided values it loads.
+	 */
+	__device__ __forceinline__ void ProcessTile(
+		SizeT cta_offset,
+		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
+	{
+		// Tile of elements
+		VertexId data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+
+		// Load tile of vertices
+		util::io::LoadTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
+				data, d_in + cta_offset, guarded_elements);
+
+		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
+
+		// Store tile of vertices
+		util::io::StoreTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Store(
+				data, d_out + cta_offset, guarded_elements);
+
+		if (KernelPolicy::MARK_PARENTS) {
+
+			// Load tile of parents
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::LoadValid(
+					data, d_parent_in + cta_offset, guarded_elements);
+
+			if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
+
+			// Store tile of parents
+			util::io::StoreTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Store(
+					data, d_parent_out + cta_offset, guarded_elements);
+		}
+	}
 };
-
-
 
 } // namespace copy
 } // namespace bfs

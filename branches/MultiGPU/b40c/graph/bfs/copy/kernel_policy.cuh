@@ -25,7 +25,9 @@
 
 #pragma once
 
-#include <b40c/copy/policy.cuh>
+#include <b40c/util/basic_utils.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
 namespace graph {
@@ -55,36 +57,59 @@ template <
 	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
-	int MAX_CTA_OCCUPANCY,
-	int LOG_THREADS,
-	int LOG_LOAD_VEC_SIZE,
-	int LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
-	bool WORK_STEALING,
-	int LOG_SCHEDULE_GRANULARITY>
+	int _LOG_SCHEDULE_GRANULARITY,
+	int _MAX_CTA_OCCUPANCY,
+	int _LOG_THREADS,
+	int _LOG_LOAD_VEC_SIZE,
+	int _LOG_LOADS_PER_TILE,
+	util::io::ld::CacheModifier _READ_MODIFIER,
+	util::io::st::CacheModifier _WRITE_MODIFIER,
+	bool _WORK_STEALING>
 
-struct KernelPolicy :
-	b40c::copy::Policy<
-		typename ProblemType::VertexId,			// T
-		typename ProblemType::SizeT,			// SizeT
-		CUDA_ARCH,
-		LOG_SCHEDULE_GRANULARITY,
-		MAX_CTA_OCCUPANCY,
-		LOG_THREADS,
-		LOG_LOAD_VEC_SIZE,
-		LOG_LOADS_PER_TILE,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		WORK_STEALING,
-		false>									// OVERSUBSCRIBED_GRID_SIZE
+struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::VertexId VertexId;
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
 
+	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 	enum {
+
+		LOG_THREADS 					= _LOG_THREADS,
+		THREADS							= 1 << LOG_THREADS,
+
+		LOG_LOAD_VEC_SIZE  				= _LOG_LOAD_VEC_SIZE,
+		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
+
+		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
+		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
+
+		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
+		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
+
+		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		WARPS							= 1 << LOG_WARPS,
+
+		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+
+		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY)),
+
+		WORK_STEALING				 	= _WORK_STEALING,
+
 		INSTRUMENT						= _INSTRUMENT,
 		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
+
+		VALID 							= (CTA_OCCUPANCY > 0),
 	};
 };
 

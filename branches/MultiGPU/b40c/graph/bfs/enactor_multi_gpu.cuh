@@ -616,6 +616,8 @@ public:
 									control->steal_index,
 									peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,
 									slice->frontier_queues.d_keys[control->selector ^ 1],
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,
+									(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],
 									control->work_progress,
 									control->copy_kernel_stats);
 
@@ -847,14 +849,14 @@ public:
 				200,
 				INSTRUMENT, 			// INSTRUMENT
 				false, 					// DEQUEUE_PROBLEM_SIZE
+				6,						// LOG_SCHEDULE_GRANULARITY
 				8,						// CTA_OCCUPANCY
 				6,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-				false,					// WORK_STEALING
-				6> CopyPolicy;			// LOG_SCHEDULE_GRANULARITY
+				false> CopyPolicy;			// WORK_STEALING
 
 			return EnactSearch<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);

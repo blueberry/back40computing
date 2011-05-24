@@ -47,6 +47,8 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
+		typename KernelPolicy::VertexId 		*&d_parent_in,
+		typename KernelPolicy::VertexId 		*&d_parent_out,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -65,7 +67,11 @@ struct SweepPass
 		}
 
 		// CTA processing abstraction
-		Cta cta(d_in, d_out);
+		Cta cta(
+			d_in,
+			d_out,
+			d_parent_in,
+			d_parent_out);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -114,6 +120,8 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
+		typename KernelPolicy::VertexId 		*&d_parent_in,
+		typename KernelPolicy::VertexId 		*&d_parent_out,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -121,7 +129,11 @@ struct SweepPass <KernelPolicy, true>
 		typedef typename KernelPolicy::SizeT 		SizeT;
 
 		// CTA processing abstraction
-		Cta cta(d_in, d_out);
+		Cta cta(
+			d_in,
+			d_out,
+			d_parent_in,
+			d_parent_out);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -157,6 +169,8 @@ void Kernel(
 	typename KernelPolicy::VertexId 		steal_index,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
+	typename KernelPolicy::VertexId 		*d_parent_in,
+	typename KernelPolicy::VertexId 		*d_parent_out,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
@@ -194,6 +208,8 @@ void Kernel(
 		steal_index,
 		d_in,
 		d_out,
+		d_parent_in,
+		d_parent_out,
 		work_progress,
 		work_decomposition);
 
