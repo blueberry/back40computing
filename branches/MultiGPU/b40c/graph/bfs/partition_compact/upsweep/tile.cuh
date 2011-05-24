@@ -278,14 +278,9 @@ struct Tile :
 	 * Returns the bin into which the specified key (vertex-id) is to be placed
 	 */
 	template <typename Cta>
-	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key)
+	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
-		int bin;
-		radix_sort::ExtractKeyBits<
-			KeyType,
-			0,												// low order bits
-			KernelPolicy::LOG_BINS>::Extract(bin, key);
-		return bin;
+		return key & (KernelPolicy::BINS - 1);
 	}
 
 

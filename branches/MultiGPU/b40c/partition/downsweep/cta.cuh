@@ -125,84 +125,18 @@ struct Cta
 
 
 	/**
-	 * Process full tile
-	 */
-	__device__ __forceinline__ void ProcessTile(SizeT cta_offset)
-	{
-		Dispatch *dispatch = (Dispatch *) this;
-		Tile<KernelPolicy> tile;
-
-		// Load keys
-		tile.LoadKeys(dispatch, cta_offset);
-
-		// Partition keys
-		tile.PartitionKeys(dispatch);
-
-		// Compute global scatter offsets for gathered keys
-		tile.ComputeScatterOffsets(dispatch);
-
-		// Scatter keys to global bin partitions
-		tile.ScatterKeys(dispatch);
-
-		if (!util::Equals<ValueType, util::NullType>::VALUE) {
-
-			// Load values
-			util::io::LoadTile<
-				KernelPolicy::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
-				KernelPolicy::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
-				KernelPolicy::THREADS,							// Active threads that will be loading
-				KernelPolicy::READ_MODIFIER>::LoadValid(		// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-					(ValueType (*)[KernelPolicy::LOAD_VEC_SIZE]) tile.values,
-					d_in_values + cta_offset);
-
-			// Partition values
-			tile.PartitionValues(dispatch);
-
-			// Scatter values to global bin partitions
-			tile.ScatterValues(dispatch);
-		}
-	}
-
-
-	/**
-	 * Process partial tile
+	 * Process tile
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		const SizeT &guarded_elements)
+		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		Dispatch *dispatch = (Dispatch *) this;
 		Tile<KernelPolicy> tile;
 
-		// Load keys
-		tile.LoadKeys(dispatch, cta_offset, guarded_elements);
-
-		// Partition keys
-		tile.PartitionKeys(dispatch);
-
-		// Compute global scatter offsets for gathered keys
-		tile.ComputeScatterOffsets(dispatch);
-
-		// Scatter keys to global bin partitions
-		tile.ScatterKeys(dispatch, guarded_elements);
-
-		if (!util::Equals<ValueType, util::NullType>::VALUE) {
-
-			// Read values
-			util::io::LoadTile<
-				KernelPolicy::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
-				KernelPolicy::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
-				KernelPolicy::THREADS,							// Active threads that will be loading
-				KernelPolicy::READ_MODIFIER>::LoadValid(		// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-					(ValueType (*)[KernelPolicy::LOAD_VEC_SIZE]) tile.values,
-					d_in_values + cta_offset);
-
-			// Partition values
-			tile.PartitionValues(dispatch);
-
-			// Scatter values to global bin partitions
-			tile.ScatterValues(dispatch, guarded_elements);
-		}
+		tile.Partition(
+			cta_offset,
+			guarded_elements,
+			(Dispatch *) this);
 	}
 };
 

@@ -86,6 +86,7 @@ template <
 	int SPINE_LOG_RAKING_THREADS,
 
 	// Downsweep
+	bool DOWNSWEEP_TWO_PHASE_SCATTER,
 	int DOWNSWEEP_CTA_OCCUPANCY,
 	int DOWNSWEEP_LOG_THREADS,
 	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
@@ -116,30 +117,6 @@ struct Policy :
 
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType 		ValueType;
-
-/*
-	// Upsweep kernel ptr
-	typedef void (*UpsweepKernelPtr)(
-		VertexId iteration,
-		VertexId *d_in,
-		ValidFlag *d_out_flag,
-		SizeT *d_spine,
-		CollisionMask *d_collision_cache,
-		util::CtaWorkProgress work_progress,
-		util::KernelRuntimeStats kernel_stats);
-
-	// Downsweep kernel ptr
-	typedef void (*DownsweepKernelPtr)(
-		VertexId iteration,
-		VertexId *d_in,
-		VertexId *d_out,
-		ValueType *d_parent_in,
-		ValueType *d_parent_out,
-		ValidFlag *d_flags_in,
-		SizeT *d_spine,
-		util::CtaWorkProgress work_progress,
-		util::KernelRuntimeStats kernel_stats);
-*/
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
@@ -173,7 +150,8 @@ struct Policy :
 			DOWNSWEEP_LOG_CYCLES_PER_TILE,
 			DOWNSWEEP_LOG_RAKING_THREADS,
 			READ_MODIFIER,
-			WRITE_MODIFIER>,
+			WRITE_MODIFIER,
+			DOWNSWEEP_TWO_PHASE_SCATTER>,
 		INSTRUMENT>
 			Downsweep;
 

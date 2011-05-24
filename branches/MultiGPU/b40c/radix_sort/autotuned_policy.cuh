@@ -127,6 +127,7 @@ struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	8,						// DOWNSWEEP_CTA_OCCUPANCY
 	6,						// DOWNSWEEP_LOG_THREADS
 	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -171,6 +172,7 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	4,						// DOWNSWEEP_CTA_OCCUPANCY
 	8,						// DOWNSWEEP_LOG_THREADS
 	0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -219,6 +221,7 @@ struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	5,						// DOWNSWEEP_CTA_OCCUPANCY
 	6,						// DOWNSWEEP_LOG_THREADS
 	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -263,6 +266,7 @@ struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	5,						// DOWNSWEEP_CTA_OCCUPANCY
 	6,						// DOWNSWEEP_LOG_THREADS
 	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -313,6 +317,7 @@ struct AutotunedGenre<ProblemType, SM10, LARGE_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	2,						// DOWNSWEEP_CTA_OCCUPANCY
 	7,						// DOWNSWEEP_LOG_THREADS
 	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -357,6 +362,7 @@ struct AutotunedGenre<ProblemType, SM10, SMALL_SIZE> : Policy<
 	5,						// SPINE_LOG_RAKING_THREADS
 
 	// Downsweep Kernel
+	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	2,						// DOWNSWEEP_CTA_OCCUPANCY
 	7,						// DOWNSWEEP_LOG_THREADS
 	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE

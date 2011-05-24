@@ -77,14 +77,9 @@ struct Tile :
 	 * Returns the bin into which the specified key is to be placed.
 	 */
 	template <typename Cta>
-	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key)
+	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
-		int bin;
-		radix_sort::ExtractKeyBits<
-			KeyType,
-			0,												// low order bits
-			KernelPolicy::LOG_BINS>::Extract(bin, key);
-		return bin;
+		return key & (KernelPolicy::BINS - 1);
 	}
 
 
@@ -97,33 +92,6 @@ struct Tile :
 		return flags[CYCLE][LOAD][VEC];
 	}
 
-
-	/**
-	 * Loads keys and flags into the tile
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void LoadKeys(
-		Cta *cta,
-		SizeT cta_offset)
-	{
-		// Read tile of keys
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
-					cta->d_in_keys + cta_offset);
-
-		// Read tile of flags
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				(ValidFlag (*)[KernelPolicy::LOAD_VEC_SIZE]) flags,
-				cta->d_flags_in + cta_offset);
-	}
 
 	/**
 	 * Loads keys and flags into the tile
@@ -159,66 +127,70 @@ struct Tile :
 
 
 	/**
-	 * Scatter keys from the tile
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void ScatterKeys(Cta *cta)
-	{
-		// Scatter only the compacted keys to global bin partitions
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Scatter(
-				cta->d_out_keys,
-				(KeyType *) this->keys,
-				this->scatter_offsets,
-				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
-	}
-
-
-	/**
-	 * Scatter keys from the tile
+	 * Scatter keys from the tile predicated on valid flags
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterKeys(
 		Cta *cta,
 		const SizeT &guarded_elements)
 	{
-		ScatterKeys(cta);
+		if (KernelPolicy::TWO_PHASE_SCATTER) {
+
+			SizeT num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
+
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out_keys,
+					(KeyType *) this->keys,
+					(SizeT *) this->scatter_offsets,
+					num_compacted);
+		} else {
+
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out_keys,
+					(KeyType *) this->keys,
+					(ValidFlag *) this->flags,
+					(SizeT *) this->scatter_offsets);
+		}
 	}
 
 
-	/**
-	 * Scatter values from the tile
-	 *
-	 * To be overloaded.
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void ScatterValues(Cta *cta)
-	{
-		// Scatter values to global bin partitions
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Scatter(
-				cta->d_out_values,
-				this->values,
-				this->scatter_offsets,
-				cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1]);		// num compacted
-	}
-
 
 	/**
-	 * Scatter values from the tile
-	 *
-	 * To be overloaded.
+	 * Scatter values from the tile predicated on valid flags
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterValues(
 		Cta *cta,
 		const SizeT &guarded_elements)
 	{
-		ScatterValues(cta);
+		if (KernelPolicy::TWO_PHASE_SCATTER) {
+
+			SizeT num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
+
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out_values,
+					this->values,
+					(SizeT *) this->scatter_offsets,
+					num_compacted);
+		} else {
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out_values,
+					this->values,
+					(ValidFlag *) this->flags,
+					(SizeT *) this->scatter_offsets);
+		}
 	}
 };
 

@@ -79,7 +79,8 @@ template <
 	int _LOG_CYCLES_PER_TILE,
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER>
+	util::io::st::CacheModifier _WRITE_MODIFIER,
+	bool _TWO_PHASE_SCATTER>
 
 struct TuningPolicy : ProblemType
 {
@@ -93,6 +94,7 @@ struct TuningPolicy : ProblemType
 		LOG_LOADS_PER_CYCLE							= _LOG_LOADS_PER_CYCLE,
 		LOG_CYCLES_PER_TILE							= _LOG_CYCLES_PER_TILE,
 		LOG_RAKING_THREADS							= _LOG_RAKING_THREADS,
+		TWO_PHASE_SCATTER							= _TWO_PHASE_SCATTER,
 
 		SCHEDULE_GRANULARITY						= 1 << LOG_SCHEDULE_GRANULARITY,
 		THREADS										= 1 << LOG_THREADS,

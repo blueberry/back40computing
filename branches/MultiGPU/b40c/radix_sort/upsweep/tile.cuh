@@ -66,7 +66,8 @@ struct Tile :
 	/**
 	 * Returns the bin into which the specified key is to be placed
 	 */
-	__device__ __forceinline__ int DecodeBin(KeyType key)
+	template <typename Cta>
+	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
 		int bin;
 		ExtractKeyBits<

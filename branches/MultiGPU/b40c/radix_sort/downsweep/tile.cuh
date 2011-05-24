@@ -66,7 +66,8 @@ struct Tile :
 	/**
 	 * Returns the bin into which the specified key is to be placed.
 	 */
-	__device__ __forceinline__ int DecodeBin(KeyType key)
+	template <typename Cta>
+	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
 		int bin;
 		ExtractKeyBits<
@@ -88,26 +89,7 @@ struct Tile :
 
 
 	/**
-	 * Loads keys into the tile
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void LoadKeys(
-		Cta *cta,
-		SizeT cta_offset)
-	{
-		// Read tile of keys
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE, 				// Number of vector loads (log)
-			KernelPolicy::LOG_LOAD_VEC_SIZE,				// Number of items per vector load (log)
-			KernelPolicy::THREADS,							// Active threads that will be loading
-			KernelPolicy::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
-					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
-					cta->d_in_keys + cta_offset);
-	}
-
-	/**
-	 * Loads keys into the tile
+	 * Loads keys into the tile, applying bit-twiddling
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void LoadKeys(
@@ -130,26 +112,7 @@ struct Tile :
 
 
 	/**
-	 * Scatter keys from the tile
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void ScatterKeys(Cta *cta)
-	{
-		// Scatter keys to global bin partitions
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::template Scatter<
-				KeyType,
-				KernelPolicy::PostprocessTraits::Postprocess>(
-					cta->d_out_keys,
-					(KeyType *) this->keys,
-					this->scatter_offsets);
-	}
-
-
-	/**
-	 * Scatter keys from the tile
+	 * Scatter keys from the tile, applying bit-twiddling
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterKeys(
@@ -165,7 +128,7 @@ struct Tile :
 				KernelPolicy::PostprocessTraits::Postprocess>(
 					cta->d_out_keys,
 					(KeyType *) this->keys,
-					this->scatter_offsets,
+					(SizeT *) this->scatter_offsets,
 					guarded_elements);
 	}
 };

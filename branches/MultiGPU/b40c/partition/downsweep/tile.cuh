@@ -82,10 +82,11 @@ struct Tile
 	// The keys (and values) this thread will read this cycle
 	KeyType 	keys[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];
 	ValueType 	values[TILE_ELEMENTS_PER_THREAD];
+
+	int 		local_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];		// The local rank of each key
 	int 		key_bins[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];			// The bin for each key
-	int 		key_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];			// The tile rank of each key
+	SizeT 		scatter_offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];	// The global rank of each key
 	int 		counter_offsets[LOADS_PER_CYCLE][LOAD_VEC_SIZE];					// The (byte) counter offset for each key
-	SizeT 		scatter_offsets[TILE_ELEMENTS_PER_THREAD];							// The global scatter offset for each key
 
 	// Counts of my bin in each load in each cycle, valid in threads [0,BINS)
 	int 		bin_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE];
@@ -101,7 +102,7 @@ struct Tile
 	 * To be overloaded
 	 */
 	template <typename Cta>
-	__device__ __forceinline__ int DecodeBin(Cta *cta, KeyType key);
+	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta);
 
 
 	/**
@@ -116,61 +117,66 @@ struct Tile
 	/**
 	 * Loads keys into the tile
 	 *
-	 * To be overloaded.
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void LoadKeys(
-		Cta *cta,
-		SizeT cta_offset);
-
-	/**
-	 * Loads keys into the tile
-	 *
-	 * To be overloaded.
+	 * Can be overloaded.
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void LoadKeys(
 		Cta *cta,
 		SizeT cta_offset,
-		const SizeT &guarded_elements);
+		const SizeT &guarded_elements)
+	{
+		util::io::LoadTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
+				(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
+				cta->d_in_keys + cta_offset,
+				guarded_elements);
+	}
 
 
 	/**
 	 * Scatter keys from the tile
 	 *
-	 * To be overloaded.
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void ScatterKeys(Cta *cta);
-
-
-	/**
-	 * Scatter keys from the tile
-	 *
-	 * To be overloaded.
+	 * Can be overloaded.
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterKeys(
 		Cta *cta,
-		const SizeT &guarded_elements);
-
-
-	/**
-	 * Scatter values from the tile
-	 *
-	 * To be overloaded.
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void ScatterValues(Cta *cta)
+		const SizeT &guarded_elements)
 	{
-		// Scatter values to global bin partitions
+		// Scatter keys to global bin partitions
 		util::io::ScatterTile<
 			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
-				cta->d_out_values,
-				values,
-				scatter_offsets);
+				cta->d_out_keys,
+				(KeyType *) keys,
+				(SizeT *) scatter_offsets,
+				guarded_elements);
+	}
+
+
+	/**
+	 * Loads values into the tile
+	 *
+	 * To be overloaded.
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void LoadValues(
+		Cta *cta,
+		SizeT cta_offset,
+		const SizeT &guarded_elements)
+	{
+		// Read values
+		util::io::LoadTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
+				(ValueType (*)[KernelPolicy::LOAD_VEC_SIZE]) values,
+				cta->d_in_values + cta_offset);
 	}
 
 
@@ -191,7 +197,7 @@ struct Tile
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_values,
 				values,
-				scatter_offsets,
+				(SizeT *) scatter_offsets,
 				guarded_elements);
 	}
 
@@ -250,7 +256,7 @@ struct Tile
 			const KeyType COUNTER_BYTE_MASK 	= (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
 			// Decode the bin for this key
-			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(cta, keys[CYCLE][LOAD][VEC]);
+			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(keys[CYCLE][LOAD][VEC], cta);
 
 			// Decode composite-counter lane and sub-counter from bin
 			int lane = key_bins[CYCLE][LOAD][VEC] >> 2;										// extract composite counter lane
@@ -291,14 +297,14 @@ struct Tile
 
 			unsigned char *base_partial_chars = (unsigned char *) cta->base_composite_counter;
 
-			key_ranks[CYCLE][LOAD][VEC] = base_partial_chars[counter_offsets[LOAD][VEC]] +
+			local_ranks[CYCLE][LOAD][VEC] = base_partial_chars[counter_offsets[LOAD][VEC]] +
 				SameBinCount::template Iterate<CYCLE, LOAD, VEC>::Invoke(
 					dispatch,
 					key_bins[CYCLE][LOAD][VEC]);
 		} else {
 
 			// Put invalid keys just after the end of the valid swap exchange.
-			key_ranks[CYCLE][LOAD][VEC] = KernelPolicy::TILE_ELEMENTS;
+			local_ranks[CYCLE][LOAD][VEC] = KernelPolicy::TILE_ELEMENTS;
 		}
 	}
 
@@ -313,7 +319,26 @@ struct Tile
 
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
 			// Update this key's rank with the bin-prefix for it's bin
-			key_ranks[CYCLE][LOAD][VEC] += cta->smem_storage.bin_prefixes[CYCLE][LOAD][key_bins[CYCLE][LOAD][VEC]];
+			local_ranks[CYCLE][LOAD][VEC] +=
+				cta->smem_storage.bin_prefixes[CYCLE][LOAD][key_bins[CYCLE][LOAD][VEC]];
+		}
+	}
+
+
+	/**
+	 * UpdateGlobalOffsets
+	 */
+	template <int CYCLE, int LOAD, int VEC, typename Cta>
+	__device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta)
+	{
+		Dispatch *dispatch = (Dispatch *) this;
+
+		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
+			// Update this key's global scatter offset with its
+			// cycle rank and with the bin-prefix for it's bin
+			scatter_offsets[CYCLE][LOAD][VEC] =
+				local_ranks[CYCLE][LOAD][VEC] +
+				cta->smem_storage.bin_prefixes[CYCLE][LOAD][key_bins[CYCLE][LOAD][VEC]];
 		}
 	}
 
@@ -392,6 +417,14 @@ struct Tile
 			tile->UpdateRanks<CYCLE, LOAD, VEC>(cta);
 			IterateCycleElements<CYCLE, LOAD, VEC + 1>::UpdateRanks(cta, tile);
 		}
+
+		// UpdateGlobalOffsets
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
+		{
+			tile->UpdateGlobalOffsets<CYCLE, LOAD, VEC>(cta);
+			IterateCycleElements<CYCLE, LOAD, VEC + 1>::UpdateGlobalOffsets(cta, tile);
+		}
 	};
 
 
@@ -421,6 +454,13 @@ struct Tile
 		{
 			IterateCycleElements<CYCLE, LOAD + 1, 0>::UpdateRanks(cta, tile);
 		}
+
+		// UpdateGlobalOffsets
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
+		{
+			IterateCycleElements<CYCLE, LOAD + 1, 0>::UpdateGlobalOffsets(cta, tile);
+		}
 	};
 
 	/**
@@ -440,6 +480,10 @@ struct Tile
 		// UpdateRanks
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile) {}
+
+		// UpdateGlobalOffsets
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile) {}
 	};
 
 
@@ -544,16 +588,21 @@ struct Tile
 
 
 	/**
-	 * ComputeScatterOffsets
+	 * DecodeGlobalOffsets
 	 */
 	template <int ELEMENT, typename Cta>
-	__device__ __forceinline__ void ComputeScatterOffsets(Cta *cta)
+	__device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
 
-		KeyType *linear_keys = (KeyType *) keys;
-		int bin = dispatch->DecodeBin(cta, linear_keys[ELEMENT]);
-		scatter_offsets[ELEMENT] = cta->smem_storage.bin_carry[bin] + (KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
+		KeyType *linear_keys 	= (KeyType *) keys;
+		SizeT *linear_offsets 	= (SizeT *) scatter_offsets;
+
+		int bin = dispatch->DecodeBin(linear_keys[ELEMENT], cta);
+
+		linear_offsets[ELEMENT] =
+			cta->smem_storage.bin_carry[bin] +
+			(KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
 	}
 
 
@@ -575,6 +624,14 @@ struct Tile
 			IterateCycles<CYCLE + 1>::UpdateRanks(cta, tile);
 		}
 
+		// UpdateRanks
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
+		{
+			IterateCycleElements<CYCLE, 0, 0>::UpdateGlobalOffsets(cta, tile);
+			IterateCycles<CYCLE + 1>::UpdateGlobalOffsets(cta, tile);
+		}
+
 		// ScanCycles
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile)
@@ -593,6 +650,10 @@ struct Tile
 		// UpdateRanks
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile) {}
+
+		// UpdateGlobalOffsets
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile) {}
 
 		// ScanCycles
 		template <typename Cta, typename Tile>
@@ -679,12 +740,12 @@ struct Tile
 	template <int ELEMENT, int dummy = 0>
 	struct IterateElements
 	{
-		// ComputeScatterOffsets
+		// DecodeGlobalOffsets
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ComputeScatterOffsets(Cta *cta, Tile *tile)
+		static __device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta, Tile *tile)
 		{
-			tile->ComputeScatterOffsets<ELEMENT>(cta);
-			IterateElements<ELEMENT + 1>::ComputeScatterOffsets(cta, tile);
+			tile->DecodeGlobalOffsets<ELEMENT>(cta);
+			IterateElements<ELEMENT + 1>::DecodeGlobalOffsets(cta, tile);
 		}
 	};
 
@@ -695,9 +756,197 @@ struct Tile
 	template <int dummy>
 	struct IterateElements<TILE_ELEMENTS_PER_THREAD, dummy>
 	{
-		// ComputeScatterOffsets
+		// DecodeGlobalOffsets
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ComputeScatterOffsets(Cta *cta, Tile *tile) {}
+		static __device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta, Tile *tile) {}
+	};
+
+
+
+	//---------------------------------------------------------------------
+	// Partition/scattering specializations
+	//---------------------------------------------------------------------
+
+	/**
+	 * Specialized for two-phase scatter.
+	 */
+	template <bool TWO_PHASE_SCATTER, int dummy = 0>
+	struct PartitionTile
+	{
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void Invoke(
+			SizeT cta_offset,
+			const SizeT &guarded_elements,
+			Cta *cta,
+			Tile *tile)
+		{
+			// Load keys
+			tile->LoadKeys(cta, cta_offset, guarded_elements);
+
+			// Scan cycles
+			IterateCycles<0>::ScanCycles(cta, tile);
+
+			// Scan across bins
+			if (threadIdx.x < KernelPolicy::BINS) {
+
+				// Recover bin-counts from lane totals
+				int my_base_lane = threadIdx.x >> 2;
+				int my_quad_byte = threadIdx.x & 3;
+				IterateCycleLoads<0, 0>::RecoverBinCounts(
+					my_base_lane, my_quad_byte, cta, tile);
+
+				// Scan across my bin counts for each load
+				int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
+					(int *) tile->bin_counts, 0);
+
+				// Add the previous tile's inclusive-scan to the running bin-carry
+				SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x] +
+					cta->smem_storage.bin_warpscan[1][threadIdx.x];
+
+				// Perform overflow-free inclusive SIMD Kogge-Stone across bins
+				int tile_bin_inclusive = util::scan::WarpScan<KernelPolicy::LOG_BINS, false>::Invoke(
+					tile_bin_total,
+					cta->smem_storage.bin_warpscan);
+
+				// Save inclusive scan in bin_warpscan
+				cta->smem_storage.bin_warpscan[1][threadIdx.x] = tile_bin_inclusive;
+
+				// Calculate exclusive scan
+				int tile_bin_exclusive = tile_bin_inclusive - tile_bin_total;
+
+				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
+				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - tile_bin_exclusive;
+
+				// Compute the bin prefixes for this tile for each load
+				IterateCycleLoads<0, 0>::UpdateBinPrefixes(tile_bin_exclusive, cta, tile);
+			}
+
+			__syncthreads();
+
+			// Update the local ranks in each load with the bin prefixes for the tile
+			IterateCycles<0>::UpdateRanks(cta, tile);
+
+			// Scatter keys to smem by local rank
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				util::io::st::NONE>::Scatter(
+					cta->smem_storage.smem_pool.key_exchange,
+					(KeyType *) tile->keys,
+					(int *) tile->local_ranks);
+
+			__syncthreads();
+
+			// Gather keys linearly from smem (vec-1)
+			util::io::LoadTile<
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
+				KernelPolicy::THREADS,
+				util::io::ld::NONE>::LoadValid(
+					(KeyType (*)[1]) tile->keys,
+					cta->smem_storage.smem_pool.key_exchange);
+
+			__syncthreads();
+
+			// Compute global scatter offsets for gathered keys
+			IterateElements<0>::DecodeGlobalOffsets(cta, tile);
+
+			// Scatter keys to global bin partitions
+			tile->ScatterKeys(cta, guarded_elements);
+
+			if (!util::Equals<ValueType, util::NullType>::VALUE) {
+
+				// Load values
+				tile->LoadValues(cta, cta_offset, guarded_elements);
+
+				// Scatter values to smem by local rank
+				util::io::ScatterTile<
+					KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+					KernelPolicy::THREADS,
+					util::io::st::NONE>::Scatter(
+						cta->smem_storage.smem_pool.value_exchange,
+						tile->values,
+						(int *) tile->local_ranks);
+
+				__syncthreads();
+
+				// Gather values linearly from smem (vec-1)
+				util::io::LoadTile<
+					KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+					0,
+					KernelPolicy::THREADS,
+					util::io::ld::NONE>::LoadValid(
+						(ValueType (*)[1]) tile->values,
+						cta->smem_storage.smem_pool.value_exchange);
+
+				__syncthreads();
+
+				// Scatter values to global bin partitions
+				tile->ScatterValues(cta, guarded_elements);
+			}
+		}
+	};
+
+
+	/**
+	 * Specialized for direct scatter.
+	 */
+	template <int dummy>
+	struct PartitionTile<false, dummy>
+	{
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void Invoke(
+			SizeT cta_offset,
+			const SizeT &guarded_elements,
+			Cta *cta,
+			Tile *tile)
+		{
+			// Load keys
+			tile->LoadKeys(cta, cta_offset, guarded_elements);
+
+			// Scan cycles
+			IterateCycles<0>::ScanCycles(cta, tile);
+
+			// Scan across bins
+			if (threadIdx.x < KernelPolicy::BINS) {
+
+				// Recover bin-counts from lane totals
+				int my_base_lane = threadIdx.x >> 2;
+				int my_quad_byte = threadIdx.x & 3;
+				IterateCycleLoads<0, 0>::RecoverBinCounts(
+					my_base_lane, my_quad_byte, cta, tile);
+
+				// Scan across my bin counts for each load
+				int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
+					(int *) tile->bin_counts, 0);
+
+				// Add the previous tile's inclusive-scan to the running bin-carry
+				SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x];
+
+				// Update bin prefixes with the incoming carry
+				IterateCycleLoads<0, 0>::UpdateBinPrefixes(my_carry, cta, tile);
+
+				// Update carry
+				cta->smem_storage.bin_carry[threadIdx.x] = my_carry + tile_bin_total;
+			}
+
+			__syncthreads();
+
+			// Update the scatter offsets in each load with the bin prefixes for the tile
+			IterateCycles<0>::UpdateGlobalOffsets(cta, tile);
+
+			// Scatter keys to global bin partitions
+			tile->ScatterKeys(cta, guarded_elements);
+
+			if (!util::Equals<ValueType, util::NullType>::VALUE) {
+
+				// Load values
+				tile->LoadValues(cta, cta_offset, guarded_elements);
+
+				// Scatter values to global bin partitions
+				tile->ScatterValues(cta, guarded_elements);
+			}
+		}
 	};
 
 
@@ -706,116 +955,21 @@ struct Tile
 	//---------------------------------------------------------------------
 
 	/**
-	 * Compute global scatter offsets for gathered keys
+	 * Loads, decodes, and scatters a tile into global partitions
 	 */
 	template <typename Cta>
-	__device__ __forceinline__ void ComputeScatterOffsets(Cta *cta)
+	__device__ __forceinline__ void Partition(
+		SizeT cta_offset,
+		const SizeT &guarded_elements,
+		Cta *cta)
 	{
-		IterateElements<0>::ComputeScatterOffsets(cta, (Dispatch*) this);
+		PartitionTile<KernelPolicy::TWO_PHASE_SCATTER>::Invoke(
+			cta_offset,
+			guarded_elements,
+			cta,
+			(Dispatch *) this);
 	}
 
-
-	/**
-	 * Partition keys
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void PartitionKeys(Cta *cta)
-	{
-		Dispatch *dispatch = (Dispatch*) this;
-
-		// Scan cycles
-		IterateCycles<0>::ScanCycles(cta, dispatch);
-
-		// Scan across bins
-		if (threadIdx.x < KernelPolicy::BINS) {
-
-			// Recover bin-counts from lane totals
-			int my_base_lane = threadIdx.x >> 2;
-			int my_quad_byte = threadIdx.x & 3;
-			IterateCycleLoads<0, 0>::RecoverBinCounts(my_base_lane, my_quad_byte, cta, dispatch);
-
-			// Scan across my bin counts for each load
-			int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
-				(int *) bin_counts, 0);
-
-			// Add the previous tile's inclusive-scan to the running bin-carry
-			SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x] + cta->smem_storage.bin_warpscan[1][threadIdx.x];
-
-			// Perform overflow-free inclusive SIMD Kogge-Stone across bins
-			int tile_bin_inclusive = util::scan::WarpScan<KernelPolicy::LOG_BINS, false>::Invoke(
-				tile_bin_total,
-				cta->smem_storage.bin_warpscan);
-
-			// Save inclusive scan in bin_warpscan
-			cta->smem_storage.bin_warpscan[1][threadIdx.x] = tile_bin_inclusive;
-
-			// Calculate exclusive scan
-			int tile_bin_exclusive = tile_bin_inclusive - tile_bin_total;
-
-			// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
-			cta->smem_storage.bin_carry[threadIdx.x] = my_carry - tile_bin_exclusive;
-
-			// Compute the bin prefixes for this tile for each load
-			IterateCycleLoads<0, 0>::UpdateBinPrefixes(tile_bin_exclusive, cta, dispatch);
-		}
-
-		__syncthreads();
-
-		// Update the key ranks in each load with the bin prefixes for the tile
-		IterateCycles<0>::UpdateRanks(cta, dispatch);
-
-		// Scatter keys to smem
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			util::io::st::NONE>::Scatter(
-				cta->smem_storage.smem_pool.key_exchange,
-				(KeyType *) keys,
-				(int *) key_ranks);
-
-		__syncthreads();
-
-		// Gather keys from smem (vec-1)
-		util::io::LoadTile<
-			KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-			0,
-			KernelPolicy::THREADS,
-			util::io::ld::NONE>::LoadValid(
-				(KeyType (*)[1]) keys,
-				cta->smem_storage.smem_pool.key_exchange);
-
-		__syncthreads();
-	}
-
-
-	/**
-	 * Partition values
-	 */
-	template <typename Cta>
-	__device__ __forceinline__ void PartitionValues(Cta *cta)
-	{
-		// Scatter values to smem
-		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-			KernelPolicy::THREADS,
-			util::io::st::NONE>::Scatter(
-				cta->smem_storage.smem_pool.value_exchange,
-				values,
-				(int *) key_ranks);
-
-		__syncthreads();
-
-		// Gather values from smem (vec-1)
-		util::io::LoadTile<
-			KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-			0,
-			KernelPolicy::THREADS,
-			util::io::ld::NONE>::LoadValid(
-				(ValueType (*)[1]) values,
-				cta->smem_storage.smem_pool.value_exchange);
-
-		__syncthreads();
-	}
 };
 
 

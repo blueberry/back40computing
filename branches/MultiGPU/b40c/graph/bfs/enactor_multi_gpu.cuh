@@ -575,9 +575,11 @@ public:
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-					// Stream in and expand inputs from all gpus (including ourselves)
+					// Stream in and filter inputs from all gpus (including ourselves)
 					for (volatile int j = 0; j < csr_problem.num_gpus; j++) {
 
+						// Starting with ourselves (must copy our own bin first), stream
+						// bins into our queue
 						int peer 							= (i + j) % csr_problem.num_gpus;
 						GpuControlBlock *peer_control 		= control_blocks[peer];
 						GraphSlice *peer_slice 				= csr_problem.graph_slices[peer];
@@ -831,6 +833,7 @@ public:
 				0,						// SPINE_LOG_LOADS_PER_TILE
 				5,						// SPINE_LOG_RAKING_THREADS
 
+				false,					// DOWNSWEEP_TWO_PHASE_SCATTER
 				8,						// DOWNSWEEP_CTA_OCCUPANCY
 				6,						// DOWNSWEEP_LOG_THREADS
 				1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
