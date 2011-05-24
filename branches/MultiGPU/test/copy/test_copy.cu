@@ -41,6 +41,8 @@ bool 	g_sweep							= false;
 int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
 size_t 	g_num_elements 					= 1024;
+int 	g_src_gpu						= -1;
+int 	g_dest_gpu						= -1;
 
 
 
@@ -54,7 +56,8 @@ size_t 	g_num_elements 					= 1024;
 void Usage()
 {
 	printf("\ntest_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-bytes>] [--sweep]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-bytes>] [--sweep] "
+			"[--src=<src-gpu> --dest=<dest-gpu>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -91,6 +94,22 @@ void TestCopy(size_t num_elements)
 		h_reference[i] = h_data[i];
 	}
 
+	// Allocate device storage (and leave g_dest_gpu as current gpu)
+	T *d_src, *d_dest;
+	if (util::B40CPerror(cudaSetDevice(g_src_gpu),
+		"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+
+	if (util::B40CPerror(cudaSetDevice(g_dest_gpu),
+		"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+	// Move a fresh copy of the problem into device storage
+	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+
 	//
     // Run the timing test(s)
 	//
@@ -100,11 +119,11 @@ void TestCopy(size_t num_elements)
 	do {
 		printf("\nLARGE config:\t");
 		double large = TimedCopy<T, copy::LARGE_SIZE>(
-			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
 		double small = TimedCopy<T, copy::SMALL_SIZE>(
-			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte bytes: Small faster at %lu bytes\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
@@ -114,9 +133,11 @@ void TestCopy(size_t num_elements)
 
 	} while (g_sweep && (num_elements < orig_num_elements ));
 
-	// Free our allocated host memory
+    // Free allocated memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
+    if (d_src) cudaFree(d_src);
+    if (d_dest) cudaFree(d_dest);
 }
 
 
@@ -142,12 +163,41 @@ int main(int argc, char** argv)
 		return 0;
 	}
 
+	cudaSetDeviceFlags(cudaDeviceMapHost);
+
     g_sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", g_num_elements);
+    args.GetCmdLineArgument("src", g_src_gpu);
+    args.GetCmdLineArgument("dest", g_dest_gpu);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
+	if ((g_src_gpu > -1) && (g_dest_gpu > -1)) {
+
+		// Set device
+		if (util::B40CPerror(cudaSetDevice(g_src_gpu),
+			"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+		printf("Enabling peer access to GPU %d from GPU %d\n", g_src_gpu, g_dest_gpu);
+		if (util::B40CPerror(cudaDeviceEnablePeerAccess(g_dest_gpu, 0),
+			"MultiGpuBfsEnactor cudaDeviceEnablePeerAccess failed", __FILE__, __LINE__)) exit(1);
+
+		// Set device
+		if (util::B40CPerror(cudaSetDevice(g_dest_gpu),
+			"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+		printf("Enabling peer access to GPU %d from GPU %d\n", g_dest_gpu, g_src_gpu);
+		if (util::B40CPerror(cudaDeviceEnablePeerAccess(g_src_gpu, 0),
+			"MultiGpuBfsEnactor cudaDeviceEnablePeerAccess failed", __FILE__, __LINE__)) exit(1);
+
+	} else {
+
+		// Put current device as both src and dest
+		printf("Intra-gpu copy\n.");
+		if (util::B40CPerror(cudaGetDevice(&g_src_gpu),
+			"MultiGpuBfsEnactor cudaGetDevice failed", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaGetDevice(&g_dest_gpu),
+			"MultiGpuBfsEnactor cudaGetDevice failed", __FILE__, __LINE__)) exit(1);
+	}
    	TestCopy(g_num_elements);
 
 	return 0;

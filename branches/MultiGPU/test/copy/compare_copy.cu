@@ -73,21 +73,11 @@ void Usage()
  */
 template <typename T>
 double TimedRuntimeCopy(
-	T *h_data,
+	T *d_src,
+	T *d_dest,
 	T *h_reference,
 	size_t num_elements)
 {
-	// Allocate device storage  
-	T *d_src, *d_dest;
-	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-	// Move a fresh copy of the problem into device storage
-	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
-	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	cudaMemcpy(d_dest, d_src, sizeof(T) * num_elements, cudaMemcpyDeviceToDevice);
 	
@@ -118,10 +108,6 @@ double TimedRuntimeCopy(
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
     if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
 		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-    // Free allocated memory
-    if (d_src) cudaFree(d_src);
-    if (d_dest) cudaFree(d_dest);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
@@ -171,21 +157,34 @@ void TestCopy(size_t num_elements)
 		h_reference[i] = h_data[i];
 	}
 
+	// Allocate device storage
+	T *d_src, *d_dest;
+	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+	// Move a fresh copy of the problem into device storage
+	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+
 	//
     // Run the timing test(s)
 	//
 
 	double b40c = TimedCopy<T, copy::UNKNOWN_SIZE>(
-		h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+		d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 	double runtime = TimedRuntimeCopy<T>(
-		h_data, h_reference, num_elements);
+		d_src, d_dest, h_reference, num_elements);
 
 	printf("B40C speedup: %.2f\n", b40c/runtime);
 
-	// Free our allocated host memory 
+    // Free allocated memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
+    if (d_src) cudaFree(d_src);
+    if (d_dest) cudaFree(d_dest);
 }
 
 

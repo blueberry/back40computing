@@ -302,6 +302,7 @@ cudaError_t Enactor::Copy(
 			(unsigned long) work.total_grains,
 			(unsigned long) work.grains_per_cta,
 			(unsigned long) work.extra_grains);
+		fflush(stdout);
 	}
 
 	cudaError_t retval = cudaSuccess;

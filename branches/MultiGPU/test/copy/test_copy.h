@@ -44,7 +44,8 @@
  */
 template <typename T, b40c::copy::ProbSizeGenre PROB_SIZE_GENRE>
 double TimedCopy(
-	T *h_data,
+	T *d_src,
+	T *d_dest,
 	T *h_reference,
 	size_t num_elements,
 	int max_ctas,
@@ -53,19 +54,8 @@ double TimedCopy(
 {
 	using namespace b40c;
 
-	// Allocate device storage
-	T *d_src, *d_dest;
-	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
 	// Create enactor
 	copy::Enactor copy_enactor;
-
-	// Move a fresh copy of the problem into device storage
-	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	copy_enactor.DEBUG = true;
@@ -102,10 +92,6 @@ double TimedCopy(
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
     if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
 		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-    // Free allocated memory
-    if (d_src) cudaFree(d_src);
-    if (d_dest) cudaFree(d_dest);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
