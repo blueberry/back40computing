@@ -27,6 +27,7 @@
 
 #include <b40c/partition/problem_type.cuh>
 #include <b40c/util/basic_utils.cuh>
+#include <b40c/radix_sort/sort_utils.cuh>
 
 namespace b40c {
 namespace graph {
@@ -51,6 +52,7 @@ struct ProblemType : partition::ProblemType<
 	typedef _VertexId														VertexId;
 	typedef _CollisionMask													CollisionMask;
 	typedef _ValidFlag														ValidFlag;
+	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
 
 	static const bool MARK_PARENTS			= _MARK_PARENTS;
 	static const int LOG_MAX_GPUS			= _LOG_MAX_GPUS;

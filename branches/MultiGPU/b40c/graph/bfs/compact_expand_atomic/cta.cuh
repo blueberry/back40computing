@@ -62,7 +62,6 @@ struct Cta
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename SmemStorage::WarpComm 			WarpComm;
-	typedef unsigned int							ThreadId;
 
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
