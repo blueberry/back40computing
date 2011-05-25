@@ -43,6 +43,7 @@ int 	g_iterations  					= 1;
 size_t 	g_num_elements 					= 1024;
 int 	g_src_gpu						= -1;
 int 	g_dest_gpu						= -1;
+bool 	g_from_host						= false;
 
 
 
@@ -57,7 +58,7 @@ void Usage()
 {
 	printf("\ntest_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-bytes>] [--sweep] "
-			"[--src=<src-gpu> --dest=<dest-gpu>]\n");
+			"[ [--src=<src-gpu> --dest=<dest-gpu>] | --from-host ]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -96,10 +97,17 @@ void TestCopy(size_t num_elements)
 
 	// Allocate device storage (and leave g_dest_gpu as current gpu)
 	T *d_src, *d_dest;
-	if (util::B40CPerror(cudaSetDevice(g_src_gpu),
-		"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
-	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+
+	if (g_from_host) {
+		int flags = cudaHostAllocMapped;
+		if (util::B40CPerror(cudaHostAlloc((void**) &d_src, sizeof(T) * num_elements, flags),
+			"TimedCopy cudaHostAlloc d_src failed", __FILE__, __LINE__)) exit(1);
+	} else {
+		if (util::B40CPerror(cudaSetDevice(g_src_gpu),
+			"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+			"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+	}
 
 	if (util::B40CPerror(cudaSetDevice(g_dest_gpu),
 		"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
@@ -136,7 +144,13 @@ void TestCopy(size_t num_elements)
     // Free allocated memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
-    if (d_src) cudaFree(d_src);
+    if (d_src) {
+    	if (g_from_host) {
+			cudaFreeHost(d_src);
+		} else {
+			cudaFree(d_src);
+		}
+    }
     if (d_dest) cudaFree(d_dest);
 }
 
@@ -166,6 +180,7 @@ int main(int argc, char** argv)
 	cudaSetDeviceFlags(cudaDeviceMapHost);
 
     g_sweep = args.CheckCmdLineFlag("sweep");
+    g_from_host = args.CheckCmdLineFlag("from-host");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", g_num_elements);
     args.GetCmdLineArgument("src", g_src_gpu);

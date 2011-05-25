@@ -175,7 +175,7 @@ struct Cta
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
-					VertexId row_id = tile->vertex_id[LOAD][VEC] / cta->num_gpus;
+					VertexId row_id = (((unsigned int) tile->vertex_id[LOAD][VEC]) & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
 
 					// Load source path of node
 					VertexId source_path;

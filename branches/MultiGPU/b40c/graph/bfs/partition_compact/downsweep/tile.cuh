@@ -79,7 +79,7 @@ struct Tile :
 	template <typename Cta>
 	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
-		return key & (KernelPolicy::BINS - 1);
+		return ((unsigned int) key) >> KernelPolicy::GPU_MASK_SHIFT;
 	}
 
 

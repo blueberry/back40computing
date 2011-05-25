@@ -55,13 +55,15 @@ struct CsrProblem
 	//---------------------------------------------------------------------
 
 	static const float DEFAULT_QUEUE_SIZING;
+	static const int LOG_MAX_GPUS				= 2;
 
 	typedef ProblemType<
 		_VertexId,				// VertexId
 		_SizeT,					// SizeT
 		unsigned char,			// CollisionMask
 		unsigned char, 			// ValidFlag
-		MARK_PARENTS>			// MARK_PARENTS
+		MARK_PARENTS,			// MARK_PARENTS
+		LOG_MAX_GPUS>			// LOG_MAX_GPUS
 			ProblemType;
 
 	typedef typename ProblemType::VertexId 			VertexId;
@@ -214,7 +216,7 @@ struct CsrProblem
 
 		} else {
 
-			return vertex & (num_gpus - 1);
+			return vertex % num_gpus;
 		}
 	}
 
@@ -282,6 +284,14 @@ struct CsrProblem
 					int gpu = GpuIndex(node);
 					VertexId slice_row = GraphSliceRow(node);
 					h_source_path[node] = gpu_source_paths[gpu][slice_row];
+
+					switch (h_source_path[node]) {
+					case -1:
+					case -2:
+						break;
+					default:
+						h_source_path[node] &= ProblemType::VERTEX_ID_MASK;
+					};
 				}
 
 				// Clean up
@@ -314,7 +324,6 @@ struct CsrProblem
 		this->edges 					= edges;
 		this->num_gpus 					= num_gpus;
 		this->uneven					= uneven;
-//		this->uneven					= uneven || (num_gpus > 1);		// mooch
 
 		this->queue_sizing = (queue_sizing <= 0.0) ?
 			DEFAULT_QUEUE_SIZING :
@@ -435,6 +444,13 @@ struct CsrProblem
 
 					graph_slices[gpu]->edges += row_edges;
 					slice_row_offsets[gpu][slice_row + 1] = graph_slices[gpu]->edges;
+
+					// Mask in owning gpu
+					for (int i = 0; i < row_edges; i++) {
+						VertexId *ptr = slice_column_indices[gpu] + slice_row_offsets[gpu][slice_row] + i;
+						int owner = GpuIndex(*ptr);
+						(*ptr) |= (owner << ProblemType::GPU_MASK_SHIFT);
+					}
 				}
 
 				printf("Done constructing gpu data structures\n");

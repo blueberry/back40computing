@@ -105,7 +105,7 @@ struct Tile :
 			if (tile->valid[LOAD][VEC]) {
 
 				// Location of mask byte to read
-				SizeT mask_byte_offset = tile->keys[LOAD][VEC] >> 3;
+				SizeT mask_byte_offset = (((unsigned int) tile->keys[LOAD][VEC]) & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 				// Bit in mask byte corresponding to current vertex id
 				CollisionMask mask_bit = 1 << (tile->keys[LOAD][VEC] & 7);
@@ -145,7 +145,7 @@ struct Tile :
 		{
 			if (tile->valid[LOAD][VEC]) {
 
-				int hash = tile->keys[LOAD][VEC] % Cta::SmemStorage::HISTORY_HASH_ELEMENTS;
+				int hash = ((unsigned int) tile->keys[LOAD][VEC]) % Cta::SmemStorage::HISTORY_HASH_ELEMENTS;
 				VertexId retrieved = cta->history[hash];
 
 				if (retrieved == tile->keys[LOAD][VEC]) {
@@ -173,7 +173,7 @@ struct Tile :
 			if (tile->valid[LOAD][VEC]) {
 
 				int warp_id 		= threadIdx.x >> 5;
-				int hash 			= tile->keys[LOAD][VEC] & (Cta::SmemStorage::WARP_HASH_ELEMENTS - 1);
+				int hash 			= ((unsigned int) tile->keys[LOAD][VEC]) & (Cta::SmemStorage::WARP_HASH_ELEMENTS - 1);
 
 				cta->vid_hashtable[warp_id][hash] = tile->keys[LOAD][VEC];
 				VertexId retrieved = cta->vid_hashtable[warp_id][hash];
@@ -280,7 +280,7 @@ struct Tile :
 	template <typename Cta>
 	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta)
 	{
-		return key & (KernelPolicy::BINS - 1);
+		return ((unsigned int) key) >> KernelPolicy::GPU_MASK_SHIFT;
 	}
 
 

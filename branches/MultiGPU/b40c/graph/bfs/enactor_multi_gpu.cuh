@@ -179,7 +179,7 @@ protected:
 				partition_grid_size 			= MaxGridSize(partition_min_occupancy, max_grid_size);
 
 				int copy_min_occupancy			= CopyPolicy::CTA_OCCUPANCY;
-				copy_grid_size 			= MaxGridSize(copy_min_occupancy, max_grid_size);
+				copy_grid_size 					= MaxGridSize(copy_min_occupancy, max_grid_size);
 
 				// Setup partitioning spine
 				spine_elements = (partition_grid_size * PartitionPolicy::Upsweep::BINS) + 1;
@@ -385,6 +385,10 @@ public:
 			if (retval = Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
 				csr_problem, max_grid_size)) break;
 
+			// Mask in owner gpu of source;
+			int src_owner = csr_problem.GpuIndex(src);
+			src |= (src_owner << CsrProblem::ProblemType::GPU_MASK_SHIFT);
+
 
 			//---------------------------------------------------------------------
 			// Expand work queues (first iteration)
@@ -399,9 +403,9 @@ public:
 				if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 					"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-				bool owns_source = (control->gpu == csr_problem.GpuIndex(src));
+				bool owns_source = (control->gpu == src_owner);
 				if (owns_source) {
-					printf("GPU %d owns source %d\n", control->gpu, src);
+					printf("GPU %d owns source 0x%X\n", control->gpu, src);
 				}
 
 				// Expansion
@@ -765,15 +769,13 @@ public:
 		typedef typename CsrProblem::VertexId			VertexId;
 		typedef typename CsrProblem::SizeT				SizeT;
 
-		// Maximum two GPUs (mooch)
-    	static const int LOG_MAX_GPUS = 1;
-
+/*
     	// Enforce power-of-two gpus
 		if (csr_problem.num_gpus & (csr_problem.num_gpus - 1)) {		// clear the least significant bit set
-			printf("Only a power-of-two number of GPUs are supported");
+			printf("Only a power-of-two number of GPUs are supported\n");
 			return cudaErrorInvalidConfiguration;
 		}
-
+*/
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Compaction kernel config
@@ -819,7 +821,7 @@ public:
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
-				LOG_MAX_GPUS,			// LOG_BINS
+				CsrProblem::LOG_MAX_GPUS,	// LOG_BINS
 				9,						// LOG_SCHEDULE_GRANULARITY
 				util::io::ld::NONE,		// CACHE_MODIFIER
 				util::io::st::NONE,		// CACHE_MODIFIER

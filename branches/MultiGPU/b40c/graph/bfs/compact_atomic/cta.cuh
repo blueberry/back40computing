@@ -157,7 +157,7 @@ struct Cta
 				if (tile->flags[LOAD][VEC]) {
 
 					// Location of mask byte to read
-					SizeT mask_byte_offset = tile->vertex_ids[LOAD][VEC] >> 3;
+					SizeT mask_byte_offset = (((unsigned int) tile->vertex_ids[LOAD][VEC]) & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
 					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
@@ -196,7 +196,7 @@ struct Cta
 			{
 				if (tile->flags[LOAD][VEC]) {
 
-					int hash = tile->vertex_ids[LOAD][VEC] % SmemStorage::HISTORY_HASH_ELEMENTS;
+					int hash = ((unsigned int) tile->vertex_ids[LOAD][VEC]) % SmemStorage::HISTORY_HASH_ELEMENTS;
 					VertexId retrieved = cta->history[hash];
 
 					if (retrieved == tile->vertex_ids[LOAD][VEC]) {
@@ -224,7 +224,7 @@ struct Cta
 				if (tile->flags[LOAD][VEC]) {
 
 					int warp_id 		= threadIdx.x >> 5;
-					int hash 			= tile->vertex_ids[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
+					int hash 			= ((unsigned int) tile->vertex_ids[LOAD][VEC]) & (SmemStorage::WARP_HASH_ELEMENTS - 1);
 
 					cta->vid_hashtable[warp_id][hash] = tile->vertex_ids[LOAD][VEC];
 					VertexId retrieved = cta->vid_hashtable[warp_id][hash];
