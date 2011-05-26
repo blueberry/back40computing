@@ -649,7 +649,6 @@ void RunTests(
 			fflush(stdout);
 		}
 
-/*
 		if (num_gpus == 1) {
 			if (!csr_problem.uneven) {
 
@@ -696,19 +695,21 @@ void RunTests(
 				fflush(stdout);
 			}
 		}
-*/
-		// Perform multi-GPU out-of-core BFS implementation
-		if (TestGpuBfs<INSTRUMENT>(
-			multi_gpu_enactor,
-			csr_problem,
-			src,
-			h_source_path,
-			(g_quick) ? (VertexId*) NULL : reference_source_dist,
-			csr_graph,
-			stats[4],
-			max_grid_size)) exit(1);
-		printf("\n");
-		fflush(stdout);
+
+		if (!csr_problem.uneven) {
+			// Perform multi-GPU out-of-core BFS implementation
+			if (TestGpuBfs<INSTRUMENT>(
+				multi_gpu_enactor,
+				csr_problem,
+				src,
+				h_source_path,
+				(g_quick) ? (VertexId*) NULL : reference_source_dist,
+				csr_graph,
+				stats[4],
+				max_grid_size)) exit(1);
+			printf("\n");
+			fflush(stdout);
+		}
 
 		if (g_verbose2) {
 			printf("Reference solution: ");

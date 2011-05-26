@@ -631,7 +631,7 @@ struct CsrProblem
 
 // Whether to mark parents vs mark distance-from-source
 template <typename VertexId, typename SizeT, bool MARK_PARENTS>
-const float CsrProblem<VertexId, SizeT, MARK_PARENTS>::DEFAULT_QUEUE_SIZING = 1.15;
+const float CsrProblem<VertexId, SizeT, MARK_PARENTS>::DEFAULT_QUEUE_SIZING = 1.20;
 
 
 } // namespace bfs
