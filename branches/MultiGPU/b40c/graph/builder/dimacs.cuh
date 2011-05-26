@@ -30,6 +30,9 @@
 #include <time.h>
 #include <stdio.h>
 
+#include <vector>
+#include <string>
+
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/graph/builder/utils.cuh>
 
@@ -37,13 +40,12 @@ namespace b40c {
 namespace graph {
 namespace builder {
 
-
 /**
  * Reads a DIMACS graph from an input-stream into a CSR sparse format 
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int ReadDimacsStream(
-	FILE *f_in,
+	std::vector<FILE *> files,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 {
@@ -65,82 +67,125 @@ int ReadDimacsStream(
 
 	bool ordered_rows = true;
 
-	while(true) {
+	for (int file = 0; file < files.size(); file++) {
 
-		if (fscanf(f_in, "%[^\n]\n", line) <= 0) {
-			break;
-		}
+		bool parsed = false;
+		while(!parsed) {
 
-		switch (line[0]) {
-		case 'p':
-		{
-			// Problem description (nodes is nodes, edges is edges)
-			long long ll_nodes, ll_edges;
-			sscanf(line, "p %s %lld %lld", problem_type, &ll_nodes, &ll_edges);
-			nodes = ll_nodes;
-			edges = ll_edges;
-
-			directed_edges = (undirected) ? edges * 2 : edges;
-			printf(" (%lld nodes, %lld %s edges)... ",
-				(unsigned long long) ll_nodes, (unsigned long long) ll_edges,
-				(undirected) ? "undirected" : "directed");
-			fflush(stdout);
-			
-			// Allocate coo graph
-			coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
-
-			break;
-		}
-		case 'a':
-		{
-			// Edge description (v -> w) with value val
-			if (!coo) {
-				fprintf(stderr, "Error parsing DIMACS graph: invalid format\n");
-				return -1;
-			}			
-			if (edges_read >= edges) {
-				fprintf(stderr, "Error parsing DIMACS graph: encountered more than %d edges\n", edges);
-				if (coo) free(coo);
-				return -1;
+			if (fscanf(files[file], "%[^\n]\n", line) <= 0) {
+				break;
 			}
 
-			long long ll_row, ll_col, ll_val;
-			sscanf(line, "a %lld %lld %lld", &ll_row, &ll_col, &ll_val);
+			switch (line[0]) {
+			case 'p':
+			{
+				// Problem description (nodes is nodes, edges is edges)
+				long long ll_nodes, ll_edges;
+				sscanf(line, "p %s %lld %lld", problem_type, &ll_nodes, &ll_edges);
+				if (nodes && (nodes != ll_nodes)) {
+					fprintf(stderr, "Error: splice files do not name the same number of vertices\n");
+					return -1;
+				} else {
+					nodes = ll_nodes;
+				}
+				edges += ll_edges;
+				parsed = true;
 
-			coo[edges_read] = EdgeTupleType(
-				ll_row - 1,	// zero-based array
-				ll_col - 1,	// zero-based array
-				ll_val);
+				break;
+			}
+			default:
+				// read remainder of line
+				break;
+			}
+		}
+	}
 
-			if (edges_read) {
-				if (coo[edges_read].row < coo[edges_read - 1].row) {
-					ordered_rows = false;
+	directed_edges = (undirected) ? edges * 2 : edges;
+	if (!directed_edges) {
+		fprintf(stderr, "No graph found\n");
+		return -1;
+	}
+
+	printf(" (%lld vertices, %lld directed edges)... ",
+		(unsigned long long) nodes, (unsigned long long) directed_edges);
+	fflush(stdout);
+
+	// Allocate coo graph
+	coo = (EdgeTupleType*) malloc(sizeof(EdgeTupleType) * directed_edges);
+
+	// Vector of latest tuples
+	std::vector<EdgeTupleType> tuples(files.size(), EdgeTupleType(-1, 0, 0));
+
+	// Splice in ordered vertices
+	while(true) {
+
+		// Pick the smallest edge from the file set and add it to the COO edge list
+		int smallest = -1;
+		for (int i = 0; i < files.size(); i++) {
+			
+			// Read a tuple from this file if necessary
+			while ((tuples[i].row < 0) && (fscanf(files[i], "%[^\n]\n", line) > 0)) {
+
+				switch (line[0]) {
+				case 'a':
+				{
+					// Edge description (v -> w) with value val
+					if (!coo) {
+						fprintf(stderr, "Error parsing DIMACS graph: invalid format\n");
+						return -1;
+					}
+					if (edges_read >= edges) {
+						fprintf(stderr, "Error parsing DIMACS graph: encountered more than %d edges\n", edges);
+						if (coo) free(coo);
+						return -1;
+					}
+
+					long long ll_row, ll_col, ll_val;
+					sscanf(line, "a %lld %lld %lld", &ll_row, &ll_col, &ll_val);
+
+					tuples[i] = EdgeTupleType(
+						ll_row - 1,	// zero-based array
+						ll_col - 1,	// zero-based array
+						ll_val);
+
+					if (undirected) {
+						// Go ahead and insert reverse edge
+						coo[edges_read] = EdgeTupleType(
+							ll_col - 1,	// zero-based array
+							ll_row - 1,	// zero-based array
+							ll_val);
+
+						ordered_rows = false;
+						edges_read++;
+					}
+
+					break;
+				}
+
+				default:
+					// read remainder of line
+					break;
 				}
 			}
 
-			if (undirected) {
-				// Reverse edge
-				coo[edges + edges_read] = EdgeTupleType(
-					ll_col - 1,	// zero-based array
-					ll_row - 1,	// zero-based array
-					ll_val);
+			// Compare this tuple against the smallest one so far
+			if ((tuples[i].row >= 0) && ((smallest < 0) || (tuples[i].row < tuples[smallest].row))) {
+				smallest = i;
+			}
+		}
 
+		// Insert smallest edge from the splice files (or quit if none)
+		if (smallest < 0) {
+			break;
+		} else {
+			if (edges_read && (tuples[smallest].row < coo[edges_read - 1].row)) {
 				ordered_rows = false;
 			}
-
+			coo[edges_read] = tuples[smallest];
+			tuples[smallest].row = -1;
+			smallest = -1;
 			edges_read++;
-			break;
 		}
-		
-		default:
-			// read remainder of line
-			break;
-		}
-	}
-	
-	if (coo == NULL) {
-		fprintf(stderr, "No graph found\n");
-		return -1;
 	}
 
 	if (edges_read != edges) {
@@ -152,13 +197,12 @@ int ReadDimacsStream(
 	time_t mark1 = time(NULL);
 	printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 	fflush(stdout);
-	
+
 	// Convert sorted COO to CSR
 	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges, ordered_rows);
 	free(coo);
 
 	fflush(stdout);
-	
 	return 0;
 }
 
@@ -175,44 +219,66 @@ int BuildDimacsGraph(
 	char *dimacs_filename, 
 	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
-	bool undirected)
+	bool undirected,
+	bool splice)
 { 
+	int retval = 0;
+
+	std::vector<FILE*> files;
 	if (dimacs_filename == NULL) {
 
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadDimacsStream<LOAD_VALUES>(stdin, csr_graph, undirected) != 0) {
-			return -1;
+		files.push_back(stdin);
+		if (ReadDimacsStream<LOAD_VALUES>(files, csr_graph, undirected) != 0) {
+			retval = -1;
 		}
-
 	} else {
 	
-		// Read from file
-		FILE *f_in = fopen(dimacs_filename, "r");
-		if (f_in) {
-			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadDimacsStream<LOAD_VALUES>(f_in, csr_graph, undirected) != 0) {
-				fclose(f_in);
-				return -1;
+		// Read from file(s)
+		FILE *f_in;
+		if (splice) {
+			int i = 0;
+			while (true) {
+				std::stringstream formatter;
+				formatter << dimacs_filename << "." << i;
+				if ((f_in = fopen(formatter.str().c_str(), "r")) == NULL) {
+					break;
+				}
+				files.push_back(f_in);
+				printf("Opened %s\n", formatter.str().c_str());
+				i++;
 			}
-			fclose(f_in);
+		} else {
+			if ((f_in = fopen(dimacs_filename, "r")) != NULL) {
+				files.push_back(f_in);
+				printf("Opened %s:\n", dimacs_filename);
+			}
+		}
+		if (files.size()) {
+			retval = ReadDimacsStream<LOAD_VALUES>(files, csr_graph, undirected);
+			for (int i = 0; i < files.size(); i++) {
+				if (files[i]) fclose(files[i]);
+			}
 		} else {
 			perror("Unable to open file");
-			return -1;
+			retval = -1;
+		}
+	}
+
+	if (!retval) {
+		// If unspecified, assign default source.  Otherwise verify source range.
+		if (src == -1) {
+			// Random source
+			src = RandomNode(csr_graph.nodes);
+		} else if ((src < 0 ) || (src > csr_graph.nodes)) {
+			fprintf(stderr, "Invalid src: %d", src);
+			csr_graph.Free();
+			retval = -1;
 		}
 	}
 	
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
-	
-	return 0;
+	return retval;
 }
 
 } // namespace builder

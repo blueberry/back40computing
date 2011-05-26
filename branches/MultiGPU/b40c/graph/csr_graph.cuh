@@ -105,9 +105,13 @@ struct CsrGraph
 		SizeT coo_edges,
 		bool ordered_rows = false)
 	{
-		printf("  Converting to CSR format... ");
+		printf("  Converting %d vertices, %d edges (%s rows) to CSR format... ",
+			coo_nodes, coo_edges, ordered_rows ? "ordered" : "unordered");
 		time_t mark1 = time(NULL);
 		fflush(stdout);
+
+		// mooch
+		ordered_rows = false;
 		
 		FromScratch<LOAD_VALUES>(coo_nodes, coo_edges);
 		
