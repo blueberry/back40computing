@@ -430,6 +430,7 @@ void Kernel(
 
 		iteration++;
 		queue_index++;
+		steal_index++;
 
 		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 			kernel_stats.MarkStop();
