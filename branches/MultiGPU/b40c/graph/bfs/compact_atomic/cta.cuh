@@ -320,8 +320,7 @@ struct Cta
 		}
 
 		/**
-		 * Culls vertices based upon whether or not we've set a bit for them
-		 * in the d_collision_cache bitmask
+		 * Culls vertices based upon local duplicate collisions
 		 */
 		__device__ __forceinline__ void LocalCull(Cta *cta)
 		{
