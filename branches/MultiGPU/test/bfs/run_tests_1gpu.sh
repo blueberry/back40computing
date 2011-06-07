@@ -1,15 +1,35 @@
 #!/bin/sh
 
-OPTIONS="--i=100 --src=randomize --device=1 --quick"
+OPTIONS="--i=100 --src=randomize --device=0 --quick"
 SUFFIX="default.gtx480.1x"
 
-for i in audikw1.graph cage15.graph coPapersCiteseer.graph kkt_power.graph kron_g500-logn20.graph 
+for i in audikw1.graph coPapersCiteseer.graph kkt_power.graph 
 do
 	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS  
 	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS > eval/$i.$SUFFIX.txt
 	sleep 5 
 	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --mark-parents
 	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --uneven --mark-parents > eval/$i.$SUFFIX.parent.txt 
+	sleep 5 
+done
+
+for i in cage15.graph
+do
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.50
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.50 > eval/$i.$SUFFIX.txt 
+	sleep 5 
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.50 --mark-parents
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.50 --mark-parents > eval/$i.$SUFFIX.parent.txt 
+	sleep 5 
+done
+
+for i in kron_g500-logn20.graph 
+do
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.15
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.15 > eval/$i.$SUFFIX.txt 
+	sleep 5 
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.15 --mark-parents
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --uneven --queue-sizing=1.15 --mark-parents > eval/$i.$SUFFIX.parent.txt 
 	sleep 5 
 done
 

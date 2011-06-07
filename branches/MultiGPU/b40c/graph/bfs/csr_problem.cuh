@@ -525,6 +525,10 @@ struct CsrProblem
 
 			// Allocate d_source_path if necessary
 			if (!graph_slices[i]->d_source_path) {
+				printf("GPU %d source path: %lld elements (%lld bytes)\n",
+					graph_slices[i]->gpu,
+					(unsigned long long) graph_slices[i]->nodes,
+					(unsigned long long) graph_slices[i]->nodes * sizeof(VertexId));
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->d_source_path,
 						graph_slices[i]->nodes * sizeof(VertexId)),
@@ -535,6 +539,10 @@ struct CsrProblem
 			int bitmask_bytes 			= ((nodes * sizeof(CollisionMask)) + 8 - 1) / 8;					// round up to the nearest CollisionMask
 			int bitmask_elements		= bitmask_bytes * sizeof(CollisionMask);
 			if (!graph_slices[i]->d_collision_cache) {
+				printf("GPU %d collision mask: %lld elements (%lld bytes)\n",
+					graph_slices[i]->gpu,
+					(unsigned long long) bitmask_elements,
+					(unsigned long long) bitmask_bytes);
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->d_collision_cache,
 						bitmask_bytes),
@@ -549,7 +557,7 @@ struct CsrProblem
 
 			if (!graph_slices[i]->frontier_queues.d_keys[0]) {
 
-				printf("GPU %d queue sizes:\n\t compact %lld elements (%lld bytes)\n\t expand %lld elements (%lld bytes)\n\n",
+				printf("GPU %d queue sizes: compact %lld elements (%lld bytes), expand %lld elements (%lld bytes)\n",
 					graph_slices[i]->gpu,
 					(unsigned long long) graph_slices[i]->compact_queue_elements,
 					(unsigned long long) graph_slices[i]->compact_queue_elements * sizeof(VertexId),
@@ -572,6 +580,14 @@ struct CsrProblem
 			if (MARK_PARENTS) {
 				// Allocate parent vertex queues if necessary
 				if (!graph_slices[i]->frontier_queues.d_values[0]) {
+					printf("GPU %d queue sizes: parent compact %lld elements (%lld bytes), parent expand %lld elements (%lld bytes)\n",
+						graph_slices[i]->gpu,
+						(unsigned long long) graph_slices[i]->compact_queue_elements,
+						(unsigned long long) graph_slices[i]->compact_queue_elements * sizeof(VertexId),
+						(unsigned long long) graph_slices[i]->expand_queue_elements,
+						(unsigned long long) graph_slices[i]->expand_queue_elements * sizeof(VertexId));
+					fflush(stdout);
+
 					if (retval = util::B40CPerror(
 							cudaMalloc((void**) &graph_slices[i]->frontier_queues.d_values[0],
 							graph_slices[i]->compact_queue_elements * sizeof(VertexId)),
@@ -587,12 +603,18 @@ struct CsrProblem
 
 			// Allocate d_keep if necessary
 			if (!graph_slices[i]->d_keep) {
+
+				printf("GPU %d keep flags: %lld elements (%lld bytes)\n",
+					graph_slices[i]->gpu,
+					(unsigned long long) graph_slices[i]->expand_queue_elements,
+					(unsigned long long) graph_slices[i]->expand_queue_elements * sizeof(ValidFlag));
+
 				if (retval = util::B40CPerror(cudaMalloc(
 						(void**) &graph_slices[i]->d_keep,
 						graph_slices[i]->expand_queue_elements * sizeof(ValidFlag)),
 					"CsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
 			}
-
+			printf("\n");
 
 			//
 			// Initialize source paths and collision mask cache

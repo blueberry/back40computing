@@ -1,7 +1,7 @@
 #!/bin/sh
 
-OPTIONS="--i=100 --src=randomize --num-gpus=3 --quick"
-SUFFIX="default.gtx480.3x"
+OPTIONS="--i=100 --src=randomize --num-gpus=4 --quick"
+SUFFIX="default.gtx480.4x"
 
 for i in audikw1.graph cage15.graph coPapersCiteseer.graph kkt_power.graph kron_g500-logn20.graph 
 do

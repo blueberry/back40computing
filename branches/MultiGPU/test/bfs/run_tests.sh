@@ -1,5 +1,6 @@
 #!/bin/sh
 
-./run_tests_1gpu.sh
-./run_tests_2gpu.sh
+./run_tests_4gpu.sh
 ./run_tests_3gpu.sh
+./run_tests_2gpu.sh
+./run_tests_1gpu.sh
