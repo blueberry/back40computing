@@ -73,44 +73,28 @@ void Usage()
  */
 template <typename T>
 double TimedRuntimeCopy(
-	T *h_data,
+	T *d_src,
+	T *d_dest,
 	T *h_reference,
 	size_t num_elements)
 {
-	// Allocate device storage  
-	T *d_src, *d_dest;
-	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
-		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-	// Move a fresh copy of the problem into device storage
-	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
-	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	cudaMemcpy(d_dest, d_src, sizeof(T) * num_elements, cudaMemcpyDeviceToDevice);
 	
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < g_iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		cudaMemcpy(d_dest, d_src, sizeof(T) * num_elements, cudaMemcpyDeviceToDevice);
 		
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;		
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -120,18 +104,10 @@ double TimedRuntimeCopy(
     printf("%f GPU ms, %f x10^9 B/sec, ",
 		avg_runtime, throughput * sizeof(T) * 2);
 	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
     if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
 		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-    // Free allocated memory
-    if (d_src) cudaFree(d_src);
-    if (d_dest) cudaFree(d_dest);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
@@ -176,22 +152,39 @@ void TestCopy(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(h_data[i], 0);
+		// util::RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
 		h_reference[i] = h_data[i];
 	}
 
+	// Allocate device storage
+	T *d_src, *d_dest;
+	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+	if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
+		"TimedCopy cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+	// Move a fresh copy of the problem into device storage
+	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+		"TimedCopy cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedCopy<T, copy::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-	double runtime = TimedRuntimeCopy<T>(h_data, h_reference, num_elements);
+
+	double b40c = TimedCopy<T, copy::UNKNOWN_SIZE>(
+		d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+
+	double runtime = TimedRuntimeCopy<T>(
+		d_src, d_dest, h_reference, num_elements);
+
 	printf("B40C speedup: %.2f\n", b40c/runtime);
 
-	// Free our allocated host memory 
+    // Free allocated memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
+    if (d_src) cudaFree(d_src);
+    if (d_dest) cudaFree(d_dest);
 }
 
 

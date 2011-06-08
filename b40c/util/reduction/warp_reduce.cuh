@@ -131,7 +131,7 @@ struct WarpReduce
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return InvokeSingle<T, DefaultSum>(partial, warpscan, warpscan_tid);
+		return InvokeSingle<T, Operators<T>::Sum>(partial, warpscan, warpscan_tid);
 	}
 
 
@@ -166,7 +166,7 @@ struct WarpReduce
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Invoke<T, DefaultSum>(current_partial, warpscan, warpscan_tid);
+		return Invoke<T, Operators<T>::Sum>(current_partial, warpscan, warpscan_tid);
 	}
 };
 

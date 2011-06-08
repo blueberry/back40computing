@@ -30,31 +30,36 @@
 namespace b40c {
 namespace util {
 
-
 /**
- * Empty default transform function
+ * Operator wrapping structure.
+ *
+ * (N.B. due to an NVCC/cudafe 4.0 regression, we can't specify static templated
+ * functions inside other types...)
  */
-template <typename T>
-__device__ __forceinline__ void NopTransform(T &val) {}
-
-
-/**
- * Addition binary associative operator
- */
-template <typename T>
-__host__ __device__ __forceinline__ T DefaultSum(const T &a, const T &b)
+template <typename T, typename R = T>
+struct Operators
 {
-	return a + b;
-}
+	/**
+	 * Addition binary associative operator
+	 */
+	static __host__ __device__ __forceinline__ T Sum(const T &a, const T &b)
+	{
+		return a + b;
+	}
 
-/**
- * Identity for binary addition operator
- */
-template <typename T>
-__host__ __device__ __forceinline__ T DefaultSumIdentity()
-{
-	return (T) 0;
-}
+	/**
+	 * Identity for binary addition operator
+	 */
+	static __host__ __device__ __forceinline__ T SumIdentity()
+	{
+		return (T) 0;
+	}
+
+	/**
+	 * Empty default transform function
+	 */
+	static __device__ __forceinline__ void NopTransform(T &val) {}
+};
 
 
 } // namespace util

@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/copy_enactor.cuh>
+#include <b40c/copy/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -46,12 +46,12 @@ using namespace b40c;
  */
 template <typename T, b40c::copy::ProbSizeGenre PROBLEM_SIZE_GENRE>
 void TemplatedSubroutineCopy(
-	b40c::CopyEnactor &copy_enactor,
+	b40c::copy::Enactor &copy_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
 {
-	copy_enactor.template Enact<PROBLEM_SIZE_GENRE>(d_dest, d_src, num_elements * sizeof(T));
+	copy_enactor.template Copy<PROBLEM_SIZE_GENRE>(d_dest, d_src, num_elements * sizeof(T));
 }
 
 
@@ -87,12 +87,12 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a copy enactor
-	b40c::CopyEnactor copy_enactor;
+	b40c::copy::Enactor copy_enactor;
 	
 	//
 	// Example 1: Enact simple copy using internal tuning heuristics
 	//
-	copy_enactor.Enact(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
+	copy_enactor.Copy(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 	
 	printf("Simple copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 	
@@ -100,7 +100,7 @@ int main(int argc, char** argv)
 	//
 	// Example 2: Enact simple copy using "large problem" tuning configuration
 	//
-	copy_enactor.Enact<b40c::copy::LARGE>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
+	copy_enactor.Copy<b40c::copy::LARGE_SIZE>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 
 	printf("Large-tuned copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 	//
 	// Example 3: Enact simple copy using "small problem" tuning configuration
 	//
-	copy_enactor.Enact<b40c::copy::SMALL>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
+	copy_enactor.Copy<b40c::copy::SMALL_SIZE>(d_dest, d_src, NUM_ELEMENTS * sizeof(T));
 	
 	printf("Small-tuned copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
@@ -116,7 +116,7 @@ int main(int argc, char** argv)
 	//
 	// Example 4: Enact simple copy using a templated subroutine function
 	//
-	TemplatedSubroutineCopy<T, b40c::copy::SMALL>(copy_enactor, d_dest, d_src, NUM_ELEMENTS);
+	TemplatedSubroutineCopy<T, b40c::copy::UNKNOWN_SIZE>(copy_enactor, d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Templated subroutine copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 
@@ -124,17 +124,17 @@ int main(int argc, char** argv)
 	//
 	// Example 5: Enact simple copy using custom tuning configuration (base copy enactor)
 	//
-	typedef b40c::copy::ProblemConfig<
+	typedef b40c::copy::Policy<
 		T, 
-		size_t,
+		unsigned long long,
 		b40c::copy::SM20, 
+		8, 8, 7, 1, 0,
 		b40c::util::io::ld::cg,
 		b40c::util::io::st::cs,
 		true, 
-		false, 
-		8, 7, 1, 0, 8> CustomConfig;
+		false> CustomPolicy;
 	
-	copy_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
+	copy_enactor.Copy<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Custom copy: "); CompareDeviceResults(h_src, d_dest, NUM_ELEMENTS); printf("\n");
 

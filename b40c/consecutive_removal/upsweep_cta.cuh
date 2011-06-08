@@ -130,7 +130,7 @@ struct UpsweepCta : KernelConfig
 		carry = util::reduction::TreeReduce<
 			FlagCount,
 			KernelConfig::LOG_THREADS,
-			util::DefaultSum>::Invoke<false>(				// No need to return aggregate reduction in all threads
+			util::Operators<T>::Sum>::Invoke<false>(				// No need to return aggregate reduction in all threads
 				carry,
 				reduction_tree);
 

@@ -45,7 +45,7 @@ namespace reduction {
 template <
 	typename T,
 	int LOG_CTA_THREADS,
-	T ReductionOp(const T&, const T&) = util::DefaultSum<T> >
+	T ReductionOp(const T&, const T&) = Operators<T>::Sum >
 struct TreeReduce
 {
 	static const int CTA_THREADS = 1 << LOG_CTA_THREADS;

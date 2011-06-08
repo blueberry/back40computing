@@ -133,7 +133,7 @@ struct DownsweepCta : KernelConfig
 			SrtsDetails,
 			KernelConfig::LOAD_VEC_SIZE,
 			true,							// exclusive
-			util::DefaultSum>::ScanTile(
+			util::Operators<T>::Sum>::ScanTile(
 				srts_details, ranks);
 
 		//

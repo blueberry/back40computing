@@ -176,7 +176,7 @@ void TestReduction(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-		// RandomBits<T>(h_data[i], 0);
+		// util::RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :
@@ -186,8 +186,13 @@ void TestReduction(size_t num_elements)
 	//
     // Run the timing test(s)
 	//
-	double b40c = TimedReduction<T, BinaryOp, reduction::UNKNOWN>(h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-	double thrust = TimedThrustReduction<T, BinaryOp>(h_data, h_reference, num_elements);
+
+	double b40c = TimedReduction<T, BinaryOp, reduction::UNKNOWN_SIZE>(
+		h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+
+	double thrust = TimedThrustReduction<T, BinaryOp>(
+		h_data, h_reference, num_elements);
+
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 
 	// Free our allocated host memory 

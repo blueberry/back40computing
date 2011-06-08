@@ -91,8 +91,8 @@ void TestSegmentedScan(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
-//		RandomBits<Flag>(h_flag_data[i], 0);
+//		util::RandomBits<T>(h_data[i], 0);
+//		util::RandomBits<Flag>(h_flag_data[i], 0);
 		h_data[i] = 1;
 		h_flag_data[i] = (i % 11) == 0;
 	}

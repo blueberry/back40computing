@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // Scan includes
-#include <b40c/scan_enactor.cuh>
+#include <b40c/scan/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -99,7 +99,7 @@ double TimedScan(
 		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	ScanEnactor scan_enactor;
+	scan::Enactor scan_enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -108,7 +108,7 @@ double TimedScan(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	scan_enactor.DEBUG = true;
-	scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+	scan_enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 		d_dest, d_src, num_elements, max_ctas);
 	scan_enactor.DEBUG = false;
 
@@ -126,7 +126,7 @@ double TimedScan(
 		cudaEventRecord(start_event, 0);
 
 		// Call the scan API routine
-		scan_enactor.template Enact<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+		scan_enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements, max_ctas);
 
 		// End timing record

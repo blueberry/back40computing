@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/reduction_enactor.cuh>
+#include <b40c/reduction/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -56,12 +56,12 @@ template <
 	typename T,
 	T BinaryOp(const T&, const T&)>
 void TemplatedSubroutineReduction(
-	b40c::ReductionEnactor &reduction_enactor,
+	b40c::reduction::Enactor &reduction_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
 {
-	reduction_enactor.template Enact<T, BinaryOp>(d_dest, d_src, num_elements);
+	reduction_enactor.template Reduce<T, BinaryOp>(d_dest, d_src, num_elements);
 }
 
 
@@ -101,13 +101,13 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_data, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a reduction enactor
-	b40c::ReductionEnactor reduction_enactor;
+	b40c::reduction::Enactor reduction_enactor;
 	
 
 	//
 	// Example 1: Enact simple reduction using internal tuning heuristics
 	//
-	reduction_enactor.Enact<T, Max>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<T, Max>(d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Simple reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 	
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 	//
 	// Example 2: Enact simple reduction using "large problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, b40c::reduction::LARGE>(
+	reduction_enactor.Reduce<T, Max, b40c::reduction::LARGE_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Large-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 	//
 	// Example 3: Enact simple reduction using "small problem" tuning configuration
 	//
-	reduction_enactor.Enact<T, Max, b40c::reduction::SMALL>(
+	reduction_enactor.Reduce<T, Max, b40c::reduction::SMALL_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Small-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
@@ -143,7 +143,7 @@ int main(int argc, char** argv)
 	//
 
 	typedef b40c::reduction::ProblemType<T, size_t, Max> ProblemType;
-	typedef b40c::reduction::ProblemConfig<
+	typedef b40c::reduction::Policy<
 		ProblemType,
 		b40c::reduction::SM20,
 		b40c::util::io::ld::cg,
@@ -153,9 +153,9 @@ int main(int argc, char** argv)
 		true, 
 		false, 
 		8, 7, 1, 2, 9,
-		8, 1, 1> CustomConfig;
+		8, 1, 1> CustomPolicy;
 	
-	reduction_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Custom reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 

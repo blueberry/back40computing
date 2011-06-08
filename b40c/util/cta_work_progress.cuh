@@ -65,8 +65,10 @@ class CtaWorkProgress
 {
 protected :
 
-	static const int QUEUE_COUNTERS = 4;
-	static const int STEAL_COUNTERS = 2;
+	enum {
+		QUEUE_COUNTERS = 4,
+		STEAL_COUNTERS = 2,
+	};
 
 	// Six pointer-sized counters in global device memory (we may not use
 	// all of them, or may only use 32-bit versions of them)
@@ -77,12 +79,16 @@ protected :
 
 public:
 
-	static const int COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS;
+	enum {
+		COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS
+	};
 
 	/**
 	 * Constructor
 	 */
-	CtaWorkProgress() : d_counters(NULL), progress_selector(0) {}
+	CtaWorkProgress() :
+		d_counters(NULL),
+		progress_selector(0) {}
 
 	/**
 	 * Resets all counters.  Must be called by thread-0 through
@@ -210,13 +216,19 @@ public:
  */
 class CtaWorkProgressLifetime : public CtaWorkProgress
 {
+protected:
+
+	// GPU d_counters was allocated on
+	int gpu;
+
 public:
 
 	/**
 	 * Constructor
 	 */
 	CtaWorkProgressLifetime() :
-		CtaWorkProgress() {}
+		CtaWorkProgress(),
+		gpu(B40C_INVALID_DEVICE) {}
 
 
 	/**
@@ -225,13 +237,33 @@ public:
 	cudaError_t HostReset()
 	{
 		cudaError_t retval = cudaSuccess;
-		if (d_counters) {
 
-			retval = util::B40CPerror(cudaFree(d_counters),
-				"CtaWorkProgress cudaFree d_counters failed: ", __FILE__, __LINE__);
-			d_counters = NULL;
-		}
-		progress_selector = 0;
+		do {
+			if (gpu != B40C_INVALID_DEVICE) {
+
+				// Save current gpu
+				int current_gpu;
+				if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
+					"CtaWorkProgress cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+
+				// Deallocate
+				if (retval = util::B40CPerror(cudaSetDevice(gpu),
+					"CtaWorkProgress cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFree(d_counters),
+					"CtaWorkProgress cudaFree d_counters failed: ", __FILE__, __LINE__)) break;
+
+				d_counters = NULL;
+				gpu = B40C_INVALID_DEVICE;
+
+				// Restore current gpu
+				if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
+					"CtaWorkProgress cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+			}
+
+			progress_selector = 0;
+
+		} while (0);
+
 		return retval;
 	}
 
@@ -263,10 +295,12 @@ public:
 				}
 
 				// Allocate and initialize
+				if (retval = util::B40CPerror(cudaGetDevice(&gpu),
+					"CtaWorkProgress cudaGetDevice failed: ", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaMalloc((void**) &d_counters, sizeof(h_counters)),
-					"ReductionEnactor cudaMalloc d_counters failed", __FILE__, __LINE__)) break;
+					"CtaWorkProgress cudaMalloc d_counters failed", __FILE__, __LINE__)) break;
 				if (retval = util::B40CPerror(cudaMemcpy(d_counters, h_counters, sizeof(h_counters), cudaMemcpyHostToDevice),
-					"ReductionEnactor cudaMemcpy d_counters failed", __FILE__, __LINE__)) break;
+					"CtaWorkProgress cudaMemcpy d_counters failed", __FILE__, __LINE__)) break;
 			}
 
 			// Update our progress counter selector to index the next progress counter
@@ -281,22 +315,24 @@ public:
 	/**
 	 * Acquire work queue length
 	 */
-	template <typename SizeT, typename IterationT>
+	template <typename IterationT, typename SizeT>
 	cudaError_t GetQueueLength(
 		IterationT iteration,
 		SizeT &queue_length)		// out param
 	{
-		cudaError_t retval;
-		int queue_length_idx = iteration & 0x3;
+		cudaError_t retval = cudaSuccess;
 
-		if (retval = cudaMemcpy(
-			&queue_length,
-			((SizeT*) d_counters) + queue_length_idx,
-			1 * sizeof(SizeT),
-			cudaMemcpyDeviceToHost))
-		{
-			printf("cudaMemcpy failed: %s %d", __FILE__, __LINE__);
-		}
+		do {
+			int queue_length_idx = iteration & 0x3;
+
+			if (retval = util::B40CPerror(cudaMemcpy(
+					&queue_length,
+					((SizeT*) d_counters) + queue_length_idx,
+					1 * sizeof(SizeT),
+					cudaMemcpyDeviceToHost),
+				"CtaWorkProgress cudaMemcpy d_counters failed", __FILE__, __LINE__)) break;
+
+		} while (0);
 
 		return retval;
 	}
