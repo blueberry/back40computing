@@ -155,8 +155,8 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE> : Policy<
 	util::io::st::NONE,		// CACHE_MODIFIER
 	false,					// EARLY_EXIT
 	false,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+	false, 					// UNIFORM_GRID_SIZE
+	false,					// OVERSUBSCRIBED_GRID_SIZE
 
 	// Upsweep Kernel
 	8,						// UPSWEEP_CTA_OCCUPANCY
@@ -173,13 +173,11 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE> : Policy<
 
 	// Downsweep Kernel
 	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	4,						// DOWNSWEEP_CTA_OCCUPANCY
-	8,						// DOWNSWEEP_LOG_THREADS
-	0,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+	7,						// DOWNSWEEP_CTA_OCCUPANCY
+	7,						// DOWNSWEEP_LOG_THREADS
+	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		0 :
-		0,
+	0, 						// DOWNSWEEP_LOG_CYCLES_PER_TILE
 	7>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
