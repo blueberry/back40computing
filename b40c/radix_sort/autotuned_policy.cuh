@@ -210,8 +210,12 @@ struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
 	// Upsweep Kernel
 	5,						// UPSWEEP_CTA_OCCUPANCY
 	7,						// UPSWEEP_LOG_THREADS
-	1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	0,						// UPSWEEP_LOG_LOADS_PER_TILE
+	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
+		1 :
+		0,
+	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// UPSWEEP_LOG_LOADS_PER_TILE
+		0 :
+		1,
 
 	// Spine-scan Kernel
 	1,						// SPINE_CTA_OCCUPANCY
@@ -223,9 +227,15 @@ struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
 	// Downsweep Kernel
 	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	5,						// DOWNSWEEP_CTA_OCCUPANCY
-	6,						// DOWNSWEEP_LOG_THREADS
-	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_THREADS
+		6 :
+		7,
+	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		2 :
+		1,
+	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		1 :
+		0,
 	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
 		0 :
 		0,

@@ -213,7 +213,8 @@ struct Cta
 		Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 
 		__syncthreads();
-/*
+
+#if 1
 		// Unroll batches of full tiles
 		const int UNROLLED_ELEMENTS = KernelPolicy::UNROLL_COUNT * KernelPolicy::TILE_ELEMENTS;
 		while (cta_offset < cta_out_of_bounds - UNROLLED_ELEMENTS) {
@@ -233,7 +234,18 @@ struct Cta
 			// Reset composite counters in lanes
 			Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 		}
-*/
+
+		// Unroll single full tiles
+		while (cta_offset < cta_out_of_bounds - KernelPolicy::TILE_ELEMENTS) {
+
+			UnrollTiles::template Iterate<1>::ProcessTiles(
+				dispatch,
+				cta_offset);
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
+		}
+
+#else 	// Use for faster compilation tiles
+
 		// Unroll single full tiles
 		while (cta_offset < guarded_offset) {
 
@@ -254,6 +266,7 @@ struct Cta
 				Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 			}
 		}
+#endif
 
 		// Process partial tile if necessary
 		ProcessPartialTile(cta_offset, cta_out_of_bounds);

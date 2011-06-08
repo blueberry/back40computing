@@ -64,8 +64,13 @@ struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS>
 {
 	__device__ __forceinline__ static void Extract(int &bits, const unsigned long long &source) 
 	{
-		const unsigned long long MASK = (1 << NUM_BITS) - 1;
-		bits = (source >> BIT_START) & MASK;
+		if (BIT_START >= 32) {											// For extraction on GT200, the compiler goes nuts and shoves hundreds of bytes to lmem unless we use different extractions for upper/lower
+			const unsigned long long MASK = (1 << NUM_BITS) - 1;
+			bits = (source >> BIT_START) & MASK;
+		} else {
+			const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_START;
+			bits = (source & MASK) >> BIT_START;
+		}
 	}
 };
 	
