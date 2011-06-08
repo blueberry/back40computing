@@ -114,6 +114,9 @@ protected:
 		util::KernelRuntimeStatsLifetime partition_kernel_stats;
 		util::KernelRuntimeStatsLifetime copy_kernel_stats;
 
+		cudaEvent_t		host_sync_event;
+		cudaEvent_t		device_sync_event;
+		cudaEvent_t		scatter_sync_event;
 
 		//---------------------------------------------------------------------
 		// Methods
@@ -136,8 +139,30 @@ protected:
 			selector(0),
 			steal_index(0),
 			queue_index(0),
-			queue_length(0)
+			queue_length(0),
+			host_sync_event(0),
+			device_sync_event(0),
+			scatter_sync_event(0)
 		{}
+
+		/**
+		 * Destructor
+		 */
+		virtual ~GpuControlBlock()
+		{
+			if (host_sync_event) {
+				util::B40CPerror(cudaEventDestroy(host_sync_event),
+					"GpuControlBlock cudaEventDestroy host_sync_event failed", __FILE__, __LINE__);
+			}
+			if (device_sync_event) {
+				util::B40CPerror(cudaEventDestroy(device_sync_event),
+					"GpuControlBlock cudaEventDestroy device_sync_event failed", __FILE__, __LINE__);
+			}
+			if (scatter_sync_event) {
+				util::B40CPerror(cudaEventDestroy(scatter_sync_event),
+					"GpuControlBlock cudaEventDestroy scatter_sync_event failed", __FILE__, __LINE__);
+			}
+		}
 
 
 		/**
@@ -196,6 +221,24 @@ protected:
 
 				// Setup work progress
 				if (retval = work_progress.Setup()) break;
+
+				// Create host_sync_event
+				if (retval = util::B40CPerror(cudaEventCreateWithFlags(
+						&host_sync_event,
+						cudaEventDisableTiming),
+					"GpuControlBlock cudaEventCreateWithFlags host_sync_event failed", __FILE__, __LINE__)) break;
+
+				// Create device_sync_event event
+				if (retval = util::B40CPerror(cudaEventCreateWithFlags(
+						&device_sync_event,
+						cudaEventDisableTiming),
+					"GpuControlBlock cudaEventCreateWithFlags device_sync_event failed", __FILE__, __LINE__)) break;
+
+				// Create scatter_sync_event event
+				if (retval = util::B40CPerror(cudaEventCreateWithFlags(
+						&scatter_sync_event,
+						cudaEventDisableTiming),
+					"GpuControlBlock cudaEventCreateWithFlags scatter_sync_event failed", __FILE__, __LINE__)) break;
 
 			} while (0);
 
@@ -315,7 +358,7 @@ public:
 
 				ResetControlBlocks();
 
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					// Set device
 					if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
@@ -328,7 +371,7 @@ public:
 			}
 
 			// Setup control blocks
-			for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+			for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 				// Set device
 				if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
@@ -394,7 +437,7 @@ public:
 			// Expand work queues (first iteration)
 			//---------------------------------------------------------------------
 
-			for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+			for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 				GpuControlBlock *control 	= control_blocks[i];
 				GraphSlice *slice 			= csr_problem.graph_slices[i];
@@ -445,7 +488,7 @@ public:
 				// Partition/compact work queues
 				//---------------------------------------------------------------------
 
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
 					GraphSlice *slice 			= csr_problem.graph_slices[i];
@@ -496,6 +539,10 @@ public:
 							control->spine_elements);
 					}
 
+					// Record host synchronization event
+					if (retval = util::B40CPerror(cudaEventRecord(control->host_sync_event),
+						"GpuControlBlock cudaEventRecord host_sync_event failed", __FILE__, __LINE__)) break;
+
 					// Downsweep
 					partition_compact::downsweep::Kernel<PartitionDownsweep>
 							<<<control->partition_grid_size, PartitionDownsweep::THREADS, 0, slice->stream>>>(
@@ -515,6 +562,10 @@ public:
 
 					control->selector ^= 1;
 					control->queue_index++;
+
+					// Record scatter synchronization event
+					if (retval = util::B40CPerror(cudaEventRecord(control->scatter_sync_event),
+						"GpuControlBlock cudaEventRecord device_sync_event failed", __FILE__, __LINE__)) break;
 				}
 				if (retval) break;
 
@@ -523,15 +574,15 @@ public:
 				//---------------------------------------------------------------------
 
 				done = true;
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
 					GraphSlice *slice 			= csr_problem.graph_slices[i];
 
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
-					if (retval = util::B40CPerror(cudaDeviceSynchronize(),
-						"EnactorMultiGpu cudaDeviceSynchronize failed", __FILE__, __LINE__)) break;
+					if (retval = util::B40CPerror(cudaEventSynchronize(control->host_sync_event),
+						"GpuControlBlock cudaEventSynchronize host_sync_event failed", __FILE__, __LINE__)) break;
 
 					SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
@@ -570,7 +621,7 @@ public:
 				// Stream-compact work queues
 				//---------------------------------------------------------------------
 
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
 					GraphSlice *slice 			= csr_problem.graph_slices[i];
@@ -580,7 +631,7 @@ public:
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 					// Stream in and filter inputs from all gpus (including ourselves)
-					for (volatile int j = 0; j < csr_problem.num_gpus; j++) {
+					for (int j = 0; j < csr_problem.num_gpus; j++) {
 
 						// Starting with ourselves (must copy our own bin first), stream
 						// bins into our queue
@@ -604,6 +655,10 @@ public:
 								queue_oob,
 								bins_per_gpu * (i + 1) * peer_control->partition_grid_size);
 							fflush(stdout);
+						}
+
+						if (!num_elements) {
+				    		continue;
 						}
 
 						if (slice->gpu == peer_slice->gpu) {
@@ -630,6 +685,13 @@ public:
 
 						} else {
 
+							// Synchronize on remote GPU having finished scattering
+							if (retval = util::B40CPerror(cudaStreamWaitEvent(
+								slice->stream,
+								control_blocks[peer]->scatter_sync_event,
+								0),
+							"EnactorMultiGpu cudaStreamWaitEvent failed", __FILE__, __LINE__)) break;
+
 							// Compaction
 							compact_atomic::Kernel<CompactPolicy>
 								<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
@@ -654,16 +716,20 @@ public:
 
 					control->selector ^= 1;
 					control->queue_index++;
+
+					// Record device synchronization event
+		    		if (retval = util::B40CPerror(cudaEventRecord(control->device_sync_event),
+						"GpuControlBlock cudaEventRecord device_sync_event failed", __FILE__, __LINE__)) break;
 				}
 				if (retval) break;
 
 
 				//---------------------------------------------------------------------
-				// Synchronization point
+				// Synchronization point to make sure everyone is done with each other's
+				// scatter queues
 				//---------------------------------------------------------------------
 
-				done = true;
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
 					GraphSlice *slice 			= csr_problem.graph_slices[i];
@@ -672,45 +738,27 @@ public:
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-					// Update queue length
-					if (retval = control->template UpdateQueueLength<SizeT>()) break;
+					// Synchronize on other gpus
+					for (int j = 1; j < csr_problem.num_gpus; j++) {
 
-					if (INSTRUMENT) {
-						printf("Iteration %lld GPU %d partition enqueued %lld\n",
-							(long long) control->iteration - 1,
-							control->gpu,
-							(long long) control->queue_length);
+						int peer = (i + j) % csr_problem.num_gpus;
+
+						if (retval = util::B40CPerror(cudaStreamWaitEvent(
+								slice->stream,
+								control_blocks[peer]->device_sync_event,
+								0),
+							"EnactorMultiGpu cudaStreamWaitEvent failed", __FILE__, __LINE__)) break;
 					}
-
-					// Check if this gpu is not done
-					if (control->queue_length) done = false;
-
-					if (DEBUG2) {
-						printf("Iteration %lld stream-compacted queue on gpu %d (%lld elements):\n",
-							(long long) control->iteration,
-							control->gpu, (long long) control->queue_length);
-						DisplayDeviceResults(
-							slice->frontier_queues.d_keys[control->selector],
-							control->queue_length);
-						printf("Source distance vector on gpu %d:\n", control->gpu);
-						DisplayDeviceResults(
-							slice->d_source_path,
-							slice->nodes);
-					}
+					if (retval) break;
 				}
 				if (retval) break;
-
-				// Check if all done in all GPUs
-				if (done) break;
-
-				if (INSTRUMENT) printf("\n");
 
 
 				//---------------------------------------------------------------------
 				// Expand work queues
 				//---------------------------------------------------------------------
 
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
+				for (int i = 0; i < csr_problem.num_gpus; i++) {
 
 					GpuControlBlock *control 	= control_blocks[i];
 					GraphSlice *slice 			= csr_problem.graph_slices[i];
