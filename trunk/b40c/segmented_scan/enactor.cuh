@@ -137,7 +137,7 @@ public:
  * Performs any lazy initialization work needed for this problem type
  */
 template <typename ProblemConfig>
-cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
+cudaError_t Enactor::Setup(int spine_elements)
 {
 	typedef typename ProblemConfig::T T;
 	typedef typename ProblemConfig::Flag Flag;
@@ -145,8 +145,8 @@ cudaError_t Enactor::Setup(int sweep_grid_size, int spine_elements)
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spines are big enough
-		if (retval = partial_spine.Setup<T>(sweep_grid_size, spine_elements)) break;
-		if (retval = flag_spine.Setup<Flag>(sweep_grid_size, spine_elements)) break;
+		if (retval = partial_spine.Setup<T>(spine_elements)) break;
+		if (retval = flag_spine.Setup<Flag>(spine_elements)) break;
 
 	} while (0);
 
@@ -301,7 +301,7 @@ cudaError_t Enactor::EnactInternal(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Perform any lazy initialization work
-		if (retval = Setup<ProblemConfig>(sweep_grid_size, spine_elements)) break;
+		if (retval = Setup<ProblemConfig>(spine_elements)) break;
 
 		// Invoke segmented scan kernel
 		EnactorType *dipatch = static_cast<EnactorType *>(this);

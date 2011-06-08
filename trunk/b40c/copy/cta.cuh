@@ -37,18 +37,18 @@ namespace copy {
 
 
 /**
- * Derivation of KernelConfig that encapsulates tile-processing
+ * Derivation of KernelPolicy that encapsulates tile-processing
  * routines
  */
-template <typename KernelConfig>
-struct Cta : KernelConfig
+template <typename KernelPolicy>
+struct Cta : KernelPolicy
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T T;
-	typedef typename KernelConfig::SizeT SizeT;
+	typedef typename KernelPolicy::T T;
+	typedef typename KernelPolicy::SizeT SizeT;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -65,37 +65,40 @@ struct Cta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ Cta(T *d_in, T *d_out) :
-		d_in(d_in), d_out(d_out) {}
+	__device__ __forceinline__ Cta(
+		T *d_in,
+		T *d_out) :
+			d_in(d_in),
+			d_out(d_out) {}
 
 
 	/**
 	 * Process a single tile
 	 *
-	 * Each thread copys only the strided values it loads.
+	 * Each thread copies only the strided values it loads.
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = KernelConfig::TILE_ELEMENTS)
+		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tile of elements
-		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER>::LoadValid(data, d_in + cta_offset, guarded_elements);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(data, d_in + cta_offset, guarded_elements);
 
 		__syncthreads();
 
 		// Store tile
 		util::io::StoreTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER>::Store(data, d_out + cta_offset, guarded_elements);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Store(data, d_out + cta_offset, guarded_elements);
 	}
 };
 

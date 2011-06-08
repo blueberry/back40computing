@@ -126,14 +126,10 @@ endif
 DEPS = 			./Makefile \
 				./test_reduction.h \
 				../b40c_test_util.h \
-				$(wildcard ../../b40c/*.cuh) \
 				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/util/io/*.cuh) \
-				$(wildcard ../../b40c/util/reduction/*.cuh) \
-				$(wildcard ../../b40c/util/reduction/soa/*.cuh) \
-				$(wildcard ../../b40c/util/scan/*.cuh) \
+				$(wildcard ../../b40c/util/**/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) 
+				$(wildcard ../../b40c/reduction/**/*.cuh) 
 				 
 
 

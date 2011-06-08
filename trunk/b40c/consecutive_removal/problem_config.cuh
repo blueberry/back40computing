@@ -107,8 +107,8 @@ struct ProblemConfig : _ProblemType
 		FlagCount,
 		typename ProblemType::SizeT,
 		true,								// Exclusive
-		util::DefaultSum<FlagCount>,
-		util::DefaultSumIdentity<FlagCount> > SpineProblemType;
+		util::Operators<T>::Sum<FlagCount>,
+		util::Operators<T>::SumIdentity<FlagCount> > SpineProblemType;
 
 	// Kernel config for the spine consecutive removal kernel
 	typedef scan::DownsweepKernelConfig <

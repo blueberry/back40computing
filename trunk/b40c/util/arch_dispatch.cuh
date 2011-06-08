@@ -43,10 +43,10 @@ namespace util {
 template <int CUDA_ARCH, typename Dispatch>
 struct ArchDispatch
 {
-	template<typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &problem_storage, Detail &detail, int dummy)
+	template<typename Detail>
+	static cudaError_t Enact(Detail &detail, int dummy)
 	{
-		return Dispatch::template Enact<CUDA_ARCH, Storage, Detail>(problem_storage, detail);
+		return Dispatch::template Enact<CUDA_ARCH, Detail>(detail);
 	}
 };
 
@@ -60,26 +60,26 @@ struct ArchDispatch
 template <typename Dispatch>
 struct ArchDispatch<0, Dispatch>
 {
-	template<typename Storage, typename Detail>
-	static cudaError_t Enact(Storage &problem_storage, Detail &detail, int ptx_version)
+	template<typename Detail>
+	static cudaError_t Enact(Detail &detail, int ptx_version)
 	{
 		// Dispatch
 		switch (ptx_version) {
 		case 100:
-			return Dispatch::template Enact<100, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<100, Detail>(detail);
 		case 110:
-			return Dispatch::template Enact<110, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<110, Detail>(detail);
 		case 120:
-			return Dispatch::template Enact<120, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<120, Detail>(detail);
 		case 130:
-			return Dispatch::template Enact<130, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<130, Detail>(detail);
 		case 200:
-			return Dispatch::template Enact<200, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<200, Detail>(detail);
 		case 210:
-			return Dispatch::template Enact<210, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<210, Detail>(detail);
 		default:
 			// We were compiled for something new: treat it as we would SM2.0
-			return Dispatch::template Enact<200, Storage, Detail>(problem_storage, detail);
+			return Dispatch::template Enact<200, Detail>(detail);
 		};
 	}
 };

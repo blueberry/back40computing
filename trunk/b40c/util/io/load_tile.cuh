@@ -493,7 +493,7 @@ struct LoadTile
 		T data[][LOAD_VEC_SIZE],
 		T *d_in)
 	{
-		LoadValid<T, NopTransform<T> >(data, d_in);
+		LoadValid<T, Operators<T>::NopTransform>(data, d_in);
 	}
 
 	/**
@@ -547,7 +547,7 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		LoadValid<T, NopTransform<T> >(data, oob_default, d_in, guarded_elements);
+		LoadValid<T, Operators<T>::NopTransform>(data, oob_default, d_in, guarded_elements);
 	}
 
 	/**
@@ -559,7 +559,7 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		LoadValid<T, NopTransform<T>, int>(data, d_in, guarded_elements);
+		LoadValid<T, Operators<T>::NopTransform, int>(data, d_in, guarded_elements);
 	}
 
 

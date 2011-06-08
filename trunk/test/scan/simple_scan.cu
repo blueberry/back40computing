@@ -25,7 +25,7 @@
  ******************************************************************************/
 
 #include <stdio.h> 
-#include <b40c/scan_enactor.cuh>
+#include <b40c/scan/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -68,12 +68,12 @@ template <
 	T BinaryOp(const T&, const T&),
 	T Identity()>
 void TemplatedSubroutineScan(
-	b40c::ScanEnactor &scan_enactor,
+	b40c::scan::Enactor &scan_enactor,
 	T *d_dest, 
 	T *d_src,
 	int num_elements)
 {
-	scan_enactor.template Enact<T, EXCLUSIVE_SCAN, BinaryOp, Identity>(d_dest, d_src, num_elements);
+	scan_enactor.template Scan<T, EXCLUSIVE_SCAN, BinaryOp, Identity>(d_dest, d_src, num_elements);
 }
 
 
@@ -124,13 +124,13 @@ int main(int argc, char** argv)
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	
 	// Create a scan enactor
-	b40c::ScanEnactor scan_enactor;
+	b40c::scan::Enactor scan_enactor;
 	
 
 	//
 	// Example 1: Enact simple exclusive scan using internal tuning heuristics
 	//
-	scan_enactor.Enact<T, EXCLUSIVE_SCAN, Max, MaxId>(
+	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId>(
 		d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Simple scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -139,7 +139,7 @@ int main(int argc, char** argv)
 	//
 	// Example 2: Enact simple exclusive scan using "large problem" tuning configuration
 	//
-	scan_enactor.Enact<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::LARGE>(
+	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::LARGE_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Large-tuned scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -148,7 +148,7 @@ int main(int argc, char** argv)
 	//
 	// Example 3: Enact simple exclusive scan using "small problem" tuning configuration
 	//
-	scan_enactor.Enact<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::SMALL>(
+	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::SMALL_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS);
 	
 	printf("Small-tuned scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -166,7 +166,7 @@ int main(int argc, char** argv)
 	// Example 5: Enact simple exclusive scan using custom tuning configuration (base scan enactor)
 	//
 	typedef b40c::scan::ProblemType<T, size_t, EXCLUSIVE_SCAN, Max, MaxId> ProblemType;
-	typedef b40c::scan::ProblemConfig<
+	typedef b40c::scan::Policy<
 		ProblemType,
 		b40c::scan::SM20,
 		b40c::util::io::ld::cg,
@@ -177,9 +177,9 @@ int main(int argc, char** argv)
 		8,
 		8, 7, 1, 0,
 		8, 0, 1, 5,
-		8, 7, 1, 0, 5> CustomConfig;
+		8, 7, 1, 0, 5> CustomPolicy;
 	
-	scan_enactor.Enact<CustomConfig>(d_dest, d_src, NUM_ELEMENTS);
+	scan_enactor.Scan<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
 
 	printf("Custom scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
 

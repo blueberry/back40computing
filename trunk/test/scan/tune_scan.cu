@@ -516,7 +516,7 @@ void TestScan(size_t num_elements)
 	detail.h_reference[0] = OpType::Identity();
 
 	for (size_t i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
+//		util::RandomBits<T>(h_data[i], 0);
 		detail.h_data[i] = i;
 		detail.h_reference[i] = (i == 0) ?
 			OpType::Identity() :

@@ -89,7 +89,7 @@ void TestScan(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
-//		RandomBits<T>(h_data[i], 0);
+//		util::RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
 		if (EXCLUSIVE)
 		{
@@ -112,11 +112,11 @@ void TestScan(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::LARGE>(
+		double large = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::LARGE_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::SMALL>(
+		double small = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::SMALL_SIZE>(
 			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
