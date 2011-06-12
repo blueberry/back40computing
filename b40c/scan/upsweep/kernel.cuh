@@ -61,20 +61,41 @@ __device__ __forceinline__ void UpsweepPass(
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-	// Since we're not the last block: process at least one full tile of tile_elements
-	cta.template ProcessFullTile<true>(work_limits.offset);
-	work_limits.offset += KernelPolicy::TILE_ELEMENTS;
+	if (work_limits.offset < work_limits.guarded_offset) {
 
-	// Process any other full tiles
-	while (work_limits.offset < work_limits.guarded_offset) {
-
-		cta.ProcessFullTile<false>(work_limits.offset);
+		// Process at least one full tile of tile_elements
+		cta.template ProcessFullTile<true>(work_limits.offset);
 		work_limits.offset += KernelPolicy::TILE_ELEMENTS;
-	}
 
-	// Collectively reduce accumulated carry from each thread into output
-	// destination (all thread have valid reduction partials)
-	cta.OutputToSpine();
+		// Process any other full tiles
+		while (work_limits.offset < work_limits.guarded_offset) {
+			cta.ProcessFullTile<false>(work_limits.offset);
+			work_limits.offset += KernelPolicy::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (work_limits.guarded_elements) {
+			cta.ProcessPartialTile<false>(
+				work_limits.offset,
+				work_limits.out_of_bounds);
+		}
+		// Collectively reduce accumulated carry from each thread into output
+		// destination (all thread have valid reduction partials)
+		cta.OutputToSpine();
+
+	} else {
+
+		// Clean up last partial tile with guarded-io
+		if (work_limits.guarded_elements) {
+			cta.ProcessPartialTile<true>(
+				work_limits.offset,
+				work_limits.out_of_bounds);
+		}
+
+		// Collectively reduce accumulated carry from each thread into output
+		// destination (all thread have valid reduction partials)
+		cta.OutputToSpine(work_limits.guarded_elements);
+	}
 }
 
 

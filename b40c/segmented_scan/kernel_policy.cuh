@@ -64,7 +64,7 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelConfig : _ProblemType
+struct KernelPolicy : _ProblemType
 {
 	typedef _ProblemType ProblemType;
 

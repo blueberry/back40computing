@@ -27,19 +27,15 @@
 #include <stdio.h> 
 
 #include <b40c/segmented_scan/problem_type.cuh>
-#include <b40c/segmented_scan/problem_config.cuh>
-#include <b40c/segmented_scan/kernel_config.cuh>
-#include <b40c/segmented_scan/problem_config_tuned.cuh>
+#include <b40c/segmented_scan/policy.cuh>
+#include <b40c/segmented_scan/autotuned_policy.cuh>
+#include <b40c/segmented_scan/enactor.cuh>
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/segmented_scan/enactor.cuh>
-
 // Test utils
 #include "b40c_test_util.h"
-
-
 
 using namespace b40c;
 
@@ -139,21 +135,19 @@ int main(int argc, char** argv)
 	typedef b40c::segmented_scan::ProblemType<
 		T, Flag, size_t, EXCLUSIVE_SCAN, Sum, SumId> ProblemType;
 
-	typedef b40c::segmented_scan::ProblemConfig<
+	typedef b40c::segmented_scan::Policy<
 		ProblemType,
 		b40c::segmented_scan::SM20,
 		b40c::util::io::ld::cg,
 		b40c::util::io::st::cg,
-		false,
-		false,
-		false,
-		7, 8, 5, 2, 1, 5,
-		      5, 1, 1, 5,
-		   8, 5, 1, 2, 5> CustomConfig;
+		false, false, false, 7,
+		8, 5, 2, 1, 5,
+		5, 1, 1, 5,
+		8, 5, 1, 2, 5> CustomConfig;
 
 	segmented_scan::Enactor segmented_scan_enactor;
 	segmented_scan_enactor.DEBUG = true;
-	segmented_scan_enactor.Enact<CustomConfig>(
+	segmented_scan_enactor.Scan<CustomConfig>(
 		d_dest, d_src, d_flags, NUM_ELEMENTS);
 
 	// Flushes any stdio from the GPU
@@ -161,7 +155,6 @@ int main(int argc, char** argv)
 
 	CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS, true, true);
 	printf("\n");
-
 
 	return 0;
 }

@@ -426,8 +426,9 @@ cudaError_t Enactor::Scan(
 				(unsigned long) work.grains_per_cta,
 				(unsigned long) work.extra_grains);
 		} else {
-			printf("Spine: \t\t[threads: %d, tile_elements: %d]\n",
+			printf("Single: \t[threads: %d, num_elements: %lu, tile_elements: %d]\n",
 				Spine::THREADS,
+				(unsigned long) work.num_elements,
 				Spine::TILE_ELEMENTS);
 		}
 		fflush(stdout);
@@ -438,7 +439,7 @@ cudaError_t Enactor::Scan(
 		// Make sure our spine is big enough
 		if (retval = spine.Setup<T>(spine_elements)) break;
 
-		// Invoke scan kernel
+		// Invoke scan pass
 		if (retval = EnactPass<Policy>(d_dest, d_src, work, spine_elements)) break;
 
 	} while (0);
