@@ -40,7 +40,7 @@ namespace scan {
 
 
 /******************************************************************************
- * Tuning classifiers to policy-genre granularity types on
+ * Genre classifiers to specialize policy types on
  ******************************************************************************/
 
 /**
@@ -309,8 +309,8 @@ struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE, T, T_SIZE>
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::THREADS),
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Upsweep::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
@@ -330,8 +330,8 @@ __global__ void TunedUpsweepKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::THREADS),
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
 	typename ProblemType::T 		* d_in,
 	typename ProblemType::T 		* d_out,
@@ -352,8 +352,8 @@ __global__ void TunedSpineKernel(
  */
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Downsweep::THREADS),
-	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Downsweep::CTA_OCCUPANCY))
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
 	typename ProblemType::T 			* d_in,
 	typename ProblemType::T 			* d_out,

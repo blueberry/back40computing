@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // SegmentedScan includes
-#include <b40c/segmented_scan_enactor.cuh>
+#include <b40c/segmented_scan/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -104,7 +104,7 @@ double TimedSegmentedScan(
 		"TimedSegmentedScan cudaMalloc d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	SegmentedScanEnactor segmented_scan_enactor;
+	segmented_scan::Enactor enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -114,10 +114,10 @@ double TimedSegmentedScan(
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
-	segmented_scan_enactor.DEBUG = true;
-	segmented_scan_enactor.template Enact<T, Flag, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+	enactor.DEBUG = true;
+	enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 		d_dest, d_src, d_flag_src, num_elements, max_ctas);
-	segmented_scan_enactor.DEBUG = false;
+	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
 
@@ -133,7 +133,7 @@ double TimedSegmentedScan(
 		cudaEventRecord(start_event, 0);
 
 		// Call the segmented scan API routine
-		segmented_scan_enactor.template Enact<T, Flag, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
+		enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
 			d_dest, d_src, d_flag_src, num_elements, max_ctas);
 
 		// End timing record

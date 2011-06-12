@@ -119,11 +119,11 @@ void TestSegmentedScan(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::LARGE>(
+		double large = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::LARGE_SIZE>(
 			h_data, h_flag_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::SMALL>(
+		double small = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::SMALL_SIZE>(
 			h_data, h_flag_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {

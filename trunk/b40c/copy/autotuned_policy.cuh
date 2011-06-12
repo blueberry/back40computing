@@ -39,7 +39,7 @@ namespace copy {
 
 
 /******************************************************************************
- * Tuning classifiers to specialize policy-genre types on
+ * Genre classifiers to specialize policy types on
  ******************************************************************************/
 
 /**

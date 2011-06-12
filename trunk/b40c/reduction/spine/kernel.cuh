@@ -35,12 +35,12 @@ namespace spine {
 /**
  * Spine reduction pass
  */
-template <typename KernelPolicy, typename SmemStorage>
+template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
-	typename KernelPolicy::T 		*d_in,
-	typename KernelPolicy::T 		*d_spine,
-	typename KernelPolicy::SizeT 	spine_elements,
-	SmemStorage						&smem_storage)
+	typename KernelPolicy::T 			*d_in,
+	typename KernelPolicy::T 			*d_spine,
+	typename KernelPolicy::SizeT 		spine_elements,
+	typename KernelPolicy::SmemStorage	&smem_storage)
 {
 	typedef upsweep::Cta<KernelPolicy> 		Cta;
 	typedef typename KernelPolicy::T 		T;

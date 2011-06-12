@@ -20,94 +20,103 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Segmented scan upsweep reduction kernel
+ * Scan kernel
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/segmented_scan/upsweep_cta.cuh>
+#include <b40c/segmented_scan/downsweep/cta.cuh>
 
 namespace b40c {
 namespace segmented_scan {
+namespace downsweep {
+
 
 /**
- * Segmented scan upsweep reduction pass
+ * Downsweep scan pass
  */
-template <typename KernelConfig, typename SmemStorage>
-__device__ __forceinline__ void UpsweepPass(
-	typename KernelConfig::T 			*&d_partials_in,
-	typename KernelConfig::Flag			*&d_flags_in,
-	typename KernelConfig::T 			*&d_spine_partials,
-	typename KernelConfig::Flag			*&d_spine_flags,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> &work_decomposition,
-	SmemStorage							&smem_storage)
+template <typename KernelPolicy>
+__device__ __forceinline__ void DownsweepPass(
+	typename KernelPolicy::T 			*&d_partials_in,
+	typename KernelPolicy::Flag			*&d_flags_in,
+	typename KernelPolicy::T 			*&d_partials_out,
+	typename KernelPolicy::T 			*&d_spine_partials,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
+	typename KernelPolicy::SmemStorage	&smem_storage)
 {
-	typedef UpsweepCta<KernelConfig> 		UpsweepCta;
-	typedef typename KernelConfig::SizeT 	SizeT;
+	typedef DownsweepCta<KernelPolicy> 		DownsweepCta;
+	typedef typename KernelPolicy::T		T;
+	typedef typename KernelPolicy::SizeT 	SizeT;
 
-	// Quit if we're the last threadblock (no need for it in upsweep)
-	if (blockIdx.x == gridDim.x - 1) {
-		return;
-	}
+
+	// Read the exclusive partial from our spine
+	T spine_partial;
+	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+		spine_partial, d_spine_partials + blockIdx.x);
 
 	// CTA processing abstraction
-	UpsweepCta cta(
+	DownsweepCta cta(
 		smem_storage,
 		d_partials_in,
 		d_flags_in,
-		d_spine_partials,
-		d_spine_flags);
+		d_partials_out,
+		spine_partial);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
 	work_decomposition.template GetCtaWorkLimits<
-		KernelConfig::LOG_TILE_ELEMENTS,
-		KernelConfig::LOG_SCHEDULE_GRANULARITY>(work_limits);
+		KernelPolicy::LOG_TILE_ELEMENTS,
+		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 	// Process full tiles of tile_elements
 	while (work_limits.offset < work_limits.guarded_offset) {
 
-		cta.ProcessFullTile(work_limits.offset);
-		work_limits.offset += KernelConfig::TILE_ELEMENTS;
+		cta.ProcessTile(work_limits.offset);
+		work_limits.offset += KernelPolicy::TILE_ELEMENTS;
 	}
 
-	// Produce output in spine
-	cta.OutputToSpine();
+	// Clean up last partial tile with guarded-io
+	if (work_limits.guarded_elements) {
+		cta.ProcessTile(
+			work_limits.offset,
+			work_limits.guarded_elements);
+	}
 }
 
 
+
 /******************************************************************************
- * Segmented scan upsweep reduction kernel entrypoint
+ * Downsweep Scan Kernel Entrypoint
  ******************************************************************************/
 
 /**
- * Upsweep reduction kernel entry point
+ * Downsweep scan kernel entry point
  */
-template <typename KernelConfig>
-__launch_bounds__ (KernelConfig::THREADS, KernelConfig::CTA_OCCUPANCY)
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
-void UpsweepKernel(
-	typename KernelConfig::T 			*d_partials_in,
-	typename KernelConfig::Flag			*d_flags_in,
-	typename KernelConfig::T 			*d_spine_partials,
-	typename KernelConfig::Flag			*d_spine_flags,
-	util::CtaWorkDistribution<typename KernelConfig::SizeT> work_decomposition)
+void Kernel(
+	typename KernelPolicy::T 									*d_partials_in,
+	typename KernelPolicy::Flag									*d_flags_in,
+	typename KernelPolicy::T 									*d_partials_out,
+	typename KernelPolicy::T 									*d_spine_partials,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
-	__shared__ typename KernelConfig::SmemStorage smem_storage;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelConfig>(
+	DownsweepPass<KernelPolicy>(
 		d_partials_in,
 		d_flags_in,
+		d_partials_out,
 		d_spine_partials,
-		d_spine_flags,
 		work_decomposition,
 		smem_storage);
 }
 
 
-
+} // namespace downsweep
 } // namespace segmented_scan
 } // namespace b40c
 

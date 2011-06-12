@@ -20,31 +20,35 @@
  ******************************************************************************/
 
 /******************************************************************************
- *  Segmented Scan Granularity Configuration
+ *  Unified segmented scan policy
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
-#include <b40c/segmented_scan/kernel_config.cuh>
+
+#include <b40c/segmented_scan/kernel_policy.cuh>
+#include <b40c/segmented_scan/upsweep/kernel.cuh>
+#include <b40c/segmented_scan/spine/kernel.cuh>
+#include <b40c/segmented_scan/downsweep/kernel.cuh>
 
 namespace b40c {
 namespace segmented_scan {
 
 
 /**
- * Unified segmented scan granularity configuration type.
+ * Unified segmented scan policy type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
- * parameters that define kernel-dispatch policy.  By encapsulating the tuning information
- * for dispatch and both kernels, we assure operational consistency over an entire
- * scan pass.
+ * parameters that define kernel-dispatch policy.   By encapsulating all of the
+ * kernel tuning policies, we assure operational consistency over an entire scan pass.
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -77,12 +81,28 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig : _ProblemType
+struct Policy : ProblemType
 {
-	typedef _ProblemType ProblemType;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef typename ProblemType::T T;
+	typedef typename ProblemType::Flag Flag;
+	typedef typename ProblemType::SizeT SizeT;
+
+	typedef void (*UpsweepKernelPtr)(T*, Flag*, T*, Flag*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(T*, Flag*, T*, SizeT);
+	typedef void (*DownsweepKernelPtr)(T*, Flag*, T*, T*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, Flag*, T*, SizeT);
+
+
+	//---------------------------------------------------------------------
+	// Kernel Policies
+	//---------------------------------------------------------------------
 
 	// Kernel config for the upsweep reduction kernel
-	typedef KernelConfig <
+	typedef KernelPolicy <
 		ProblemType,
 		false,
 		CUDA_ARCH,
@@ -97,7 +117,7 @@ struct ProblemConfig : _ProblemType
 			Upsweep;
 
 	// Kernel config for the spine scan kernel
-	typedef KernelConfig <
+	typedef KernelPolicy <
 		ProblemType,
 		false,
 		CUDA_ARCH,
@@ -112,7 +132,7 @@ struct ProblemConfig : _ProblemType
 			Spine;
 
 	// Kernel config for downsweep scan kernel
-	typedef KernelConfig <
+	typedef KernelPolicy <
 		ProblemType,
 		true,
 		CUDA_ARCH,
@@ -127,7 +147,7 @@ struct ProblemConfig : _ProblemType
 			Downsweep;
 
 	// Kernel config for a one-level pass using the spine scan kernel
-	typedef KernelConfig <
+	typedef KernelPolicy <
 		ProblemType,
 		true,
 		CUDA_ARCH,
@@ -140,6 +160,30 @@ struct ProblemConfig : _ProblemType
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Single;
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static UpsweepKernelPtr UpsweepKernel() {
+		return upsweep::Kernel<Upsweep>;
+	}
+
+	static SpineKernelPtr SpineKernel() {
+		return spine::Kernel<Spine>;
+	}
+
+	static DownsweepKernelPtr DownsweepKernel() {
+		return downsweep::Kernel<Downsweep>;
+	}
+
+	static SingleKernelPtr SingleKernel() {
+		return spine::Kernel<Single>;
+	}
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
 
 	enum {
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,

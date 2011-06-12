@@ -95,7 +95,7 @@ int main(int argc, char** argv)
 
     // Define our problem type
 	typedef unsigned int T;
-	const int NUM_ELEMENTS = 10;
+	const int NUM_ELEMENTS = 564;
 	const bool EXCLUSIVE_SCAN = true;
 
 	// Allocate and initialize host problem data and host reference solution
@@ -174,7 +174,7 @@ int main(int argc, char** argv)
 		false, 
 		false,
 		false,
-		8,
+		6,
 		8, 7, 1, 0,
 		8, 0, 1, 5,
 		8, 7, 1, 0, 5> CustomPolicy;

@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for segmented scan downsweep reduction kernels
+ * Tile-processing functionality for segmented scan upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -30,39 +30,35 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
-#include <b40c/util/io/store_tile.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
-#include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
+#include <b40c/util/reduction/soa/cooperative_soa_reduction.cuh>
 
 namespace b40c {
 namespace segmented_scan {
+namespace upsweep {
 
 
 /**
- * Derivation of KernelConfig that encapsulates segmented-scan downsweep
+ * Derivation of KernelPolicy that encapsulates segmented-scan upsweep
  * reduction tile-processing state and routines
  */
-template <typename KernelConfig>
-struct DownsweepCta : KernelConfig						// Derive from our config
+template <typename KernelPolicy>
+struct UpsweepCta : KernelPolicy						// Derive from our config
 {
 	//---------------------------------------------------------------------
-	// Typedefs and constants
+	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::T 				T;
-	typedef typename KernelConfig::Flag 			Flag;
-	typedef typename KernelConfig::SizeT 			SizeT;
-	typedef typename KernelConfig::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelConfig::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::T T;
+	typedef typename KernelPolicy::Flag Flag;
+	typedef typename KernelPolicy::SizeT SizeT;
+	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
+	typedef typename KernelPolicy::SoaTuple SoaTuple;
 
 	typedef util::Tuple<
-		T (*)[KernelConfig::LOAD_VEC_SIZE],
-		Flag (*)[KernelConfig::LOAD_VEC_SIZE]> 		DataSoa;
-
-	// This kernel can only operate in inclusive scan mode if the it's the final kernel
-	// in the scan pass
-	static const bool KERNEL_EXCLUSIVE = (!KernelConfig::FINAL_KERNEL || KernelConfig::EXCLUSIVE);
+		T (*)[KernelPolicy::LOAD_VEC_SIZE],
+		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> DataSoa;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -71,15 +67,16 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	// Operational details for SRTS grid
 	SrtsSoaDetails 	srts_soa_details;
 
-	// The tuple value we will accumulate (in raking threads only)
+	// The tuple value we will accumulate (in SrtsDetails::CUMULATIVE_THREAD thread only)
 	SoaTuple 		carry;
 
 	// Input device pointers
 	T 				*d_partials_in;
 	Flag 			*d_flags_in;
 
-	// Output device pointer
-	T 				*d_partials_out;
+	// Spine output device pointers
+	T 				*d_spine_partials;
+	Flag 			*d_spine_flags;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -89,12 +86,12 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 	 * Constructor
 	 */
 	template <typename SmemStorage>
-	__device__ __forceinline__ DownsweepCta(
+	__device__ __forceinline__ UpsweepCta(
 		SmemStorage 	&smem_storage,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
-		T 				*d_partials_out,
-		T 				spine_partial = KernelConfig::Identity()) :
+		T 				*d_spine_partials,
+		Flag 			*d_spine_flags) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -103,66 +100,79 @@ struct DownsweepCta : KernelConfig						// Derive from our config
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
-				KernelConfig::SoaTupleIdentity()),
+				KernelPolicy::SoaTupleIdentity()),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
-			d_partials_out(d_partials_out),
-			carry(												// Seed carry with spine partial & flag
-				spine_partial,
-				KernelConfig::FlagIdentity()) {}
-
+			d_spine_partials(d_spine_partials),
+			d_spine_flags(d_spine_flags),
+			carry(KernelPolicy::SoaTupleIdentity()) {}
 
 	/**
-	 * Process a single tile
+	 * Process a single, full tile
 	 */
-	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = 0)
+		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tiles of segmented scan elements and flags
-		T				partials[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
-		Flag			flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];
+		T				partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		Flag			flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile of partials
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(partials, d_partials_in + cta_offset, guarded_elements);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
+				partials,
+				KernelPolicy::Identity(),
+				d_partials_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of flags
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			FULL_TILE>::Invoke(flags, d_flags_in + cta_offset, guarded_elements);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadValid(
+				flags,
+				(Flag) 0,
+				d_flags_in + cta_offset,
+				guarded_elements);
 
-		// Scan tile with carry update in raking threads
-		util::scan::soa::CooperativeSoaTileScan<
+		// Reduce tile with carry maintained by thread SrtsSoaDetails::CUMULATIVE_THREAD
+		util::reduction::soa::CooperativeSoaTileReduction<
 			SrtsSoaDetails,
-			KernelConfig::LOAD_VEC_SIZE,
-			KERNEL_EXCLUSIVE,
-			KernelConfig::SoaScanOp,
-			KernelConfig::FinalSoaScanOp>::template ScanTileWithCarry<DataSoa>(
+			KernelPolicy::LOAD_VEC_SIZE,
+			KernelPolicy::SoaScanOp>::template ReduceTileWithCarry<true, DataSoa>(
 				srts_soa_details,
 				DataSoa(partials, flags),
 				carry);
 
-		// Store tile of partials
-		util::io::StoreTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::WRITE_MODIFIER,
-			FULL_TILE>::Invoke(partials, d_partials_out + cta_offset, guarded_elements);
+		// Barrier to protect srts_soa_details before next tile
+		__syncthreads();
+	}
+
+
+	/**
+	 * Stores final reduction to output
+	 */
+	__device__ __forceinline__ void OutputToSpine()
+	{
+		// Write output
+		if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
+
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t0, d_spine_partials + blockIdx.x);
+
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t1, d_spine_flags + blockIdx.x);
+		}
 	}
 };
 
 
-
+} // namespace upsweep
 } // namespace segmented_scan
 } // namespace b40c
 
