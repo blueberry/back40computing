@@ -287,22 +287,26 @@ cudaError_t Enactor::EnactPass(
 	typedef typename Policy::Upsweep 		Upsweep;
 	typedef typename Policy::Spine 			Spine;
 	typedef typename Policy::Downsweep 		Downsweep;
-	typedef typename Policy::T 				T;
+	typedef typename Policy::Single 		Single;
 
-	typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
-	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
+	typedef typename Policy::T 				T;
 
 	cudaError_t retval = cudaSuccess;
 	do {
 		if (work.grid_size == 1) {
 
-			SpineKernel<<<1, Spine::THREADS, 0>>>(
+			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
+
+			SingleKernel<<<1, Spine::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
+
+			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
+			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+			typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
 
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
@@ -374,6 +378,8 @@ cudaError_t Enactor::Scan(
 	typedef typename Policy::Upsweep 	Upsweep;
 	typedef typename Policy::Spine 		Spine;
 	typedef typename Policy::Downsweep 	Downsweep;
+	typedef typename Policy::Single 	Single;
+
 	typedef typename Policy::T 			T;
 	typedef typename Policy::SizeT 		SizeT;
 
@@ -427,9 +433,9 @@ cudaError_t Enactor::Scan(
 				(unsigned long) work.extra_grains);
 		} else {
 			printf("Single: \t[threads: %d, num_elements: %lu, tile_elements: %d]\n",
-				Spine::THREADS,
+				Single::THREADS,
 				(unsigned long) work.num_elements,
-				Spine::TILE_ELEMENTS);
+				Single::TILE_ELEMENTS);
 		}
 		fflush(stdout);
 	}

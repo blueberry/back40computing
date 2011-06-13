@@ -95,6 +95,7 @@ struct Policy : _ProblemType
 	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
 	typedef void (*DownsweepKernelPtr)(T*, T*, T*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, T*, SizeT);
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
@@ -150,6 +151,19 @@ struct Policy : _ProblemType
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
 
+	// Kernel config for a one-level pass using the spine scan kernel
+	typedef downsweep::KernelPolicy <
+		ProblemType,
+		CUDA_ARCH,
+		1,									// Only a single-CTA grid
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		SPINE_LOG_RAKING_THREADS,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		LOG_SCHEDULE_GRANULARITY>
+			Single;
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
@@ -165,6 +179,10 @@ struct Policy : _ProblemType
 
 	static DownsweepKernelPtr DownsweepKernel() {
 		return downsweep::Kernel<Downsweep>;
+	}
+
+	static SingleKernelPtr SingleKernel() {
+		return downsweep::Kernel<Single>;
 	}
 
 
