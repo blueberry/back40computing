@@ -85,7 +85,7 @@ struct Cta : KernelPolicy
 		T spine_partial = KernelPolicy::Identity()) :
 
 			srts_details(
-				smem_storage.smem_pool,
+				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				KernelPolicy::Identity()),
 			d_in(d_in),

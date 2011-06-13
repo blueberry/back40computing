@@ -145,7 +145,6 @@ struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, T_SIZE>
 };
 
 
-
 // Small problems, 1B data
 template <typename ProblemType, typename T>
 struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE, T, 1>
@@ -189,6 +188,7 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE, T, T_SIZE>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
+
 
 //-----------------------------------------------------------------------------
 // SM1.3 specializations(s)
@@ -370,6 +370,28 @@ __global__ void TunedDownsweepKernel(
 }
 
 
+/**
+ * Tuned single scan kernel entry point
+ */
+template <typename ProblemType, int PROB_SIZE_GENRE>
+__launch_bounds__ (
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::THREADS),
+	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::CTA_OCCUPANCY))
+__global__ void TunedSingleKernel(
+	typename ProblemType::T 		* d_in,
+	typename ProblemType::T 		* d_out,
+	typename ProblemType::SizeT 	spine_elements)
+{
+	// Load the kernel policy type identified by the enum for this architecture
+	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelPolicy;
+
+	// Shared storage for the kernel
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
+
+	spine::SpinePass<KernelPolicy>(d_in, d_out, spine_elements, smem_storage);
+}
+
+
 /******************************************************************************
  * Autotuned scan policy
  *******************************************************************************/
@@ -397,6 +419,7 @@ struct AutotunedPolicy :
 	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
 	typedef void (*DownsweepKernelPtr)(T*, T*, T*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, T*, SizeT);
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
@@ -412,6 +435,10 @@ struct AutotunedPolicy :
 
 	static DownsweepKernelPtr DownsweepKernel() {
 		return TunedDownsweepKernel<ProblemType, PROB_SIZE_GENRE>;
+	}
+
+	static SingleKernelPtr SingleKernel() {
+		return TunedSingleKernel<ProblemType, PROB_SIZE_GENRE>;
 	}
 };
 
