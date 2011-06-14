@@ -40,11 +40,10 @@ namespace downsweep {
 
 
 /**
- * Derivation of KernelPolicy that encapsulates downsweep scan tile-processing
- * routines state and routines
+ * Cta
  */
 template <typename KernelPolicy>
-struct Cta : KernelPolicy
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -98,7 +97,7 @@ struct Cta : KernelPolicy
 	 */
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
+		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tile of scan elements
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
@@ -126,6 +125,32 @@ struct Cta : KernelPolicy
 			KernelPolicy::WRITE_MODIFIER>::Store(
 				data, d_out + cta_offset, guarded_elements);
 	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
+	{
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+		SizeT cta_offset = work_limits.offset;
+
+		// Process full tiles of tile_elements
+		while (cta_offset < work_limits.guarded_offset) {
+
+			ProcessTile(cta_offset);
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (work_limits.guarded_elements) {
+			ProcessTile(
+				cta_offset,
+				work_limits.guarded_elements);
+		}
+	}
+
 };
 
 

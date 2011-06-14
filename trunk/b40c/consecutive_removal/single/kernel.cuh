@@ -20,26 +20,27 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Spine kernel
+ * Single kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/scan/downsweep/cta.cuh>
+#include <b40c/consecutive_removal/downsweep/cta.cuh>
 
 namespace b40c {
-namespace scan {
-namespace spine {
+namespace consecutive_removal {
+namespace single {
 
 
 /**
- * Spine scan pass
+ * Single consecutive removal pass
  */
 template <typename KernelPolicy>
-__device__ __forceinline__ void SpinePass(
+__device__ __forceinline__ void SinglePass(
 	typename KernelPolicy::T 				*&d_in,
+	typename KernelPolicy::SizeT			*&d_num_compacted,
 	typename KernelPolicy::T 				*&d_out,
-	typename KernelPolicy::SizeT 			&spine_elements,
+	typename KernelPolicy::SizeT 			&num_elements,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef downsweep::Cta<KernelPolicy> 		Cta;
@@ -49,20 +50,24 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_out);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_out,
+		d_num_compacted);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
+	SizeT guarded_elements = num_elements & (KernelPolicy::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_offset = spine_elements - guarded_elements;
+	SizeT guarded_offset = num_elements - guarded_elements;
 
 	util::CtaWorkLimits<SizeT> work_limits(
 		0,					// Offset at which this CTA begins processing
-		spine_elements,		// Total number of elements for this CTA to process
+		num_elements,		// Total number of elements for this CTA to process
 		guarded_offset, 	// Offset of final, partially-full tile (requires guarded loads)
 		guarded_elements,	// Number of elements in partially-full tile
-		spine_elements,		// Offset at which this CTA is out-of-bounds
+		num_elements,		// Offset at which this CTA is out-of-bounds
 		true);				// If this block is the last block in the grid with any work
 
 	cta.ProcessWorkRange(work_limits);
@@ -70,22 +75,23 @@ __device__ __forceinline__ void SpinePass(
 
 
 /**
- * Spine scan kernel entry point
+ * Single scan kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
 	typename KernelPolicy::T			*d_in,
+	typename KernelPolicy::SizeT		*d_num_compacted,
 	typename KernelPolicy::T			*d_out,
-	typename KernelPolicy::SizeT 		spine_elements)
+	typename KernelPolicy::SizeT 		num_elements)
 {
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SpinePass<KernelPolicy>(d_in, d_out, spine_elements, smem_storage);
+	SinglePass<KernelPolicy>(d_in, d_num_compacted, d_out, num_elements, smem_storage);
 }
 
-} // namespace spine
-} // namespace scan
+} // namespace single
+} // namespace consecutive_removal
 } // namespace b40c
 

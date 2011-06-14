@@ -48,7 +48,7 @@ namespace reduction {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -73,13 +73,12 @@ template <
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE>
 
-struct Policy : _ProblemType
+struct Policy : ProblemType
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::T T;
 	typedef typename ProblemType::SizeT SizeT;
 

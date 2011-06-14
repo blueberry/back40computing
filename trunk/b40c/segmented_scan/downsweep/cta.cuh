@@ -45,7 +45,7 @@ namespace segmented_scan {
  * reduction tile-processing state and routines
  */
 template <typename KernelPolicy>
-struct DownsweepCta : KernelPolicy						// Derive from our config
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and constants
@@ -184,7 +184,7 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 	 * Constructor
 	 */
 	template <typename SmemStorage>
-	__device__ __forceinline__ DownsweepCta(
+	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
@@ -262,6 +262,28 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Store(
 				tile.partials, d_partials_out + cta_offset, guarded_elements);
+	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
+	{
+		// Process full tiles of tile_elements
+		while (work_limits.offset < work_limits.guarded_offset) {
+
+			ProcessTile(work_limits.offset);
+			work_limits.offset += KernelPolicy::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (work_limits.guarded_elements) {
+			ProcessTile(
+				work_limits.offset,
+				work_limits.guarded_elements);
+		}
 	}
 };
 

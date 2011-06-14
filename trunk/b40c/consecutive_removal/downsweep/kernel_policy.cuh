@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding consecutive removal granularity configuration
+ * Consecutive-removal kernel configuration policy
  ******************************************************************************/
 
 #pragma once
@@ -33,11 +33,12 @@
 
 namespace b40c {
 namespace consecutive_removal {
+namespace downsweep {
 
 /**
- * Consecutive removal kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * A detailed consecutive-removal kernel configuration policy type that specializes kernel
+ * code for a specific downsweep pass. It encapsulates our
+ * kernel-tuning parameters (they are reflected via the static fields).
  *
  * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
  * them with different performance-tuned parameterizations of this type.  By
@@ -47,7 +48,7 @@ namespace consecutive_removal {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -60,16 +61,16 @@ template <
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
-	int _LOG_SCHEDULE_GRANULARITY>
+	int _LOG_SCHEDULE_GRANULARITY,
+	bool _TWO_PHASE_SCATTER>
 
-struct DownsweepKernelConfig : _ProblemType
+struct KernelPolicy : ProblemType
 {
-	typedef _ProblemType 						ProblemType;
-	typedef typename ProblemType::SizeT 		SizeT;
-	typedef typename ProblemType::T 			T;					// Type of input data
-	typedef typename ProblemType::FlagCount		FlagCount;			// Type for discontinuity counts
-	typedef int									LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS)
-
+	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::T 				T;
+	typedef typename ProblemType::SpineType			SpineType;
+	typedef int 									LocalFlag;								// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
+	typedef typename util::If<_TWO_PHASE_SCATTER, LocalFlag, SpineType>::Type SrtsType;		// Type for local SRTS prefix sum
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -100,14 +101,16 @@ struct DownsweepKernelConfig : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		TWO_PHASE_SCATTER				= _TWO_PHASE_SCATTER,
 	};
 
 
 	// SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		LocalFlagCount,							// Partial type (discontinuity counts)
+		SrtsType,								// Partial type (discontinuity counts / ranks)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
@@ -124,12 +127,11 @@ struct DownsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		LocalFlagCount 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-
+		SrtsType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		union {
-			LocalFlagCount 	raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+			SrtsType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
 			T 				exchange[TILE_ELEMENTS];
-		} smem_pool;
+		};
 	};
 
 
@@ -143,6 +145,7 @@ struct DownsweepKernelConfig : _ProblemType
 };
 
 
+} // namespace downsweep
 } // namespace consecutive_removal
 } // namespace b40c
 

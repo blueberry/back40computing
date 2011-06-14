@@ -161,7 +161,8 @@ struct Cta
 		// Load keys
 		tile.LoadKeys(dispatch, cta_offset);
 
-		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();		// Prevents bucketing from being hoisted up into loads
+		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
+		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
 		// Bucket tile of keys
 		tile.Bucket(dispatch);
@@ -176,12 +177,12 @@ struct Cta
 	 */
 	__device__ __forceinline__ void ProcessPartialTile(
 		SizeT cta_offset,
-		SizeT cta_out_of_bounds)
+		const SizeT &out_of_bounds)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
 
 		// Process partial tile if necessary using single loads
-		while (cta_offset + threadIdx.x < cta_out_of_bounds) {
+		while (cta_offset + threadIdx.x < out_of_bounds) {
 
 			Tile<0, 0, KernelPolicy> tile;
 
@@ -200,24 +201,23 @@ struct Cta
 
 
 	/**
-	 * Processes all tiles
+	 * Process work range of tiles
 	 */
-	__device__ __forceinline__ void ProcessTiles(
-		SizeT cta_offset,
-		const SizeT &guarded_offset,
-		const SizeT &cta_out_of_bounds)
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
+
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+		SizeT cta_offset = work_limits.offset;
 
 		Composites<KernelPolicy>::ResetCounters(dispatch);
 		Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
 
-		__syncthreads();
-
 #if 1
 		// Unroll batches of full tiles
 		const int UNROLLED_ELEMENTS = KernelPolicy::UNROLL_COUNT * KernelPolicy::TILE_ELEMENTS;
-		while (cta_offset < cta_out_of_bounds - UNROLLED_ELEMENTS) {
+		while (cta_offset < work_limits.out_of_bounds - UNROLLED_ELEMENTS) {
 
 			UnrollTiles::template Iterate<KernelPolicy::UNROLL_COUNT>::ProcessTiles(
 				dispatch,
@@ -236,7 +236,7 @@ struct Cta
 		}
 
 		// Unroll single full tiles
-		while (cta_offset < cta_out_of_bounds - KernelPolicy::TILE_ELEMENTS) {
+		while (cta_offset < work_limits.out_of_bounds - KernelPolicy::TILE_ELEMENTS) {
 
 			UnrollTiles::template Iterate<1>::ProcessTiles(
 				dispatch,
@@ -247,7 +247,7 @@ struct Cta
 #else 	// Use for faster compilation tiles
 
 		// Unroll single full tiles
-		while (cta_offset < guarded_offset) {
+		while (cta_offset < work_limits.guarded_offset) {
 
 			ProcessFullTile(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
@@ -269,7 +269,7 @@ struct Cta
 #endif
 
 		// Process partial tile if necessary
-		ProcessPartialTile(cta_offset, cta_out_of_bounds);
+		ProcessPartialTile(cta_offset, work_limits.out_of_bounds);
 
 		__syncthreads();
 

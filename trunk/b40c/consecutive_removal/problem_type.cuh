@@ -39,8 +39,8 @@ struct ProblemType
 {
 	typedef _T 				T;
 	typedef _SizeT 			SizeT;
-	typedef _SizeT 			FlagCount;			// Type for discontinuity counts
-
+	typedef SizeT 			SpineType;
+	typedef int 			SpineSizeT;
 };
 
 

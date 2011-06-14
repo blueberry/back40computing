@@ -43,6 +43,29 @@ struct CtaWorkLimits
 	SizeT 	guarded_elements;	// Number of elements in partially-full tile
 	SizeT 	out_of_bounds;		// Offset at which this CTA is out-of-bounds
 	bool	last_block;			// If this block is the last block in the grid with any work
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ CtaWorkLimits() {}
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ CtaWorkLimits(
+		SizeT 	offset,
+		SizeT 	elements,
+		SizeT 	guarded_offset,
+		SizeT 	guarded_elements,
+		SizeT 	out_of_bounds,
+		bool	last_block) :
+			offset(offset),
+			elements(elements),
+			guarded_offset(guarded_offset),
+			guarded_elements(guarded_elements),
+			out_of_bounds(out_of_bounds),
+			last_block(last_block)
+		{}
 };
 
 

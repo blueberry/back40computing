@@ -32,11 +32,12 @@
 
 namespace b40c {
 namespace consecutive_removal {
+namespace upsweep {
 
 /**
- * Consecutive removal kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * A detailed consecutive-removal kernel configuration policy type that specializes kernel
+ * code for a specific upsweep pass. It encapsulates our
+ * kernel-tuning parameters (they are reflected via the static fields).
  *
  * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
  * them with different performance-tuned parameterizations of this type.  By
@@ -46,7 +47,7 @@ namespace consecutive_removal {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -60,12 +61,9 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct UpsweepKernelConfig : _ProblemType
+struct KernelPolicy : ProblemType
 {
-	typedef _ProblemType 						ProblemType;
-	typedef typename ProblemType::SizeT 		SizeT;
-	typedef typename ProblemType::T 			T;
-	typedef typename ProblemType::FlagCount		FlagCount;			// Type for discontinuity counts
+	typedef typename ProblemType::SpineType SpineType;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -102,9 +100,7 @@ struct UpsweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		union {
-			FlagCount reduction_tree[THREADS];
-		} smem_pool;
+		SpineType reduction_tree[THREADS];
 	};
 
 	enum {
@@ -117,6 +113,7 @@ struct UpsweepKernelConfig : _ProblemType
 };
 
 
+} // namespace upsweep
 } // namespace consecutive_removal
 } // namespace b40c
 

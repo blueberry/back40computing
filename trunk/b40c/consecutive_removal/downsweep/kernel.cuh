@@ -20,35 +20,50 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Upsweep kernel
+ * Consecutive removal downsweep kernel
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/upsweep/cta.cuh>
+#include <b40c/util/srts_details.cuh>
+#include <b40c/consecutive_removal/downsweep/cta.cuh>
 
 namespace b40c {
-namespace scan {
-namespace upsweep {
+namespace consecutive_removal {
+namespace downsweep {
 
 
 /**
- * Upsweep reduction pass
+ * Downsweep consecutive removal pass
  */
 template <typename KernelPolicy>
-__device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::T 									*&d_in,
-	typename KernelPolicy::T 									*&d_out,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
-	typename KernelPolicy::SmemStorage							&smem_storage)
+__device__ __forceinline__ void DownsweepPass(
+	typename KernelPolicy::T 				*&d_in,
+	typename KernelPolicy::SizeT			*&d_num_compacted,
+	typename KernelPolicy::T 				*&d_out,
+	typename KernelPolicy::SpineType		*&d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
+	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef reduction::upsweep::Cta<KernelPolicy>	Cta;
+	typedef Cta<KernelPolicy> 						Cta;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SpineType 		SpineType;
+
+	// We need the exclusive partial from our spine
+	SpineType spine_partial = 0;
+	if (d_spine != NULL) {
+		util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+			spine_partial, d_spine + blockIdx.x);
+	}
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_out);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_out,
+		d_num_compacted,
+		spine_partial);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -56,38 +71,37 @@ __device__ __forceinline__ void UpsweepPass(
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-	// Quit if we're the last threadblock (no need for it in upsweep).
-	if (work_limits.last_block) {
-		return;
-	}
-
 	cta.ProcessWorkRange(work_limits);
 }
 
 
-/******************************************************************************
- * Upsweep Reduction Kernel Entrypoint
- ******************************************************************************/
-
 /**
- * Upsweep reduction kernel entry point
+ * Downsweep consecutive removal kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 									*d_in,
-	typename KernelPolicy::T 									*d_spine,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
+	typename KernelPolicy::T 			* d_in,
+	typename KernelPolicy::SizeT		* d_num_compacted,
+	typename KernelPolicy::T 			* d_out,
+	typename KernelPolicy::SpineType	* d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelPolicy>(d_in, d_spine, work_decomposition, smem_storage);
+	DownsweepPass<KernelPolicy>(
+		d_in,
+		d_num_compacted,
+		d_out,
+		d_spine,
+		work_decomposition,
+		smem_storage);
 }
 
 
-} // namespace upsweep
-} // namespace scan
+} // namespace downsweep
+} // namespace consecutive_removal
 } // namespace b40c
 

@@ -60,41 +60,7 @@ struct UpsweepPass
 			KernelPolicy::LOG_TILE_ELEMENTS,
 			KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-		if (work_limits.offset < work_limits.guarded_offset) {
-
-			// Process at least one full tile of tile_elements
-			cta.template ProcessFullTile<true>(work_limits.offset);
-			work_limits.offset += KernelPolicy::TILE_ELEMENTS;
-
-			// Process more full tiles (not first tile)
-			while (work_limits.offset < work_limits.guarded_offset) {
-				cta.template ProcessFullTile<false>(work_limits.offset);
-				work_limits.offset += KernelPolicy::TILE_ELEMENTS;
-			}
-
-			// Clean up last partial tile with guarded-io (not first tile)
-			if (work_limits.guarded_elements) {
-				cta.template ProcessPartialTile<false>(
-					work_limits.offset,
-					work_limits.out_of_bounds);
-			}
-
-			// Collectively reduce accumulated carry from each thread into output
-			// destination (all thread have valid reduction partials)
-			cta.OutputToSpine();
-
-		} else {
-
-			// Clean up last partial tile with guarded-io (first tile)
-			cta.template ProcessPartialTile<true>(
-				work_limits.offset,
-				work_limits.out_of_bounds);
-
-			// Collectively reduce accumulated carry from each thread into output
-			// destination (not every thread may have a valid reduction partial)
-			cta.OutputToSpine(work_limits.elements);
-		}
-
+		cta.ProcessWorkRange(work_limits);
 	}
 };
 
@@ -115,7 +81,6 @@ __device__ __forceinline__ SizeT StealWork(
 
 	return s_offset;
 }
-
 
 
 /**

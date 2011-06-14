@@ -58,38 +58,15 @@ __device__ __forceinline__ void SpinePass(
 	// Offset of final, partially-full tile (requires guarded loads)
 	SizeT guarded_offset = spine_elements - guarded_elements;
 
-	// Process tiles of tile_elements
-	SizeT cta_offset = 0;
-	if (cta_offset < guarded_offset) {
+	util::CtaWorkLimits<SizeT> work_limits(
+		0,					// Offset at which this CTA begins processing
+		spine_elements,		// Total number of elements for this CTA to process
+		guarded_offset, 	// Offset of final, partially-full tile (requires guarded loads)
+		guarded_elements,	// Number of elements in partially-full tile
+		spine_elements,		// Offset at which this CTA is out-of-bounds
+		true);				// If this block is the last block in the grid with any work
 
-		// Process at least one full tile of tile_elements
-		cta.ProcessFullTile<true>(cta_offset);
-		cta_offset += KernelPolicy::TILE_ELEMENTS;
-
-		// Process more full tiles (not first tile)
-		while (cta_offset < guarded_offset) {
-			cta.ProcessFullTile<false>(cta_offset);
-			cta_offset += KernelPolicy::TILE_ELEMENTS;
-		}
-
-		// Clean up last partial tile with guarded-io
-		if (guarded_elements) {
-			cta.ProcessPartialTile<false>(cta_offset, spine_elements);
-		}
-
-		// Collectively reduce accumulated carry from each thread into output
-		// destination (all thread have valid reduction partials)
-		cta.OutputToSpine();
-
-	} else {
-
-		// Clean up last partial tile with guarded-io
-		cta.ProcessPartialTile<true>(cta_offset, spine_elements);
-
-		// Collectively reduce accumulated carry from each thread into output
-		// destination (not every thread may have a valid reduction partial)
-		cta.OutputToSpine(spine_elements);
-	}
+	cta.ProcessWorkRange(work_limits);
 }
 
 

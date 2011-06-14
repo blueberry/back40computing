@@ -35,38 +35,40 @@
 
 namespace b40c {
 namespace consecutive_removal {
+namespace upsweep {
 
 
 /**
- * Derivation of KernelConfig that encapsulates tile-processing routines
+ * Cta
  */
-template <typename KernelConfig>
-struct UpsweepCta : KernelConfig
+template <typename KernelPolicy>
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelConfig::SizeT 		SizeT;
-	typedef typename KernelConfig::T 			T;					// Input type for detecting consecutive discontinuities
-	typedef typename KernelConfig::FlagCount 	FlagCount;			// Type for counting discontinuities
-	typedef int 								LocalFlagCount;		// Type for local discontinuity counts (just needs to count up to TILE_ELEMENTS_PER_THREAD)
+	typedef typename KernelPolicy::T 				T;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SpineType 		SpineType;
+	typedef int 									LocalFlag;		// Type for noting local discontinuities (just needs to count up to TILE_ELEMENTS_PER_THREAD)
+	typedef typename KernelPolicy::SmemStorage 		SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// Accumulator for the number of discontinuities observed (in each thread)
-	FlagCount 		carry;
+	SpineType	carry;
 
 	// Input device pointer
-	T* 				d_in;
+	T			*d_in;
 
 	// Output spine pointer
-	FlagCount* 		d_spine;
+	SpineType	*d_spine;
 
 	// Smem storage for discontinuity-count reduction tree
-	FlagCount  		*reduction_tree;
+	SizeT  		*reduction_tree;
 
 
 	//---------------------------------------------------------------------
@@ -77,16 +79,16 @@ struct UpsweepCta : KernelConfig
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
-	__device__ __forceinline__ UpsweepCta(
-		SmemStorage &smem_storage,
-		T *d_in,
-		FlagCount *d_spine) :
+	__device__ __forceinline__ Cta(
+		SmemStorage 	&smem_storage,
+		T 				*d_in,
+		SpineType 		*d_spine) :
 
-			reduction_tree(smem_storage.smem_pool.reduction_tree),
+			reduction_tree(smem_storage.reduction_tree),
 			d_in(d_in),
 			d_spine(d_spine),
-			carry(0) {}
+			carry(0)
+	{}
 
 
 	/**
@@ -95,26 +97,30 @@ struct UpsweepCta : KernelConfig
 	 * Each thread reduces only the strided values it loads.
 	 */
 	template <bool FIRST_TILE>
-	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
+	__device__ __forceinline__ void ProcessTile(
+		SizeT cta_offset,
+		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 
-		T data[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];					// Tile of elements
-		LocalFlagCount flags[KernelConfig::LOADS_PER_TILE][KernelConfig::LOAD_VEC_SIZE];	// Tile of discontinuity flags
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];				// Tile of elements
+		LocalFlag flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity flags
 
 		// Load data tile, initializing discontinuity flags
 		util::io::LoadTile<
-			KernelConfig::LOG_LOADS_PER_TILE,
-			KernelConfig::LOG_LOAD_VEC_SIZE,
-			KernelConfig::THREADS,
-			KernelConfig::READ_MODIFIER,
-			true>::template Invoke<FIRST_TILE>(							// Full-tile == unguarded loads
-				data, flags, d_in + cta_offset);
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
+				data,
+				flags,
+				d_in + cta_offset);
+
+		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
+		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
 		// Reduce flags, accumulate in carry
-		carry += util::reduction::SerialReduce<KernelConfig::TILE_ELEMENTS_PER_THREAD>::Invoke(
-			(LocalFlagCount*) flags);
-
-		__syncthreads();
+		carry += util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(
+			(LocalFlag*) flags);
 	}
 
 
@@ -128,22 +134,64 @@ struct UpsweepCta : KernelConfig
 	{
 		// Cooperatively reduce the carries in each thread (thread-0 gets the result)
 		carry = util::reduction::TreeReduce<
-			FlagCount,
-			KernelConfig::LOG_THREADS,
-			util::Operators<T>::Sum>::Invoke<false>(				// No need to return aggregate reduction in all threads
+			SpineType,
+			KernelPolicy::LOG_THREADS>::Invoke<false>(				// No need to return aggregate reduction in all threads
 				carry,
 				reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<UpsweepCta::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);
 		}
+	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
+	{
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+		SizeT cta_offset = work_limits.offset;
+
+		if (cta_offset < work_limits.guarded_offset) {
+
+			// Process at least one full tile of tile_elements
+			ProcessTile<true>(cta_offset);
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
+
+			// Process more full tiles (not first tile)
+			while (cta_offset < work_limits.guarded_offset) {
+				ProcessTile<false>(cta_offset);
+				cta_offset += KernelPolicy::TILE_ELEMENTS;
+			}
+
+			// Clean up last partial tile with guarded-io (not first tile)
+			if (work_limits.guarded_elements) {
+				ProcessTile<false>(
+					cta_offset,
+					work_limits.out_of_bounds);
+			}
+
+		} else {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			ProcessTile<true>(
+				cta_offset,
+				work_limits.out_of_bounds);
+		}
+
+		// Collectively reduce accumulated carry from each thread into output
+		// destination
+		OutputToSpine();
 	}
 };
 
 
 
+} // namespace upsweep
 } // namespace consecutive_removal
 } // namespace b40c
 

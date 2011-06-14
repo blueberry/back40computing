@@ -315,28 +315,31 @@ cudaError_t Enactor::EnactPass(
 	util::CtaWorkDistribution<typename Policy::SizeT> &work,
 	typename Policy::SizeT spine_elements)
 {
-	typedef typename Policy::Upsweep 		Upsweep;
-	typedef typename Policy::Spine 			Spine;
-	typedef typename Policy::Downsweep 		Downsweep;
-	typedef typename Policy::Single 		Single;
-	typedef typename Policy::Flag			Flag;
-	typedef typename Policy::T 				T;
-
-	typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
-	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
-	typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
-
 	cudaError_t retval = cudaSuccess;
 	do {
 		if (work.grid_size == 1) {
 
-			SingleKernel<<<1, Spine::THREADS, 0>>>(
+			typedef typename Policy::Single Single;
+
+			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
+
+			SingleKernel<<<1, Single::THREADS, 0>>>(
 				d_src, d_flag_src, d_dest, work.num_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
+
+			typedef typename Policy::Upsweep 		Upsweep;
+			typedef typename Policy::Spine 			Spine;
+			typedef typename Policy::Downsweep 		Downsweep;
+
+			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
+			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+			typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
+
+			typedef typename Spine::T 				SpineType;
+			typedef typename Spine::Flag			SpineFlag;
 
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
@@ -372,19 +375,19 @@ cudaError_t Enactor::EnactPass(
 
 			// Upsweep scan into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, d_flag_src, (T*) partial_spine(), (Flag*) flag_spine(), work);
+				d_src, d_flag_src, (SpineType*) partial_spine(), (SpineFlag*) flag_spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) partial_spine(), (Flag*) flag_spine(), (T*) partial_spine(), spine_elements);
+				(SpineType*) partial_spine(), (SpineFlag*) flag_spine(), (SpineType*) partial_spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_flag_src, d_dest, (T*) partial_spine(), work);
+				d_src, d_flag_src, d_dest, (SpineType*) partial_spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
