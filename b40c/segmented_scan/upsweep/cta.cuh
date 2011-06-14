@@ -95,8 +95,8 @@ struct UpsweepCta : KernelPolicy						// Derive from our config
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool.raking_elements.partials_raking_elements,
-					smem_storage.smem_pool.raking_elements.flags_raking_elements),
+					smem_storage.partials_raking_elements,
+					smem_storage.flags_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),

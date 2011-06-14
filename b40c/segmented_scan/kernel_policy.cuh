@@ -137,14 +137,10 @@ struct KernelPolicy : _ProblemType
 	struct SmemStorage
 	{
 		T 		partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		Flag 	flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		T 		partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 
-		union {
-			struct {
-				T partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
-				Flag flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
-			} raking_elements;
-		} smem_pool;
+		Flag 	flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		Flag 	flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 	};
 
 
@@ -168,30 +164,10 @@ struct KernelPolicy : _ProblemType
 		SoaTuple &first,
 		SoaTuple &second)
 	{
-		return (second.t1) ?
-			second :
-			SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
-	}
-
-
-	/**
-	 * Final (last-level) SOA scan operator
-	 */
-	static __device__ __forceinline__ SoaTuple FinalSoaScanOp(
-		SoaTuple &first,
-		SoaTuple &second)
-	{
-		if (!FINAL_KERNEL) {
-
-			return SoaScanOp(first, second);
-
-		} else if (second.t1) {
-
-			if (EXCLUSIVE) {
-				first.t0 = Identity();
-			}
+		if (second.t1) {
 			return second;
 		}
+
 		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
 	}
 

@@ -59,9 +59,6 @@ template <
 	bool EXCLUSIVE,
 	typename SrtsSoaDetails::SoaTuple ScanOp(
 		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&),
-	typename SrtsSoaDetails::SoaTuple FinalSoaScanOp(
-		typename SrtsSoaDetails::SoaTuple&,
 		typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaTileScan :
 	reduction::soa::CooperativeSoaTileReduction<SrtsSoaDetails, VEC_SIZE, ScanOp>		// Inherit from cooperative tile reduction
@@ -79,14 +76,14 @@ struct CooperativeSoaTileScan :
 			// Retrieve partial reduction from SRTS grid
 			SoaTuple exclusive_partial = srts_soa_details.lane_partials.template Get<LANE, SoaTuple>(0);
 
-			// Scan the partials in this lane/load using the FinalSoaScanOp
+			// Scan the partials in this lane/load
 			SerialSoaScanLane<
 				SoaTuple,
 				DataSoa,
 				LANE,
 				VEC_SIZE,
 				EXCLUSIVE,
-				FinalSoaScanOp>::Invoke(data_soa, exclusive_partial);
+				ScanOp>::Invoke(data_soa, exclusive_partial);
 
 			// Next load
 			ScanLane<LANE + 1, TOTAL_LANES, DataSoa>::Invoke(srts_soa_details, data_soa);
