@@ -54,6 +54,9 @@ struct KernelPolicy :
 	typedef typename TuningPolicy::VertexId 					VertexId;
 	typedef typename TuningPolicy::SizeT 						SizeT;
 
+	enum {
+		WARPS = KernelPolicy::WARPS,
+	};
 
 	/**
 	 * Shared storage
@@ -67,14 +70,14 @@ struct KernelPolicy :
 
 		// Shared work-processing limits
 		util::CtaWorkDistribution<SizeT>	work_decomposition;
-		VertexId 							vid_hashtable[KernelPolicy::WARPS][WARP_HASH_ELEMENTS];
+		VertexId 							vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
 												- sizeof(typename Base::SmemStorage)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
-												- sizeof(VertexId[KernelPolicy::WARPS][WARP_HASH_ELEMENTS])
+												- sizeof(VertexId[WARPS][WARP_HASH_ELEMENTS])
 												- 128,
 
 			HISTORY_HASH_ELEMENTS			= FULL_OCCUPANCY_BYTES /sizeof(VertexId),

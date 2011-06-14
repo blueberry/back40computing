@@ -61,12 +61,18 @@ struct Tile :
 	typedef typename KernelPolicy::ValidFlag				ValidFlag;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 
+	enum {
+		CYCLES_PER_TILE 	= Tile::CYCLES_PER_TILE,
+		LOADS_PER_CYCLE 	= Tile::LOADS_PER_CYCLE,
+		LOAD_VEC_SIZE 		= Tile::LOAD_VEC_SIZE,
+	};
+
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
-	ValidFlag 	flags[Tile::CYCLES_PER_TILE][Tile::LOADS_PER_CYCLE][Tile::LOAD_VEC_SIZE];
+	ValidFlag 	flags[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];
 
 
 	//---------------------------------------------------------------------

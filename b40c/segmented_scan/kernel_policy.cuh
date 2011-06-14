@@ -171,22 +171,13 @@ struct KernelPolicy : ProblemType
 
 
 	/**
-	 * Identity operator for flag types
-	 */
-	static __host__ __device__ __forceinline__ Flag FlagIdentity()
-	{
-		return 0;
-	}
-
-
-	/**
 	 * Identity operator for partial-flag tuples
 	 */
 	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
 	{
 		return SoaTuple(
-			Identity(),							// Tuple Identity
-			FlagIdentity());					// Flag Identity
+			ProblemType::Identity(),			// Partial Identity
+			0);									// Flag Identity
 	}
 
 
