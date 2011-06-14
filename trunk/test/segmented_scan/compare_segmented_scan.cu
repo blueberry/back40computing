@@ -292,7 +292,7 @@ void TestSegmentedScan(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	double b40c = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN>(
+	double b40c = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN_SIZE>(
 		h_data, h_flag_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
 	double thrust = TimedThrustSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity>(
 		h_data, h_flag_data, h_reference, num_elements);

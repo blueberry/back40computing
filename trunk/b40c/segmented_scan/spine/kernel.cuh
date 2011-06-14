@@ -72,7 +72,7 @@ __device__ __forceinline__ void SpinePass(
 
 	// Clean up last partial tile with guarded-io
 	if (cta_guarded_elements) {
-		cta.ProcessTile(cta_offset, spine_elements);
+		cta.ProcessTile(cta_offset, cta_guarded_elements);
 	}
 }
 

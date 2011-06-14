@@ -29,6 +29,7 @@
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
 
@@ -81,6 +82,100 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 	// Output device pointer
 	T 				*d_partials_out;
 
+
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
+	/**
+	 * Tile
+	 */
+	struct Tile
+	{
+		//---------------------------------------------------------------------
+		// Typedefs and Constants
+		//---------------------------------------------------------------------
+
+		enum {
+			LOADS_PER_TILE = KernelPolicy::LOADS_PER_TILE,
+			LOAD_VEC_SIZE = KernelPolicy::LOAD_VEC_SIZE,
+		};
+
+
+		//---------------------------------------------------------------------
+		// Members
+		//---------------------------------------------------------------------
+
+		T				partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		Flag			flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		int 			is_head[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+
+
+		//---------------------------------------------------------------------
+		// Iteration Structures
+		//---------------------------------------------------------------------
+
+		/**
+		 * Iterate over vertex id
+		 */
+		template <int LOAD, int VEC, int dummy = 0>
+		struct Iterate
+		{
+			/**
+			 * RepairHeads
+			 */
+			static __device__ __forceinline__ void RepairHeads(Tile *tile)
+			{
+				// Set the partials of flagged items to identity
+				if (tile->is_head[LOAD][VEC]) {
+					tile->partials[LOAD][VEC] = 0;
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::RepairHeads(tile);
+			}
+		};
+
+		/**
+		 * Iterate next load
+		 */
+		template <int LOAD, int dummy>
+		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+		{
+			// RepairHeads
+			static __device__ __forceinline__ void RepairHeads(Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::RepairHeads(tile);
+			}
+		};
+
+		/**
+		 * Terminate iteration
+		 */
+		template <int dummy>
+		struct Iterate<LOADS_PER_TILE, 0, dummy>
+		{
+			// RepairHeads
+			static __device__ __forceinline__ void RepairHeads(Tile *tile) {}
+		};
+
+
+		//---------------------------------------------------------------------
+		// Interface
+		//---------------------------------------------------------------------
+
+		/**
+		 * Performs any cleanup work
+		 */
+		__device__ __forceinline__ void RepairHeads()
+		{
+			if (KernelPolicy::FINAL_KERNEL && KernelPolicy::EXCLUSIVE) {
+				Iterate<0, 0>::RepairHeads(this);
+			}
+		}
+	};
+
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -98,8 +193,8 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool.raking_elements.partials_raking_elements,
-					smem_storage.smem_pool.raking_elements.flags_raking_elements),
+					smem_storage.partials_raking_elements,
+					smem_storage.flags_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
@@ -120,8 +215,7 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tiles of segmented scan elements and flags
-		T				partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		Flag			flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		Tile tile;
 
 		// Load tile of partials
 		util::io::LoadTile<
@@ -129,7 +223,9 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-				partials, d_partials_in + cta_offset, guarded_elements);
+				tile.partials,
+				d_partials_in + cta_offset,
+				guarded_elements);
 
 		// Load tile of flags
 		util::io::LoadTile<
@@ -137,18 +233,27 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
-				flags, d_flags_in + cta_offset, guarded_elements);
+				tile.flags,
+				d_flags_in + cta_offset,
+				guarded_elements);
+
+		// Copy head flags (since we will trash them during scan)
+		util::io::InitializeTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.is_head, tile.flags);
 
 		// Scan tile with carry update in raking threads
 		util::scan::soa::CooperativeSoaTileScan<
 			SrtsSoaDetails,
 			KernelPolicy::LOAD_VEC_SIZE,
 			KERNEL_EXCLUSIVE,
-			KernelPolicy::SoaScanOp,
-			KernelPolicy::FinalSoaScanOp>::template ScanTileWithCarry<DataSoa>(
+			KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
 				srts_soa_details,
-				DataSoa(partials, flags),
+				DataSoa(tile.partials, tile.flags),
 				carry);
+
+		// Fix up segment heads if exclusive scan
+		tile.RepairHeads();
 
 		// Store tile of partials
 		util::io::StoreTile<
@@ -156,7 +261,7 @@ struct DownsweepCta : KernelPolicy						// Derive from our config
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Store(
-				partials, d_partials_out + cta_offset, guarded_elements);
+				tile.partials, d_partials_out + cta_offset, guarded_elements);
 	}
 };
 
