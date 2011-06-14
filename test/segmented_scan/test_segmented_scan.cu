@@ -95,13 +95,15 @@ void TestSegmentedScan(size_t num_elements)
 
 	if (g_verbose) printf("Input problem: \n");
 	for (int i = 0; i < num_elements; i++) {
-//		util::RandomBits<T>(h_data[i], 0);
-//		util::RandomBits<Flag>(h_flag_data[i], 0);
+/*
 		h_data[i] = 1;
 		h_flag_data[i] = (i % 11) == 0;
+*/
+		util::RandomBits<T>(h_data[i], 0);
+		util::RandomBits<Flag>(h_flag_data[i], 2, 1);
 
 		if (g_verbose) {
-			printf("(%d, %d), ", h_data[i], h_flag_data[i]);
+			printf("(%lld, %lld), ", (long long) h_data[i], (long long) h_flag_data[i]);
 		}
 	}
 	if (g_verbose) printf("\n");

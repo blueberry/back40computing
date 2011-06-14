@@ -86,7 +86,7 @@ struct Cta
 	/**
 	 * Two-phase scatter tile specialization
 	 */
-	template <bool FIRST_TILE, bool TWO_PHASE_SCATTER>
+	template <bool FIRST_TILE, bool TWO_PHASE_SCATTER = KernelPolicy::TWO_PHASE_SCATTER>
 	struct Tile
 	{
 		//---------------------------------------------------------------------
@@ -285,7 +285,7 @@ struct Cta
 		SizeT cta_offset,
 		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		Tile<FIRST_TILE, KernelPolicy::TWO_PHASE_SCATTER> tile;
+		Tile<FIRST_TILE> tile;
 
 		tile.Process(cta_offset, guarded_elements, this);
 	}
