@@ -202,9 +202,10 @@ struct Cta
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_partials_out(d_partials_out),
-			carry(												// Seed carry with spine partial & flag
+			carry(												// Seed carry with spine partial & flag identity
 				spine_partial,
-				KernelPolicy::FlagIdentity()) {}
+				0)
+	{}
 
 
 	/**
