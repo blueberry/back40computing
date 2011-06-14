@@ -49,7 +49,7 @@ namespace downsweep {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -64,9 +64,8 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelPolicy : _ProblemType
+struct KernelPolicy : ProblemType
 {
-	typedef _ProblemType				ProblemType;
 	typedef typename ProblemType::T 	T;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;

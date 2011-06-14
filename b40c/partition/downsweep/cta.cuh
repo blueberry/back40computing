@@ -138,6 +138,31 @@ struct Cta
 			guarded_elements,
 			(Dispatch *) this);
 	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
+	{
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+		SizeT cta_offset = work_limits.offset;
+
+		// Process full tiles of tile_elements
+		while (cta_offset < work_limits.guarded_offset) {
+
+			ProcessTile(cta_offset);
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
+		}
+
+		// Clean up last partial tile with guarded-io
+		if (work_limits.guarded_elements) {
+			ProcessTile(
+				cta_offset,
+				work_limits.guarded_elements);
+		}
+	}
 };
 
 

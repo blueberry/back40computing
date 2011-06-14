@@ -46,11 +46,11 @@ namespace scan {
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
  * parameters that define kernel-dispatch policy.   By encapsulating all of the
- * kernel tuning policies, we assure operational consistency over an entire scan pass.
+ * kernel tuning policies, we assure operational consistency over an entire pass.
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -82,13 +82,12 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct Policy : _ProblemType
+struct Policy : ProblemType
 {
 	//---------------------------------------------------------------------
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef _ProblemType ProblemType;
 	typedef typename ProblemType::T T;
 	typedef typename ProblemType::SizeT SizeT;
 
@@ -182,7 +181,7 @@ struct Policy : _ProblemType
 	}
 
 	static SingleKernelPtr SingleKernel() {
-		return downsweep::Kernel<Single>;
+		return spine::Kernel<Single>;
 	}
 
 

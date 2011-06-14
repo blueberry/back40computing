@@ -43,7 +43,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::SizeT 			&spine_elements,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef DownsweepCta<KernelPolicy> DownsweepCta;
+	typedef Cta<KernelPolicy> Cta;
 	typedef typename KernelPolicy::SizeT SizeT;
 	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
 
@@ -51,29 +51,27 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	DownsweepCta cta(
+	Cta cta(
 		smem_storage,
 		d_partials_in,
 		d_flags_in,
 		d_partials_out);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT cta_guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
+	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
-	SizeT cta_guarded_offset = spine_elements - cta_guarded_elements;
+	SizeT guarded_offset = spine_elements - guarded_elements;
 
-	// Process full tiles of tile_elements
-	SizeT cta_offset = 0;
-	while (cta_offset < cta_guarded_offset) {
-		cta.ProcessTile(cta_offset);
-		cta_offset += KernelPolicy::TILE_ELEMENTS;
-	}
+	util::CtaWorkLimits<SizeT> work_limits(
+		0,					// Offset at which this CTA begins processing
+		spine_elements,		// Total number of elements for this CTA to process
+		guarded_offset, 	// Offset of final, partially-full tile (requires guarded loads)
+		guarded_elements,	// Number of elements in partially-full tile
+		spine_elements,		// Offset at which this CTA is out-of-bounds
+		true);				// If this block is the last block in the grid with any work
 
-	// Clean up last partial tile with guarded-io
-	if (cta_guarded_elements) {
-		cta.ProcessTile(cta_offset, cta_guarded_elements);
-	}
+	cta.ProcessWorkRange(work_limits);
 }
 
 

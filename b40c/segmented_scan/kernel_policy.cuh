@@ -48,7 +48,7 @@ namespace segmented_scan {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 	bool _FINAL_KERNEL,
 
 	// Machine parameters
@@ -64,10 +64,8 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct KernelPolicy : _ProblemType
+struct KernelPolicy : ProblemType
 {
-	typedef _ProblemType ProblemType;
-
 	typedef typename ProblemType::T T;
 	typedef typename ProblemType::Flag Flag;
 

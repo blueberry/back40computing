@@ -91,11 +91,21 @@ void TestSegmentedScan(size_t num_elements)
 	}
 
 	for (size_t i = 0; i < num_elements; ++i) {
+	}
+
+	if (g_verbose) printf("Input problem: \n");
+	for (int i = 0; i < num_elements; i++) {
 //		util::RandomBits<T>(h_data[i], 0);
 //		util::RandomBits<Flag>(h_flag_data[i], 0);
 		h_data[i] = 1;
 		h_flag_data[i] = (i % 11) == 0;
+
+		if (g_verbose) {
+			printf("(%d, %d), ", h_data[i], h_flag_data[i]);
+		}
 	}
+	if (g_verbose) printf("\n");
+
 
 	for (size_t i = 0; i < num_elements; ++i) {
 		if (EXCLUSIVE)

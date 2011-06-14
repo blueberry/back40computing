@@ -28,7 +28,7 @@
 
 // Reduction includes
 #include <b40c/reduction/problem_type.cuh>
-#include <b40c/reduction/problem_config.cuh>
+#include <b40c/reduction/policy.cuh>
 #include <b40c/reduction/enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
@@ -272,16 +272,16 @@ public:
 	/**
 	 * Timed scan for applying a specific granularity configuration type
 	 */
-	template <typename ProblemConfig>
+	template <typename Policy>
 	void TimedReduction()
 	{
 		printf("%lu, ", (unsigned long) sizeof(T));
-		ProblemConfig::Print();
+		Policy::Print();
 		fflush(stdout);
 
 		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 		this->DEBUG = g_verbose;
-		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+		if (this->template Reduce<Policy>(d_dest, d_src, num_elements, g_max_ctas)) {
 			exit(1);
 		}
 		this->DEBUG = false;
@@ -300,7 +300,7 @@ public:
 			cudaEventRecord(start_event, 0);
 
 			// Call the scan API routine
-			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			if (this->template Reduce<Policy>(d_dest, d_src, num_elements, g_max_ctas)) {
 				exit(1);
 			}
 
@@ -399,7 +399,7 @@ public:
 			OpType::BinaryOp> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef reduction::ProblemConfig <
+		typedef reduction::Policy <
 			ProblemType,
 			TUNE_ARCH,
 			(util::io::ld::CacheModifier) C_READ_MODIFIER,
@@ -417,10 +417,10 @@ public:
 
 			C_SPINE_LOG_THREADS,
 			C_SPINE_LOG_LOAD_VEC_SIZE,
-			C_SPINE_LOG_LOADS_PER_TILE> ProblemConfig;
+			C_SPINE_LOG_LOADS_PER_TILE> Policy;
 
 		// Invoke this config
-		TimedReduction<ProblemConfig>();
+		TimedReduction<Policy>();
 	}
 };
 
@@ -522,6 +522,7 @@ int main(int argc, char** argv)
 		typedef unsigned char T;
 		TestReduction<T, Sum<T> >(num_elements * 4);
 	}
+/*
 	{
 		typedef unsigned short T;
 		TestReduction<T, Sum<T> >(num_elements * 2);
@@ -534,7 +535,7 @@ int main(int argc, char** argv)
 		typedef unsigned long long T;
 		TestReduction<T, Sum<T> >(num_elements / 2);
 	}
-
+*/
 	return 0;
 }
 

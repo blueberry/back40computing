@@ -41,27 +41,6 @@ namespace downsweep {
 /**
  * Downsweep scan-scatter pass
  */
-template <typename KernelPolicy, typename Cta>
-__device__ __forceinline__ void DownsweepPass(
-	Cta 									&cta,
-	typename KernelPolicy::SmemStorage 		&smem_storage)
-{
-	typename KernelPolicy::SizeT cta_offset = smem_storage.work_limits.offset;
-
-	while (cta_offset < smem_storage.work_limits.guarded_offset) {
-		cta.ProcessTile(cta_offset);
-		cta_offset += KernelPolicy::TILE_ELEMENTS;
-	}
-
-	if (smem_storage.work_limits.guarded_elements) {
-		cta.ProcessTile(cta_offset, smem_storage.work_limits.guarded_elements);
-	}
-}
-
-
-/**
- * Downsweep scan-scatter pass
- */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
 	int 								*&d_selectors,
@@ -152,7 +131,7 @@ __device__ __forceinline__ void DownsweepPass(
 			base_composite_counter,
 			raking_segment);
 
-		DownsweepPass<KernelPolicy>(cta, smem_storage);
+		cta.ProcessWorkRange(smem_storage.work_limits);
 
 	} else {
 
@@ -167,7 +146,7 @@ __device__ __forceinline__ void DownsweepPass(
 			base_composite_counter,
 			raking_segment);
 
-		DownsweepPass<KernelPolicy>(cta, smem_storage);
+		cta.ProcessWorkRange(smem_storage.work_limits);
 	}
 }
 

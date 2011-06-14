@@ -81,7 +81,6 @@ endif
 # Includes
 #-------------------------------------------------------------------------------
 
-THRUST_INC = "../../../Thrust"
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
 INC = -I$(CUDA_INC) -I.. -I../.. 
 
@@ -191,7 +190,7 @@ compare: bin/compare_segmented_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
 bin/compare_segmented_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_segmented_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_segmented_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_segmented_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_segmented_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_segmented_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #

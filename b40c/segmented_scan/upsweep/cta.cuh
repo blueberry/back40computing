@@ -44,7 +44,7 @@ namespace upsweep {
  * reduction tile-processing state and routines
  */
 template <typename KernelPolicy>
-struct UpsweepCta : KernelPolicy						// Derive from our config
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -86,7 +86,7 @@ struct UpsweepCta : KernelPolicy						// Derive from our config
 	 * Constructor
 	 */
 	template <typename SmemStorage>
-	__device__ __forceinline__ UpsweepCta(
+	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,

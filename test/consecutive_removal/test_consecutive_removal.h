@@ -29,7 +29,7 @@
 #include <stdio.h> 
 
 // ConsecutiveRemoval includes
-#include <b40c/consecutive_removal_enactor.cuh>
+#include <b40c/consecutive_removal/enactor.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -70,7 +70,7 @@ double TimedConsecutiveRemoval(
 		"TimedConsecutiveRemoval cudaMalloc d_num_compacted failed: ", __FILE__, __LINE__)) exit(1);
 
 	// Create enactor
-	ConsecutiveRemovalEnactor consecutive_removal_enactor;
+	consecutive_removal::Enactor enactor;
 
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
@@ -78,10 +78,10 @@ double TimedConsecutiveRemoval(
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
-	consecutive_removal_enactor.DEBUG = true;
-	consecutive_removal_enactor.template Enact<PROB_SIZE_GENRE, T>(
+	enactor.DEBUG = true;
+	enactor.template Trim<PROB_SIZE_GENRE>(
 		d_dest, d_num_compacted, d_src, num_elements, max_ctas);
-	consecutive_removal_enactor.DEBUG = false;
+	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
 
@@ -97,7 +97,7 @@ double TimedConsecutiveRemoval(
 		cudaEventRecord(start_event, 0);
 
 		// Call the consecutive removal API routine
-		consecutive_removal_enactor.template Enact<PROB_SIZE_GENRE, T>(
+		enactor.template Trim<PROB_SIZE_GENRE>(
 			d_dest, d_num_compacted, d_src, num_elements, max_ctas);
 
 		// End timing record
@@ -120,35 +120,18 @@ double TimedConsecutiveRemoval(
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);
 
-    // Copy out data
-	T *h_dest = (T*) malloc(compacted_elements * sizeof(T));
-    if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * compacted_elements, cudaMemcpyDeviceToHost),
-		"TimedConsecutiveRemoval cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	// Check and display results
+	CompareDeviceResults(h_reference, d_dest, compacted_elements, verbose, verbose);
+	printf("\n");
+	fflush(stdout);
 
-    // Free allocated memory
+	// Free allocated memory
     if (d_src) cudaFree(d_src);
     if (d_dest) cudaFree(d_dest);
     if (d_num_compacted) cudaFree(d_num_compacted);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
-
-	// Display copied data
-	if (verbose) {
-		printf("\n\nData:\n");
-		for (int i = 0; i < compacted_elements; i++) {
-			PrintValue<T>(h_dest[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}
-
-    // Verify solution
-	CompareResults(h_dest, h_reference, compacted_elements, true);
-	printf("\n");
-	fflush(stdout);
-
-	if (h_dest) free(h_dest);
 
 	return throughput;
 }

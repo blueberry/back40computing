@@ -83,10 +83,16 @@ void TestConsecutiveRemoval(size_t num_elements)
 		exit(1);
 	}
 
+	if (g_verbose) printf("Input problem: \n");
 	for (int i = 0; i < num_elements; i++) {
 		h_data[i] = (i / 7) & 1;		// toggle every 7 elements
 //		h_data[i] = i & 1;				// toggle every 1 elements
+
+		if (g_verbose) {
+			printf("%d, ", h_data[i]);
+		}
 	}
+	if (g_verbose) printf("\n");
 
 	size_t compacted_elements = 0;
 	h_reference[0] = h_data[0];
@@ -108,17 +114,17 @@ void TestConsecutiveRemoval(size_t num_elements)
 	do {
 
 		printf("\nLARGE config:\t");
-		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE>(
+		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE_SIZE>(
 			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
-
+/*
 		printf("\nSMALL config:\t");
-		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL>(
+		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL_SIZE>(
 			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
 		}
-
+*/
 		num_elements -= 4096;
 
 	} while (g_sweep && (num_elements < orig_num_elements ));
@@ -161,6 +167,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
+/*
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -171,17 +178,19 @@ int main(int argc, char** argv)
 		typedef unsigned short T;
 		TestConsecutiveRemoval<T>(num_elements * 2);
 	}
+*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		TestConsecutiveRemoval<T>(num_elements);
 	}
+/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		TestConsecutiveRemoval<T>(num_elements / 2);
 	}
-
+*/
 	return 0;
 }
 

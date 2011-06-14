@@ -20,37 +20,41 @@
  ******************************************************************************/
 
 /******************************************************************************
- *  Consecutive Removal Granularity Configuration
+ *  Unified consecutive removal policy
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/operators.cuh>
 
-#include <b40c/consecutive_removal/upsweep_kernel_config.cuh>
-#include <b40c/consecutive_removal/downsweep_kernel_config.cuh>
+#include <b40c/consecutive_removal/upsweep/kernel.cuh>
+#include <b40c/consecutive_removal/upsweep/kernel_policy.cuh>
+#include <b40c/consecutive_removal/downsweep/kernel.cuh>
+#include <b40c/consecutive_removal/downsweep/kernel_policy.cuh>
+#include <b40c/consecutive_removal/single/kernel.cuh>
 
-#include <b40c/scan/downsweep_kernel_config.cuh>
+#include <b40c/scan/downsweep/kernel_policy.cuh>
 #include <b40c/scan/problem_type.cuh>
+#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace consecutive_removal {
 
 
 /**
- * Unified consecutive removal granularity configuration type.
+ * Unified consecutive removal policy type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
- * parameters that define kernel-dispatch policy.  By encapsulating the tuning information
- * for dispatch and both kernels, we assure operational consistency over an entire
- * consecutive removal pass.
+ * parameters that define kernel-dispatch policy.   By encapsulating all of the
+ * kernel tuning policies, we assure operational consistency over an entire pass.
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename ProblemType,
 
 	// Machine parameters
 	int CUDA_ARCH,
@@ -58,6 +62,7 @@ template <
 	// Common tunable params
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
+	bool TWO_PHASE_SCATTER,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
 	bool _OVERSUBSCRIBED_GRID_SIZE,
@@ -82,13 +87,26 @@ template <
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
 	int DOWNSWEEP_LOG_RAKING_THREADS>
 
-struct ProblemConfig : _ProblemType
+struct Policy : ProblemType
 {
-	typedef _ProblemType ProblemType;
+	//---------------------------------------------------------------------
+	// Typedefs
+	//---------------------------------------------------------------------
+
+	typedef typename ProblemType::T 			T;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::SpineType 	SpineType;
+	typedef typename ProblemType::SpineSizeT 	SpineSizeT;
+
+	typedef void (*UpsweepKernelPtr)(T*, SpineType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SpineType*, SpineType*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(T*, SizeT*, T*, SpineType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, SizeT*, T*, SizeT);
+
 
 	// Kernel config for the upsweep reduction kernel
-	typedef UpsweepKernelConfig <
-		_ProblemType,
+	typedef upsweep::KernelPolicy<
+		ProblemType,
 		CUDA_ARCH,
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
@@ -99,19 +117,16 @@ struct ProblemConfig : _ProblemType
 		LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
-	// Spine type (discontinuity flag counts)
-	typedef typename Upsweep::FlagCount FlagCount;
-
 	// Problem type for spine
 	typedef scan::ProblemType<
-		FlagCount,
-		typename ProblemType::SizeT,
-		true,								// Exclusive
-		util::Operators<T>::Sum<FlagCount>,
-		util::Operators<T>::SumIdentity<FlagCount> > SpineProblemType;
+		SpineType,
+		SpineSizeT,
+		true,									// Exclusive
+		util::Operators<SpineType>::Sum,
+		util::Operators<SpineType>::SumIdentity> SpineProblemType;
 
 	// Kernel config for the spine consecutive removal kernel
-	typedef scan::DownsweepKernelConfig <
+	typedef scan::downsweep::KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
@@ -125,8 +140,8 @@ struct ProblemConfig : _ProblemType
 			Spine;
 
 	// Kernel config for downsweep
-	typedef DownsweepKernelConfig <
-		_ProblemType,
+	typedef downsweep::KernelPolicy <
+		ProblemType,
 		CUDA_ARCH,
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
@@ -135,12 +150,13 @@ struct ProblemConfig : _ProblemType
 		DOWNSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY>
+		LOG_SCHEDULE_GRANULARITY,
+		TWO_PHASE_SCATTER>
 			Downsweep;
 
-	// Kernel config for single
-	typedef DownsweepKernelConfig <
-		_ProblemType,
+	// Kernel config for single-cta (single-grid) consecutive duplicate removal
+	typedef downsweep::KernelPolicy <
+		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
@@ -149,46 +165,42 @@ struct ProblemConfig : _ProblemType
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY>
+		LOG_SCHEDULE_GRANULARITY,
+		TWO_PHASE_SCATTER>
 			Single;
+
+	//---------------------------------------------------------------------
+	// Kernel function pointer retrieval
+	//---------------------------------------------------------------------
+
+	static UpsweepKernelPtr UpsweepKernel() {
+		return upsweep::Kernel<Upsweep>;
+	}
+
+	static SpineKernelPtr SpineKernel() {
+		return scan::spine::Kernel<Spine>;
+	}
+
+	static DownsweepKernelPtr DownsweepKernel() {
+		return downsweep::Kernel<Downsweep>;
+	}
+
+	static SingleKernelPtr SingleKernel() {
+		return single::Kernel<Single>;
+	}
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
 
 	enum {
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID
+		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID & Single::VALID
 	};
 
-	static void Print()
-	{
-		printf("%s, %s, %s, %s, %s, %d, "
-				"%d, %d, %d, %d, "
-				"%d, %d, %d, %d, "
-				"%d, %d, %d, %d, %d",
-
-			CacheModifierToString((int) READ_MODIFIER),
-			CacheModifierToString((int) WRITE_MODIFIER),
-			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
-			(UNIFORM_GRID_SIZE) ? "true" : "false",
-			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
-			LOG_SCHEDULE_GRANULARITY,
-
-			UPSWEEP_MAX_CTA_OCCUPANCY,
-			UPSWEEP_LOG_THREADS,
-			UPSWEEP_LOG_LOAD_VEC_SIZE,
-			UPSWEEP_LOG_LOADS_PER_TILE,
-
-			SPINE_LOG_THREADS,
-			SPINE_LOG_LOAD_VEC_SIZE,
-			SPINE_LOG_LOADS_PER_TILE,
-			SPINE_LOG_RAKING_THREADS,
-
-			DOWNSWEEP_MAX_CTA_OCCUPANCY,
-			DOWNSWEEP_LOG_THREADS,
-			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-			DOWNSWEEP_LOG_LOADS_PER_TILE,
-			DOWNSWEEP_LOG_RAKING_THREADS);
-	}
 };
 		
 

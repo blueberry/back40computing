@@ -73,10 +73,7 @@ __device__ __forceinline__ void UpsweepPass(
 		d_spine);
 	
 	// Accumulate digit counts for all tiles
-	cta.ProcessTiles(
-		work_limits.offset,
-		work_limits.guarded_offset,
-		work_limits.out_of_bounds);
+	cta.ProcessWorkRange(work_limits);
 }
 
 

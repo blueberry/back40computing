@@ -89,7 +89,7 @@ public:
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
-	 * 		Number of elements to scan
+	 * 		Number of elements in d_src
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -120,7 +120,7 @@ public:
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
-	 * 		Number of elements to scan
+	 * 		Number of elements in d_src
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -149,7 +149,7 @@ public:
 	 * @param d_src
 	 * 		Pointer to array of elements to be scanned
 	 * @param num_elements
-	 * 		Number of elements to scan
+	 * 		Number of elements in d_src
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 * @return cudaSuccess on success, error enumeration otherwise
@@ -284,25 +284,25 @@ cudaError_t Enactor::EnactPass(
 	util::CtaWorkDistribution<typename Policy::SizeT> &work,
 	typename Policy::SizeT spine_elements)
 {
-	typedef typename Policy::Upsweep 		Upsweep;
-	typedef typename Policy::Spine 			Spine;
-	typedef typename Policy::Downsweep 		Downsweep;
-	typedef typename Policy::Single 		Single;
-
-	typedef typename Policy::T 				T;
-
 	cudaError_t retval = cudaSuccess;
 	do {
 		if (work.grid_size == 1) {
 
+			typedef typename Policy::Single 		Single;
+
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
-			SingleKernel<<<1, Spine::THREADS, 0>>>(
+			SingleKernel<<<1, Single::THREADS, 0>>>(
 				d_src, d_dest, work.num_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
+
+			typedef typename Policy::Upsweep 		Upsweep;
+			typedef typename Policy::Spine 			Spine;
+			typedef typename Policy::Downsweep 		Downsweep;
+			typedef typename Spine::T 				SpineType;
 
 			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
@@ -340,21 +340,21 @@ cudaError_t Enactor::EnactPass(
 				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
 			}
 
-			// Upsweep scan into spine
+			// Upsweep into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (T*) spine(), work);
+				d_src, (SpineType*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine(), (T*) spine(), spine_elements);
+				(SpineType*) spine(), (SpineType*) spine(), spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
-			// Downsweep scan from spine
+			// Downsweep from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_dest, (T*) spine(), work);
+				d_src, d_dest, (SpineType*) spine(), work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 
@@ -382,6 +382,7 @@ cudaError_t Enactor::Scan(
 
 	typedef typename Policy::T 			T;
 	typedef typename Policy::SizeT 		SizeT;
+	typedef typename Spine::T 			SpineType;
 
 	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
@@ -392,7 +393,7 @@ cudaError_t Enactor::Scan(
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
 
 	if (num_elements <= Spine::TILE_ELEMENTS * 3) {
-		// No need to upsweep reduce or downsweep scan if we can do it
+		// No need to upsweep reduce or downsweep if we can do it
 		// with a single spine kernel in three or less sequential
 		// tiles (i.e., instead of three back-to-back tiles where we would
 		// do one tile per up/spine/down kernel)
@@ -443,9 +444,9 @@ cudaError_t Enactor::Scan(
 	cudaError_t retval = cudaSuccess;
 	do {
 		// Make sure our spine is big enough
-		if (retval = spine.Setup<T>(spine_elements)) break;
+		if (retval = spine.Setup<SpineType>(spine_elements)) break;
 
-		// Invoke scan pass
+		// Invoke pass
 		if (retval = EnactPass<Policy>(d_dest, d_src, work, spine_elements)) break;
 
 	} while (0);

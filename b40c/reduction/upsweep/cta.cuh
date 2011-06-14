@@ -43,7 +43,7 @@ namespace upsweep {
  * CTA
  */
 template <typename KernelPolicy>
-struct Cta : KernelPolicy
+struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -81,7 +81,7 @@ struct Cta : KernelPolicy
 		T *&d_in,
 		T *&d_out) :
 
-			reduction_tree(smem_storage.smem_pool.reduction_tree),
+			reduction_tree(smem_storage.reduction_tree),
 			d_in(d_in),
 			d_out(d_out) {}
 
@@ -114,7 +114,7 @@ struct Cta : KernelPolicy
 		if (FIRST_TILE) {
 			carry = tile_partial;
 		} else {
-			carry = BinaryOp(carry, tile_partial);
+			carry = KernelPolicy::BinaryOp(carry, tile_partial);
 		}
 
 		__syncthreads();
@@ -197,6 +197,53 @@ struct Cta : KernelPolicy
 				carry, d_out + blockIdx.x);
 		}
 	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange(
+		util::CtaWorkLimits<SizeT> &work_limits)
+	{
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+		SizeT cta_offset = work_limits.offset;
+
+		if (cta_offset < work_limits.guarded_offset) {
+
+			// Process at least one full tile of tile_elements
+			ProcessFullTile<true>(cta_offset);
+			cta_offset += KernelPolicy::TILE_ELEMENTS;
+
+			// Process more full tiles (not first tile)
+			while (cta_offset < work_limits.guarded_offset) {
+				ProcessFullTile<false>(cta_offset);
+				cta_offset += KernelPolicy::TILE_ELEMENTS;
+			}
+
+			// Clean up last partial tile with guarded-io (not first tile)
+			if (work_limits.guarded_elements) {
+				ProcessPartialTile<false>(
+					cta_offset,
+					work_limits.out_of_bounds);
+			}
+
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (all thread have valid reduction partials)
+			OutputToSpine();
+
+		} else {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			ProcessPartialTile<true>(
+				cta_offset,
+				work_limits.out_of_bounds);
+
+			// Collectively reduce accumulated carry from each thread into output
+			// destination (not every thread may have a valid reduction partial)
+			OutputToSpine(work_limits.elements);
+		}
+	}
+
 };
 
 

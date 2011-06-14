@@ -604,7 +604,6 @@ struct Cta
 			SrtsSoaDetails,
 			KernelPolicy::LOAD_VEC_SIZE,
 			true,									//exclusive
-			KernelPolicy::SoaScanOp,
 			KernelPolicy::SoaScanOp>::ScanTile(
 				srts_soa_details,
 				RankSoa(tile.coarse_row_rank, tile.fine_row_rank));

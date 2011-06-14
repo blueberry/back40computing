@@ -45,7 +45,7 @@ __device__ __forceinline__ void UpsweepPass(
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 	typename KernelPolicy::SmemStorage	&smem_storage)
 {
-	typedef UpsweepCta<KernelPolicy> 		UpsweepCta;
+	typedef Cta<KernelPolicy> 		Cta;
 	typedef typename KernelPolicy::SizeT 	SizeT;
 
 	// Quit if we're the last threadblock (no need for it in upsweep)
@@ -54,7 +54,7 @@ __device__ __forceinline__ void UpsweepPass(
 	}
 
 	// CTA processing abstraction
-	UpsweepCta cta(
+	Cta cta(
 		smem_storage,
 		d_partials_in,
 		d_flags_in,

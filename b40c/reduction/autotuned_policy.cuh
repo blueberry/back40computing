@@ -133,7 +133,7 @@ struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, 2>
 // Large problems, 1B data
 template <typename ProblemType, typename T>
 struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, 1>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, false,
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, true,
 	  8, 7, 2, 2, 11,
 	  6, 0, 0>
 {

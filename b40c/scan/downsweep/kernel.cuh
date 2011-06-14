@@ -64,19 +64,7 @@ __device__ __forceinline__ void DownsweepPass(
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-	// Process full tiles of tile_elements
-	while (work_limits.offset < work_limits.guarded_offset) {
-
-		cta.ProcessTile(work_limits.offset);
-		work_limits.offset += KernelPolicy::TILE_ELEMENTS;
-	}
-
-	// Clean up last partial tile with guarded-io
-	if (work_limits.guarded_elements) {
-		cta.ProcessTile(
-			work_limits.offset,
-			work_limits.guarded_elements);
-	}
+	cta.ProcessWorkRange(work_limits);
 }
 
 
