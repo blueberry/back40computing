@@ -36,7 +36,28 @@ namespace upsweep {
 
 
 /**
- * Upsweep reduction pass (non-workstealing)
+ * Atomically steals work from a global work progress construct
+ */
+template <typename SizeT>
+__device__ __forceinline__ SizeT StealWork(
+	util::CtaWorkProgress &work_progress,
+	int count)
+{
+	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
+
+	// Thread zero atomically steals work from the progress counter
+	if (threadIdx.x == 0) {
+		s_offset = work_progress.Steal<SizeT>(count);
+	}
+
+	__syncthreads();		// Protect offset
+
+	return s_offset;
+}
+
+
+/**
+ * Upsweep reduction pass (non-workstealing specialization)
  */
 template <typename KernelPolicy, bool WORK_STEALING = KernelPolicy::WORK_STEALING>
 struct UpsweepPass
@@ -65,26 +86,8 @@ struct UpsweepPass
 };
 
 
-template <typename SizeT>
-__device__ __forceinline__ SizeT StealWork(
-	util::CtaWorkProgress &work_progress,
-	int count)
-{
-	__shared__ SizeT s_offset;		// The offset at which this CTA performs tile processing, shared by all
-
-	// Thread zero atomically steals work from the progress counter
-	if (threadIdx.x == 0) {
-		s_offset = work_progress.Steal<SizeT>(count);
-	}
-
-	__syncthreads();		// Protect offset
-
-	return s_offset;
-}
-
-
 /**
- * Upsweep reduction pass (workstealing)
+ * Upsweep reduction pass (workstealing specialization)
  */
 template <typename KernelPolicy>
 struct UpsweepPass <KernelPolicy, true>

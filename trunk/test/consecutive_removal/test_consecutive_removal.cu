@@ -85,11 +85,11 @@ void TestConsecutiveRemoval(size_t num_elements)
 
 	if (g_verbose) printf("Input problem: \n");
 	for (int i = 0; i < num_elements; i++) {
-		h_data[i] = (i / 7) & 1;		// toggle every 7 elements
-//		h_data[i] = i & 1;				// toggle every 1 elements
+//		h_data[i] = (i / 7) & 1;					// toggle every 7 elements
+		util::RandomBits<T>(h_data[i], 1, 1);		// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
 
 		if (g_verbose) {
-			printf("%d, ", h_data[i]);
+			printf("%lld, ", (long long) h_data[i]);
 		}
 	}
 	if (g_verbose) printf("\n");
@@ -167,7 +167,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-/*
+
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -178,19 +178,17 @@ int main(int argc, char** argv)
 		typedef unsigned short T;
 		TestConsecutiveRemoval<T>(num_elements * 2);
 	}
-*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		TestConsecutiveRemoval<T>(num_elements);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		TestConsecutiveRemoval<T>(num_elements / 2);
 	}
-*/
+
 	return 0;
 }
 
