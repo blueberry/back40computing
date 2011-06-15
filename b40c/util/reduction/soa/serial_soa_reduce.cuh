@@ -43,7 +43,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(Tuple&, Tuple&)>
+	Tuple ReductionOp(const Tuple&, const Tuple&)>
 struct SerialSoaReduce
 {
 	// Iterate
@@ -108,7 +108,7 @@ template <
 	typename RakingSoa,					// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(Tuple&, Tuple&)>
+	Tuple ReductionOp(const Tuple&, const Tuple&)>
 struct SerialSoaReduceLane
 {
 	// Iterate

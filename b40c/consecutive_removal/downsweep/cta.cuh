@@ -52,7 +52,7 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::SpineType		SpineType;
 	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
-	typedef typename KernelPolicy::SrtsType			SrtsType;			// Type for local SRTS prefix sum
+	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
 	typedef typename KernelPolicy::SmemStorage 		SmemStorage;
 
@@ -94,7 +94,7 @@ struct Cta
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];					// Tile of elements
 		T compacted_data[KernelPolicy::TILE_ELEMENTS_PER_THREAD][1];						// Tile of compacted elements
 		LocalFlag flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of discontinuity flags
-		SrtsType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of local scatter offsets
+		RankType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of local scatter offsets
 
 		//---------------------------------------------------------------------
 		// Interface
@@ -126,11 +126,11 @@ struct Cta
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, flags);
 
 			// Scan tile of ranks
-			SrtsType unique_elements = util::scan::CooperativeTileScan<
+			RankType unique_elements = util::scan::CooperativeTileScan<
 				SrtsDetails,
 				KernelPolicy::LOAD_VEC_SIZE,
 				true,							// exclusive
-				util::Operators<SrtsType>::Sum>::ScanTile(
+				util::Operators<RankType>::Sum>::ScanTile(
 					cta->srts_details, ranks);
 
 			// Barrier sync to protect smem exchange storage
@@ -145,7 +145,7 @@ struct Cta
 					cta->exchange,
 					(T*) data,
 					(LocalFlag*) flags,
-					(SrtsType*) ranks);
+					(RankType*) ranks);
 
 			// Barrier sync to protect smem exchange storage
 			__syncthreads();
@@ -191,7 +191,7 @@ struct Cta
 
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];					// Tile of elements
 		LocalFlag flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of discontinuity flags
-		SrtsType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
+		RankType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
 
 
 		//---------------------------------------------------------------------
@@ -228,7 +228,7 @@ struct Cta
 				SrtsDetails,
 				KernelPolicy::LOAD_VEC_SIZE,
 				true,							// exclusive
-				util::Operators<SrtsType>::Sum>::ScanTileWithCarry(
+				util::Operators<RankType>::Sum>::ScanTileWithCarry(
 					cta->srts_details,
 					ranks,
 					cta->carry);
@@ -242,7 +242,7 @@ struct Cta
 					cta->d_out,
 					(T*) data,
 					(LocalFlag*) flags,
-					(SrtsType*) ranks);
+					(RankType*) ranks);
 		}
 	};
 

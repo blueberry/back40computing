@@ -43,8 +43,8 @@ namespace soa {
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ScanOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&),
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&),
 	typename SecondarySrtsSoaDetails = typename SrtsSoaDetails::SecondarySrtsSoaDetails>
 struct CooperativeSoaGridScan;
 
@@ -58,8 +58,8 @@ template <
 	int VEC_SIZE,
 	bool EXCLUSIVE,
 	typename SrtsSoaDetails::SoaTuple ScanOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&)>
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaTileScan :
 	reduction::soa::CooperativeSoaTileReduction<SrtsSoaDetails, VEC_SIZE, ScanOp>		// Inherit from cooperative tile reduction
 {
@@ -172,8 +172,8 @@ struct CooperativeSoaTileScan :
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ScanOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&)>
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaGridScan<SrtsSoaDetails, ScanOp, NullType>
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;

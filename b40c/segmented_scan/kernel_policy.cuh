@@ -159,8 +159,8 @@ struct KernelPolicy : ProblemType
 	 * SOA scan operator
 	 */
 	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		SoaTuple &first,
-		SoaTuple &second)
+		const SoaTuple &first,
+		const SoaTuple &second)
 	{
 		if (second.t1) {
 			return second;

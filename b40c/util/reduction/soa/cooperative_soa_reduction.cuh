@@ -43,8 +43,8 @@ namespace soa {
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&),
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&),
 	typename SecondarySrtsSoaDetails = typename SrtsSoaDetails::SecondarySrtsSoaDetails>
 struct CooperativeSoaGridReduction;
 
@@ -56,8 +56,8 @@ template <
 	typename SrtsSoaDetails,
 	int VEC_SIZE,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&)>
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaTileReduction
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
@@ -148,8 +148,8 @@ struct CooperativeSoaTileReduction
 template <
 	typename SrtsSoaDetails,
 	typename SrtsSoaDetails::SoaTuple ReductionOp(
-		typename SrtsSoaDetails::SoaTuple&,
-		typename SrtsSoaDetails::SoaTuple&)>
+		const typename SrtsSoaDetails::SoaTuple&,
+		const typename SrtsSoaDetails::SoaTuple&)>
 struct CooperativeSoaGridReduction<SrtsSoaDetails, ReductionOp, NullType>
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;

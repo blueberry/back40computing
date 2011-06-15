@@ -70,7 +70,7 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::T 				T;
 	typedef typename ProblemType::SpineType			SpineType;
 	typedef int 									LocalFlag;								// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
-	typedef typename util::If<_TWO_PHASE_SCATTER, LocalFlag, SpineType>::Type SrtsType;		// Type for local SRTS prefix sum
+	typedef typename util::If<_TWO_PHASE_SCATTER, LocalFlag, SpineType>::Type RankType;		// Type for local SRTS prefix sum
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -110,7 +110,7 @@ struct KernelPolicy : ProblemType
 	// SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		SrtsType,								// Partial type (discontinuity counts / ranks)
+		RankType,								// Partial type (discontinuity counts / ranks)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
@@ -127,9 +127,9 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		SrtsType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		RankType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		union {
-			SrtsType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+			RankType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
 			T 				exchange[TILE_ELEMENTS];
 		};
 	};
