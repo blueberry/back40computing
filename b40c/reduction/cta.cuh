@@ -17,12 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Reduction CTA processing abstraction
+ * CTA-processing abstraction for reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,11 +34,10 @@
 
 namespace b40c {
 namespace reduction {
-namespace upsweep {
 
 
 /**
- * CTA
+ * Reduction CTA
  */
 template <typename KernelPolicy>
 struct Cta
@@ -247,7 +244,6 @@ struct Cta
 };
 
 
-} // namespace upsweep
 } // namespace reduction
 } // namespace b40c
 

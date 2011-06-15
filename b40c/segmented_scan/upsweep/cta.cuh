@@ -17,12 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for segmented scan upsweep reduction kernels
+ * CTA-processing functionality for segmented scan upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -40,8 +38,7 @@ namespace upsweep {
 
 
 /**
- * Derivation of KernelPolicy that encapsulates segmented-scan upsweep
- * reduction tile-processing state and routines
+ * Segmented scan upsweep reduction CTA
  */
 template <typename KernelPolicy>
 struct Cta

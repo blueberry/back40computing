@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatypes" for guiding segmented scan granularity configuration
+ * Configuration policy for segmented scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,12 +36,12 @@ namespace b40c {
 namespace segmented_scan {
 
 /**
- * Segmented scan kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * A detailed kernel configuration policy type that specializes kernel
+ * code for a specific segmented scan pass. It encapsulates our
+ * kernel-tuning parameters (they are reflected via the static fields).
  *
- * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
- * them with different performance-tuned parameterizations of this type.  By
+ * The kernel is specialized for problem-type, SM-version, etc. by declaring
+ * it with different performance-tuned parameterizations of this type.  By
  * incorporating this type into the kernel code itself, we guide the compiler in
  * expanding/unrolling the kernel code for specific architectures and problem
  * types.

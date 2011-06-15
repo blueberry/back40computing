@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- *  Unified scan policy
+ * Unified scan policy
  ******************************************************************************/
 
 #pragma once
@@ -31,7 +31,7 @@
 
 #include <b40c/reduction/upsweep/kernel_policy.cuh>
 
-#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/upsweep/kernel.cuh>
 #include <b40c/scan/spine/kernel.cuh>
 #include <b40c/scan/downsweep/kernel.cuh>
@@ -46,7 +46,7 @@ namespace scan {
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
  * parameters that define kernel-dispatch policy.   By encapsulating all of the
- * kernel tuning policies, we assure operational consistency over an entire pass.
+ * kernel tuning policies, we assure operational consistency across all kernels.
  */
 template <
 	// ProblemType type parameters
@@ -123,7 +123,7 @@ struct Policy : ProblemType
 		ProblemType::Identity> SpineProblemType;
 
 	// Kernel config for the spine scan kernel
-	typedef downsweep::KernelPolicy <
+	typedef KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
@@ -137,7 +137,7 @@ struct Policy : ProblemType
 			Spine;
 
 	// Kernel config for the downsweep scan kernel
-	typedef downsweep::KernelPolicy <
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
@@ -151,7 +151,7 @@ struct Policy : ProblemType
 			Downsweep;
 
 	// Kernel config for a one-level pass using the spine scan kernel
-	typedef downsweep::KernelPolicy <
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

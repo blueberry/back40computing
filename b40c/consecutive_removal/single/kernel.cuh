@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Single kernel
+ * Consecutive removal single-CTA scan kernel
  ******************************************************************************/
 
 #pragma once
@@ -33,7 +33,7 @@ namespace single {
 
 
 /**
- * Single consecutive removal pass
+ *  Consecutive removal single-CTA scan pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SinglePass(
@@ -75,7 +75,7 @@ __device__ __forceinline__ void SinglePass(
 
 
 /**
- * Single scan kernel entry point
+ * Consecutive removal single-CTA scan kernel entrypoint
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

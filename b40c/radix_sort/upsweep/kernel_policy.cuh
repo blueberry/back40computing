@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep kernel configuration policy
+ * Configuration policy for partitioning upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,9 +33,9 @@ namespace upsweep {
 
 
 /**
- * A detailed upsweep kernel configuration policy type that specializes kernel
- * code for a specific sorting pass. It encapsulates tuning configuration
- * policy details derived from TuningPolicy.
+ * A detailed radix sort upsweep kernel configuration policy type that specializes kernel
+ * code for a specific pass. It encapsulates tuning configuration
+ * policy details derived from TuningPolicy and PassPolicy.
  */
 template <
 	typename 		TuningPolicy,

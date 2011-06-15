@@ -28,7 +28,7 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 
-#include <b40c/reduction/upsweep/cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -155,10 +155,6 @@ struct UpsweepPass <KernelPolicy, true>
 	}
 };
 
-
-/******************************************************************************
- * Upsweep Reduction Kernel Entrypoint
- ******************************************************************************/
 
 /**
  * Upsweep reduction kernel entry point

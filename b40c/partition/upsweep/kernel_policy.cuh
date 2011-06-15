@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep kernel configuration policy
+ * Configuration policy for partitioning upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -37,8 +34,8 @@ namespace upsweep {
 
 
 /**
- * A detailed upsweep kernel configuration policy type that specializes kernel
- * code for a specific partitioning pass. It encapsulates tuning configuration
+ * A detailed partitioning upsweep kernel configuration policy type that specializes kernel
+ * code for a specific pass. It encapsulates tuning configuration
  * policy details derived from TuningPolicy
  */
 template <typename TuningPolicy>
@@ -61,9 +58,8 @@ struct KernelPolicy : TuningPolicy
 		LOG_TILE_ELEMENTS 					= LOG_TILE_ELEMENTS_PER_THREAD + TuningPolicy::LOG_THREADS,
 		TILE_ELEMENTS						= 1 << LOG_TILE_ELEMENTS,
 
-		// A lane is a row of 32-bit words, one words per thread, each words a
-		// composite of four 8-bit bin counters, i.e., we need one lane for every
-		// four bins.
+		// A shared-memory composite counter lane is a row of 32-bit words, one word per thread, each word a
+		// composite of four 8-bit bin counters.  I.e., we need one lane for every four distribution bins.
 
 		LOG_COMPOSITE_LANES 				= (TuningPolicy::LOG_BINS >= 2) ?
 												TuningPolicy::LOG_BINS - 2 :
@@ -74,9 +70,9 @@ struct KernelPolicy : TuningPolicy
 		COMPOSITES_PER_LANE 				= 1 << LOG_COMPOSITES_PER_LANE,
 	
 		// To prevent bin-counter overflow, we must partially-aggregate the
-		// 8-bit composite counters back into SizeT-bit registers periodically.  The lanes
-		// are divided up amongst the warps for aggregation.  Each lane is
-		// therefore equivalent to four rows of SizeT-bit bin-counts, each the width of a warp.
+		// 8-bit composite counters back into SizeT-bit registers periodically.  Each lane
+		// is assigned to a warp for aggregation.  Each lane is therefore equivalent to
+		// four rows of SizeT-bit bin-counts, each the width of a warp.
 	
 		LOG_LANES_PER_WARP					= B40C_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
 		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,

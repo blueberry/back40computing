@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep kernel configuration policy
+ * Configuration policy for partitioning downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -38,9 +35,9 @@ namespace downsweep {
 
 
 /**
- * A detailed downsweep kernel configuration policy type that specializes kernel
- * code for a specific partitioning pass. It encapsulates tuning configuration
- * policy details derived from TuningPolicy
+ * A detailed partitioning downsweep kernel configuration policy type that specializes
+ * kernel code for a specific pass.  It encapsulates tuning configuration policy
+ * details derived from TuningPolicy
  */
 template <typename TuningPolicy>
 struct KernelPolicy : TuningPolicy

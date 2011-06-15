@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep tuning configuration policy
+ * Tuning policy for partitioning downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -39,7 +36,7 @@ namespace downsweep {
 
 
 /**
- * Downsweep tuning configuration policy.  This C++ type encapsulates our
+ * Partitioning downsweep scan tuning policy.  This type encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *
  * The kernel is specialized for problem-type, SM-version, etc. by declaring

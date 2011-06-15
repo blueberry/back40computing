@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- *  Unified consecutive removal policy
+ * Unified consecutive removal policy
  ******************************************************************************/
 
 #pragma once
@@ -36,7 +36,7 @@
 #include <b40c/consecutive_removal/downsweep/kernel_policy.cuh>
 #include <b40c/consecutive_removal/single/kernel.cuh>
 
-#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/spine/kernel.cuh>
 
@@ -50,7 +50,7 @@ namespace consecutive_removal {
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
  * parameters that define kernel-dispatch policy.   By encapsulating all of the
- * kernel tuning policies, we assure operational consistency over an entire pass.
+ * kernel tuning policies, we assure operational consistency across all kernels.
  */
 template <
 	// ProblemType type parameters
@@ -126,7 +126,7 @@ struct Policy : ProblemType
 		util::Operators<SpineType>::SumIdentity> SpineProblemType;
 
 	// Kernel config for the spine consecutive removal kernel
-	typedef scan::downsweep::KernelPolicy <
+	typedef scan::KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid

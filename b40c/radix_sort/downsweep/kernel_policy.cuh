@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep kernel configuration policy
+ * Configuration policy for radix sort downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,9 +33,9 @@ namespace downsweep {
 
 
 /**
- * A detailed downsweep kernel configuration policy type that specializes kernel
- * code for a specific sorting pass. It encapsulates tuning configuration
- * policy details derived from TuningPolicy.
+ * A detailed radix sort downsweep kernel configuration policy type that specializes kernel
+ * code for a specific pass. It encapsulates tuning configuration
+ * policy details derived from TuningPolicy and PassPolicy.
  */
 template <
 	typename 		TuningPolicy,

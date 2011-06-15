@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep tuning configuration policy
+ * Tuning policy for radix sort downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -39,7 +36,7 @@ namespace downsweep {
 
 
 /**
- * Downsweep tuning configuration policy.
+ * Radix sort downsweep scan tuning policy.
  * 
  * See constraints in base class.
  */

@@ -17,10 +17,7 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
-
 
 /******************************************************************************
  * Unified partitioning policy
@@ -33,7 +30,7 @@
 #include <b40c/util/io/modified_store.cuh>
 
 #include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
@@ -88,7 +85,7 @@ struct Policy : ProblemType
 		util::Operators<SizeT>::SumIdentity> SpineProblemType;
 
 	// Kernel config for spine scan
-	typedef scan::downsweep::KernelPolicy <
+	typedef scan::KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
 		1,									// only a single-CTA grid

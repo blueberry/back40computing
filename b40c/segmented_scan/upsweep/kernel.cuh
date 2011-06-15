@@ -71,10 +71,6 @@ __device__ __forceinline__ void UpsweepPass(
 }
 
 
-/******************************************************************************
- * Segmented scan upsweep reduction kernel entrypoint
- ******************************************************************************/
-
 /**
  * Upsweep reduction kernel entry point
  */

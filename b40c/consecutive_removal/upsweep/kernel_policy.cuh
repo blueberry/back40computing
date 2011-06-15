@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding consecutive removal granularity configuration
+ * Configuration policy for consecutive removal upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -35,7 +35,7 @@ namespace consecutive_removal {
 namespace upsweep {
 
 /**
- * A detailed consecutive-removal kernel configuration policy type that specializes kernel
+ * A detailed consecutive removal kernel configuration policy type that specializes kernel
  * code for a specific upsweep pass. It encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *

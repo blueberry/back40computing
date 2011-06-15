@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep kernel (bin reduction/counting)
+ * Radix sort upsweep reduction kernel
  ******************************************************************************/
 
 #pragma once
@@ -39,7 +36,7 @@ namespace upsweep {
 
 
 /**
- * Upsweep reduction pass
+ * Radix sort upsweep reduction pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
@@ -78,7 +75,7 @@ __device__ __forceinline__ void UpsweepPass(
 
 
 /**
- * Upsweep reduction kernel entry point
+ * Radix sort upsweep reduction kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

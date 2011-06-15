@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep tile processing abstraction
+ * Tile-processing functionality for radix sort upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once

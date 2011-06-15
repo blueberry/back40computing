@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep tuning configuration policy
+ * Tuning policy for radix sort upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -38,7 +35,7 @@ namespace radix_sort {
 namespace upsweep {
 
 /**
- * Upsweep tuning configuration policy .
+ * Radix sort upsweep reduction tuning policy.
  *
  * See constraints in base class.
  */

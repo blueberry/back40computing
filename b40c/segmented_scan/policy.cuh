@@ -44,7 +44,7 @@ namespace segmented_scan {
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
  * parameters that define kernel-dispatch policy.   By encapsulating all of the
- * kernel tuning policies, we assure operational consistency over an entire scan pass.
+ * kernel tuning policies, we assure operational consistency across all kernels.
  */
 template <
 	// ProblemType type parameters

@@ -17,10 +17,7 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
-
 
 /******************************************************************************
  * Types and subroutines utilities that are common across all B40C LSB radix 
@@ -75,11 +72,9 @@ struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS>
 };
 	
 
-
-
 /******************************************************************************
- * Traits for converting  for converting signed and floating point types to unsigned types
- * suitable for radix sorting  
+ * Traits for converting for converting signed and floating point types
+ * to unsigned types suitable for radix sorting
  ******************************************************************************/
 
 struct NopKeyConversion
@@ -151,10 +146,7 @@ struct FloatingPointKeyConversion
 };
 
 
-//-----------------------------------------------------------------------------
-// Key traits that dictate unsigned-integer-conversion-types the corresponding
-// conversion operations
-//-----------------------------------------------------------------------------
+
 
 // Default unsigned types
 template <typename T> struct KeyTraits : UnsignedIntegerKeyConversion<T> {};

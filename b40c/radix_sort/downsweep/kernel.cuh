@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep kernel (scatter into bins)
+ * Radix sort downsweep scan kernel (scatter into bins)
  ******************************************************************************/
 
 #pragma once
@@ -39,7 +36,7 @@ namespace downsweep {
 
 
 /**
- * Downsweep scan-scatter pass
+ * Radix sort downsweep scan pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
@@ -152,7 +149,7 @@ __device__ __forceinline__ void DownsweepPass(
 
 
 /**
- * Downsweep scan-scatter kernel entry point
+ * Radix sort downsweep scan kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

@@ -17,13 +17,11 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Abstract downsweep CTA processing abstraction
+ * Abstract CTA-processing functionality for partitioning downsweep
+ * scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -39,7 +37,7 @@ namespace downsweep {
 
 
 /**
- * Cta
+ * Partitioning downsweep scan CTA
  *
  * Abstract class
  */

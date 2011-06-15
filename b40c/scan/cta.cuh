@@ -17,12 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for downsweep scan kernels
+ * CTA-processing functionality for scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,11 +34,10 @@
 
 namespace b40c {
 namespace scan {
-namespace downsweep {
 
 
 /**
- * Cta
+ * Scan CTA
  */
 template <typename KernelPolicy>
 struct Cta
@@ -154,7 +151,6 @@ struct Cta
 };
 
 
-} // namespace downsweep
 } // namespace scan
 } // namespace b40c
 

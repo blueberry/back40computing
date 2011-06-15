@@ -27,7 +27,7 @@
 
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
-#include <b40c/reduction/upsweep/cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -44,8 +44,8 @@ __device__ __forceinline__ void UpsweepPass(
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef reduction::upsweep::Cta<KernelPolicy>	Cta;
-	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef reduction::Cta<KernelPolicy>		Cta;
+	typedef typename KernelPolicy::SizeT 		SizeT;
 
 	// CTA processing abstraction
 	Cta cta(smem_storage, d_in, d_out);

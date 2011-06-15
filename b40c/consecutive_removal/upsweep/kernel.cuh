@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Consecutive removal upsweep kernel
+ * Consecutive removal upsweep reduction kernel
  ******************************************************************************/
 
 #pragma once
@@ -34,7 +34,7 @@ namespace upsweep {
 
 
 /**
- * Upsweep reduction pass
+ * Consecutive removal upsweep reduction pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
@@ -71,7 +71,7 @@ __device__ __forceinline__ void UpsweepPass(
 
 
 /**
- * Upsweep reduction kernel entry point
+ * Consecutive removal upsweep reduction kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

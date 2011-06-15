@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep tuning configuration policy
+ * Tuning policy for partitioning upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -37,7 +34,7 @@ namespace upsweep {
 
 
 /**
- * Upsweep tuning configuration policy .  This C++ type encapsulates our
+ * Partitioning upsweep reduction tuning policy .  This type encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *
  * Note that the number of bins is considered a tuning parameter as opposed

@@ -17,13 +17,11 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Abstract upsweep CTA processing abstraction
+ * Abstract CTA-processing functionality for partitioning upsweep
+ * reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -34,8 +32,8 @@
 #include <b40c/util/device_intrinsics.cuh>
 #include <b40c/util/reduction/serial_reduce.cuh>
 
-#include <b40c/partition/upsweep/lanes.cuh>
-#include <b40c/partition/upsweep/composites.cuh>
+#include <b40c/partition/upsweep/aggregate_counters.cuh>
+#include <b40c/partition/upsweep/composite_counters.cuh>
 #include <b40c/partition/upsweep/tile.cuh>
 
 #include <b40c/radix_sort/sort_utils.cuh>
@@ -47,13 +45,13 @@ namespace upsweep {
 
 
 /**
- * CTA
+ * Partitioning upsweep reduction CTA
  *
  * Abstract class
  */
 template <
 	typename KernelPolicy,
-	typename DerivedCta,							// Derived CTA class
+	typename DerivedCta,						// Derived CTA class
 	template <
 		int LOG_LOADS_PER_TILE,
 		int LOG_LOAD_VEC_SIZE,
@@ -77,8 +75,11 @@ struct Cta
 	// Shared storage for this CTA
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
-	// Each thread is responsible for aggregating an unencoded segment of composite counters
-	SizeT 								local_counts[KernelPolicy::LANES_PER_WARP][4];
+	// Shared-memory lanes of composite-counters
+	CompostiteCounters<KernelPolicy> 	composite_counters;
+
+	// Thread-local counters for periodically aggregating composite-counter lanes
+	AggregateCounters<KernelPolicy>		aggregate_counters;
 
 	// Input and output device pointers
 	KeyType								*d_in_keys;
@@ -211,10 +212,12 @@ struct Cta
 		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
 		SizeT cta_offset = work_limits.offset;
 
-		Composites<KernelPolicy>::ResetCounters(dispatch);
-		Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
+		aggregate_counters.ResetCounters(dispatch);
+		composite_counters.ResetCompositeCounters(dispatch);
 
-#if 1
+
+#if 1	// Use deep unrolling for better instruction efficiency
+
 		// Unroll batches of full tiles
 		const int UNROLLED_ELEMENTS = KernelPolicy::UNROLL_COUNT * KernelPolicy::TILE_ELEMENTS;
 		while (cta_offset < work_limits.out_of_bounds - UNROLLED_ELEMENTS) {
@@ -227,12 +230,12 @@ struct Cta
 			__syncthreads();
 
 			// Aggregate back into local_count registers to prevent overflow
-			Composites<KernelPolicy>::ReduceComposites(dispatch);
+			aggregate_counters.ExtractComposites(dispatch);
 
 			__syncthreads();
 
 			// Reset composite counters in lanes
-			Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
+			composite_counters.ResetCompositeCounters(dispatch);
 		}
 
 		// Unroll single full tiles
@@ -244,7 +247,7 @@ struct Cta
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
 		}
 
-#else 	// Use for faster compilation tiles
+#else 	// Use shallow unrolling for faster compilation tiles
 
 		// Unroll single full tiles
 		while (cta_offset < work_limits.guarded_offset) {
@@ -258,12 +261,12 @@ struct Cta
 				__syncthreads();
 
 				// Aggregate back into local_count registers to prevent overflow
-				Composites<KernelPolicy>::ReduceComposites(dispatch);
+				aggregate_counters.ExtractComposites(dispatch);
 
 				__syncthreads();
 
 				// Reset composite counters in lanes
-				Lanes<KernelPolicy>::ResetCompositeCounters(dispatch);
+				composite_counters.ResetCompositeCounters(dispatch);
 			}
 		}
 #endif
@@ -274,13 +277,13 @@ struct Cta
 		__syncthreads();
 
 		// Aggregate back into local_count registers
-		Composites<KernelPolicy>::ReduceComposites(dispatch);
+		aggregate_counters.ExtractComposites(dispatch);
 
 		__syncthreads();
 
 		//Final raking reduction of counts by bin, output to spine.
 
-		Composites<KernelPolicy>::PlacePartials(dispatch);
+		aggregate_counters.ShareCounters(dispatch);
 
 		__syncthreads();
 
