@@ -174,7 +174,8 @@ struct Tile
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
 				(ValueType (*)[KernelPolicy::LOAD_VEC_SIZE]) values,
-				cta->d_in_values + cta_offset);
+				cta->d_in_values + cta_offset,
+				guarded_elements);
 	}
 
 
