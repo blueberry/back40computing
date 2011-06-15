@@ -108,7 +108,6 @@ struct KernelPolicy : TuningPolicy
 		};
 
 		bool 							non_trivial_pass;
-		int 							selector;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
 		union {

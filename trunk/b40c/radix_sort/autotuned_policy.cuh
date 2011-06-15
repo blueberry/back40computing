@@ -488,16 +488,6 @@ __global__ void TunedDownsweepKernel(
 	typename ProblemType::KeyType 							*d_keys1,
 	typename ProblemType::ValueType 						*d_values0,
 	typename ProblemType::ValueType							*d_values1,
-	util::CtaWorkDistribution<typename ProblemType::SizeT>	work_decomposition);
-
-template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
-__global__ void TunedDownsweepKernel(
-	int 													*d_selectors,
-	typename ProblemType::SizeT 							*d_spine,
-	typename ProblemType::KeyType 							*d_keys0,
-	typename ProblemType::KeyType 							*d_keys1,
-	typename ProblemType::ValueType 						*d_values0,
-	typename ProblemType::ValueType							*d_values1,
 	util::CtaWorkDistribution<typename ProblemType::SizeT>	work_decomposition)
 {
 	// Load the kernel policy type identified by the enum for this architecture
@@ -508,7 +498,7 @@ __global__ void TunedDownsweepKernel(
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	// Invoke the wrapped kernel logic
-	downsweep::DownsweepPass<KernelPolicy>(
+	downsweep::DownsweepPass<KernelPolicy>::Invoke(
 		d_selectors,
 		d_spine,
 		d_keys0,
