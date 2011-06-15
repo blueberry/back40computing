@@ -92,6 +92,21 @@ struct PingPongStorage
 		d_values[0] = values;
 		d_values[1] = NULL;
 	}
+
+	// Constructor
+	PingPongStorage(
+		KeyType* keys0,
+		KeyType* keys1,
+		ValueType* values0 = NULL,
+		ValueType* values1 = NULL)
+	{
+		selector = 0;
+		d_keys[0] = keys0;
+		d_keys[1] = keys1;
+		d_values[0] = values0;
+		d_values[1] = values1;
+	}
+
 };
 
 } // namespace util
