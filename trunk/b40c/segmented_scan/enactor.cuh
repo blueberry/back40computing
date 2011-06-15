@@ -326,7 +326,7 @@ cudaError_t Enactor::EnactPass(
 			SingleKernel<<<1, Single::THREADS, 0>>>(
 				d_src, d_flag_src, d_dest, work.num_elements);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
