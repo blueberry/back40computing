@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Upsweep lane processing abstraction
+ * Composite-counter functionality for partitioning upsweep reduction kernels
  ******************************************************************************/
 
 #pragma once
@@ -34,10 +31,13 @@ namespace upsweep {
 
 
 /**
- * Lanes
+ * Shared-memory lanes of composite counters.
+ *
+ * We keep our per-thread composite counters in smem because we simply don't
+ * have enough register storage.
  */
 template <typename KernelPolicy>
-struct Lanes
+struct CompostiteCounters
 {
 	enum {
 		COMPOSITE_LANES = KernelPolicy::COMPOSITE_LANES,
@@ -79,10 +79,10 @@ struct Lanes
 	//---------------------------------------------------------------------
 
 	/**
-	 * ResetCompositeCounters
+	 * Resets our composite-counter lanes
 	 */
 	template <typename Cta>
-	static __device__ __forceinline__ void ResetCompositeCounters(Cta *cta)
+	__device__ __forceinline__ void ResetCompositeCounters(Cta *cta)
 	{
 		Iterate<0>::ResetCompositeCounters(cta);
 	}

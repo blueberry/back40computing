@@ -17,12 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Cta tile-processing functionality for copy kernels
+ * CTA-processing functionality for copy kernels
  ******************************************************************************/
 
 #pragma once
@@ -37,8 +35,7 @@ namespace copy {
 
 
 /**
- * Derivation of KernelPolicy that encapsulates tile-processing
- * routines
+ * Copy CTA
  */
 template <typename KernelPolicy>
 struct Cta : KernelPolicy

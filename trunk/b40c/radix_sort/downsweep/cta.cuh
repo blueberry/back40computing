@@ -17,13 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Downsweep CTA processing abstraction
+ * CTA-processing functionality for radix sort downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -38,7 +35,7 @@ namespace downsweep {
 
 
 /**
- * CTA
+ * Radix sort downsweep scan CTA
  *
  * Derives from partition::downsweep::Cta
  */

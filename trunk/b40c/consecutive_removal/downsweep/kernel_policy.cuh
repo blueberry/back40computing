@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Consecutive-removal kernel configuration policy
+ * Configuration policy for consecutive removal downsweep scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -36,7 +36,7 @@ namespace consecutive_removal {
 namespace downsweep {
 
 /**
- * A detailed consecutive-removal kernel configuration policy type that specializes kernel
+ * A detailed consecutive removal kernel configuration policy type that specializes kernel
  * code for a specific downsweep pass. It encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *

@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Downsweep kernel
+ * Scan downsweep scan kernel
  ******************************************************************************/
 
 #pragma once
@@ -28,7 +28,7 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/srts_details.cuh>
 
-#include <b40c/scan/downsweep/cta.cuh>
+#include <b40c/scan/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -36,7 +36,7 @@ namespace downsweep {
 
 
 /**
- * Downsweep scan pass
+ * Scan downsweep scan pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
@@ -69,7 +69,7 @@ __device__ __forceinline__ void DownsweepPass(
 
 
 /**
- * Downsweep scan kernel entry point
+ * Scan downsweep scan kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

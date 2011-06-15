@@ -17,12 +17,10 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for consecutive-removal downsweep
+ * CTA-processing functionality for consecutive removal downsweep
  * scan kernels
  ******************************************************************************/
 
@@ -41,7 +39,7 @@ namespace downsweep {
 
 
 /**
- * Cta
+ * Consecutive removal downsweep scan CTA
  */
 template <typename KernelPolicy>
 struct Cta

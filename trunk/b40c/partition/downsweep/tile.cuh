@@ -17,13 +17,11 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
-
 /******************************************************************************
- * Abstract downsweep tile processing abstraction
+ * Abstract tile-processing functionality for partitioning downsweep scan
+ * kernels
  ******************************************************************************/
 
 #pragma once

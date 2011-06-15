@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Segmented scan spine kernel
+ * Segmented scan spine scan kernel
  ******************************************************************************/
 
 #pragma once
@@ -33,7 +33,7 @@ namespace spine {
 
 
 /**
- * Segmented scan spine pass
+ * Segmented scan spine scan pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
@@ -43,7 +43,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::SizeT 			&spine_elements,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef Cta<KernelPolicy> Cta;
+	typedef downsweep::Cta<KernelPolicy> Cta;
 	typedef typename KernelPolicy::SizeT SizeT;
 	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
 
@@ -75,12 +75,8 @@ __device__ __forceinline__ void SpinePass(
 }
 
 
-/******************************************************************************
- * Spine Scan Kernel Entry-point
- ******************************************************************************/
-
 /**
- * Spine scan kernel entry point
+ * Segmented scan spine scan kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)

@@ -33,6 +33,7 @@
 namespace b40c {
 namespace copy {
 
+
 /**
  * Copy pass (non-workstealing)
  */
@@ -157,10 +158,6 @@ struct SweepPass <KernelPolicy, true>
 	}
 };
 
-
-/******************************************************************************
- *  Copy Kernel Entrypoint
- ******************************************************************************/
 
 /**
  *  Copy kernel entry point

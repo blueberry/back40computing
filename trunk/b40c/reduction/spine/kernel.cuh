@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/reduction/upsweep/cta.cuh>
+#include <b40c/reduction/cta.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -42,7 +42,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::SizeT 		spine_elements,
 	typename KernelPolicy::SmemStorage	&smem_storage)
 {
-	typedef upsweep::Cta<KernelPolicy> 		Cta;
+	typedef Cta<KernelPolicy> 				Cta;
 	typedef typename KernelPolicy::T 		T;
 	typedef typename KernelPolicy::SizeT 	SizeT;
 

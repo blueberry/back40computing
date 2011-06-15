@@ -17,10 +17,7 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
-
 
 /******************************************************************************
  * Unified radix sort policy
@@ -42,7 +39,7 @@
 #include <b40c/radix_sort/downsweep/kernel.cuh>
 
 #include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/downsweep/kernel_policy.cuh>
+#include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {

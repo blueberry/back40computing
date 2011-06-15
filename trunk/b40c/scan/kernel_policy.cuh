@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Scan kernel configuration policy
+ * Configuration policy for scan kernels
  ******************************************************************************/
 
 #pragma once
@@ -33,12 +33,11 @@
 
 namespace b40c {
 namespace scan {
-namespace downsweep {
 
 
 /**
  * A detailed kernel configuration policy type that specializes kernel
- * code for a specific scan pass. It encapsulates our
+ * code for a specific pass. It encapsulates our
  * kernel-tuning parameters (they are reflected via the static fields).
  *
  * The kernel is specialized for problem-type, SM-version, etc. by declaring
@@ -135,7 +134,6 @@ struct KernelPolicy : ProblemType
 	};
 };
 
-} // namespace downsweep
 } // namespace scan
 } // namespace b40c
 
