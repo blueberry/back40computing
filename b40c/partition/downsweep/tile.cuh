@@ -159,7 +159,7 @@ struct Tile
 	/**
 	 * Loads values into the tile
 	 *
-	 * To be overloaded.
+	 * Can be overloaded.
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void LoadValues(
@@ -181,7 +181,7 @@ struct Tile
 	/**
 	 * Scatter values from the tile
 	 *
-	 * To be overloaded.
+	 * Can be overloaded.
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void ScatterValues(
