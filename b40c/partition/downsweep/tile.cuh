@@ -525,7 +525,6 @@ struct Tile
 
 			// Save off each lane's warpscan total for this cycle
 			if (warpscan_tid == KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1) {
-//				cta->smem_storage.lane_totals[CYCLE][warpscan_lane] = inclusive_prefix;
 				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][0] = exclusive_prefix;
 				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][1] = partial;
 			}
@@ -553,23 +552,8 @@ struct Tile
 		int my_base_lane, int my_quad_byte, Cta *cta)
 	{
 		bin_counts[CYCLE][LOAD] =
-			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][0][my_quad_byte];
-		bin_counts[CYCLE][LOAD] +=
+			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][0][my_quad_byte] +
 			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][1][my_quad_byte];
-
-/*
-		// Correct for possible overflow
-		if (util::WarpVoteAll<KernelPolicy::LOG_BINS>(bin_counts[CYCLE][LOAD] <= 1)) {
-
-			// We've potentially overflowed in this load (i.e., all keys for this
-			// load have same bin.  Since keys all have the same bin, whichever bin-thread
-			// has binned a key into its own bin gets all 256 counts (if that key was valid).
-			Dispatch *dispatch = (Dispatch*) this;
-			bin_counts[CYCLE][LOAD] = ((threadIdx.x == key_bins[CYCLE][LOAD][0]) && (dispatch->template IsValid<CYCLE, LOAD, 0>())) ?
-				256 :
-				0;
-		}
-*/
 	}
 
 
