@@ -81,6 +81,30 @@ struct ArchGenre
 
 
 /**
+ * Classifies data type size into small and large
+ */
+template <typename ProblemType>
+struct TypeSizeGenre
+{
+	enum {
+		SMALL_TYPE = (B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4),
+	};
+};
+
+
+/**
+ * Classifies pointer type size into small and large
+ */
+template <typename ProblemType>
+struct PointerSizeGenre
+{
+	enum {
+		SMALL_TYPE = (B40C_MAX(sizeof(typename ProblemType::SizeT), sizeof(size_t)) <= 4),
+	};
+};
+
+
+/**
  * Autotuning policy genre, to be specialized
  */
 template <
@@ -95,6 +119,8 @@ struct AutotunedGenre :
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
+
+
 
 // Large problems
 template <typename ProblemType>
@@ -132,7 +158,7 @@ struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE> : Policy<
 	6,						// DOWNSWEEP_LOG_THREADS
 	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE && PointerSizeGenre<ProblemType>::SMALL_TYPE) ?		// DOWNSWEEP_LOG_CYCLES_PER_TILE
 		1 :
 		0,
 	6>						// DOWNSWEEP_LOG_RAKING_THREADS
@@ -208,10 +234,10 @@ struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
 	// Upsweep Kernel
 	5,						// UPSWEEP_CTA_OCCUPANCY
 	7,						// UPSWEEP_LOG_THREADS
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
 		1 :
 		0,
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// UPSWEEP_LOG_LOADS_PER_TILE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// UPSWEEP_LOG_LOADS_PER_TILE
 		0 :
 		1,
 
@@ -225,16 +251,16 @@ struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
 	// Downsweep Kernel
 	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
 	5,						// DOWNSWEEP_CTA_OCCUPANCY
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_THREADS
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_THREADS
 		6 :
 		7,
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		2 :
 		1,
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_LOADS_PER_CYCLE
 		1 :
 		0,
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
 		0 :
 		0,
 	5>						// DOWNSWEEP_LOG_RAKING_THREADS
@@ -279,7 +305,7 @@ struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE> : Policy<
 	6,						// DOWNSWEEP_LOG_THREADS
 	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
 		0 :
 		0,
 	5>						// DOWNSWEEP_LOG_RAKING_THREADS
@@ -330,7 +356,7 @@ struct AutotunedGenre<ProblemType, SM10, LARGE_SIZE> : Policy<
 	7,						// DOWNSWEEP_LOG_THREADS
 	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?
 		1 :
 		1,
 	7>						// DOWNSWEEP_LOG_RAKING_THREADS
@@ -375,7 +401,7 @@ struct AutotunedGenre<ProblemType, SM10, SMALL_SIZE> : Policy<
 	7,						// DOWNSWEEP_LOG_THREADS
 	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
 		1 :
 		1,
 	7>						// DOWNSWEEP_LOG_RAKING_THREADS
