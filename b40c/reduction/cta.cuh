@@ -58,8 +58,8 @@ struct Cta
 	T carry;
 
 	// Input and output device pointers
-	T* &d_in;
-	T* &d_out;
+	T* d_in;
+	T* d_out;
 
 	// Smem storage for reduction tree
 	T* reduction_tree;
@@ -75,8 +75,8 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
-		T *&d_in,
-		T *&d_out) :
+		T *d_in,
+		T *d_out) :
 
 			reduction_tree(smem_storage.reduction_tree),
 			d_in(d_in),
