@@ -50,9 +50,13 @@ struct Cta
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 				T;
-	typedef typename KernelPolicy::Flag 			Flag;
+	typedef typename KernelPolicy::KeyType 			KeyType;
+	typedef typename KernelPolicy::ValueType		ValueType;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SpineType		SpineType;
+	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
+	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
+
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
 

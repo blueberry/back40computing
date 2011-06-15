@@ -50,7 +50,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename WarpscanSoa,				// Tuple of SOA warpscan segments
 	int LOG_NUM_ELEMENTS,
-	Tuple ReductionOp(Tuple&, Tuple&)>
+	Tuple ReductionOp(const Tuple&, const Tuple&)>
 struct WarpSoaReduce
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;

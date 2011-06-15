@@ -44,7 +44,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
 	bool EXCLUSIVE,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScan;
 
 
@@ -55,7 +55,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 {
 	// Iterate
@@ -121,7 +121,7 @@ template <
 	typename Tuple,						// Tuple of partials
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int NUM_ELEMENTS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
 {
 	// Iterate
@@ -191,7 +191,7 @@ template <
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
 	bool EXCLUSIVE,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScanLane;
 
 
@@ -203,7 +203,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
 {
 	// Iterate
@@ -270,7 +270,7 @@ template <
 	typename RakingSoa,			// Tuple of SOA raking segments
 	int LANE,							// Lane segment in 2D array to serially reduce
 	int NUM_ELEMENTS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
 {
 	// Iterate

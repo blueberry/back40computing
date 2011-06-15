@@ -47,7 +47,7 @@ template <
 	int LOG_NUM_ELEMENTS,
 	bool EXCLUSIVE,
 	int STEPS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct WarpSoaScan;
 
 
@@ -59,7 +59,7 @@ template <
 	typename WarpscanSoa,				// Tuple of SOA warpscan segments
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, false, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
@@ -141,7 +141,7 @@ template <
 	typename WarpscanSoa,				// Tuple of SOA warpscan segments
 	int LOG_NUM_ELEMENTS,
 	int STEPS,
-	Tuple ScanOp(Tuple&, Tuple&)>
+	Tuple ScanOp(const Tuple&, const Tuple&)>
 struct WarpSoaScan<Tuple, WarpscanSoa, LOG_NUM_ELEMENTS, true, STEPS, ScanOp>
 {
 	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
