@@ -70,6 +70,8 @@ struct Tile
 
 	/**
 	 * Returns the bin into which the specified key is to be placed
+	 *
+	 * To be overloaded.
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ int DecodeBin(KeyType key, Cta *cta);
@@ -78,7 +80,7 @@ struct Tile
 	/**
 	 * Returns whether or not the key is valid.
 	 *
-	 * Can be overloaded.
+	 * To be overloaded.
 	 */
 	template <int LOAD, int VEC>
 	__device__ __forceinline__ bool IsValid();
