@@ -130,7 +130,7 @@ struct KernelPolicy : ProblemType
 		RankType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		union {
 			RankType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-			T 				exchange[TILE_ELEMENTS];
+			T 				exchange[TILE_ELEMENTS];							// Swap exchange arena for two-phase scatter
 		};
 	};
 

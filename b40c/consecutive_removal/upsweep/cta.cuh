@@ -99,26 +99,25 @@ struct Cta
 		SizeT cta_offset,
 		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];						// Tile of elements
+		LocalFlag head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
 
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];				// Tile of elements
-		LocalFlag flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity flags
-
-		// Load data tile, initializing discontinuity flags
+		// Load data tile, initializing discontinuity head_flags
 		util::io::LoadTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
+			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, true>(			// Flag first element of first tile of first cta
 				data,
-				flags,
+				head_flags,
 				d_in + cta_offset);
 
 		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
-		// Reduce flags, accumulate in carry
+		// Reduce head_flags, accumulate in carry
 		carry += util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(
-			(LocalFlag*) flags);
+			(LocalFlag*) head_flags);
 	}
 
 

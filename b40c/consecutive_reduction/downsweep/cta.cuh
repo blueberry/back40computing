@@ -61,12 +61,9 @@ struct Cta
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
 
 	typedef util::Tuple<
-		T (*)[KernelPolicy::LOAD_VEC_SIZE],
-		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> 		DataSoa;
+		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
+		RankType (*)[KernelPolicy::LOAD_VEC_SIZE]> 		DataSoa;
 
-	// This kernel can only operate in inclusive scan mode if the it's the final kernel
-	// in the scan pass
-	static const bool KERNEL_EXCLUSIVE = (!KernelPolicy::FINAL_KERNEL || KernelPolicy::EXCLUSIVE);
 
 	//---------------------------------------------------------------------
 	// Members
@@ -78,12 +75,11 @@ struct Cta
 	// The tuple value we will accumulate (in raking threads only)
 	SoaTuple 		carry;
 
-	// Input device pointers
-	T 				*d_partials_in;
-	Flag 			*d_flags_in;
-
-	// Output device pointer
-	T 				*d_partials_out;
+	// Device pointers
+	KeyType 		*d_in_keys;
+	KeyType			*d_out_keys;
+	ValueType 		*d_in_values;
+	ValueType 		*d_out_values;
 
 
 	//---------------------------------------------------------------------
@@ -91,8 +87,11 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	/**
-	 * Tile
+	 * Tile (direct-scatter specialization)
 	 */
+	template <
+		bool FIRST_TILE,
+		bool TWO_PHASE_SCATTER = KernelPolicy::TWO_PHASE_SCATTER>
 	struct Tile
 	{
 		//---------------------------------------------------------------------
@@ -109,58 +108,10 @@ struct Cta
 		// Members
 		//---------------------------------------------------------------------
 
-		T				partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		Flag			flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		int 			is_head[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-
-
-		//---------------------------------------------------------------------
-		// Iteration Structures
-		//---------------------------------------------------------------------
-
-		/**
-		 * Iterate over vertex id
-		 */
-		template <int LOAD, int VEC, int dummy = 0>
-		struct Iterate
-		{
-			/**
-			 * RepairHeads
-			 */
-			static __device__ __forceinline__ void RepairHeads(Tile *tile)
-			{
-				// Set the partials of flagged items to identity
-				if (tile->is_head[LOAD][VEC]) {
-					tile->partials[LOAD][VEC] = 0;
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::RepairHeads(tile);
-			}
-		};
-
-		/**
-		 * Iterate next load
-		 */
-		template <int LOAD, int dummy>
-		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
-		{
-			// RepairHeads
-			static __device__ __forceinline__ void RepairHeads(Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::RepairHeads(tile);
-			}
-		};
-
-		/**
-		 * Terminate iteration
-		 */
-		template <int dummy>
-		struct Iterate<LOADS_PER_TILE, 0, dummy>
-		{
-			// RepairHeads
-			static __device__ __forceinline__ void RepairHeads(Tile *tile) {}
-		};
+		KeyType			keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		ValueType		values[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		LocalFlag		head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		RankType 		ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
 
 
 		//---------------------------------------------------------------------
@@ -168,13 +119,60 @@ struct Cta
 		//---------------------------------------------------------------------
 
 		/**
-		 * Performs any cleanup work
+		 * Process tile
 		 */
-		__device__ __forceinline__ void RepairHeads()
+		template <typename Cta>
+		__device__ __forceinline__ void Process(
+			SizeT cta_offset,
+			const SizeT &guarded_elements,
+			Cta *cta)
 		{
-			if (KernelPolicy::FINAL_KERNEL && KernelPolicy::EXCLUSIVE) {
-				Iterate<0, 0>::RepairHeads(this);
-			}
+			// Load keys, initializing discontinuity head_flags
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, false>(	// Do not flag first element of first tile of first cta
+					keys,
+					head_flags,
+					cta->d_in_keys + cta_offset,
+					guarded_elements);
+
+			// Load values
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::LoadValid(
+					values,
+					cta->d_in_values + cta_offset,
+					guarded_elements);
+
+			// Copy discontinuity head_flags into ranks
+			util::io::InitializeTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
+
+			// Scan tile, seed with carry (maintain carry in raking threads)
+			util::scan::soa::CooperativeSoaTileScan<
+				SrtsSoaDetails,
+				KernelPolicy::LOAD_VEC_SIZE,
+				true,																// exclusive
+				KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
+					srts_soa_details,
+					DataSoa(values, ranks),
+					carry);
+
+			// Scatter valid vertex_id into smem exchange, predicated on head_flags (treat
+			// vertex_id, head_flags, and ranks as linear arrays)
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out,
+					(T*) data,
+					(LocalFlag*) head_flags,
+					(RankType*) ranks);
 		}
 	};
 
@@ -189,25 +187,24 @@ struct Cta
 	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		T 				*d_partials_in,
-		Flag 			*d_flags_in,
-		T 				*d_partials_out,
-		T 				spine_partial = KernelPolicy::Identity()) :
+		KeyType 		*d_in_keys,
+		KeyType 		*d_in_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SoaTuple		spine_partial = KernelPolicy::SoaTupleIdentity()) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
-					smem_storage.flags_raking_elements),
+					smem_storage.ranks_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
-					smem_storage.flags_warpscan),
+					smem_storage.ranks_warpscan),
 				KernelPolicy::SoaTupleIdentity()),
-			d_partials_in(d_partials_in),
-			d_flags_in(d_flags_in),
-			d_partials_out(d_partials_out),
-			carry(												// Seed carry with spine partial & flag identity
-				spine_partial,
-				0)
+			d_in_keys(d_in_keys),
+			d_in_values(d_in_values),
+			d_out_values(d_out_values),
+			carry(spine_partial)
 	{}
 
 
