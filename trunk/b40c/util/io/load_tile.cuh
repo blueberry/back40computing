@@ -119,7 +119,7 @@ struct LoadTile
 		}
 
 		// With discontinuity flags (unguarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename VectorType>
+		template <bool FIRST_TILE, typename T, typename Flag, typename VectorType>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -135,7 +135,7 @@ struct LoadTile
 			if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
 
 				// First load of first tile of first CTA: discontinuity
-				flags[LOAD][0] = (FLAG_FIRST) ? 1 : 0;
+				flags[LOAD][0] = 1;
 
 			} else {
 
@@ -148,12 +148,12 @@ struct LoadTile
 				flags[LOAD][0] = (previous != current);
 			}
 
-			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, vectors, d_in_vectors);
 		}
 
 		// With discontinuity flags (guarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename SizeT>
+		template <bool FIRST_TILE, typename T, typename Flag, typename SizeT>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -168,7 +168,7 @@ struct LoadTile
 				if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
 
 					// First load of first tile of first CTA: discontinuity
-					flags[LOAD][0] = (FLAG_FIRST) ? 1 : 0;
+					flags[LOAD][0] = 1;
 
 				} else {
 
@@ -182,7 +182,7 @@ struct LoadTile
 				flags[LOAD][0] = 0;
 			}
 
-			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, d_in, guarded_elements);
 		}
 	};
@@ -247,7 +247,7 @@ struct LoadTile
 		}
 
 		// With discontinuity flags
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename VectorType>
+		template <bool FIRST_TILE, typename T, typename Flag, typename VectorType>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -258,12 +258,12 @@ struct LoadTile
 			T previous = data[LOAD][VEC - 1];
 			flags[LOAD][VEC] = (previous != current);
 
-			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, vectors, d_in_vectors);
 		}
 
 		// With discontinuity flags
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename SizeT>
+		template <bool FIRST_TILE, typename T, typename Flag, typename SizeT>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -284,7 +284,7 @@ struct LoadTile
 				flags[LOAD][VEC] = 0;
 			}
 
-			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, d_in, guarded_elements);
 		}
 	};
@@ -331,26 +331,26 @@ struct LoadTile
 		}
 
 		// With discontinuity flags (unguarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename VectorType>
+		template <bool FIRST_TILE, typename T, typename Flag, typename VectorType>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[], 
 			VectorType *d_in_vectors)
 		{
-			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, vectors, d_in_vectors + ACTIVE_THREADS);
 		}
 
 		// With discontinuity flags (guarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename SizeT>
+		template <bool FIRST_TILE, typename T, typename Flag, typename SizeT>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
-			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
 				data, flags, d_in, guarded_elements);
 		}
 	};
@@ -384,7 +384,7 @@ struct LoadTile
 			const SizeT &guarded_elements) {}
 
 		// With discontinuity flags (unguarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename VectorType>
+		template <bool FIRST_TILE, typename T, typename Flag, typename VectorType>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -392,7 +392,7 @@ struct LoadTile
 			VectorType *d_in_vectors) {}
 
 		// With discontinuity flags (guarded)
-		template <bool FIRST_TILE, bool FLAG_FIRST, typename T, typename Flag, typename SizeT>
+		template <bool FIRST_TILE, typename T, typename Flag, typename SizeT>
 		static __device__ __forceinline__ void LoadDiscontinuity(
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
@@ -509,7 +509,6 @@ struct LoadTile
 	 */
 	template <
 		bool FIRST_TILE,								// Whether or not this is the first tile loaded by the CTA
-		bool FLAG_FIRST,								// Whether or not to flag the very first element loaded by CTA-0 as a discontinuity
 		typename T,										// Tile type
 		typename Flag>									// Discontinuity flag type
 	static __device__ __forceinline__ void LoadDiscontinuity(
@@ -522,7 +521,7 @@ struct LoadTile
 
 		VectorType *vectors = (VectorType *) data;
 		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x << LOG_LOAD_VEC_SIZE));
-		Iterate<0,0>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+		Iterate<0,0>::template LoadDiscontinuity<FIRST_TILE>(
 			data, flags, vectors, d_in_vectors);
 	}
 
@@ -532,7 +531,6 @@ struct LoadTile
 	 */
 	template <
 		bool FIRST_TILE,								// Whether or not this is the first tile loaded by the CTA
-		bool FLAG_FIRST,								// Whether or not to flag the very first element loaded by CTA-0 as a discontinuity
 		typename T,										// Tile type
 		typename Flag,									// Discontinuity flag type
 		typename SizeT>									// Integer type for indexing into global arrays
@@ -542,7 +540,7 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE, FLAG_FIRST>(
+		Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
 			data, flags, d_in, guarded_elements);
 	} 
 };
