@@ -110,9 +110,6 @@ struct CsrGraph
 		time_t mark1 = time(NULL);
 		fflush(stdout);
 
-		// mooch
-		ordered_rows = false;
-		
 		FromScratch<LOAD_VALUES>(coo_nodes, coo_edges);
 		
 		// Sort COO by row

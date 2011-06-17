@@ -20,33 +20,35 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Consecutive removal single-CTA scan kernel
+ * Consecutive reduction spine scan kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/consecutive_reduction/downsweep/cta.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
+
+#include <b40c/consecutive_reduction/spine/cta.cuh>
 
 namespace b40c {
 namespace consecutive_reduction {
-namespace single {
+namespace spine {
 
 
 /**
- *  Consecutive removal single-CTA scan pass
+ * Consecutive reduction spine scan pass
  */
 template <typename KernelPolicy>
-__device__ __forceinline__ void SinglePass(
-	typename KernelPolicy::KeyType			*&d_in_keys,
-	typename KernelPolicy::KeyType			*&d_out_keys,
-	typename KernelPolicy::ValueType		*&d_in_values,
-	typename KernelPolicy::ValueType		*&d_out_values,
-	typename KernelPolicy::SizeT			*&d_num_compacted,
-	typename KernelPolicy::SizeT 			&num_elements,
-	typename KernelPolicy::SmemStorage		&smem_storage)
+__device__ __forceinline__ void SpinePass(
+	typename KernelPolicy::SpinePartialType 	*&d_in_partials,
+	typename KernelPolicy::SpinePartialType 	*&d_out_partials,
+	typename KernelPolicy::SpineFlagType		*&d_in_flags,
+	typename KernelPolicy::SpineFlagType		*&d_out_flags,
+	typename KernelPolicy::SpineSizeT 			&spine_elements,
+	typename KernelPolicy::SmemStorage			&smem_storage)
 {
-	typedef downsweep::Cta<KernelPolicy> 		Cta;
-	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef Cta<KernelPolicy> Cta;
+	typedef typename KernelPolicy::SpineSizeT SpineSizeT;
+	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -54,24 +56,24 @@ __device__ __forceinline__ void SinglePass(
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
-		d_in_keys,
-		d_out_keys,
-		d_in_values,
-		d_out_values,
-		d_num_compacted);
+		d_in_partials,
+		d_out_partials,
+		d_in_flags,
+		d_out_flags);
+
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
-	SizeT guarded_elements = num_elements & (KernelPolicy::TILE_ELEMENTS - 1);
+	SpineSizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
 
 	// Offset of final, partially-full tile (requires guarded loads)
-	SizeT guarded_offset = num_elements - guarded_elements;
+	SpineSizeT guarded_offset = spine_elements - guarded_elements;
 
-	util::CtaWorkLimits<SizeT> work_limits(
+	util::CtaWorkLimits<SpineSizeT> work_limits(
 		0,					// Offset at which this CTA begins processing
-		num_elements,		// Total number of elements for this CTA to process
+		spine_elements,		// Total number of elements for this CTA to process
 		guarded_offset, 	// Offset of final, partially-full tile (requires guarded loads)
 		guarded_elements,	// Number of elements in partially-full tile
-		num_elements,		// Offset at which this CTA is out-of-bounds
+		spine_elements,		// Offset at which this CTA is out-of-bounds
 		true);				// If this block is the last block in the grid with any work
 
 	cta.ProcessWorkRange(work_limits);
@@ -79,32 +81,32 @@ __device__ __forceinline__ void SinglePass(
 
 
 /**
- * Consecutive removal single-CTA scan kernel entrypoint
+ * Consecutive reduction spine scan kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::KeyType			*d_in_keys,
-	typename KernelPolicy::KeyType			*d_out_keys,
-	typename KernelPolicy::ValueType		*d_in_values,
-	typename KernelPolicy::ValueType		*d_out_values,
-	typename KernelPolicy::SizeT			*d_num_compacted,
-	typename KernelPolicy::SizeT 			num_elements)
+	typename KernelPolicy::SpinePartialType 	*d_in_partials,
+	typename KernelPolicy::SpinePartialType 	*d_out_partials,
+	typename KernelPolicy::SpineFlagType		*d_in_flags,
+	typename KernelPolicy::SpineFlagType		*d_out_flags,
+	typename KernelPolicy::SpineSizeT 			spine_elements)
 {
+	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SinglePass<KernelPolicy>(
-		d_in_keys,
-		d_out_keys,
-		d_in_values,
-		d_out_values,
-		d_num_compacted,
-		num_elements,
+	SpinePass<KernelPolicy>(
+		d_in_partials,
+		d_out_partials,
+		d_in_flags,
+		d_out_flags,
+		spine_elements,
 		smem_storage);
 }
 
-} // namespace single
+
+} // namespace spine
 } // namespace consecutive_reduction
 } // namespace b40c
 

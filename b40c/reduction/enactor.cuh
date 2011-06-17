@@ -368,10 +368,11 @@ cudaError_t Enactor::Reduce(
 		sweep_grid_size = 1;
 	}
 
-	// Compute spine elements (round up to nearest spine tile elements)
+	// Compute spine elements: one element per CTA, rounded
+	// up to nearest spine tile size
 	int spine_elements = sweep_grid_size;
 
-	// Obtain a CTA work distribution for copying items of type T
+	// Obtain a CTA work distribution
 	util::CtaWorkDistribution<SizeT> work;
 	work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
 

@@ -38,26 +38,21 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::T 			*&d_partials_in,
-	typename KernelPolicy::Flag			*&d_flags_in,
-	typename KernelPolicy::T 			*&d_spine_partials,
-	typename KernelPolicy::Flag			*&d_spine_flags,
+	typename KernelPolicy::KeyType				*&d_in_keys,
+	typename KernelPolicy::ValueType			*&d_in_values,
+	typename KernelPolicy::SpinePartialType 	*&d_spine_partials,
+	typename KernelPolicy::SpineFlagType		*&d_spine_flags,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage	&smem_storage)
+	typename KernelPolicy::SmemStorage			&smem_storage)
 {
 	typedef Cta<KernelPolicy> 		Cta;
 	typedef typename KernelPolicy::SizeT 	SizeT;
 
-	// Quit if we're the last threadblock (no need for it in upsweep)
-	if (blockIdx.x == gridDim.x - 1) {
-		return;
-	}
-
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
-		d_partials_in,
-		d_flags_in,
+		d_in_keys,
+		d_in_values,
 		d_spine_partials,
 		d_spine_flags);
 
@@ -78,18 +73,18 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 			*d_partials_in,
-	typename KernelPolicy::Flag			*d_flags_in,
-	typename KernelPolicy::T 			*d_spine_partials,
-	typename KernelPolicy::Flag			*d_spine_flags,
+	typename KernelPolicy::KeyType				*d_in_keys,
+	typename KernelPolicy::ValueType			*d_in_values,
+	typename KernelPolicy::SpinePartialType		*d_spine_partials,
+	typename KernelPolicy::SpineFlagType		*d_spine_flags,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	UpsweepPass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
+		d_in_keys,
+		d_in_values,
 		d_spine_partials,
 		d_spine_flags,
 		work_decomposition,

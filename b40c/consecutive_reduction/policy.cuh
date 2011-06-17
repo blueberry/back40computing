@@ -30,15 +30,12 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/operators.cuh>
 
-#include <b40c/consecutive_reduction/upsweep/kernel.cuh>
 #include <b40c/consecutive_reduction/upsweep/kernel_policy.cuh>
-#include <b40c/consecutive_reduction/downsweep/kernel.cuh>
+#include <b40c/consecutive_reduction/upsweep/kernel.cuh>
 #include <b40c/consecutive_reduction/downsweep/kernel_policy.cuh>
+#include <b40c/consecutive_reduction/downsweep/kernel.cuh>
+#include <b40c/consecutive_reduction/spine/kernel.cuh>
 #include <b40c/consecutive_reduction/single/kernel.cuh>
-
-#include <b40c/scan/kernel_policy.cuh>
-#include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace consecutive_reduction {
@@ -73,6 +70,7 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
+	int UPSWEEP_LOG_RAKING_THREADS,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
@@ -93,16 +91,18 @@ struct Policy : ProblemType
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ProblemType::T 			T;
-	typedef typename ProblemType::SizeT 		SizeT;
-	typedef typename ProblemType::SpineType 	SpineType;
-	typedef typename ProblemType::SpineSizeT 	SpineSizeT;
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType			ValueType;
+	typedef typename ProblemType::SizeT 			SizeT;
 
-	typedef void (*UpsweepKernelPtr)(T*, SpineType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SpineType*, SpineType*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(T*, SizeT*, T*, SpineType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(T*, SizeT*, T*, SizeT);
+	typedef typename ProblemType::SpinePartialType 	SpinePartialType;
+	typedef typename ProblemType::SpineFlagType 	SpineFlagType;
+	typedef typename ProblemType::SpineSizeT 		SpineSizeT;
 
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, SpinePartialType*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SpinePartialType*, SpinePartialType*, SpineFlagType*, SpineFlagType*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SpinePartialType*,  SizeT*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
 
 	// Kernel config for the upsweep reduction kernel
 	typedef upsweep::KernelPolicy<
@@ -112,22 +112,15 @@ struct Policy : ProblemType
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
+		UPSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
-	// Problem type for spine
-	typedef scan::ProblemType<
-		SpineType,
-		SpineSizeT,
-		true,									// Exclusive
-		util::Operators<SpineType>::Sum,
-		util::Operators<SpineType>::SumIdentity> SpineProblemType;
-
-	// Kernel config for the spine consecutive reduction kernel
-	typedef scan::downsweep::KernelPolicy <
-		SpineProblemType,
+	// Kernel config for the spine consecutive reduction kernel (uses upsweep config policy)
+	typedef upsweep::KernelPolicy <
+		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
@@ -154,15 +147,15 @@ struct Policy : ProblemType
 		TWO_PHASE_SCATTER>
 			Downsweep;
 
-	// Kernel config for single-cta (single-grid) consecutive duplicate reduction
+	// Kernel config for single-cta (single-grid) consecutive duplicate reduction (uses downsweep config policy)
 	typedef downsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
-		SPINE_LOG_THREADS,
-		SPINE_LOG_LOAD_VEC_SIZE,
-		SPINE_LOG_LOADS_PER_TILE,
-		SPINE_LOG_RAKING_THREADS,
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY,
@@ -176,15 +169,12 @@ struct Policy : ProblemType
 	static UpsweepKernelPtr UpsweepKernel() {
 		return upsweep::Kernel<Upsweep>;
 	}
-
 	static SpineKernelPtr SpineKernel() {
-		return scan::spine::Kernel<Spine>;
+		return spine::Kernel<Spine>;
 	}
-
 	static DownsweepKernelPtr DownsweepKernel() {
 		return downsweep::Kernel<Downsweep>;
 	}
-
 	static SingleKernelPtr SingleKernel() {
 		return single::Kernel<Single>;
 	}
@@ -198,7 +188,7 @@ struct Policy : ProblemType
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID & Single::VALID
+//		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID & Single::VALID
 	};
 
 };

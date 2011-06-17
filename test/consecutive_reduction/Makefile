@@ -140,7 +140,7 @@ DEPS = 			./Makefile \
 				$(wildcard ../../b40c/util/io/*.cuh) \
 				$(wildcard ../../b40c/util/reduction/*.cuh) \
 				$(wildcard ../../b40c/util/scan/*.cuh) \
-				$(wildcard ../../b40c/consecutive_removal/*.cuh) \
+				$(wildcard ../../b40c/consecutive_reduction/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 
 				 
@@ -150,11 +150,11 @@ DEPS = 			./Makefile \
 # (make simple) Simple example driver for segmented scan
 #-------------------------------------------------------------------------------
 
-simple: bin/simple_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+simple: bin/simple_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/simple_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_consecutive_removal.cu $(DEPS)
+bin/simple_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_consecutive_reduction.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_consecutive_removal.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 
@@ -162,33 +162,33 @@ bin/simple_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_consecuti
 # (make test) Test driver 
 #-------------------------------------------------------------------------------
 
-test: bin/test_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test: bin/test_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_consecutive_removal.cu $(DEPS) test_consecutive_removal.h
+bin/test_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_consecutive_reduction.cu $(DEPS) test_consecutive_reduction.h
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_consecutive_removal.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 	
 #-------------------------------------------------------------------------------
 # (make tune) Evaluates the space of configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
+tune: bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_consecutive_removal.cu $(DEPS)
+bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_consecutive_reduction.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_consecutive_removal.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------
 # (make compare) Compares performance against other libraries (e.g., Thrust)
 #-------------------------------------------------------------------------------
 
-compare: bin/compare_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+compare: bin/compare_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/compare_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_consecutive_removal.cu $(DEPS) test_consecutive_removal.h
+bin/compare_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_consecutive_reduction.cu $(DEPS) test_consecutive_reduction.h
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_consecutive_removal_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_consecutive_removal.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
 
 #

@@ -94,15 +94,15 @@ void TestConsecutiveRemoval(size_t num_elements)
 	}
 	if (g_verbose) printf("\n");
 
-	size_t compacted_elements = 0;
+	size_t num_compacted = 0;
 	h_reference[0] = h_data[0];
 	for (size_t i = 0; i < num_elements; ++i) {
-		if (h_reference[compacted_elements] != h_data[i]) {
-			compacted_elements++;
-			h_reference[compacted_elements] = h_data[i];
+		if (h_reference[num_compacted] != h_data[i]) {
+			num_compacted++;
+			h_reference[num_compacted] = h_data[i];
 		}
 	}
-	compacted_elements++;
+	num_compacted++;
 
 
 	//
@@ -115,11 +115,11 @@ void TestConsecutiveRemoval(size_t num_elements)
 
 		printf("\nLARGE config:\t");
 		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE_SIZE>(
-			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
+			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
 /*
 		printf("\nSMALL config:\t");
 		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL_SIZE>(
-			h_data, h_reference, num_elements, compacted_elements, g_max_ctas, g_verbose, g_iterations);
+			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
@@ -143,24 +143,23 @@ void TestConsecutiveRemoval(size_t num_elements)
 
 int main(int argc, char** argv)
 {
-
+	// Initialize commandline args and device
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
-	//srand(time(NULL));
+	// Seed random number generator
 	srand(0);				// presently deterministic
+	//srand(time(NULL));
 
-    //
-	// Check command line arguments
-    //
+	// Use 32-bit integer for array indexing
+	typedef int SizeT;
+	SizeT num_elements = 1024;
 
-	size_t num_elements = 1024;
-
+	// Parse command line arguments
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
-
     g_sweep = args.CheckCmdLineFlag("sweep");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);

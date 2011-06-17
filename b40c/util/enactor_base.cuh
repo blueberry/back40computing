@@ -91,6 +91,30 @@ protected:
 	//-----------------------------------------------------------------------------
 
 	/**
+	 * Utility method to display the contents of a device array
+	 */
+	template <typename T>
+	void DisplayDeviceResults(
+		T *d_data,
+		size_t num_elements)
+	{
+		// Allocate array on host and copy back
+		T *h_data = (T*) malloc(num_elements * sizeof(T));
+		cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+		// Display data
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+
+		// Cleanup
+		if (h_data) free(h_data);
+	}
+
+
+	/**
 	 * Returns the number of threadblocks to launch for the given problem size.
 	 * Does not exceed the full-occupancy on the current device or the
 	 * optional max_grid_size limit.

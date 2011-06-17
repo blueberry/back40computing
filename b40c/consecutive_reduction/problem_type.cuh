@@ -35,16 +35,23 @@ namespace consecutive_reduction {
  * Type of consecutive reduction problem
  */
 template <
-	typename T,				// Partial type
-	typename _Flag,			// Flag type
+	typename _KeyType,
+	typename _ValueType,
 	typename SizeT,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-struct ProblemType : scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity>		// Inherit from regular scan problem type
+	_ValueType BinaryOp(const _ValueType&, const _ValueType&),		// Reduction operator
+	_ValueType Identity()>											// Reduction identity
+
+struct ProblemType :
+	scan::ProblemType<_ValueType, SizeT, true, BinaryOp, Identity>		// Inherit from regular scan problem type
 {
-	// The type of flag we're using
-	typedef _Flag Flag;
+	// The type of data we are operating upon
+	typedef _KeyType 		KeyType;
+	typedef _ValueType 		ValueType;
+
+	// The type of spine we're using
+	typedef ValueType 		SpinePartialType;
+	typedef SizeT 			SpineFlagType;
+	typedef int 			SpineSizeT;
 };
 
 
