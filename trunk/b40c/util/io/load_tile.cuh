@@ -540,8 +540,12 @@ struct LoadTile
 		T *d_in,
 		const SizeT &guarded_elements)
 	{
-		Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
-			data, flags, d_in, guarded_elements);
+		if (guarded_elements >= TILE_SIZE) {
+			LoadDiscontinuity<FIRST_TILE>(data, flags, d_in);
+		} else {
+			Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
+				data, flags, d_in, guarded_elements);
+		}
 	} 
 };
 
