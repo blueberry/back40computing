@@ -280,7 +280,7 @@ cudaError_t Enactor::Copy(
 		OversubscribedGridSize<Policy::SCHEDULE_GRANULARITY, Policy::CTA_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Policy::SCHEDULE_GRANULARITY, Policy::CTA_OCCUPANCY>(num_elements, max_grid_size);
 
-	// Obtain a CTA work distribution for copying items of type T
+	// Obtain a CTA work distribution
 	util::CtaWorkDistribution<SizeT> work;
 	work.template Init<Policy::LOG_SCHEDULE_GRANULARITY>(num_elements, grid_size);
 

@@ -584,21 +584,23 @@ void TestSegmentedScan(size_t num_elements)
 
 int main(int argc, char** argv)
 {
-
+	// Initialize commandline args and device
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
-	//srand(time(NULL));	
+	// Seed random number generator
 	srand(0);				// presently deterministic
+	//srand(time(NULL));
 
-    size_t num_elements 								= 1024;
+	// Use 32-bit integer for array indexing
+	typedef int SizeT;
+	SizeT num_elements = 1024;
 
-	// Check command line arguments
+	// Parse command line arguments
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
-
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);

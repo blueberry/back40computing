@@ -52,7 +52,7 @@ double TimedConsecutiveRemoval(
 	T *h_data,
 	T *h_reference,
 	SizeT num_elements,
-	SizeT compacted_elements,
+	SizeT num_compacted,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -110,9 +110,9 @@ double TimedConsecutiveRemoval(
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-	double bandwidth = ((double) (num_elements * 2) + compacted_elements) * sizeof(T) / avg_runtime / 1000.0 / 1000.0;
+	double bandwidth = ((double) (num_elements * 2) + num_compacted) * sizeof(T) / avg_runtime / 1000.0 / 1000.0;
 	printf("\nB40C consecutive removal: %d iterations, %lu elements -> %lu compacted, ",
-		iterations, (unsigned long) num_elements, (unsigned long) compacted_elements);
+		iterations, (unsigned long) num_elements, (unsigned long) num_compacted);
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, bandwidth);
 
@@ -121,7 +121,7 @@ double TimedConsecutiveRemoval(
 	cudaEventDestroy(stop_event);
 
 	// Check and display results
-	CompareDeviceResults(h_reference, d_dest, compacted_elements, verbose, verbose);
+	CompareDeviceResults(h_reference, d_dest, num_compacted, verbose, verbose);
 	printf("\n");
 	fflush(stdout);
 

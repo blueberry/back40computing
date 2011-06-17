@@ -49,8 +49,10 @@ using namespace b40c;
  ******************************************************************************/
 
 // #define DEBUG
-bool g_verbose;
-int g_max_ctas = 0;
+bool 	g_verbose;
+bool 	g_keys_only;
+int 	g_max_ctas 			= 0;
+int 	g_iterations  		= 1;
 
 
 /******************************************************************************
@@ -74,12 +76,12 @@ struct Fribbitz {
  */
 void Usage() 
 {
-	printf("\ntest_large_problem_sorting [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntest_large_problem_sorting [--device=<device index>] [--v] [--i=<num-g_iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--keys-only]\n");
 	printf("\n");
 	printf("\t--v\tDisplays sorted results to the console.\n");
 	printf("\n");
-	printf("\t--i\tPerforms the sorting operation <num-iterations> times\n");
+	printf("\t--i\tPerforms the sorting operation <num-g_iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
@@ -93,7 +95,7 @@ void Usage()
 
 /**
  * Uses the GPU to sort the specified vector of elements for the given
- * number of iterations, displaying runtime information.
+ * number of g_iterations, displaying runtime information.
  */
 template <
 	radix_sort::ProbSizeGenre GENRE,
@@ -103,7 +105,7 @@ void TimedSort(
 	PingPongStorage 						&device_storage,
 	SizeT 									num_elements,
 	typename PingPongStorage::KeyType 		*h_keys,
-	int 									iterations)
+	int 									g_iterations)
 {
 	typename PingPongStorage::KeyType K;
 
@@ -119,7 +121,7 @@ void TimedSort(
 	sorting_enactor.template Sort<GENRE>(device_storage, num_elements, g_max_ctas);
 	sorting_enactor.DEBUG = false;
 
-	// Perform the timed number of sorting iterations
+	// Perform the timed number of sorting g_iterations
 
 	cudaEvent_t start_event, stop_event;
 	cudaEventCreate(&start_event);
@@ -127,7 +129,7 @@ void TimedSort(
 
 	double elapsed = 0;
 	float duration = 0;
-	for (int i = 0; i < iterations; i++) {
+	for (int i = 0; i < g_iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
 		if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
@@ -147,7 +149,7 @@ void TimedSort(
 	}
 
 	// Display timing information
-	double avg_runtime = elapsed / iterations;
+	double avg_runtime = elapsed / g_iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
     printf(", %f GPU ms, %f x10^9 elts/sec\n", 
 		avg_runtime,
@@ -166,26 +168,24 @@ void TimedSort(
 /**
  * Creates an example sorting problem whose keys is a vector of the specified 
  * number of K elements, values of V elements, and then dispatches the problem 
- * to the GPU for the given number of iterations, displaying runtime information.
+ * to the GPU for the given number of g_iterations, displaying runtime information.
  *
- * @param[in] 		iterations  
+ * @param[in] 		g_iterations
  * 		Number of times to invoke the GPU sorting primitive
  * @param[in] 		num_elements 
  * 		Size in elements of the vector to sort
  */
 template<
 	typename K,
-	typename V>
-void TestSort(
-	int iterations,
-	int num_elements,
-	bool keys_only)
+	typename V,
+	typename SizeT>
+void TestSort(SizeT num_elements)
 {
     // Allocate the sorting problem on the host and fill the keys with random bytes
 
 	K *h_keys = (K*) malloc(num_elements * sizeof(K));
 	K *h_reference_keys = (K*) malloc(num_elements * sizeof(K));
-	V *h_values = (keys_only) ?
+	V *h_values = (g_keys_only) ?
 		NULL :
 		h_values = (V*) malloc(num_elements * sizeof(V));
 
@@ -196,9 +196,9 @@ void TestSort(
 	}
 
 	// Run the timing test
-	if (keys_only) {
+	if (g_keys_only) {
 
-		printf("Keys-only, %d iterations, %d elements", iterations, num_elements);
+		printf("Keys-only, %d iterations, %d elements", g_iterations, num_elements);
 		fflush(stdout);
 
 		// Allocate device storage
@@ -207,7 +207,7 @@ void TestSort(
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		TimedSort<radix_sort::LARGE_SIZE>(
-			device_storage, num_elements, h_keys, iterations);
+			device_storage, num_elements, h_keys, g_iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -215,7 +215,7 @@ void TestSort(
 
 	} else {
 
-		printf("Key-values, %d iterations, %d elements", iterations, num_elements);
+		printf("Key-values, %d iterations, %d elements", g_iterations, num_elements);
 		fflush(stdout);
 
 		// Allocate device storage
@@ -225,7 +225,7 @@ void TestSort(
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort<radix_sort::LARGE_SIZE>(device_storage, num_elements, h_keys, iterations);
+		TimedSort<radix_sort::LARGE_SIZE>(device_storage, num_elements, h_keys, g_iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);
@@ -265,84 +265,56 @@ void TestSort(
 
 int main(int argc, char** argv)
 {
-
+	// Initialize commandline args and device
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
-	//srand(time(NULL));	
+	// Seed random number generator
 	srand(0);				// presently deterministic
+	//srand(time(NULL));
 
-    int num_elements 					= 1024;
-    int iterations  					= 1;
-    bool keys_only;
+	// Use 32-bit integer for array indexing
+	typedef int SizeT;
+	SizeT num_elements = 1024;
 
-    //
-	// Check command line arguments
-    //
-
+	// Parse command line arguments
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
 
-    args.GetCmdLineArgument("i", iterations);
+    args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
-    keys_only = args.CheckCmdLineFlag("keys-only");
+    g_keys_only = args.CheckCmdLineFlag("keys-only");
 	g_verbose = args.CheckCmdLineFlag("v");
 
-/*	
 	// Execute test(s)
-	TestSort<float, float>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<double, double>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<char, char>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned char, unsigned char>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<short, short>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned short, unsigned short>(
-			iterations,
-			num_elements, 
-			keys_only);
+/*	
+	TestSort<float, float>(num_elements);
+
+	TestSort<double, double>(num_elements);
+
+	TestSort<char, char>(num_elements);
+
+	TestSort<unsigned char, unsigned char>(num_elements);
+
+	TestSort<short, short>(num_elements);
+
+	TestSort<unsigned short, unsigned short>(num_elements);
+
 	TestSort<int, int>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned int, unsigned int>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<long long, long long>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<unsigned long long, unsigned long long>(
-			iterations,
-			num_elements, 
-			keys_only);
-	TestSort<float, Fribbitz>(
-			iterations,
-			num_elements, 
-			keys_only);
+
+	TestSort<unsigned int, unsigned int>(num_elements);
+
+	TestSort<long long, long long>(num_elements);
+
+	TestSort<unsigned long long, unsigned long long>(num_elements);
+
+	TestSort<float, Fribbitz>(num_elements);
 */
 
-	TestSort<unsigned int, unsigned int>(
-			iterations,
-			num_elements, 
-			keys_only);
+	TestSort<unsigned int, unsigned int>(num_elements);
 
 }
 

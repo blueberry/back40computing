@@ -38,29 +38,36 @@ namespace downsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
-	typename KernelPolicy::T 			*&d_partials_in,
-	typename KernelPolicy::Flag			*&d_flags_in,
-	typename KernelPolicy::T 			*&d_partials_out,
-	typename KernelPolicy::T 			*&d_spine_partials,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage	&smem_storage)
+	typename KernelPolicy::KeyType 								*&d_in_keys,
+	typename KernelPolicy::KeyType								*&d_out_keys,
+	typename KernelPolicy::ValueType 							*&d_in_values,
+	typename KernelPolicy::ValueType 							*&d_out_values,
+	typename KernelPolicy::SpinePartialType 					*&d_spine_partials,
+	typename KernelPolicy::SpineFlagType 						*&d_spine_flags,
+	typename KernelPolicy::SizeT								*&d_num_compacted,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelPolicy> 				Cta;
-	typedef typename KernelPolicy::T		T;
-	typedef typename KernelPolicy::SizeT 	SizeT;
+	typedef Cta<KernelPolicy> 						Cta;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SpineSoaTuple	SpineSoaTuple;
 
+	// Read the exclusive spine partial
+	SpineSoaTuple spine_partial;
 
-	// Read the exclusive partial from our spine
-	T spine_partial;
 	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
-		spine_partial, d_spine_partials + blockIdx.x);
+		spine_partial.t0, d_spine_partials + blockIdx.x);
+	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+		spine_partial.t1, d_spine_flags + blockIdx.x);
 
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
-		d_partials_in,
-		d_flags_in,
-		d_partials_out,
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
+		d_num_compacted,
 		spine_partial);
 
 	// Determine our threadblock's work range
@@ -80,20 +87,26 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 									*d_partials_in,
-	typename KernelPolicy::Flag									*d_flags_in,
-	typename KernelPolicy::T 									*d_partials_out,
-	typename KernelPolicy::T 									*d_spine_partials,
+	typename KernelPolicy::KeyType 								*d_in_keys,
+	typename KernelPolicy::KeyType								*d_out_keys,
+	typename KernelPolicy::ValueType 							*d_in_values,
+	typename KernelPolicy::ValueType 							*d_out_values,
+	typename KernelPolicy::SpinePartialType 					*d_spine_partials,
+	typename KernelPolicy::SpineFlagType 						*d_spine_flags,
+	typename KernelPolicy::SizeT								*d_num_compacted,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	DownsweepPass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
-		d_partials_out,
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
 		d_spine_partials,
+		d_spine_flags,
+		d_num_compacted,
 		work_decomposition,
 		smem_storage);
 }

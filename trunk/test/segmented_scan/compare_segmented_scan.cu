@@ -330,24 +330,23 @@ void TestSegmentedScanVariety(size_t num_elements)
 
 int main(int argc, char** argv)
 {
-
+	// Initialize commandline args and device
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
-	//srand(time(NULL));	
+	// Seed random number generator
 	srand(0);				// presently deterministic
+	//srand(time(NULL));
 
-    //
-	// Check command line arguments
-    //
+	// Use 32-bit integer for array indexing
+	typedef int SizeT;
+	SizeT num_elements = 1024;
 
-	size_t num_elements = 1024;
-
+	// Parse command line arguments
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
-
     g_inclusive = args.CheckCmdLineFlag("inclusive");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", num_elements);

@@ -31,6 +31,7 @@
 #include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
+#include <b40c/util/io/scatter_tile.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
@@ -50,15 +51,19 @@ struct Cta
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::KeyType 			KeyType;
-	typedef typename KernelPolicy::ValueType		ValueType;
-	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::SpineType		SpineType;
-	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
-	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
+	typedef typename KernelPolicy::KeyType 				KeyType;
+	typedef typename KernelPolicy::ValueType			ValueType;
+	typedef typename KernelPolicy::SizeT 				SizeT;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::SpinePartialType		SpinePartialType;
+	typedef typename KernelPolicy::SpineFlagType		SpineFlagType;
+	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
+
+	typedef typename KernelPolicy::LocalFlag			LocalFlag;			// Type for noting local discontinuities
+	typedef typename KernelPolicy::RankType				RankType;			// Type for local SRTS prefix sum
+
+	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
+	typedef typename KernelPolicy::SrtsSoaTuple 		SrtsSoaTuple;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -72,14 +77,15 @@ struct Cta
 	// Operational details for SRTS grid
 	SrtsSoaDetails 	srts_soa_details;
 
-	// The tuple value we will accumulate (in raking threads only)
-	SoaTuple 		carry;
+	// The spine value-flag tuple value we will accumulate (in raking threads only)
+	SpineSoaTuple 	carry;
 
 	// Device pointers
 	KeyType 		*d_in_keys;
 	KeyType			*d_out_keys;
 	ValueType 		*d_in_values;
 	ValueType 		*d_out_values;
+	SizeT			*d_num_compacted;
 
 
 	//---------------------------------------------------------------------
@@ -110,8 +116,55 @@ struct Cta
 
 		KeyType			keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 		ValueType		values[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		LocalFlag		head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+
+		LocalFlag		head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity flags
 		RankType 		ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
+
+
+		//---------------------------------------------------------------------
+		// Iteration Structures
+		//---------------------------------------------------------------------
+
+		/**
+		 * Iterate over vertex id
+		 */
+		template <int LOAD, int VEC, int dummy = 0>
+		struct Iterate
+		{
+			/**
+			 * DecrementRanks
+			 */
+			static __device__ __forceinline__ void DecrementRanks(Tile *tile)
+			{
+				tile->ranks[LOAD][VEC]--;
+
+				// Next
+				Iterate<LOAD, VEC + 1>::DecrementRanks(tile);
+			}
+		};
+
+		/**
+		 * Iterate next load
+		 */
+		template <int LOAD, int dummy>
+		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+		{
+			// DecrementRanks
+			static __device__ __forceinline__ void DecrementRanks(Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::DecrementRanks(tile);
+			}
+		};
+
+		/**
+		 * Terminate iteration
+		 */
+		template <int dummy>
+		struct Iterate<LOADS_PER_TILE, 0, dummy>
+		{
+			// DecrementRanks
+			static __device__ __forceinline__ void DecrementRanks(Tile *tile) {}
+		};
 
 
 		//---------------------------------------------------------------------
@@ -132,7 +185,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, false>(	// Do not flag first element of first tile of first cta
+				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
 					keys,
 					head_flags,
 					cta->d_in_keys + cta_offset,
@@ -153,24 +206,41 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
 
-			// Scan tile, seed with carry (maintain carry in raking threads)
+			// SOA-scan tile of tuple pairs
 			util::scan::soa::CooperativeSoaTileScan<
 				SrtsSoaDetails,
 				KernelPolicy::LOAD_VEC_SIZE,
-				true,																// exclusive
+				true,								// Exclusive scan
 				KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
-					srts_soa_details,
+					cta->srts_soa_details,
 					DataSoa(values, ranks),
-					carry);
+					cta->carry);					// Seed with carry, maintain carry in raking threads
 
-			// Scatter valid vertex_id into smem exchange, predicated on head_flags (treat
-			// vertex_id, head_flags, and ranks as linear arrays)
+			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
 				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					cta->d_out,
-					(T*) data,
+					cta->d_out_keys,
+					(KeyType*) keys,				// Treat as linear arrays
+					(LocalFlag*) head_flags,
+					(RankType*) ranks);
+
+			// Decrement scatter ranks for values
+			Iterate<0, 0>::DecrementRanks(this);
+
+			// First CTA unsets the first head flag of first tile
+			if (FIRST_TILE && (blockIdx.x == 0) && (threadIdx.x == 0)) {
+				head_flags[0][0] = 0;
+			}
+
+			// Scatter valid reduced values directly to global output, predicated on head_flags
+			util::io::ScatterTile<
+				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Scatter(
+					cta->d_out_values,
+					(ValueType*) values,			// Treat as linear arrays
 					(LocalFlag*) head_flags,
 					(RankType*) ranks);
 		}
@@ -188,10 +258,11 @@ struct Cta
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		KeyType 		*d_in_keys,
-		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
-		SoaTuple		spine_partial = KernelPolicy::SoaTupleIdentity()) :
+		SizeT			*d_num_compacted,
+		SpineSoaTuple	spine_partial = KernelPolicy::SpineTupleIdentity()) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -200,10 +271,12 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.ranks_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				KernelPolicy::SrtsTupleIdentity()),
 			d_in_keys(d_in_keys),
+			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
+			d_num_compacted(d_num_compacted),
 			carry(spine_partial)
 	{}
 
@@ -211,58 +284,14 @@ struct Cta
 	/**
 	 * Process a single tile
 	 */
+	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
 		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		// Tiles of consecutive reduction elements and flags
-		Tile tile;
+		Tile<FIRST_TILE> tile;
 
-		// Load tile of partials
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				tile.partials,
-				d_partials_in + cta_offset,
-				guarded_elements);
-
-		// Load tile of flags
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				tile.flags,
-				d_flags_in + cta_offset,
-				guarded_elements);
-
-		// Copy head flags (since we will trash them during scan)
-		util::io::InitializeTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.is_head, tile.flags);
-
-		// Scan tile with carry update in raking threads
-		util::scan::soa::CooperativeSoaTileScan<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			KERNEL_EXCLUSIVE,
-			KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
-				srts_soa_details,
-				DataSoa(tile.partials, tile.flags),
-				carry);
-
-		// Fix up segment heads if exclusive scan
-		tile.RepairHeads();
-
-		// Store tile of partials
-		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
-				tile.partials, d_partials_out + cta_offset, guarded_elements);
+		tile.Process(cta_offset, guarded_elements, this);
 	}
 
 
@@ -275,18 +304,45 @@ struct Cta
 		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
 		SizeT cta_offset = work_limits.offset;
 
-		// Process full tiles of tile_elements
-		while (cta_offset < work_limits.guarded_offset) {
+		if (cta_offset < work_limits.guarded_offset) {
 
-			ProcessTile(cta_offset);
+			// Process at least one full tile of tile_elements (first tile)
+			ProcessTile<true>(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
-		}
 
-		// Clean up last partial tile with guarded-io
-		if (work_limits.guarded_elements) {
-			ProcessTile(
+			while (cta_offset < work_limits.guarded_offset) {
+				// Process more full tiles (not first tile)
+				ProcessTile<false>(cta_offset);
+				cta_offset += KernelPolicy::TILE_ELEMENTS;
+			}
+
+			// Clean up last partial tile with guarded-io (not first tile)
+			if (work_limits.guarded_elements) {
+				ProcessTile<false>(
+					cta_offset,
+					work_limits.guarded_elements);
+			}
+
+		} else {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			ProcessTile<true>(
 				cta_offset,
 				work_limits.guarded_elements);
+		}
+
+		// The last block writes final values
+		if ((work_limits.last_block) &&
+			(threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) &&
+			(d_num_compacted != NULL))
+		{
+			// Output the final reduced value
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t0, d_out_values + carry.t1 - 1);
+
+			// Output the number of compacted items
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t1, d_num_compacted);
 		}
 	}
 };

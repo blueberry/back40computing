@@ -116,7 +116,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, true>(		// Flag first element of first tile of first cta
+				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
 					data,
 					head_flags,
 					cta->d_in + cta_offset,
@@ -214,7 +214,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, true>(		// Flag first element of first tile of first cta
+				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
 					data,
 					head_flags,
 					cta->d_in + cta_offset,
@@ -235,8 +235,8 @@ struct Cta
 					ranks,
 					cta->carry);
 
-			// Scatter valid vertex_id into smem exchange, predicated on head_flags (treat
-			// vertex_id, head_flags, and ranks as linear arrays)
+			// Scatter valid data directly to global output, predicated on head_flags (treat
+			// data, head_flags, and ranks as linear arrays)
 			util::io::ScatterTile<
 				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
@@ -277,8 +277,6 @@ struct Cta
 
 	/**
 	 * Process a single tile
-	 *
-	 * Each thread reduces only the strided values it loads.
 	 */
 	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessTile(

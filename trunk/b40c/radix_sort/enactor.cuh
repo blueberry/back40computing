@@ -661,11 +661,12 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
 
-	// Compute spine elements (round up to nearest spine tile_elements)
+	// Compute spine elements: BIN elements per CTA, rounded
+	// up to nearest spine tile size
 	detail.spine_elements = grid_size << Downsweep::LOG_BINS;
 	detail.spine_elements = ((detail.spine_elements + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
 
-	// Obtain a CTA work distribution for copying items of type T
+	// Obtain a CTA work distribution
 	detail.work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(
 		detail.num_elements, grid_size);
 

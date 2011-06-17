@@ -107,7 +107,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE, true>(			// Flag first element of first tile of first cta
+			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
 				data,
 				head_flags,
 				d_in + cta_offset);
