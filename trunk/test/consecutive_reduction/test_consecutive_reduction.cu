@@ -137,22 +137,18 @@ void TestConsecutiveReduction(SizeT num_elements)
 	SizeT orig_num_elements = num_elements;
 	do {
 
-		TimedConsecutiveReduction<PingPongStorage, BinaryOp, Identity>(
+		printf("\nLARGE config:\t");
+		double large = TimedConsecutiveReduction<consecutive_reduction::LARGE_SIZE, PingPongStorage, BinaryOp, Identity>(
 			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
 
-/*
-		printf("\nLARGE config:\t");
-		double large = TimedConsecutiveReduction<consecutive_reduction::LARGE_SIZE>(
-			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
-
 		printf("\nSMALL config:\t");
-		double small = TimedConsecutiveReduction<consecutive_reduction::SMALL_SIZE>(
-			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+		double small = TimedConsecutiveReduction<consecutive_reduction::SMALL_SIZE, PingPongStorage, BinaryOp, Identity>(
+			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
 		}
-*/
+
 		num_elements -= 4096;
 
 	} while (g_sweep && (num_elements < orig_num_elements ));

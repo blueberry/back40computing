@@ -39,7 +39,7 @@ namespace copy {
 
 
 /******************************************************************************
- * Genre classifiers to specialize policy types on
+ * Genre enumerations to classify problems by
  ******************************************************************************/
 
 /**
@@ -54,9 +54,9 @@ enum ProbSizeGenre
 
 
 /**
- * Enumeration of architecture-families that we have tuned for below
+ * Enumeration of architecture-family genres that we have tuned for below
  */
-enum ArchFamily
+enum ArchGenre
 {
 	SM20 	= 200,
 	SM13	= 130,
@@ -65,29 +65,60 @@ enum ArchFamily
 
 
 /**
- * Classifies a given CUDA_ARCH into an architecture-family
+ * Enumeration of type size genres
  */
-template <int CUDA_ARCH>
-struct ArchGenre
+enum TypeSizeGenre
 {
-	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
-										(CUDA_ARCH < SM20) ? 	SM13 :
-																SM20;
+	TINY_TYPE,
+	SMALL_TYPE,
+	MEDIUM_TYPE,
+	LARGE_TYPE
 };
 
+
+/******************************************************************************
+ * Classifiers for identifying classification genres
+ ******************************************************************************/
+
 /**
- * Autotuned genre type
+ * Classifies a given CUDA_ARCH into an architecture-family genre
+ */
+template <int CUDA_ARCH>
+struct ArchClassifier
+{
+	static const ArchGenre GENRE =			//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
+											(CUDA_ARCH < SM20) ? 	SM13 :
+																	SM20;
+};
+
+
+/**
+ * Classifies the pointer type into a type-size genre
+ */
+template <typename SizeT>
+struct PointerSizeClassifier
+{
+	static const TypeSizeGenre GENRE 		= (sizeof(SizeT) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/******************************************************************************
+ * Autotuned genre and specializations
+ ******************************************************************************/
+
+/**
+ * Autotuning policy genre, to be specialized
  */
 template <
+	// Problem and machine types
 	typename SizeT,
 	int CUDA_ARCH,
-	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedGenre :
-	AutotunedGenre<
-		SizeT,
-		ArchGenre<CUDA_ARCH>::FAMILY,
-		PROB_SIZE_GENRE>
-{};
+
+	// Genres to specialize upon
+	ProbSizeGenre PROB_SIZE_GENRE,
+	ArchGenre ARCH_GENRE = ArchClassifier<CUDA_ARCH>::GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE = PointerSizeClassifier<SizeT>::GENRE>
+struct AutotunedGenre;
 
 
 //-----------------------------------------------------------------------------
@@ -95,8 +126,8 @@ struct AutotunedGenre :
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <typename SizeT>
-struct AutotunedGenre<SizeT, SM20, LARGE_SIZE>
+template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM20, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
 	  SM20, 8, 8, 7, 1, 0,
 	  util::io::ld::cg, util::io::st::cg, true, false>
@@ -105,8 +136,8 @@ struct AutotunedGenre<SizeT, SM20, LARGE_SIZE>
 };
 
 // Small problems
-template <typename SizeT>
-struct AutotunedGenre<SizeT, SM20, SMALL_SIZE>
+template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM20, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
 	  SM20, 6, 8, 6, 0, 0,
 	  util::io::ld::cg, util::io::st::cs, false, false>
@@ -121,8 +152,8 @@ struct AutotunedGenre<SizeT, SM20, SMALL_SIZE>
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <typename SizeT>
-struct AutotunedGenre<SizeT, SM13, LARGE_SIZE>
+template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM13, POINTER_SIZE_GENRE>
 	: Policy<unsigned short, SizeT,
 	  SM13, 8, 8, 7, 2, 0,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
@@ -131,8 +162,8 @@ struct AutotunedGenre<SizeT, SM13, LARGE_SIZE>
 };
 
 // Small problems
-template <typename SizeT>
-struct AutotunedGenre<SizeT, SM13, SMALL_SIZE>
+template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM13, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
 	  SM13, 6, 8, 5, 0, 1,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
@@ -191,7 +222,7 @@ __global__ void TunedKernel(
 
 
 /******************************************************************************
- * Autotuned reduction policy
+ * Autotuned policy
  *******************************************************************************/
 
 /**

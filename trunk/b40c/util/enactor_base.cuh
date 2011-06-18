@@ -28,6 +28,9 @@
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/basic_utils.cuh>
+#include <b40c/util/error_utils.cuh>
 
 namespace b40c {
 namespace util {
@@ -86,31 +89,82 @@ protected:
 	const util::CudaProperties cuda_props;
 
 
-	//-----------------------------------------------------------------------------
-	// Utility Routines
-	//-----------------------------------------------------------------------------
+	//---------------------------------------------------------------------
+	// Tuning Utility Routines
+	//---------------------------------------------------------------------
 
 	/**
-	 * Utility method to display the contents of a device array
+	 * Computes dynamic smem allocations to ensure all three kernels end up
+	 * allocating the same amount of smem per CTA
 	 */
-	template <typename T>
-	void DisplayDeviceResults(
-		T *d_data,
-		size_t num_elements)
+	template <
+		typename UpsweepKernelPtr,
+		typename SpineKernelPtr,
+		typename DownsweepKernelPtr>
+	cudaError_t PadUniformSmem(
+		int dynamic_smem[3],
+		UpsweepKernelPtr UpsweepKernel,
+		SpineKernelPtr SpineKernel,
+		DownsweepKernelPtr DownsweepKernel)
 	{
-		// Allocate array on host and copy back
-		T *h_data = (T*) malloc(num_elements * sizeof(T));
-		cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+		cudaError_t retval = cudaSuccess;
+		do {
 
-		// Display data
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
-		}
-		printf("\n\n");
+			// Get kernel attributes
+			cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel),
+				"EnactorBase cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
+				"EnactorBase cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel),
+				"EnactorBase cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
-		// Cleanup
-		if (h_data) free(h_data);
+			int max_static_smem = B40C_MAX(
+				upsweep_kernel_attrs.sharedSizeBytes,
+				B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
+
+			dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
+			dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+			dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
+
+		} while (0);
+
+		return retval;
+	}
+
+
+	/**
+	 * Computes dynamic smem allocations to ensure both kernels end up
+	 * allocating the same amount of smem per CTA
+	 */
+	template <
+		typename UpsweepKernelPtr,
+		typename SpineKernelPtr>
+	cudaError_t PadUniformSmem(
+		int dynamic_smem[2],
+		UpsweepKernelPtr UpsweepKernel,
+		SpineKernelPtr SpineKernel)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+
+			// Get kernel attributes
+			cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel),
+				"EnactorBase cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
+				"EnactorBase cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
+
+			int max_static_smem = B40C_MAX(
+				upsweep_kernel_attrs.sharedSizeBytes,
+				spine_kernel_attrs.sharedSizeBytes);
+
+			dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
+			dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
+
+		} while (0);
+
+		return retval;
 	}
 
 
@@ -242,6 +296,165 @@ protected:
 
 		return grid_size;
 	}
+
+
+	//-----------------------------------------------------------------------------
+	// Debug Utility Routines
+	//-----------------------------------------------------------------------------
+
+	/**
+	 * Utility method to display the contents of a device array
+	 */
+	template <typename T>
+	void DisplayDeviceResults(
+		T *d_data,
+		size_t num_elements)
+	{
+		// Allocate array on host and copy back
+		T *h_data = (T*) malloc(num_elements * sizeof(T));
+		cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
+
+		// Display data
+		for (int i = 0; i < num_elements; i++) {
+			PrintValue(h_data[i]);
+			printf(", ");
+		}
+		printf("\n\n");
+
+		// Cleanup
+		if (h_data) free(h_data);
+	}
+
+
+	/**
+	 * Prints key size information
+	 */
+	template <typename KernelPolicy>
+	bool PrintKeySizeInfo(typename KernelPolicy::KeyType *ptr) {
+		printf("%lu byte keys, ", (unsigned long) sizeof(typename KernelPolicy::KeyType));
+		return true;
+	}
+	template <typename KernelPolicy>
+	bool PrintKeySizeInfo(...) {return false;}
+
+	/**
+	 * Prints value size information
+	 */
+	template <typename KernelPolicy>
+	bool PrintValueSizeInfo(typename KernelPolicy::ValueType *ptr) {
+		if (!util::Equals<typename KernelPolicy::ValueType, util::NullType>::VALUE) {
+			printf("%lu byte values, ", (unsigned long) sizeof(typename KernelPolicy::ValueType));
+		}
+		return true;
+	}
+	template <typename KernelPolicy>
+	bool PrintValueSizeInfo(...) {return false;}
+
+	/**
+	 * Prints T size information
+	 */
+	template <typename KernelPolicy>
+	bool PrintTSizeInfo(typename KernelPolicy::T *ptr) {
+		printf("%lu byte data, ", (unsigned long) sizeof(typename KernelPolicy::T));
+		return true;
+	}
+	template <typename KernelPolicy>
+	bool PrintTSizeInfo(...) {return false;}
+
+	/**
+	 * Prints workstealing information
+	 */
+	template <typename KernelPolicy>
+	bool PrintWorkstealingInfo(int (*data)[KernelPolicy::WORK_STEALING + 1]) {
+		printf("%sworkstealing, ", (KernelPolicy::WORK_STEALING) ? "" : "non-");
+		return true;
+	}
+	template <typename KernelPolicy>
+	bool PrintWorkstealingInfo(...) {return false;}
+
+	/**
+	 * Prints work distribution information
+	 */
+	template <typename KernelPolicy, typename SizeT>
+	void PrintWorkInfo(util::CtaWorkDistribution<SizeT> &work)
+	{
+		printf("Work: \t\t[");
+		if (PrintKeySizeInfo<KernelPolicy>(NULL)) {
+			PrintValueSizeInfo<KernelPolicy>(NULL);
+		} else {
+			PrintTSizeInfo<KernelPolicy>(NULL);
+		}
+		PrintWorkstealingInfo<KernelPolicy>(NULL);
+		printf("%lu byte SizeT, "
+				"%lu elements, "
+				"%lu-element granularity, "
+				"%lu total grains, "
+				"%lu grains per cta, "
+				"%lu extra grains, "
+				"%lu last-grain elements]\n",
+			(unsigned long) sizeof(SizeT),
+			(unsigned long) work.num_elements,
+			KernelPolicy::SCHEDULE_GRANULARITY,
+			(unsigned long) work.total_grains,
+			(unsigned long) work.grains_per_cta,
+			(unsigned long) work.extra_grains,
+			(unsigned long) (work.num_elements - (work.num_elements / KernelPolicy::SCHEDULE_GRANULARITY) * KernelPolicy::SCHEDULE_GRANULARITY));
+		fflush(stdout);
+	}
+
+
+	/**
+	 * Prints pass information
+	 */
+	template <typename UpsweepPolicy, typename SizeT>
+	void PrintPassInfo(
+		util::CtaWorkDistribution<SizeT> &work,
+		int spine_elements = 0)
+	{
+		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
+			cuda_props.device_sm_version,
+			cuda_props.kernel_ptx_version);
+		PrintWorkInfo<UpsweepPolicy, SizeT>(work);
+		printf("Upsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
+			work.grid_size,
+			UpsweepPolicy::THREADS,
+			UpsweepPolicy::TILE_ELEMENTS);
+		fflush(stdout);
+	}
+
+	/**
+	 * Prints pass information
+	 */
+	template <typename UpsweepPolicy, typename SpinePolicy, typename SizeT>
+	void PrintPassInfo(
+		util::CtaWorkDistribution<SizeT> &work,
+		int spine_elements = 0)
+	{
+		PrintPassInfo<UpsweepPolicy>(work);
+		printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
+			SpinePolicy::THREADS,
+			spine_elements,
+			SpinePolicy::TILE_ELEMENTS);
+		fflush(stdout);
+	}
+
+	/**
+	 * Prints pass information
+	 */
+	template <typename UpsweepPolicy, typename SpinePolicy, typename DownsweepPolicy, typename SizeT>
+	void PrintPassInfo(
+		util::CtaWorkDistribution<SizeT> &work,
+		int spine_elements = 0)
+	{
+		PrintPassInfo<UpsweepPolicy, SpinePolicy>(work, spine_elements);
+		printf("Downsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
+			work.grid_size,
+			DownsweepPolicy::THREADS,
+			DownsweepPolicy::TILE_ELEMENTS);
+		fflush(stdout);
+	}
+
+
 
 
 	//---------------------------------------------------------------------

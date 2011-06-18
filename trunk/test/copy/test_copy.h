@@ -50,7 +50,8 @@ double TimedCopy(
 	size_t num_elements,
 	int max_ctas,
 	bool verbose,
-	int iterations)
+	int iterations,
+	bool same_device = true)
 {
 	using namespace b40c;
 
@@ -84,9 +85,10 @@ double TimedCopy(
 	// Display timing information
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+	int bytes_per_element = (same_device) ? sizeof(T) * 2 : sizeof(T);
 	printf("\nB40C copy: %d iterations, %lu bytes, ", iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 B/sec, ",
-		avg_runtime, throughput * sizeof(T) * 2);
+		avg_runtime, throughput * bytes_per_element);
 
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));

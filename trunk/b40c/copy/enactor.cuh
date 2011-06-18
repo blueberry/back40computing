@@ -285,24 +285,7 @@ cudaError_t Enactor::Copy(
 	work.template Init<Policy::LOG_SCHEDULE_GRANULARITY>(num_elements, grid_size);
 
 	if (DEBUG) {
-		printf("\n\n");
-		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-			cuda_props.device_sm_version,
-			cuda_props.kernel_ptx_version);
-		printf("Copy: \t\t[grid_size: %d, threads %d, element bytes: %lu, SizeT %lu bytes, workstealing: %s, tile_elements: %d]\n",
-			work.grid_size,
-			Policy::THREADS,
-			(unsigned long) sizeof(T),
-			(unsigned long) sizeof(SizeT),
-			Policy::WORK_STEALING ? "true" : "false",
-			Policy::TILE_ELEMENTS);
-		printf("Work: \t\t[num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu extra_grains: %lu]\n",
-			(unsigned long) work.num_elements,
-			Policy::SCHEDULE_GRANULARITY,
-			(unsigned long) work.total_grains,
-			(unsigned long) work.grains_per_cta,
-			(unsigned long) work.extra_grains);
-		fflush(stdout);
+		PrintPassInfo<Policy>(work);
 	}
 
 	cudaError_t retval = cudaSuccess;

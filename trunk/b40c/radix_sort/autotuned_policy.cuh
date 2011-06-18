@@ -43,7 +43,7 @@ namespace radix_sort {
 
 
 /******************************************************************************
- * Genre classifiers to specialize policy types on
+ * Genre enumerations to classify problems by
  ******************************************************************************/
 
 /**
@@ -58,9 +58,9 @@ enum ProbSizeGenre
 
 
 /**
- * Enumeration of architecture-families that we have tuned for below
+ * Enumeration of architecture-family genres that we have tuned for below
  */
-enum ArchFamily
+enum ArchGenre
 {
 	SM20 	= 200,
 	SM13	= 130,
@@ -69,142 +69,174 @@ enum ArchFamily
 
 
 /**
- * Classifies a given CUDA_ARCH into an architecture-family
+ * Enumeration of type size genres
+ */
+enum TypeSizeGenre
+{
+	TINY_TYPE,
+	SMALL_TYPE,
+	MEDIUM_TYPE,
+	LARGE_TYPE
+};
+
+
+/******************************************************************************
+ * Classifiers for identifying classification genres
+ ******************************************************************************/
+
+/**
+ * Classifies a given CUDA_ARCH into an architecture-family genre
  */
 template <int CUDA_ARCH>
-struct ArchGenre
+struct ArchClassifier
 {
-	static const ArchFamily FAMILY =	(CUDA_ARCH < SM13) ? 	SM10 :
-										(CUDA_ARCH < SM20) ? 	SM13 :
-																SM20;
+	static const ArchGenre GENRE 			=	(CUDA_ARCH < SM13) ? SM10 :
+												(CUDA_ARCH < SM20) ? SM13 : SM20;
 };
 
 
 /**
- * Classifies data type size into small and large
+ * Classifies the problem type(s) into a type-size genre
  */
 template <typename ProblemType>
-struct TypeSizeGenre
+struct TypeSizeClassifier
 {
-	enum {
-		SMALL_TYPE = (B40C_MAX(sizeof(typename ProblemType::KeyType), sizeof(typename ProblemType::ValueType)) <= 4),
-	};
+	static const int KEYS_ROUNDED_SIZE		= 1 << util::Log2<sizeof(typename ProblemType::KeyType)>::VALUE;	// Round up to the nearest arch subword
+	static const int VALUES_ROUNDED_SIZE	= 1 << util::Log2<sizeof(typename ProblemType::ValueType)>::VALUE;
+	static const int MAX_ROUNDED_SIZE		= B40C_MAX(KEYS_ROUNDED_SIZE, VALUES_ROUNDED_SIZE);
+
+	static const TypeSizeGenre GENRE 		= (MAX_ROUNDED_SIZE < 8) ? MEDIUM_TYPE : LARGE_TYPE;
 };
 
 
 /**
- * Classifies pointer type size into small and large
+ * Classifies the pointer type into a type-size genre
  */
 template <typename ProblemType>
-struct PointerSizeGenre
+struct PointerSizeClassifier
 {
-	enum {
-		SMALL_TYPE = (B40C_MAX(sizeof(typename ProblemType::SizeT), sizeof(size_t)) <= 4),
-	};
+	static const TypeSizeGenre GENRE 		= (sizeof(typename ProblemType::SizeT) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
 };
 
+
+/******************************************************************************
+ * Autotuned genre and specializations
+ ******************************************************************************/
 
 /**
  * Autotuning policy genre, to be specialized
  */
 template <
+	// Problem and machine types
 	typename ProblemType,
 	int CUDA_ARCH,
-	ProbSizeGenre PROB_SIZE_GENRE>
-struct AutotunedGenre :
-	AutotunedGenre<ProblemType, ArchGenre<CUDA_ARCH>::FAMILY, PROB_SIZE_GENRE>
-{};
+
+	// Genres to specialize upon
+	ProbSizeGenre PROB_SIZE_GENRE,
+	ArchGenre ARCH_GENRE = ArchClassifier<CUDA_ARCH>::GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE = TypeSizeClassifier<ProblemType>::GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE = PointerSizeClassifier<ProblemType>::GENRE>
+struct AutotunedGenre;
+
 
 
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-
-
 // Large problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM20,
-	4,						// RADIX_BITS
-	10,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	true,					// EARLY_EXIT
-	false,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM20,
+		4,						// RADIX_BITS
+		10,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		true,					// EARLY_EXIT
+		false,					// UNIFORM_SMEM_ALLOCATION
+		true, 					// UNIFORM_GRID_SIZE
+		true,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	8,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	2,						// UPSWEEP_LOG_LOADS_PER_TILE
+		// Upsweep Kernel
+		8,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+		2,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	7,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		7,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	8,						// DOWNSWEEP_CTA_OCCUPANCY
-	6,						// DOWNSWEEP_LOG_THREADS
-	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE && PointerSizeGenre<ProblemType>::SMALL_TYPE) ?		// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		1 :
-		0,
-	6>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		8,						// DOWNSWEEP_CTA_OCCUPANCY
+		6,						// DOWNSWEEP_LOG_THREADS
+		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		((TYPE_SIZE_GENRE < LARGE_TYPE) && (POINTER_SIZE_GENRE < LARGE_TYPE)) ?		// DOWNSWEEP_LOG_CYCLES_PER_TILE
+			1 :
+			0,
+		6>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
 
 
 // Small problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM20,
-	4,						// RADIX_BITS
-	9,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	false,					// EARLY_EXIT
-	false,					// UNIFORM_SMEM_ALLOCATION
-	false, 					// UNIFORM_GRID_SIZE
-	false,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM20,
+		4,						// RADIX_BITS
+		9,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		false,					// EARLY_EXIT
+		false,					// UNIFORM_SMEM_ALLOCATION
+		false, 					// UNIFORM_GRID_SIZE
+		false,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	8,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	0,						// UPSWEEP_LOG_LOADS_PER_TILE
+		// Upsweep Kernel
+		8,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	8,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		8,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	7,						// DOWNSWEEP_CTA_OCCUPANCY
-	7,						// DOWNSWEEP_LOG_THREADS
-	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	0, 						// DOWNSWEEP_LOG_CYCLES_PER_TILE
-	7>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		7,						// DOWNSWEEP_CTA_OCCUPANCY
+		7,						// DOWNSWEEP_LOG_THREADS
+		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		0, 						// DOWNSWEEP_LOG_CYCLES_PER_TILE
+		7>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -215,100 +247,110 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE> : Policy<
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM13, LARGE_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM13,
-	4,						// RADIX_BITS
-	9,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	true,					// EARLY_EXIT
-	true,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM13,
+		4,						// RADIX_BITS
+		9,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		true,					// EARLY_EXIT
+		true,					// UNIFORM_SMEM_ALLOCATION
+		true, 					// UNIFORM_GRID_SIZE
+		true,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	5,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
-		1 :
-		0,
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// UPSWEEP_LOG_LOADS_PER_TILE
-		0 :
-		1,
+		// Upsweep Kernel
+		5,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
+			1 :
+			0,
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// UPSWEEP_LOG_LOADS_PER_TILE
+			0 :
+			1,
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	7,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		7,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	5,						// DOWNSWEEP_CTA_OCCUPANCY
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_THREADS
-		6 :
-		7,
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-		2 :
-		1,
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-		1 :
-		0,
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		0 :
-		0,
-	5>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		5,						// DOWNSWEEP_CTA_OCCUPANCY
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_THREADS
+			6 :
+			7,
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+			2 :
+			1,
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+			1 :
+			0,
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+			0 :
+			0,
+		5>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
 
 
 // Small problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM13,
-	4,						// RADIX_BITS
-	9,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	true,					// EARLY_EXIT
-	true,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM13,
+		4,						// RADIX_BITS
+		9,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		true,					// EARLY_EXIT
+		true,					// UNIFORM_SMEM_ALLOCATION
+		true, 					// UNIFORM_GRID_SIZE
+		true,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	5,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	0,						// UPSWEEP_LOG_LOADS_PER_TILE
+		// Upsweep Kernel
+		5,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	7,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		7,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	5,						// DOWNSWEEP_CTA_OCCUPANCY
-	6,						// DOWNSWEEP_LOG_THREADS
-	2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		0 :
-		0,
-	5>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		5,						// DOWNSWEEP_CTA_OCCUPANCY
+		6,						// DOWNSWEEP_LOG_THREADS
+		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+			0 :
+			0,
+		5>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -321,90 +363,100 @@ struct AutotunedGenre<ProblemType, SM13, SMALL_SIZE> : Policy<
 //-----------------------------------------------------------------------------
 
 // Large problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM10, LARGE_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM10,
-	4,						// RADIX_BITS
-	9,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	true,					// EARLY_EXIT
-	false,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM10,
+		4,						// RADIX_BITS
+		9,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		true,					// EARLY_EXIT
+		false,					// UNIFORM_SMEM_ALLOCATION
+		true, 					// UNIFORM_GRID_SIZE
+		true,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	3,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	0,						// UPSWEEP_LOG_LOADS_PER_TILE
+		// Upsweep Kernel
+		3,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	7,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		7,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	2,						// DOWNSWEEP_CTA_OCCUPANCY
-	7,						// DOWNSWEEP_LOG_THREADS
-	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?
-		1 :
-		1,
-	7>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		2,						// DOWNSWEEP_CTA_OCCUPANCY
+		7,						// DOWNSWEEP_LOG_THREADS
+		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?
+			1 :
+			1,
+		7>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
 
 
 // Small problems
-template <typename ProblemType>
-struct AutotunedGenre<ProblemType, SM10, SMALL_SIZE> : Policy<
-	// Problem Type
-	ProblemType,
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<
+		// Problem Type
+		ProblemType,
 
-	// Common
-	SM10,
-	4,						// RADIX_BITS
-	9,						// LOG_SCHEDULE_GRANULARITY
-	util::io::ld::NONE,		// CACHE_MODIFIER
-	util::io::st::NONE,		// CACHE_MODIFIER
-	true,					// EARLY_EXIT
-	false,					// UNIFORM_SMEM_ALLOCATION
-	true, 					// UNIFORM_GRID_SIZE
-	true,					// OVERSUBSCRIBED_GRID_SIZE
+		// Common
+		SM10,
+		4,						// RADIX_BITS
+		9,						// LOG_SCHEDULE_GRANULARITY
+		util::io::ld::NONE,		// CACHE_MODIFIER
+		util::io::st::NONE,		// CACHE_MODIFIER
+		true,					// EARLY_EXIT
+		false,					// UNIFORM_SMEM_ALLOCATION
+		true, 					// UNIFORM_GRID_SIZE
+		true,					// OVERSUBSCRIBED_GRID_SIZE
 
-	// Upsweep Kernel
-	3,						// UPSWEEP_CTA_OCCUPANCY
-	7,						// UPSWEEP_LOG_THREADS
-	0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
-	0,						// UPSWEEP_LOG_LOADS_PER_TILE
+		// Upsweep Kernel
+		3,						// UPSWEEP_CTA_OCCUPANCY
+		7,						// UPSWEEP_LOG_THREADS
+		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
+		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-	// Spine-scan Kernel
-	1,						// SPINE_CTA_OCCUPANCY
-	7,						// SPINE_LOG_THREADS
-	2,						// SPINE_LOG_LOAD_VEC_SIZE
-	0,						// SPINE_LOG_LOADS_PER_TILE
-	5,						// SPINE_LOG_RAKING_THREADS
+		// Spine-scan Kernel
+		1,						// SPINE_CTA_OCCUPANCY
+		7,						// SPINE_LOG_THREADS
+		2,						// SPINE_LOG_LOAD_VEC_SIZE
+		0,						// SPINE_LOG_LOADS_PER_TILE
+		5,						// SPINE_LOG_RAKING_THREADS
 
-	// Downsweep Kernel
-	true,					// DOWNSWEEP_TWO_PHASE_SCATTER
-	2,						// DOWNSWEEP_CTA_OCCUPANCY
-	7,						// DOWNSWEEP_LOG_THREADS
-	1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-	1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-	(TypeSizeGenre<ProblemType>::SMALL_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
-		1 :
-		1,
-	7>						// DOWNSWEEP_LOG_RAKING_THREADS
+		// Downsweep Kernel
+		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		2,						// DOWNSWEEP_CTA_OCCUPANCY
+		7,						// DOWNSWEEP_LOG_THREADS
+		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
+		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_CYCLES_PER_TILE
+			1 :
+			1,
+		7>						// DOWNSWEEP_LOG_RAKING_THREADS
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -511,7 +563,7 @@ __global__ void TunedDownsweepKernel(
 
 
 /******************************************************************************
- * Autotuned scan policy
+ * Autotuned policy
  *******************************************************************************/
 
 
