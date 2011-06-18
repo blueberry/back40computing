@@ -397,11 +397,8 @@ cudaError_t Enactor::Trim(
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
 		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
 
-	if (num_elements <= Spine::TILE_ELEMENTS * 3) {
-		// No need to upsweep reduce or downsweep if we can do it
-		// with a single spine kernel in three or less sequential
-		// tiles (i.e., instead of three back-to-back tiles where we would
-		// do one tile per up/spine/down kernel)
+	// Use single-CTA kernel instead of multi-pass if problem is small enough
+	if (num_elements <= Single::TILE_ELEMENTS * 3) {
 		sweep_grid_size = 1;
 	}
 

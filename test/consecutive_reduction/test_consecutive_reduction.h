@@ -78,7 +78,7 @@ struct Max
  * number of iterations, displaying runtime information.
  */
 template <
-//	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
+	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
 	typename PingPongStorage,
 	typename PingPongStorage::ValueType BinaryOp(
 		const typename PingPongStorage::ValueType&,
@@ -131,41 +131,17 @@ double TimedConsecutiveReduction(
 			cudaMemcpyHostToDevice),
 		"TimedConsecutiveReduction cudaMemcpy d_values failed: ", __FILE__, __LINE__)) exit(1);
 
-	// Reduction policy
-	typedef consecutive_reduction::ProblemType<
-		KeyType,
-		ValueType,
-		SizeT,
-		BinaryOp,
-		Identity> ProblemType;
-
-	typedef consecutive_reduction::Policy<
-		ProblemType,
-		200,
-		util::io::ld::NONE,
-		util::io::st::NONE,
-		false,					// TWO_PHASE_SCATTER
-		false,					// UNIFORM_SMEM_ALLOCATION
-		false,					// UNIFORM_GRID_SIZE
-		true,					// OVERSUBSCRIBED_GRID_SIZE
-		10,
-		8, 7, 1, 2, 5,
-		5, 2, 0, 5,
-		8, 7, 2, 0, 5> Policy;
-
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.DEBUG = true;
-	enactor.template Reduce<Policy>(
-			d_problem_storage,
-			num_elements,
-			(SizeT *) NULL,
-			d_num_compacted,
-			max_ctas);
+	enactor.template Reduce<
+		PROB_SIZE_GENRE,
+		PingPongStorage,
+		BinaryOp,
+		Identity>(d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
-
 	cudaEvent_t start_event, stop_event;
 	cudaEventCreate(&start_event);
 	cudaEventCreate(&stop_event);
@@ -178,8 +154,11 @@ double TimedConsecutiveReduction(
 		cudaEventRecord(start_event, 0);
 
 		// Call the consecutive reduction API routine
-		enactor.template Reduce<Policy>(
-			d_problem_storage, num_elements, NULL, d_num_compacted, max_ctas);
+		enactor.template Reduce<
+			PROB_SIZE_GENRE,
+			PingPongStorage,
+			BinaryOp,
+			Identity>(d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
 
 		// End timing record
 		cudaEventRecord(stop_event, 0);

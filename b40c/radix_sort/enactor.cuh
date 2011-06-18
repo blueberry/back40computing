@@ -469,7 +469,6 @@ struct PassIteration
 template <typename Policy, typename PassPolicy, typename Detail>
 cudaError_t Enactor::EnactPass(Detail &detail)
 {
-
 	// Policy
 	typedef typename Policy::Upsweep 						Upsweep;
 	typedef typename Policy::Spine 							Spine;
@@ -488,40 +487,16 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
 	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
 
-
 	do {
 
 		int dynamic_smem[3] = 	{0, 0, 0};
 		int grid_size[3] = 		{detail.work.grid_size, 1, detail.work.grid_size};
 
-		// Tuning option for dynamic smem allocation
-		if (Policy::UNIFORM_SMEM_ALLOCATION) {
+		// Tuning option: make sure all kernels have the same overall smem allocation
+		if (Policy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
 
-			// We need to compute dynamic smem allocations to ensure all three
-			// kernels end up allocating the same amount of smem per CTA
-
-			// Get kernel attributes
-			cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-			if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel),
-				"Enactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
-				"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel),
-				"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-
-			int max_static_smem = B40C_MAX(
-				upsweep_kernel_attrs.sharedSizeBytes,
-				B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
-
-			dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
-			dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
-			dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
-		}
-
-		// Tuning option for spine-sort kernel grid size
-		if (Policy::UNIFORM_GRID_SIZE) {
-			grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
-		}
+		// Tuning option: make sure that all kernels launch the same number of CTAs)
+		if (Policy::UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
 
 		// Upsweep reduction into spine
 		UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
@@ -672,35 +647,12 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 
 	if (DEBUG) {
 		printf("\n\n");
-		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-			cuda_props.device_sm_version,
-			cuda_props.kernel_ptx_version);
+		PrintPassInfo<Upsweep, Spine, Downsweep>(detail.work, detail.spine_elements);
 		printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d]\n",
 			Downsweep::LOG_BINS,
 			Detail::START_BIT,
 			Detail::NUM_BITS,
 			NUM_PASSES);
-		printf("Upsweep: \t[grid_size: %d, threads %d, tile_elements: %d]\n",
-			detail.work.grid_size,
-			Upsweep::THREADS,
-			Upsweep::TILE_ELEMENTS);
-		printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
-			Spine::THREADS,
-			detail.spine_elements,
-			Spine::TILE_ELEMENTS);
-		printf("Downsweep: \t[grid_size: %d, threads %d, tile_elements: %d]\n",
-			detail.work.grid_size,
-			Downsweep::THREADS,
-			Downsweep::TILE_ELEMENTS);
-		printf("Work: \t\t[key bytes: %lu, value bytes: %lu, SizeT %lu bytes, num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu]\n",
-			(unsigned long) sizeof(KeyType),
-			(unsigned long) sizeof(ValueType),
-			(unsigned long) sizeof(SizeT),
-			(unsigned long) detail.num_elements,
-			Downsweep::SCHEDULE_GRANULARITY,
-			(unsigned long) detail.work.total_grains,
-			(unsigned long) detail.work.grains_per_cta,
-			(unsigned long) detail.work.extra_grains);
 		fflush(stdout);
 	}
 
@@ -762,13 +714,15 @@ cudaError_t Enactor::Sort(
 	SizeT num_elements,
 	int max_grid_size)
 {
-	typedef Detail<START_BIT, NUM_BITS, PingPongStorage, SizeT> Detail;
-	typedef PolicyResolver<PROB_SIZE_GENRE> Resolver;
+	Detail<
+		START_BIT,
+		NUM_BITS,
+		PingPongStorage,
+		SizeT> detail(this, problem_storage, num_elements, max_grid_size);
 
-	Detail detail(this, problem_storage, num_elements, max_grid_size);
-
-	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(
-		detail, PtxVersion());
+	return util::ArchDispatch<
+		__B40C_CUDA_ARCH__,
+		PolicyResolver<PROB_SIZE_GENRE> >::Enact(detail, PtxVersion());
 }
 
 

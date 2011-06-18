@@ -32,6 +32,7 @@
 #include <b40c/consecutive_reduction/upsweep/kernel.cuh>
 #include <b40c/consecutive_reduction/spine/kernel.cuh>
 #include <b40c/consecutive_reduction/downsweep/kernel.cuh>
+#include <b40c/consecutive_reduction/single/kernel.cuh>
 #include <b40c/consecutive_reduction/policy.cuh>
 
 
@@ -40,7 +41,7 @@ namespace consecutive_reduction {
 
 
 /******************************************************************************
- * Genre classifiers to specialize policy types on
+ * Genre enumerations to classify problems by
  ******************************************************************************/
 
 /**
@@ -55,9 +56,9 @@ enum ProbSizeGenre
 
 
 /**
- * Enumeration of architecture-families that we have tuned for below
+ * Enumeration of architecture-family genres that we have tuned for below
  */
-enum ArchFamily
+enum ArchGenre
 {
 	SM20 	= 200,
 	SM13	= 130,
@@ -66,102 +67,96 @@ enum ArchFamily
 
 
 /**
- * Classifies a given CUDA_ARCH into an architecture-family
+ * Enumeration of type size genres
  */
-template <int CUDA_ARCH>
-struct ArchGenre
+enum TypeSizeGenre
 {
-	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
-										(CUDA_ARCH < SM20) ? 	SM13 :
-																SM20;
+	TINY_TYPE,
+	SMALL_TYPE,
+	MEDIUM_TYPE,
+	LARGE_TYPE
 };
 
+
+/******************************************************************************
+ * Classifiers for identifying classification genres
+ ******************************************************************************/
+
+/**
+ * Classifies a given CUDA_ARCH into an architecture-family genre
+ */
+template <int CUDA_ARCH>
+struct ArchClassifier
+{
+	static const ArchGenre GENRE 			=	// (CUDA_ARCH < SM13) ? SM10 :			// Haven't tuned for SM1.0 yet
+												(CUDA_ARCH < SM20) ? SM13 : SM20;
+};
+
+
+/**
+ * Classifies the problem type(s) into a type-size genre
+ */
+template <typename ProblemType>
+struct TypeSizeClassifier
+{
+	static const int KEYS_ROUNDED_SIZE		= 1 << util::Log2<sizeof(typename ProblemType::KeyType)>::VALUE;	// Round up to the nearest arch subword
+	static const int VALUES_ROUNDED_SIZE	= 1 << util::Log2<sizeof(typename ProblemType::ValueType)>::VALUE;
+	static const int MAX_ROUNDED_SIZE		= B40C_MAX(KEYS_ROUNDED_SIZE, VALUES_ROUNDED_SIZE);
+
+	static const TypeSizeGenre GENRE 		= (MAX_ROUNDED_SIZE < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/**
+ * Classifies the pointer type into a type-size genre
+ */
+template <typename ProblemType>
+struct PointerSizeClassifier
+{
+	static const TypeSizeGenre GENRE 		= (sizeof(typename ProblemType::SizeT) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/******************************************************************************
+ * Autotuned genre and specializations
+ ******************************************************************************/
 
 /**
  * Autotuning policy genre, to be specialized
  */
 template <
+	// Problem and machine types
 	typename ProblemType,
 	int CUDA_ARCH,
+
+	// Genres to specialize upon
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename T = typename ProblemType::T,
-	int T_SIZE = sizeof(T)>
-struct AutotunedGenre :
-	AutotunedGenre<
-		ProblemType,
-		ArchGenre<CUDA_ARCH>::FAMILY,
-		PROB_SIZE_GENRE,
-		T,
-		1 << util::Log2<sizeof(T)>::VALUE>	// Round up to the nearest arch subword
-{};
+	ArchGenre ARCH_GENRE = ArchClassifier<CUDA_ARCH>::GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE = TypeSizeClassifier<ProblemType>::GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE = PointerSizeClassifier<ProblemType>::GENRE>
+struct AutotunedGenre;
 
 
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
 //-----------------------------------------------------------------------------
 
-
-// Large problems, 1B data
-template <typename ProblemType, typename T>
-struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, 1>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE,
-	  false, true, false, 10,
-	  8, 7, 2, 1, 5,
-	  8, 0, 1, 5,
-	  8, 7, 2, 1, 5>
+// Temporary
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	ProbSizeGenre _PROB_SIZE_GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre <ProblemType, CUDA_ARCH, _PROB_SIZE_GENRE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, true, 10,
+		8, 7, 1, 2, 5,
+		5, 2, 0, 5,
+		8, 7, 2, 0, 5>
 {
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
+	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
-// Large problems, 2B data
-template <typename ProblemType, typename T>
-struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, 2>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE,
-	  false, false, false, 10,
-	  8, 7, 2, 1, 5,
-	  8, 0, 1, 5,
-	  8, 6, 2, 2, 5>
-
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
-};
-
-// Large problems, 4B data
-template <typename ProblemType, typename T>
-struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, 4>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE,
-	  false, false, false, 10,
-	  8, 6, 2, 2, 5,
-	  8, 0, 1, 5,
-	  8, 5, 2, 2, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
-};
-
-// All other large problems (tuned at 8B)
-template <typename ProblemType, typename T, int T_SIZE>
-struct AutotunedGenre<ProblemType, SM20, LARGE_SIZE, T, T_SIZE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE,
-	  false, true, false, 9,
-	  8, 7, 1, 1, 5,
-	  8, 0, 1, 5,
-	  8, 6, 1, 1, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
-};
-
-
-// All small problems
-template <typename ProblemType, typename T, int T_SIZE>
-struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE, T, T_SIZE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE,
-	  false, false, false, 8,
-	  8, 7, 1, 0, 5,
-	  6, 2, 0, 5,
-	  8, 7, 1, 0, 5>
-{
-	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
-};
 
 
 //-----------------------------------------------------------------------------
@@ -169,21 +164,28 @@ struct AutotunedGenre<ProblemType, SM20, SMALL_SIZE, T, T_SIZE>
 //-----------------------------------------------------------------------------
 
 
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct AutotunedGenre<ProblemType, SM13, _PROB_SIZE_GENRE, T, T_SIZE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false,
-	  8,
-	  8, 7, 1, 0, 5,
-	  6, 2, 0, 5,
-	  8, 7, 1, 0, 5>
+// Temporary
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	ProbSizeGenre _PROB_SIZE_GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre <ProblemType, CUDA_ARCH, _PROB_SIZE_GENRE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false, 10,
+		8, 7, 1, 2, 5,
+		5, 2, 0, 5,
+		8, 7, 2, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = _PROB_SIZE_GENRE;
 };
 
 
+
 //-----------------------------------------------------------------------------
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
+
 
 
 
@@ -207,11 +209,11 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
-	typename ProblemType::T 								*d_partials_in,
-	typename ProblemType::Flag								*d_flags_in,
-	typename ProblemType::T 								*d_spine_partials,
-	typename ProblemType::Flag								*d_spine_flags,
-	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition)
+	typename ProblemType::KeyType				*d_in_keys,
+	typename ProblemType::ValueType				*d_in_values,
+	typename ProblemType::SpinePartialType		*d_spine_partials,
+	typename ProblemType::SpineFlagType			*d_spine_flags,
+	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelPolicy;
@@ -220,8 +222,8 @@ __global__ void TunedUpsweepKernel(
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	upsweep::UpsweepPass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
+		d_in_keys,
+		d_in_values,
 		d_spine_partials,
 		d_spine_flags,
 		work_decomposition,
@@ -236,10 +238,11 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
-	typename ProblemType::T 		*d_partials_in,
-	typename ProblemType::Flag		*d_flags_in,
-	typename ProblemType::T 		*d_partials_out,
-	typename ProblemType::SizeT 	spine_elements)
+	typename ProblemType::SpinePartialType 	*d_in_partials,
+	typename ProblemType::SpinePartialType 	*d_out_partials,
+	typename ProblemType::SpineFlagType		*d_in_flags,
+	typename ProblemType::SpineFlagType		*d_out_flags,
+	typename ProblemType::SpineSizeT 		spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
@@ -248,9 +251,10 @@ __global__ void TunedSpineKernel(
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	spine::SpinePass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
-		d_partials_out,
+		d_in_partials,
+		d_out_partials,
+		d_in_flags,
+		d_out_flags,
 		spine_elements,
 		smem_storage);
 }
@@ -264,11 +268,14 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
-	typename ProblemType::T 								*d_partials_in,
-	typename ProblemType::Flag								*d_flags_in,
-	typename ProblemType::T 								*d_partials_out,
-	typename ProblemType::T 								*d_spine_partials,
-	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition)
+	typename ProblemType::KeyType 								*d_in_keys,
+	typename ProblemType::KeyType								*d_out_keys,
+	typename ProblemType::ValueType 							*d_in_values,
+	typename ProblemType::ValueType 							*d_out_values,
+	typename ProblemType::SpinePartialType 						*d_spine_partials,
+	typename ProblemType::SpineFlagType 						*d_spine_flags,
+	typename ProblemType::SizeT									*d_num_compacted,
+	util::CtaWorkDistribution<typename ProblemType::SizeT> 		work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep KernelPolicy;
@@ -277,10 +284,13 @@ __global__ void TunedDownsweepKernel(
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	downsweep::DownsweepPass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
-		d_partials_out,
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
 		d_spine_partials,
+		d_spine_flags,
+		d_num_compacted,
 		work_decomposition,
 		smem_storage);
 }
@@ -293,10 +303,12 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::CTA_OCCUPANCY))
 __global__ void TunedSingleKernel(
-	typename ProblemType::T 		*d_partials_in,
-	typename ProblemType::Flag		*d_flags_in,
-	typename ProblemType::T 		*d_partials_out,
-	typename ProblemType::SizeT 	num_elements)
+	typename ProblemType::KeyType			*d_in_keys,
+	typename ProblemType::KeyType			*d_out_keys,
+	typename ProblemType::ValueType			*d_in_values,
+	typename ProblemType::ValueType			*d_out_values,
+	typename ProblemType::SizeT				*d_num_compacted,
+	typename ProblemType::SizeT 			num_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelPolicy;
@@ -304,17 +316,19 @@ __global__ void TunedSingleKernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	spine::SpinePass<KernelPolicy>(
-		d_partials_in,
-		d_flags_in,
-		d_partials_out,
+	single::SinglePass<KernelPolicy>(
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
+		d_num_compacted,
 		num_elements,
 		smem_storage);
 }
 
 
 /******************************************************************************
- * Autotuned consecutive reduction policy
+ * Autotuned policy
  *******************************************************************************/
 
 /**
@@ -334,14 +348,18 @@ struct AutotunedPolicy :
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ProblemType::T 		T;
-	typedef typename ProblemType::Flag 		Flag;
-	typedef typename ProblemType::SizeT 	SizeT;
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType			ValueType;
+	typedef typename ProblemType::SizeT 			SizeT;
 
-	typedef void (*UpsweepKernelPtr)(T*, Flag*, T*, Flag*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(T*, Flag*, T*, SizeT);
-	typedef void (*DownsweepKernelPtr)(T*, Flag*, T*, T*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(T*, Flag*, T*, SizeT);
+	typedef typename ProblemType::SpinePartialType 	SpinePartialType;
+	typedef typename ProblemType::SpineFlagType 	SpineFlagType;
+	typedef typename ProblemType::SpineSizeT 		SpineSizeT;
+
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, SpinePartialType*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SpinePartialType*, SpinePartialType*, SpineFlagType*, SpineFlagType*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SpinePartialType*,  SizeT*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval

@@ -46,7 +46,6 @@ int 	g_dest_gpu						= -1;
 bool 	g_from_host						= false;
 
 
-
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
@@ -96,12 +95,21 @@ void TestCopy(size_t num_elements)
 	}
 
 	// Allocate device storage (and leave g_dest_gpu as current gpu)
-	T *d_src, *d_dest;
+	T *h_src = NULL;
+	T *d_src = NULL;
+	T *d_dest = NULL;
+
+	bool same_device = (!g_from_host) && (g_src_gpu == g_dest_gpu);
 
 	if (g_from_host) {
 		int flags = cudaHostAllocMapped;
-		if (util::B40CPerror(cudaHostAlloc((void**) &d_src, sizeof(T) * num_elements, flags),
+		if (util::B40CPerror(cudaHostAlloc((void**) &h_src, sizeof(T) * num_elements, flags),
 			"TimedCopy cudaHostAlloc d_src failed", __FILE__, __LINE__)) exit(1);
+
+		// Map into GPU space
+		if (util::B40CPerror(cudaHostGetDevicePointer((void **)&d_src, (void *) h_src, 0),
+			"TimedCopy cudaHostGetDevicePointer h_src failed", __FILE__, __LINE__)) exit(1);
+
 	} else {
 		if (util::B40CPerror(cudaSetDevice(g_src_gpu),
 			"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
@@ -125,13 +133,13 @@ void TestCopy(size_t num_elements)
 	// Execute test(s), optionally sweeping problem size downward
 	size_t orig_num_elements = num_elements;
 	do {
-		printf("\nLARGE config:\t");
+		printf("\nLARGE config:\n");
 		double large = TimedCopy<T, copy::LARGE_SIZE>(
-			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations, same_device);
 
-		printf("\nSMALL config:\t");
+		printf("\nSMALL config:\n");
 		double small = TimedCopy<T, copy::SMALL_SIZE>(
-			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations, same_device);
 
 		if (small > large) {
 			printf("%lu-byte bytes: Small faster at %lu bytes\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
@@ -144,13 +152,11 @@ void TestCopy(size_t num_elements)
     // Free allocated memory
 	if (h_data) free(h_data);
     if (h_reference) free(h_reference);
-    if (d_src) {
-    	if (g_from_host) {
-			cudaFreeHost(d_src);
-		} else {
-			cudaFree(d_src);
-		}
-    }
+    if (h_src) {
+		cudaFreeHost(h_src);
+	} else {
+		cudaFree(d_src);
+	}
     if (d_dest) cudaFree(d_dest);
 }
 
@@ -190,6 +196,8 @@ int main(int argc, char** argv)
 
 	if ((g_src_gpu > -1) && (g_dest_gpu > -1)) {
 
+		printf("Inter-GPU copy.\n");
+
 		// Set device
 		if (util::B40CPerror(cudaSetDevice(g_src_gpu),
 			"MultiGpuBfsEnactor cudaSetDevice failed", __FILE__, __LINE__)) exit(1);
@@ -206,8 +214,11 @@ int main(int argc, char** argv)
 
 	} else {
 
+		if (g_from_host) {
+			printf("From pinned host memory.\n");
+		}
+
 		// Put current device as both src and dest
-		printf("Intra-gpu copy\n.");
 		if (util::B40CPerror(cudaGetDevice(&g_src_gpu),
 			"MultiGpuBfsEnactor cudaGetDevice failed", __FILE__, __LINE__)) exit(1);
 		if (util::B40CPerror(cudaGetDevice(&g_dest_gpu),

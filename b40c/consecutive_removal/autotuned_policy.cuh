@@ -42,7 +42,7 @@ namespace consecutive_removal {
 
 
 /******************************************************************************
- * Genre classifiers to specialize policy types on
+ * Genre enumerations to classify problems by
  ******************************************************************************/
 
 /**
@@ -59,7 +59,7 @@ enum ProbSizeGenre
 /**
  * Enumeration of architecture-families that we have tuned for below
  */
-enum ArchFamily
+enum ArchGenre
 {
 	SM20 	= 200,
 	SM13	= 130,
@@ -68,34 +68,74 @@ enum ArchFamily
 
 
 /**
- * Classifies a given CUDA_ARCH into an architecture-family
+ * Enumeration of type size genres
  */
-template <int CUDA_ARCH>
-struct ArchGenre
+enum TypeSizeGenre
 {
-	static const ArchFamily FAMILY =	//(CUDA_ARCH < SM13) ? 	SM10 :			// Have not yet tuned configs for SM10-11
-										(CUDA_ARCH < SM20) ? 	SM13 :
-																SM20;
+	TINY_TYPE,
+	SMALL_TYPE,
+	MEDIUM_TYPE,
+	LARGE_TYPE
 };
 
+
+/******************************************************************************
+ * Classifiers for identifying classification genres
+ ******************************************************************************/
+
+/**
+ * Classifies a given CUDA_ARCH into an architecture-family genre
+ */
+template <int CUDA_ARCH>
+struct ArchClassifier
+{
+	static const ArchGenre GENRE 			=	// (CUDA_ARCH < SM13) ? SM10 :			// Haven't tuned for SM1.0 yet
+												(CUDA_ARCH < SM20) ? SM13 : SM20;
+};
+
+
+/**
+ * Classifies the problem type(s) into a type-size genre
+ */
+template <typename ProblemType>
+struct TypeSizeClassifier
+{
+	static const int KEYS_ROUNDED_SIZE		= 1 << util::Log2<sizeof(typename ProblemType::KeyType)>::VALUE;	// Round up to the nearest arch subword
+	static const int VALUES_ROUNDED_SIZE	= 1 << util::Log2<sizeof(typename ProblemType::ValueType)>::VALUE;
+	static const int MAX_ROUNDED_SIZE		= B40C_MAX(KEYS_ROUNDED_SIZE, VALUES_ROUNDED_SIZE);
+
+	static const TypeSizeGenre GENRE 		= (MAX_ROUNDED_SIZE < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/**
+ * Classifies the pointer type into a type-size genre
+ */
+template <typename ProblemType>
+struct PointerSizeClassifier
+{
+	static const TypeSizeGenre GENRE 		= (sizeof(typename ProblemType::SizeT) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/******************************************************************************
+ * Autotuned genre and specializations
+ ******************************************************************************/
 
 /**
  * Autotuning policy genre, to be specialized
  */
 template <
+	// Problem and machine types
 	typename ProblemType,
 	int CUDA_ARCH,
+
+	// Genres to specialize upon
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename T = typename ProblemType::T,
-	int T_SIZE = sizeof(T)>
-struct AutotunedGenre :
-	AutotunedGenre<
-		ProblemType,
-		ArchGenre<CUDA_ARCH>::FAMILY,
-		PROB_SIZE_GENRE,
-		T,
-		1 << util::Log2<sizeof(T)>::VALUE>	// Round up to the nearest arch subword
-{};
+	ArchGenre ARCH_GENRE = ArchClassifier<CUDA_ARCH>::GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE = TypeSizeClassifier<ProblemType>::GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE = PointerSizeClassifier<ProblemType>::GENRE>
+struct AutotunedGenre;
 
 
 //-----------------------------------------------------------------------------
@@ -103,8 +143,13 @@ struct AutotunedGenre :
 //-----------------------------------------------------------------------------
 
 // Temporary
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct AutotunedGenre<ProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	ProbSizeGenre PROB_SIZE_GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre <ProblemType, CUDA_ARCH, PROB_SIZE_GENRE, SM20, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, false, 9,
 	  8, 7, 1, 1,
 	  5, 2, 0, 5,
@@ -121,8 +166,13 @@ struct AutotunedGenre<ProblemType, SM20, _PROB_SIZE_GENRE, T, T_SIZE>
 
 
 // Temporary
-template <typename ProblemType, ProbSizeGenre _PROB_SIZE_GENRE, typename T, int T_SIZE>
-struct AutotunedGenre<ProblemType, SM13, _PROB_SIZE_GENRE, T, T_SIZE>
+template <
+	typename ProblemType,
+	int CUDA_ARCH,
+	ProbSizeGenre PROB_SIZE_GENRE,
+	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre <ProblemType, CUDA_ARCH, PROB_SIZE_GENRE, SM13, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false, 8,
 	  8, 7, 0, 1,
 	  6, 2, 0, 5,
@@ -253,7 +303,7 @@ __global__ void TunedSingleKernel(
 
 
 /******************************************************************************
- * Autotuned consecutive removal policy
+ * Autotuned policy
  *******************************************************************************/
 
 /**
