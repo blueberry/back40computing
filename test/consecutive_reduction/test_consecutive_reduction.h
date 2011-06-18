@@ -114,9 +114,6 @@ double TimedConsecutiveReduction(
 	if (util::B40CPerror(cudaMalloc((void**) &d_num_compacted, sizeof(SizeT) * 1),
 		"TimedConsecutiveReduction cudaMalloc d_num_compacted failed: ", __FILE__, __LINE__)) exit(1);
 
-	// Create enactor
-	consecutive_reduction::Enactor enactor;
-
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(
 			d_problem_storage.d_keys[0],
@@ -131,6 +128,9 @@ double TimedConsecutiveReduction(
 			cudaMemcpyHostToDevice),
 		"TimedConsecutiveReduction cudaMemcpy d_values failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Create enactor
+	consecutive_reduction::Enactor enactor;
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.DEBUG = true;
@@ -142,16 +142,13 @@ double TimedConsecutiveReduction(
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		// Call the consecutive reduction API routine
 		enactor.template Reduce<
@@ -161,10 +158,8 @@ double TimedConsecutiveReduction(
 			Identity>(d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
 
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -177,16 +172,12 @@ double TimedConsecutiveReduction(
     printf("%f GPU ms, %f x10^9 elts/sec, %f x10^9 B/sec, ",
 		avg_runtime, throughput, bandwidth);
 
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
 	// Check and display results
-	printf("\nCompacted Keys: ");
+	printf("\nCompacted keys: ");
 	CompareDeviceResults(h_problem_storage.d_keys[1], d_problem_storage.d_keys[1], num_compacted, verbose, verbose);
-	printf("\nCompacted and reduced Values: ");
+	printf("\nCompacted and reduced values: ");
 	CompareDeviceResults(h_problem_storage.d_values[1], d_problem_storage.d_values[1], num_compacted, verbose, verbose);
-	printf("\nCompacted Size: ");
+	printf("\nCompacted size: ");
 	CompareDeviceResults(&num_compacted, d_num_compacted, 1, verbose, verbose);
 	printf("\n");
 	fflush(stdout);

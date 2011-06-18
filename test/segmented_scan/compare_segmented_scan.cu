@@ -107,6 +107,8 @@ double TimedThrustSegmentedScan(
 	T *h_reference,
 	size_t num_elements)
 {
+	using namespace b40c;
+
 	// Allocate device storage  
 	T *d_src, *d_dest;
 	Flag *d_flag_src;
@@ -152,13 +154,9 @@ double TimedThrustSegmentedScan(
 	}
 	
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < g_iterations; i++) {
 
 		// Move a fresh copy of flags into device storage because we destroyed it last time :(
@@ -166,7 +164,7 @@ double TimedThrustSegmentedScan(
 			"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		if (EXCLUSIVE) {
 
@@ -193,10 +191,8 @@ double TimedThrustSegmentedScan(
 		}
 		
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;		
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -206,10 +202,6 @@ double TimedThrustSegmentedScan(
     printf("%f GPU ms, %f x10^9 elts/sec",
 		avg_runtime, throughput);
 	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
     if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),

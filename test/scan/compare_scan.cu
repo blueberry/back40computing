@@ -86,6 +86,8 @@ double TimedThrustScan(
 	T *h_reference,
 	size_t num_elements)
 {
+	using namespace b40c;
+
 	// Allocate device storage  
 	T *d_src, *d_dest;
 	if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
@@ -107,17 +109,13 @@ double TimedThrustScan(
 	}
 	
 	// Perform the timed number of iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < g_iterations; i++) {
 
 		// Start timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		if (EXCLUSIVE) {
 			thrust::exclusive_scan(dev_src, dev_src + num_elements, dev_dest);
@@ -126,10 +124,8 @@ double TimedThrustScan(
 		}
 		
 		// End timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;		
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -138,10 +134,6 @@ double TimedThrustScan(
 	printf("\nThrust Scan: %d iterations, %lu elements, ", g_iterations, (unsigned long) num_elements);
     printf("%f GPU ms, %f x10^9 elts/sec",
 		avg_runtime, throughput);
-	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
 
     // Copy out data
 	T *h_dest = (T*) malloc(num_elements * sizeof(T));
