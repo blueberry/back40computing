@@ -122,13 +122,9 @@ void TimedSort(
 	sorting_enactor.DEBUG = false;
 
 	// Perform the timed number of sorting g_iterations
-
-	cudaEvent_t start_event, stop_event;
-	cudaEventCreate(&start_event);
-	cudaEventCreate(&stop_event);
+	GpuTimer timer;
 
 	double elapsed = 0;
-	float duration = 0;
 	for (int i = 0; i < g_iterations; i++) {
 
 		// Move a fresh copy of the problem into device storage
@@ -136,16 +132,14 @@ void TimedSort(
 			"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
 		// Start cuda timing record
-		cudaEventRecord(start_event, 0);
+		timer.Start();
 
 		// Call the sorting API routine
 		sorting_enactor.template Sort<GENRE>(device_storage, num_elements, g_max_ctas);
 
 		// End cuda timing record
-		cudaEventRecord(stop_event, 0);
-		cudaEventSynchronize(stop_event);
-		cudaEventElapsedTime(&duration, start_event, stop_event);
-		elapsed += (double) duration;		
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
 	}
 
 	// Display timing information
@@ -155,10 +149,6 @@ void TimedSort(
 		avg_runtime,
 		throughput);
 	
-    // Clean up events
-	cudaEventDestroy(start_event);
-	cudaEventDestroy(stop_event);
-
     // Copy out data
     if (util::B40CPerror(cudaMemcpy(h_keys, device_storage.d_keys[device_storage.selector], sizeof(K) * num_elements, cudaMemcpyDeviceToHost),
 		"TimedSort cudaMemcpy device_storage.d_keys failed: ", __FILE__, __LINE__)) exit(1);
