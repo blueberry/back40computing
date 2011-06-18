@@ -65,6 +65,18 @@ protected:
 
 
 	//-----------------------------------------------------------------------------
+	// Helper structures
+	//-----------------------------------------------------------------------------
+
+	template <
+		int _START_BIT,
+		int _NUM_BITS,
+		typename PingPongStorage,
+		typename SizeT>
+	friend class Detail;
+
+
+	//-----------------------------------------------------------------------------
 	// Utility Routines
 	//-----------------------------------------------------------------------------
 
@@ -79,6 +91,19 @@ protected:
      */
 	template <typename Policy, typename Detail>
     cudaError_t PostSort(Detail &detail, int num_passes);
+
+    /**
+	 * Performs a radix sorting operation
+	 */
+	template <typename Policy, typename Detail>
+	cudaError_t EnactSort(Detail &detail);
+
+	/**
+	 * Performs a radix sorting pass
+	 */
+	template <typename Policy, typename PassPolicy, typename Detail>
+	cudaError_t EnactPass(Detail &detail);
+
 
 public:
 
@@ -229,19 +254,6 @@ public:
 		PingPongStorage &problem_storage,
 		SizeT num_elements,
 		int max_grid_size = 0);
-
-
-    /**
-	 * Performs a radix sorting operation
-	 */
-	template <typename Policy, typename Detail>
-	cudaError_t EnactSort(Detail &detail);
-
-	/**
-	 * Performs a radix sorting pass
-	 */
-	template <typename Policy, typename PassPolicy, typename Detail>
-	cudaError_t EnactPass(Detail &detail);
 };
 
 
@@ -293,6 +305,19 @@ struct Detail
 			problem_storage(problem_storage),
 			max_grid_size(max_grid_size)
 	{}
+
+
+	template <typename Policy>
+	cudaError_t EnactSort()
+	{
+		return enactor->template EnactSort<Policy>(*this);
+	}
+
+	template <typename Policy, typename PassPolicy>
+	cudaError_t EnactPass()
+	{
+		return enactor->template EnactPass<Policy, PassPolicy>(*this);
+	}
 };
 
 
@@ -310,13 +335,14 @@ struct PolicyResolver
 	template <int CUDA_ARCH, typename Detail>
 	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename Detail::ProblemType ProblemType;
-
 		// Obtain tuned granularity type
-		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
+		typedef AutotunedPolicy<
+			typename Detail::ProblemType,
+			CUDA_ARCH,
+			PROB_SIZE_GENRE> AutotunedPolicy;
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactSort<AutotunedPolicy>(detail);
+		return detail.template EnactSort<AutotunedPolicy>();
 	}
 };
 
@@ -336,10 +362,11 @@ struct PolicyResolver <UNKNOWN_SIZE>
 	template <int CUDA_ARCH, typename Detail>
 	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename Detail::ProblemType ProblemType;
-
 		// Obtain large tuned granularity type
-		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, LARGE_SIZE> LargePolicy;
+		typedef AutotunedPolicy<
+			typename Detail::ProblemType,
+			CUDA_ARCH,
+			LARGE_SIZE> LargePolicy;
 
 		// Identity the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
@@ -349,12 +376,16 @@ struct PolicyResolver <UNKNOWN_SIZE>
 		if (detail.num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
-			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
-			return detail.enactor->template EnactSort<SmallPolicy>(detail);
+			typedef AutotunedPolicy<
+				typename Detail::ProblemType,
+				CUDA_ARCH,
+				SMALL_SIZE> SmallPolicy;
+
+			return detail.template EnactSort<SmallPolicy>();
 		}
 
 		// Invoke base class enact with type
-		return detail.enactor->template EnactSort<LargePolicy>(detail);
+		return detail.template EnactSort<LargePolicy>();
 	}
 };
 
@@ -377,18 +408,18 @@ struct PassIteration
 	struct Iterate
 	{
 		template <typename Detail>
-		static cudaError_t Invoke(Enactor *enactor, Detail &detail)
+		static cudaError_t Invoke(Detail &detail)
 		{
 			typedef PassPolicy<CURRENT_PASS, CURRENT_BIT, NopKeyConversion, NopKeyConversion> PassPolicy;
 
-			cudaError_t retval = enactor->template EnactPass<Policy, PassPolicy>(detail);
+			cudaError_t retval = detail.template EnactPass<Policy, PassPolicy>();
 			if (retval) return retval;
 
 			return Iterate<
 				CURRENT_PASS + 1,
 				LAST_PASS,
 				CURRENT_BIT + RADIX_BITS,
-				RADIX_BITS>::Invoke(enactor, detail);
+				RADIX_BITS>::Invoke(detail);
 		}
 	};
 
@@ -403,18 +434,18 @@ struct PassIteration
 	struct Iterate <0, LAST_PASS, CURRENT_BIT, RADIX_BITS>
 	{
 		template <typename Detail>
-		static cudaError_t Invoke(Enactor *enactor, Detail &detail)
+		static cudaError_t Invoke(Detail &detail)
 		{
 			typedef PassPolicy<0, CURRENT_BIT, typename Detail::KeyTraits, NopKeyConversion> PassPolicy;
 
-			cudaError_t retval = enactor->template EnactPass<Policy, PassPolicy>(detail);
+			cudaError_t retval = detail.template EnactPass<Policy, PassPolicy>();
 			if (retval) return retval;
 
 			return Iterate<
 				1,
 				LAST_PASS,
 				CURRENT_BIT + RADIX_BITS,
-				RADIX_BITS>::Invoke(enactor, detail);
+				RADIX_BITS>::Invoke(detail);
 		}
 	};
 
@@ -429,11 +460,11 @@ struct PassIteration
 	struct Iterate <LAST_PASS, LAST_PASS, CURRENT_BIT, RADIX_BITS>
 	{
 		template <typename Detail>
-		static cudaError_t Invoke(Enactor *enactor, Detail &detail)
+		static cudaError_t Invoke(Detail &detail)
 		{
 			typedef PassPolicy<LAST_PASS, CURRENT_BIT, NopKeyConversion, typename Detail::KeyTraits> PassPolicy;
 
-			return enactor->template EnactPass<Policy, PassPolicy>(detail);
+			return detail.template EnactPass<Policy, PassPolicy>();
 		}
 	};
 
@@ -447,11 +478,11 @@ struct PassIteration
 	struct Iterate <0, 0, CURRENT_BIT, RADIX_BITS>
 	{
 		template <typename Detail>
-		static cudaError_t Invoke(Enactor *enactor, Detail &detail)
+		static cudaError_t Invoke(Detail &detail)
 		{
 			typedef PassPolicy<0, CURRENT_BIT, typename Detail::KeyTraits, typename Detail::KeyTraits> PassPolicy;
 
-			return enactor->template EnactPass<Policy, PassPolicy>(detail);
+			return detail.template EnactPass<Policy, PassPolicy>();
 		}
 	};
 };
@@ -668,7 +699,7 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 				0,
 				NUM_PASSES - 1,
 				Detail::START_BIT,
-				Downsweep::LOG_BINS>::Invoke(this, detail)) break;
+				Downsweep::LOG_BINS>::Invoke(detail)) break;
 
 		// Perform any cleanup after sorting
 		if (retval = PostSort<Policy>(detail, NUM_PASSES)) break;
