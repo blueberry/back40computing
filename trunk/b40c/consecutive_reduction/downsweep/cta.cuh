@@ -126,7 +126,7 @@ struct Cta
 		//---------------------------------------------------------------------
 
 		/**
-		 * Iterate over vertex id
+		 * Iterate over rank
 		 */
 		template <int LOAD, int VEC, int dummy = 0>
 		struct Iterate

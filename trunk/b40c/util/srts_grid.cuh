@@ -50,7 +50,8 @@ namespace util {
  * SEGS_PER_LANE raking threads), or fully dependent (i.e., reducing the
  * results from every raking thread)
  *
- * Must have as many raking threads as lanes.
+ * Must have at least as many raking threads as lanes (i.e., at least one
+ * raking thread for each lane).
  *
  * If (there are prefix dependences between lanes) AND (more than one warp
  * of raking threads is specified), a secondary SRTS grid will

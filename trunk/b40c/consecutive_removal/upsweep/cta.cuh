@@ -112,7 +112,7 @@ struct Cta
 				head_flags,
 				d_in + cta_offset);
 
-		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
+		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
 		// Reduce head_flags, accumulate in carry
