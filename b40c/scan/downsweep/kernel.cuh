@@ -40,9 +40,11 @@ namespace downsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
-	typename KernelPolicy::T 									* &d_in,
-	typename KernelPolicy::T 									* &d_out,
-	typename KernelPolicy::T 									* &d_spine,
+	typename KernelPolicy::T 									*d_in,
+	typename KernelPolicy::T 									*d_out,
+	typename KernelPolicy::T 									*d_spine,
+	typename KernelPolicy::ReductionOp 							scan_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
@@ -56,7 +58,13 @@ __device__ __forceinline__ void DownsweepPass(
 		spine_partial, d_spine + blockIdx.x);
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_out, spine_partial);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_out,
+		scan_op,
+		identity_op,
+		spine_partial);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -75,9 +83,11 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 			* d_in,
-	typename KernelPolicy::T 			* d_out,
-	typename KernelPolicy::T 			* d_spine,
+	typename KernelPolicy::T 				*d_in,
+	typename KernelPolicy::T 				*d_out,
+	typename KernelPolicy::T 				*d_spine,
+	typename KernelPolicy::ReductionOp 		scan_op,
+	typename KernelPolicy::IdentityOp 		identity_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
@@ -87,6 +97,8 @@ void Kernel(
 		d_in,
 		d_out,
 		d_spine,
+		scan_op,
+		identity_op,
 		work_decomposition,
 		smem_storage);
 }

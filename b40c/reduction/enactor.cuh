@@ -97,6 +97,9 @@ public:
 	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
+	 * @param reduction_op
+	 * 		The function or functor type for binary reduction, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -104,12 +107,13 @@ public:
 	 */
 	template <
 		typename T,
-		T BinaryOp(const T&, const T&),
-		typename SizeT>
+		typename SizeT,
+		typename ReductionOp>
 	cudaError_t Reduce(
 		T *d_dest,
 		T *d_src,
 		SizeT num_elements,
+		ReductionOp reduction_op,
 		int max_grid_size = 0);
 
 
@@ -126,20 +130,24 @@ public:
 	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
+	 * @param reduction_op
+	 * 		The function or functor type for binary reduction, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename T,
-		T BinaryOp(const T&, const T&),
 		ProbSizeGenre PROB_SIZE_GENRE,
-		typename SizeT>
+		typename T,
+		typename SizeT,
+		typename ReductionOp>
 	cudaError_t Reduce(
 		T *d_dest,
 		T *d_src,
 		SizeT num_elements,
+		ReductionOp reduction_op,
 		int max_grid_size = 0);
 
 
@@ -153,6 +161,9 @@ public:
 	 * 		Pointer to array of elements to be reduced
 	 * @param num_elements
 	 * 		Number of elements to reduce
+	 * @param reduction_op
+	 * 		The function or functor type for binary reduction, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 * @return cudaSuccess on success, error enumeration otherwise
@@ -162,6 +173,7 @@ public:
 		typename Policy::T *d_dest,
 		typename Policy::T *d_src,
 		typename Policy::SizeT num_elements,
+		typename Policy::ReductionOp reduction_op,
 		int max_grid_size = 0);
 };
 
@@ -177,26 +189,31 @@ public:
 template <typename ProblemType, typename Enactor>
 struct Detail : ProblemType
 {
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::T 			T;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::ReductionOp 	ReductionOp;
 
-	Enactor 	*enactor;
-	T 			*d_dest;
-	T 			*d_src;
-	SizeT 		num_elements;
-	int 		max_grid_size;
+	Enactor 		*enactor;
+	T 				*d_dest;
+	T 				*d_src;
+	SizeT 			num_elements;
+	ReductionOp		reduction_op;
+	int 			max_grid_size;
 
 	// Constructor
 	Detail(
-		Enactor *enactor,
-		T *d_dest,
-		T *d_src,
-		SizeT num_elements,
+		Enactor 		*enactor,
+		T 				*d_dest,
+		T 				*d_src,
+		SizeT 			num_elements,
+		ReductionOp 	reduction_op,
 		int max_grid_size = 0) :
+
 			enactor(enactor),
 			d_dest(d_dest),
 			d_src(d_src),
 			num_elements(num_elements),
+			reduction_op(reduction_op),
 			max_grid_size(max_grid_size)
 	{}
 
@@ -333,7 +350,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
 
 			SpineKernel<<<1, Spine::THREADS, 0>>>(
-				detail.d_src, detail.d_dest, work.num_elements);
+				detail.d_src, detail.d_dest, work.num_elements, detail.reduction_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
@@ -353,13 +370,13 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			// Upsweep reduction into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				detail.d_src, (T*) spine(), work, work_progress);
+				detail.d_src, (T*) spine(), detail.reduction_op, work, work_progress);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine reduction
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine(), detail.d_dest, spine_elements);
+				(T*) spine(), detail.d_dest, spine_elements, detail.reduction_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -381,13 +398,14 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
  */
 template <typename Policy>
 cudaError_t Enactor::Reduce(
-	typename Policy::T 			*d_dest,
-	typename Policy::T 			*d_src,
-	typename Policy::SizeT 		num_elements,
+	typename Policy::T *d_dest,
+	typename Policy::T *d_src,
+	typename Policy::SizeT num_elements,
+	typename Policy::ReductionOp reduction_op,
 	int max_grid_size)
 {
 	Detail<Policy, Enactor> detail(
-		this, d_dest, d_src, num_elements, max_grid_size);
+		this, d_dest, d_src, num_elements, reduction_op, max_grid_size);
 
 	return EnactPass<Policy>(detail);
 }
@@ -397,23 +415,24 @@ cudaError_t Enactor::Reduce(
  * Enacts a reduction operation on the specified device data.
  */
 template <
+	ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
-	T BinaryOp(const T&, const T&),
-	reduction::ProbSizeGenre PROB_SIZE_GENRE,
-	typename SizeT>
+	typename SizeT,
+	typename ReductionOp>
 cudaError_t Enactor::Reduce(
 	T *d_dest,
 	T *d_src,
 	SizeT num_elements,
+	ReductionOp reduction_op,
 	int max_grid_size)
 {
-	typedef reduction::ProblemType<
+	typedef ProblemType<
 		T,
 		SizeT,
-		BinaryOp> ProblemType;
+		ReductionOp> ProblemType;
 
 	Detail<ProblemType, Enactor> detail(
-		this, d_dest, d_src, num_elements, max_grid_size);
+		this, d_dest, d_src, num_elements, reduction_op, max_grid_size);
 
 	return util::ArchDispatch<
 		__B40C_CUDA_ARCH__,
@@ -426,16 +445,17 @@ cudaError_t Enactor::Reduce(
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&),
-	typename SizeT>
+	typename SizeT,
+	typename ReductionOp>
 cudaError_t Enactor::Reduce(
 	T *d_dest,
 	T *d_src,
 	SizeT num_elements,
+	ReductionOp reduction_op,
 	int max_grid_size)
 {
-	return Reduce<T, BinaryOp, reduction::UNKNOWN_SIZE>(
-		d_dest, d_src, num_elements, max_grid_size);
+	return Reduce<UNKNOWN_SIZE>(
+		d_dest, d_src, num_elements, reduction_op, max_grid_size);
 }
 
 

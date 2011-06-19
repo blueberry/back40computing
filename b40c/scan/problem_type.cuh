@@ -37,19 +37,15 @@ namespace scan {
 template <
 	typename T,
 	typename SizeT,
-	bool _EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T _Identity()>
-struct ProblemType : reduction::ProblemType<T, SizeT, BinaryOp>	// Inherit from reduction problem type
+	typename ReductionOp,
+	typename _IdentityOp,
+	bool _EXCLUSIVE>
+struct ProblemType :
+	reduction::ProblemType<T, SizeT, ReductionOp>	// Inherit from reduction problem type
 {
 	static const bool EXCLUSIVE = _EXCLUSIVE;
 
-	// Wrapper for the identity operator
-	static __host__ __device__ __forceinline__ T Identity()
-	{
-		return _Identity();
-	}
-
+	typedef _IdentityOp IdentityOp;					// Identity operator type
 };
 
 

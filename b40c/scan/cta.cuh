@@ -48,6 +48,9 @@ struct Cta
 
 	typedef typename KernelPolicy::T 			T;
 	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef typename KernelPolicy::ReductionOp 	ReductionOp;
+	typedef typename KernelPolicy::IdentityOp 	IdentityOp;
+
 	typedef typename KernelPolicy::SrtsDetails 	SrtsDetails;
 	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 
@@ -63,6 +66,9 @@ struct Cta
 	T *d_in;
 	T *d_out;
 
+	// Scan operator
+	ReductionOp scan_op;
+
 	// Operational details for SRTS scan grid
 	SrtsDetails srts_details;
 
@@ -75,18 +81,41 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		SmemStorage &smem_storage,
-		T *d_in,
-		T *d_out,
-		T spine_partial = KernelPolicy::Identity()) :
+		SmemStorage 		&smem_storage,
+		T 					*d_in,
+		T 					*d_out,
+		ReductionOp 		scan_op,
+		IdentityOp 			identity_op,
+		T 					spine_partial) :
 
 			srts_details(
 				smem_storage.raking_elements,
 				smem_storage.warpscan,
-				KernelPolicy::Identity()),
+				identity_op()),
 			d_in(d_in),
 			d_out(d_out),
+			scan_op(scan_op),
 			carry(spine_partial) {}			// Seed carry with spine partial
+
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Cta(
+		SmemStorage 		&smem_storage,
+		T 					*d_in,
+		T 					*d_out,
+		ReductionOp 		scan_op,
+		IdentityOp 			identity_op) :
+
+			srts_details(
+				smem_storage.raking_elements,
+				smem_storage.warpscan,
+				identity_op()),
+			d_in(d_in),
+			d_out(d_out),
+			scan_op(scan_op),
+			carry(identity_op()) {}			// Seed carry with identity
 
 
 	/**
@@ -109,10 +138,9 @@ struct Cta
 
 		// Scan tile with carry update in raking threads
 		util::scan::CooperativeTileScan<
-			SrtsDetails,
 			KernelPolicy::LOAD_VEC_SIZE,
-			KernelPolicy::EXCLUSIVE,
-			KernelPolicy::BinaryOp>::ScanTileWithCarry(srts_details, data, carry);
+			KernelPolicy::EXCLUSIVE>::ScanTileWithCarry(
+				srts_details, data, carry, scan_op);
 
 		// Store tile
 		util::io::StoreTile<

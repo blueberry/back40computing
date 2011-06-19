@@ -72,8 +72,11 @@ void Usage()
  */
 template<
 	typename T,
-	T BinaryOp(const T&, const T&)>
-void TestReduction(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp>
+void TestReduction(
+	SizeT num_elements,
+	ReductionOp reduction_op)
 {
     // Allocate the reduction problem on the host and fill the keys with random bytes
 
@@ -90,7 +93,7 @@ void TestReduction(size_t num_elements)
 		h_data[i] = i;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :
-			BinaryOp(h_reference[0], h_data[i]);
+			reduction_op(h_reference[0], h_data[i]);
 	}
 
 	//
@@ -102,12 +105,12 @@ void TestReduction(size_t num_elements)
 	size_t orig_num_elements = num_elements;
 	do {
 		printf("\nLARGE config:\t");
-		double large = TimedReduction<T, BinaryOp, reduction::LARGE_SIZE>(
-			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+		double large = TimedReduction<reduction::LARGE_SIZE>(
+			h_data, h_reference, num_elements, reduction_op, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
-		double small = TimedReduction<T, BinaryOp, reduction::SMALL_SIZE>(
-			h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+		double small = TimedReduction<reduction::SMALL_SIZE>(
+			h_data, h_reference, num_elements, reduction_op, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
@@ -155,26 +158,26 @@ int main(int argc, char** argv)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op>(num_elements * 4);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements * 4, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op>(num_elements * 2);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements * 2, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op>(num_elements);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		typedef Sum<T> BinaryOp;
-    	TestReduction<T, BinaryOp::Op>(num_elements / 2);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements / 2, reduction_op);
 	}
 
 	return 0;

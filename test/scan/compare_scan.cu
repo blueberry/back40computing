@@ -77,14 +77,17 @@ void Usage()
  * number of iterations, displaying runtime information.
  */
 template <
-	typename T,
 	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	typename T,
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 double TimedThrustScan(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements)
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
 	using namespace b40c;
 
@@ -176,9 +179,13 @@ double TimedThrustScan(
 template<
 	typename T,
 	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-void TestScan(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
+void TestScan(
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
     // Allocate the scan problem on the host and fill the keys with random bytes
 
@@ -196,12 +203,12 @@ void TestScan(size_t num_elements)
 		if (EXCLUSIVE)
 		{
 			h_reference[i] = (i == 0) ?
-				Identity() :
-				BinaryOp(h_reference[i - 1], h_data[i - 1]);
+				identity_op() :
+				scan_op(h_reference[i - 1], h_data[i - 1]);
 		} else {
 			h_reference[i] = (i == 0) ?
 				h_data[i] :
-				BinaryOp(h_reference[i - 1], h_data[i]);
+				scan_op(h_reference[i - 1], h_data[i]);
 		}
 	}
 
@@ -209,11 +216,11 @@ void TestScan(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	double b40c = TimedScan<T, EXCLUSIVE, BinaryOp, Identity, scan::UNKNOWN_SIZE>(
-		h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+	double b40c = TimedScan<EXCLUSIVE, scan::UNKNOWN_SIZE>(
+		h_data, h_reference, num_elements, scan_op, identity_op, g_max_ctas, g_verbose, g_iterations);
 
-	double thrust = TimedThrustScan<T, EXCLUSIVE, BinaryOp, Identity>(
-		h_data, h_reference, num_elements);
+	double thrust = TimedThrustScan<EXCLUSIVE>(
+		h_data, h_reference, num_elements, scan_op, identity_op);
 
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 	
@@ -230,14 +237,18 @@ void TestScan(size_t num_elements)
  */
 template<
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-void TestScanVariety(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
+void TestScanVariety(
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
 	if (g_inclusive) {
-		TestScan<T, false, BinaryOp, Identity>(num_elements);
+		TestScan<T, false>(num_elements, scan_op, identity_op);
 	} else {
-		TestScan<T, true, BinaryOp, Identity>(num_elements);
+		TestScan<T, true>(num_elements, scan_op, identity_op);
 	}
 }
 
@@ -276,26 +287,26 @@ int main(int argc, char** argv)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		typedef Sum<T> BinaryOp;
-		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		Sum<T> op;
+		TestScanVariety<T>(num_elements * 4, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		typedef Sum<T> BinaryOp;
-		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		Sum<T> op;
+		TestScanVariety<T>(num_elements * 2, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		typedef Sum<T> BinaryOp;
-		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		Sum<T> op;
+		TestScanVariety<T>(num_elements, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		typedef Sum<T> BinaryOp;
-		TestScanVariety<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		Sum<T> op;
+		TestScanVariety<T>(num_elements / 2, op, op);
 	}
 
 	return 0;

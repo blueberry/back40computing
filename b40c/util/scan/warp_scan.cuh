@@ -59,18 +59,22 @@ struct WarpScan
 	template <int OFFSET_LEFT, int WIDTH>
 	struct Iterate
 	{
-		template <typename T, T ScanOp(const T&, const T&)>
+		template <typename T, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T exclusive_partial,
 			volatile T warpscan[][NUM_ELEMENTS],
+			ReductionOp scan_op,
 			int warpscan_tid)
 		{
 			warpscan[1][warpscan_tid] = exclusive_partial;
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
-			T inclusive_partial = ScanOp(offset_partial, exclusive_partial);
+			T inclusive_partial = scan_op(offset_partial, exclusive_partial);
 
-			return Iterate<OFFSET_LEFT * 2, WIDTH>::template Invoke<T, ScanOp>(
-				inclusive_partial, warpscan, warpscan_tid);
+			return Iterate<OFFSET_LEFT * 2, WIDTH>::template Invoke<T, ReductionOp>(
+				inclusive_partial,
+				warpscan,
+				scan_op,
+				warpscan_tid);
 		}
 	};
 
@@ -78,9 +82,12 @@ struct WarpScan
 	template <int WIDTH>
 	struct Iterate<WIDTH, WIDTH>
 	{
-		template <typename T, T ScanOp(const T&, const T&)>
+		template <typename T, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
-			T exclusive_partial, volatile T warpscan[][NUM_ELEMENTS], int warpscan_tid)
+			T exclusive_partial,
+			volatile T warpscan[][NUM_ELEMENTS],
+			ReductionOp scan_op,
+			int warpscan_tid)
 		{
 			return exclusive_partial;
 		}
@@ -94,17 +101,19 @@ struct WarpScan
 	/**
 	 * Warpscan with the specified operator
 	 */
-	template <
-		typename T,
-		T ScanOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		ReductionOp scan_op,								// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
-		T inclusive_partial = Iterate<1, WIDTH>::template Invoke<T, ScanOp>(
-			current_partial, warpscan, warpscan_tid);
+		T inclusive_partial = Iterate<1, WIDTH>::Invoke(
+			current_partial,
+			warpscan,
+			scan_op,
+			warpscan_tid);
 
 		if (EXCLUSIVE) {
 			// Write out our inclusive partial
@@ -128,25 +137,31 @@ struct WarpScan
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Invoke<T, Operators<T>::Sum>(current_partial, warpscan, warpscan_tid);
+		return Invoke(
+			current_partial,
+			warpscan,
+			Operators<T>::Sum,
+			warpscan_tid);
 	}
 
 
 	/**
 	 * Warpscan with the specified operator, returning the cumulative reduction
 	 */
-	template <
-		typename T,
-		T ScanOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
 		T &total_reduction,							// Total reduction (out param)
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		ReductionOp scan_op,								// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
-		T inclusive_partial = Iterate<1, WIDTH>::template Invoke<T, ScanOp>(
-			current_partial, warpscan, warpscan_tid);
+		T inclusive_partial = Iterate<1, WIDTH>::Invoke(
+			current_partial,
+			warpscan,
+			scan_op,
+			warpscan_tid);
 
 		// Write our inclusive partial and then set total to the last thread's inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
@@ -169,7 +184,12 @@ struct WarpScan
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Invoke<T, Operators<T>::Sum>(current_partial, total_reduction, warpscan, warpscan_tid);
+		return Invoke(
+			current_partial,
+			total_reduction,
+			warpscan,
+			Operators<T>::Sum,
+			warpscan_tid);
 	}
 };
 

@@ -341,8 +341,9 @@ __launch_bounds__ (
 __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 								*d_in,
 	typename ProblemType::T 								*d_spine,
+	typename ProblemType::ReductionOp 						reduction_op,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 	work_decomposition,
-	util::CtaWorkProgress										work_progress)
+	util::CtaWorkProgress									work_progress)
 {
 	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedGenre<
@@ -356,6 +357,7 @@ __global__ void TunedUpsweepKernel(
 	upsweep::UpsweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine,
+		reduction_op,
 		work_decomposition,
 		work_progress,
 		smem_storage);
@@ -370,9 +372,10 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Policy::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
-	typename ProblemType::T 		*d_spine,
-	typename ProblemType::T 		*d_out,
-	typename ProblemType::SizeT 	spine_elements)
+	typename ProblemType::T 			*d_spine,
+	typename ProblemType::T 			*d_out,
+	typename ProblemType::SizeT 		spine_elements,
+	typename ProblemType::ReductionOp 	reduction_op)
 {
 	// Load the kernel policy type identified by the enum for this architecture
 	typedef typename AutotunedGenre<
@@ -383,7 +386,12 @@ __global__ void TunedSpineKernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	spine::SpinePass<KernelPolicy>(d_spine, d_out, spine_elements, smem_storage);
+	spine::SpinePass<KernelPolicy>(
+		d_spine,
+		d_out,
+		spine_elements,
+		reduction_op,
+		smem_storage);
 }
 
 
@@ -409,11 +417,12 @@ struct AutotunedPolicy :
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ProblemType::T 		T;
-	typedef typename ProblemType::SizeT 	SizeT;
+	typedef typename ProblemType::T 			T;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::ReductionOp 	ReductionOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
-	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
+	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
+	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp);
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval

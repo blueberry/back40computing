@@ -63,8 +63,9 @@ template <typename KernelPolicy, bool WORK_STEALING = KernelPolicy::WORK_STEALIN
 struct UpsweepPass
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelPolicy::T 									*&d_in,
-		typename KernelPolicy::T 									*&d_out,
+		typename KernelPolicy::T 									*d_in,
+		typename KernelPolicy::T 									*d_out,
+		typename KernelPolicy::ReductionOp							reduction_op,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 		util::CtaWorkProgress 										&work_progress,
 		typename KernelPolicy::SmemStorage							&smem_storage)
@@ -73,7 +74,11 @@ struct UpsweepPass
 		typedef typename KernelPolicy::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		Cta cta(smem_storage, d_in, d_out);
+		Cta cta(
+			smem_storage,
+			d_in,
+			d_out,
+			reduction_op);
 
 		// Determine our threadblock's work range
 		util::CtaWorkLimits<SizeT> work_limits;
@@ -93,8 +98,9 @@ template <typename KernelPolicy>
 struct UpsweepPass <KernelPolicy, true>
 {
 	static __device__ __forceinline__ void Invoke(
-		typename KernelPolicy::T 									*&d_in,
-		typename KernelPolicy::T 									*&d_out,
+		typename KernelPolicy::T 									*d_in,
+		typename KernelPolicy::T 									*d_out,
+		typename KernelPolicy::ReductionOp							reduction_op,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 		util::CtaWorkProgress 										&work_progress,
 		typename KernelPolicy::SmemStorage							&smem_storage)
@@ -103,7 +109,11 @@ struct UpsweepPass <KernelPolicy, true>
 		typedef typename KernelPolicy::SizeT 	SizeT;
 
 		// CTA processing abstraction
-		Cta cta(smem_storage, d_in, d_out);
+		Cta cta(
+			smem_storage,
+			d_in,
+			d_out,
+			reduction_op);
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
@@ -165,6 +175,7 @@ __global__
 void Kernel(
 	typename KernelPolicy::T 									*d_in,
 	typename KernelPolicy::T 									*d_spine,
+	typename KernelPolicy::ReductionOp							reduction_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition,
 	util::CtaWorkProgress										work_progress)
 {
@@ -174,6 +185,7 @@ void Kernel(
 	UpsweepPass<KernelPolicy>::Invoke(
 		d_in,
 		d_spine,
+		reduction_op,
 		work_decomposition,
 		work_progress,
 		smem_storage);

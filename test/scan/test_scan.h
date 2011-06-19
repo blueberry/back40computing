@@ -41,12 +41,14 @@
 template <typename T>
 struct Sum
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	// Binary reduction
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
 	}
 
-	static __host__ __device__ __forceinline__ T Identity()
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
 	{
 		return 0;
 	}
@@ -55,12 +57,14 @@ struct Sum
 template <typename T>
 struct Max
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	// Binary reduction
+	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
 
-	static __host__ __device__ __forceinline__ T Identity()
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
 	{
 		return 0;
 	}
@@ -76,15 +80,18 @@ struct Max
  * number of iterations, displaying runtime information.
  */
 template <
-	typename T,
 	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
-	b40c::scan::ProbSizeGenre PROB_SIZE_GENRE>
+	b40c::scan::ProbSizeGenre PROB_SIZE_GENRE,
+	typename T,
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 double TimedScan(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements,
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -108,8 +115,8 @@ double TimedScan(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	scan_enactor.DEBUG = true;
-	scan_enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, max_ctas);
+	scan_enactor.template Scan<EXCLUSIVE, PROB_SIZE_GENRE>(
+		d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
 	scan_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -122,8 +129,8 @@ double TimedScan(
 		timer.Start();
 
 		// Call the scan API routine
-		scan_enactor.template Scan<T, EXCLUSIVE, BinaryOp, Identity, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, max_ctas);
+		scan_enactor.template Scan<EXCLUSIVE, PROB_SIZE_GENRE>(
+			d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
 
 		// End timing record
 		timer.Stop();

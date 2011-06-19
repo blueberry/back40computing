@@ -30,8 +30,6 @@
 // Test utils
 #include "b40c_test_util.h"
 
-using namespace b40c;
-
 
 /******************************************************************************
  * Utility Routines
@@ -39,23 +37,23 @@ using namespace b40c;
 
 
 /**
- * Max binary associative operator
+ * Max binary scan operator
  */
 template <typename T>
-__host__ __device__ __forceinline__ T Max(const T &a, const T &b)
+struct Max
 {
-	return (a > b) ? a : b;
-}
+	// Associative reduction operator
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+	{
+		return (a > b) ? a : b;
+	}
 
-
-/**
- * Identity for max operator for unsigned integer types (i.e., max(a, identity) == a)
- */
-template <typename T>
-__host__ __device__ __forceinline__ T MaxId()
-{
-	return 0;
-}
+	// Identity operator
+	__host__ __device__ __forceinline__ T operator()()
+	{
+		return 0;
+	}
+};
 
 
 /**
@@ -63,17 +61,21 @@ __host__ __device__ __forceinline__ T MaxId()
  * a templated function
  */
 template <
-	typename T,
 	bool EXCLUSIVE_SCAN,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	typename T,
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 void TemplatedSubroutineScan(
 	b40c::scan::Enactor &scan_enactor,
 	T *d_dest, 
 	T *d_src,
-	int num_elements)
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
-	scan_enactor.template Scan<T, EXCLUSIVE_SCAN, BinaryOp, Identity>(d_dest, d_src, num_elements);
+	scan_enactor.template Scan<EXCLUSIVE_SCAN>(
+		d_dest, d_src, num_elements, scan_op, identity_op);
 }
 
 
@@ -83,7 +85,7 @@ void TemplatedSubroutineScan(
 
 int main(int argc, char** argv)
 {
-	CommandLineArgs args(argc, argv);
+	b40c::CommandLineArgs args(argc, argv);
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
@@ -91,7 +93,7 @@ int main(int argc, char** argv)
     	return 0;
     }
 
-    DeviceInit(args);
+    b40c::DeviceInit(args);
 
     // Define our problem type
 	typedef unsigned int T;
@@ -101,18 +103,19 @@ int main(int argc, char** argv)
 	// Allocate and initialize host problem data and host reference solution
 	T h_src[NUM_ELEMENTS];
 	T h_reference[NUM_ELEMENTS];
+	Max<T> max_op;
 
 	for (size_t i = 0; i < NUM_ELEMENTS; ++i) {
 		h_src[i] = i;
 		if (EXCLUSIVE_SCAN)
 		{
 			h_reference[i] = (i == 0) ?
-				MaxId<T>() :
-				Max(h_reference[i - 1], h_src[i - 1]);
+				max_op() :									// identity
+				max_op(h_reference[i - 1], h_src[i - 1]);
 		} else {
 			h_reference[i] = (i == 0) ?
 				h_src[i] :
-				Max(h_reference[i - 1], h_src[i]);
+				max_op(h_reference[i - 1], h_src[i]);
 		}
 	}
 
@@ -122,50 +125,53 @@ int main(int argc, char** argv)
 	cudaMalloc((void**) &d_src, sizeof(T) * NUM_ELEMENTS);
 	cudaMalloc((void**) &d_dest, sizeof(T) * NUM_ELEMENTS);
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
-	
+
+
 	// Create a scan enactor
 	b40c::scan::Enactor scan_enactor;
 	
-
 	//
 	// Example 1: Enact simple exclusive scan using internal tuning heuristics
 	//
-	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId>(
-		d_dest, d_src, NUM_ELEMENTS);
+	scan_enactor.Scan<EXCLUSIVE_SCAN>(
+		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
-	printf("Simple scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+	printf("Simple scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
 	
-	
+
 	//
 	// Example 2: Enact simple exclusive scan using "large problem" tuning configuration
 	//
-	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::LARGE_SIZE>(
-		d_dest, d_src, NUM_ELEMENTS);
+	scan_enactor.Scan<EXCLUSIVE_SCAN, b40c::scan::LARGE_SIZE>(
+		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 
-	printf("Large-tuned scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+	printf("Large-tuned scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
 
-	
+
 	//
 	// Example 3: Enact simple exclusive scan using "small problem" tuning configuration
 	//
-	scan_enactor.Scan<T, EXCLUSIVE_SCAN, Max, MaxId, b40c::scan::SMALL_SIZE>(
-		d_dest, d_src, NUM_ELEMENTS);
+	scan_enactor.Scan<EXCLUSIVE_SCAN, b40c::scan::SMALL_SIZE>(
+		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
-	printf("Small-tuned scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+	printf("Small-tuned scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
 
 
 	//
 	// Example 4: Enact simple exclusive scan using a templated subroutine function
 	//
-	TemplatedSubroutineScan<T, EXCLUSIVE_SCAN, Max, MaxId>(scan_enactor, d_dest, d_src, NUM_ELEMENTS);
+	TemplatedSubroutineScan<EXCLUSIVE_SCAN>(
+		scan_enactor, d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
-	printf("Templated subroutine scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+	printf("Templated subroutine scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
 
 
 	//
 	// Example 5: Enact simple exclusive scan using custom tuning configuration (base scan enactor)
 	//
-	typedef b40c::scan::ProblemType<T, size_t, EXCLUSIVE_SCAN, Max, MaxId> ProblemType;
+	typedef Max<T> ReductionOp;
+	typedef Max<T> IdentityOp;
+	typedef b40c::scan::ProblemType<T, int, ReductionOp, IdentityOp, EXCLUSIVE_SCAN> ProblemType;
 	typedef b40c::scan::Policy<
 		ProblemType,
 		b40c::scan::SM20,
@@ -179,9 +185,10 @@ int main(int argc, char** argv)
 		8, 0, 1, 5,
 		8, 7, 1, 0, 5> CustomPolicy;
 	
-	scan_enactor.Scan<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
+	scan_enactor.Scan<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 
-	printf("Custom scan: "); CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+	printf("Custom scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+
 
 	return 0;
 }

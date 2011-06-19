@@ -37,9 +37,11 @@ namespace spine {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
-	typename KernelPolicy::T 				*&d_in,
-	typename KernelPolicy::T 				*&d_out,
-	typename KernelPolicy::SizeT 			&spine_elements,
+	typename KernelPolicy::T 				*d_in,
+	typename KernelPolicy::T 				*d_out,
+	typename KernelPolicy::SizeT 			spine_elements,
+	typename KernelPolicy::ReductionOp 		scan_op,
+	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef Cta<KernelPolicy> 					Cta;
@@ -49,7 +51,12 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_out);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_out,
+		scan_op,
+		identity_op);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
@@ -78,11 +85,19 @@ __global__
 void Kernel(
 	typename KernelPolicy::T			*d_in,
 	typename KernelPolicy::T			*d_out,
-	typename KernelPolicy::SizeT 		spine_elements)
+	typename KernelPolicy::SizeT 		spine_elements,
+	typename KernelPolicy::ReductionOp 	scan_op,
+	typename KernelPolicy::IdentityOp 	identity_op)
 {
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SpinePass<KernelPolicy>(d_in, d_out, spine_elements, smem_storage);
+	SpinePass<KernelPolicy>(
+		d_in,
+		d_out,
+		spine_elements,
+		scan_op,
+		identity_op,
+		smem_storage);
 }
 
 } // namespace spine
