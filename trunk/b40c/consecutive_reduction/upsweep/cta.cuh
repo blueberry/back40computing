@@ -52,15 +52,14 @@ struct Cta
 	typedef typename KernelPolicy::ValueType				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 
-	typedef typename KernelPolicy::SpinePartialType			SpinePartialType;		// Same as ValueType
-	typedef typename KernelPolicy::SpineFlagType			SpineFlagType;
-
 	typedef typename KernelPolicy::SrtsSoaDetails 			SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 				SoaTuple;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
-		SpineFlagType (*)[KernelPolicy::LOAD_VEC_SIZE]> 	DataSoa;
+		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 			DataSoa;
+
+	typedef typename KernelPolicy::SmemStorage 				SmemStorage;
 
 
 	//---------------------------------------------------------------------
@@ -77,8 +76,8 @@ struct Cta
 	KeyType 			*d_in_keys;
 	ValueType 			*d_in_values;
 
-	SpinePartialType	*d_spine_partials;
-	SpineFlagType 		*d_spine_flags;
+	ValueType			*d_spine_partials;
+	SizeT 				*d_spine_flags;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -87,13 +86,12 @@ struct Cta
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 				*d_in_keys,
-		ValueType 				*d_in_values,
-		SpinePartialType 		*d_spine_partials,
-		SpineFlagType 			*d_spine_flags) :
+		KeyType 		*d_in_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_spine_partials,
+		SizeT 			*d_spine_flags) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -120,7 +118,7 @@ struct Cta
 	{
 		KeyType			keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 		ValueType		values[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		SpineFlagType	ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
+		SizeT			ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
 
 		// Load keys, initializing discontinuity flags in ranks
 		util::io::LoadTile<

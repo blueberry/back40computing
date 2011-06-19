@@ -93,16 +93,15 @@ struct Policy : ProblemType
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ProblemType::T 			T;
-	typedef typename ProblemType::SizeT 		SizeT;
-	typedef typename ProblemType::SpineType 	SpineType;
-	typedef typename ProblemType::SpineSizeT 	SpineSizeT;
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType			ValueType;
+	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
-	typedef void (*UpsweepKernelPtr)(T*, SpineType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SpineType*, SpineType*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(T*, SizeT*, T*, SpineType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(T*, SizeT*, T*, SizeT);
-
+	typedef void (*UpsweepKernelPtr)(KeyType*, SizeT*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
 
 	// Kernel config for the upsweep reduction kernel
 	typedef upsweep::KernelPolicy<
@@ -119,11 +118,11 @@ struct Policy : ProblemType
 
 	// Problem type for spine
 	typedef scan::ProblemType<
-		SpineType,
+		SizeT,
 		SpineSizeT,
 		true,									// Exclusive
-		util::Operators<SpineType>::Sum,
-		util::Operators<SpineType>::SumIdentity> SpineProblemType;
+		util::Operators<SizeT>::Sum,
+		util::Operators<SizeT>::SumIdentity> SpineProblemType;
 
 	// Kernel config for the spine consecutive removal kernel
 	typedef scan::KernelPolicy <

@@ -42,8 +42,8 @@ __device__ __forceinline__ void DownsweepPass(
 	typename KernelPolicy::KeyType								*&d_out_keys,
 	typename KernelPolicy::ValueType 							*&d_in_values,
 	typename KernelPolicy::ValueType 							*&d_out_values,
-	typename KernelPolicy::SpinePartialType 					*&d_spine_partials,
-	typename KernelPolicy::SpineFlagType 						*&d_spine_flags,
+	typename KernelPolicy::ValueType 							*&d_spine_partials,
+	typename KernelPolicy::SizeT 								*&d_spine_flags,
 	typename KernelPolicy::SizeT								*&d_num_compacted,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
@@ -91,8 +91,8 @@ void Kernel(
 	typename KernelPolicy::KeyType								*d_out_keys,
 	typename KernelPolicy::ValueType 							*d_in_values,
 	typename KernelPolicy::ValueType 							*d_out_values,
-	typename KernelPolicy::SpinePartialType 					*d_spine_partials,
-	typename KernelPolicy::SpineFlagType 						*d_spine_flags,
+	typename KernelPolicy::ValueType 							*d_spine_partials,
+	typename KernelPolicy::SizeT 								*d_spine_flags,
 	typename KernelPolicy::SizeT								*d_num_compacted,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {

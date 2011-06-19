@@ -37,9 +37,11 @@ namespace single {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SinglePass(
-	typename KernelPolicy::T 				*&d_in,
+	typename KernelPolicy::KeyType			*&d_in_keys,
+	typename KernelPolicy::KeyType			*&d_out_keys,
+	typename KernelPolicy::ValueType		*&d_in_values,
+	typename KernelPolicy::ValueType		*&d_out_values,
 	typename KernelPolicy::SizeT			*&d_num_compacted,
-	typename KernelPolicy::T 				*&d_out,
 	typename KernelPolicy::SizeT 			&num_elements,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
@@ -52,8 +54,10 @@ __device__ __forceinline__ void SinglePass(
 	// CTA processing abstraction
 	Cta cta(
 		smem_storage,
-		d_in,
-		d_out,
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
 		d_num_compacted);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
@@ -81,14 +85,23 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::T			*d_in,
-	typename KernelPolicy::SizeT		*d_num_compacted,
-	typename KernelPolicy::T			*d_out,
-	typename KernelPolicy::SizeT 		num_elements)
+	typename KernelPolicy::KeyType			*d_in_keys,
+	typename KernelPolicy::KeyType			*d_out_keys,
+	typename KernelPolicy::ValueType		*d_in_values,
+	typename KernelPolicy::ValueType		*d_out_values,
+	typename KernelPolicy::SizeT			*d_num_compacted,
+	typename KernelPolicy::SizeT 			num_elements)
 {
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SinglePass<KernelPolicy>(d_in, d_num_compacted, d_out, num_elements, smem_storage);
+	SinglePass<KernelPolicy>(
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
+		d_num_compacted,
+		num_elements,
+		smem_storage);
 }
 
 } // namespace single

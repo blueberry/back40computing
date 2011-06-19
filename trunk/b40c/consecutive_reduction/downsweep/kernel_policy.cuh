@@ -71,20 +71,17 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::ValueType 				ValueType;
 	typedef typename ProblemType::SizeT						SizeT;
 
-	typedef typename ProblemType::SpinePartialType			SpinePartialType;
-	typedef typename ProblemType::SpineFlagType				SpineFlagType;
-
 	typedef int 											LocalFlag;			// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
 	typedef typename util::If<
 		_TWO_PHASE_SCATTER,
 		LocalFlag,
-		SpineFlagType>::Type 								RankType;			// Type for local SRTS prefix sum
+		SizeT>::Type 										RankType;			// Type for local SRTS prefix sum
 
 	// Tuple of value-rank type
 	typedef util::Tuple<ValueType, RankType> 				SrtsSoaTuple;		// Structure-of-array tuple for local SRTS scanning
 
 	// Tuple of spine partial-flag type
-	typedef util::Tuple<SpinePartialType, SpineFlagType> 	SpineSoaTuple;		// Structure-of-array tuple for spine scan
+	typedef util::Tuple<ValueType, SizeT> 					SpineSoaTuple;		// Structure-of-array tuple for spine scan
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;

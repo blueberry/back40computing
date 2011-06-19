@@ -29,8 +29,6 @@
 #include <stdio.h> 
 
 // ConsecutiveReduction includes
-#include <b40c/consecutive_reduction/problem_type.cuh>
-#include <b40c/consecutive_reduction/policy.cuh>
 #include <b40c/consecutive_reduction/enactor.cuh>
 
 // Test utils
@@ -131,6 +129,8 @@ double TimedConsecutiveReduction(
 	// Create enactor
 	consecutive_reduction::Enactor enactor;
 
+	SizeT gpu_num_compacted;
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.DEBUG = true;
@@ -138,7 +138,7 @@ double TimedConsecutiveReduction(
 		PROB_SIZE_GENRE,
 		PingPongStorage,
 		BinaryOp,
-		Identity>(d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
+		Identity>(d_problem_storage, num_elements, &gpu_num_compacted, d_num_compacted, max_ctas);
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -179,6 +179,7 @@ double TimedConsecutiveReduction(
 	CompareDeviceResults(h_problem_storage.d_values[1], d_problem_storage.d_values[1], num_compacted, verbose, verbose);
 	printf("\nCompacted size: ");
 	CompareDeviceResults(&num_compacted, d_num_compacted, 1, verbose, verbose);
+	printf("\nCompacted size reported to host: %s\n", (num_compacted == gpu_num_compacted) ? "CORRECT" : "INCORRECT");
 	printf("\n");
 	fflush(stdout);
 

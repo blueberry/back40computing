@@ -63,7 +63,7 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::SpineType SpineType;
+	typedef typename ProblemType::SizeT SizeT;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -100,7 +100,7 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		SpineType reduction_tree[THREADS];
+		SizeT reduction_tree[THREADS];
 	};
 
 	enum {

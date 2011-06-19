@@ -46,8 +46,8 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 		T;
-	typedef typename KernelPolicy::SizeT 	SizeT;
+	typedef typename KernelPolicy::T 			T;
+	typedef typename KernelPolicy::SizeT 		SizeT;
 	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 
 	//---------------------------------------------------------------------
@@ -55,14 +55,14 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// The value we will accumulate (in each thread)
-	T carry;
+	T 				carry;
 
 	// Input and output device pointers
-	T* d_in;
-	T* d_out;
+	T* 				d_in;
+	T* 				d_out;
 
-	// Smem storage for reduction tree
-	T* reduction_tree;
+	// Shared memory storage for the CTA
+	SmemStorage 	&smem_storage;
 
 
 	//---------------------------------------------------------------------
@@ -78,7 +78,7 @@ struct Cta
 		T *d_in,
 		T *d_out) :
 
-			reduction_tree(smem_storage.reduction_tree),
+			smem_storage(smem_storage),
 			d_in(d_in),
 			d_out(d_out) {}
 
@@ -156,12 +156,10 @@ struct Cta
 	 */
 	__device__ __forceinline__ void OutputToSpine()
 	{
-		carry = util::reduction::TreeReduce<
+		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<
+			false,								// No need to return aggregate reduction in all threads
 			T,
-			KernelPolicy::LOG_THREADS,
-			KernelPolicy::BinaryOp>::Invoke<false>( 		// No need to return aggregate reduction in all threads
-				carry,
-				(T*) reduction_tree);
+			KernelPolicy::BinaryOp>(carry, smem_storage.reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {
@@ -180,13 +178,10 @@ struct Cta
 	 */
 	__device__ __forceinline__ void OutputToSpine(int num_elements)
 	{
-		carry = util::reduction::TreeReduce<
+		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<
+			false,								// No need to return aggregate reduction in all threads
 			T,
-			KernelPolicy::LOG_THREADS,
-			KernelPolicy::BinaryOp>::Invoke<false>(			// No need to return aggregate reduction in all threads
-				carry,
-				reduction_tree,
-				num_elements);
+			KernelPolicy::BinaryOp>(carry, smem_storage.reduction_tree, num_elements);
 
 		// Write output
 		if (threadIdx.x == 0) {
