@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Consecutive-removal enactor
+ * Consecutive removal enactor
  ******************************************************************************/
 
 #pragma once
@@ -29,20 +29,18 @@
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
+#include <b40c/util/ping_pong_storage.cuh>
 
 #include <b40c/consecutive_removal/problem_type.cuh>
 #include <b40c/consecutive_removal/policy.cuh>
 #include <b40c/consecutive_removal/autotuned_policy.cuh>
-#include <b40c/consecutive_removal/downsweep/kernel.cuh>
-#include <b40c/consecutive_removal/upsweep/kernel.cuh>
-#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace consecutive_removal {
 
 
 /**
- * Consecutive-removal enactor class.
+ * Consecutive removal enactor class.
  */
 class Enactor : public util::EnactorBase
 {
@@ -52,9 +50,17 @@ protected:
 	// Members
 	//---------------------------------------------------------------------
 
-	// Temporary device storage needed for reducing partials produced
+	// Temporary device storage needed for scanning value partials produced
 	// by separate CTAs
 	util::Spine spine;
+
+
+	//-----------------------------------------------------------------------------
+	// Helper structures
+	//-----------------------------------------------------------------------------
+
+	template <typename ProblemType, typename Enactor>
+	friend class Detail;
 
 
 	//-----------------------------------------------------------------------------
@@ -64,13 +70,8 @@ protected:
     /**
 	 * Performs a consecutive removal pass
 	 */
-	template <typename Policy>
-	cudaError_t EnactPass(
-		typename Policy::T 			*d_dest,
-		typename Policy::SizeT 		*d_num_compacted,
-		typename Policy::T 			*d_src,
-		util::CtaWorkDistribution<typename Policy::SizeT> &work,
-		typename Policy::SizeT 		spine_elements);
+	template <typename Policy, typename Detail>
+	cudaError_t EnactPass(Detail &detail);
 
 
 public:
@@ -85,28 +86,32 @@ public:
 	 * Enacts a consecutive removal operation on the specified device data.  Uses
 	 * a heuristic for selecting an autotuning policy based upon problem size.
 	 *
-	 * @param d_dest
-	 * 		Pointer to result location
-	 * @param d_num_compacted
-	 * 		Pointer to result count
-	 * @param d_src
-	 * 		Pointer to array of elements to be trimmed
+	 * @param problem_storage
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		problem to trim.  If the output "pong" arrays are NULL, the
+	 * 		enactor will allocate the appropriately-reduced storage for them.
 	 * @param num_elements
-	 * 		Number of elements in d_src
+	 * 		The number of elements in problem_storage to trim (starting at offset 0)
+	 * @param num_compacted
+	 * 		Host pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
+	 * @param d_num_compacted
+	 * 		Device pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename T,
+		typename PingPongStorage,
 		typename SizeT>
 	cudaError_t Trim(
-		T *d_dest,
-		SizeT *d_num_compacted,
-		T *d_src,
-		SizeT num_elements,
-		int max_grid_size = 0);
+		PingPongStorage 	&problem_storage,
+		SizeT 				num_elements,
+		SizeT				*num_compacted,
+		SizeT				*d_num_compacted,
+		int 				max_grid_size = 0);
 
 
 	/**
@@ -116,14 +121,18 @@ public:
 	 * (Using this entrypoint can save compile time by not compiling tuned
 	 * kernels for each problem size genre.)
 	 *
-	 * @param d_dest
-	 * 		Pointer to result location
-	 * @param d_num_compacted
-	 * 		Pointer to result count
-	 * @param d_src
-	 * 		Pointer to array of elements to be trimmed
+	 * @param problem_storage
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		problem to trim. If the output "pong" arrays are NULL, the
+	 * 		enactor will allocate the appropriately-reduced storage for them.
 	 * @param num_elements
-	 * 		Number of elements in d_src
+	 * 		The number of elements in problem_storage to trim (starting at offset 0)
+	 * @param num_compacted
+	 * 		Host pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
+	 * @param d_num_compacted
+	 * 		Device pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
@@ -131,39 +140,47 @@ public:
 	 */
 	template <
 		ProbSizeGenre PROB_SIZE_GENRE,
-		typename T,
+		typename PingPongStorage,
 		typename SizeT>
 	cudaError_t Trim(
-		T *d_dest,
-		SizeT *d_num_compacted,
-		T *d_src,
-		SizeT num_elements,
-		int max_grid_size = 0);
+		PingPongStorage 	&problem_storage,
+		SizeT 				num_elements,
+		SizeT				*num_compacted,
+		SizeT				*d_num_compacted,
+		int 				max_grid_size = 0);
 
 
 	/**
 	 * Enacts a consecutive removal on the specified device data.  Uses the specified
 	 * kernel configuration policy.  (Useful for auto-tuning.)
 	 *
-	 * @param d_dest
-	 * 		Pointer to result location
-	 * @param d_num_compacted
-	 * 		Pointer to result count
-	 * @param d_src
-	 * 		Pointer to array of elements to be trimmed
+	 * @param problem_storage
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		problem to trim.  If the output "pong" arrays are NULL, the
+	 * 		enactor will allocate the appropriately-reduced storage for them.
 	 * @param num_elements
-	 * 		Number of elements in d_src
+	 * 		The number of elements in problem_storage to trim (starting at offset 0)
+	 * @param num_compacted
+	 * 		Host pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
+	 * @param d_num_compacted
+	 * 		Device pointer to write the number of elements in the reduced
+	 * 		output storage.  May be NULL.
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
+	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <typename Policy>
 	cudaError_t Trim(
-		typename Policy::T 		*d_dest,
-		typename Policy::SizeT 	*d_num_compacted,
-		typename Policy::T 		*d_src,
-		typename Policy::SizeT 	num_elements,
-		int 					max_grid_size = 0);
+		util::PingPongStorage<
+			typename Policy::KeyType,
+			typename Policy::ValueType> 	&problem_storage,
+		typename Policy::SizeT 				num_elements,
+		typename Policy::SizeT				*num_compacted,
+		typename Policy::SizeT				*d_num_compacted,
+		int 								max_grid_size = 0);
+
 };
 
 
@@ -175,33 +192,44 @@ public:
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename T, typename SizeT>
-struct Detail
+template <typename ProblemType, typename Enactor>
+struct Detail : ProblemType
 {
-	typedef consecutive_removal::ProblemType<T, SizeT> ProblemType;
+	typedef typename ProblemType::SizeT 	SizeT;
 
-	Enactor 	*enactor;
-	T 			*d_dest;
-	SizeT		*d_num_compacted;
-	T 			*d_src;
-	SizeT 		num_elements;
-	int 		max_grid_size;
+	typedef util::PingPongStorage<
+		typename ProblemType::KeyType,
+		typename ProblemType::ValueType> 	PingPongStorage;
+
+	// Problem data
+	Enactor 							*enactor;
+	PingPongStorage 					&problem_storage;
+	SizeT								num_elements;
+	SizeT								*h_num_compacted;
+	SizeT								*d_num_compacted;
+	int			 						max_grid_size;
 
 	// Constructor
 	Detail(
-		Enactor *enactor,
-		T *d_dest,
-		SizeT *d_num_compacted,
-		T *d_src,
-		SizeT num_elements,
-		int max_grid_size = 0) :
+		Enactor 			*enactor,
+		PingPongStorage 	&problem_storage,
+		SizeT 				num_elements,
+		SizeT 				*num_compacted,
+		SizeT 				*d_num_compacted,
+		int 				max_grid_size = 0) :
 			enactor(enactor),
-			d_dest(d_dest),
-			d_num_compacted(d_num_compacted),
-			d_src(d_src),
 			num_elements(num_elements),
+			h_num_compacted(num_compacted),
+			d_num_compacted(d_num_compacted),
+			problem_storage(problem_storage),
 			max_grid_size(max_grid_size)
 	{}
+
+	template <typename Policy>
+	cudaError_t EnactPass()
+	{
+		return enactor->template EnactPass<Policy>(*this);
+	}
 };
 
 
@@ -219,14 +247,14 @@ struct PolicyResolver
 	template <int CUDA_ARCH, typename Detail>
 	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename Detail::ProblemType ProblemType;
-
 		// Obtain tuned granularity type
-		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, PROB_SIZE_GENRE> AutotunedPolicy;
+		typedef AutotunedPolicy<
+			typename Detail::ProblemType,
+			CUDA_ARCH,
+			PROB_SIZE_GENRE> AutotunedPolicy;
 
 		// Invoke enactor with type
-		return detail.enactor->template Trim<AutotunedPolicy>(
-			detail.d_dest, detail.d_num_compacted, detail.d_src, detail.num_elements, detail.max_grid_size);
+		return detail.template EnactPass<AutotunedPolicy>();
 	}
 };
 
@@ -246,12 +274,13 @@ struct PolicyResolver <UNKNOWN_SIZE>
 	template <int CUDA_ARCH, typename Detail>
 	static cudaError_t Enact(Detail &detail)
 	{
-		typedef typename Detail::ProblemType ProblemType;
-
 		// Obtain large tuned granularity type
-		typedef AutotunedPolicy<ProblemType, CUDA_ARCH, LARGE_SIZE> LargePolicy;
+		typedef AutotunedPolicy<
+			typename Detail::ProblemType,
+			CUDA_ARCH,
+			LARGE_SIZE> LargePolicy;
 
-		// Identity the maximum problem size for which we can saturate loads
+		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
 			LargePolicy::Upsweep::CTA_OCCUPANCY *
 			detail.enactor->SmCount();
@@ -259,14 +288,16 @@ struct PolicyResolver <UNKNOWN_SIZE>
 		if (detail.num_elements < saturating_load) {
 
 			// Invoke enactor with small-problem config type
-			typedef AutotunedPolicy<ProblemType, CUDA_ARCH, SMALL_SIZE> SmallPolicy;
-			return detail.enactor->template Trim<SmallPolicy>(
-				detail.d_dest, detail.d_num_compacted, detail.d_src, detail.num_elements, detail.max_grid_size);
+			typedef AutotunedPolicy<
+				typename Detail::ProblemType,
+				CUDA_ARCH,
+				SMALL_SIZE> SmallPolicy;
+
+			return detail.template EnactPass<SmallPolicy>();
 		}
 
 		// Invoke enactor with type
-		return detail.enactor->template Trim<LargePolicy>(
-			detail.d_dest, detail.d_num_compacted, detail.d_src, detail.num_elements, detail.max_grid_size);
+		return detail.template EnactPass<LargePolicy>();
 	}
 };
 
@@ -275,38 +306,89 @@ struct PolicyResolver <UNKNOWN_SIZE>
  * Enactor Implementation
  ******************************************************************************/
 
-
 /**
  * Performs a consecutive removal pass
  */
-template <typename Policy>
-cudaError_t Enactor::EnactPass(
-	typename Policy::T 				*d_dest,
-	typename Policy::SizeT 			*d_num_compacted,
-	typename Policy::T 				*d_src,
-	util::CtaWorkDistribution<typename Policy::SizeT> &work,
-	typename Policy::SizeT 			spine_elements)
+template <
+	typename Policy,
+	typename DetailType>
+cudaError_t Enactor::EnactPass(DetailType &detail)
 {
+	typedef typename Policy::KeyType 			KeyType;
+	typedef typename Policy::ValueType			ValueType;
+	typedef typename Policy::SizeT 				SizeT;
+	typedef typename Policy::SpineSizeT			SpineSizeT;
+
+	typedef typename Policy::Upsweep 			Upsweep;
+	typedef typename Policy::Spine 				Spine;
+	typedef typename Policy::Downsweep 			Downsweep;
+	typedef typename Policy::Single 			Single;
+
+	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
+	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
+
+	// Compute sweep grid size
+	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
+		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
+		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
+
+	// Use single-CTA kernel instead of multi-pass if problem is small enough
+	if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
+		sweep_grid_size = 1;
+	}
+
+	// Compute spine elements: one element per CTA plus 1 extra for total, rounded
+	// up to nearest spine tile size
+	SpineSizeT spine_elements = ((sweep_grid_size + 1 + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) *
+		Spine::TILE_ELEMENTS;
+
+	// Obtain a CTA work distribution
+	util::CtaWorkDistribution<SizeT> work;
+	work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
+
+	if (DEBUG) {
+		if (sweep_grid_size > 1) {
+			PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
+		} else {
+			PrintPassInfo<Single>(work);
+		}
+	}
+
+	bool allocate_output_values = (!Policy::KEYS_ONLY) &&
+		(detail.problem_storage.d_values[detail.problem_storage.selector ^ 1] == NULL);
+
 	cudaError_t retval = cudaSuccess;
 	do {
-		if (work.grid_size == 1) {
+		// Make sure our spine is big enough
+		if (retval = spine.Setup<SizeT>(spine_elements)) break;
 
-			typedef typename Policy::Single 		Single;
+		if ((work.grid_size == 1) && (!allocate_output_values)) {
 
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
+			if (detail.d_num_compacted == NULL) {
+				// Write out compacted size to our spine instead
+				detail.d_num_compacted = (SizeT*) spine();
+			}
+
 			SingleKernel<<<1, Single::THREADS, 0>>>(
-				d_src, d_num_compacted, d_dest, work.num_elements);
+				detail.problem_storage.d_keys[detail.problem_storage.selector],
+				detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
+				detail.problem_storage.d_values[detail.problem_storage.selector],
+				detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
+				detail.d_num_compacted,
+				detail.num_elements);
+
+			// Copy out compacted size if necessary
+			if (detail.h_num_compacted != NULL) {
+				if (util::B40CPerror(cudaMemcpy(
+						detail.h_num_compacted, detail.d_num_compacted, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
+					"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__)) break;
+			}
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
-
-			typedef typename Policy::Upsweep 		Upsweep;
-			typedef typename Policy::Spine 			Spine;
-			typedef typename Policy::Downsweep 		Downsweep;
-
-			typedef typename Spine::T 				SpineType;
 
 			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
@@ -315,53 +397,62 @@ cudaError_t Enactor::EnactPass(
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
-			// Tuning option for dynamic smem allocation
-			if (Policy::UNIFORM_SMEM_ALLOCATION) {
+			// Tuning option: make sure all kernels have the same overall smem allocation
+			if (Policy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
 
-				// We need to compute dynamic smem allocations to ensure all three
-				// kernels end up allocating the same amount of smem per CTA
-
-				// Get kernel attributes
-				cudaFuncAttributes upsweep_kernel_attrs, spine_kernel_attrs, downsweep_kernel_attrs;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&upsweep_kernel_attrs, UpsweepKernel),
-					"Enactor cudaFuncGetAttributes upsweep_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
-					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel),
-					"Enactor cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
-
-				int max_static_smem = B40C_MAX(
-					upsweep_kernel_attrs.sharedSizeBytes,
-					B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
-
-				dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
-				dynamic_smem[2] = max_static_smem - downsweep_kernel_attrs.sharedSizeBytes;
-			}
-
-			// Tuning option for spine-scan kernel grid size
-			if (Policy::UNIFORM_GRID_SIZE) {
-				grid_size[1] = grid_size[0]; 				// We need to make sure that all kernels launch the same number of CTAs
-			}
+			// Tuning option: make sure that all kernels launch the same number of CTAs)
+			if (Policy::UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
 
 			// Upsweep scan into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_src, (SpineType*) spine(), work);
+				detail.problem_storage.d_keys[detail.problem_storage.selector],
+				(SizeT*) spine(),
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(SpineType*) spine(), (SpineType*) spine(), spine_elements);
+				(SizeT*) spine(),
+				(SizeT*) spine(),
+				spine_elements);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
+			// Copy out compacted size and/or allocate output values if necessary
+			if ((detail.h_num_compacted != NULL) || allocate_output_values) {
+
+				// Copy out compacted size
+				SizeT num_compacted;
+				if (util::B40CPerror(cudaMemcpy(
+						&num_compacted,
+						((SizeT*) spine()) + grid_size[0],
+						sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
+					"Enactor cudaMemcpy spine[grid_size] failed: ", __FILE__, __LINE__)) break;
+
+				// Set caller's output parameter for compacted size
+				if (detail.h_num_compacted) detail.h_num_compacted[0] = num_compacted;
+
+				// Allocate output values
+				if (allocate_output_values) {
+					if (util::B40CPerror(cudaMalloc(
+							(void**) &detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
+							sizeof(ValueType) * num_compacted),
+						"Enactor cudaMalloc d_values failed: ", __FILE__, __LINE__)) break;
+				}
+			}
+
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_src, d_num_compacted, d_dest, (SpineType*) spine(), work);
+				detail.problem_storage.d_keys[detail.problem_storage.selector],
+				detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
+				detail.problem_storage.d_values[detail.problem_storage.selector],
+				detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
+				(SizeT*) spine(),
+				detail.d_num_compacted,
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
-
 		}
 	} while (0);
 
@@ -374,87 +465,18 @@ cudaError_t Enactor::EnactPass(
  */
 template <typename Policy>
 cudaError_t Enactor::Trim(
-	typename Policy::T 				*d_dest,
-	typename Policy::SizeT 			*d_num_compacted,
-	typename Policy::T 				*d_src,
-	typename Policy::SizeT			num_elements,
-	int 							max_grid_size)
+	util::PingPongStorage<
+		typename Policy::KeyType,
+		typename Policy::ValueType> 	&problem_storage,
+	typename Policy::SizeT 				num_elements,
+	typename Policy::SizeT				*num_compacted,
+	typename Policy::SizeT				*d_num_compacted,
+	int 								max_grid_size)
 {
-	typedef typename Policy::Upsweep 	Upsweep;
-	typedef typename Policy::Spine 		Spine;
-	typedef typename Policy::Downsweep 	Downsweep;
-	typedef typename Policy::Single 	Single;
+	Detail<Policy, Enactor> detail(
+		this, problem_storage, num_elements, num_compacted, d_num_compacted, max_grid_size);
 
-	typedef typename Policy::T 			T;
-	typedef typename Policy::SizeT 		SizeT;
-	typedef typename Spine::T 			SpineType;
-
-	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
-	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
-
-	// Compute sweep grid size
-	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size) :
-		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(num_elements, max_grid_size);
-
-	// Use single-CTA kernel instead of multi-pass if problem is small enough
-	if (num_elements <= Single::TILE_ELEMENTS * 3) {
-		sweep_grid_size = 1;
-	}
-
-	// Compute spine elements: one element per CTA plus 1 extra for total, rounded
-	// up to nearest spine tile size
-	int spine_elements = ((sweep_grid_size + 1 + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
-
-	// Obtain a CTA work distribution
-	util::CtaWorkDistribution<SizeT> work;
-	work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(num_elements, sweep_grid_size);
-
-	if (DEBUG) {
-		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
-			cuda_props.device_sm_version,
-			cuda_props.kernel_ptx_version);
-		if (sweep_grid_size > 1) {
-			printf("Upsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
-				work.grid_size,
-				Upsweep::THREADS,
-				Upsweep::TILE_ELEMENTS);
-			printf("Spine: \t\t[threads: %d, spine_elements: %d, tile_elements: %d]\n",
-				Spine::THREADS,
-				spine_elements,
-				Spine::TILE_ELEMENTS);
-			printf("Downsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
-				work.grid_size,
-				Downsweep::THREADS,
-				Downsweep::TILE_ELEMENTS);
-			printf("Work: \t\t[element bytes: %lu, SizeT %lu bytes, num_elements: %lu, schedule_granularity: %d, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu]\n",
-				(unsigned long) sizeof(T),
-				(unsigned long) sizeof(SizeT),
-				(unsigned long) work.num_elements,
-				Downsweep::SCHEDULE_GRANULARITY,
-				(unsigned long) work.total_grains,
-				(unsigned long) work.grains_per_cta,
-				(unsigned long) work.extra_grains);
-		} else {
-			printf("Single: \t[threads: %d, num_elements: %lu, tile_elements: %d]\n",
-				Single::THREADS,
-				(unsigned long) work.num_elements,
-				Single::TILE_ELEMENTS);
-		}
-		fflush(stdout);
-	}
-
-	cudaError_t retval = cudaSuccess;
-	do {
-		// Make sure our spine is big enough
-		if (retval = spine.Setup<SpineType>(spine_elements)) break;
-
-		// Invoke pass
-		if (retval = EnactPass<Policy>(d_dest, d_num_compacted, d_src, work, spine_elements)) break;
-
-	} while (0);
-
-	return retval;
+	return EnactPass<Policy>(detail);
 }
 
 
@@ -463,22 +485,26 @@ cudaError_t Enactor::Trim(
  */
 template <
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename T,
+	typename PingPongStorage,
 	typename SizeT>
 cudaError_t Enactor::Trim(
-	T 				*d_dest,
-	SizeT 			*d_num_compacted,
-	T 				*d_src,
-	SizeT 			num_elements,
-	int				max_grid_size)
+	PingPongStorage 	&problem_storage,
+	SizeT 				num_elements,
+	SizeT				*num_compacted,
+	SizeT				*d_num_compacted,
+	int 				max_grid_size)
 {
-	typedef Detail<T, SizeT> Detail;
-	typedef PolicyResolver<PROB_SIZE_GENRE> Resolver;
+	typedef ProblemType<
+		typename PingPongStorage::KeyType,
+		typename PingPongStorage::ValueType,
+		SizeT> ProblemType;
 
-	Detail detail(this, d_dest, d_num_compacted, d_src, num_elements, max_grid_size);
+	Detail<ProblemType, Enactor> detail(
+		this, problem_storage, num_elements, num_compacted, d_num_compacted, max_grid_size);
 
-	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(
-		detail, PtxVersion());
+	return util::ArchDispatch<
+		__B40C_CUDA_ARCH__,
+		PolicyResolver<PROB_SIZE_GENRE> >::Enact (detail, PtxVersion());
 }
 
 
@@ -486,18 +512,19 @@ cudaError_t Enactor::Trim(
  * Enacts a consecutive removal operation on the specified device data.
  */
 template <
-	typename T,
+	typename PingPongStorage,
 	typename SizeT>
 cudaError_t Enactor::Trim(
-	T 				*d_dest,
-	SizeT 			*d_num_compacted,
-	T 				*d_src,
-	SizeT 			num_elements,
-	int 			max_grid_size)
+	PingPongStorage 	&problem_storage,
+	SizeT 				num_elements,
+	SizeT				*num_compacted,
+	SizeT				*d_num_compacted,
+	int 				max_grid_size)
 {
 	return Trim<UNKNOWN_SIZE>(
-		d_dest, d_src, num_elements, max_grid_size);
+		problem_storage, num_elements, num_compacted, d_num_compacted, max_grid_size);
 }
+
 
 
 

@@ -39,10 +39,10 @@ namespace spine {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
-	typename KernelPolicy::SpinePartialType 	*&d_in_partials,
-	typename KernelPolicy::SpinePartialType 	*&d_out_partials,
-	typename KernelPolicy::SpineFlagType		*&d_in_flags,
-	typename KernelPolicy::SpineFlagType		*&d_out_flags,
+	typename KernelPolicy::ValueType 			*&d_in_partials,
+	typename KernelPolicy::ValueType 			*&d_out_partials,
+	typename KernelPolicy::SizeT				*&d_in_flags,
+	typename KernelPolicy::SizeT				*&d_out_flags,
 	typename KernelPolicy::SpineSizeT 			&spine_elements,
 	typename KernelPolicy::SmemStorage			&smem_storage)
 {
@@ -87,10 +87,10 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::SpinePartialType 	*d_in_partials,
-	typename KernelPolicy::SpinePartialType 	*d_out_partials,
-	typename KernelPolicy::SpineFlagType		*d_in_flags,
-	typename KernelPolicy::SpineFlagType		*d_out_flags,
+	typename KernelPolicy::ValueType 			*d_in_partials,
+	typename KernelPolicy::ValueType 			*d_out_partials,
+	typename KernelPolicy::SizeT				*d_in_flags,
+	typename KernelPolicy::SizeT				*d_out_flags,
 	typename KernelPolicy::SpineSizeT 			spine_elements)
 {
 	// Shared storage for the kernel

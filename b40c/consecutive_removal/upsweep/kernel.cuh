@@ -38,22 +38,19 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::T 									*&d_in,
-	typename KernelPolicy::SpineType							*&d_spine,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
-	typename KernelPolicy::SmemStorage							&smem_storage)
+	typename KernelPolicy::KeyType				*&d_in_keys,
+	typename KernelPolicy::SizeT				*&d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
+	typename KernelPolicy::SmemStorage			&smem_storage)
 {
 	typedef Cta<KernelPolicy> 					Cta;
 	typedef typename KernelPolicy::SizeT 		SizeT;
 
-	// Quit if we're the last threadblock (no need for it in upsweep).  All other
-	// threadblocks process full tiles only.
-	if (blockIdx.x == gridDim.x - 1) {
-		return;
-	}
-
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_spine);
+	Cta cta(
+		smem_storage,
+		d_in_keys,
+		d_spine);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -61,30 +58,29 @@ __device__ __forceinline__ void UpsweepPass(
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-	// Quit if we're the last threadblock (no need for it in upsweep).
-	if (work_limits.last_block) {
-		return;
-	}
-
 	cta.ProcessWorkRange(work_limits);
 }
 
 
 /**
- * Consecutive removal upsweep reduction kernel entry point
+ * Consecutive reduction upsweep reduction kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 									*d_in,
-	typename KernelPolicy::SpineType							*d_spine,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
+	typename KernelPolicy::KeyType				*d_in_keys,
+	typename KernelPolicy::SizeT				*d_spine,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelPolicy>(d_in, d_spine, work_decomposition, smem_storage);
+	UpsweepPass<KernelPolicy>(
+		d_in_keys,
+		d_spine,
+		work_decomposition,
+		smem_storage);
 }
 
 

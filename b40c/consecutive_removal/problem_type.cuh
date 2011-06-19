@@ -33,14 +33,22 @@ namespace consecutive_removal {
  * Type of consecutive removal problem
  */
 template <
-	typename _T,
+	typename _KeyType,
+	typename _ValueType,
 	typename _SizeT>
 struct ProblemType
 {
-	typedef _T 				T;
+	// The type of data we are operating upon
+	typedef _KeyType 		KeyType;
+	typedef _ValueType 		ValueType;
 	typedef _SizeT 			SizeT;
-	typedef SizeT 			SpineType;
+
+	// The size_t type of spine we're using
 	typedef int 			SpineSizeT;
+
+	enum {
+		KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
+	};
 };
 
 

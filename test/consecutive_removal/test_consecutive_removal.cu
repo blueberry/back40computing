@@ -30,6 +30,8 @@
 #include "b40c_test_util.h"
 #include "test_consecutive_removal.h"
 
+#include <b40c/util/ping_pong_storage.cuh>
+
 using namespace b40c;
 
 /******************************************************************************
@@ -52,7 +54,7 @@ int 	g_iterations  					= 1;
 void Usage()
 {
 	printf("\ntest_consecutive_removal [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] [--sweep] [--keys-only]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -62,52 +64,22 @@ void Usage()
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
 	printf("\n");
+	printf("\t--keys-only\tWhether or not to pair keys with same-sized values\n");
+	printf("\n");
 }
 
 
-
 /**
- * Creates an example consecutive removal problem and then dispatches the problem
- * to the GPU for the given number of iterations, displaying runtime information.
+ * Tests an example consecutive removal problem
  */
-template<typename T>
-void TestConsecutiveRemoval(size_t num_elements)
+template<
+	typename PingPongStorage,
+	typename SizeT>
+void TestProblem(
+	SizeT num_elements,
+	SizeT num_compacted,
+	PingPongStorage &h_problem_storage)
 {
-    // Allocate the consecutive removal problem on the host and fill the keys with random bytes
-
-	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
-
-	if ((h_data == NULL) || (h_reference == NULL)){
-		fprintf(stderr, "Host malloc of problem data failed\n");
-		exit(1);
-	}
-
-	if (g_verbose) printf("Input problem: \n");
-	for (int i = 0; i < num_elements; i++) {
-//		h_data[i] = (i / 7) & 1;					// toggle every 7 elements
-		util::RandomBits<T>(h_data[i], 1, 1);		// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
-
-		if (g_verbose) {
-			printf("%lld, ", (long long) h_data[i]);
-		}
-	}
-	if (g_verbose) printf("\n");
-
-	size_t num_compacted = 0;
-	h_reference[0] = h_data[0];
-	for (size_t i = 0; i < num_elements; ++i) {
-		if (h_reference[num_compacted] != h_data[i]) {
-			num_compacted++;
-			h_reference[num_compacted] = h_data[i];
-		}
-	}
-	num_compacted++;
-
-
-	//
-    // Run the timing test(s)
-	//
 
 	// Execute test(s), optionally sweeping problem size downward
 	size_t orig_num_elements = num_elements;
@@ -115,26 +87,147 @@ void TestConsecutiveRemoval(size_t num_elements)
 
 		printf("\nLARGE config:\t");
 		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE_SIZE>(
-			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
-/*
+			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+
 		printf("\nSMALL config:\t");
 		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL_SIZE>(
-			h_data, h_reference, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
-			printf("%lu-byte elements: Small faster at %lu elements\n", (unsigned long) sizeof(T), (unsigned long) num_elements);
+			printf("%lu-byte keys: Small faster at %lu elements\n",
+				(unsigned long) sizeof(typename PingPongStorage::KeyType),
+				(unsigned long) num_elements);
 		}
-*/
+
 		num_elements -= 4096;
 
 	} while (g_sweep && (num_elements < orig_num_elements ));
-
-	// Free our allocated host memory
-	if (h_data) free(h_data);
-    if (h_reference) free(h_reference);
 }
 
 
+/**
+ * Creates and tests a keys-only example consecutive removal problem
+ */
+template <typename KeyType, typename SizeT>
+void TestProblemKeysOnly(SizeT num_elements)
+{
+	util::PingPongStorage<KeyType> h_problem_storage;
+
+	// Allocate the consecutive removal problem on the host
+	h_problem_storage.d_keys[0] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+	h_problem_storage.d_keys[1] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+
+	if (!h_problem_storage.d_keys[0] || !h_problem_storage.d_keys[1]) {
+		fprintf(stderr, "Host malloc of problem data failed\n");
+		exit(1);
+	}
+
+	// Initialize problem
+	if (g_verbose) printf("Input problem: \n");
+	for (int i = 0; i < num_elements; i++) {
+//		h_problem_storage.d_keys[0][i] = (i / 7) & 1;							// Toggle every 7 elements
+		util::RandomBits<KeyType>(h_problem_storage.d_keys[0][i], 1, 1);		// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
+
+		if (g_verbose) {
+			printf("%lld, ",
+			(long long) h_problem_storage.d_keys[0][i]);
+		}
+	}
+	if (g_verbose) printf("\n");
+
+	// Compute reference solution
+	SizeT num_compacted = 0;
+	h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
+
+	for (SizeT i = 0; i < num_elements; ++i) {
+		if (h_problem_storage.d_keys[1][num_compacted] != h_problem_storage.d_keys[0][i]) {
+			num_compacted++;
+			h_problem_storage.d_keys[1][num_compacted] = h_problem_storage.d_keys[0][i];
+		}
+	}
+	num_compacted++;
+
+	// Test problem
+	TestProblem(num_elements, num_compacted, h_problem_storage);
+
+	// Free our allocated host memory
+	if (h_problem_storage.d_keys[0]) free(h_problem_storage.d_keys[0]);
+	if (h_problem_storage.d_keys[1]) free(h_problem_storage.d_keys[1]);
+}
+
+
+/**
+ * Creates and tests a key-value example consecutive removal problem
+ */
+template <typename KeyType, typename ValueType, typename SizeT>
+void TestProblem(SizeT num_elements)
+{
+	util::PingPongStorage<KeyType, ValueType> h_problem_storage;
+
+    // Allocate the consecutive removal problem on the host
+	h_problem_storage.d_keys[0] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+	h_problem_storage.d_keys[1] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+	h_problem_storage.d_values[0] = (ValueType*) malloc(num_elements * sizeof(ValueType));
+	h_problem_storage.d_values[1] = (ValueType*) malloc(num_elements * sizeof(ValueType));
+
+	if (!h_problem_storage.d_keys[0] || !h_problem_storage.d_keys[1] || !h_problem_storage.d_values[0] || !h_problem_storage.d_values[1]){
+		fprintf(stderr, "Host malloc of problem data failed\n");
+		exit(1);
+	}
+
+	// Initialize problem
+	if (g_verbose) printf("Input problem: \n");
+	for (int i = 0; i < num_elements; i++) {
+//		h_problem_storage.d_keys[0][i] = (i / 7) & 1;							// Toggle every 7 elements
+		util::RandomBits<KeyType>(h_problem_storage.d_keys[0][i], 1, 1);				// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
+		h_problem_storage.d_values[0][i] = i;
+
+		if (g_verbose) {
+			printf("(%lld, %lld), ",
+			(long long) h_problem_storage.d_keys[0][i],
+			(long long) h_problem_storage.d_values[0][i]);
+		}
+	}
+	if (g_verbose) printf("\n");
+
+	// Compute reference solution
+	SizeT num_compacted = 0;
+	h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
+	h_problem_storage.d_values[1][0] = h_problem_storage.d_values[0][0];
+
+	for (SizeT i = 0; i < num_elements; ++i) {
+		if (h_problem_storage.d_keys[1][num_compacted] != h_problem_storage.d_keys[0][i]) {
+			num_compacted++;
+			h_problem_storage.d_keys[1][num_compacted] = h_problem_storage.d_keys[0][i];
+			h_problem_storage.d_values[1][num_compacted] = h_problem_storage.d_values[0][i];
+		}
+	}
+	num_compacted++;
+
+	// Test problem
+	TestProblem(num_elements, num_compacted, h_problem_storage);
+
+	// Free our allocated host memory
+	if (h_problem_storage.d_keys[0]) free(h_problem_storage.d_keys[0]);
+	if (h_problem_storage.d_keys[1]) free(h_problem_storage.d_keys[1]);
+	if (h_problem_storage.d_values[0]) free(h_problem_storage.d_values[0]);
+	if (h_problem_storage.d_values[1]) free(h_problem_storage.d_values[1]);
+}
+
+
+/**
+ * Creates an example consecutive removal problem and then dispatches the problem
+ * to the GPU for the given number of iterations, displaying runtime information.
+ */
+template<typename T, typename SizeT>
+void TestConsecutiveRemoval(SizeT num_elements, bool keys_only)
+{
+	if (keys_only) {
+		TestProblemKeysOnly<T>(num_elements);
+	} else {
+		TestProblem<T, T>(num_elements);
+	}
+}
 
 
 /******************************************************************************
@@ -165,27 +258,27 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
-
+	bool keys_only = args.CheckCmdLineFlag("keys-only");
 
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		TestConsecutiveRemoval<T>(num_elements * 4);
+		TestConsecutiveRemoval<T>(num_elements * 4, keys_only);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		TestConsecutiveRemoval<T>(num_elements * 2);
+		TestConsecutiveRemoval<T>(num_elements * 2, keys_only);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		TestConsecutiveRemoval<T>(num_elements);
+		TestConsecutiveRemoval<T>(num_elements, keys_only);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		TestConsecutiveRemoval<T>(num_elements / 2);
+		TestConsecutiveRemoval<T>(num_elements / 2, keys_only);
 	}
 
 	return 0;

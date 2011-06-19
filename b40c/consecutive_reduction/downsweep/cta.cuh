@@ -55,8 +55,6 @@ struct Cta
 	typedef typename KernelPolicy::ValueType			ValueType;
 	typedef typename KernelPolicy::SizeT 				SizeT;
 
-	typedef typename KernelPolicy::SpinePartialType		SpinePartialType;
-	typedef typename KernelPolicy::SpineFlagType		SpineFlagType;
 	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
 
 	typedef typename KernelPolicy::LocalFlag			LocalFlag;			// Type for noting local discontinuities
@@ -69,6 +67,7 @@ struct Cta
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
 		RankType (*)[KernelPolicy::LOAD_VEC_SIZE]> 		DataSoa;
 
+	typedef typename KernelPolicy::SmemStorage 			SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -254,7 +253,6 @@ struct Cta
 	/**
 	 * Constructor
 	 */
-	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		KeyType 		*d_in_keys,
@@ -277,7 +275,7 @@ struct Cta
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
 			d_num_compacted(d_num_compacted),
-			carry(spine_partial)
+			carry(spine_partial)				// Seed carry with spine partial
 	{}
 
 

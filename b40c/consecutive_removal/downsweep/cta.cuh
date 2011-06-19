@@ -32,6 +32,7 @@
 #include <b40c/util/io/scatter_tile.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
+#include <b40c/util/io/two_phase_scatter_tile.cuh>
 
 namespace b40c {
 namespace consecutive_removal {
@@ -48,12 +49,15 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 				T;
+	typedef typename KernelPolicy::KeyType 			KeyType;
+	typedef typename KernelPolicy::ValueType		ValueType;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::SpineType		SpineType;
+
 	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
 	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
+
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
+
 	typedef typename KernelPolicy::SmemStorage 		SmemStorage;
 
 
@@ -63,15 +67,17 @@ struct Cta
 
 	// Running accumulator for the number of discontinuities observed by
 	// the CTA over its tile-processing lifetime (managed in each raking thread)
-	SpineType		carry;
+	SizeT			carry;
 
-	// Input and output device pointers
-	T 				*d_in;
-	T 				*d_out;
-	SizeT 			*d_num_compacted;
+	// Device pointers
+	KeyType 		*d_in_keys;
+	KeyType			*d_out_keys;
+	ValueType 		*d_in_values;
+	ValueType 		*d_out_values;
+	SizeT			*d_num_compacted;
 
-	// Pool of storage for compacting a tile of values
-	T 				*exchange;
+	// Shared memory storage for the CTA
+	SmemStorage		&smem_storage;
 
 	// Operational details for SRTS scan grid
 	SrtsDetails 	srts_details;
@@ -93,10 +99,11 @@ struct Cta
 		// Members
 		//---------------------------------------------------------------------
 
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];						// Tile of elements
-		T compacted_data[KernelPolicy::TILE_ELEMENTS_PER_THREAD][1];							// Tile of compacted elements
-		LocalFlag head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
-		RankType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];				// Tile of local scatter offsets
+		KeyType 	keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		ValueType	values[KernelPolicy::TILE_ELEMENTS_PER_THREAD][1];
+
+		LocalFlag 	head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Discontinuity head_flags
+		RankType 	ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Local scatter offsets
 
 		//---------------------------------------------------------------------
 		// Interface
@@ -111,15 +118,15 @@ struct Cta
 			const SizeT &guarded_elements,
 			Cta *cta)
 		{
-			// Load data tile, initializing discontinuity head_flags
+			// Load keys, initializing discontinuity head_flags
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
-					data,
+					keys,
 					head_flags,
-					cta->d_in + cta_offset,
+					cta->d_in_keys + cta_offset,
 					guarded_elements);
 
 			// Copy discontinuity head_flags into ranks
@@ -133,50 +140,57 @@ struct Cta
 				KernelPolicy::LOAD_VEC_SIZE,
 				true,							// exclusive
 				util::Operators<RankType>::Sum>::ScanTile(
-					cta->srts_details, ranks);
+					cta->srts_details,
+					ranks);
 
 			// Barrier sync to protect smem exchange storage
 			__syncthreads();
 
-			// Scatter valid data into smem exchange, predicated on head_flags (treat
-			// data, head_flags, and ranks as linear arrays)
-			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			// 2-phase scatter keys
+			util::io::TwoPhaseScatterTile<
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
-				util::io::st::NONE>::Scatter(
-					cta->exchange,
-					(T*) data,
-					(LocalFlag*) head_flags,
-					(RankType*) ranks);
+				KernelPolicy::WRITE_MODIFIER>(
+					(KeyType *) keys,
+					(LocalFlag *) head_flags,
+					(RankType *) ranks,
+					unique_elements,
+					cta->smem_storage.key_exchange,
+					cta->d_out_keys + cta->carry);
+
+			if (!util::Equals<ValueType, util::NullType>::VALUE) {
+
+				// Load values
+				util::io::LoadTile<
+					KernelPolicy::LOG_LOADS_PER_TILE,
+					KernelPolicy::LOG_LOAD_VEC_SIZE,
+					KernelPolicy::THREADS,
+					KernelPolicy::READ_MODIFIER>::LoadValid(
+						values,
+						cta->d_in_values + cta_offset,
+						guarded_elements);
+
+				// Barrier sync to protect smem exchange storage
+				__syncthreads();
+
+				// 2-phase scatter values
+				util::io::TwoPhaseScatterTile<
+					KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+					KernelPolicy::THREADS,
+					KernelPolicy::WRITE_MODIFIER>(
+						(ValueType *) values,
+						(LocalFlag *) head_flags,
+						(RankType *) ranks,
+						unique_elements,
+						cta->smem_storage.key_exchange,
+						cta->d_out_values + cta->carry);
+			}
 
 			// Barrier sync to protect smem exchange storage
 			__syncthreads();
-
-			// Gather compacted data from smem exchange (in 1-element stride loads)
-			util::io::LoadTile<
-				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-				0, 											// Vec-1
-				KernelPolicy::THREADS,
-				util::io::ld::NONE>::LoadValid(
-					compacted_data,
-					cta->exchange,
-					unique_elements);
-
-			// Scatter compacted data to global output
-			util::io::StoreTile<
-				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-				0, 											// Vec-1
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Store(
-					compacted_data,
-					cta->d_out + cta->carry,
-					unique_elements);
 
 			// Update running discontinuity count for CTA
 			cta->carry += unique_elements;
-
-			// Barrier sync to protect smem exchange storage
-			__syncthreads();
 		}
 	};
 
@@ -191,10 +205,11 @@ struct Cta
 		// Members
 		//---------------------------------------------------------------------
 
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];						// Tile of elements
-		LocalFlag head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
-		RankType ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];				// Tile of global scatter offsets
+		KeyType 	keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		ValueType	values[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
+		LocalFlag 	head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Discontinuity head_flags
+		RankType 	ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Local scatter offsets
 
 		//---------------------------------------------------------------------
 		// Interface
@@ -209,15 +224,15 @@ struct Cta
 			const SizeT &guarded_elements,
 			Cta *cta)
 		{
-			// Load data tile, initializing discontinuity head_flags
+			// Load keys tile, initializing discontinuity head_flags
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
-					data,
+					keys,
 					head_flags,
-					cta->d_in + cta_offset,
+					cta->d_in_keys + cta_offset,
 					guarded_elements);
 
 			// Copy discontinuity head_flags into ranks
@@ -235,16 +250,38 @@ struct Cta
 					ranks,
 					cta->carry);
 
-			// Scatter valid data directly to global output, predicated on head_flags (treat
-			// data, head_flags, and ranks as linear arrays)
+			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
 				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					cta->d_out,
-					(T*) data,
+					cta->d_out_keys,
+					(KeyType*) keys,						// Treat as linear arrays
 					(LocalFlag*) head_flags,
 					(RankType*) ranks);
+
+			if (!util::Equals<ValueType, util::NullType>::VALUE) {
+
+				// Load values
+				util::io::LoadTile<
+					KernelPolicy::LOG_LOADS_PER_TILE,
+					KernelPolicy::LOG_LOAD_VEC_SIZE,
+					KernelPolicy::THREADS,
+					KernelPolicy::READ_MODIFIER>::LoadValid(
+						values,
+						cta->d_in_values + cta_offset,
+						guarded_elements);
+
+				// Scatter valid values directly to global output, predicated on head_flags
+				util::io::ScatterTile<
+					KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+					KernelPolicy::THREADS,
+					KernelPolicy::WRITE_MODIFIER>::Scatter(
+						cta->d_out_values,
+						(ValueType*) values,				// Treat as linear arrays
+						(LocalFlag*) head_flags,
+						(RankType*) ranks);
+			}
 		}
 	};
 
@@ -258,18 +295,22 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
-		T 			*d_in,
-		T 			*d_out,
-		SizeT 		*d_num_compacted,
-		SpineType	spine_partial = 0) :
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT			*d_num_compacted,
+		SizeT			spine_partial = 0) :
 
 			srts_details(
 				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				0),
-			exchange(smem_storage.exchange),
-			d_in(d_in),
-			d_out(d_out),
+			smem_storage(smem_storage),
+			d_in_keys(d_in_keys),
+			d_out_keys(d_out_keys),
+			d_in_values(d_in_values),
+			d_out_values(d_out_values),
 			d_num_compacted(d_num_compacted),
 			carry(spine_partial) 			// Seed carry with spine partial
 	{}

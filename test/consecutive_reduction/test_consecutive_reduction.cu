@@ -79,7 +79,7 @@ template<
 	typename SizeT>
 void TestConsecutiveReduction(SizeT num_elements)
 {
-    // Allocate the consecutive reduction problem on the host and fill the keys with random bytes
+    // Allocate the consecutive reduction problem on the host
 	typedef util::PingPongStorage<T, T> PingPongStorage;
 	PingPongStorage h_problem_storage;
 
@@ -96,8 +96,8 @@ void TestConsecutiveReduction(SizeT num_elements)
 	// Initialize problem
 	if (g_verbose) printf("Input problem: \n");
 	for (int i = 0; i < num_elements; i++) {
-		h_problem_storage.d_keys[0][i] = (i / 7) & 1;		// Toggle every 7 elements
-//		util::RandomBits<T>(h_data[i], 1, 1);				// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
+		h_problem_storage.d_keys[0][i] = (i / 7) & 1;							// Toggle every 7 elements
+//		util::RandomBits<T>(h_problem_storage.d_keys[0][i], 1, 1);				// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
 
 		h_problem_storage.d_values[0][i] = 1;
 
@@ -111,7 +111,6 @@ void TestConsecutiveReduction(SizeT num_elements)
 
 	// Compute reference solution
 	SizeT num_compacted = 0;
-
 	h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
 	h_problem_storage.d_values[1][0] = Identity();
 
@@ -192,7 +191,6 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-/*
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -205,21 +203,18 @@ int main(int argc, char** argv)
 		typedef Sum<T> BinaryOp;
 		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
 	}
-*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		typedef Sum<T> BinaryOp;
 		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		typedef Sum<T> BinaryOp;
 		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
 	}
-*/
 
 	return 0;
 }

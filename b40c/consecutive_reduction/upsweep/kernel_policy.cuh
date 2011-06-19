@@ -70,12 +70,8 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::ValueType 				ValueType;
 	typedef typename ProblemType::SizeT						SizeT;
 
-	typedef typename ProblemType::SpinePartialType			SpinePartialType;
-	typedef typename ProblemType::SpineFlagType				SpineFlagType;
-	typedef typename ProblemType::SpineSizeT				SpineSizeT;
-
 	// Tuple of spine partial-flag type
-	typedef util::Tuple<SpinePartialType, SpineFlagType> 	SoaTuple;		// Structure-of-array tuple for spine scan
+	typedef util::Tuple<ValueType, SizeT> 	SoaTuple;		// Structure-of-array tuple for spine scan
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -118,7 +114,7 @@ struct KernelPolicy : ProblemType
 	// SRTS grid type for value partials
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		SpinePartialType,						// Partial type
+		ValueType,						// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
@@ -128,7 +124,7 @@ struct KernelPolicy : ProblemType
 	// SRTS grid type for flags
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		SpineFlagType,							// Partial type
+		SizeT,							// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
@@ -141,11 +137,11 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		SpinePartialType	partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		SpinePartialType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+		ValueType	partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 
-		SpineFlagType 		flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		SpineFlagType 		flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+		SizeT 		flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		SizeT 		flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 	};
 
 

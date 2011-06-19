@@ -135,7 +135,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -168,7 +168,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -202,7 +202,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -235,7 +235,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -368,7 +368,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 			CUDA_ARCH,
 			LARGE_SIZE> LargePolicy;
 
-		// Identity the maximum problem size for which we can saturate loads
+		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
 			LargePolicy::Upsweep::CTA_OCCUPANCY *
 			detail.enactor->SmCount();

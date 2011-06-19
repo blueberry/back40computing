@@ -40,8 +40,8 @@ template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
 	typename KernelPolicy::KeyType				*&d_in_keys,
 	typename KernelPolicy::ValueType			*&d_in_values,
-	typename KernelPolicy::SpinePartialType 	*&d_spine_partials,
-	typename KernelPolicy::SpineFlagType		*&d_spine_flags,
+	typename KernelPolicy::ValueType 			*&d_spine_partials,
+	typename KernelPolicy::SizeT				*&d_spine_flags,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 	typename KernelPolicy::SmemStorage			&smem_storage)
 {
@@ -75,8 +75,8 @@ __global__
 void Kernel(
 	typename KernelPolicy::KeyType				*d_in_keys,
 	typename KernelPolicy::ValueType			*d_in_values,
-	typename KernelPolicy::SpinePartialType		*d_spine_partials,
-	typename KernelPolicy::SpineFlagType		*d_spine_flags,
+	typename KernelPolicy::ValueType			*d_spine_partials,
+	typename KernelPolicy::SizeT				*d_spine_flags,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel

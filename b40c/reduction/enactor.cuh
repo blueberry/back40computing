@@ -253,7 +253,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 			CUDA_ARCH,
 			LARGE_SIZE> LargePolicy;
 
-		// Identity the maximum problem size for which we can saturate loads
+		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
 			LargePolicy::Upsweep::CTA_OCCUPANCY *
 			detail.enactor->SmCount();

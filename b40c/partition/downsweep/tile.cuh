@@ -755,7 +755,7 @@ struct Tile
 	 */
 	template <
 		bool TWO_PHASE_SCATTER,
-		bool KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
+		bool KEYS_ONLY = KernelPolicy::KEYS_ONLY,
 		int dummy = 0>
 	struct PartitionTile
 	{

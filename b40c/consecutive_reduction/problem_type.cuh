@@ -48,9 +48,7 @@ struct ProblemType :
 	typedef _KeyType 		KeyType;
 	typedef _ValueType 		ValueType;
 
-	// The type of spine we're using
-	typedef ValueType 		SpinePartialType;
-	typedef SizeT 			SpineFlagType;
+	// The size_t type of spine we're using
 	typedef int 			SpineSizeT;
 };
 

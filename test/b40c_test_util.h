@@ -40,6 +40,7 @@
 #include <iostream>
 
 #include <b40c/util/random_bits.cuh>
+#include <b40c/util/basic_utils.cuh>
 
 namespace b40c {
 
@@ -308,6 +309,15 @@ int CompareDeviceResults(
 	return retval;
 }
 
+int CompareDeviceResults(
+	util::NullType *h_reference,
+	util::NullType *d_data,
+	size_t num_elements,
+	bool verbose = true,
+	bool display_data = false)
+{
+	return 0;
+}
 
 /**
  * Verify the contents of a device array match those

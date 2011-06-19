@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
+
 namespace b40c {
 namespace partition {
 
@@ -44,6 +46,10 @@ struct ProblemType
 
 	// The integer type we should use to index into data arrays (e.g., size_t, uint32, uint64, etc)
 	typedef _SizeT 			SizeT;
+
+	enum {
+		KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
+	};
 };
 		
 

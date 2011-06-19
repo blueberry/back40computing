@@ -66,11 +66,15 @@ template <
 
 struct KernelPolicy : ProblemType
 {
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
-	typedef typename ProblemType::T 				T;
-	typedef typename ProblemType::SpineType			SpineType;
-	typedef int 									LocalFlag;								// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
-	typedef typename util::If<_TWO_PHASE_SCATTER, LocalFlag, SpineType>::Type RankType;		// Type for local SRTS prefix sum
+
+	typedef int 									LocalFlag;		// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
+	typedef typename util::If<
+		_TWO_PHASE_SCATTER,
+		LocalFlag,
+		SizeT>::Type 								RankType;		// Type for local SRTS prefix sum
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -130,7 +134,8 @@ struct KernelPolicy : ProblemType
 		RankType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		union {
 			RankType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-			T 				exchange[TILE_ELEMENTS];							// Swap exchange arena for two-phase scatter
+			KeyType			key_exchange[TILE_ELEMENTS];							// Key-swap exchange arena for two-phase scatter
+			ValueType		value_exchange[TILE_ELEMENTS];							// Value-swap exchange arena for two-phase scatter
 		};
 	};
 

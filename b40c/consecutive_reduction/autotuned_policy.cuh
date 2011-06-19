@@ -211,8 +211,8 @@ __launch_bounds__ (
 __global__ void TunedUpsweepKernel(
 	typename ProblemType::KeyType				*d_in_keys,
 	typename ProblemType::ValueType				*d_in_values,
-	typename ProblemType::SpinePartialType		*d_spine_partials,
-	typename ProblemType::SpineFlagType			*d_spine_flags,
+	typename ProblemType::ValueType		*d_spine_partials,
+	typename ProblemType::SizeT			*d_spine_flags,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
@@ -238,10 +238,10 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
-	typename ProblemType::SpinePartialType 	*d_in_partials,
-	typename ProblemType::SpinePartialType 	*d_out_partials,
-	typename ProblemType::SpineFlagType		*d_in_flags,
-	typename ProblemType::SpineFlagType		*d_out_flags,
+	typename ProblemType::ValueType 	*d_in_partials,
+	typename ProblemType::ValueType 	*d_out_partials,
+	typename ProblemType::SizeT		*d_in_flags,
+	typename ProblemType::SizeT		*d_out_flags,
 	typename ProblemType::SpineSizeT 		spine_elements)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
@@ -272,8 +272,8 @@ __global__ void TunedDownsweepKernel(
 	typename ProblemType::KeyType								*d_out_keys,
 	typename ProblemType::ValueType 							*d_in_values,
 	typename ProblemType::ValueType 							*d_out_values,
-	typename ProblemType::SpinePartialType 						*d_spine_partials,
-	typename ProblemType::SpineFlagType 						*d_spine_flags,
+	typename ProblemType::ValueType 						*d_spine_partials,
+	typename ProblemType::SizeT 						*d_spine_flags,
 	typename ProblemType::SizeT									*d_num_compacted,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 		work_decomposition)
 {
@@ -351,14 +351,11 @@ struct AutotunedPolicy :
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
-
-	typedef typename ProblemType::SpinePartialType 	SpinePartialType;
-	typedef typename ProblemType::SpineFlagType 	SpineFlagType;
 	typedef typename ProblemType::SpineSizeT 		SpineSizeT;
 
-	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, SpinePartialType*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SpinePartialType*, SpinePartialType*, SpineFlagType*, SpineFlagType*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SpinePartialType*,  SizeT*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
 
 	//---------------------------------------------------------------------

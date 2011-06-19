@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <stdio.h>
+
 namespace b40c {
 namespace util {
 

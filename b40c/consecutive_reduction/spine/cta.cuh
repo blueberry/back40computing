@@ -49,16 +49,16 @@ struct Cta
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::SpinePartialType 		SpinePartialType;
-	typedef typename KernelPolicy::SpineFlagType 			SpineFlagType;
-	typedef typename KernelPolicy::SpineSizeT 				SpineSizeT;
+	typedef typename KernelPolicy::ValueType 		ValueType;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SpineSizeT 		SpineSizeT;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 			SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 				SoaTuple;
+	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
 
 	typedef util::Tuple<
-		SpinePartialType (*)[KernelPolicy::LOAD_VEC_SIZE],
-		SpineFlagType (*)[KernelPolicy::LOAD_VEC_SIZE]> 	DataSoa;
+		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
+		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 	DataSoa;
 
 
 	//---------------------------------------------------------------------
@@ -72,12 +72,12 @@ struct Cta
 	SoaTuple 				carry;
 
 	// Device input/outputs
-	SpinePartialType 		*d_in_partials;
-	SpinePartialType 		*d_out_partials;
+	ValueType 		*d_in_partials;
+	ValueType 		*d_out_partials;
 
 	// Output device pointer
-	SpineFlagType 			*d_in_flags;
-	SpineFlagType 			*d_out_flags;
+	SizeT 			*d_in_flags;
+	SizeT 			*d_out_flags;
 
 
 	//---------------------------------------------------------------------
@@ -90,10 +90,10 @@ struct Cta
 	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		SpinePartialType 		*d_in_partials,
-		SpinePartialType 		*d_out_partials,
-		SpineFlagType 			*d_in_flags,
-		SpineFlagType			*d_out_flags) :
+		ValueType 		*d_in_partials,
+		ValueType 		*d_out_partials,
+		SizeT 			*d_in_flags,
+		SizeT			*d_out_flags) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -122,8 +122,8 @@ struct Cta
 		SpineSizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tiles of consecutive reduction elements and flags
-		SpinePartialType	partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		SpineFlagType		flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		ValueType			partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		SizeT				flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile of partials
 		util::io::LoadTile<
@@ -144,15 +144,7 @@ struct Cta
 				flags,
 				d_in_flags + cta_offset,
 				guarded_elements);
-/*
-		if (threadIdx.x == 0) {
-			printf("Regs ReduceLane1: (%d,%d), (%d,%d), (%d,%d), (%d,%d)\n",
-				partials[0][0], flags[0][0],
-				partials[0][1], flags[0][1],
-				partials[0][2], flags[0][2],
-				partials[0][3], flags[0][3]);
-		}
-*/
+
 		// SOA-scan tile of tuple pairs
 		util::scan::soa::CooperativeSoaTileScan<
 			SrtsSoaDetails,

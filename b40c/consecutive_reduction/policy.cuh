@@ -94,14 +94,11 @@ struct Policy : ProblemType
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
-	typedef typename ProblemType::SpinePartialType 	SpinePartialType;
-	typedef typename ProblemType::SpineFlagType 	SpineFlagType;
-	typedef typename ProblemType::SpineSizeT 		SpineSizeT;
-
-	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, SpinePartialType*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SpinePartialType*, SpinePartialType*, SpineFlagType*, SpineFlagType*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SpinePartialType*,  SizeT*, SpineFlagType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
 
 	// Kernel config for the upsweep reduction kernel

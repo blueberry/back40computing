@@ -46,27 +46,26 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 				T;
-	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::SpineType 		SpineType;
-	typedef int 									LocalFlag;		// Type for noting local discontinuities (just needs to count up to TILE_ELEMENTS_PER_THREAD)
-	typedef typename KernelPolicy::SmemStorage 		SmemStorage;
+	typedef typename KernelPolicy::KeyType 					KeyType;
+	typedef typename KernelPolicy::ValueType				ValueType;
+	typedef typename KernelPolicy::SizeT 					SizeT;
+
+	typedef int 											LocalFlag;		// Type for noting local discontinuities (just needs to count up to TILE_ELEMENTS_PER_THREAD)
+	typedef typename KernelPolicy::SmemStorage 				SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// Accumulator for the number of discontinuities observed (in each thread)
-	SpineType	carry;
+	SizeT			carry;
 
-	// Input device pointer
-	T			*d_in;
+	// Device pointers
+	KeyType 		*d_in_keys;
+	SizeT			*d_spine;
 
-	// Output spine pointer
-	SpineType	*d_spine;
-
-	// Smem storage for discontinuity-count reduction tree
-	SizeT  		*reduction_tree;
+	// Shared memory storage for the CTA
+	SmemStorage		&smem_storage;
 
 
 	//---------------------------------------------------------------------
@@ -79,11 +78,11 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		T 				*d_in,
-		SpineType 		*d_spine) :
+		KeyType			*d_in_keys,
+		SizeT 			*d_spine) :
 
-			reduction_tree(smem_storage.reduction_tree),
-			d_in(d_in),
+			smem_storage(smem_storage),
+			d_in_keys(d_in_keys),
 			d_spine(d_spine),
 			carry(0)
 	{}
@@ -99,8 +98,8 @@ struct Cta
 		SizeT cta_offset,
 		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];						// Tile of elements
-		LocalFlag head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
+		KeyType		keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		LocalFlag 	head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
 
 		// Load data tile, initializing discontinuity head_flags
 		util::io::LoadTile<
@@ -108,9 +107,9 @@ struct Cta
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
-				data,
+				keys,
 				head_flags,
-				d_in + cta_offset);
+				d_in_keys + cta_offset);
 
 		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
@@ -130,11 +129,9 @@ struct Cta
 	__device__ __forceinline__ void OutputToSpine()
 	{
 		// Cooperatively reduce the carries in each thread (thread-0 gets the result)
-		carry = util::reduction::TreeReduce<
-			SpineType,
-			KernelPolicy::LOG_THREADS>::Invoke<false>(				// No need to return aggregate reduction in all threads
-				carry,
-				reduction_tree);
+		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<false>(				// No need to return aggregate reduction in all threads
+			carry,
+			smem_storage.reduction_tree);
 
 		// Write output
 		if (threadIdx.x == 0) {
