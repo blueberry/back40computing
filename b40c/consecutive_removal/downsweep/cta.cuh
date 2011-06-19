@@ -100,7 +100,7 @@ struct Cta
 		//---------------------------------------------------------------------
 
 		KeyType 	keys[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		ValueType	values[KernelPolicy::TILE_ELEMENTS_PER_THREAD][1];
+		ValueType	values[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		LocalFlag 	head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Discontinuity head_flags
 		RankType 	ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Local scatter offsets
@@ -182,7 +182,7 @@ struct Cta
 						(LocalFlag *) head_flags,
 						(RankType *) ranks,
 						unique_elements,
-						cta->smem_storage.key_exchange,
+						cta->smem_storage.value_exchange,
 						cta->d_out_values + cta->carry);
 			}
 
