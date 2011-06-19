@@ -35,7 +35,7 @@ namespace reduction {
 template <
 	typename _T,
 	typename _SizeT,
-	_T _BinaryOp(const _T&, const _T&)>
+	typename _ReductionOp>
 struct ProblemType
 {
 	// The type of data we are operating upon
@@ -44,11 +44,8 @@ struct ProblemType
 	// The integer type we should use to index into data arrays (e.g., size_t, uint32, uint64, etc)
 	typedef _SizeT SizeT;
 
-	// Wrapper for the binary associative reduction operator
-	static __host__ __device__ __forceinline__ T BinaryOp(const T &a, const T &b)
-	{
-		return _BinaryOp(a, b);
-	}
+	// The function or functor type for binary reduction (implements "T op(const T&, const T&)")
+	typedef _ReductionOp ReductionOp;
 };
 		
 

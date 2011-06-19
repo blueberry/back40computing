@@ -90,11 +90,13 @@ struct Policy : ProblemType
 
 	typedef typename ProblemType::T T;
 	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::ReductionOp ReductionOp;
+	typedef typename ProblemType::IdentityOp IdentityOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
-	typedef void (*DownsweepKernelPtr)(T*, T*, T*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(T*, T*, SizeT);
+	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
+	typedef void (*DownsweepKernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
@@ -118,9 +120,9 @@ struct Policy : ProblemType
 	typedef scan::ProblemType<
 		T,
 		SizeT,
-		true,								// Exclusive
-		ProblemType::BinaryOp,
-		ProblemType::Identity> SpineProblemType;
+		ReductionOp,
+		IdentityOp,
+		true> SpineProblemType;
 
 	// Kernel config for the spine scan kernel
 	typedef KernelPolicy <

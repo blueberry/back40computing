@@ -48,17 +48,17 @@ struct SerialScan
 	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		template <
-			typename T,
-			T ScanOp(const T&, const T&)>
+		template <typename T, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T partials[],
 			T results[],
-			T exclusive_partial)
+			T exclusive_partial,
+			ReductionOp scan_op)
 		{
-			T inclusive_partial = ScanOp(partials[COUNT], exclusive_partial);
+			T inclusive_partial = scan_op(partials[COUNT], exclusive_partial);
 			results[COUNT] = (EXCLUSIVE) ? exclusive_partial : inclusive_partial;
-			return Iterate<COUNT + 1, TOTAL>::template Invoke<T, ScanOp>(partials, results, inclusive_partial);
+			return Iterate<COUNT + 1, TOTAL>::Invoke(
+				partials, results, inclusive_partial, scan_op);
 		}
 	};
 
@@ -66,10 +66,9 @@ struct SerialScan
 	template <int TOTAL>
 	struct Iterate<TOTAL, TOTAL>
 	{
-		template <
-			typename T,
-			T ScanOp(const T&, const T&)>
-		static __device__ __forceinline__ T Invoke(T partials[], T results[], T exclusive_partial)
+		template <typename T, typename ReductionOp>
+		static __device__ __forceinline__ T Invoke(
+			T partials[], T results[], T exclusive_partial, ReductionOp scan_op)
 		{
 			return exclusive_partial;
 		}
@@ -82,56 +81,52 @@ struct SerialScan
 	/**
 	 * Serial scan with the specified operator
 	 */
-	template <
-		typename T,
-		T ScanOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
-		T exclusive_partial)			// Exclusive partial to seed with
+		T exclusive_partial,			// Exclusive partial to seed with
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::template Invoke<T, ScanOp>(
-			partials, partials, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Invoke(
+			partials, partials, exclusive_partial, scan_op);
 	}
 
 	/**
 	 * Serial scan with the addition operator
 	 */
-	template <
-		typename T>
+	template <typename T>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Invoke<T, Operators<T>::Sum>(partials, exclusive_partial);
+		return Invoke(partials, exclusive_partial, Operators<T>::Sum);
 	}
 
 
 	/**
 	 * Serial scan with the specified operator
 	 */
-	template <
-		typename T,
-		T ScanOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T results[],
-		T exclusive_partial)			// Exclusive partial to seed with
+		T exclusive_partial,			// Exclusive partial to seed with
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::template Invoke<T, ScanOp>(
-			partials, results, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Invoke(
+			partials, results, exclusive_partial, scan_op);
 	}
 
 	/**
 	 * Serial scan with the addition operator
 	 */
-	template <
-		typename T>
+	template <typename T>
 	static __device__ __forceinline__ T Invoke(
 		T partials[],
 		T results[],
 		T exclusive_partial)			// Exclusive partial to seed with
 	{
-		return Invoke<T, Operators<T>::Sum>(partials, results, exclusive_partial);
+		return Invoke(partials, results, exclusive_partial, Operators<T>::Sum);
 	}
 };
 

@@ -75,11 +75,13 @@ void Usage()
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&)>
+	typename SizeT,
+	typename ReductionOp>
 double TimedThrustReduction(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements)
+	SizeT num_elements,
+	ReductionOp reduction_op)
 {
 	using namespace b40c;
 
@@ -98,7 +100,7 @@ double TimedThrustReduction(
 	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	thrust::device_ptr<T> dev_ptr(d_src);		
-	h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+	h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, reduction_op);
 	
 	// Perform the timed number of iterations
 	GpuTimer timer;
@@ -109,7 +111,7 @@ double TimedThrustReduction(
 		// Start timing record
 		timer.Start();
 
-		h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, thrust::plus<T>());
+		h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, reduction_op);
 		
 		// End timing record
 		timer.Stop();
@@ -154,8 +156,11 @@ double TimedThrustReduction(
  */
 template<
 	typename T,
-	T BinaryOp(const T&, const T&)>
-void TestReduction(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp>
+void TestReduction(
+	SizeT num_elements,
+	ReductionOp reduction_op)
 {
     // Allocate the reduction problem on the host and fill the keys with random bytes
 
@@ -172,18 +177,18 @@ void TestReduction(size_t num_elements)
 		h_data[i] = i;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :
-			BinaryOp(h_reference[0], h_data[i]);
+			reduction_op(h_reference[0], h_data[i]);
 	}
 
 	//
     // Run the timing test(s)
 	//
 
-	double b40c = TimedReduction<T, BinaryOp, reduction::UNKNOWN_SIZE>(
-		h_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+	double b40c = TimedReduction<reduction::UNKNOWN_SIZE>(
+		h_data, h_reference, num_elements, reduction_op, g_max_ctas, g_verbose, g_iterations);
 
-	double thrust = TimedThrustReduction<T, BinaryOp>(
-		h_data, h_reference, num_elements);
+	double thrust = TimedThrustReduction(
+		h_data, h_reference, num_elements, reduction_op);
 
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 
@@ -225,26 +230,26 @@ int main(int argc, char** argv)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op>(num_elements * 4);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements * 4, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op>(num_elements * 2);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements * 2, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op>(num_elements);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements, reduction_op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		typedef Sum<T> BinaryOp;
-		TestReduction<T, BinaryOp::Op>(num_elements / 2);
+		Sum<T> reduction_op;
+    	TestReduction<T>(num_elements / 2, reduction_op);
 	}
 
 	return 0;

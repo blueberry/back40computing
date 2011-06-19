@@ -37,13 +37,10 @@ namespace reduction {
 
 
 /**
- * Cooperative reduction in SRTS grid hierarchies
+ * Cooperative reduction in SRTS smem grid hierarchies
  */
 template <
 	typename SrtsDetails,
-	typename SrtsDetails::T ReductionOp(
-		const typename SrtsDetails::T&,
-		const typename SrtsDetails::T&),
 	typename SecondarySrtsDetails = typename SrtsDetails::SecondarySrtsDetails>
 struct CooperativeGridReduction;
 
@@ -51,84 +48,97 @@ struct CooperativeGridReduction;
 /**
  * Cooperative tile reduction
  */
-template <
-	typename SrtsDetails,
-	int VEC_SIZE,
-	typename SrtsDetails::T ReductionOp(
-		const typename SrtsDetails::T&,
-		const typename SrtsDetails::T&)>
+template <int VEC_SIZE>
 struct CooperativeTileReduction
 {
-	typedef typename SrtsDetails::T T;
+	//---------------------------------------------------------------------
+	// Iteration structures for reducing a tile vectors into their
+	// corresponding SRTS lanes
+	//---------------------------------------------------------------------
 
 	// Next lane/load
 	template <int LANE, int TOTAL_LANES>
 	struct ReduceLane
 	{
+		template <typename SrtsDetails, typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsDetails srts_details,
-			T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
+			typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+			ReductionOp reduction_op)
 		{
 			// Reduce the partials in this lane/load
-			T partial_reduction = SerialReduce<VEC_SIZE>::template Invoke<T, ReductionOp>(data[LANE]);
+			typename SrtsDetails::T partial_reduction = SerialReduce<VEC_SIZE>::Invoke(
+				data[LANE], reduction_op);
 
 			// Store partial reduction into SRTS grid
 			srts_details.lane_partial[LANE][0] = partial_reduction;
 
 			// Next load
-			ReduceLane<LANE + 1, TOTAL_LANES>::Invoke(srts_details, data);
+			ReduceLane<LANE + 1, TOTAL_LANES>::Invoke(
+				srts_details, data, reduction_op);
 		}
 	};
+
 
 	// Terminate
 	template <int TOTAL_LANES>
 	struct ReduceLane<TOTAL_LANES, TOTAL_LANES>
 	{
+		template <typename SrtsDetails, typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsDetails srts_details,
-			T data[SrtsDetails::SCAN_LANES][VEC_SIZE]) {}
+			typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+			ReductionOp reduction_op) {}
 	};
 
 
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
 	/**
-	 * Reduce a single tile.  Carry is computed (or updated if REDUCE_CARRY is set)
+	 * Reduce a single tile.  Carry is computed (or updated if REDUCE_INTO_CARRY is set)
 	 * only in last raking thread
 	 *
-	 * Caution: Post-synchronization is needed before srts_details reuse.
+	 * Caution: Post-synchronization is needed before grid reuse.
 	 */
-	template <bool REDUCE_CARRY>
+	template <
+		bool REDUCE_INTO_CARRY, 				// Whether or not to assign carry or reduce into it
+		typename SrtsDetails,
+		typename ReductionOp>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
-		T &carry)
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		typename SrtsDetails::T &carry,
+		ReductionOp reduction_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		// Reduce vectors in tile, placing resulting partials into corresponding SRTS grid lanes
+		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data, reduction_op);
 
 		__syncthreads();
 
-		CooperativeGridReduction<
-			SrtsDetails,
-			ReductionOp>::template ReduceTileWithCarry<REDUCE_CARRY>(
-				srts_details, carry);
+		CooperativeGridReduction<SrtsDetails>::template ReduceTileWithCarry<REDUCE_INTO_CARRY>(
+			srts_details, carry, reduction_op);
 	}
 
 	/**
 	 * Reduce a single tile.  Result is computed and returned in all threads.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
-	static __device__ __forceinline__ T ReduceTile(
+	template <typename SrtsDetails, typename ReductionOp>
+	static __device__ __forceinline__ typename SrtsDetails::T ReduceTile(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		ReductionOp reduction_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		// Reduce vectors in tile, placing resulting partials into corresponding SRTS grid lanes
+		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data, reduction_op);
 
 		__syncthreads();
 
-		return CooperativeGridReduction<SrtsDetails, ReductionOp>::ReduceTile(
-			srts_details);
+		return CooperativeGridReduction<SrtsDetails>::ReduceTile(
+			srts_details, reduction_op);
 	}
 };
 
@@ -142,35 +152,34 @@ struct CooperativeTileReduction
 /**
  * Cooperative SRTS grid reduction (specialized for last-level of SRTS grid)
  */
-template <
-	typename SrtsDetails,
-	typename SrtsDetails::T ReductionOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&)>
-struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
+template <typename SrtsDetails>
+struct CooperativeGridReduction<SrtsDetails, NullType>
 {
 	typedef typename SrtsDetails::T T;
 
 	/**
-	 * Reduction in last-level SRTS grid.  Carry is computed (or updated if REDUCE_CARRY is set)
-	 * only in last raking thread
+	 * Reduction in last-level SRTS grid.  Carry is assigned (or reduced into
+	 * if REDUCE_INTO_CARRY is set), but only in last raking thread
 	 */
-	template <bool REDUCE_CARRY>
+	template <bool REDUCE_INTO_CARRY, typename ReductionOp>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		SrtsDetails srts_details,
-		T &carry)
+		T &carry,
+		ReductionOp reduction_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
-				srts_details.raking_segment);
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, reduction_op);
 
 			// Warp reduction
-			T warpscan_total = WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::template InvokeSingle<T, ReductionOp>(
-				partial, srts_details.warpscan);
+			T warpscan_total = WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::InvokeSingle(
+				partial, srts_details.warpscan, reduction_op);
 
-			carry = (REDUCE_CARRY) ?
-				ReductionOp(carry, warpscan_total) : 	// Update carry
-				warpscan_total;
+			carry = (REDUCE_INTO_CARRY) ?
+				reduction_op(carry, warpscan_total) : 	// Reduce into carry
+				warpscan_total;							// Assign carry
 		}
 	}
 
@@ -178,17 +187,20 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 	/**
 	 * Reduction in last-level SRTS grid.  Result is computed in all threads.
 	 */
-	static __device__ __forceinline__ T ReduceTile(SrtsDetails srts_details)
+	template <typename ReductionOp>
+	static __device__ __forceinline__ T ReduceTile(
+		SrtsDetails srts_details,
+		ReductionOp reduction_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
-				srts_details.raking_segment);
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, reduction_op);
 
 			// Warp reduction
-			WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::template InvokeSingle<T, ReductionOp>(
-				partial, srts_details.warpscan);
+			WarpReduce<SrtsDetails::LOG_RAKING_THREADS>::InvokeSingle(
+				partial, srts_details.warpscan, reduction_op);
 		}
 
 		__syncthreads();
@@ -202,10 +214,7 @@ struct CooperativeGridReduction<SrtsDetails, ReductionOp, NullType>
 /**
  * Cooperative SRTS grid reduction for multi-level SRTS grids
  */
-template <
-	typename SrtsDetails,
-	typename SrtsDetails::T ReductionOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&),
-	typename SecondarySrtsDetails>
+template <typename SrtsDetails, typename SecondarySrtsDetails>
 struct CooperativeGridReduction
 {
 	typedef typename SrtsDetails::T T;
@@ -213,16 +222,17 @@ struct CooperativeGridReduction
 	/**
 	 * Reduction in SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
-	template <bool REDUCE_CARRY>
+	template <bool REDUCE_INTO_CARRY, typename ReductionOp>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		SrtsDetails srts_details,
-		T &carry)
+		T &carry,
+		ReductionOp reduction_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
-				srts_details.raking_segment);
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, reduction_op);
 
 			// Place partial in next grid
 			srts_details.secondary_details.lane_partial[0][0] = partial;
@@ -231,23 +241,24 @@ struct CooperativeGridReduction
 		__syncthreads();
 
 		// Collectively reduce in next grid
-		CooperativeGridReduction<
-			SecondarySrtsDetails,
-			ReductionOp>::template ReduceTileWithCarry<REDUCE_CARRY>(
-					srts_details.secondary_details, carry);
+		CooperativeGridReduction<SecondarySrtsDetails>::template ReduceTileWithCarry<REDUCE_INTO_CARRY>(
+			srts_details.secondary_details, carry, reduction_op);
 	}
 
 
 	/**
 	 * Reduction in SRTS grid.  Result is computed in all threads.
 	 */
-	static __device__ __forceinline__ T ReduceTile(SrtsDetails srts_details)
+	template <typename ReductionOp>
+	static __device__ __forceinline__ T ReduceTile(
+		SrtsDetails srts_details,
+		ReductionOp reduction_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ReductionOp>(
-				srts_details.raking_segment);
+			T partial = SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, reduction_op);
 
 			// Place partial in next grid
 			srts_details.secondary_details.lane_partial[0][0] = partial;
@@ -256,8 +267,8 @@ struct CooperativeGridReduction
 		__syncthreads();
 
 		// Collectively reduce in next grid
-		return CooperativeGridReduction<SecondarySrtsDetails, ReductionOp>::ReduceTile(
-			srts_details.secondary_details);
+		return CooperativeGridReduction<SecondarySrtsDetails>::ReduceTile(
+			srts_details.secondary_details, reduction_op);
 	}
 };
 

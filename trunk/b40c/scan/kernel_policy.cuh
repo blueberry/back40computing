@@ -65,7 +65,7 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::T 	T;
+	typedef typename ProblemType::T T;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;

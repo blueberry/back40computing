@@ -39,8 +39,9 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::T 									*&d_in,
-	typename KernelPolicy::T 									*&d_out,
+	typename KernelPolicy::T 									*d_in,
+	typename KernelPolicy::T 									*d_out,
+	typename KernelPolicy::ReductionOp 							scan_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
@@ -48,7 +49,11 @@ __device__ __forceinline__ void UpsweepPass(
 	typedef typename KernelPolicy::SizeT 		SizeT;
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_out);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_out,
+		scan_op);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -78,12 +83,18 @@ __global__
 void Kernel(
 	typename KernelPolicy::T 									*d_in,
 	typename KernelPolicy::T 									*d_spine,
+	typename KernelPolicy::ReductionOp 							scan_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	UpsweepPass<KernelPolicy>(d_in, d_spine, work_decomposition, smem_storage);
+	UpsweepPass<KernelPolicy>(
+		d_in,
+		d_spine,
+		scan_op,
+		work_decomposition,
+		smem_storage);
 }
 
 

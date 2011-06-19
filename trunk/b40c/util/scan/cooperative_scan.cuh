@@ -38,11 +38,10 @@ namespace util {
 namespace scan {
 
 /**
- * Cooperative reduction in SRTS grid hierarchies
+ * Cooperative reduction in SRTS smem grid hierarchies
  */
 template <
 	typename SrtsDetails,
-	typename SrtsDetails::T ScanOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&),
 	typename SecondarySrtsDetails = typename SrtsDetails::SecondarySrtsDetails>
 struct CooperativeGridScan;
 
@@ -52,30 +51,35 @@ struct CooperativeGridScan;
  * Cooperative tile scan
  */
 template <
-	typename SrtsDetails,
 	int VEC_SIZE,
-	bool EXCLUSIVE,
-	typename SrtsDetails::T ScanOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&)>
-struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VEC_SIZE, ScanOp>
+	bool EXCLUSIVE>
+struct CooperativeTileScan
 {
-	typedef typename SrtsDetails::T T;
+	//---------------------------------------------------------------------
+	// Iteration structures for extracting partials from SRTS lanes and
+	// using them to seed scans of tile vectors
+	//---------------------------------------------------------------------
 
 	// Next lane/load
 	template <int LANE, int TOTAL_LANES>
 	struct ScanLane
 	{
+		template <typename SrtsDetails, typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsDetails srts_details,
-			T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
+			typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+			ReductionOp scan_op)
 		{
 			// Retrieve partial reduction from SRTS grid
-			T exclusive_partial = srts_details.lane_partial[LANE][0];
+			typename SrtsDetails::T exclusive_partial = srts_details.lane_partial[LANE][0];
 
 			// Scan the partials in this lane/load
-			SerialScan<VEC_SIZE, EXCLUSIVE>::template Invoke<T, ScanOp>(data[LANE], exclusive_partial);
+			SerialScan<VEC_SIZE, EXCLUSIVE>::Invoke(
+				data[LANE], exclusive_partial, scan_op);
 
 			// Next load
-			ScanLane<LANE + 1, TOTAL_LANES>::Invoke(srts_details, data);
+			ScanLane<LANE + 1, TOTAL_LANES>::Invoke(
+				srts_details, data, scan_op);
 		}
 	};
 
@@ -83,34 +87,43 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	template <int TOTAL_LANES>
 	struct ScanLane<TOTAL_LANES, TOTAL_LANES>
 	{
+		template <typename SrtsDetails, typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsDetails srts_details,
-			T data[SrtsDetails::SCAN_LANES][VEC_SIZE]) {}
+			typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+			ReductionOp scan_op) {}
 	};
 
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
 
 	/**
 	 * Scan a single tile.  Total aggregate is computed and returned in all threads.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
-	static __device__ __forceinline__ T ScanTile(
+	template <typename SrtsDetails, typename ReductionOp>
+	static __device__ __forceinline__ typename SrtsDetails::T ScanTile(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE])
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		ReductionOp scan_op)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeTileScan::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
-			srts_details, data);
+		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		__syncthreads();
 
-		CooperativeGridScan<SrtsDetails, ScanOp>::ScanTile(
-			srts_details);
+		CooperativeGridScan<SrtsDetails>::ScanTile(
+			srts_details, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		// Return last thread's inclusive partial
 		return srts_details.CumulativePartial();
@@ -120,52 +133,58 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	 * Scan a single tile where carry is updated with the total aggregate only
 	 * in raking threads (homogeneously).
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
+	template <typename SrtsDetails, typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
-		T &carry)
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		typename SrtsDetails::T &carry,
+		ReductionOp scan_op)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeTileScan::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
-			srts_details, data);
+		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		__syncthreads();
 
-		CooperativeGridScan<SrtsDetails, ScanOp>::ScanTileWithCarry(
-			srts_details, carry);
+		CooperativeGridScan<SrtsDetails>::ScanTileWithCarry(
+			srts_details, carry, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 	}
 
 
 	/**
 	 * Scan a single tile with atomic enqueue.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
+	template <typename SrtsDetails, typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithEnqueue(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
-		T* d_enqueue_counter)
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		typename SrtsDetails::T* d_enqueue_counter,
+		ReductionOp scan_op)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeTileScan::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
-			srts_details, data);
+		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		__syncthreads();
 
-		CooperativeGridScan<SrtsDetails, ScanOp>::ScanTileWithEnqueue(
-			srts_details, d_enqueue_counter);
+		CooperativeGridScan<SrtsDetails>::ScanTileWithEnqueue(
+			srts_details, d_enqueue_counter, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 	}
 
 
@@ -173,27 +192,30 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 	 * Scan a single tile with atomic enqueue.  Total aggregate is computed and
 	 * returned in all threads.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
-	static __device__ __forceinline__ T ScanTileWithEnqueue(
+	template <typename SrtsDetails, typename ReductionOp>
+	static __device__ __forceinline__ typename SrtsDetails::T ScanTileWithEnqueue(
 		SrtsDetails srts_details,
-		T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
-		T *d_enqueue_counter,
-		T &enqueue_offset)
+		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
+		typename SrtsDetails::T *d_enqueue_counter,
+		typename SrtsDetails::T &enqueue_offset,
+		ReductionOp scan_op)
 	{
 		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeTileScan::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
-			srts_details, data);
+		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		__syncthreads();
 
-		CooperativeGridScan<SrtsDetails, ScanOp>::ScanTileWithEnqueue(
-			srts_details, d_enqueue_counter, enqueue_offset);
+		CooperativeGridScan<SrtsDetails>::ScanTileWithEnqueue(
+			srts_details, d_enqueue_counter, enqueue_offset, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data);
+		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
+			srts_details, data, scan_op);
 
 		// Return last thread's inclusive partial
 		return srts_details.CumulativePartial();
@@ -210,31 +232,32 @@ struct CooperativeTileScan : reduction::CooperativeTileReduction<SrtsDetails, VE
 /**
  * Cooperative SRTS grid reduction (specialized for last-level of SRTS grid)
  */
-template <
-	typename SrtsDetails,
-	typename SrtsDetails::T ScanOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&)>
-struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
+template <typename SrtsDetails>
+struct CooperativeGridScan<SrtsDetails, NullType>
 {
 	typedef typename SrtsDetails::T T;
 
 	/**
 	 * Scan in last-level SRTS grid.
 	 */
-	static __device__ __forceinline__ void ScanTile(SrtsDetails srts_details)
+	template <typename ReductionOp>
+	static __device__ __forceinline__ void ScanTile(
+		SrtsDetails srts_details,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Exclusive warp scan
-			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
-				inclusive_partial, srts_details.warpscan);
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::Invoke(
+				inclusive_partial, srts_details.warpscan, scan_op);
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 
 		}
 	}
@@ -243,30 +266,32 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 	/**
 	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		SrtsDetails srts_details,
-		T &carry)
+		T &carry,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
-				inclusive_partial, warpscan_total, srts_details.warpscan);
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::Invoke(
+				inclusive_partial, warpscan_total, srts_details.warpscan, scan_op);
 
 			// Seed exclusive partial with carry-in
-			exclusive_partial = ScanOp(carry, exclusive_partial);
+			exclusive_partial = scan_op(carry, exclusive_partial);
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 
 			// Update carry
-			carry = ScanOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
+			carry = scan_op(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
 		}
 	}
 
@@ -274,65 +299,73 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
 	/**
 	 * Scan in last-level SRTS grid with atomic enqueue
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithEnqueue(
 		SrtsDetails srts_details,
-		T *d_enqueue_counter)
+		T *d_enqueue_counter,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
-					inclusive_partial, warpscan_total, srts_details.warpscan);
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::Invoke(
+					inclusive_partial, warpscan_total, srts_details.warpscan, scan_op);
 
 			// Atomic-increment the global counter with the total allocation
 			T reservation_offset;
 			if (threadIdx.x == 0) {
-				reservation_offset = util::AtomicInt<T>::Add(d_enqueue_counter, warpscan_total);
+				reservation_offset = util::AtomicInt<T>::Add(
+					d_enqueue_counter,
+					warpscan_total);
 				srts_details.warpscan[1][0] = reservation_offset;
 			}
 
 			// Seed exclusive partial with queue reservation offset
 			reservation_offset = srts_details.warpscan[1][0];
-			exclusive_partial = ScanOp(reservation_offset, exclusive_partial);
+			exclusive_partial = scan_op(reservation_offset, exclusive_partial);
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 		}
 	}
 
 	/**
 	 * Scan in last-level SRTS grid with atomic enqueue
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithEnqueue(
 		SrtsDetails srts_details,
 		T *d_enqueue_counter,
-		T &enqueue_offset)
+		T &enqueue_offset,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T inclusive_partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Exclusive warp scan, get total
 			T warpscan_total;
-			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::template Invoke<T, ScanOp>(
-					inclusive_partial, warpscan_total, srts_details.warpscan);
+			T exclusive_partial = WarpScan<SrtsDetails::LOG_RAKING_THREADS>::Invoke(
+				inclusive_partial, warpscan_total, srts_details.warpscan, scan_op);
 
 			// Atomic-increment the global counter with the total allocation
 			if (threadIdx.x == 0) {
-				enqueue_offset = util::AtomicInt<T>::Add(d_enqueue_counter, warpscan_total);
+				enqueue_offset = util::AtomicInt<T>::Add(
+					d_enqueue_counter,
+					warpscan_total);
 			}
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 		}
 	}
 };
@@ -343,7 +376,6 @@ struct CooperativeGridScan<SrtsDetails, ScanOp, NullType>
  */
 template <
 	typename SrtsDetails,
-	typename SrtsDetails::T ScanOp(const typename SrtsDetails::T&, const typename SrtsDetails::T&),
 	typename SecondarySrtsDetails>
 struct CooperativeGridScan
 {
@@ -352,13 +384,16 @@ struct CooperativeGridScan
 	/**
 	 * Scan in SRTS grid.
 	 */
-	static __device__ __forceinline__ void ScanTile(SrtsDetails srts_details)
+	template <typename ReductionOp>
+	static __device__ __forceinline__ void ScanTile(
+		SrtsDetails srts_details,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Place partial in next grid
 			srts_details.secondary_details.lane_partial[0][0] = partial;
@@ -367,8 +402,8 @@ struct CooperativeGridScan
 		__syncthreads();
 
 		// Collectively scan in next grid
-		CooperativeGridScan<SecondarySrtsDetails, ScanOp>::ScanTile(
-			srts_details.secondary_details);
+		CooperativeGridScan<SecondarySrtsDetails>::ScanTile(
+			srts_details.secondary_details, scan_op);
 
 		__syncthreads();
 
@@ -378,23 +413,25 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 		}
 	}
 
 	/**
 	 * Scan in SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		SrtsDetails srts_details,
-		T &carry)
+		T &carry,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Place partial in next grid
 			srts_details.secondary_details.lane_partial[0][0] = partial;
@@ -403,8 +440,8 @@ struct CooperativeGridScan
 		__syncthreads();
 
 		// Collectively scan in next grid
-		CooperativeGridScan<SecondarySrtsDetails, ScanOp>::ScanTileWithCarry(
-			srts_details.secondary_details, carry);
+		CooperativeGridScan<SecondarySrtsDetails>::ScanTileWithCarry(
+			srts_details.secondary_details, carry, scan_op);
 
 		__syncthreads();
 
@@ -414,23 +451,25 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 		}
 	}
 
 	/**
 	 * Scan in SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithEnqueue(
 		SrtsDetails srts_details,
-		T* d_enqueue_counter)
+		T* d_enqueue_counter,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment);
+			T partial = reduction::SerialReduce<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, scan_op);
 
 			// Place partial in next grid
 			srts_details.secondary_details.lane_partial[0][0] = partial;
@@ -439,8 +478,8 @@ struct CooperativeGridScan
 		__syncthreads();
 
 		// Collectively scan in next grid
-		CooperativeGridScan<SecondarySrtsDetails, ScanOp>::ScanTileWithEnqueue(
-			srts_details.secondary_details, d_enqueue_counter);
+		CooperativeGridScan<SecondarySrtsDetails>::ScanTileWithEnqueue(
+			srts_details.secondary_details, d_enqueue_counter, scan_op);
 
 		__syncthreads();
 
@@ -450,8 +489,8 @@ struct CooperativeGridScan
 			T exclusive_partial = srts_details.secondary_details.lane_partial[0][0];
 
 			// Exclusive raking scan
-			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::template Invoke<T, ScanOp>(
-				srts_details.raking_segment, exclusive_partial);
+			SerialScan<SrtsDetails::PARTIALS_PER_SEG>::Invoke(
+				srts_details.raking_segment, exclusive_partial, scan_op);
 		}
 	}
 };

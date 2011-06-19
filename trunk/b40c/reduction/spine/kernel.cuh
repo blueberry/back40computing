@@ -40,6 +40,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::T 			*d_in,
 	typename KernelPolicy::T 			*d_spine,
 	typename KernelPolicy::SizeT 		spine_elements,
+	typename KernelPolicy::ReductionOp	reduction_op,
 	typename KernelPolicy::SmemStorage	&smem_storage)
 {
 	typedef Cta<KernelPolicy> 				Cta;
@@ -50,7 +51,11 @@ __device__ __forceinline__ void SpinePass(
 	if (blockIdx.x > 0) return;
 
 	// CTA processing abstraction
-	Cta cta(smem_storage, d_in, d_spine);
+	Cta cta(
+		smem_storage,
+		d_in,
+		d_spine,
+		reduction_op);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
@@ -77,14 +82,21 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::T 		*d_in,
-	typename KernelPolicy::T 		*d_spine,
-	typename KernelPolicy::SizeT 	spine_elements)
+	typename KernelPolicy::T 				*d_in,
+	typename KernelPolicy::T 				*d_spine,
+	typename KernelPolicy::SizeT 			spine_elements,
+	typename KernelPolicy::ReductionOp		reduction_op)
+
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	SpinePass<KernelPolicy>(d_in, d_spine, spine_elements, smem_storage);
+	SpinePass<KernelPolicy>(
+		d_in,
+		d_spine,
+		spine_elements,
+		reduction_op,
+		smem_storage);
 }
 
 } // namespace spine

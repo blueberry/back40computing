@@ -41,7 +41,7 @@
 template <typename T>
 struct Sum
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
 	}
@@ -50,7 +50,7 @@ struct Sum
 template <typename T>
 struct Max
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
@@ -66,13 +66,15 @@ struct Max
  * number of iterations, displaying runtime information.
  */
 template <
+	b40c::reduction::ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
-	T BinaryOp(const T&, const T&),
-	b40c::reduction::ProbSizeGenre PROB_SIZE_GENRE>
+	typename SizeT,
+	typename ReductionOp>
 double TimedReduction(
 	T *h_data,
 	T *h_reference,
-	size_t num_elements,
+	SizeT num_elements,
+	ReductionOp reduction_op,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -95,8 +97,8 @@ double TimedReduction(
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	reduction_enactor.DEBUG = true;
-	reduction_enactor.template Reduce<T, BinaryOp, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, max_ctas);
+	reduction_enactor.template Reduce<PROB_SIZE_GENRE>(
+		d_dest, d_src, num_elements, reduction_op, max_ctas);
 	reduction_enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -109,8 +111,8 @@ double TimedReduction(
 		timer.Start();
 
 		// Call the reduction API routine
-		reduction_enactor.template Reduce<T, BinaryOp, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, max_ctas);
+		reduction_enactor.template Reduce<PROB_SIZE_GENRE>(
+			d_dest, d_src, num_elements, reduction_op, max_ctas);
 
 		// End timing record
 		timer.Stop();

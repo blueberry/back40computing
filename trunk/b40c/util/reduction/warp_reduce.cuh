@@ -24,7 +24,7 @@
 /******************************************************************************
  * WarpReduce
  *
- * Does not support commutative operators.  (Suggested to use a warpscan
+ * Does not support non-commutative operators.  (Suggested to use a warpscan
  * instead for those scenarios
  ******************************************************************************/
 
@@ -62,12 +62,11 @@ struct WarpReduce
 	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
-		template <
-			typename T,
-			T ReductionOp(const T&, const T&)>
+		template <typename T, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T exclusive_partial,
 			volatile T warpscan[][NUM_ELEMENTS],
+			ReductionOp reduction_op,
 			int warpscan_tid)
 		{
 			// Store exclusive partial
@@ -77,11 +76,11 @@ struct WarpReduce
 			T current_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
 
 			// Compute inclusive partial
-			T inclusive_partial = ReductionOp(exclusive_partial, current_partial);
+			T inclusive_partial = reduction_op(exclusive_partial, current_partial);
 
 			// Recurse
-			return Iterate<OFFSET_LEFT / 2>::template Invoke<T, ReductionOp>(
-				inclusive_partial, warpscan, warpscan_tid);
+			return Iterate<OFFSET_LEFT / 2>::Invoke(
+				inclusive_partial, warpscan, reduction_op, warpscan_tid);
 		}
 	};
 	
@@ -89,12 +88,11 @@ struct WarpReduce
 	template <int __dummy>
 	struct Iterate<0, __dummy>
 	{
-		template <
-			typename T,
-			T ReductionOp(const T&, const T&)>
+		template <typename T, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T partial,
 			volatile T warpscan[][NUM_ELEMENTS],
+			ReductionOp reduction_op,
 			int warpscan_tid)
 		{
 			return partial;
@@ -109,15 +107,14 @@ struct WarpReduce
 	/**
 	 * Warp reduction with the specified operator, result is returned in last warpscan thread
 	 */
-	template <
-		typename T,
-		T ReductionOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T InvokeSingle(
 		T partial,								// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		ReductionOp reduction_op,				// Reduction operator
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Iterate<NUM_ELEMENTS / 2>::template Invoke<T, ReductionOp>(
+		return Iterate<NUM_ELEMENTS / 2>::Invoke(
 			partial, warpscan, warpscan_tid);
 	}
 
@@ -131,19 +128,18 @@ struct WarpReduce
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return InvokeSingle<T, Operators<T>::Sum>(partial, warpscan, warpscan_tid);
+		return InvokeSingle(partial, warpscan, Operators<T>::Sum, warpscan_tid);
 	}
 
 
 	/**
 	 * Warp reduction with the specified operator, result is returned in all warpscan threads)
 	 */
-	template <
-		typename T,
-		T ReductionOp(const T&, const T&)>
+	template <typename T, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,						// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		ReductionOp reduction_op,				// Reduction operator
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		T inclusive_partial = InvokeSingle<T, ReductionOp>(
@@ -166,7 +162,7 @@ struct WarpReduce
 		volatile T warpscan[][NUM_ELEMENTS],	// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Invoke<T, Operators<T>::Sum>(current_partial, warpscan, warpscan_tid);
+		return Invoke(current_partial, warpscan, Operators<T>::Sum, warpscan_tid);
 	}
 };
 

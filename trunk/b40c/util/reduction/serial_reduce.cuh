@@ -47,15 +47,16 @@ struct SerialReduce
 	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		template <typename T, T ReductionOp(const T&, const T&)>
-		static __device__ __forceinline__ T Invoke(T *partials)
+		template <typename T, typename ReductionOp>
+		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
 		{
-			T a = Iterate<COUNT - 2, TOTAL>::template Invoke<T, ReductionOp>(partials);
+			T a = Iterate<COUNT - 2, TOTAL>::Invoke(partials, reduction_op);
 			T b = partials[TOTAL - COUNT];
 			T c = partials[TOTAL - (COUNT - 1)];
 
-			// TODO: consider specializing with a video 3-op instructions on SM2.0+, e.g., asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-			return ReductionOp(a, ReductionOp(b, c));
+			// TODO: consider specializing with a video 3-op instructions on SM2.0+,
+			// e.g., asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
+			return reduction_op(a, reduction_op(b, c));
 		}
 	};
 
@@ -63,10 +64,10 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<2, TOTAL>
 	{
-		template <typename T, T ReductionOp(const T&, const T&)>
-		static __device__ __forceinline__ T Invoke(T *partials)
+		template <typename T, typename ReductionOp>
+		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
 		{
-			return ReductionOp(partials[TOTAL - 2], partials[TOTAL - 1]);
+			return reduction_op(partials[TOTAL - 2], partials[TOTAL - 1]);
 		}
 	};
 
@@ -74,8 +75,8 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<1, TOTAL>
 	{
-		template <typename T, T ReductionOp(const T&, const T&)>
-		static __device__ __forceinline__ T Invoke(T *partials)
+		template <typename T, typename ReductionOp>
+		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
 		{
 			return partials[TOTAL - 1];
 		}
@@ -88,46 +89,51 @@ struct SerialReduce
 	/**
 	 * Serial reduction with the specified operator
 	 */
-	template <
-		typename T,
-		T ReductionOp(const T&, const T&)>
-	static __device__ __forceinline__ T Invoke(T *partials)
+	template <typename T, typename ReductionOp>
+	static __device__ __forceinline__ T Invoke(
+		T *partials,
+		ReductionOp reduction_op)
 	{
-		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::template Invoke<T, ReductionOp>(partials);
+		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials, reduction_op);
 	}
+
 
 	/**
 	 * Serial reduction with the addition operator
 	 */
 	template <typename T>
-	static __device__ __forceinline__ T Invoke(T *partials)
+	static __device__ __forceinline__ T Invoke(
+		T *partials)
 	{
-		return Invoke<T, Operators<T>::Sum>(partials);
+		return Invoke(partials, Operators<T>::Sum);
 	}
+
 
 	/**
 	 * Serial reduction with the specified operator, seeded with the
 	 * given exclusive partial
 	 */
-	template <typename T,
-		T ReductionOp(const T&, const T&)>
-	static __device__ __forceinline__ T Invoke(T *partials, T exclusive_partial)
+	template <typename T, typename ReductionOp>
+	static __device__ __forceinline__ T Invoke(
+		T *partials,
+		T exclusive_partial,
+		ReductionOp reduction_op)
 	{
-		return ReductionOp(
+		return reduction_op(
 			exclusive_partial,
-			Invoke<T, ReductionOp>(partials));
+			Invoke(partials, reduction_op));
 	}
 
 	/**
 	 * Serial reduction with the addition operator, seeded with the
 	 * given exclusive partial
 	 */
-	template <typename T>
-	static __device__ __forceinline__ T Invoke(T *partials, T exclusive_partial)
+	template <typename T, typename ReductionOp>
+	static __device__ __forceinline__ T Invoke(
+		T *partials,
+		T exclusive_partial)
 	{
-		return ReductionOp(
-			exclusive_partial,
-			Invoke(partials));
+		 return Invoke(partials, exclusive_partial, Operators<T>::Sum);
 	}
 };
 

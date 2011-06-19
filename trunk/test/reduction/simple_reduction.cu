@@ -30,9 +30,6 @@
 // Test utils
 #include "b40c_test_util.h"
 
-using namespace b40c;
-
-
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
@@ -42,10 +39,13 @@ using namespace b40c;
  * Max binary associative operator
  */
 template <typename T>
-__host__ __device__ __forceinline__ T Max(const T &a, const T &b)
+struct Max
 {
-	return (a > b) ? a : b;
-}
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+	{
+		return (a > b) ? a : b;
+	}
+};
 
 
 /**
@@ -54,14 +54,17 @@ __host__ __device__ __forceinline__ T Max(const T &a, const T &b)
  */
 template <
 	typename T,
-	T BinaryOp(const T&, const T&)>
+	typename SizeT,
+	typename ReductionOp>
 void TemplatedSubroutineReduction(
 	b40c::reduction::Enactor &reduction_enactor,
 	T *d_dest, 
 	T *d_src,
-	int num_elements)
+	SizeT num_elements,
+	ReductionOp reduction_op)
 {
-	reduction_enactor.template Reduce<T, BinaryOp>(d_dest, d_src, num_elements);
+	reduction_enactor.template Reduce<T, SizeT, ReductionOp>(
+		d_dest, d_src, num_elements, reduction_op);
 }
 
 
@@ -71,7 +74,7 @@ void TemplatedSubroutineReduction(
 
 int main(int argc, char** argv)
 {
-	CommandLineArgs args(argc, argv);
+	b40c::CommandLineArgs args(argc, argv);
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
@@ -79,10 +82,11 @@ int main(int argc, char** argv)
     	return 0;
     }
 
-    DeviceInit(args);
+    b40c::DeviceInit(args);
 
 	typedef unsigned int T;
 	const int NUM_ELEMENTS = 10;
+	Max<T> max_op;
 
 	// Allocate and initialize host problem data and host reference solution
 	T h_data[NUM_ELEMENTS];
@@ -91,7 +95,7 @@ int main(int argc, char** argv)
 		h_data[i] = i;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :
-			Max(h_reference[0], h_data[i]);
+			max_op(h_reference[0], h_data[i]);
 	}
 	
 	// Allocate and initialize device data
@@ -107,42 +111,43 @@ int main(int argc, char** argv)
 	//
 	// Example 1: Enact simple reduction using internal tuning heuristics
 	//
-	reduction_enactor.Reduce<T, Max>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce(d_dest, d_src, NUM_ELEMENTS, max_op);
 	
-	printf("Simple reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
+	printf("Simple reduction: "); b40c::CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 	
-	
+
 	//
 	// Example 2: Enact simple reduction using "large problem" tuning configuration
 	//
-	reduction_enactor.Reduce<T, Max, b40c::reduction::LARGE_SIZE>(
-		d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<b40c::reduction::LARGE_SIZE>(
+		d_dest, d_src, NUM_ELEMENTS, max_op);
 
-	printf("Large-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
+	printf("Large-tuned reduction: "); b40c::CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
-	
+
 	//
 	// Example 3: Enact simple reduction using "small problem" tuning configuration
 	//
-	reduction_enactor.Reduce<T, Max, b40c::reduction::SMALL_SIZE>(
-		d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<b40c::reduction::SMALL_SIZE>(
+		d_dest, d_src, NUM_ELEMENTS, max_op);
 	
-	printf("Small-tuned reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
+	printf("Small-tuned reduction: "); b40c::CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 
 	//
 	// Example 4: Enact simple reduction using a templated subroutine function
 	//
-	TemplatedSubroutineReduction<T, Max>(reduction_enactor, d_dest, d_src, NUM_ELEMENTS);
+	TemplatedSubroutineReduction(reduction_enactor, d_dest, d_src, NUM_ELEMENTS, max_op);
 	
-	printf("Templated subroutine reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
+	printf("Templated subroutine reduction: "); b40c::CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 
 	//
 	// Example 5: Enact simple reduction using custom tuning configuration (base reduction enactor)
 	//
 
-	typedef b40c::reduction::ProblemType<T, size_t, Max> ProblemType;
+	typedef Max<T> ReductionOp;
+	typedef b40c::reduction::ProblemType<T, int, ReductionOp> ProblemType;
 	typedef b40c::reduction::Policy<
 		ProblemType,
 		b40c::reduction::SM20,
@@ -155,9 +160,9 @@ int main(int argc, char** argv)
 		8, 7, 1, 2, 9,
 		8, 1, 1> CustomPolicy;
 	
-	reduction_enactor.Reduce<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS);
+	reduction_enactor.Reduce<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS, max_op);
 
-	printf("Custom reduction: "); CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
+	printf("Custom reduction: "); b40c::CompareDeviceResults(h_reference, d_dest, 1); printf("\n");
 
 	return 0;
 }

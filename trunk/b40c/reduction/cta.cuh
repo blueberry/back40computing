@@ -49,6 +49,7 @@ struct Cta
 	typedef typename KernelPolicy::T 			T;
 	typedef typename KernelPolicy::SizeT 		SizeT;
 	typedef typename KernelPolicy::SmemStorage	SmemStorage;
+	typedef typename KernelPolicy::ReductionOp	ReductionOp;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -64,6 +65,9 @@ struct Cta
 	// Shared memory storage for the CTA
 	SmemStorage 	&smem_storage;
 
+	// Reduction operator
+	ReductionOp		reduction_op;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -76,11 +80,14 @@ struct Cta
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
 		T *d_in,
-		T *d_out) :
+		T *d_out,
+		ReductionOp reduction_op) :
 
 			smem_storage(smem_storage),
 			d_in(d_in),
-			d_out(d_out) {}
+			d_out(d_out),
+			reduction_op(reduction_op)
+	{}
 
 
 	/**
@@ -104,14 +111,15 @@ struct Cta
 				data, d_in + cta_offset);
 
 		// Reduce the data we loaded for this tile
-		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::template Invoke<
-			T, KernelPolicy::BinaryOp>((T*) data);
+		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(
+			(T*) data,
+			reduction_op);
 
 		// Reduce into carry
 		if (FIRST_TILE) {
 			carry = tile_partial;
 		} else {
-			carry = KernelPolicy::BinaryOp(carry, tile_partial);
+			carry = reduction_op(carry, tile_partial);
 		}
 
 		__syncthreads();
@@ -141,7 +149,7 @@ struct Cta
 		// Process loads singly
 		while (cta_offset < out_of_bounds) {
 			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
-			carry = KernelPolicy::BinaryOp(carry, datum);
+			carry = reduction_op(carry, datum);
 			cta_offset += KernelPolicy::THREADS;
 		}
 	}
@@ -156,10 +164,12 @@ struct Cta
 	 */
 	__device__ __forceinline__ void OutputToSpine()
 	{
-		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<
-			false,								// No need to return aggregate reduction in all threads
-			T,
-			KernelPolicy::BinaryOp>(carry, smem_storage.reduction_tree);
+		carry = util::reduction::TreeReduce<
+			KernelPolicy::LOG_THREADS,
+			false>::Invoke(								// No need to return aggregate reduction in all threads
+				carry,
+				smem_storage.reduction_tree,
+				reduction_op);
 
 		// Write output
 		if (threadIdx.x == 0) {
@@ -167,6 +177,7 @@ struct Cta
 				carry, d_out + blockIdx.x);
 		}
 	}
+
 
 	/**
 	 * Guarded collective reduction across all threads, stores final reduction
@@ -178,10 +189,13 @@ struct Cta
 	 */
 	__device__ __forceinline__ void OutputToSpine(int num_elements)
 	{
-		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<
-			false,								// No need to return aggregate reduction in all threads
-			T,
-			KernelPolicy::BinaryOp>(carry, smem_storage.reduction_tree, num_elements);
+		carry = util::reduction::TreeReduce<
+			KernelPolicy::LOG_THREADS,
+			false>::Invoke(								// No need to return aggregate reduction in all threads
+				carry,
+				smem_storage.reduction_tree,
+				num_elements,
+				reduction_op);
 
 		// Write output
 		if (threadIdx.x == 0) {

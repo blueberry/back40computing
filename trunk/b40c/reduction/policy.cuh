@@ -79,11 +79,12 @@ struct Policy : ProblemType
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::T 				T;
+	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, T*, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
-	typedef void (*SpineKernelPtr)(T*, T*, SizeT);
+	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
+	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp);
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
