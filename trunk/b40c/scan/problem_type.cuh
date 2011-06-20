@@ -43,7 +43,9 @@ template <
 struct ProblemType :
 	reduction::ProblemType<T, SizeT, ReductionOp>	// Inherit from reduction problem type
 {
-	static const bool EXCLUSIVE = _EXCLUSIVE;
+	enum {
+		EXCLUSIVE = _EXCLUSIVE,
+	};
 
 	typedef _IdentityOp IdentityOp;					// Identity operator type
 };

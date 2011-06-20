@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SerialSoaScan
+ * Serial tuple scan over structure-of-array types.
  ******************************************************************************/
 
 #pragma once
@@ -36,49 +36,82 @@ namespace soa {
 
 
 /**
- * Have each thread concurrently perform a serial scan over its
- * specified tuple segment (in place).  Returns the inclusive total reduction.
+ * Have each thread perform a serial scan over its specified SOA segment
  */
 template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
-	bool EXCLUSIVE,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScan;
-
-
-/**
- * Inclusive serial scan
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
+	int NUM_ELEMENTS,				// Length of SOA array segment to scan
+	bool EXCLUSIVE = true>			// Whether or not this is an exclusive scan
+struct SerialSoaScan
 {
+	//---------------------------------------------------------------------
+	// Iteration Structures
+	//---------------------------------------------------------------------
+
 	// Iterate
 	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
+		// Scan
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Scan(
 			RakingSoa raking_partials,
 			RakingSoa raking_results,
-			Tuple exclusive_partial)
+			Tuple exclusive_partial,
+			ReductionOp scan_op)
 		{
 			// Load current partial
-			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
+			Tuple current_partial;
+			raking_partials.Get(current_partial, COUNT);
 
 			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ScanOp(exclusive_partial, current_partial);
+			Tuple inclusive_partial = scan_op(exclusive_partial, current_partial);
 
-			// Store inclusive partial because this is an inclusive scan
-			raking_results.Set(inclusive_partial, COUNT);
+			if (EXCLUSIVE) {
+				// Store exclusive partial
+				raking_results.Set(exclusive_partial, COUNT);
+			} else {
+				// Store inclusive partial
+				raking_results.Set(inclusive_partial, COUNT);
+			}
 
 			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(
-				raking_partials, raking_results, inclusive_partial);
+			return Iterate<COUNT + 1, TOTAL>::Scan(
+				raking_partials, raking_results, inclusive_partial, scan_op);
+		}
+
+		// Scan 2D
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Scan(
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial,
+			int row,
+			ReductionOp scan_op)
+		{
+			// Load current partial
+			Tuple current_partial;
+			raking_partials.Get(current_partial, row, COUNT);
+
+			// Compute inclusive partial from exclusive and current partials
+			Tuple inclusive_partial = scan_op(exclusive_partial, current_partial);
+
+			if (EXCLUSIVE) {
+				// Store exclusive partial
+				raking_results.Set(exclusive_partial, row, COUNT);
+			} else {
+				// Store inclusive partial
+				raking_results.Set(inclusive_partial, row, COUNT);
+			}
+
+			// Recurse
+			return Iterate<COUNT + 1, TOTAL>::Scan(
+				raking_partials, raking_results, inclusive_partial, row, scan_op);
 		}
 	};
 
@@ -86,244 +119,114 @@ struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, false, ScanOp>
 	template <int TOTAL>
 	struct Iterate<TOTAL, TOTAL>
 	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
+		// Scan
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Scan(
 			RakingSoa raking_partials,
 			RakingSoa raking_results,
-			Tuple exclusive_partial)
+			Tuple exclusive_partial,
+			ReductionOp scan_op)
+		{
+			return exclusive_partial;
+		}
+
+		// Scan 2D
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Scan(
+			RakingSoa raking_partials,
+			RakingSoa raking_results,
+			Tuple exclusive_partial,
+			int row,
+			ReductionOp scan_op)
 		{
 			return exclusive_partial;
 		}
 	};
 
+
+	//---------------------------------------------------------------------
 	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
+	//---------------------------------------------------------------------
+
+	/**
+	 * Scan a 2D structure-of-array RakingSoa, seeded  with exclusive_partial.
+	 * The tuple returned is the inclusive total.
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Scan(
+		RakingSoa raking_partials,			// Scan input/output
+		Tuple exclusive_partial,			// Exclusive partial to seed with
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Scan(
+			raking_partials, raking_partials, exclusive_partial, scan_op);
 	}
 
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		RakingSoa raking_results,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
+
+	/**
+	 * Scan a 2D structure-of-array RakingSoa, seeded  with exclusive_partial.
+	 * The tuple returned is the inclusive total.
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Scan(
+		RakingSoa raking_partials,			// Scan input
+		RakingSoa raking_results,			// Scan output
+		Tuple exclusive_partial,			// Exclusive partial to seed with
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
-	}
-};
-
-
-/**
- * Exclusive serial scan
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScan <Tuple, RakingSoa, NUM_ELEMENTS, true, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int TOTAL>
-	struct Iterate
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			// Load current partial
-			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
-
-			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ScanOp(exclusive_partial, current_partial);
-
-			// Store exclusive partial because this is an exclusive scan
-			raking_results.Set(exclusive_partial, COUNT);
-
-			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(
-				raking_partials, raking_results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int TOTAL>
-	struct Iterate<TOTAL, TOTAL>
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Scan(
+			raking_partials, raking_results, exclusive_partial, scan_op);
 	}
 
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		RakingSoa raking_results,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
+
+	/**
+	 * Scan one row of a 2D structure-of-array RakingSoa, seeded
+	 * with exclusive_partial.  The tuple returned is the inclusive total.
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Scan(
+		RakingSoa raking_partials,			// Scan input/output
+		Tuple exclusive_partial,			// Exclusive partial to seed with
+		int row,
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
-	}
-};
-
-
-
-/**
- * Have each thread concurrently perform a serial scan over its
- * specified tuple segment (in place).  Returns the inclusive total reduction.
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int LANE,							// Lane segment in 2D array to serially reduce
-	int NUM_ELEMENTS,					// Length of SOA array segment(s) to scan
-	bool EXCLUSIVE,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScanLane;
-
-
-/**
- * Inclusive serial scan
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int LANE,							// Lane segment in 2D array to serially reduce
-	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, false, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int TOTAL>
-	struct Iterate
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			// Load current partial
-			Tuple current_partial = raking_partials.template Get<LANE, Tuple>(COUNT);
-
-			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ScanOp(exclusive_partial, current_partial);
-
-			// Store inclusive partial because this is an inclusive scan
-			raking_results.template Set<LANE>(inclusive_partial, COUNT);
-
-			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(
-				raking_partials, raking_results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int TOTAL>
-	struct Iterate<TOTAL, TOTAL>
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Scan(
+			raking_partials, raking_partials, exclusive_partial, row, scan_op);
 	}
 
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		RakingSoa raking_results,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
+
+	/**
+	 * Scan one row of a 2D structure-of-array RakingSoa, seeded
+	 * with exclusive_partial.  The tuple returned is the inclusive total.
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Scan(
+		RakingSoa raking_partials,			// Scan input
+		RakingSoa raking_results,			// Scan output
+		Tuple exclusive_partial,			// Exclusive partial to seed with
+		int row,
+		ReductionOp scan_op)
 	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
-	}
-};
-
-
-/**
- * Exclusive serial scan
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int LANE,							// Lane segment in 2D array to serially reduce
-	int NUM_ELEMENTS,
-	Tuple ScanOp(const Tuple&, const Tuple&)>
-struct SerialSoaScanLane <Tuple, RakingSoa, LANE, NUM_ELEMENTS, true, ScanOp>
-{
-	// Iterate
-	template <int COUNT, int TOTAL>
-	struct Iterate
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			// Load current partial
-			Tuple current_partial = raking_partials.template Get<LANE, Tuple>(COUNT);
-
-			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ScanOp(exclusive_partial, current_partial);
-
-			// Store exclusive partial because this is an exclusive scan
-			raking_results.template Set<LANE>(exclusive_partial, COUNT);
-
-			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(raking_partials, raking_results, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int TOTAL>
-	struct Iterate<TOTAL, TOTAL>
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			RakingSoa raking_results,
-			Tuple exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_partials, exclusive_partial);
-	}
-
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials,
-		RakingSoa raking_results,
-		Tuple exclusive_partial)			// Exclusive partial to seed with
-	{
-		return Iterate<0, NUM_ELEMENTS>::Invoke(raking_partials, raking_results, exclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Scan(
+			raking_partials, raking_results, exclusive_partial, row, scan_op);
 	}
 };
 

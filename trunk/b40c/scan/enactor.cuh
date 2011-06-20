@@ -370,7 +370,11 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
 			SingleKernel<<<1, Single::THREADS, 0>>>(
-				detail.d_src, detail.d_dest, work.num_elements, detail.scan_op, detail.identity_op);
+				detail.d_src,
+				detail.d_dest,
+				work.num_elements,
+				detail.scan_op,
+				detail.identity_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
@@ -391,19 +395,31 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			// Upsweep into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				detail.d_src, (T*) spine(), detail.scan_op, work);
+				detail.d_src,
+				(T*) spine(),
+				detail.scan_op,
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine(), (T*) spine(), spine_elements, detail.scan_op, detail.identity_op);
+				(T*) spine(),
+				(T*) spine(),
+				spine_elements,
+				detail.scan_op,
+				detail.identity_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				detail.d_src, detail.d_dest, (T*) spine(), detail.scan_op, detail.identity_op, work);
+				detail.d_src,
+				detail.d_dest,
+				(T*) spine(),
+				detail.scan_op,
+				detail.identity_op,
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -426,7 +442,13 @@ cudaError_t Enactor::Scan(
 	int max_grid_size)
 {
 	Detail<Policy, Enactor> detail(
-		this, d_dest, d_src, num_elements, scan_op, identity_op, max_grid_size);
+		this,
+		d_dest,
+		d_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 
 	return EnactPass<Policy>(detail);
 }
@@ -458,7 +480,13 @@ cudaError_t Enactor::Scan(
 		EXCLUSIVE> ProblemType;
 
 	Detail<ProblemType, Enactor> detail(
-		this, d_dest, d_src, num_elements, scan_op, identity_op, max_grid_size);
+		this,
+		d_dest,
+		d_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 
 	return util::ArchDispatch<
 		__B40C_CUDA_ARCH__,
@@ -484,7 +512,12 @@ cudaError_t Enactor::Scan(
 	int max_grid_size)
 {
 	return Scan<EXCLUSIVE, UNKNOWN_SIZE>(
-		d_dest, d_src, num_elements, scan_op, identity_op, max_grid_size);
+		d_dest,
+		d_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 }
 
 

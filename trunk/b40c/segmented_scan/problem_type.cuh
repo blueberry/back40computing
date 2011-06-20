@@ -38,10 +38,11 @@ template <
 	typename T,				// Partial type
 	typename _Flag,			// Flag type
 	typename SizeT,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-struct ProblemType : scan::ProblemType<T, SizeT, EXCLUSIVE, BinaryOp, Identity>		// Inherit from regular scan problem type
+	typename ReductionOp,
+	typename IdentityOp,
+	bool EXCLUSIVE>
+struct ProblemType :
+	scan::ProblemType<T, SizeT, ReductionOp, IdentityOp, EXCLUSIVE>		// Inherit from regular scan problem type
 {
 	// The type of flag we're using
 	typedef _Flag Flag;

@@ -61,27 +61,37 @@ struct Tuple<_T0, NullType, NullType, NullType>
 	// Manipulators
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int col)
 	{
-		t0[offset] = tuple.t0;
-	}
-
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
-	{
-		t0[LANE][offset] = tuple.t0;
+		t0[col] = tuple.t0;
 	}
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int row,
+		const int col)
 	{
-		return TupleSlice(t0[offset]);
+		t0[row][col] = tuple.t0;
 	}
 
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int col) const
 	{
-		return TupleSlice(t0[LANE][offset]);
+		retval = TupleSlice(t0[col]);
+	}
+
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int row,
+		const int col) const
+	{
+		retval = TupleSlice(t0[row][col]);
 	}
 };
 
@@ -113,29 +123,39 @@ struct Tuple<_T0, _T1, NullType, NullType>
 	// Manipulators
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int col)
 	{
-		t0[offset] = tuple.t0;
-		t1[offset] = tuple.t1;
-	}
-
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
-	{
-		t0[LANE][offset] = tuple.t0;
-		t1[LANE][offset] = tuple.t1;
+		t0[col] = tuple.t0;
+		t1[col] = tuple.t1;
 	}
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int row,
+		const int col)
 	{
-		return TupleSlice(t0[offset], t1[offset]);
+		t0[row][col] = tuple.t0;
+		t1[row][col] = tuple.t1;
 	}
 
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int col) const
 	{
-		return TupleSlice(t0[LANE][offset], t1[LANE][offset]);
+		retval = TupleSlice(t0[col], t1[col]);
+	}
+
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int row,
+		const int col) const
+	{
+		retval = TupleSlice(t0[row][col], t1[row][col]);
 	}
 };
 
@@ -166,37 +186,47 @@ struct Tuple<_T0, _T1, _T2, NullType>
 	// Manipulators
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int col)
 	{
-		t0[offset] = tuple.t0;
-		t1[offset] = tuple.t1;
-		t2[offset] = tuple.t2;
-	}
-
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
-	{
-		t0[LANE][offset] = tuple.t0;
-		t1[LANE][offset] = tuple.t1;
-		t2[LANE][offset] = tuple.t2;
+		t0[col] = tuple.t0;
+		t1[col] = tuple.t1;
+		t2[col] = tuple.t2;
 	}
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int row,
+		const int col)
 	{
-		return TupleSlice(
-			t0[offset],
-			t1[offset],
-			t2[offset]);
+		t0[row][col] = tuple.t0;
+		t1[row][col] = tuple.t1;
+		t2[row][col] = tuple.t2;
 	}
 
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int col) const
 	{
-		return TupleSlice(
-			t0[LANE][offset],
-			t1[LANE][offset],
-			t2[LANE][offset]);
+		retval = TupleSlice(
+			t0[col],
+			t1[col],
+			t2[col]);
+	}
+
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int row,
+		const int col) const
+	{
+		retval = TupleSlice(
+			t0[row][col],
+			t1[row][col],
+			t2[row][col]);
 	}
 };
 
@@ -229,41 +259,51 @@ struct Tuple
 	// Manipulators
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int col)
 	{
-		t0[offset] = tuple.t0;
-		t1[offset] = tuple.t1;
-		t2[offset] = tuple.t2;
-		t3[offset] = tuple.t3;
-	}
-
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ void Set(const TupleSlice &tuple, const int offset)
-	{
-		t0[LANE][offset] = tuple.t0;
-		t1[LANE][offset] = tuple.t1;
-		t2[LANE][offset] = tuple.t2;
-		t3[LANE][offset] = tuple.t3;
+		t0[col] = tuple.t0;
+		t1[col] = tuple.t1;
+		t2[col] = tuple.t2;
+		t3[col] = tuple.t3;
 	}
 
 	template <typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	__host__ __device__ __forceinline__ void Set(
+		const TupleSlice &tuple,
+		const int row,
+		const int col)
 	{
-		return TupleSlice(
-			t0[offset],
-			t1[offset],
-			t2[offset],
-			t3[offset]);
+		t0[row][col] = tuple.t0;
+		t1[row][col] = tuple.t1;
+		t2[row][col] = tuple.t2;
+		t3[row][col] = tuple.t3;
 	}
 
-	template <int LANE, typename TupleSlice>
-	__host__ __device__ __forceinline__ TupleSlice Get(const int offset) const
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int col) const
 	{
-		return TupleSlice(
-			t0[LANE][offset],
-			t1[LANE][offset],
-			t2[LANE][offset],
-			t3[LANE][offset]);
+		retval = TupleSlice(
+			t0[col],
+			t1[col],
+			t2[col],
+			t3[col]);
+	}
+
+	template <typename TupleSlice>
+	__host__ __device__ __forceinline__ void Get(
+		TupleSlice &retval,
+		const int row,
+		const int col) const
+	{
+		retval = TupleSlice(
+			t0[row][col],
+			t1[row][col],
+			t2[row][col],
+			t3[row][col]);
 	}
 };
 

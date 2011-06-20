@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SerialReduce
+ * Serial reduction over array types
  ******************************************************************************/
 
 #pragma once
@@ -34,7 +34,7 @@ namespace util {
 namespace reduction {
 
 /**
- * Have each thread concurrently perform a serial reduction over its specified segment
+ * Have each thread perform a serial reduction over its specified segment
  */
 template <int NUM_ELEMENTS>
 struct SerialReduce

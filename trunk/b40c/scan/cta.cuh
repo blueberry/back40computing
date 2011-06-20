@@ -85,6 +85,25 @@ struct Cta
 		T 					*d_in,
 		T 					*d_out,
 		ReductionOp 		scan_op,
+		IdentityOp 			identity_op) :
+
+			srts_details(
+				smem_storage.raking_elements,
+				smem_storage.warpscan,
+				identity_op()),
+			d_in(d_in),
+			d_out(d_out),
+			scan_op(scan_op),
+			carry(identity_op()) {}			// Seed carry with identity
+
+	/**
+	 * Constructor with spine partial for seeding with
+	 */
+	__device__ __forceinline__ Cta(
+		SmemStorage 		&smem_storage,
+		T 					*d_in,
+		T 					*d_out,
+		ReductionOp 		scan_op,
 		IdentityOp 			identity_op,
 		T 					spine_partial) :
 
@@ -96,26 +115,6 @@ struct Cta
 			d_out(d_out),
 			scan_op(scan_op),
 			carry(spine_partial) {}			// Seed carry with spine partial
-
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ Cta(
-		SmemStorage 		&smem_storage,
-		T 					*d_in,
-		T 					*d_out,
-		ReductionOp 		scan_op,
-		IdentityOp 			identity_op) :
-
-			srts_details(
-				smem_storage.raking_elements,
-				smem_storage.warpscan,
-				identity_op()),
-			d_in(d_in),
-			d_out(d_out),
-			scan_op(scan_op),
-			carry(identity_op()) {}			// Seed carry with identity
 
 
 	/**

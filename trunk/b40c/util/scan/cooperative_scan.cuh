@@ -131,7 +131,7 @@ struct CooperativeTileScan
 
 	/**
 	 * Scan a single tile where carry is updated with the total aggregate only
-	 * in raking threads (homogeneously).
+	 * in raking threads.
 	 *
 	 * No post-synchronization needed before grid reuse.
 	 */

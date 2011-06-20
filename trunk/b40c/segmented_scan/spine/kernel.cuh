@@ -37,15 +37,17 @@ namespace spine {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SpinePass(
-	typename KernelPolicy::T 				*&d_partials_in,
-	typename KernelPolicy::Flag				*&d_flags_in,
-	typename KernelPolicy::T 				*&d_partials_out,
-	typename KernelPolicy::SizeT 			&spine_elements,
+	typename KernelPolicy::T 				*d_partials_in,
+	typename KernelPolicy::Flag				*d_flags_in,
+	typename KernelPolicy::T 				*d_partials_out,
+	typename KernelPolicy::SizeT 			spine_elements,
+	typename KernelPolicy::ReductionOp 		scan_op,
+	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef downsweep::Cta<KernelPolicy> Cta;
-	typedef typename KernelPolicy::SizeT SizeT;
-	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
+	typedef downsweep::Cta<KernelPolicy> 		Cta;
+	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef typename KernelPolicy::SoaScanOp	SoaScanOp;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -55,7 +57,8 @@ __device__ __forceinline__ void SpinePass(
 		smem_storage,
 		d_partials_in,
 		d_flags_in,
-		d_partials_out);
+		d_partials_out,
+		SoaScanOp(scan_op, identity_op));
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
@@ -82,10 +85,12 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::T 		*d_partials_in,
-	typename KernelPolicy::Flag		*d_flags_in,
-	typename KernelPolicy::T 		*d_partials_out,
-	typename KernelPolicy::SizeT 	spine_elements)
+	typename KernelPolicy::T 			*d_partials_in,
+	typename KernelPolicy::Flag			*d_flags_in,
+	typename KernelPolicy::T 			*d_partials_out,
+	typename KernelPolicy::SizeT 		spine_elements,
+	typename KernelPolicy::ReductionOp 	scan_op,
+	typename KernelPolicy::IdentityOp 	identity_op)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -95,6 +100,8 @@ void Kernel(
 		d_flags_in,
 		d_partials_out,
 		spine_elements,
+		scan_op,
+		identity_op,
 		smem_storage);
 }
 

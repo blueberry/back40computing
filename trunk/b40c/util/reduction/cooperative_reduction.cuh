@@ -52,7 +52,7 @@ template <int VEC_SIZE>
 struct CooperativeTileReduction
 {
 	//---------------------------------------------------------------------
-	// Iteration structures for reducing a tile vectors into their
+	// Iteration structures for reducing tile vectors into their
 	// corresponding SRTS lanes
 	//---------------------------------------------------------------------
 
@@ -161,7 +161,9 @@ struct CooperativeGridReduction<SrtsDetails, NullType>
 	 * Reduction in last-level SRTS grid.  Carry is assigned (or reduced into
 	 * if REDUCE_INTO_CARRY is set), but only in last raking thread
 	 */
-	template <bool REDUCE_INTO_CARRY, typename ReductionOp>
+	template <
+		bool REDUCE_INTO_CARRY,
+		typename ReductionOp>
 	static __device__ __forceinline__ void ReduceTileWithCarry(
 		SrtsDetails srts_details,
 		T &carry,

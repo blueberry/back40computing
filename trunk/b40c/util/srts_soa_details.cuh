@@ -140,7 +140,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 				SrtsGridTuple::T1::MyRakingSegment(smem_pools.t1));
 
 			// Initialize first half of warpscan storages to identity
-			warpscan_partials.Set<0>(soa_tuple_identity, threadIdx.x);
+			warpscan_partials.Set(soa_tuple_identity, 0, threadIdx.x);
 		}
 	}
 
@@ -150,7 +150,9 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	 */
 	__device__ __forceinline__ SoaTuple CumulativePartial()
 	{
-		return warpscan_partials.template Get<1, SoaTuple>(CUMULATIVE_THREAD);
+		SoaTuple retval;
+		warpscan_partials.Get(retval, 1, CUMULATIVE_THREAD);
+		return retval;
 	}
 };
 

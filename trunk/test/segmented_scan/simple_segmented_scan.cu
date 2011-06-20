@@ -37,32 +37,29 @@
 // Test utils
 #include "b40c_test_util.h"
 
-using namespace b40c;
-
 
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
 
-
 /**
- * Sum binary associative operator
+ * Max binary scan operator
  */
 template <typename T>
-__host__ __device__ __forceinline__ T Sum(const T &a, const T &b)
+struct Max
 {
-	return a + b;
-}
+	// Associative reduction operator
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+	{
+		return (a > b) ? a : b;
+	}
 
-
-/**
- * Identity for Sum operator for integer types
- */
-template <typename T>
-__host__ __device__ __forceinline__ T SumId()
-{
-	return 0;
-}
+	// Identity operator
+	__host__ __device__ __forceinline__ T operator()()
+	{
+		return 0;
+	}
+};
 
 
 
@@ -72,7 +69,7 @@ __host__ __device__ __forceinline__ T SumId()
 
 int main(int argc, char** argv)
 {
-	CommandLineArgs args(argc, argv);
+	b40c::CommandLineArgs args(argc, argv);
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
@@ -80,7 +77,7 @@ int main(int argc, char** argv)
     	return 0;
     }
 
-    DeviceInit(args);
+    b40c::DeviceInit(args);
 
     // Define our problem type
 	typedef unsigned int T;
@@ -90,32 +87,26 @@ int main(int argc, char** argv)
 	const bool EXCLUSIVE_SCAN = false;
 
 	// Allocate and initialize host problem data and host reference solution
-	T h_src[NUM_ELEMENTS];
-	Flag h_flags[NUM_ELEMENTS];
-	T h_reference[NUM_ELEMENTS];
+	T 		h_src[NUM_ELEMENTS];
+	Flag 	h_flags[NUM_ELEMENTS];
+	T 		h_reference[NUM_ELEMENTS];
+	Max<T> 	max_op;
 
 	for (size_t i = 0; i < NUM_ELEMENTS; ++i) {
 		h_src[i] = 1;
 		h_flags[i] = (i % 11) == 0;
 	}
 
-	printf("Flags:\n");
-	for (int i = 0; i < NUM_ELEMENTS; i++) {
-		PrintValue(h_flags[i]);
-		printf(", ");
-	}
-	printf("\n\n");
-
 	for (size_t i = 0; i < NUM_ELEMENTS; ++i) {
 		if (EXCLUSIVE_SCAN)
 		{
 			h_reference[i] = ((i == 0) || (h_flags[i])) ?
-				SumId<T>() :
-				Sum(h_reference[i - 1], h_src[i - 1]);
+				max_op() :
+				max_op(h_reference[i - 1], h_src[i - 1]);
 		} else {
 			h_reference[i] = ((i == 0) || (h_flags[i])) ?
 				h_src[i] :
-				Sum(h_reference[i - 1], h_src[i]);
+				max_op(h_reference[i - 1], h_src[i]);
 		}
 	}
 
@@ -129,12 +120,34 @@ int main(int argc, char** argv)
 
 	cudaMemcpy(d_src, h_src, sizeof(T) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
 	cudaMemcpy(d_flags, h_flags, sizeof(Flag) * NUM_ELEMENTS, cudaMemcpyHostToDevice);
-	
-	// Exclusive segmented scan
 
-	typedef b40c::segmented_scan::ProblemType<
-		T, Flag, size_t, EXCLUSIVE_SCAN, Sum, SumId> ProblemType;
+	// Create enactor
+	b40c::segmented_scan::Enactor segmented_scan_enactor;
 
+	//
+	// Example 1: Enact simple exclusive scan using internal tuning heuristics
+	//
+	segmented_scan_enactor.Scan<EXCLUSIVE_SCAN>(
+		d_dest, d_src, d_flags, NUM_ELEMENTS, max_op, max_op);
+
+	printf("Simple scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+
+
+	//
+	// Example 2: Enact simple exclusive scan using "large problem" tuning configuration
+	//
+	segmented_scan_enactor.Scan<b40c::segmented_scan::LARGE_SIZE, EXCLUSIVE_SCAN>(
+		d_dest, d_src, d_flags, NUM_ELEMENTS, max_op, max_op);
+
+	printf("Large-tuned scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+
+	//
+	// Example 3: Custom segmented scan
+	//
+
+	typedef Max<T> ReductionOp;
+	typedef Max<T> IdentityOp;
+	typedef b40c::segmented_scan::ProblemType<T, Flag, int, ReductionOp, IdentityOp, EXCLUSIVE_SCAN> ProblemType;
 	typedef b40c::segmented_scan::Policy<
 		ProblemType,
 		b40c::segmented_scan::SM20,
@@ -145,16 +158,18 @@ int main(int argc, char** argv)
 		5, 1, 1, 5,
 		8, 5, 1, 2, 5> CustomConfig;
 
-	segmented_scan::Enactor segmented_scan_enactor;
-	segmented_scan_enactor.DEBUG = true;
 	segmented_scan_enactor.Scan<CustomConfig>(
-		d_dest, d_src, d_flags, NUM_ELEMENTS);
+		d_dest, d_src, d_flags, NUM_ELEMENTS, max_op, max_op);
+
+	b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS);
+	printf("Custom scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+
+	printf("\n");
+
+
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
-
-	CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS, true, true);
-	printf("\n");
 
 	return 0;
 }
