@@ -38,10 +38,11 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::KeyType				*&d_in_keys,
-	typename KernelPolicy::SizeT				*&d_spine,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage			&smem_storage)
+	typename KernelPolicy::KeyType								*d_in_keys,
+	typename KernelPolicy::SizeT								*d_spine,
+	typename KernelPolicy::EqualityOp							equality_op,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
 	typedef Cta<KernelPolicy> 					Cta;
 	typedef typename KernelPolicy::SizeT 		SizeT;
@@ -50,7 +51,8 @@ __device__ __forceinline__ void UpsweepPass(
 	Cta cta(
 		smem_storage,
 		d_in_keys,
-		d_spine);
+		d_spine,
+		equality_op);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -69,9 +71,10 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::KeyType				*d_in_keys,
-	typename KernelPolicy::SizeT				*d_spine,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
+	typename KernelPolicy::KeyType								*d_in_keys,
+	typename KernelPolicy::SizeT								*d_spine,
+	typename KernelPolicy::EqualityOp							equality_op,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -79,6 +82,7 @@ void Kernel(
 	UpsweepPass<KernelPolicy>(
 		d_in_keys,
 		d_spine,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }

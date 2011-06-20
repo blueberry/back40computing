@@ -37,12 +37,13 @@ namespace single {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void SinglePass(
-	typename KernelPolicy::KeyType			*&d_in_keys,
-	typename KernelPolicy::KeyType			*&d_out_keys,
-	typename KernelPolicy::ValueType		*&d_in_values,
-	typename KernelPolicy::ValueType		*&d_out_values,
-	typename KernelPolicy::SizeT			*&d_num_compacted,
-	typename KernelPolicy::SizeT 			&num_elements,
+	typename KernelPolicy::KeyType			*d_in_keys,
+	typename KernelPolicy::KeyType			*d_out_keys,
+	typename KernelPolicy::ValueType		*d_in_values,
+	typename KernelPolicy::ValueType		*d_out_values,
+	typename KernelPolicy::SizeT			*d_num_compacted,
+	typename KernelPolicy::SizeT 			num_elements,
+	typename KernelPolicy::EqualityOp		equality_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef downsweep::Cta<KernelPolicy> 		Cta;
@@ -58,7 +59,8 @@ __device__ __forceinline__ void SinglePass(
 		d_out_keys,
 		d_in_values,
 		d_out_values,
-		d_num_compacted);
+		d_num_compacted,
+		equality_op);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = num_elements & (KernelPolicy::TILE_ELEMENTS - 1);
@@ -90,7 +92,8 @@ void Kernel(
 	typename KernelPolicy::ValueType		*d_in_values,
 	typename KernelPolicy::ValueType		*d_out_values,
 	typename KernelPolicy::SizeT			*d_num_compacted,
-	typename KernelPolicy::SizeT 			num_elements)
+	typename KernelPolicy::SizeT 			num_elements,
+	typename KernelPolicy::EqualityOp		equality_op)
 {
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
@@ -101,6 +104,7 @@ void Kernel(
 		d_out_values,
 		d_num_compacted,
 		num_elements,
+		equality_op,
 		smem_storage);
 }
 
