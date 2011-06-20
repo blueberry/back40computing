@@ -411,14 +411,12 @@ struct Cta
 
 		// Scan tile of ranks, using an atomic add to reserve
 		// space in the compacted queue, seeding ranks
-		util::scan::CooperativeTileScan<
-			SrtsDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			true,							// exclusive
-			util::Operators<SizeT>::Sum>::ScanTileWithEnqueue(
-				srts_details,
-				tile.ranks,
-				work_progress.GetQueueCounter<SizeT>(queue_index + 1));
+		util::Sum<SizeT> scan_op;
+		util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
+			srts_details,
+			tile.ranks,
+			work_progress.GetQueueCounter<SizeT>(queue_index + 1),
+			scan_op);
 
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();

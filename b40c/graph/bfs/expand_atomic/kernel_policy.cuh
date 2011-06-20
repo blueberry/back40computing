@@ -148,23 +148,27 @@ struct KernelPolicy : _ProblemType
 	// Tuple of partial-flag type
 	typedef util::Tuple<SizeT, SizeT> SoaTuple;
 
+
 	/**
 	 * SOA scan operator
 	 */
-	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		const SoaTuple &first,
-		const SoaTuple &second)
+	struct SoaScanOp
 	{
-		return SoaTuple(first.t0 + second.t0, first.t1 + second.t1);
-	}
+		// SOA scan operator
+		__device__ __forceinline__ SoaTuple operator()(
+			const SoaTuple &first,
+			const SoaTuple &second)
+		{
+			return SoaTuple(first.t0 + second.t0, first.t1 + second.t1);
+		}
 
-	/**
-	 * Identity operator for granularity reservation tuples
-	 */
-	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
-	{
-		return SoaTuple(0,0);
-	}
+		// SOA identity operator
+		__device__ __forceinline__ SoaTuple operator()()
+		{
+			return SoaTuple(0,0);
+		}
+	};
+
 
 	// Tuple type of SRTS grid types
 	typedef util::Tuple<

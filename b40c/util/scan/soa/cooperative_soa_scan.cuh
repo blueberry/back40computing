@@ -52,7 +52,7 @@ struct CooperativeSoaGridScan;
  */
 template <
 	int VEC_SIZE,
-	bool EXCLUSIVE>					// Whether or not this is an exclusive scan
+	bool EXCLUSIVE = true>					// Whether or not this is an exclusive scan
 struct CooperativeSoaTileScan
 {
 	//---------------------------------------------------------------------
@@ -174,7 +174,7 @@ struct CooperativeSoaTileScan
 			srts_soa_details, data_soa, scan_op);
 
 		// Return last thread's inclusive partial
-		return srts_soa_details.CumulativePartial();
+		retval = srts_soa_details.CumulativePartial();
 	}
 };
 

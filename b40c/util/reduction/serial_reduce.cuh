@@ -105,7 +105,8 @@ struct SerialReduce
 	static __device__ __forceinline__ T Invoke(
 		T *partials)
 	{
-		return Invoke(partials, Operators<T>::Sum);
+		Sum<T> reduction_op;
+		return Invoke(partials, reduction_op);
 	}
 
 
@@ -133,7 +134,8 @@ struct SerialReduce
 		T *partials,
 		T exclusive_partial)
 	{
-		 return Invoke(partials, exclusive_partial, Operators<T>::Sum);
+		Sum<T> reduction_op;
+		 return Invoke(partials, exclusive_partial, reduction_op);
 	}
 };
 

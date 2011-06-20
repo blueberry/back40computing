@@ -31,6 +31,7 @@
 #include <b40c/util/spine.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 #include <b40c/util/cta_work_progress.cuh>
+#include <b40c/util/operators.cuh>
 
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
