@@ -38,15 +38,19 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::KeyType				*&d_in_keys,
-	typename KernelPolicy::ValueType			*&d_in_values,
-	typename KernelPolicy::ValueType 			*&d_spine_partials,
-	typename KernelPolicy::SizeT				*&d_spine_flags,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage			&smem_storage)
+	typename KernelPolicy::KeyType								*d_in_keys,
+	typename KernelPolicy::ValueType							*d_in_values,
+	typename KernelPolicy::ValueType 							*d_spine_partials,
+	typename KernelPolicy::SizeT								*d_spine_flags,
+	typename KernelPolicy::ReductionOp 							reduction_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
+	typename KernelPolicy::EqualityOp							equality_op,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelPolicy> 		Cta;
-	typedef typename KernelPolicy::SizeT 	SizeT;
+	typedef Cta<KernelPolicy> 						Cta;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 
 	// CTA processing abstraction
 	Cta cta(
@@ -54,7 +58,9 @@ __device__ __forceinline__ void UpsweepPass(
 		d_in_keys,
 		d_in_values,
 		d_spine_partials,
-		d_spine_flags);
+		d_spine_flags,
+		SoaScanOp(reduction_op, identity_op),
+		equality_op);
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -73,11 +79,14 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::KeyType				*d_in_keys,
-	typename KernelPolicy::ValueType			*d_in_values,
-	typename KernelPolicy::ValueType			*d_spine_partials,
-	typename KernelPolicy::SizeT				*d_spine_flags,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
+	typename KernelPolicy::KeyType								*d_in_keys,
+	typename KernelPolicy::ValueType							*d_in_values,
+	typename KernelPolicy::ValueType							*d_spine_partials,
+	typename KernelPolicy::SizeT								*d_spine_flags,
+	typename KernelPolicy::ReductionOp 							reduction_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
+	typename KernelPolicy::EqualityOp							equality_op,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -87,6 +96,9 @@ void Kernel(
 		d_in_values,
 		d_spine_partials,
 		d_spine_flags,
+		reduction_op,
+		identity_op,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }

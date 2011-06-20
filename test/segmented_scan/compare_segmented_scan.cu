@@ -96,16 +96,19 @@ struct segmented_scan_functor
  * number of iterations, displaying runtime information.
  */
 template <
+	bool EXCLUSIVE,
 	typename T,
 	typename Flag,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 double TimedThrustSegmentedScan(
 	T *h_data,
 	Flag *h_flag_data,
 	T *h_reference,
-	size_t num_elements)
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
 	using namespace b40c;
 
@@ -136,8 +139,8 @@ double TimedThrustSegmentedScan(
 		thrust::replace_copy_if(
 			dev_src,
 			dev_src + num_elements - 1,
-			dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), Identity());
-		temp[0] = Identity();
+			dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), identity_op());
+		temp[0] = identity_op();
 
 		thrust::detail::device::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
 											   thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)) + num_elements,
@@ -173,8 +176,8 @@ double TimedThrustSegmentedScan(
 			thrust::replace_copy_if(
 				dev_src,
 				dev_src + num_elements - 1,
-				dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), Identity());
-			temp[0] = Identity();
+				dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), identity_op());
+			temp[0] = identity_op();
 
 			thrust::detail::device::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
 												   thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)) + num_elements,
@@ -245,9 +248,13 @@ template<
 	typename T,
 	typename Flag,
 	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-void TestSegmentedScan(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
+void TestSegmentedScan(
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
     // Allocate the segmented scan problem on the host and fill the keys with random bytes
 
@@ -271,12 +278,12 @@ void TestSegmentedScan(size_t num_elements)
 		if (EXCLUSIVE)
 		{
 			h_reference[i] = ((i == 0) || (h_flag_data[i])) ?
-				Identity() :
-				BinaryOp(h_reference[i - 1], h_data[i - 1]);
+				identity_op() :
+				scan_op(h_reference[i - 1], h_data[i - 1]);
 		} else {
 			h_reference[i] = ((i == 0) || (h_flag_data[i])) ?
 				h_data[i] :
-				BinaryOp(h_reference[i - 1], h_data[i]);
+				scan_op(h_reference[i - 1], h_data[i]);
 		}
 	}
 
@@ -284,10 +291,25 @@ void TestSegmentedScan(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	double b40c = TimedSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity, segmented_scan::UNKNOWN_SIZE>(
-		h_data, h_flag_data, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
-	double thrust = TimedThrustSegmentedScan<T, Flag, EXCLUSIVE, BinaryOp, Identity>(
-		h_data, h_flag_data, h_reference, num_elements);
+	double b40c = TimedSegmentedScan<EXCLUSIVE, segmented_scan::LARGE_SIZE>(
+		h_data,
+		h_flag_data,
+		h_reference,
+		num_elements,
+		scan_op,
+		identity_op,
+		g_max_ctas,
+		g_verbose,
+		g_iterations);
+
+	double thrust = TimedThrustSegmentedScan<EXCLUSIVE>(
+		h_data,
+		h_flag_data,
+		h_reference,
+		num_elements,
+		scan_op,
+		identity_op);
+
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 	
 
@@ -304,14 +326,18 @@ void TestSegmentedScan(size_t num_elements)
 template<
 	typename T,
 	typename Flag,
-	T BinaryOp(const T&, const T&),
-	T Identity()>
-void TestSegmentedScanVariety(size_t num_elements)
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
+void TestSegmentedScanVariety(
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
 	if (g_inclusive) {
-		TestSegmentedScan<T, Flag, false, BinaryOp, Identity>(num_elements);
+		TestSegmentedScan<T, Flag, false>(num_elements, scan_op, identity_op);
 	} else {
-		TestSegmentedScan<T, Flag, true, BinaryOp, Identity>(num_elements);
+		TestSegmentedScan<T, Flag, true>(num_elements, scan_op, identity_op);
 	}
 }
 
@@ -351,26 +377,26 @@ int main(int argc, char** argv)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		typedef Sum<T> BinaryOp;
-		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		Sum<T> op;
+		TestSegmentedScanVariety<T, Flag>(num_elements * 4, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		typedef Sum<T> BinaryOp;
-		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		Sum<T> op;
+		TestSegmentedScanVariety<T, Flag>(num_elements * 2, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		typedef Sum<T> BinaryOp;
-		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		Sum<T> op;
+		TestSegmentedScanVariety<T, Flag>(num_elements, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		typedef Sum<T> BinaryOp;
-		TestSegmentedScanVariety<T, Flag, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		Sum<T> op;
+		TestSegmentedScanVariety<T, Flag>(num_elements / 2, op, op);
 	}
 
 	return 0;

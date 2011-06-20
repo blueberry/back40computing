@@ -94,12 +94,15 @@ struct Policy : ProblemType
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
+	typedef typename ProblemType::IdentityOp 		IdentityOp;
+	typedef typename ProblemType::EqualityOp		EqualityOp;
 	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
-	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, ReductionOp, IdentityOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT, ReductionOp, IdentityOp);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, ReductionOp, IdentityOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT, ReductionOp, IdentityOp, EqualityOp);
 
 	// Kernel config for the upsweep reduction kernel
 	typedef upsweep::KernelPolicy<

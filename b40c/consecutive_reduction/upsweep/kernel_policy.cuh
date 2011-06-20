@@ -66,12 +66,14 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::KeyType 					KeyType;
-	typedef typename ProblemType::ValueType 				ValueType;
-	typedef typename ProblemType::SizeT						SizeT;
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType 		ValueType;
+	typedef typename ProblemType::SizeT				SizeT;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
+	typedef typename ProblemType::IdentityOp 		IdentityOp;
 
 	// Tuple of spine partial-flag type
-	typedef util::Tuple<ValueType, SizeT> 	SoaTuple;		// Structure-of-array tuple for spine scan
+	typedef util::Tuple<ValueType, SizeT> 			SoaTuple;		// Structure-of-array tuple for spine scan
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -157,35 +159,48 @@ struct KernelPolicy : ProblemType
 	/**
 	 * SOA scan operator
 	 */
-	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		const SoaTuple &first,
-		const SoaTuple &second)
+	struct SoaScanOp
 	{
+		// Caller-supplied operators
+		ReductionOp 		reduction_op;
+		IdentityOp 			identity_op;
+
+		// Constructor
+		__device__ __forceinline__ SoaScanOp(
+			ReductionOp reduction_op,
+			IdentityOp identity_op) :
+				reduction_op(reduction_op),
+				identity_op(identity_op)
+		{}
+
+		// SOA scan operator
+		__device__ __forceinline__ SoaTuple operator()(
+			const SoaTuple &first,
+			const SoaTuple &second)
+		{
 /*
-		// NVBUGS XXXX: they are the same, but this leads to register corruption
-		return SoaTuple(
-			(second.t1) ?
-				second.t0 :
-				BinaryOp(first.t0, second.t0),
-			first.t1 + second.t1);
+			// NVBUGS XXXX: they are the same, but this leads to register corruption
+			return SoaTuple(
+				(second.t1) ?
+					second.t0 :
+					BinaryOp(first.t0, second.t0),
+				first.t1 + second.t1);
 */
-		if (second.t1) {
-			return SoaTuple(second.t0, first.t1 + second.t1);
-		} else {
-			return SoaTuple(BinaryOp(first.t0, second.t0), first.t1 + second.t1);
+			if (second.t1) {
+				return SoaTuple(second.t0, first.t1 + second.t1);
+			} else {
+				return SoaTuple(reduction_op(first.t0, second.t0), first.t1 + second.t1);
+			}
 		}
-	}
 
-
-	/**
-	 * Identity operator for partial-flag tuples
-	 */
-	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
-	{
-		return SoaTuple(
-			ProblemType::Identity(),			// Partial Identity
-			0);									// Flag Identity
-	}
+		// SOA identity operator
+		__device__ __forceinline__ SoaTuple operator()()
+		{
+			return SoaTuple(
+				identity_op(),				// Partial Identity
+				0);							// Flag Identity
+		}
+	};
 
 
 	// Tuple type of SRTS grid types
