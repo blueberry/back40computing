@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SerialScan
+ * Serial scan over array types
  ******************************************************************************/
 
 #pragma once
@@ -34,10 +34,11 @@ namespace util {
 namespace scan {
 
 /**
- * Have each thread concurrently perform a serial scan over its
- * specified segment (in place).  Returns the inclusive total_reduction.
+ * Have each thread perform a serial scan over its specified segment.
  */
-template <int NUM_ELEMENTS, bool EXCLUSIVE = true>
+template <
+	int NUM_ELEMENTS,				// Length of array segment to scan
+	bool EXCLUSIVE = true>			// Whether or not this is an exclusive scan
 struct SerialScan
 {
 	//---------------------------------------------------------------------

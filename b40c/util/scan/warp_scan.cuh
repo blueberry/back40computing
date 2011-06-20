@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * WarpScan
+ * Cooperative warp-scan
  ******************************************************************************/
 
 #pragma once
@@ -36,15 +36,17 @@ namespace scan {
 
 
 /**
- * Performs NUM_ELEMENTS steps of a Kogge-Stone style prefix scan.
+ * Performs STEPS steps of a Kogge-Stone style prefix scan.
  *
  * This procedure assumes that no explicit barrier synchronization is needed
  * between steps (i.e., warp-synchronous programming)
+ *
+ * Requires a 2D "warpscan" structure of smem storage having dimensions [2][NUM_ELEMENTS].
  */
 template <
-	int LOG_NUM_ELEMENTS,
-	bool EXCLUSIVE = true,
-	int STEPS = LOG_NUM_ELEMENTS>
+	int LOG_NUM_ELEMENTS,					// Log of number of elements to warp-reduce
+	bool EXCLUSIVE = true,					// Whether or not this is an exclusive scan
+	int STEPS = LOG_NUM_ELEMENTS>			// Number of steps to run, i.e., produce scanned segments of (1 << STEPS) elements
 struct WarpScan
 {
 	enum {
@@ -105,7 +107,7 @@ struct WarpScan
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		ReductionOp scan_op,								// Scan operator
+		ReductionOp scan_op,						// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;
@@ -153,7 +155,7 @@ struct WarpScan
 		T current_partial,							// Input partial
 		T &total_reduction,							// Total reduction (out param)
 		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		ReductionOp scan_op,								// Scan operator
+		ReductionOp scan_op,						// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		const int WIDTH = 1 << STEPS;

@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * WarpReduce
+ * Cooperative warp-reduction
  *
  * Does not support non-commutative operators.  (Suggested to use a warpscan
  * instead for those scenarios
@@ -45,8 +45,10 @@ namespace reduction {
  *
  * Can be used to perform concurrent, independent warp-reductions if
  * storage pointers and their local-thread indexing id's are set up properly.
+ *
+ * Requires a 2D "warpscan" structure of smem storage having dimensions [2][NUM_ELEMENTS].
  */
-template <int LOG_NUM_ELEMENTS>
+template <int LOG_NUM_ELEMENTS>				// Log of number of elements to warp-reduce
 struct WarpReduce
 {
 	enum {

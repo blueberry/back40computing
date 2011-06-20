@@ -99,23 +99,31 @@ public:
 	 * 		Pointer to array of "head flags" that demarcate independent scan segments
 	 * @param num_elements
 	 * 		Number of elements to segmented scan
+	 * @param scan_op
+	 * 		The function or functor type for binary scan, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
+	 * @param identity_op
+	 * 		The function or functor type for the scan identity, i.e., a type instance
+	 * 		that implements "T ()"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename T,
 		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&),
-		T Identity(),
+		typename T,
 		typename Flag,
-		typename SizeT>
+		typename SizeT,
+		typename ReductionOp,
+		typename IdentityOp>
 	cudaError_t Scan(
 		T *d_dest,
 		T *d_src,
 		Flag *d_flag_src,
 		SizeT num_elements,
+		ReductionOp scan_op,
+		IdentityOp identity_op,
 		int max_grid_size = 0);
 
 
@@ -134,24 +142,32 @@ public:
 	 * 		Pointer to array of "head flags" that demarcate independent scan segments
 	 * @param num_elements
 	 * 		Number of elements to segmented scan
+	 * @param scan_op
+	 * 		The function or functor type for binary scan, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
+	 * @param identity_op
+	 * 		The function or functor type for the scan identity, i.e., a type instance
+	 * 		that implements "T ()"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename T,
-		bool EXCLUSIVE,
-		T BinaryOp(const T&, const T&),
-		T Identity(),
 		ProbSizeGenre PROB_SIZE_GENRE,
+		bool EXCLUSIVE,
+		typename T,
 		typename Flag,
-		typename SizeT>
+		typename SizeT,
+		typename ReductionOp,
+		typename IdentityOp>
 	cudaError_t Scan(
 		T *d_dest,
 		T *d_src,
 		Flag *d_flag_src,
 		SizeT num_elements,
+		ReductionOp scan_op,
+		IdentityOp identity_op,
 		int max_grid_size = 0);
 
 
@@ -167,6 +183,12 @@ public:
 	 * 		Pointer to array of "head flags" that demarcate independent scan segments
 	 * @param num_elements
 	 * 		Number of elements to segmented scan
+	 * @param scan_op
+	 * 		The function or functor type for binary scan, i.e., a type instance
+	 * 		that implements "T (const T&, const T&)"
+	 * @param identity_op
+	 * 		The function or functor type for the scan identity, i.e., a type instance
+	 * 		that implements "T ()"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
 	 * @return cudaSuccess on success, error enumeration otherwise
@@ -177,6 +199,8 @@ public:
 		typename Policy::T *d_src,
 		typename Policy::Flag *d_flag_src,
 		typename Policy::SizeT num_elements,
+		typename Policy::ReductionOp scan_op,
+		typename Policy::IdentityOp identity_op,
 		int max_grid_size = 0);
 };
 
@@ -192,30 +216,38 @@ public:
 template <typename ProblemType, typename Enactor>
 struct Detail : ProblemType
 {
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::Flag Flag;
-	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::T 			T;
+	typedef typename ProblemType::Flag 			Flag;
+	typedef typename ProblemType::SizeT 		SizeT;
+	typedef typename ProblemType::ReductionOp 	ReductionOp;
+	typedef typename ProblemType::IdentityOp 	IdentityOp;
 
-	Enactor 	*enactor;
-	T 			*d_dest;
-	T 			*d_src;
-	Flag		*d_flag_src;
-	SizeT 		num_elements;
-	int 		max_grid_size;
+	Enactor 		*enactor;
+	T 				*d_dest;
+	T 				*d_src;
+	Flag			*d_flag_src;
+	SizeT 			num_elements;
+	ReductionOp		scan_op;
+	IdentityOp		identity_op;
+	int 			max_grid_size;
 
 	// Constructor
 	Detail(
-		Enactor *enactor,
-		T *d_dest,
-		T *d_src,
-		Flag *d_flag_src,
-		SizeT num_elements,
+		Enactor 		*enactor,
+		T 				*d_dest,
+		T 				*d_src,
+		Flag 			*d_flag_src,
+		SizeT 			num_elements,
+		ReductionOp		scan_op,
+		IdentityOp		identity_op,
 		int max_grid_size = 0) :
 			enactor(enactor),
 			d_dest(d_dest),
 			d_src(d_src),
 			d_flag_src(d_flag_src),
 			num_elements(num_elements),
+			scan_op(scan_op),
+			identity_op(identity_op),
 			max_grid_size(max_grid_size)
 	{}
 
@@ -349,14 +381,19 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	do {
 		// Make sure our spines are big enough
 		if (retval = partial_spine.Setup<T>(spine_elements)) break;
-		if (retval = flag_spine.Setup<T>(spine_elements)) break;
+		if (retval = flag_spine.Setup<Flag>(spine_elements)) break;
 
 		if (work.grid_size == 1) {
 
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
 			SingleKernel<<<1, Single::THREADS, 0>>>(
-				detail.d_src, detail.d_flag_src, detail.d_dest, work.num_elements);
+				detail.d_src,
+				detail.d_flag_src,
+				detail.d_dest,
+				work.num_elements,
+				detail.scan_op,
+				detail.identity_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
@@ -377,19 +414,36 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			// Upsweep scan into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				detail.d_src, detail.d_flag_src, (T*) partial_spine(), (Flag*) flag_spine(), work);
+				detail.d_src,
+				detail.d_flag_src,
+				(T*) partial_spine(),
+				(Flag*) flag_spine(),
+				detail.scan_op,
+				detail.identity_op,
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) partial_spine(), (Flag*) flag_spine(), (T*) partial_spine(), spine_elements);
+				(T*) partial_spine(),
+				(Flag*) flag_spine(),
+				(T*) partial_spine(),
+				spine_elements,
+				detail.scan_op,
+				detail.identity_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				detail.d_src, detail.d_flag_src, detail.d_dest, (T*) partial_spine(), work);
+				detail.d_src,
+				detail.d_flag_src,
+				detail.d_dest,
+				(T*) partial_spine(),
+				detail.scan_op,
+				detail.identity_op,
+				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
@@ -408,10 +462,19 @@ cudaError_t Enactor::Scan(
 	typename Policy::T *d_src,
 	typename Policy::Flag *d_flag_src,
 	typename Policy::SizeT num_elements,
+	typename Policy::ReductionOp scan_op,
+	typename Policy::IdentityOp identity_op,
 	int max_grid_size)
 {
 	Detail<Policy, Enactor> detail(
-		this, d_dest, d_src, d_flag_src, num_elements, max_grid_size);
+		this,
+		d_dest,
+		d_src,
+		d_flag_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 
 	return EnactPass<Policy>(detail);
 }
@@ -421,30 +484,39 @@ cudaError_t Enactor::Scan(
  * Enacts a segmented scan operation on the specified device.
  */
 template <
-	typename T,
-	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
 	ProbSizeGenre PROB_SIZE_GENRE,
+	bool EXCLUSIVE,
+	typename T,
 	typename Flag,
-	typename SizeT>
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 cudaError_t Enactor::Scan(
 	T *d_dest,
 	T *d_src,
 	Flag *d_flag_src,
 	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op,
 	int max_grid_size)
 {
 	typedef segmented_scan::ProblemType<
 		T,
 		Flag,
 		SizeT,
-		EXCLUSIVE,
-		BinaryOp,
-		Identity> ProblemType;
+		ReductionOp,
+		IdentityOp,
+		EXCLUSIVE> ProblemType;
 
 	Detail<ProblemType, Enactor> detail(
-		this, d_dest, d_src, d_flag_src, num_elements, max_grid_size);
+		this,
+		d_dest,
+		d_src,
+		d_flag_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 
 	return util::ArchDispatch<
 		__B40C_CUDA_ARCH__,
@@ -456,21 +528,29 @@ cudaError_t Enactor::Scan(
  * Enacts a segmented scan operation on the specified device data.
  */
 template <
-	typename T,
 	bool EXCLUSIVE,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
+	typename T,
 	typename Flag,
-	typename SizeT>
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 cudaError_t Enactor::Scan(
 	T *d_dest,
 	T *d_src,
 	Flag *d_flag_src,
 	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op,
 	int max_grid_size)
 {
-	return Scan<T, EXCLUSIVE, BinaryOp, Identity, UNKNOWN_SIZE>(
-		d_dest, d_src, d_flag_src, num_elements, max_grid_size);
+	return Scan<UNKNOWN_SIZE, EXCLUSIVE>(
+		d_dest,
+		d_src,
+		d_flag_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_grid_size);
 }
 
 

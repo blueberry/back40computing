@@ -52,8 +52,12 @@ struct Cta
 	typedef typename KernelPolicy::T 				T;
 	typedef typename KernelPolicy::Flag 			Flag;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::ReductionOp 		ReductionOp;
+	typedef typename KernelPolicy::IdentityOp 		IdentityOp;
+
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 
 	typedef util::Tuple<
 		T (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -68,17 +72,20 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Operational details for SRTS grid
-	SrtsSoaDetails 	srts_soa_details;
+	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
-	SoaTuple 		carry;
+	SoaTuple 			carry;
 
 	// Input device pointers
-	T 				*d_partials_in;
-	Flag 			*d_flags_in;
+	T 					*d_partials_in;
+	Flag 				*d_flags_in;
 
 	// Output device pointer
-	T 				*d_partials_out;
+	T 					*d_partials_out;
+
+	// Scan operator
+	SoaScanOp 			soa_scan_op;
 
 
 	//---------------------------------------------------------------------
@@ -104,9 +111,9 @@ struct Cta
 		// Members
 		//---------------------------------------------------------------------
 
-		T				partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		Flag			flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-		int 			is_head[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		T		partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		Flag	flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		int 	is_head[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 
 		//---------------------------------------------------------------------
@@ -171,6 +178,64 @@ struct Cta
 				Iterate<0, 0>::RepairHeads(this);
 			}
 		}
+
+
+		/**
+		 * Process
+		 */
+		template <typename Cta>
+		__device__ __forceinline__ void Process(
+			Cta *cta,
+			SizeT cta_offset,
+			SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
+		{
+			// Load tile of partials
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::LoadValid(
+					partials,
+					cta->d_partials_in + cta_offset,
+					guarded_elements);
+
+			// Load tile of flags
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER>::LoadValid(
+					flags,
+					cta->d_flags_in + cta_offset,
+					guarded_elements);
+
+			// Copy head flags (since we will trash them during scan)
+			util::io::InitializeTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(is_head, flags);
+
+			// Scan tile with carry update in raking threads
+			util::scan::soa::CooperativeSoaTileScan<
+				KernelPolicy::LOAD_VEC_SIZE,
+				KERNEL_EXCLUSIVE>::ScanTileWithCarry(
+					cta->srts_soa_details,
+					DataSoa(partials, flags),
+					cta->carry,
+					cta->soa_scan_op);
+
+			// Fix up segment heads if exclusive scan
+			RepairHeads();
+
+			// Store tile of partials
+			util::io::StoreTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::WRITE_MODIFIER>::Store(
+					partials,
+					cta->d_partials_out + cta_offset,
+					guarded_elements);
+		}
 	};
 
 
@@ -183,11 +248,11 @@ struct Cta
 	 */
 	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		T 				*d_partials_in,
-		Flag 			*d_flags_in,
-		T 				*d_partials_out,
-		T 				spine_partial = KernelPolicy::Identity()) :
+		SmemStorage 		&smem_storage,
+		T 					*d_partials_in,
+		Flag 				*d_flags_in,
+		T 					*d_partials_out,
+		SoaScanOp			soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -196,13 +261,40 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				soa_scan_op()),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_partials_out(d_partials_out),
-			carry(												// Seed carry with spine partial & flag identity
-				spine_partial,
-				0)
+			soa_scan_op(soa_scan_op),
+			carry(soa_scan_op())									// Seed carry with identity
+	{}
+
+
+	/**
+	 * Constructor with spine partial for seeding with
+	 */
+	template <typename SmemStorage>
+	__device__ __forceinline__ Cta(
+		SmemStorage 		&smem_storage,
+		T 					*d_partials_in,
+		Flag 				*d_flags_in,
+		T 					*d_partials_out,
+		SoaScanOp			soa_scan_op,
+		T 					spine_partial) :
+
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.partials_raking_elements,
+					smem_storage.flags_raking_elements),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.partials_warpscan,
+					smem_storage.flags_warpscan),
+				soa_scan_op()),
+			d_partials_in(d_partials_in),
+			d_flags_in(d_flags_in),
+			d_partials_out(d_partials_out),
+			soa_scan_op(soa_scan_op),
+			carry(spine_partial, 0)									// Seed carry with spine partial & flag identity
 	{}
 
 
@@ -213,54 +305,8 @@ struct Cta
 		SizeT cta_offset,
 		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
-		// Tiles of segmented scan elements and flags
 		Tile tile;
-
-		// Load tile of partials
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				tile.partials,
-				d_partials_in + cta_offset,
-				guarded_elements);
-
-		// Load tile of flags
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				tile.flags,
-				d_flags_in + cta_offset,
-				guarded_elements);
-
-		// Copy head flags (since we will trash them during scan)
-		util::io::InitializeTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.is_head, tile.flags);
-
-		// Scan tile with carry update in raking threads
-		util::scan::soa::CooperativeSoaTileScan<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			KERNEL_EXCLUSIVE,
-			KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
-				srts_soa_details,
-				DataSoa(tile.partials, tile.flags),
-				carry);
-
-		// Fix up segment heads if exclusive scan
-		tile.RepairHeads();
-
-		// Store tile of partials
-		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
-				tile.partials, d_partials_out + cta_offset, guarded_elements);
+		tile.Process(this, cta_offset, guarded_elements);
 	}
 
 

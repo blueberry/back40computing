@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Cooperative SOA tile reduction and scanning within CTAs
+ * Cooperative tile SOA (structure-of-arrays) scan within CTAs
  ******************************************************************************/
 
 #pragma once
@@ -38,13 +38,10 @@ namespace scan {
 namespace soa {
 
 /**
- * Cooperative SOA reduction in SRTS grid hierarchies
+ * Cooperative SOA reduction in SRTS smem grid hierarchies
  */
 template <
 	typename SrtsSoaDetails,
-	typename SrtsSoaDetails::SoaTuple ScanOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&),
 	typename SecondarySrtsSoaDetails = typename SrtsSoaDetails::SecondarySrtsSoaDetails>
 struct CooperativeSoaGridScan;
 
@@ -54,105 +51,127 @@ struct CooperativeSoaGridScan;
  * Cooperative SOA tile scan
  */
 template <
-	typename SrtsSoaDetails,
 	int VEC_SIZE,
-	bool EXCLUSIVE,
-	typename SrtsSoaDetails::SoaTuple ScanOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&)>
-struct CooperativeSoaTileScan :
-	reduction::soa::CooperativeSoaTileReduction<SrtsSoaDetails, VEC_SIZE, ScanOp>		// Inherit from cooperative tile reduction
+	bool EXCLUSIVE>					// Whether or not this is an exclusive scan
+struct CooperativeSoaTileScan
 {
-	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
+	//---------------------------------------------------------------------
+	// Iteration structures for extracting partials from SRTS lanes and
+	// using them to seed scans of tile vectors
+	//---------------------------------------------------------------------
 
 	// Next lane/load
-	template <int LANE, int TOTAL_LANES, typename DataSoa>
+	template <int LANE, int TOTAL_LANES>
 	struct ScanLane
 	{
+		template <
+			typename SrtsSoaDetails,
+			typename DataSoa,
+			typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsSoaDetails srts_soa_details,
-			DataSoa data_soa)
+			DataSoa data_soa,
+			ReductionOp scan_op)
 		{
 			// Retrieve partial reduction from SRTS grid
-			SoaTuple exclusive_partial = srts_soa_details.lane_partials.template Get<LANE, SoaTuple>(0);
+			typename SrtsSoaDetails::SoaTuple exclusive_partial;
+			srts_soa_details.lane_partials.Get(exclusive_partial, LANE, 0);
 
 			// Scan the partials in this lane/load
-			SerialSoaScanLane<
-				SoaTuple,
-				DataSoa,
-				LANE,
-				VEC_SIZE,
-				EXCLUSIVE,
-				ScanOp>::Invoke(data_soa, exclusive_partial);
+			SerialSoaScan<VEC_SIZE, EXCLUSIVE>::Scan(
+				data_soa, exclusive_partial, LANE, scan_op);
 
 			// Next load
-			ScanLane<LANE + 1, TOTAL_LANES, DataSoa>::Invoke(srts_soa_details, data_soa);
+			ScanLane<LANE + 1, TOTAL_LANES>::Invoke(
+				srts_soa_details, data_soa, scan_op);
 		}
 	};
 
 	// Terminate
-	template <int TOTAL_LANES, typename DataSoa>
-	struct ScanLane<TOTAL_LANES, TOTAL_LANES, DataSoa>
+	template <int TOTAL_LANES>
+	struct ScanLane<TOTAL_LANES, TOTAL_LANES>
 	{
+		template <
+			typename SrtsSoaDetails,
+			typename DataSoa,
+			typename ReductionOp>
 		static __device__ __forceinline__ void Invoke(
 			SrtsSoaDetails srts_soa_details,
-			DataSoa data_soa) {}
+			DataSoa data_soa,
+			ReductionOp scan_op) {}
 	};
 
 
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
 	/**
 	 * Scan a single tile where carry is updated with the total aggregate only
-	 * in raking threads (homogeneously).
+	 * in raking threads.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
-	template <typename DataSoa>
+	template <
+		typename SrtsSoaDetails,
+		typename DataSoa,
+		typename SoaTuple,
+		typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		SrtsSoaDetails srts_soa_details,
 		DataSoa data_soa,
-		SoaTuple &carry)
+		SoaTuple &carry,
+		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeSoaTileScan::template ReduceLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
-			srts_soa_details, data_soa);
+		// Reduce vectors in tile, placing resulting partial into corresponding SRTS grid lanes
+		reduction::soa::CooperativeSoaTileReduction<VEC_SIZE>::template
+			ReduceLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(
+				srts_soa_details, data_soa, scan_op);
 
 		__syncthreads();
 
-		CooperativeSoaGridScan<SrtsSoaDetails, ScanOp>::ScanTileWithCarry(
-			srts_soa_details, carry);
+		CooperativeSoaGridScan<SrtsSoaDetails>::ScanTileWithCarry(
+			srts_soa_details, carry, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
-			srts_soa_details, data_soa);
+		ScanLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(
+			srts_soa_details, data_soa, scan_op);
 	}
 
 
 	/**
 	 * Scan a single tile.  Total aggregate is computed and returned in all threads.
 	 *
-	 * No post-synchronization needed before srts_details reuse.
+	 * No post-synchronization needed before grid reuse.
 	 */
-	template <typename DataSoa>
-	static __device__ __forceinline__ SoaTuple ScanTile(
+	template <
+		typename SrtsSoaDetails,
+		typename DataSoa,
+		typename SoaTuple,
+		typename ReductionOp>
+	static __device__ __forceinline__ void ScanTile(
+		SoaTuple &retval,
 		SrtsSoaDetails srts_soa_details,
-		DataSoa data_soa)
+		DataSoa data_soa,
+		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
-		CooperativeSoaTileScan::template ReduceLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
-			srts_soa_details, data_soa);
+		// Reduce vectors in tile, placing resulting partial into corresponding SRTS grid lanes
+		reduction::soa::CooperativeSoaTileReduction<VEC_SIZE>::template
+			ReduceLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(
+				srts_soa_details, data_soa, scan_op);
 
 		__syncthreads();
 
-		CooperativeSoaGridScan<SrtsSoaDetails, ScanOp>::ScanTile(
-			srts_soa_details);
+		CooperativeSoaGridScan<SrtsSoaDetails>::ScanTile(
+			srts_soa_details, scan_op);
 
 		__syncthreads();
 
 		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
-		ScanLane<0, SrtsSoaDetails::SCAN_LANES, DataSoa>::Invoke(
-			srts_soa_details, data_soa);
+		ScanLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(
+			srts_soa_details, data_soa, scan_op);
 
 		// Return last thread's inclusive partial
 		return srts_soa_details.CumulativePartial();
@@ -169,54 +188,46 @@ struct CooperativeSoaTileScan :
 /**
  * Cooperative SOA SRTS grid reduction (specialized for last-level of SRTS grid)
  */
-template <
-	typename SrtsSoaDetails,
-	typename SrtsSoaDetails::SoaTuple ScanOp(
-		const typename SrtsSoaDetails::SoaTuple&,
-		const typename SrtsSoaDetails::SoaTuple&)>
-struct CooperativeSoaGridScan<SrtsSoaDetails, ScanOp, NullType>
+template <typename SrtsSoaDetails>
+struct CooperativeSoaGridScan<SrtsSoaDetails, NullType>
 {
 	typedef typename SrtsSoaDetails::SoaTuple SoaTuple;
 
 	/**
 	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(
 		SrtsSoaDetails srts_soa_details,
-		SoaTuple &carry)
+		SoaTuple &carry,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			SoaTuple inclusive_partial = reduction::soa::SerialSoaReduce<
-				SoaTuple,
-				typename SrtsSoaDetails::RakingSoa,
-				SrtsSoaDetails::PARTIALS_PER_SEG,
-				ScanOp>::Invoke(srts_soa_details.raking_segments);
+			SoaTuple inclusive_partial;
+			reduction::soa::SerialSoaReduce<SrtsSoaDetails::PARTIALS_PER_SEG>::Reduce(
+				inclusive_partial,
+				srts_soa_details.raking_segments,
+				scan_op);
 
 			// Exclusive warp scan, get total
 			SoaTuple warpscan_total;
-			SoaTuple exclusive_partial = WarpSoaScan<
-				SoaTuple,
-				typename SrtsSoaDetails::WarpscanSoa,
-				SrtsSoaDetails::LOG_RAKING_THREADS,
-				true,
-				SrtsSoaDetails::LOG_RAKING_THREADS,
-				ScanOp>::Invoke(inclusive_partial, warpscan_total, srts_soa_details.warpscan_partials);
+			SoaTuple exclusive_partial = WarpSoaScan<SrtsSoaDetails::LOG_RAKING_THREADS>::Scan(
+				inclusive_partial,
+				warpscan_total,
+				srts_soa_details.warpscan_partials,
+				scan_op);
 
 			// Seed exclusive partial with carry-in
-			exclusive_partial = ScanOp(carry, exclusive_partial);
+			exclusive_partial = scan_op(carry, exclusive_partial);
 
 			// Exclusive raking scan
-			SerialSoaScan<
-				SoaTuple,
-				typename SrtsSoaDetails::RakingSoa,
-				SrtsSoaDetails::PARTIALS_PER_SEG,
-				true,
-				ScanOp>::Invoke(srts_soa_details.raking_segments, exclusive_partial);
+			SerialSoaScan<SrtsSoaDetails::PARTIALS_PER_SEG>::Scan(
+				srts_soa_details.raking_segments, exclusive_partial, scan_op);
 
 			// Update carry
-			carry = ScanOp(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
+			carry = scan_op(carry, warpscan_total);			// Increment the CTA's running total by the full tile reduction
 		}
 	}
 
@@ -224,34 +235,29 @@ struct CooperativeSoaGridScan<SrtsSoaDetails, ScanOp, NullType>
 	/**
 	 * Scan in last-level SRTS grid.
 	 */
+	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTile(
-		SrtsSoaDetails srts_soa_details)
+		SrtsSoaDetails srts_soa_details,
+		ReductionOp scan_op)
 	{
 		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
 
 			// Raking reduction
-			SoaTuple inclusive_partial = reduction::soa::SerialSoaReduce<
-				SoaTuple,
-				typename SrtsSoaDetails::RakingSoa,
-				SrtsSoaDetails::PARTIALS_PER_SEG,
-				ScanOp>::Invoke(srts_soa_details.raking_segments);
+			SoaTuple inclusive_partial;
+			reduction::soa::SerialSoaReduce<SrtsSoaDetails::PARTIALS_PER_SEG>::Reduce(
+				inclusive_partial,
+				srts_soa_details.raking_segments,
+				scan_op);
 
 			// Exclusive warp scan
-			SoaTuple exclusive_partial = WarpSoaScan<
-				SoaTuple,
-				typename SrtsSoaDetails::WarpscanSoa,
-				SrtsSoaDetails::LOG_RAKING_THREADS,
-				true,
-				SrtsSoaDetails::LOG_RAKING_THREADS,
-				ScanOp>::Invoke(inclusive_partial, srts_soa_details.warpscan_partials);
+			SoaTuple exclusive_partial = WarpSoaScan<SrtsSoaDetails::LOG_RAKING_THREADS>::Scan(
+				inclusive_partial,
+				srts_soa_details.warpscan_partials,
+				scan_op);
 
 			// Exclusive raking scan
-			SerialSoaScan<
-				SoaTuple,
-				typename SrtsSoaDetails::RakingSoa,
-				SrtsSoaDetails::PARTIALS_PER_SEG,
-				true,
-				ScanOp>::Invoke(srts_soa_details.raking_segments, exclusive_partial);
+			SerialSoaScan<SrtsSoaDetails::PARTIALS_PER_SEG>::Scan(
+				srts_soa_details.raking_segments, exclusive_partial, scan_op);
 		}
 	}
 };

@@ -47,11 +47,15 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T T;
-	typedef typename KernelPolicy::Flag Flag;
-	typedef typename KernelPolicy::SizeT SizeT;
-	typedef typename KernelPolicy::SrtsSoaDetails SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple SoaTuple;
+	typedef typename KernelPolicy::T 				T;
+	typedef typename KernelPolicy::Flag 			Flag;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::ReductionOp 		ReductionOp;
+	typedef typename KernelPolicy::IdentityOp 		IdentityOp;
+
+	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 
 	typedef util::Tuple<
 		T (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -62,18 +66,22 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Operational details for SRTS grid
-	SrtsSoaDetails 	srts_soa_details;
+	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in SrtsDetails::CUMULATIVE_THREAD thread only)
-	SoaTuple 		carry;
+	SoaTuple 			carry;
 
 	// Input device pointers
-	T 				*d_partials_in;
-	Flag 			*d_flags_in;
+	T 					*d_partials_in;
+	Flag 				*d_flags_in;
 
 	// Spine output device pointers
-	T 				*d_spine_partials;
-	Flag 			*d_spine_flags;
+	T 					*d_spine_partials;
+	Flag 				*d_spine_flags;
+
+	// Scan operator
+	SoaScanOp 			soa_scan_op;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -88,7 +96,8 @@ struct Cta
 		T 				*d_partials_in,
 		Flag 			*d_flags_in,
 		T 				*d_spine_partials,
-		Flag 			*d_spine_flags) :
+		Flag 			*d_spine_flags,
+		SoaScanOp 		soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -97,12 +106,14 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				soa_scan_op()),
 			d_partials_in(d_partials_in),
 			d_flags_in(d_flags_in),
 			d_spine_partials(d_spine_partials),
 			d_spine_flags(d_spine_flags),
-			carry(KernelPolicy::SoaTupleIdentity()) {}
+			soa_scan_op(soa_scan_op),
+			carry(soa_scan_op()) {}
+
 
 	/**
 	 * Process a single, full tile
@@ -122,7 +133,7 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
 				partials,
-				KernelPolicy::Identity(),
+				soa_scan_op().t0,							// Partial identity
 				d_partials_in + cta_offset,
 				guarded_elements);
 
@@ -139,12 +150,11 @@ struct Cta
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::soa::CooperativeSoaTileReduction<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			KernelPolicy::SoaScanOp>::template ReduceTileWithCarry<true>(	// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
+			KernelPolicy::LOAD_VEC_SIZE>::template ReduceTileWithCarry<true>(		// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
 				srts_soa_details,
 				DataSoa(partials, flags),
-				carry);														// Seed with carry
+				carry,																// Seed with carry
+				soa_scan_op);
 
 		// Barrier to protect srts_soa_details before next tile
 		__syncthreads();

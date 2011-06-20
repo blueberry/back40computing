@@ -90,11 +90,13 @@ struct Policy : ProblemType
 	typedef typename ProblemType::T T;
 	typedef typename ProblemType::Flag Flag;
 	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::ReductionOp ReductionOp;
+	typedef typename ProblemType::IdentityOp IdentityOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, Flag*, T*, Flag*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(T*, Flag*, T*, SizeT);
-	typedef void (*DownsweepKernelPtr)(T*, Flag*, T*, T*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(T*, Flag*, T*, SizeT);
+	typedef void (*UpsweepKernelPtr)(T*, Flag*, T*, Flag*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(T*, Flag*, T*, SizeT, ReductionOp, IdentityOp);
+	typedef void (*DownsweepKernelPtr)(T*, Flag*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(T*, Flag*, T*, SizeT, ReductionOp, IdentityOp);
 
 
 	//---------------------------------------------------------------------

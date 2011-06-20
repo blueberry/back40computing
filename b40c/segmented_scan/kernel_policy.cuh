@@ -66,8 +66,10 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::Flag Flag;
+	typedef typename ProblemType::T 				T;
+	typedef typename ProblemType::Flag 				Flag;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
+	typedef typename ProblemType::IdentityOp 		IdentityOp;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -158,27 +160,40 @@ struct KernelPolicy : ProblemType
 	/**
 	 * SOA scan operator
 	 */
-	static __device__ __forceinline__ SoaTuple SoaScanOp(
-		const SoaTuple &first,
-		const SoaTuple &second)
+	struct SoaScanOp
 	{
-		if (second.t1) {
-			return second;
+		// Caller-supplied operators
+		ReductionOp 		scan_op;
+		IdentityOp 			identity_op;
+
+		// Constructor
+		__device__ __forceinline__ SoaScanOp(
+			ReductionOp scan_op,
+			IdentityOp identity_op) :
+				scan_op(scan_op),
+				identity_op(identity_op)
+		{}
+
+		// SOA scan operator
+		__device__ __forceinline__ SoaTuple operator()(
+			const SoaTuple &first,
+			const SoaTuple &second)
+		{
+			if (second.t1) {
+				return second;
+			}
+
+			return SoaTuple(scan_op(first.t0, second.t0), first.t1);
 		}
 
-		return SoaTuple(BinaryOp(first.t0, second.t0), first.t1);
-	}
-
-
-	/**
-	 * Identity operator for partial-flag tuples
-	 */
-	static __device__ __forceinline__ SoaTuple SoaTupleIdentity()
-	{
-		return SoaTuple(
-			ProblemType::Identity(),			// Partial Identity
-			0);									// Flag Identity
-	}
+		// SOA identity operator
+		__device__ __forceinline__ SoaTuple operator()()
+		{
+			return SoaTuple(
+				identity_op(),				// Partial Identity
+				0);							// Flag Identity
+		}
+	};
 
 
 	// Tuple type of SRTS grid types

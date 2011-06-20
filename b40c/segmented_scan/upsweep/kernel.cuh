@@ -38,15 +38,18 @@ namespace upsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
-	typename KernelPolicy::T 			*&d_partials_in,
-	typename KernelPolicy::Flag			*&d_flags_in,
-	typename KernelPolicy::T 			*&d_spine_partials,
-	typename KernelPolicy::Flag			*&d_spine_flags,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage	&smem_storage)
+	typename KernelPolicy::T 									*d_partials_in,
+	typename KernelPolicy::Flag									*d_flags_in,
+	typename KernelPolicy::T 									*d_spine_partials,
+	typename KernelPolicy::Flag									*d_spine_flags,
+	typename KernelPolicy::ReductionOp 							scan_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
+	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
+	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelPolicy> 		Cta;
-	typedef typename KernelPolicy::SizeT 	SizeT;
+	typedef Cta<KernelPolicy> 					Cta;
+	typedef typename KernelPolicy::SizeT 		SizeT;
+	typedef typename KernelPolicy::SoaScanOp	SoaScanOp;
 
 	// Quit if we're the last threadblock (no need for it in upsweep)
 	if (blockIdx.x == gridDim.x - 1) {
@@ -59,7 +62,8 @@ __device__ __forceinline__ void UpsweepPass(
 		d_partials_in,
 		d_flags_in,
 		d_spine_partials,
-		d_spine_flags);
+		d_spine_flags,
+		SoaScanOp(scan_op, identity_op));
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
@@ -78,10 +82,12 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::T 			*d_partials_in,
-	typename KernelPolicy::Flag			*d_flags_in,
-	typename KernelPolicy::T 			*d_spine_partials,
-	typename KernelPolicy::Flag			*d_spine_flags,
+	typename KernelPolicy::T 				*d_partials_in,
+	typename KernelPolicy::Flag				*d_flags_in,
+	typename KernelPolicy::T 				*d_spine_partials,
+	typename KernelPolicy::Flag				*d_spine_flags,
+	typename KernelPolicy::ReductionOp 		scan_op,
+	typename KernelPolicy::IdentityOp 		identity_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
@@ -92,6 +98,8 @@ void Kernel(
 		d_flags_in,
 		d_spine_partials,
 		d_spine_flags,
+		scan_op,
+		identity_op,
 		work_decomposition,
 		smem_storage);
 }

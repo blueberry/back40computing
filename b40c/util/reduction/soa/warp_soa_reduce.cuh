@@ -22,9 +22,9 @@
  ******************************************************************************/
 
 /******************************************************************************
- * WarpSoaReduce
+ * Cooperative tuple warp-reduction
  *
- * Does not support commutative operators.  (Suggested to use a warpscan
+ * Does not support non-commutative operators.  (Suggested to use a warpscan
  * instead for those scenarios)
  ******************************************************************************/
 
@@ -45,36 +45,49 @@ namespace soa {
  *
  * Can be used to perform concurrent, independent warp-reductions if
  * storage pointers and their local-thread indexing id's are set up properly.
+ *
+ * The type WarpscanSoa is a 2D structure-of-array of smem storage, each SOA array having
+ * dimensions [2][NUM_ELEMENTS].
  */
-template <
-	typename Tuple,						// Tuple of partials
-	typename WarpscanSoa,				// Tuple of SOA warpscan segments
-	int LOG_NUM_ELEMENTS,
-	Tuple ReductionOp(const Tuple&, const Tuple&)>
+template <int LOG_NUM_ELEMENTS>				// Log of number of elements to warp-reduce
 struct WarpSoaReduce
 {
-	static const int NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS;
+	enum {
+		NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS,
+	};
 
-	// General iteration
+	//---------------------------------------------------------------------
+	// Iteration Structures
+	//---------------------------------------------------------------------
+
+	// Iteration
 	template <int OFFSET_LEFT, int __dummy = 0>
 	struct Iterate
 	{
-		static __device__ __forceinline__ Tuple Invoke(
+		// Reduce
+		template <
+			typename Tuple,
+			typename WarpscanSoa,
+			typename ReductionOp>
+		static __device__ __forceinline__ Tuple Reduce(
 			Tuple exclusive_partial,
 			WarpscanSoa warpscan_partials,
+			ReductionOp reduction_op,
 			int warpscan_tid)
 		{
 			// Store exclusive partial
-			warpscan_partials.template Set<1>(exclusive_partial, warpscan_tid);
+			warpscan_partials.Set(exclusive_partial, 1, warpscan_tid);
 
 			// Load current partial
-			Tuple current_partial = warpscan_partials.template Get<1, Tuple>(warpscan_tid - OFFSET_LEFT);
+			Tuple current_partial;
+			warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
 
 			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ReductionOp(current_partial, exclusive_partial);
+			Tuple inclusive_partial = reduction_op(current_partial, exclusive_partial);
 
 			// Recurse
-			return Iterate<OFFSET_LEFT / 2>::Invoke(inclusive_partial, warpscan_partials, warpscan_tid);
+			return Iterate<OFFSET_LEFT / 2>::Reduce(
+				inclusive_partial, warpscan_partials, reduction_op, warpscan_tid);
 		}
 	};
 
@@ -82,38 +95,66 @@ struct WarpSoaReduce
 	template <int __dummy>
 	struct Iterate<0, __dummy>
 	{
-		static __device__ __forceinline__ Tuple Invoke(
+		// Reduce
+		template <
+			typename Tuple,
+			typename WarpscanSoa,
+			typename ReductionOp>
+		static __device__ __forceinline__ Tuple Reduce(
 			Tuple exclusive_partial,
 			WarpscanSoa warpscan_partials,
+			ReductionOp reduction_op,
 			int warpscan_tid)
 		{
 			return exclusive_partial;
 		}
 	};
 
-	// Interface (result is returned in all warpscan threads)
-	static __device__ __forceinline__ Tuple Invoke(
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Warp-reduction.  Result is returned in all warpscan threads.
+	 */
+	template <
+		typename Tuple,
+		typename WarpscanSoa,
+		typename ReductionOp>
+	static __device__ __forceinline__ Tuple Reduce(
 		Tuple current_partial,					// Input partial
 		WarpscanSoa warpscan_partials,			// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		ReductionOp reduction_op,
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		Tuple inclusive_partial = Iterate<NUM_ELEMENTS / 2>::Invoke(
-			current_partial, warpscan_partials, warpscan_tid);
+		Tuple inclusive_partial = Iterate<NUM_ELEMENTS / 2>::Reduce(
+			current_partial, warpscan_partials, reduction_op, warpscan_tid);
 
 		// Write our inclusive partial
-		warpscan_partials.template Set<1>(inclusive_partial, warpscan_tid);
+		warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
 
 		// Return last thread's inclusive partial
-		return warpscan_partials.template Get<1, Tuple>(NUM_ELEMENTS - 1);
+		Tuple retval;
+		return warpscan_partials.Get(retval, 1, NUM_ELEMENTS - 1);
 	}
 
-	// Interface (result is returned in last warpscan thread)
-	static __device__ __forceinline__ Tuple InvokeSingle(
+
+	/**
+	 * Warp-reduction.  Result is returned in last warpscan thread.
+	 */
+	template <
+		typename Tuple,
+		typename WarpscanSoa,
+		typename ReductionOp>
+	static __device__ __forceinline__ Tuple ReduceInLast(
 		Tuple exclusive_partial,				// Input partial
 		WarpscanSoa warpscan_partials,			// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS
+		ReductionOp reduction_op,
 		int warpscan_tid = threadIdx.x)			// Thread's local index into a segment of NUM_ELEMENTS items
 	{
-		return Iterate<NUM_ELEMENTS / 2>::Invoke(exclusive_partial, warpscan_partials, warpscan_tid);
+		return Iterate<NUM_ELEMENTS / 2>::Reduce(
+			exclusive_partial, warpscan_partials, reduction_op, warpscan_tid);
 	}
 
 };

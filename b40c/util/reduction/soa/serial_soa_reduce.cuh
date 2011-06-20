@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SerialSoaReduce
+ * Serial tuple reduction over structure-of-array types.
  ******************************************************************************/
 
 #pragma once
@@ -36,32 +36,62 @@ namespace soa {
 
 
 /**
- * Have each thread concurrently perform a serial sequence reduction
- * over its specified array segment
+ * Have each thread perform a serial reduction over its specified SOA segment
  */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,			// Tuple of SOA raking segments
-	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(const Tuple&, const Tuple&)>
+template <int NUM_ELEMENTS>					// Length of SOA array segment to reduce
 struct SerialSoaReduce
 {
-	// Iterate
+	//---------------------------------------------------------------------
+	// Iteration Structures
+	//---------------------------------------------------------------------
+
+	// Next SOA tuple
 	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
+		// Reduce
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Reduce(
 			RakingSoa raking_partials,
-			Tuple exclusive_partial)
+			Tuple exclusive_partial,
+			ReductionOp reduction_op)
 		{
 			// Load current partial
-			Tuple current_partial = raking_partials.template Get<Tuple>(COUNT);
+			Tuple current_partial;
+			raking_partials.Get(current_partial, COUNT);
 
 			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
+			Tuple inclusive_partial = reduction_op(exclusive_partial, current_partial);
 
 			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(raking_partials, inclusive_partial);
+			return Iterate<COUNT + 1, TOTAL>::Reduce(
+				raking_partials, inclusive_partial, reduction_op);
+		}
+
+		// Reduce 2D
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Reduce(
+			RakingSoa raking_partials,
+			Tuple exclusive_partial,
+			int row,
+			ReductionOp reduction_op)
+		{
+			// Load current partial
+			Tuple current_partial;
+			raking_partials.Get(current_partial, row, COUNT);
+
+			// Compute inclusive partial from exclusive and current partials
+			Tuple inclusive_partial = reduction_op(exclusive_partial, current_partial);
+
+			// Recurse
+			return Iterate<COUNT + 1, TOTAL>::Reduce(
+				raking_partials, inclusive_partial, row, reduction_op);
 		}
 	};
 
@@ -69,101 +99,118 @@ struct SerialSoaReduce
 	template <int TOTAL>
 	struct Iterate<TOTAL, TOTAL>
 	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
+		// Reduce
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Reduce(
 			RakingSoa raking_partials,
-			Tuple exclusive_partial)
+			Tuple exclusive_partial,
+			ReductionOp reduction_op)
+		{
+			return exclusive_partial;
+		}
+
+		// Reduce 2D
+		template <
+			typename Tuple,
+			typename RakingSoa,
+			typename ReductionOp>
+		static __host__ __device__ __forceinline__ Tuple Reduce(
+			RakingSoa raking_partials,
+			Tuple exclusive_partial,
+			int row,
+			ReductionOp reduction_op)
 		{
 			return exclusive_partial;
 		}
 	};
 
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials)
-	{
-		// Get first partial
-		Tuple inclusive_partial = raking_partials.template Get<Tuple>(0);
-		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
-	}
 
+	//---------------------------------------------------------------------
 	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
+	//---------------------------------------------------------------------
+
+	/**
+	 * Reduce a structure-of-array RakingSoa into a single Tuple "slice"
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Reduce(
+		Tuple &retval,
 		RakingSoa raking_partials,
-		Tuple exclusive_partial)
+		ReductionOp reduction_op)
 	{
 		// Get first partial
-		Tuple current_partial = raking_partials.template Get<Tuple>(0);
-		Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
-		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
-	}
-};
+		Tuple current_partial;
+		raking_partials.Get(current_partial, 0);
 
-
-/**
- * Have each thread concurrently perform a serial sequence reduction
- * over its specified array segment
- */
-template <
-	typename Tuple,						// Tuple of partials
-	typename RakingSoa,					// Tuple of SOA raking segments
-	int LANE,							// Lane segment in 2D array to serially reduce
-	int NUM_ELEMENTS,					// Length of SOA array segment(s) to reduce
-	Tuple ReductionOp(const Tuple&, const Tuple&)>
-struct SerialSoaReduceLane
-{
-	// Iterate
-	template <int COUNT, int TOTAL>
-	struct Iterate
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			Tuple exclusive_partial)
-		{
-			// Load current partial
-			Tuple current_partial =	raking_partials.template Get<LANE, Tuple>(COUNT);
-
-			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
-
-			// Recurse
-			return Iterate<COUNT + 1, TOTAL>::Invoke(
-				raking_partials, inclusive_partial);
-		}
-	};
-
-	// Terminate
-	template <int TOTAL>
-	struct Iterate<TOTAL, TOTAL>
-	{
-		static __host__ __device__ __forceinline__ Tuple Invoke(
-			RakingSoa raking_partials,
-			Tuple exclusive_partial)
-		{
-			return exclusive_partial;
-		}
-	};
-
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
-		RakingSoa raking_partials)
-	{
-		// Get first partial
-		Tuple inclusive_partial = raking_partials.template Get<LANE, Tuple>(0);
-
-		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
+		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
+			raking_partials, current_partial, reduction_op);
+		return retval;
 	}
 
-	// Interface
-	static __host__ __device__ __forceinline__ Tuple Invoke(
+	/**
+	 * Reduce a structure-of-array RakingSoa into a single Tuple "slice", seeded
+	 * with exclusive_partial
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple SeedReduce(
 		RakingSoa raking_partials,
-		Tuple exclusive_partial)
+		Tuple exclusive_partial,
+		ReductionOp reduction_op)
 	{
-		// Get first partial
-		Tuple current_partial = raking_partials.template Get<LANE, Tuple>(0);
-		Tuple inclusive_partial = ReductionOp(exclusive_partial, current_partial);
-		return Iterate<1, NUM_ELEMENTS>::Invoke(raking_partials, inclusive_partial);
+		return Iterate<0, NUM_ELEMENTS>::Reduce(
+			raking_partials, exclusive_partial, reduction_op);
 	}
 
+
+	/**
+	 * Reduce one row of a 2D structure-of-array RakingSoa into a single Tuple "slice"
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple Reduce(
+		Tuple &retval,
+		RakingSoa raking_partials,
+		int row,
+		ReductionOp reduction_op)
+	{
+		// Get first partial
+		Tuple current_partial;
+		raking_partials.Get(current_partial, row, 0);
+
+		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
+			raking_partials, current_partial, row, reduction_op);
+		return retval;
+	}
+
+
+	/**
+	 * Reduce one row of a 2D structure-of-array RakingSoa into a single Tuple "slice", seeded
+	 * with exclusive_partial
+	 */
+	template <
+		typename Tuple,
+		typename RakingSoa,
+		typename ReductionOp>
+	static __host__ __device__ __forceinline__ Tuple SeedReduce(
+		RakingSoa raking_partials,
+		Tuple exclusive_partial,
+		int row,
+		ReductionOp reduction_op)
+	{
+		return Iterate<0, NUM_ELEMENTS>::Reduce(
+			raking_partials, exclusive_partial, row, reduction_op);
+	}
 };
 
 
