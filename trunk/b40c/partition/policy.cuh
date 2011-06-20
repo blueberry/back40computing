@@ -29,9 +29,10 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/partition/spine/kernel.cuh>
+
 #include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/kernel_policy.cuh>
-#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace partition {
@@ -80,9 +81,9 @@ struct Policy : ProblemType
 	typedef scan::ProblemType<
 		SizeT,								// spine scan type T
 		int,								// spine scan SizeT
-		true,								// exclusive
-		util::Operators<SizeT>::Sum,
-		util::Operators<SizeT>::SumIdentity> SpineProblemType;
+		util::Sum<SizeT>,
+		util::Sum<SizeT>,
+		true> SpineProblemType;
 
 	// Kernel config for spine scan
 	typedef scan::KernelPolicy <
@@ -97,13 +98,13 @@ struct Policy : ProblemType
 		WRITE_MODIFIER,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
-	
+
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
 	//---------------------------------------------------------------------
 
 	static SpineKernelPtr SpineKernel() {
-		return scan::spine::Kernel<Spine>;
+		return partition::spine::Kernel<Spine>;
 	}
 
 };

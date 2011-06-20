@@ -521,8 +521,17 @@ __global__ void TunedSpineKernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
+	typename KernelPolicy::ReductionOp scan_op;
+	typename KernelPolicy::IdentityOp identity_op;
+
 	// Invoke the wrapped kernel logic
-	scan::spine::SpinePass<KernelPolicy>(d_spine_in, d_spine_out, spine_elements, smem_storage);
+	scan::spine::SpinePass<KernelPolicy>(
+		d_spine_in,
+		d_spine_out,
+		spine_elements,
+		scan_op,
+		identity_op,
+		smem_storage);
 }
 
 

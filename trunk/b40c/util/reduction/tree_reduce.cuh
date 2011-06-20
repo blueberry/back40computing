@@ -178,7 +178,7 @@ struct TreeReduce
 		T my_partial,									// Input partial
 		volatile T reduction_tree[CTA_THREADS],			// Shared memory for tree scan
 		int num_elements,								// Number of valid elements to actually reduce (may be less than number of cta-threads)
-		ReductionOp reduction_op = Operators<T>::Sum)	// Reduction operator
+		ReductionOp reduction_op)						// Reduction operator
 
 	{
 		my_partial = Iterate<CTA_THREADS / 2, false>::template Invoke<false>(
@@ -210,7 +210,7 @@ struct TreeReduce
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,								// Input partial
 		volatile T reduction_tree[CTA_THREADS],		// Shared memory for tree scan
-		ReductionOp reduction_op = Operators<T>::Sum)	// Reduction operator
+		ReductionOp reduction_op)					// Reduction operator
 	{
 		my_partial = Iterate<CTA_THREADS / 2, false>::template Invoke<true>(
 			my_partial,
@@ -228,6 +228,37 @@ struct TreeReduce
 
 			return my_partial;
 		}
+	}
+
+
+	/**
+	 * Perform a cooperative tree reduction using the addition operator.
+	 * Threads with ranks less than num_elements contribute one reduction partial.
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T Invoke(
+		T my_partial,									// Input partial
+		volatile T reduction_tree[CTA_THREADS],			// Shared memory for tree scan
+		int num_elements)								// Number of valid elements to actually reduce (may be less than number of cta-threads)
+	{
+		Sum<T> reduction_op;
+		return Invoke(my_partial, reduction_tree, num_elements);
+	}
+
+
+	/**
+	 * Perform a cooperative tree reduction using the addition operator.
+	 * Each thread contributes one reduction partial.
+	 *
+	 * Assumes all threads contribute a valid element (no checks on num_elements)
+	 */
+	template <typename T>
+	static __device__ __forceinline__ T Invoke(
+		T my_partial,								// Input partial
+		volatile T reduction_tree[CTA_THREADS])		// Shared memory for tree scan
+	{
+		Sum<T> reduction_op;
+		return Invoke(my_partial, reduction_tree, reduction_op);
 	}
 };
 

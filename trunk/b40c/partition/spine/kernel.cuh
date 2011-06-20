@@ -17,71 +17,49 @@
  * For more information, see our Google Code project site: 
  * http://code.google.com/p/back40computing/
  * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Simple reduction operators
+ * Partition spine scan kernel
+ *
+ * Requires a b40c::scan::KernelPolicy.
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/scan/spine/kernel.cuh>
+
 namespace b40c {
-namespace util {
-
-/**
- * Static operator wrapping structure.
- *
- * (N.B. due to an NVCC/cudafe 4.0 regression, we can't specify static templated
- * functions inside other types...)
- */
-template <typename T, typename R = T>
-struct Operators
-{
-	/**
-	 * Empty default transform function
-	 */
-	static __device__ __forceinline__ void NopTransform(T &val) {}
-
-};
+namespace partition {
+namespace spine {
 
 
 /**
- * Default equality functor
+ * Consecutive removal spine scan kernel entry point
  */
-template <typename T>
-struct Equality
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
+__global__ 
+void Kernel(
+	typename KernelPolicy::T			*d_in,
+	typename KernelPolicy::T			*d_out,
+	typename KernelPolicy::SizeT 		spine_elements)
 {
-	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
-	{
-		return a == b;
-	}
-};
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
+	typename KernelPolicy::ReductionOp reduction_op;
+	typename KernelPolicy::IdentityOp identity_op;
 
-/**
- * Default sum functor
- */
-template <typename T>
-struct Sum
-{
-	// Binary reduction
-	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
-	{
-		return a + b;
-	}
+	scan::spine::SpinePass<KernelPolicy>(
+		d_in,
+		d_out,
+		spine_elements,
+		reduction_op,
+		identity_op,
+		smem_storage);
+}
 
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return (T) 0;
-	}
-};
-
-
-
-
-} // namespace util
+} // namespace spine
+} // namespace partition
 } // namespace b40c
 

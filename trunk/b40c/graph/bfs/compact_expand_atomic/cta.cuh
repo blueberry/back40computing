@@ -36,6 +36,7 @@
 
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
+#include <b40c/util/operators.cuh>
 
 namespace b40c {
 namespace graph {
@@ -61,8 +62,10 @@ struct Cta
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+
 	typedef typename SmemStorage::WarpComm 			WarpComm;
 
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
 
@@ -764,7 +767,7 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.coarse_warpscan,
 					smem_storage.fine_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				SoaTuple(0, 0)),
 			warp_comm(smem_storage.warp_comm),
 			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
@@ -835,13 +838,14 @@ struct Cta
 		__syncthreads();
 
 		// Scan tile with carry update in raking threads
-		SoaTuple totals = util::scan::soa::CooperativeSoaTileScan<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			true,									//exclusive
-			KernelPolicy::SoaScanOp>::ScanTile(
-				srts_soa_details,
-				RankSoa(tile.coarse_row_rank, tile.fine_row_rank));
+		SoaScanOp scan_op;
+		SoaTuple totals;
+		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
+			totals,
+			srts_soa_details,
+			RankSoa(tile.coarse_row_rank, tile.fine_row_rank),
+			scan_op);
+
 		SizeT coarse_count = totals.t0;
 		tile.fine_count = totals.t1;
 
