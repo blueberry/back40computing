@@ -76,6 +76,21 @@ enum TypeSizeGenre
 };
 
 
+/**
+ * Autotuning policy genre, to be specialized
+ */
+template <
+	// Problem and machine types
+typename SizeT,
+	int CUDA_ARCH,
+
+	// Genres to specialize upon
+	ProbSizeGenre PROB_SIZE_GENRE,
+	ArchGenre ARCH_GENRE,
+	TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre;
+
+
 /******************************************************************************
  * Classifiers for identifying classification genres
  ******************************************************************************/
@@ -102,24 +117,26 @@ struct PointerSizeClassifier
 };
 
 
-/******************************************************************************
- * Autotuned genre and specializations
- ******************************************************************************/
-
 /**
- * Autotuning policy genre, to be specialized
+ * Autotuning policy classifier
  */
 template <
-	// Problem and machine types
 	typename SizeT,
 	int CUDA_ARCH,
+	ProbSizeGenre PROB_SIZE_GENRE>
+struct AutotunedClassifier :
+	AutotunedGenre<
+		SizeT,
+		CUDA_ARCH,
+		PROB_SIZE_GENRE,
+		ArchClassifier<CUDA_ARCH>::GENRE,
+		PointerSizeClassifier<SizeT>::GENRE>
+{};
 
-	// Genres to specialize upon
-	ProbSizeGenre PROB_SIZE_GENRE,
-	ArchGenre ARCH_GENRE = ArchClassifier<CUDA_ARCH>::GENRE,
-	TypeSizeGenre POINTER_SIZE_GENRE = PointerSizeClassifier<SizeT>::GENRE>
-struct AutotunedGenre;
 
+/******************************************************************************
+ * Autotuned genre specializations
+ ******************************************************************************/
 
 //-----------------------------------------------------------------------------
 // SM2.0 specializations(s)
@@ -196,8 +213,8 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM13, POINTER_SIZE_GENRE>
  */
 template <typename SizeT, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
-	(AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
+	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
+	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
 __global__ void TunedKernel(
 	void 								*d_in,
 	void 								*d_out,
@@ -206,7 +223,7 @@ __global__ void TunedKernel(
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef AutotunedGenre<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
+	typedef AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
 	typedef typename Policy::T T;
 
 	T* out = (T*)(d_out);
@@ -233,7 +250,7 @@ template <
 	int CUDA_ARCH,
 	ProbSizeGenre PROB_SIZE_GENRE>
 struct AutotunedPolicy :
-	AutotunedGenre<
+	AutotunedClassifier<
 		SizeT,
 		CUDA_ARCH,
 		PROB_SIZE_GENRE>

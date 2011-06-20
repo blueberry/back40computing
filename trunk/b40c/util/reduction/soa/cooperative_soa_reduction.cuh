@@ -140,11 +140,13 @@ struct CooperativeSoaTileReduction
 	template <
 		typename SoaTuple,
 		typename SrtsSoaDetails,
-		typename DataSoa>
+		typename DataSoa,
+		typename ReductionOp>
 	static __device__ __forceinline__ void ReduceTile(
 		SoaTuple &retval,
 		SrtsSoaDetails srts_soa_details,
-		DataSoa data_soa)
+		DataSoa data_soa,
+		ReductionOp reduction_op)
 	{
 		// Reduce vectors in tile, placing resulting partial into corresponding SRTS grid lanes
 		ReduceLane<0, SrtsSoaDetails::SCAN_LANES>::Invoke(

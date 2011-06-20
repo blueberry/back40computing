@@ -394,7 +394,7 @@ protected:
 				"%lu last-grain elements]\n",
 			(unsigned long) sizeof(SizeT),
 			(unsigned long) work.num_elements,
-			KernelPolicy::SCHEDULE_GRANULARITY,
+			(unsigned long) KernelPolicy::SCHEDULE_GRANULARITY,
 			(unsigned long) work.total_grains,
 			(unsigned long) work.grains_per_cta,
 			(unsigned long) work.extra_grains,
