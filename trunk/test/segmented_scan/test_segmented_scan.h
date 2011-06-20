@@ -123,7 +123,13 @@ double TimedSegmentedScan(
 	printf("\n");
 	enactor.DEBUG = true;
 	enactor.template Scan<PROB_SIZE_GENRE, EXCLUSIVE>(
-		d_dest, d_src, d_flag_src, num_elements, scan_op, identity_op, max_ctas);
+		d_dest,
+		d_src,
+		d_flag_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_ctas);
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations

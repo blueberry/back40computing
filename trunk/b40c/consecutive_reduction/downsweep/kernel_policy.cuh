@@ -70,6 +70,8 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::KeyType 					KeyType;
 	typedef typename ProblemType::ValueType 				ValueType;
 	typedef typename ProblemType::SizeT						SizeT;
+	typedef typename ProblemType::ReductionOp 				ReductionOp;
+	typedef typename ProblemType::IdentityOp 				IdentityOp;
 
 	typedef int 											LocalFlag;			// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
 	typedef typename util::If<
@@ -177,45 +179,48 @@ struct KernelPolicy : ProblemType
 	/**
 	 * SOA scan operator
 	 */
-	static __device__ __forceinline__ SrtsSoaTuple SoaScanOp(
-		const SrtsSoaTuple &first,
-		const SrtsSoaTuple &second)
+	struct SrtsSoaScanOp
 	{
+		// Caller-supplied operators
+		ReductionOp 		reduction_op;
+		IdentityOp 			identity_op;
+
+		// Constructor
+		__device__ __forceinline__ SrtsSoaScanOp(
+			ReductionOp reduction_op,
+			IdentityOp identity_op) :
+				reduction_op(reduction_op),
+				identity_op(identity_op)
+		{}
+
+		// SOA scan operator
+		__device__ __forceinline__ SrtsSoaTuple operator()(
+			const SrtsSoaTuple &first,
+			const SrtsSoaTuple &second)
+		{
 /*
-		// NVBUGS XXXX: they are the same, but this leads to register corruption
-		return SrtsSoaTuple(
-			(second.t1) ?
-				second.t0 :
-				BinaryOp(first.t0, second.t0),
-			first.t1 + second.t1);
+			// NVBUGS XXXX: they are the same, but this leads to register corruption
+			return SrtsSoaTuple(
+				(second.t1) ?
+					second.t0 :
+					BinaryOp(first.t0, second.t0),
+				first.t1 + second.t1);
 */
-		if (second.t1) {
-			return SrtsSoaTuple(second.t0, first.t1 + second.t1);
-		} else {
-			return SrtsSoaTuple(BinaryOp(first.t0, second.t0), first.t1 + second.t1);
+			if (second.t1) {
+				return SrtsSoaTuple(second.t0, first.t1 + second.t1);
+			} else {
+				return SrtsSoaTuple(reduction_op(first.t0, second.t0), first.t1 + second.t1);
+			}
 		}
-	}
 
-
-	/**
-	 * Identity operator for local value-rank tuples
-	 */
-	static __device__ __forceinline__ SrtsSoaTuple SrtsTupleIdentity()
-	{
-		return SrtsSoaTuple(
-			ProblemType::Identity(),			// Partial Identity
-			0);									// Rank Identity
-	}
-
-	/**
-	 * Identity operator for spine partial-flag tuples
-	 */
-	static __device__ __forceinline__ SpineSoaTuple SpineTupleIdentity()
-	{
-		return SpineSoaTuple(
-			ProblemType::Identity(),			// Partial Identity
-			0);									// Flag Identity
-	}
+		// SOA identity operator
+		__device__ __forceinline__ SrtsSoaTuple operator()()
+		{
+			return SrtsSoaTuple(
+				identity_op(),				// Partial Identity
+				0);							// Flag Identity
+		}
+	};
 
 
 	// Tuple type of SRTS grid types

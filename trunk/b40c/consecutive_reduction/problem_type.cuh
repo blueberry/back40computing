@@ -38,15 +38,17 @@ template <
 	typename _KeyType,
 	typename _ValueType,
 	typename SizeT,
-	_ValueType BinaryOp(const _ValueType&, const _ValueType&),		// Reduction operator
-	_ValueType Identity()>											// Reduction identity
+	typename ReductionOp,
+	typename IdentityOp,
+	typename _EqualityOp>
 
 struct ProblemType :
-	scan::ProblemType<_ValueType, SizeT, true, BinaryOp, Identity>		// Inherit from regular scan problem type
+	scan::ProblemType<_ValueType, SizeT, ReductionOp, IdentityOp, true>		// Inherit from regular scan problem type
 {
 	// The type of data we are operating upon
 	typedef _KeyType 		KeyType;
 	typedef _ValueType 		ValueType;
+	typedef _EqualityOp		EqualityOp;
 
 	// The size_t type of spine we're using
 	typedef int 			SpineSizeT;

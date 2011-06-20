@@ -54,6 +54,7 @@ struct Cta
 	typedef typename KernelPolicy::KeyType 				KeyType;
 	typedef typename KernelPolicy::ValueType			ValueType;
 	typedef typename KernelPolicy::SizeT 				SizeT;
+	typedef typename KernelPolicy::EqualityOp			EqualityOp;
 
 	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
 
@@ -62,6 +63,7 @@ struct Cta
 
 	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
 	typedef typename KernelPolicy::SrtsSoaTuple 		SrtsSoaTuple;
+	typedef typename KernelPolicy::SrtsSoaScanOp		SrtsSoaScanOp;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -85,6 +87,10 @@ struct Cta
 	ValueType 		*d_in_values;
 	ValueType 		*d_out_values;
 	SizeT			*d_num_compacted;
+
+	// Operators
+	SrtsSoaScanOp 	soa_scan_op;
+	EqualityOp		equality_op;
 
 
 	//---------------------------------------------------------------------
@@ -188,7 +194,8 @@ struct Cta
 					keys,
 					head_flags,
 					cta->d_in_keys + cta_offset,
-					guarded_elements);
+					guarded_elements,
+					cta->equality_op);
 
 			// Load values
 			util::io::LoadTile<
@@ -206,14 +213,11 @@ struct Cta
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
 
 			// SOA-scan tile of tuple pairs
-			util::scan::soa::CooperativeSoaTileScan<
-				SrtsSoaDetails,
-				KernelPolicy::LOAD_VEC_SIZE,
-				true,								// Exclusive scan
-				KernelPolicy::SoaScanOp>::template ScanTileWithCarry<DataSoa>(
-					cta->srts_soa_details,
-					DataSoa(values, ranks),
-					cta->carry);					// Seed with carry, maintain carry in raking threads
+			util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
+				cta->srts_soa_details,
+				DataSoa(values, ranks),
+				cta->carry,							// Seed with carry, maintain carry in raking threads
+				cta->soa_scan_op);
 
 			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
@@ -260,7 +264,8 @@ struct Cta
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		SizeT			*d_num_compacted,
-		SpineSoaTuple	spine_partial = KernelPolicy::SpineTupleIdentity()) :
+		SrtsSoaScanOp	soa_scan_op,
+		EqualityOp		equality_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -269,12 +274,47 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.ranks_warpscan),
-				KernelPolicy::SrtsTupleIdentity()),
+				soa_scan_op()),
 			d_in_keys(d_in_keys),
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
 			d_num_compacted(d_num_compacted),
+			soa_scan_op(soa_scan_op),
+			equality_op(equality_op),
+			carry(soa_scan_op())				// Seed carry with identity
+	{}
+
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Cta(
+		SmemStorage 	&smem_storage,
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT			*d_num_compacted,
+		SrtsSoaScanOp	soa_scan_op,
+		EqualityOp		equality_op,
+		SpineSoaTuple	spine_partial) :
+
+			srts_soa_details(
+				typename SrtsSoaDetails::GridStorageSoa(
+					smem_storage.partials_raking_elements,
+					smem_storage.ranks_raking_elements),
+				typename SrtsSoaDetails::WarpscanSoa(
+					smem_storage.partials_warpscan,
+					smem_storage.ranks_warpscan),
+				soa_scan_op()),
+			d_in_keys(d_in_keys),
+			d_out_keys(d_out_keys),
+			d_in_values(d_in_values),
+			d_out_values(d_out_values),
+			d_num_compacted(d_num_compacted),
+			soa_scan_op(soa_scan_op),
+			equality_op(equality_op),
 			carry(spine_partial)				// Seed carry with spine partial
 	{}
 

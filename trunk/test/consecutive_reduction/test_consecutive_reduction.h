@@ -42,12 +42,14 @@
 template <typename T>
 struct Sum
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	// Binary reduction
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
 	}
 
-	static __host__ __device__ __forceinline__ T Identity()
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
 	{
 		return 0;
 	}
@@ -56,16 +58,29 @@ struct Sum
 template <typename T>
 struct Max
 {
-	static __host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	// Binary reduction
+	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
 
-	static __host__ __device__ __forceinline__ T Identity()
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
 	{
 		return 0;
 	}
 };
+
+
+template <typename T>
+struct Equality
+{
+	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
+	{
+		return a == b;
+	}
+};
+
 
 /******************************************************************************
  * Utility Routines
@@ -78,15 +93,17 @@ struct Max
 template <
 	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
 	typename PingPongStorage,
-	typename PingPongStorage::ValueType BinaryOp(
-		const typename PingPongStorage::ValueType&,
-		const typename PingPongStorage::ValueType&),
-	typename PingPongStorage::ValueType Identity(),
-	typename SizeT>
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp,
+	typename EqualityOp>
 double TimedConsecutiveReduction(
 	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
+	ReductionOp scan_op,
+	IdentityOp identity_op,
+	EqualityOp equality_op,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -134,11 +151,15 @@ double TimedConsecutiveReduction(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.DEBUG = true;
-	enactor.template Reduce<
-		PROB_SIZE_GENRE,
-		PingPongStorage,
-		BinaryOp,
-		Identity>(d_problem_storage, num_elements, &gpu_num_compacted, d_num_compacted, max_ctas);
+	enactor.template Reduce<PROB_SIZE_GENRE>(
+		d_problem_storage,
+		num_elements,
+		&gpu_num_compacted,
+		d_num_compacted,
+		scan_op,
+		identity_op,
+		equality_op,
+		max_ctas);
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -151,11 +172,15 @@ double TimedConsecutiveReduction(
 		timer.Start();
 
 		// Call the consecutive reduction API routine
-		enactor.template Reduce<
-			PROB_SIZE_GENRE,
-			PingPongStorage,
-			BinaryOp,
-			Identity>(d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
+		enactor.template Reduce<PROB_SIZE_GENRE>(
+			d_problem_storage,
+			num_elements,
+			(SizeT *) NULL,
+			d_num_compacted,
+			scan_op,
+			identity_op,
+			equality_op,
+			max_ctas);
 
 		// End timing record
 		timer.Stop();

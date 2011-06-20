@@ -118,13 +118,13 @@ public:
 		typename ReductionOp,
 		typename IdentityOp>
 	cudaError_t Scan(
-		T *d_dest,
-		T *d_src,
-		Flag *d_flag_src,
-		SizeT num_elements,
-		ReductionOp scan_op,
-		IdentityOp identity_op,
-		int max_grid_size = 0);
+		T 				*d_dest,
+		T 				*d_src,
+		Flag 			*d_flag_src,
+		SizeT 			num_elements,
+		ReductionOp 	scan_op,
+		IdentityOp 		identity_op,
+		int 			max_grid_size = 0);
 
 
 	/**
@@ -162,13 +162,13 @@ public:
 		typename ReductionOp,
 		typename IdentityOp>
 	cudaError_t Scan(
-		T *d_dest,
-		T *d_src,
-		Flag *d_flag_src,
-		SizeT num_elements,
-		ReductionOp scan_op,
-		IdentityOp identity_op,
-		int max_grid_size = 0);
+		T 				*d_dest,
+		T 				*d_src,
+		Flag 			*d_flag_src,
+		SizeT 			num_elements,
+		ReductionOp 	scan_op,
+		IdentityOp 		identity_op,
+		int 			max_grid_size = 0);
 
 
 	/**
@@ -195,13 +195,13 @@ public:
 	 */
 	template <typename Policy>
 	cudaError_t Scan(
-		typename Policy::T *d_dest,
-		typename Policy::T *d_src,
-		typename Policy::Flag *d_flag_src,
-		typename Policy::SizeT num_elements,
-		typename Policy::ReductionOp scan_op,
-		typename Policy::IdentityOp identity_op,
-		int max_grid_size = 0);
+		typename Policy::T 				*d_dest,
+		typename Policy::T 				*d_src,
+		typename Policy::Flag 			*d_flag_src,
+		typename Policy::SizeT 			num_elements,
+		typename Policy::ReductionOp 	scan_op,
+		typename Policy::IdentityOp 	identity_op,
+		int 							max_grid_size = 0);
 };
 
 

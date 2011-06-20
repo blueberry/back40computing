@@ -136,11 +136,27 @@ void TestSegmentedScan(
 
 		printf("\nLARGE config:\t");
 		double large = TimedSegmentedScan<EXCLUSIVE, segmented_scan::LARGE_SIZE>(
-			h_data, h_flag_data, h_reference, num_elements, scan_op, identity_op, g_max_ctas, g_verbose, g_iterations);
+			h_data,
+			h_flag_data,
+			h_reference,
+			num_elements,
+			scan_op,
+			identity_op,
+			g_max_ctas,
+			g_verbose,
+			g_iterations);
 
 		printf("\nSMALL config:\t");
 		double small = TimedSegmentedScan<EXCLUSIVE, segmented_scan::SMALL_SIZE>(
-			h_data, h_flag_data, h_reference, num_elements, scan_op, identity_op, g_max_ctas, g_verbose, g_iterations);
+			h_data,
+			h_flag_data,
+			h_reference,
+			num_elements,
+			scan_op,
+			identity_op,
+			g_max_ctas,
+			g_verbose,
+			g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte elements: Small faster at %lu elements\n",

@@ -51,9 +51,11 @@ struct Cta
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::ValueType				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
+	typedef typename KernelPolicy::EqualityOp				EqualityOp;
 
 	typedef typename KernelPolicy::SrtsSoaDetails 			SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 				SoaTuple;
+	typedef typename KernelPolicy::SoaScanOp				SoaScanOp;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -79,6 +81,11 @@ struct Cta
 	ValueType			*d_spine_partials;
 	SizeT 				*d_spine_flags;
 
+	// Operators
+	SoaScanOp 			soa_scan_op;
+	EqualityOp			equality_op;
+
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -91,7 +98,9 @@ struct Cta
 		KeyType 		*d_in_keys,
 		ValueType 		*d_in_values,
 		ValueType 		*d_spine_partials,
-		SizeT 			*d_spine_flags) :
+		SizeT 			*d_spine_flags,
+		SoaScanOp		soa_scan_op,
+		EqualityOp		equality_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -100,12 +109,14 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				soa_scan_op()),
 			d_in_keys(d_in_keys),
 			d_in_values(d_in_values),
 			d_spine_partials(d_spine_partials),
 			d_spine_flags(d_spine_flags),
-			carry(KernelPolicy::SoaTupleIdentity()) {}
+			soa_scan_op(soa_scan_op),
+			equality_op(equality_op),
+			carry(soa_scan_op()) {}
 
 
 	/**
@@ -129,7 +140,8 @@ struct Cta
 				keys,
 				ranks,
 				d_in_keys + cta_offset,
-				guarded_elements);
+				guarded_elements,
+				equality_op);
 
 		// Load values
 		util::io::LoadTile<
@@ -138,18 +150,17 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER>::LoadValid(
 				values,
-				KernelPolicy::Identity(),
+				soa_scan_op().t0,							// Value identity
 				d_in_values + cta_offset,
 				guarded_elements);
 
 		// SOA-reduce tile of tuple pairs
-		util::reduction::soa::CooperativeSoaTileReduction<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			KernelPolicy::SoaScanOp>::template ReduceTileWithCarry<true>(	// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
+		util::reduction::soa::CooperativeSoaTileReduction<KernelPolicy::LOAD_VEC_SIZE>::template
+			ReduceTileWithCarry<true>(						// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
 				srts_soa_details,
 				DataSoa(values, ranks),
-				carry);														// Seed with carry
+				carry,
+				soa_scan_op);								// Seed with carry
 
 		// Barrier to protect srts_soa_details before next tile
 		__syncthreads();

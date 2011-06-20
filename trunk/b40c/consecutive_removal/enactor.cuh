@@ -219,13 +219,13 @@ struct Detail : ProblemType
 		typename ProblemType::ValueType> 		PingPongStorage;
 
 	// Problem data
-	Enactor 							*enactor;
-	PingPongStorage 					&problem_storage;
-	SizeT								num_elements;
-	SizeT								*h_num_compacted;
-	SizeT								*d_num_compacted;
-	EqualityOp							equality_op;
-	int			 						max_grid_size;
+	Enactor 			*enactor;
+	PingPongStorage 	&problem_storage;
+	SizeT				num_elements;
+	SizeT				*h_num_compacted;
+	SizeT				*d_num_compacted;
+	EqualityOp			equality_op;
+	int			 		max_grid_size;
 
 	// Constructor
 	Detail(

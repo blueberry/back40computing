@@ -55,6 +55,7 @@ struct Cta
 
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
 	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -66,18 +67,22 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Operational details for SRTS grid
-	SrtsSoaDetails 			srts_soa_details;
+	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
-	SoaTuple 				carry;
+	SoaTuple 			carry;
 
 	// Device input/outputs
-	ValueType 		*d_in_partials;
-	ValueType 		*d_out_partials;
+	ValueType 			*d_in_partials;
+	ValueType 			*d_out_partials;
 
 	// Output device pointer
-	SizeT 			*d_in_flags;
-	SizeT 			*d_out_flags;
+	SizeT 				*d_in_flags;
+	SizeT 				*d_out_flags;
+
+	// Scan operator
+	SoaScanOp 			soa_scan_op;
+
 
 
 	//---------------------------------------------------------------------
@@ -93,7 +98,8 @@ struct Cta
 		ValueType 		*d_in_partials,
 		ValueType 		*d_out_partials,
 		SizeT 			*d_in_flags,
-		SizeT			*d_out_flags) :
+		SizeT			*d_out_flags,
+		SoaScanOp		soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -102,12 +108,13 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
-				KernelPolicy::SoaTupleIdentity()),
+				soa_scan_op()),
 			d_in_partials(d_in_partials),
 			d_out_partials(d_out_partials),
 			d_in_flags(d_in_flags),
 			d_out_flags(d_out_flags),
-			carry(KernelPolicy::SoaTupleIdentity())
+			soa_scan_op(soa_scan_op),
+			carry(soa_scan_op())
 	{}
 
 
@@ -146,14 +153,11 @@ struct Cta
 				guarded_elements);
 
 		// SOA-scan tile of tuple pairs
-		util::scan::soa::CooperativeSoaTileScan<
-			SrtsSoaDetails,
-			KernelPolicy::LOAD_VEC_SIZE,
-			true,								// Exclusive scan
-			KernelPolicy::SoaScanOp>::ScanTileWithCarry(
-				srts_soa_details,
-				DataSoa(partials, flags),
-				carry);							// Seed with carry, maintain carry in raking threads
+		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
+			srts_soa_details,
+			DataSoa(partials, flags),
+			carry,							// Seed with carry, maintain carry in raking threads
+			soa_scan_op);
 
 		// Store tile of partials
 		util::io::StoreTile<
@@ -162,7 +166,8 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Store(
 				partials,
-				d_out_partials + cta_offset, guarded_elements);
+				d_out_partials + cta_offset,
+				guarded_elements);
 
 		// Store tile of flags
 		util::io::StoreTile<
@@ -171,7 +176,8 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Store(
 				flags,
-				d_out_flags + cta_offset, guarded_elements);
+				d_out_flags + cta_offset,
+				guarded_elements);
 	}
 
 

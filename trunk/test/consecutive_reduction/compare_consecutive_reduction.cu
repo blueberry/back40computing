@@ -95,12 +95,7 @@ struct segmented_scan_functor
  * number of iterations, displaying runtime information.
  */
 template <
-	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
 	typename PingPongStorage,
-	typename PingPongStorage::ValueType BinaryOp(
-		const typename PingPongStorage::ValueType&,
-		const typename PingPongStorage::ValueType&),
-	typename PingPongStorage::ValueType Identity(),
 	typename SizeT>
 double TimedThrustConsecutiveReduction(
 	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
@@ -219,10 +214,13 @@ double TimedThrustConsecutiveReduction(
  */
 template<
 	typename T,
-	T BinaryOp(const T&, const T&),
-	T Identity(),
-	typename SizeT>
-void TestConsecutiveReduction(SizeT num_elements)
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
+void TestConsecutiveReduction(
+	SizeT num_elements,
+	ReductionOp scan_op,
+	IdentityOp identity_op)
 {
     // Allocate the consecutive reduction problem on the host and fill the keys with random bytes
 	typedef util::PingPongStorage<T, T> PingPongStorage;
@@ -258,7 +256,7 @@ void TestConsecutiveReduction(SizeT num_elements)
 	SizeT num_compacted = 0;
 
 	h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
-	h_problem_storage.d_values[1][0] = Identity();
+	h_problem_storage.d_values[1][0] = identity_op();
 
 	for (SizeT i = 0; i < num_elements; ++i) {
 
@@ -270,29 +268,37 @@ void TestConsecutiveReduction(SizeT num_elements)
 
 		} else {
 
-			h_problem_storage.d_values[1][num_compacted] = BinaryOp(
+			h_problem_storage.d_values[1][num_compacted] = scan_op(
 				h_problem_storage.d_values[1][num_compacted],
 				h_problem_storage.d_values[0][i]);
 		}
 	}
 	num_compacted++;
 
+	Equality<typename PingPongStorage::KeyType> equality_op;
 
 	//
     // Run the timing test(s)
 	//
 
-	double b40c = TimedConsecutiveReduction<
-		consecutive_reduction::LARGE_SIZE,
-		PingPongStorage,
-		BinaryOp,
-		Identity>(h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+	double b40c = TimedConsecutiveReduction<consecutive_reduction::UNKNOWN_SIZE>(
+		h_problem_storage,
+		num_elements,
+		num_compacted,
+		scan_op,
+		identity_op,
+		equality_op,
+		g_max_ctas,
+		g_verbose,
+		g_iterations);
 
-	double thrust = TimedThrustConsecutiveReduction<
-		consecutive_reduction::LARGE_SIZE,
-		PingPongStorage,
-		BinaryOp,
-		Identity>(h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+	double thrust = TimedThrustConsecutiveReduction(
+		h_problem_storage,
+		num_elements,
+		num_compacted,
+		g_max_ctas,
+		g_verbose,
+		g_iterations);
 
 	printf("B40C speedup: %.2f\n", b40c/thrust);
 
@@ -332,32 +338,30 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
 
-	typedef unsigned char Flag;
-
 	// Execute test(s)
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
-		typedef Sum<T> BinaryOp;
-		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 4);
+		Sum<T> op;
+		TestConsecutiveReduction<T>(num_elements * 4, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
-		typedef Sum<T> BinaryOp;
-		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements * 2);
+		Sum<T> op;
+		TestConsecutiveReduction<T>(num_elements * 2, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
-		typedef Sum<T> BinaryOp;
-		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements);
+		Sum<T> op;
+		TestConsecutiveReduction<T>(num_elements, op, op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
-		typedef Sum<T> BinaryOp;
-		TestConsecutiveReduction<T, BinaryOp::Op, BinaryOp::Identity>(num_elements / 2);
+		Sum<T> op;
+		TestConsecutiveReduction<T>(num_elements / 2, op, op);
 	}
 
 	return 0;

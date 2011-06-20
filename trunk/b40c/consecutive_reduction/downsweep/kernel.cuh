@@ -38,19 +38,23 @@ namespace downsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
-	typename KernelPolicy::KeyType 								*&d_in_keys,
-	typename KernelPolicy::KeyType								*&d_out_keys,
-	typename KernelPolicy::ValueType 							*&d_in_values,
-	typename KernelPolicy::ValueType 							*&d_out_values,
-	typename KernelPolicy::ValueType 							*&d_spine_partials,
-	typename KernelPolicy::SizeT 								*&d_spine_flags,
-	typename KernelPolicy::SizeT								*&d_num_compacted,
+	typename KernelPolicy::KeyType 								*d_in_keys,
+	typename KernelPolicy::KeyType								*d_out_keys,
+	typename KernelPolicy::ValueType 							*d_in_values,
+	typename KernelPolicy::ValueType 							*d_out_values,
+	typename KernelPolicy::ValueType 							*d_spine_partials,
+	typename KernelPolicy::SizeT 								*d_spine_flags,
+	typename KernelPolicy::SizeT								*d_num_compacted,
+	typename KernelPolicy::ReductionOp 							reduction_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
+	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
 	typedef Cta<KernelPolicy> 						Cta;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::SpineSoaTuple	SpineSoaTuple;
+	typedef typename KernelPolicy::SrtsSoaScanOp	SrtsSoaScanOp;
 
 	// Read the exclusive spine partial
 	SpineSoaTuple spine_partial;
@@ -68,6 +72,8 @@ __device__ __forceinline__ void DownsweepPass(
 		d_in_values,
 		d_out_values,
 		d_num_compacted,
+		SrtsSoaScanOp(reduction_op, identity_op),
+		equality_op,
 		spine_partial);
 
 	// Determine our threadblock's work range
@@ -94,6 +100,9 @@ void Kernel(
 	typename KernelPolicy::ValueType 							*d_spine_partials,
 	typename KernelPolicy::SizeT 								*d_spine_flags,
 	typename KernelPolicy::SizeT								*d_num_compacted,
+	typename KernelPolicy::ReductionOp 							reduction_op,
+	typename KernelPolicy::IdentityOp 							identity_op,
+	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
 	// Shared storage for the kernel
@@ -107,6 +116,9 @@ void Kernel(
 		d_spine_partials,
 		d_spine_flags,
 		d_num_compacted,
+		reduction_op,
+		identity_op,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }

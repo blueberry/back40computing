@@ -209,11 +209,14 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
-	typename ProblemType::KeyType				*d_in_keys,
-	typename ProblemType::ValueType				*d_in_values,
-	typename ProblemType::ValueType		*d_spine_partials,
-	typename ProblemType::SizeT			*d_spine_flags,
-	util::CtaWorkDistribution<typename ProblemType::SizeT> work_decomposition)
+	typename ProblemType::KeyType								*d_in_keys,
+	typename ProblemType::ValueType								*d_in_values,
+	typename ProblemType::ValueType								*d_spine_partials,
+	typename ProblemType::SizeT									*d_spine_flags,
+	typename ProblemType::ReductionOp 							reduction_op,
+	typename ProblemType::IdentityOp 							identity_op,
+	typename ProblemType::EqualityOp							equality_op,
+	util::CtaWorkDistribution<typename ProblemType::SizeT> 		work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelPolicy;
@@ -226,6 +229,9 @@ __global__ void TunedUpsweepKernel(
 		d_in_values,
 		d_spine_partials,
 		d_spine_flags,
+		reduction_op,
+		identity_op,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }
@@ -238,11 +244,13 @@ __launch_bounds__ (
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
 	(AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
-	typename ProblemType::ValueType 	*d_in_partials,
-	typename ProblemType::ValueType 	*d_out_partials,
-	typename ProblemType::SizeT		*d_in_flags,
-	typename ProblemType::SizeT		*d_out_flags,
-	typename ProblemType::SpineSizeT 		spine_elements)
+	typename ProblemType::ValueType 		*d_in_partials,
+	typename ProblemType::ValueType 		*d_out_partials,
+	typename ProblemType::SizeT				*d_in_flags,
+	typename ProblemType::SizeT				*d_out_flags,
+	typename ProblemType::SpineSizeT 		spine_elements,
+	typename ProblemType::ReductionOp 		reduction_op,
+	typename ProblemType::IdentityOp 		identity_op)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
@@ -256,6 +264,8 @@ __global__ void TunedSpineKernel(
 		d_in_flags,
 		d_out_flags,
 		spine_elements,
+		reduction_op,
+		identity_op,
 		smem_storage);
 }
 
@@ -272,9 +282,12 @@ __global__ void TunedDownsweepKernel(
 	typename ProblemType::KeyType								*d_out_keys,
 	typename ProblemType::ValueType 							*d_in_values,
 	typename ProblemType::ValueType 							*d_out_values,
-	typename ProblemType::ValueType 						*d_spine_partials,
-	typename ProblemType::SizeT 						*d_spine_flags,
+	typename ProblemType::ValueType 							*d_spine_partials,
+	typename ProblemType::SizeT 								*d_spine_flags,
 	typename ProblemType::SizeT									*d_num_compacted,
+	typename ProblemType::ReductionOp 							reduction_op,
+	typename ProblemType::IdentityOp 							identity_op,
+	typename ProblemType::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 		work_decomposition)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
@@ -291,6 +304,9 @@ __global__ void TunedDownsweepKernel(
 		d_spine_partials,
 		d_spine_flags,
 		d_num_compacted,
+		reduction_op,
+		identity_op,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }
@@ -308,7 +324,10 @@ __global__ void TunedSingleKernel(
 	typename ProblemType::ValueType			*d_in_values,
 	typename ProblemType::ValueType			*d_out_values,
 	typename ProblemType::SizeT				*d_num_compacted,
-	typename ProblemType::SizeT 			num_elements)
+	typename ProblemType::SizeT 			num_elements,
+	typename ProblemType::ReductionOp 		reduction_op,
+	typename ProblemType::IdentityOp 		identity_op,
+	typename ProblemType::EqualityOp		equality_op)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
 	typedef typename AutotunedGenre<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single KernelPolicy;
@@ -323,6 +342,9 @@ __global__ void TunedSingleKernel(
 		d_out_values,
 		d_num_compacted,
 		num_elements,
+		reduction_op,
+		identity_op,
+		equality_op,
 		smem_storage);
 }
 
@@ -351,12 +373,15 @@ struct AutotunedPolicy :
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
-	typedef typename ProblemType::SpineSizeT 		SpineSizeT;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
+	typedef typename ProblemType::IdentityOp 		IdentityOp;
+	typedef typename ProblemType::EqualityOp		EqualityOp;
+	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
-	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, ReductionOp, IdentityOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT, ReductionOp, IdentityOp);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, ReductionOp, IdentityOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT, ReductionOp, IdentityOp, EqualityOp);
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
