@@ -35,6 +35,19 @@
 #include "b40c_test_util.h"
 
 
+/******************************************************************************
+ * Test wrappers for binary, associative operations
+ ******************************************************************************/
+
+template <typename T>
+struct Equality
+{
+	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
+	{
+		return a == b;
+	}
+};
+
 
 /******************************************************************************
  * Utility Routines
@@ -47,11 +60,13 @@
 template <
 	b40c::consecutive_removal::ProbSizeGenre PROB_SIZE_GENRE,
 	typename PingPongStorage,
-	typename SizeT>
+	typename SizeT,
+	typename EqualityOp>
 double TimedConsecutiveRemoval(
 	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
+	EqualityOp equality_op,
 	int max_ctas,
 	bool verbose,
 	int iterations)
@@ -100,13 +115,13 @@ double TimedConsecutiveRemoval(
 	// Create enactor
 	consecutive_removal::Enactor enactor;
 
-	SizeT gpu_num_compacted;
+	SizeT h_num_compacted;
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.DEBUG = true;
 	enactor.template Trim<PROB_SIZE_GENRE>(
-		d_problem_storage, num_elements, &gpu_num_compacted, d_num_compacted, max_ctas);
+		d_problem_storage, num_elements, &h_num_compacted, d_num_compacted, equality_op, max_ctas);
 	enactor.DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -120,7 +135,7 @@ double TimedConsecutiveRemoval(
 
 		// Call the consecutive removal API routine
 		enactor.template Trim<PROB_SIZE_GENRE>(
-			d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, max_ctas);
+			d_problem_storage, num_elements, (SizeT *) NULL, d_num_compacted, equality_op, max_ctas);
 
 		// End timing record
 		timer.Stop();
@@ -150,7 +165,7 @@ double TimedConsecutiveRemoval(
 	}
 	printf("\nCompacted size: ");
 	CompareDeviceResults(&num_compacted, d_num_compacted, 1, verbose, verbose);
-	printf("\nCompacted size reported to host: %s\n", (num_compacted == gpu_num_compacted) ? "CORRECT" : "INCORRECT");
+	printf("\nCompacted size reported to host: %s\n", (num_compacted == h_num_compacted) ? "CORRECT" : "INCORRECT");
 	printf("\n");
 	fflush(stdout);
 

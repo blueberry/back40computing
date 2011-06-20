@@ -80,6 +80,7 @@ void TestProblem(
 	SizeT num_compacted,
 	PingPongStorage &h_problem_storage)
 {
+	Equality<typename PingPongStorage::KeyType> equality_op;
 
 	// Execute test(s), optionally sweeping problem size downward
 	size_t orig_num_elements = num_elements;
@@ -87,11 +88,11 @@ void TestProblem(
 
 		printf("\nLARGE config:\t");
 		double large = TimedConsecutiveRemoval<consecutive_removal::LARGE_SIZE>(
-			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+			h_problem_storage, num_elements, num_compacted, equality_op, g_max_ctas, g_verbose, g_iterations);
 
 		printf("\nSMALL config:\t");
 		double small = TimedConsecutiveRemoval<consecutive_removal::SMALL_SIZE>(
-			h_problem_storage, num_elements, num_compacted, g_max_ctas, g_verbose, g_iterations);
+			h_problem_storage, num_elements, num_compacted, equality_op, g_max_ctas, g_verbose, g_iterations);
 
 		if (small > large) {
 			printf("%lu-byte keys: Small faster at %lu elements\n",
