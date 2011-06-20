@@ -34,11 +34,11 @@
 #include <b40c/consecutive_removal/upsweep/kernel_policy.cuh>
 #include <b40c/consecutive_removal/downsweep/kernel.cuh>
 #include <b40c/consecutive_removal/downsweep/kernel_policy.cuh>
+#include <b40c/consecutive_removal/spine/kernel.cuh>
 #include <b40c/consecutive_removal/single/kernel.cuh>
 
 #include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace consecutive_removal {
@@ -96,12 +96,13 @@ struct Policy : ProblemType
 	typedef typename ProblemType::KeyType 			KeyType;
 	typedef typename ProblemType::ValueType			ValueType;
 	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::EqualityOp		EqualityOp;
 	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
-	typedef void (*UpsweepKernelPtr)(KeyType*, SizeT*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(KeyType*, SizeT*, EqualityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, SpineSizeT);
-	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT*, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SingleKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, SizeT*, SizeT, EqualityOp);
 
 	// Kernel config for the upsweep reduction kernel
 	typedef upsweep::KernelPolicy<
@@ -120,9 +121,9 @@ struct Policy : ProblemType
 	typedef scan::ProblemType<
 		SizeT,
 		SpineSizeT,
-		true,									// Exclusive
-		util::Operators<SizeT>::Sum,
-		util::Operators<SizeT>::SumIdentity> SpineProblemType;
+		util::Sum<SizeT>,
+		util::Sum<SizeT>,
+		true> SpineProblemType;				// Exclusive
 
 	// Kernel config for the spine consecutive removal kernel
 	typedef scan::KernelPolicy <
@@ -158,10 +159,10 @@ struct Policy : ProblemType
 		ProblemType,
 		CUDA_ARCH,
 		1,									// Only a single-CTA grid
-		SPINE_LOG_THREADS,
-		SPINE_LOG_LOAD_VEC_SIZE,
-		SPINE_LOG_LOADS_PER_TILE,
-		SPINE_LOG_RAKING_THREADS,
+		DOWNSWEEP_LOG_THREADS,
+		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
+		DOWNSWEEP_LOG_LOADS_PER_TILE,
+		DOWNSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY,
@@ -177,7 +178,7 @@ struct Policy : ProblemType
 	}
 
 	static SpineKernelPtr SpineKernel() {
-		return scan::spine::Kernel<Spine>;
+		return spine::Kernel<Spine>;
 	}
 
 	static DownsweepKernelPtr DownsweepKernel() {

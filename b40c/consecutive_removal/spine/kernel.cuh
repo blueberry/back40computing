@@ -20,40 +20,46 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Consecutive removal problem type
+ * Consecutive removal spine scan kernel
+ *
+ * Requires a b40c::scan::KernelPolicy.
  ******************************************************************************/
 
 #pragma once
 
+#include <b40c/scan/spine/kernel.cuh>
+
 namespace b40c {
 namespace consecutive_removal {
+namespace spine {
 
 
 /**
- * Type of consecutive removal problem
+ * Consecutive removal spine scan kernel entry point
  */
-template <
-	typename _KeyType,
-	typename _ValueType,
-	typename _SizeT,
-	typename _EqualityOp>
-struct ProblemType
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
+__global__ 
+void Kernel(
+	typename KernelPolicy::T			*d_in,
+	typename KernelPolicy::T			*d_out,
+	typename KernelPolicy::SizeT 		spine_elements)
 {
-	// The type of data we are operating upon
-	typedef _KeyType 		KeyType;
-	typedef _ValueType 		ValueType;
-	typedef _SizeT 			SizeT;
-	typedef _EqualityOp		EqualityOp;
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	// The size_t type of spine we're using
-	typedef int 			SpineSizeT;
+	typename KernelPolicy::ReductionOp reduction_op;
+	typename KernelPolicy::IdentityOp identity_op;
 
-	enum {
-		KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
-	};
-};
+	scan::spine::SpinePass<KernelPolicy>(
+		d_in,
+		d_out,
+		spine_elements,
+		reduction_op,
+		identity_op,
+		smem_storage);
+}
 
-
-} // namespace consecutive_removal
+} // namespace spine
+} // namespace scan
 } // namespace b40c
 

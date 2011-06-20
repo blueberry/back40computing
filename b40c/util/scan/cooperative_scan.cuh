@@ -52,7 +52,7 @@ struct CooperativeGridScan;
  */
 template <
 	int VEC_SIZE,
-	bool EXCLUSIVE>
+	bool EXCLUSIVE = true>
 struct CooperativeTileScan
 {
 	//---------------------------------------------------------------------
@@ -264,7 +264,7 @@ struct CooperativeGridScan<SrtsDetails, NullType>
 
 
 	/**
-	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
+	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads
 	 */
 	template <typename ReductionOp>
 	static __device__ __forceinline__ void ScanTileWithCarry(

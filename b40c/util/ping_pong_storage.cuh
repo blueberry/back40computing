@@ -52,6 +52,19 @@ namespace util {
  * 
  * 		<storage>.d_keys[<storage>.selector];
  * 
+ * Many of the B40C primitives are templated upon the PingPongStorage type: they
+ * are compiled differently depending upon whether the declared type contains
+ * keys-only versus key-value pairs (i.e., whether ValueType is util::NullType
+ * or some real type).
+ *
+ * Declaring keys-only storage wrapper:
+ *
+ * 		PingPongStorage<KeyType> key_storage;
+ *
+ * Declaring key-value storage wrapper:
+ *
+ * 		PingPongStorage<KeyType, ValueType> key_value_storage;
+ *
  */
 template <
 	typename _KeyType,

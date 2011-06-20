@@ -39,12 +39,13 @@ namespace downsweep {
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void DownsweepPass(
-	typename KernelPolicy::KeyType 								*&d_in_keys,
-	typename KernelPolicy::KeyType								*&d_out_keys,
-	typename KernelPolicy::ValueType 							*&d_in_values,
-	typename KernelPolicy::ValueType 							*&d_out_values,
-	typename KernelPolicy::SizeT 								*&d_spine,
-	typename KernelPolicy::SizeT								*&d_num_compacted,
+	typename KernelPolicy::KeyType 								*d_in_keys,
+	typename KernelPolicy::KeyType								*d_out_keys,
+	typename KernelPolicy::ValueType 							*d_in_values,
+	typename KernelPolicy::ValueType 							*d_out_values,
+	typename KernelPolicy::SizeT 								*d_spine,
+	typename KernelPolicy::SizeT								*d_num_compacted,
+	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
@@ -66,6 +67,7 @@ __device__ __forceinline__ void DownsweepPass(
 		d_in_values,
 		d_out_values,
 		d_num_compacted,
+		equality_op,
 		spine_partial);
 
 	// Determine our threadblock's work range
@@ -91,6 +93,7 @@ void Kernel(
 	typename KernelPolicy::ValueType 							*d_out_values,
 	typename KernelPolicy::SizeT 								*d_spine,
 	typename KernelPolicy::SizeT								*d_num_compacted,
+	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
 {
 	// Shared storage for the kernel
@@ -103,6 +106,7 @@ void Kernel(
 		d_out_values,
 		d_spine,
 		d_num_compacted,
+		equality_op,
 		work_decomposition,
 		smem_storage);
 }

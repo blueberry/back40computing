@@ -52,6 +52,7 @@ struct Cta
 	typedef typename KernelPolicy::KeyType 			KeyType;
 	typedef typename KernelPolicy::ValueType		ValueType;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::EqualityOp		EqualityOp;
 
 	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
 	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
@@ -81,6 +82,9 @@ struct Cta
 
 	// Operational details for SRTS scan grid
 	SrtsDetails 	srts_details;
+
+	// Equality operator
+	EqualityOp		equality_op;
 
 
 	//---------------------------------------------------------------------
@@ -135,13 +139,12 @@ struct Cta
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
 
 			// Scan tile of ranks
-			RankType unique_elements = util::scan::CooperativeTileScan<
-				SrtsDetails,
-				KernelPolicy::LOAD_VEC_SIZE,
-				true,							// exclusive
-				util::Operators<RankType>::Sum>::ScanTile(
+			util::Sum<RankType> scan_op;
+			RankType unique_elements =
+				util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
 					cta->srts_details,
-					ranks);
+					ranks,
+					scan_op);
 
 			// Barrier sync to protect smem exchange storage
 			__syncthreads();
@@ -233,7 +236,8 @@ struct Cta
 					keys,
 					head_flags,
 					cta->d_in_keys + cta_offset,
-					guarded_elements);
+					guarded_elements,
+					cta->equality_op);
 
 			// Copy discontinuity head_flags into ranks
 			util::io::InitializeTile<
@@ -241,14 +245,12 @@ struct Cta
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
 
 			// Scan tile of ranks, seed with carry (maintain carry in raking threads)
-			util::scan::CooperativeTileScan<
-				SrtsDetails,
-				KernelPolicy::LOAD_VEC_SIZE,
-				true,							// exclusive
-				util::Operators<RankType>::Sum>::ScanTileWithCarry(
-					cta->srts_details,
-					ranks,
-					cta->carry);
+			util::Sum<RankType> scan_op;
+			util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
+				cta->srts_details,
+				ranks,
+				cta->carry,
+				scan_op);
 
 			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
@@ -300,6 +302,7 @@ struct Cta
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		SizeT			*d_num_compacted,
+		EqualityOp		equality_op,
 		SizeT			spine_partial = 0) :
 
 			srts_details(
@@ -312,6 +315,7 @@ struct Cta
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
 			d_num_compacted(d_num_compacted),
+			equality_op(equality_op),
 			carry(spine_partial) 			// Seed carry with spine partial
 	{}
 

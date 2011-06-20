@@ -46,12 +46,13 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::KeyType 					KeyType;
-	typedef typename KernelPolicy::ValueType				ValueType;
-	typedef typename KernelPolicy::SizeT 					SizeT;
+	typedef typename KernelPolicy::KeyType 				KeyType;
+	typedef typename KernelPolicy::ValueType			ValueType;
+	typedef typename KernelPolicy::SizeT 				SizeT;
+	typedef typename KernelPolicy::EqualityOp			EqualityOp;
 
-	typedef int 											LocalFlag;		// Type for noting local discontinuities (just needs to count up to TILE_ELEMENTS_PER_THREAD)
-	typedef typename KernelPolicy::SmemStorage 				SmemStorage;
+	typedef int 										LocalFlag;		// Type for noting local discontinuities (just needs to count up to TILE_ELEMENTS_PER_THREAD)
+	typedef typename KernelPolicy::SmemStorage 			SmemStorage;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -67,6 +68,10 @@ struct Cta
 	// Shared memory storage for the CTA
 	SmemStorage		&smem_storage;
 
+	// Equality operator
+	EqualityOp		equality_op;
+
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -79,11 +84,13 @@ struct Cta
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		KeyType			*d_in_keys,
-		SizeT 			*d_spine) :
+		SizeT 			*d_spine,
+		EqualityOp		equality_op) :
 
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_spine(d_spine),
+			equality_op(equality_op),
 			carry(0)
 	{}
 
@@ -109,7 +116,8 @@ struct Cta
 			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
 				keys,
 				head_flags,
-				d_in_keys + cta_offset);
+				d_in_keys + cta_offset,
+				equality_op);
 
 		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
@@ -129,9 +137,11 @@ struct Cta
 	__device__ __forceinline__ void OutputToSpine()
 	{
 		// Cooperatively reduce the carries in each thread (thread-0 gets the result)
-		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS>::template Invoke<false>(				// No need to return aggregate reduction in all threads
+		util::Sum<SizeT> reduction_op;
+		carry = util::reduction::TreeReduce<KernelPolicy::LOG_THREADS, false>::Invoke(				// No need to return aggregate reduction in all threads
 			carry,
-			smem_storage.reduction_tree);
+			smem_storage.reduction_tree,
+			reduction_op);
 
 		// Write output
 		if (threadIdx.x == 0) {
