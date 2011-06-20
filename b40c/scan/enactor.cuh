@@ -257,7 +257,7 @@ struct PolicyResolver
 	{
 		// Obtain tuned granularity type
 		typedef AutotunedPolicy<
-			typename Detail::ProblemType,
+			Detail,
 			CUDA_ARCH,
 			PROB_SIZE_GENRE> AutotunedPolicy;
 
@@ -284,7 +284,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 	{
 		// Obtain large tuned granularity type
 		typedef AutotunedPolicy<
-			typename Detail::ProblemType,
+			Detail,
 			CUDA_ARCH,
 			LARGE_SIZE> LargePolicy;
 
@@ -297,7 +297,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 			// Invoke enactor with small-problem config type
 			typedef AutotunedPolicy<
-				typename Detail::ProblemType,
+				Detail,
 				CUDA_ARCH,
 				SMALL_SIZE> SmallPolicy;
 
