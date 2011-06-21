@@ -161,6 +161,16 @@ bin/simple_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_scan.cu $(DEPS)
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
+#-------------------------------------------------------------------------------
+# (make struct) Struct example driver for scan
+#-------------------------------------------------------------------------------
+
+struct: bin/struct_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/struct_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : struct_scan.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/struct_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) struct_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
 
 #-------------------------------------------------------------------------------
 # (make test) Test driver for scan
