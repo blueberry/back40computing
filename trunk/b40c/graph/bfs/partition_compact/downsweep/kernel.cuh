@@ -76,7 +76,7 @@ __device__ __forceinline__ void DownsweepPass(
 
 	// Location of base composite counter in SRTS grid
 	LanePartial base_composite_counter =
-		KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
+		KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
 
 	// CTA processing abstraction
 	Cta cta(
@@ -134,7 +134,7 @@ void Kernel(
 		int warpscan_tid = threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
 		smem_storage.lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
 
-		raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.smem_pool.raking_lanes);
+		raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.raking_lanes);
 
 		// Initialize bin warpscans
 		if (threadIdx.x < KernelPolicy::BINS) {

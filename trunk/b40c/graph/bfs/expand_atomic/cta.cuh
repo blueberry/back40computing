@@ -542,8 +542,8 @@ struct Cta
 			num_gpus(num_gpus),
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool.raking_elements.coarse_raking_elements,
-					smem_storage.smem_pool.raking_elements.fine_raking_elements),
+					smem_storage.raking_elements.coarse_raking_elements,
+					smem_storage.raking_elements.fine_raking_elements),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.state.coarse_warpscan,
 					smem_storage.state.fine_warpscan),
@@ -551,8 +551,8 @@ struct Cta
 			warp_comm(smem_storage.state.warp_comm),
 			coarse_enqueue_offset(smem_storage.state.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.state.fine_enqueue_offset),
-			offset_scratch(smem_storage.smem_pool.scratch.offset_scratch),
-			parent_scratch(smem_storage.smem_pool.scratch.parent_scratch),
+			offset_scratch(smem_storage.scratch.offset_scratch),
+			parent_scratch(smem_storage.scratch.parent_scratch),
 			d_in(d_in),
 			d_parent_in(d_parent_in),
 			d_out(d_out),

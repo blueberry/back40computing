@@ -351,10 +351,10 @@ struct Cta
 
 			queue_index(queue_index),
 			srts_details(
-				smem_storage.state.smem_pool.raking_elements,
+				smem_storage.state.raking_elements,
 				smem_storage.state.warpscan,
 				0),
-			vid_hashtable(smem_storage.state.smem_pool.vid_hashtable),
+			vid_hashtable(smem_storage.state.vid_hashtable),
 			history(smem_storage.history),
 
 			d_in(d_in),

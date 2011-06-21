@@ -817,7 +817,7 @@ struct Tile
 				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
 				util::io::st::NONE>::Scatter(
-					cta->smem_storage.smem_pool.key_exchange,
+					cta->smem_storage.key_exchange,
 					(KeyType *) tile->keys,
 					(int *) tile->local_ranks);
 
@@ -830,7 +830,7 @@ struct Tile
 				KernelPolicy::THREADS,
 				util::io::ld::NONE>::LoadValid(
 					(KeyType (*)[1]) tile->keys,
-					cta->smem_storage.smem_pool.key_exchange);
+					cta->smem_storage.key_exchange);
 
 			__syncthreads();
 
@@ -867,7 +867,7 @@ struct Tile
 				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 				KernelPolicy::THREADS,
 				util::io::st::NONE>::Scatter(
-					cta->smem_storage.smem_pool.value_exchange,
+					cta->smem_storage.value_exchange,
 					tile->values,
 					(int *) tile->local_ranks);
 
@@ -880,7 +880,7 @@ struct Tile
 				KernelPolicy::THREADS,
 				util::io::ld::NONE>::LoadValid(
 					(ValueType (*)[1]) tile->values,
-					cta->smem_storage.smem_pool.value_exchange);
+					cta->smem_storage.value_exchange);
 
 			__syncthreads();
 

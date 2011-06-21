@@ -190,6 +190,39 @@ struct Equals <A, A>
 };
 
 
+/**
+ * Is volatile
+ */
+template <typename Tp>
+struct IsVolatile
+{
+	enum { VALUE = 0 };
+};
+template <typename Tp>
+struct IsVolatile<Tp volatile>
+{
+	enum { VALUE = 1 };
+};
+
+
+/**
+ * Removes pointers
+ */
+template <typename Tp, typename Up>
+struct RemovePointersHelper
+{
+	typedef Tp Type;
+};
+template <typename Tp, typename Up>
+struct RemovePointersHelper<Tp, Up*>
+{
+	typedef typename RemovePointersHelper<Up, Up>::Type Type;
+};
+template <typename Tp>
+struct RemovePointers : RemovePointersHelper<Tp, Tp> {};
+
+
+
 } // namespace util
 } // namespace b40c
 

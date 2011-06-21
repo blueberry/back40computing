@@ -222,7 +222,7 @@ struct KernelPolicy : _ProblemType
 			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
 		};
 
-		union SmemPool {
+		union {
 			// Raking elements
 			struct {
 				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
@@ -234,7 +234,7 @@ struct KernelPolicy : _ProblemType
 				SizeT 						offset_scratch[OFFSET_ELEMENTS];
 				VertexId 					parent_scratch[PARENT_ELEMENTS];
 			} scratch;
-		} smem_pool;
+		};
 	};
 
 	enum {

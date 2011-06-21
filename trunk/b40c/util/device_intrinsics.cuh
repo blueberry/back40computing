@@ -148,6 +148,36 @@ __device__ __forceinline__ int WarpVoteAll(int predicate)
 #endif
 }
 
+/**
+ * The best way to warp-vote-any
+ */
+template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
+__device__ __forceinline__ int WarpVoteAny(int predicate)
+{
+#if __CUDA_ARCH__ >= 120
+	return __any(predicate);
+#else
+	return TallyWarpVote<LOG_ACTIVE_WARPS, LOG_ACTIVE_THREADS>(predicate);
+#endif
+}
+
+
+/**
+ * The best way to warp-vote-any in the first warp
+ */
+template <int LOG_ACTIVE_THREADS>
+__device__ __forceinline__ int WarpVoteAny(int predicate)
+{
+#if __CUDA_ARCH__ >= 120
+	return __any(predicate);
+#else
+	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
+	__shared__ int storage[ACTIVE_THREADS];
+
+	return TallyWarpVote<LOG_ACTIVE_THREADS>(predicate, storage);
+#endif
+}
+
 
 /**
  * Wrapper for performing atomic operations on integers of type size_t 

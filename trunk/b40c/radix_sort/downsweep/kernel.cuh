@@ -57,7 +57,7 @@ struct DownsweepPass
 		typedef Cta<KernelPolicy> 							Cta;
 		typedef typename KernelPolicy::Grid::LanePartial	LanePartial;
 
-		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
+		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
 		int *raking_segment = 0;
 
 		// Shared storage to help us choose which set of inputs to stream from
@@ -71,7 +71,7 @@ struct DownsweepPass
 			int warpscan_tid = threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
 			smem_storage.lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
 
-			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.smem_pool.raking_lanes);
+			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.raking_lanes);
 
 			// initialize bin warpscans
 			if (threadIdx.x < KernelPolicy::BINS) {
@@ -95,9 +95,7 @@ struct DownsweepPass
 				} else {
 					int first_block_carry = d_spine[util::FastMul(gridDim.x, threadIdx.x)];
 					int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-					smem_storage.non_trivial_pass = util::TallyWarpVote<KernelPolicy::LOG_BINS>(
-						predicate,
-						smem_storage.smem_pool.raking_lanes);
+					smem_storage.non_trivial_pass = util::WarpVoteAny<KernelPolicy::LOG_BINS>(predicate);
 				}
 
 				// Let the next round know which set of buffers to use
@@ -160,7 +158,7 @@ struct DownsweepPass<KernelPolicy, false>
 		typedef Cta<KernelPolicy> 							Cta;
 		typedef typename KernelPolicy::Grid::LanePartial	LanePartial;
 
-		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.smem_pool.raking_lanes);
+		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
 		int *raking_segment = 0;
 
 		if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {
@@ -170,7 +168,7 @@ struct DownsweepPass<KernelPolicy, false>
 			int warpscan_tid = threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
 			smem_storage.lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
 
-			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.smem_pool.raking_lanes);
+			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.raking_lanes);
 
 			// initialize bin warpscans
 			if (threadIdx.x < KernelPolicy::BINS) {

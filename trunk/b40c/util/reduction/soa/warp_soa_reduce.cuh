@@ -78,9 +78,13 @@ struct WarpSoaReduce
 			// Store exclusive partial
 			warpscan_partials.Set(exclusive_partial, 1, warpscan_tid);
 
+			__threadfence_block();
+
 			// Load current partial
 			Tuple current_partial;
 			warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
+
+			__threadfence_block();
 
 			// Compute inclusive partial from exclusive and current partials
 			Tuple inclusive_partial = reduction_op(current_partial, exclusive_partial);
@@ -133,6 +137,8 @@ struct WarpSoaReduce
 
 		// Write our inclusive partial
 		warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
+
+		__threadfence_block();
 
 		// Return last thread's inclusive partial
 		Tuple retval;

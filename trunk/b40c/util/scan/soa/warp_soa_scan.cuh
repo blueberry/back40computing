@@ -65,7 +65,7 @@ struct WarpSoaScan
 			typename Tuple,
 			typename WarpscanSoa,
 			typename ReductionOp>
-		static __host__ __device__ __forceinline__ Tuple Scan(
+		static __device__ __forceinline__ Tuple Scan(
 			Tuple exclusive_partial,
 			WarpscanSoa warpscan_partials,
 			ReductionOp scan_op,
@@ -74,9 +74,13 @@ struct WarpSoaScan
 			// Store exclusive partial
 			warpscan_partials.Set(exclusive_partial, 1, warpscan_tid);
 
+			__threadfence_block();
+
 			// Load current partial
 			Tuple current_partial;
 			warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
+
+			__threadfence_block();
 
 			// Compute inclusive partial from exclusive and current partials
 			Tuple inclusive_partial = scan_op(current_partial, exclusive_partial);
@@ -96,7 +100,7 @@ struct WarpSoaScan
 			typename Tuple,
 			typename WarpscanSoa,
 			typename ReductionOp>
-		static __host__ __device__ __forceinline__ Tuple Scan(
+		static __device__ __forceinline__ Tuple Scan(
 			Tuple exclusive_partial,
 			WarpscanSoa warpscan_partials,
 			ReductionOp scan_op,
@@ -118,7 +122,7 @@ struct WarpSoaScan
 		typename Tuple,
 		typename WarpscanSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Scan(
+	static __device__ __forceinline__ Tuple Scan(
 		Tuple current_partial,						// Input partial
 		WarpscanSoa warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
 		ReductionOp scan_op,						// Scan operator
@@ -134,6 +138,8 @@ struct WarpSoaScan
 
 			// Write our inclusive partial
 			warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
+
+			__threadfence_block();
 
 			// Return exclusive partial
 			Tuple exclusive_partial;
@@ -152,7 +158,7 @@ struct WarpSoaScan
 		typename Tuple,
 		typename WarpscanSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Scan(
+	static __device__ __forceinline__ Tuple Scan(
 		Tuple current_partial,						// Input partial
 		Tuple &total_reduction,						// Total reduction (out param)
 		WarpscanSoa warpscan_partials,				// Smem for warpscanning containing at least two segments of size NUM_ELEMENTS (the first being initialized to zero's)
@@ -167,6 +173,8 @@ struct WarpSoaScan
 
 		// Write our inclusive partial
 		warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
+
+		__threadfence_block();
 
 		// Set total to the last thread's inclusive partial
 		warpscan_partials.Get(total_reduction, 1, NUM_ELEMENTS - 1);

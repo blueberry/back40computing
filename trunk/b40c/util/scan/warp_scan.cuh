@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/operators.cuh>
 
 namespace b40c {
@@ -37,9 +38,6 @@ namespace scan {
 
 /**
  * Performs STEPS steps of a Kogge-Stone style prefix scan.
- *
- * This procedure assumes that no explicit barrier synchronization is needed
- * between steps (i.e., warp-synchronous programming)
  *
  * Requires a 2D "warpscan" structure of smem storage having dimensions [2][NUM_ELEMENTS].
  */
@@ -61,18 +59,24 @@ struct WarpScan
 	template <int OFFSET_LEFT, int WIDTH>
 	struct Iterate
 	{
-		template <typename T, typename ReductionOp>
+		template <typename T, typename WarpscanT, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T exclusive_partial,
-			volatile T warpscan[][NUM_ELEMENTS],
+			WarpscanT warpscan[][NUM_ELEMENTS],
 			ReductionOp scan_op,
 			int warpscan_tid)
 		{
 			warpscan[1][warpscan_tid] = exclusive_partial;
+
+			__threadfence_block();
+
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
+
+			__threadfence_block();
+
 			T inclusive_partial = scan_op(offset_partial, exclusive_partial);
 
-			return Iterate<OFFSET_LEFT * 2, WIDTH>::template Invoke<T, ReductionOp>(
+			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(
 				inclusive_partial,
 				warpscan,
 				scan_op,
@@ -84,10 +88,10 @@ struct WarpScan
 	template <int WIDTH>
 	struct Iterate<WIDTH, WIDTH>
 	{
-		template <typename T, typename ReductionOp>
+		template <typename T, typename WarpscanT, typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T exclusive_partial,
-			volatile T warpscan[][NUM_ELEMENTS],
+			WarpscanT warpscan[][NUM_ELEMENTS],
 			ReductionOp scan_op,
 			int warpscan_tid)
 		{
@@ -103,10 +107,10 @@ struct WarpScan
 	/**
 	 * Warpscan with the specified operator
 	 */
-	template <typename T, typename ReductionOp>
+	template <typename T, typename WarpscanT, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		ReductionOp scan_op,						// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
@@ -121,6 +125,8 @@ struct WarpScan
 			// Write out our inclusive partial
 			warpscan[1][warpscan_tid] = inclusive_partial;
 
+			__threadfence_block();
+
 			// Return exclusive partial
 			return warpscan[1][warpscan_tid - 1];
 
@@ -133,10 +139,10 @@ struct WarpScan
 	/**
 	 * Warpscan with the addition operator
 	 */
-	template <typename T>
+	template <typename T, typename WarpscanT>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		Sum<T> scan_op;
@@ -151,11 +157,11 @@ struct WarpScan
 	/**
 	 * Warpscan with the specified operator, returning the cumulative reduction
 	 */
-	template <typename T, typename ReductionOp>
+	template <typename T, typename WarpscanT, typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
 		T &total_reduction,							// Total reduction (out param)
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		ReductionOp scan_op,						// Scan operator
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
@@ -168,10 +174,17 @@ struct WarpScan
 
 		// Write our inclusive partial and then set total to the last thread's inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
+
+		__threadfence_block();
+
+		// Get total
 		total_reduction = warpscan[1][NUM_ELEMENTS - 1];
 
 		if (EXCLUSIVE) {
+
+			// Return exclusive partial
 			return warpscan[1][warpscan_tid - 1];
+
 		} else {
 			return inclusive_partial;
 		}
@@ -180,11 +193,11 @@ struct WarpScan
 	/**
 	 * Warpscan with the addition operator, returning the cumulative reduction
 	 */
-	template <typename T>
+	template <typename T, typename WarpscanT>
 	static __device__ __forceinline__ T Invoke(
 		T current_partial,							// Input partial
 		T &total_reduction,							// Total reduction (out param)
-		volatile T warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
+		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
 		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
 	{
 		Sum<T> scan_op;
