@@ -29,6 +29,7 @@
 
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/basic_utils.cuh>
+#include <b40c/util/numeric_traits.cuh>
 
 namespace b40c {
 namespace util {
@@ -73,6 +74,13 @@ struct SrtsGrid
 	// Type of items we will be reducing/scanning
 	typedef _T T;
 	
+	// Warpscan type (using volatile storage for built-in types allows us to omit thread-fence
+	// operations during warp-synchronous code)
+	typedef typename util::If<
+		(util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER),
+		T,
+		volatile T>::Type WarpscanT;
+
 	// N.B.: We use an enum type here b/c of a NVCC-win compiler bug where the
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.

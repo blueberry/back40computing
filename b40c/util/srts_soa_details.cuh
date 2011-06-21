@@ -67,8 +67,8 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 
 	// SOA type of warpscan storage
 	typedef Tuple<
-		typename SoaTuple::T0 (*)[WARP_THREADS],
-		typename SoaTuple::T1 (*)[WARP_THREADS]> WarpscanSoa;
+		typename SrtsGridTuple::T0::WarpscanT (*)[WARP_THREADS],
+		typename SrtsGridTuple::T0::WarpscanT (*)[WARP_THREADS]> WarpscanSoa;
 
 	// SOA type of partial-insertion pointers
 	typedef Tuple<

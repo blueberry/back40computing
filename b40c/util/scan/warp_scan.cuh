@@ -68,11 +68,11 @@ struct WarpScan
 		{
 			warpscan[1][warpscan_tid] = exclusive_partial;
 
-			__threadfence_block();
+			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
 
-			__threadfence_block();
+			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 			T inclusive_partial = scan_op(offset_partial, exclusive_partial);
 
@@ -125,7 +125,7 @@ struct WarpScan
 			// Write out our inclusive partial
 			warpscan[1][warpscan_tid] = inclusive_partial;
 
-			__threadfence_block();
+			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 			// Return exclusive partial
 			return warpscan[1][warpscan_tid - 1];
@@ -175,7 +175,7 @@ struct WarpScan
 		// Write our inclusive partial and then set total to the last thread's inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
 
-		__threadfence_block();
+		if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 		// Get total
 		total_reduction = warpscan[1][NUM_ELEMENTS - 1];

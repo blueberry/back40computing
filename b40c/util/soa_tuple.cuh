@@ -44,12 +44,14 @@ struct Tuple;
 template <typename _T0>
 struct Tuple<_T0, NullType, NullType, NullType>
 {
-	enum {
-		NUM_FIELDS = 1
-	};
-
 	// Typedefs
 	typedef _T0 T0;
+
+	enum {
+		NUM_FIELDS 		= 1,
+		VOLATILE 		= util::IsVolatile<typename util::RemovePointers<T0>::Type>::VALUE,
+	};
+
 
 	// Fields
 	T0 t0;
@@ -102,13 +104,15 @@ struct Tuple<_T0, NullType, NullType, NullType>
 template <typename _T0, typename _T1>
 struct Tuple<_T0, _T1, NullType, NullType>
 {
-	enum {
-		NUM_FIELDS = 2
-	};
-
 	// Typedefs
 	typedef _T0 T0;
 	typedef _T1 T1;
+
+	enum {
+		NUM_FIELDS 		= 2,
+		VOLATILE 		= (util::IsVolatile<typename util::RemovePointers<T0>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T1>::Type>::VALUE),
+	};
 
 	// Fields
 	T0 t0;
@@ -166,14 +170,17 @@ struct Tuple<_T0, _T1, NullType, NullType>
 template <typename _T0, typename _T1, typename _T2>
 struct Tuple<_T0, _T1, _T2, NullType>
 {
-	enum {
-		NUM_FIELDS = 3
-	};
-
 	// Typedefs
 	typedef _T0 T0;
 	typedef _T1 T1;
 	typedef _T2 T2;
+
+	enum {
+		NUM_FIELDS 		= 3,
+		VOLATILE 		= (util::IsVolatile<typename util::RemovePointers<T0>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T1>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T2>::Type>::VALUE),
+	};
 
 	// Fields
 	T0 t0;
@@ -237,15 +244,19 @@ struct Tuple<_T0, _T1, _T2, NullType>
 template <typename _T0, typename _T1, typename _T2, typename _T3>
 struct Tuple
 {
-	enum {
-		NUM_FIELDS = 4
-	};
-
 	// Typedefs
 	typedef _T0 T0;
 	typedef _T1 T1;
 	typedef _T2 T2;
 	typedef _T3 T3;
+
+	enum {
+		NUM_FIELDS 		= 3,
+		VOLATILE 		= (util::IsVolatile<typename util::RemovePointers<T0>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T1>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T2>::Type>::VALUE &&
+							util::IsVolatile<typename util::RemovePointers<T3>::Type>::VALUE),
+	};
 
 	// Fields
 	T0 t0;
