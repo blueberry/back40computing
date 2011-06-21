@@ -98,13 +98,14 @@ struct KernelPolicy : TuningPolicy
 		typedef typename TuningPolicy::KeyType 		KeyType;
 		typedef typename TuningPolicy::ValueType 	ValueType;
 
-		int 							lanes_warpscan[SCAN_LANES_PER_CYCLE][3][Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
+		volatile int 					lanes_warpscan[SCAN_LANES_PER_CYCLE][3][Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
+		volatile int 					bin_warpscan[2][BINS];
+
 		SizeT							bin_carry[BINS];
-		int 							bin_warpscan[2][BINS];
 		SizeT 							bin_prefixes[CYCLES_PER_TILE][LOADS_PER_CYCLE][BINS];
 		union {
-			int 							lane_totals[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE][2];
-			unsigned char					lane_totals_c[CYCLES_PER_TILE][LOADS_PER_CYCLE][SCAN_LANES_PER_LOAD][2][4];
+			int 						lane_totals[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE][2];
+			unsigned char				lane_totals_c[CYCLES_PER_TILE][LOADS_PER_CYCLE][SCAN_LANES_PER_LOAD][2][4];
 		};
 
 		bool 							non_trivial_pass;

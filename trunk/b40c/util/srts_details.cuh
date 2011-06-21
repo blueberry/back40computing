@@ -50,7 +50,7 @@ template <typename SrtsGrid>
 struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
-	typedef T (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
+	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
 	typedef NullType SecondarySrtsDetails;
 
 	enum {
@@ -163,7 +163,7 @@ template <
 struct SrtsDetails : SrtsGrid
 {
 	typedef typename SrtsGrid::T T;
-	typedef T WarpscanStorage [2][B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
+	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
 	typedef SrtsDetails<SecondarySrtsGrid> SecondarySrtsDetails;
 
 	enum {

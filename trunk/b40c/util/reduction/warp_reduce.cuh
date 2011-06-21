@@ -71,12 +71,12 @@ struct WarpReduce
 			// Store exclusive partial
 			warpscan[1][warpscan_tid] = exclusive_partial;
 
-			__threadfence_block();
+			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 			// Load current partial
 			T current_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
 
-			__threadfence_block();
+			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 			// Compute inclusive partial
 			T inclusive_partial = reduction_op(exclusive_partial, current_partial);
@@ -152,7 +152,7 @@ struct WarpReduce
 		// Write our inclusive partial
 		warpscan[1][warpscan_tid] = inclusive_partial;
 
-		__threadfence_block();
+		if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
 
 		// Return last thread's inclusive partial
 		return warpscan[1][NUM_ELEMENTS - 1];

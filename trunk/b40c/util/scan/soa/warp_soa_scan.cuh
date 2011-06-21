@@ -74,13 +74,13 @@ struct WarpSoaScan
 			// Store exclusive partial
 			warpscan_partials.Set(exclusive_partial, 1, warpscan_tid);
 
-			__threadfence_block();
+			if (!WarpscanSoa::VOLATILE) __threadfence_block();
 
 			// Load current partial
 			Tuple current_partial;
 			warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
 
-			__threadfence_block();
+			if (!WarpscanSoa::VOLATILE) __threadfence_block();
 
 			// Compute inclusive partial from exclusive and current partials
 			Tuple inclusive_partial = scan_op(current_partial, exclusive_partial);
@@ -139,7 +139,7 @@ struct WarpSoaScan
 			// Write our inclusive partial
 			warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
 
-			__threadfence_block();
+			if (!WarpscanSoa::VOLATILE) __threadfence_block();
 
 			// Return exclusive partial
 			Tuple exclusive_partial;
@@ -174,7 +174,7 @@ struct WarpSoaScan
 		// Write our inclusive partial
 		warpscan_partials.Set(inclusive_partial, 1, warpscan_tid);
 
-		__threadfence_block();
+		if (!WarpscanSoa::VOLATILE) __threadfence_block();
 
 		// Set total to the last thread's inclusive partial
 		warpscan_partials.Get(total_reduction, 1, NUM_ELEMENTS - 1);

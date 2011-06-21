@@ -115,7 +115,7 @@ struct TreeReduce
 					// Update my partial
 					T current_partial = reduction_tree[threadIdx.x + OFFSET_RIGHT];
 
-					__threadfence_block();
+					if (!IsVolatile<TreeT>::VALUE) __threadfence_block();
 
 					my_partial = reduction_op(my_partial, current_partial);
 
@@ -148,14 +148,14 @@ struct TreeReduce
 			// Store partial
 			reduction_tree[threadIdx.x] = my_partial;
 
-			__threadfence_block();
+			if (!IsVolatile<TreeT>::VALUE) __threadfence_block();
 
 			if (ALL_VALID || (threadIdx.x + OFFSET_RIGHT < num_elements)) {
 
 				// Update my partial
 				T current_partial = reduction_tree[threadIdx.x + OFFSET_RIGHT];
 
-				__threadfence_block();
+				if (!IsVolatile<TreeT>::VALUE) __threadfence_block();
 
 				my_partial = reduction_op(my_partial, current_partial);
 			}
@@ -185,7 +185,7 @@ struct TreeReduce
 			if (ALL_RETURN) {
 				reduction_tree[threadIdx.x] = my_partial;
 
-				__threadfence_block();
+				if (!IsVolatile<TreeT>::VALUE) __threadfence_block();
 			}
 			return my_partial;
 		}
