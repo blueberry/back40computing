@@ -143,6 +143,7 @@ struct Cta
 				d_in_keys,
 				cta_offset,
 				guarded_elements,
+				soa_scan_op.FlagIdentity(),
 				equality_op);
 
 		// Load values

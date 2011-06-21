@@ -54,6 +54,7 @@ struct Cta
 	typedef typename KernelPolicy::KeyType 				KeyType;
 	typedef typename KernelPolicy::ValueType			ValueType;
 	typedef typename KernelPolicy::SizeT 				SizeT;
+	typedef typename KernelPolicy::IdentityOp			IdentityOp;			// Value identity operator type
 	typedef typename KernelPolicy::EqualityOp			EqualityOp;
 
 	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
@@ -62,8 +63,8 @@ struct Cta
 	typedef typename KernelPolicy::RankType				RankType;			// Type for local SRTS prefix sum
 
 	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
-	typedef typename KernelPolicy::SrtsSoaTuple 		SrtsSoaTuple;
-	typedef typename KernelPolicy::SrtsSoaScanOp		SrtsSoaScanOp;
+	typedef typename KernelPolicy::SoaTuple 			SoaTuple;
+	typedef typename KernelPolicy::SoaScanOp			SoaScanOp;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -89,7 +90,7 @@ struct Cta
 	SizeT			*d_num_compacted;
 
 	// Operators
-	SrtsSoaScanOp 	soa_scan_op;
+	SoaScanOp 		soa_scan_op;
 	EqualityOp		equality_op;
 
 
@@ -197,6 +198,7 @@ struct Cta
 					cta->d_in_keys,
 					cta_offset,
 					guarded_elements,
+					cta->soa_scan_op.FlagIdentity(),
 					cta->equality_op);
 
 			// Load values
@@ -222,6 +224,11 @@ struct Cta
 				DataSoa(values, ranks),
 				cta->carry,							// Seed with carry, maintain carry in raking threads
 				cta->soa_scan_op);
+
+			// Translate encoded flag identity if necessary for first head flag of first tile of first CTA
+			if (SoaScanOp::TRANSLATE_FLAG_IDENTITY && FIRST_TILE && (blockIdx.x == 0) && (threadIdx.x == 0)) {
+				ranks[0][0] = 0;
+			}
 
 			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
@@ -268,7 +275,7 @@ struct Cta
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		SizeT			*d_num_compacted,
-		SrtsSoaScanOp	soa_scan_op,
+		SoaScanOp		soa_scan_op,
 		EqualityOp		equality_op) :
 
 			srts_soa_details(
@@ -300,7 +307,7 @@ struct Cta
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		SizeT			*d_num_compacted,
-		SrtsSoaScanOp	soa_scan_op,
+		SoaScanOp		soa_scan_op,
 		EqualityOp		equality_op,
 		SpineSoaTuple	spine_partial) :
 

@@ -32,6 +32,8 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/consecutive_reduction/scan_operator.cuh>
+
 namespace b40c {
 namespace consecutive_reduction {
 namespace upsweep {
@@ -67,14 +69,15 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::KeyType 			KeyType;
-	typedef typename ProblemType::ValueType 		ValueType;
-	typedef typename ProblemType::SizeT				SizeT;
-	typedef typename ProblemType::ReductionOp 		ReductionOp;
-	typedef typename ProblemType::IdentityOp 		IdentityOp;
+	typedef typename ProblemType::KeyType 					KeyType;
+	typedef typename ProblemType::ValueType 				ValueType;
+	typedef typename ProblemType::SizeT						SizeT;
+	typedef typename ProblemType::ReductionOp 				ReductionOp;
+	typedef typename ProblemType::IdentityOp 				IdentityOp;
 
 	// Tuple of spine partial-flag type
-	typedef util::Tuple<ValueType, SizeT> 			SoaTuple;		// Structure-of-array tuple for spine scan
+	typedef util::Tuple<ValueType, SizeT> 					SoaTuple;			// Structure-of-array tuple for spine scan
+	typedef SoaScanOp<ReductionOp, IdentityOp, SoaTuple> 	SoaScanOp;			// Structure-of-array scan operator
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -156,53 +159,6 @@ struct KernelPolicy : ProblemType
 		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
 		VALID 							= (CTA_OCCUPANCY > 0)
-	};
-
-
-	/**
-	 * SOA scan operator
-	 */
-	struct SoaScanOp
-	{
-		// Caller-supplied operators
-		ReductionOp 		reduction_op;
-		IdentityOp 			identity_op;
-
-		// Constructor
-		__device__ __forceinline__ SoaScanOp(
-			ReductionOp reduction_op,
-			IdentityOp identity_op) :
-				reduction_op(reduction_op),
-				identity_op(identity_op)
-		{}
-
-		// SOA scan operator
-		__device__ __forceinline__ SoaTuple operator()(
-			const SoaTuple &first,
-			const SoaTuple &second)
-		{
-/*
-			// NVBUGS XXXX: they are the same, but this leads to register corruption
-			return SoaTuple(
-				(second.t1) ?
-					second.t0 :
-					BinaryOp(first.t0, second.t0),
-				first.t1 + second.t1);
-*/
-			if (second.t1) {
-				return SoaTuple(second.t0, first.t1 + second.t1);
-			} else {
-				return SoaTuple(reduction_op(first.t0, second.t0), first.t1 + second.t1);
-			}
-		}
-
-		// SOA identity operator
-		__device__ __forceinline__ SoaTuple operator()()
-		{
-			return SoaTuple(
-				identity_op(),				// Partial Identity
-				0);							// Flag Identity
-		}
 	};
 
 

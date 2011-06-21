@@ -110,7 +110,7 @@ struct CooperativeTileScan
 		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
 		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
+		// Reduce partials in each vector-load, placing resulting partial in SRTS smem grid lanes (one lane per load)
 		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 
@@ -121,7 +121,7 @@ struct CooperativeTileScan
 
 		__syncthreads();
 
-		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
+		// Scan each vector-load, seeded with the resulting partial from its SRTS grid lane,
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 
@@ -142,7 +142,7 @@ struct CooperativeTileScan
 		typename SrtsDetails::T &carry,
 		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
+		// Reduce partials in each vector-load, placing resulting partials in SRTS smem grid lanes (one lane per load)
 		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 
@@ -153,7 +153,7 @@ struct CooperativeTileScan
 
 		__syncthreads();
 
-		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
+		// Scan each vector-load, seeded with the resulting partial from its SRTS grid lane,
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 	}
@@ -171,7 +171,7 @@ struct CooperativeTileScan
 		typename SrtsDetails::T* d_enqueue_counter,
 		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
+		// Reduce partials in each vector-load, placing resulting partial in SRTS smem grid lanes (one lane per load)
 		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 
@@ -182,7 +182,7 @@ struct CooperativeTileScan
 
 		__syncthreads();
 
-		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
+		// Scan each vector-load, seeded with the resulting partial from its SRTS grid lane,
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 	}
@@ -202,7 +202,7 @@ struct CooperativeTileScan
 		typename SrtsDetails::T &enqueue_offset,
 		ReductionOp scan_op)
 	{
-		// Reduce partials in tile, placing resulting partial in SRTS grid lane partial
+		// Reduce partials in each vector-load, placing resulting partial in SRTS smem grid lanes (one lane per load)
 		reduction::CooperativeTileReduction<VEC_SIZE>::template ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 
@@ -213,7 +213,7 @@ struct CooperativeTileScan
 
 		__syncthreads();
 
-		// Scan partials in tile, retrieving resulting partial from SRTS grid lane partial
+		// Scan each vector-load, seeded with the resulting partial from its SRTS grid lane,
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
 

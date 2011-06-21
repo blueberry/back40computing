@@ -221,6 +221,7 @@ struct LoadTile
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements,
+			const Flag &oob_default_flag,
 			EqualityOp equality_op)
 		{
 			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
@@ -242,11 +243,11 @@ struct LoadTile
 				}
 
 			} else {
-				flags[LOAD][0] = 0;
+				flags[LOAD][0] = oob_default_flag;
 			}
 
 			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, equality_op);
+				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 
@@ -382,6 +383,7 @@ struct LoadTile
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements,
+			const Flag &oob_default_flag,
 			EqualityOp equality_op)
 		{
 			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
@@ -395,11 +397,11 @@ struct LoadTile
 
 			} else {
 
-				flags[LOAD][VEC] = 0;
+				flags[LOAD][VEC] = oob_default_flag;
 			}
 
 			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, equality_op);
+				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 
@@ -500,10 +502,11 @@ struct LoadTile
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements,
+			const Flag &oob_default_flag,
 			EqualityOp equality_op)
 		{
 			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, equality_op);
+				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 	
@@ -579,6 +582,7 @@ struct LoadTile
 			Flag flags[][LOAD_VEC_SIZE],
 			T *d_in,
 			const SizeT &guarded_elements,
+			const Flag &oob_default_flag,
 			EqualityOp equality_op) {}
 	};
 
@@ -768,6 +772,7 @@ struct LoadTile
 		T *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
+		const Flag &oob_default_flag,
 		EqualityOp equality_op)
 	{
 		if (guarded_elements >= TILE_SIZE) {
@@ -777,7 +782,7 @@ struct LoadTile
 		} else {
 
 			Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in + cta_offset, guarded_elements, equality_op);
+				data, flags, d_in + cta_offset, guarded_elements, oob_default_flag, equality_op);
 		}
 	} 
 };
