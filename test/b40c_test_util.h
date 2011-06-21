@@ -175,7 +175,32 @@ void DeviceInit(CommandLineArgs &args)
 
 template<typename T> 
 void PrintValue(T val) {
+	val.Print();
+}
+
+template<>
+void PrintValue<char>(char val) {
 	printf("%d", val);
+}
+
+template<>
+void PrintValue<short>(short val) {
+	printf("%d", val);
+}
+
+template<>
+void PrintValue<int>(int val) {
+	printf("%d", val);
+}
+
+template<>
+void PrintValue<long>(long val) {
+	printf("%ld", val);
+}
+
+template<>
+void PrintValue<long long>(long long val) {
+	printf("%lld", val);
 }
 
 template<>
@@ -204,18 +229,8 @@ void PrintValue<unsigned int>(unsigned int val) {
 }
 
 template<>
-void PrintValue<long>(long val) {
-	printf("%ld", val);
-}
-
-template<>
 void PrintValue<unsigned long>(unsigned long val) {
 	printf("%lu", val);
-}
-
-template<>
-void PrintValue<long long>(long long val) {
-	printf("%lld", val);
 }
 
 template<>
