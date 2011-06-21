@@ -52,6 +52,7 @@ template <
 	typename ProblemType,
 
 	int _CUDA_ARCH,
+	bool _CHECK_ALIGNMENT,
 	int _LOG_BINS,
 	int _LOG_SCHEDULE_GRANULARITY,
 	int _MAX_CTA_OCCUPANCY,
@@ -65,6 +66,7 @@ struct TuningPolicy : ProblemType
 {
 	enum {
 		CUDA_ARCH									= _CUDA_ARCH,
+		CHECK_ALIGNMENT								= _CHECK_ALIGNMENT,
 		LOG_BINS									= _LOG_BINS,
 		LOG_SCHEDULE_GRANULARITY					= _LOG_SCHEDULE_GRANULARITY,
 		MAX_CTA_OCCUPANCY  							= _MAX_CTA_OCCUPANCY,

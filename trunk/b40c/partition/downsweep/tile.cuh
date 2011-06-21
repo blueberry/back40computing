@@ -127,9 +127,11 @@ struct Tile
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) keys,
-				cta->d_in_keys + cta_offset,
+				cta->d_in_keys,
+				cta_offset,
 				guarded_elements);
 	}
 
@@ -172,9 +174,11 @@ struct Tile
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				(ValueType (*)[KernelPolicy::LOAD_VEC_SIZE]) values,
-				cta->d_in_values + cta_offset,
+				cta->d_in_values,
+				cta_offset,
 				guarded_elements);
 	}
 
@@ -828,9 +832,11 @@ struct Tile
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				util::io::ld::NONE>::LoadValid(
+				util::io::ld::NONE,
+				false>::LoadValid(									// No need to check alignment
 					(KeyType (*)[1]) tile->keys,
-					cta->smem_storage.key_exchange);
+					cta->smem_storage.key_exchange,
+					0);
 
 			__syncthreads();
 
@@ -878,9 +884,11 @@ struct Tile
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				util::io::ld::NONE>::LoadValid(
+				util::io::ld::NONE,
+				false>::LoadValid(									// No need to check alignment
 					(ValueType (*)[1]) tile->values,
-					cta->smem_storage.value_exchange);
+					cta->smem_storage.value_exchange,
+					0);
 
 			__syncthreads();
 

@@ -419,12 +419,10 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		// Make sure our spine is big enough
-		if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
-		if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
 
 		if ((work.grid_size == 1) && (!allocate_output_values)) {
 
+			// Single-CTA, single-grid operation
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
 			if (detail.d_num_compacted == NULL) {
@@ -454,9 +452,14 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 		} else {
 
+			// Upsweep-downsweep operation
 			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
 			typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
+
+			// Make sure our spine is big enough
+			if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
+			if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
 
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};

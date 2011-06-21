@@ -89,6 +89,7 @@ struct Policy : ProblemType
 	typedef scan::KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
+		false,								// do not check alignment
 		1,									// only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,

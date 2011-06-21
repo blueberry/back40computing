@@ -94,6 +94,7 @@ int main(int argc, char** argv)
     }
 
     b40c::DeviceInit(args);
+    bool verbose = args.CheckCmdLineFlag("v");
 
     // Define our problem type
 	typedef unsigned int T;
@@ -129,7 +130,8 @@ int main(int argc, char** argv)
 
 	// Create a scan enactor
 	b40c::scan::Enactor scan_enactor;
-	
+	scan_enactor.DEBUG = verbose;
+
 	//
 	// Example 1: Enact simple exclusive scan using internal tuning heuristics
 	//
@@ -188,6 +190,20 @@ int main(int argc, char** argv)
 	scan_enactor.Scan<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 
 	printf("Custom scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
+
+
+	//
+	// Example 6: Enact simple exclusive scan with misaligned inputs
+	//
+	scan_enactor.Scan<EXCLUSIVE_SCAN>(
+		d_dest + 1, d_src + 1, NUM_ELEMENTS - 1, max_op, max_op);
+
+	printf("Misaligned scan: "); b40c::CompareDeviceResults(
+		h_reference + 1,
+		d_dest + 1,
+		NUM_ELEMENTS - 1,
+		verbose,
+		verbose); printf("\n");
 
 
 	return 0;

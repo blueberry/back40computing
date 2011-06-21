@@ -131,22 +131,26 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				partials,
-				soa_scan_op().t0,							// Partial identity
-				d_partials_in + cta_offset,
-				guarded_elements);
+				d_partials_in,
+				cta_offset,
+				guarded_elements,
+				soa_scan_op().t0);							// Default: partial identity
 
 		// Load tile of flags
 		util::io::LoadTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				flags,
-				(Flag) 0,
-				d_flags_in + cta_offset,
-				guarded_elements);
+				d_flags_in,
+				cta_offset,
+				guarded_elements,
+				(Flag) 0);									// Default: flag identity
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::soa::CooperativeSoaTileReduction<

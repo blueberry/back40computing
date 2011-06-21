@@ -113,10 +113,12 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
 				keys,
 				head_flags,
-				d_in_keys + cta_offset,
+				d_in_keys,
+				cta_offset,
 				equality_op);
 
 		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)

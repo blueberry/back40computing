@@ -30,7 +30,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/reduction/upsweep/kernel_policy.cuh>
+#include <b40c/reduction/kernel_policy.cuh>
 #include <b40c/reduction/upsweep/kernel.cuh>
 #include <b40c/reduction/spine/kernel.cuh>
 
@@ -85,6 +85,7 @@ struct Policy : ProblemType
 
 	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp);
+	typedef void (*SingleKernelPtr)(T*, T*, SizeT, ReductionOp);
 
 	//---------------------------------------------------------------------
 	// Kernel Policies
@@ -93,9 +94,10 @@ struct Policy : ProblemType
 	/**
 	 * Kernel config for the upsweep reduction kernel
 	 */
-	typedef upsweep::KernelPolicy <
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -109,9 +111,10 @@ struct Policy : ProblemType
 	/**
 	 * Kernel config for the spine reduction kernel
 	 */
-	typedef upsweep::KernelPolicy <
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		false,								// Do not check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -121,6 +124,23 @@ struct Policy : ProblemType
 		false,								// Workstealing makes no sense in a single-CTA grid
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
+
+	/**
+	 * Kernel config for a one-level pass using the spine reduction kernel
+	 */
+	typedef KernelPolicy <
+		ProblemType,
+		CUDA_ARCH,
+		true,								// Check alignment
+		1,									// Only a single-CTA grid
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		READ_MODIFIER,
+		WRITE_MODIFIER,
+		false,								// Workstealing makes no sense in a single-CTA grid
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
+			Single;
 
 
 	//---------------------------------------------------------------------
@@ -135,6 +155,9 @@ struct Policy : ProblemType
 		return spine::Kernel<Spine>;
 	}
 
+	static SingleKernelPtr SingleKernel() {
+		return spine::Kernel<Single>;
+	}
 
 	//---------------------------------------------------------------------
 	// Constants

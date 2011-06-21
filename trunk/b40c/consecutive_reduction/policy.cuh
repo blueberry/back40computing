@@ -108,6 +108,7 @@ struct Policy : ProblemType
 	typedef upsweep::KernelPolicy<
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -122,6 +123,7 @@ struct Policy : ProblemType
 	typedef upsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		false,								// Do not check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -136,6 +138,7 @@ struct Policy : ProblemType
 	typedef downsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
@@ -151,14 +154,15 @@ struct Policy : ProblemType
 	typedef downsweep::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		1,									// Only a single-CTA grid
-		DOWNSWEEP_LOG_THREADS,
-		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-		DOWNSWEEP_LOG_LOADS_PER_TILE,
-		DOWNSWEEP_LOG_RAKING_THREADS,
+		SPINE_LOG_THREADS,
+		SPINE_LOG_LOAD_VEC_SIZE,
+		SPINE_LOG_LOADS_PER_TILE,
+		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY,
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS,
 		TWO_PHASE_SCATTER>
 			Single;
 

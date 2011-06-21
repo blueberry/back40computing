@@ -97,13 +97,16 @@ struct Tile :
 	{
 		// Read tile of keys
 		util::io::LoadTile<
-			LOG_LOADS_PER_TILE, 							// Number of vector loads (log)
-			LOG_LOAD_VEC_SIZE,								// Number of items per vector load (log)
-			KernelPolicy::THREADS,							// Active threads that will be loading
-			KernelPolicy::READ_MODIFIER>					// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::template LoadValid<
+				KeyType,
+				KernelPolicy::PreprocessTraits::Preprocess>(
 					(KeyType (*)[Tile::LOAD_VEC_SIZE]) this->keys,
-					cta->d_in_keys + cta_offset);
+					cta->d_in_keys,
+					cta_offset);
 	}
 
 	/**

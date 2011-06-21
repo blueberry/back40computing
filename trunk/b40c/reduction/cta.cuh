@@ -107,8 +107,9 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				data, d_in + cta_offset);
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
+				data, d_in, cta_offset);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(

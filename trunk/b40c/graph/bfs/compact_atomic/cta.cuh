@@ -386,11 +386,13 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
 				tile.vertex_ids,
-				(VertexId) -1,
-				d_in + cta_offset,
-				guarded_elements);
+				d_in,
+				cta_offset,
+				guarded_elements,
+				(VertexId) -1);
 
 		// Init valid flags
 		tile.InitFlags();
@@ -439,9 +441,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::LoadValid(
+				KernelPolicy::READ_MODIFIER,
+				false>::LoadValid(
 					tile.parent_ids,
-					d_parent_in + cta_offset,
+					d_parent_in,
+					cta_offset,
 					guarded_elements);
 
 			// Scatter valid vertex_ids, predicated on flags (treat
