@@ -136,10 +136,12 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
 				keys,
 				ranks,
-				d_in_keys + cta_offset,
+				d_in_keys,
+				cta_offset,
 				guarded_elements,
 				equality_op);
 
@@ -148,11 +150,13 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				values,
-				soa_scan_op().t0,							// Value identity
-				d_in_values + cta_offset,
-				guarded_elements);
+				d_in_values,
+				cta_offset,
+				guarded_elements,
+				soa_scan_op().t0);							// Value identity
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::soa::CooperativeSoaTileReduction<KernelPolicy::LOAD_VEC_SIZE>::template

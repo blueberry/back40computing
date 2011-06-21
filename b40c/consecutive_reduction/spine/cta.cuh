@@ -137,9 +137,11 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				partials,
-				d_in_partials + cta_offset,
+				d_in_partials,
+				cta_offset,
 				guarded_elements);
 
 		// Load tile of flags
@@ -147,9 +149,11 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				flags,
-				d_in_flags + cta_offset,
+				d_in_flags,
+				cta_offset,
 				guarded_elements);
 
 		// SOA-scan tile of tuple pairs
@@ -164,9 +168,11 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
+			KernelPolicy::WRITE_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::Store(
 				partials,
-				d_out_partials + cta_offset,
+				d_out_partials,
+				cta_offset,
 				guarded_elements);
 
 		// Store tile of flags
@@ -174,9 +180,11 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
+			KernelPolicy::WRITE_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::Store(
 				flags,
-				d_out_flags + cta_offset,
+				d_out_flags,
+				cta_offset,
 				guarded_elements);
 	}
 

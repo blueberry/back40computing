@@ -53,6 +53,7 @@ template <
 
 	// Machine parameters
 	int CUDA_ARCH,
+	bool CHECK_ALIGNMENT,
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -106,6 +107,8 @@ struct KernelPolicy : ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
 	};
 
 	//

@@ -441,6 +441,7 @@ struct AutotunedPolicy :
 
 	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp);
+	typedef void (*SingleKernelPtr)(T*, T*, SizeT, ReductionOp);
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
@@ -451,6 +452,10 @@ struct AutotunedPolicy :
 	}
 
 	static SpineKernelPtr SpineKernel() {
+		return TunedSpineKernel<ProblemType, PROB_SIZE_GENRE>;
+	}
+
+	static SingleKernelPtr SingleKernel() {
 		return TunedSpineKernel<ProblemType, PROB_SIZE_GENRE>;
 	}
 };

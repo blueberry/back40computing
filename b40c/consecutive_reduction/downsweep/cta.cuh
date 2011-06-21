@@ -190,10 +190,12 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::template LoadDiscontinuity<FIRST_TILE>(
+				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
 					keys,
 					head_flags,
-					cta->d_in_keys + cta_offset,
+					cta->d_in_keys,
+					cta_offset,
 					guarded_elements,
 					cta->equality_op);
 
@@ -202,9 +204,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::LoadValid(
+				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					values,
-					cta->d_in_values + cta_offset,
+					cta->d_in_values,
+					cta_offset,
 					guarded_elements);
 
 			// Copy discontinuity head_flags into ranks

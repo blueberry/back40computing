@@ -307,6 +307,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 	typedef typename Policy::Upsweep 		Upsweep;
 	typedef typename Policy::Spine 			Spine;
+	typedef typename Policy::Single			Single;
 
 	// Compute sweep grid size
 	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
@@ -314,7 +315,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
 
 	// Use single-CTA kernel instead of multi-pass if problem is small enough
-	if (detail.num_elements <= Spine::TILE_ELEMENTS * 3) {
+	if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
 		sweep_grid_size = 1;
 	}
 
@@ -330,34 +331,36 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		if (sweep_grid_size > 1) {
 			PrintPassInfo<Upsweep, Spine>(work, spine_elements);
 		} else {
-			PrintPassInfo<Spine>(work);
+			PrintPassInfo<Single>(work);
 		}
 	}
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		// Make sure our spine is big enough
-		if (retval = spine.Setup<T>(spine_elements)) break;
-
-		// If we're work-stealing, make sure our work progress is set up
-		// for the next pass
-		if (Policy::Upsweep::WORK_STEALING) {
-			if (retval = work_progress.Setup()) break;
-		}
-
 		if (work.grid_size == 1) {
 
-			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+			// Single-CTA, single-grid operation
+			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
-			SpineKernel<<<1, Spine::THREADS, 0>>>(
+			SingleKernel<<<1, Single::THREADS, 0>>>(
 				detail.d_src, detail.d_dest, work.num_elements, detail.reduction_op);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
 		} else {
 
+			// Upsweep-downsweep operation
 			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+
+			// If we're work-stealing, make sure our work progress is set up
+			// for the next pass
+			if (Policy::Upsweep::WORK_STEALING) {
+				if (retval = work_progress.Setup()) break;
+			}
+
+			// Make sure our spine is big enough
+			if (retval = spine.Setup<T>(spine_elements)) break;
 
 			int dynamic_smem[2] = 	{0, 0};
 			int grid_size[2] = 		{work.grid_size, 1};

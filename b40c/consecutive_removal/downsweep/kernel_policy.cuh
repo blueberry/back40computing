@@ -52,6 +52,7 @@ template <
 
 	// Machine parameters
 	int CUDA_ARCH,
+	bool CHECK_ALIGNMENT,
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -108,6 +109,8 @@ struct KernelPolicy : ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
 		TWO_PHASE_SCATTER				= _TWO_PHASE_SCATTER,
+
+		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
 	};
 
 

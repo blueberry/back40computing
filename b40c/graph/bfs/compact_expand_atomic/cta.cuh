@@ -805,11 +805,13 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER>::LoadValid(
+			KernelPolicy::QUEUE_READ_MODIFIER,
+			false>::LoadValid(
 				tile.vertex_id,
-				(VertexId) -1,
-				d_in + cta_offset,
-				guarded_elements);
+				d_in,
+				cta_offset,
+				guarded_elements,
+				(VertexId) -1);
 
 		// Load tile of parents
 		if (KernelPolicy::MARK_PARENTS) {
@@ -818,9 +820,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::QUEUE_READ_MODIFIER>::LoadValid(
+				KernelPolicy::QUEUE_READ_MODIFIER,
+				false>::LoadValid(
 					tile.parent_id,
-					d_parent_in + cta_offset,
+					d_parent_in,
+					cta_offset,
 					guarded_elements);
 		}
 

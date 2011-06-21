@@ -115,6 +115,7 @@ struct Policy :
 	typedef void (*UpsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, util::CtaWorkDistribution<SizeT>);
 	typedef void (*DownsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
 
+	static const bool CHECK_ALIGNMENT = true;
 
 	//---------------------------------------------------------------------
 	// Tuning Policies
@@ -123,6 +124,7 @@ struct Policy :
 	typedef upsweep::TuningPolicy<
 		ProblemType,
 		CUDA_ARCH,
+		CHECK_ALIGNMENT,
 		LOG_BINS,
 		LOG_SCHEDULE_GRANULARITY,
 		UPSWEEP_CTA_OCCUPANCY,
@@ -137,6 +139,7 @@ struct Policy :
 	typedef downsweep::TuningPolicy<
 		ProblemType,
 		CUDA_ARCH,
+		CHECK_ALIGNMENT,
 		LOG_BINS,
 		LOG_SCHEDULE_GRANULARITY,
 		DOWNSWEEP_CTA_OCCUPANCY,

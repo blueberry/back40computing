@@ -29,7 +29,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/reduction/upsweep/kernel_policy.cuh>
+#include <b40c/reduction/kernel_policy.cuh>
 
 #include <b40c/scan/kernel_policy.cuh>
 #include <b40c/scan/upsweep/kernel.cuh>
@@ -103,9 +103,10 @@ struct Policy : ProblemType
 	//---------------------------------------------------------------------
 
 	// Kernel config for the upsweep reduction kernel
-	typedef reduction::upsweep::KernelPolicy <
+	typedef reduction::KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -128,6 +129,7 @@ struct Policy : ProblemType
 	typedef KernelPolicy <
 		SpineProblemType,
 		CUDA_ARCH,
+		false,								// Do not check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -142,6 +144,7 @@ struct Policy : ProblemType
 	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
@@ -156,6 +159,7 @@ struct Policy : ProblemType
 	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		true,								// Check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -163,7 +167,7 @@ struct Policy : ProblemType
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY>
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Single;
 
 	//---------------------------------------------------------------------

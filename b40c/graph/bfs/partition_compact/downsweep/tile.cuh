@@ -113,22 +113,26 @@ struct Tile :
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
 					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
-					(KeyType) -1,
-					cta->d_in_keys + cta_offset,
-					guarded_elements);
+					cta->d_in_keys,
+					cta_offset,
+					guarded_elements,
+					(KeyType) -1);
 
 		// Read tile of flags, use 0 if flag is out-of-bounds
 		util::io::LoadTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
 				(ValidFlag (*)[KernelPolicy::LOAD_VEC_SIZE]) flags,
-				(ValidFlag) 0,
-				cta->d_flags_in + cta_offset,
-				guarded_elements);
+				cta->d_flags_in,
+				cta_offset,
+				guarded_elements,
+				(ValidFlag) 0);
 	}
 
 

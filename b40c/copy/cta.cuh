@@ -86,7 +86,12 @@ struct Cta : KernelPolicy
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(data, d_in + cta_offset, guarded_elements);
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
+				data,
+				d_in,
+				cta_offset,
+				guarded_elements);
 
 		__syncthreads();
 
@@ -95,7 +100,12 @@ struct Cta : KernelPolicy
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(data, d_out + cta_offset, guarded_elements);
+			KernelPolicy::WRITE_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>::Store(
+				data,
+				d_out,
+				cta_offset,
+				guarded_elements);
 	}
 };
 

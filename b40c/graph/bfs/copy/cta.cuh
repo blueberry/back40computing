@@ -97,8 +97,12 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
-				data, d_in + cta_offset, guarded_elements);
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
+				data,
+				d_in,
+				cta_offset,
+				guarded_elements);
 
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
@@ -107,8 +111,12 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
-				data, d_out + cta_offset, guarded_elements);
+			KernelPolicy::WRITE_MODIFIER,
+			false>::Store(
+				data,
+				d_out,
+				cta_offset,
+				guarded_elements);
 
 		if (KernelPolicy::MARK_PARENTS) {
 
@@ -117,8 +125,12 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::LoadValid(
-					data, d_parent_in + cta_offset, guarded_elements);
+				KernelPolicy::READ_MODIFIER,
+				false>::LoadValid(
+					data,
+					d_parent_in,
+					cta_offset,
+					guarded_elements);
 
 			if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
 
@@ -127,8 +139,12 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Store(
-					data, d_parent_out + cta_offset, guarded_elements);
+				KernelPolicy::WRITE_MODIFIER,
+				false>::Store(
+					data,
+					d_parent_out,
+					cta_offset,
+					guarded_elements);
 		}
 	}
 };

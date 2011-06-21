@@ -49,13 +49,15 @@ struct SrtsDetails;
 template <typename SrtsGrid>
 struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 {
-	typedef typename SrtsGrid::T T;
-	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
-	typedef NullType SecondarySrtsDetails;
-
 	enum {
-		CUMULATIVE_THREAD 				= SrtsGrid::RAKING_THREADS - 1
+		CUMULATIVE_THREAD 	= SrtsGrid::RAKING_THREADS - 1,
+		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
 	};
+
+	typedef typename SrtsGrid::T T;													// Partial type
+	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[WARP_THREADS];			// Warpscan storage type
+	typedef NullType SecondarySrtsDetails;											// Type of next-level grid SRTS details
+
 
 	/**
 	 * Smem pool backing SRTS grid lanes
@@ -162,13 +164,15 @@ template <
 	typename SecondarySrtsGrid>
 struct SrtsDetails : SrtsGrid
 {
-	typedef typename SrtsGrid::T T;
-	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[B40C_WARP_THREADS(SrtsGrid::CUDA_ARCH)];
-	typedef SrtsDetails<SecondarySrtsGrid> SecondarySrtsDetails;
-
 	enum {
-		CUMULATIVE_THREAD = SecondarySrtsDetails::CUMULATIVE_THREAD
+		CUMULATIVE_THREAD 	= SrtsGrid::RAKING_THREADS - 1,
+		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
 	};
+
+	typedef typename SrtsGrid::T T;													// Partial type
+	typedef typename SrtsGrid::WarpscanT (*WarpscanStorage)[WARP_THREADS];			// Warpscan storage type
+	typedef SrtsDetails<SecondarySrtsGrid> SecondarySrtsDetails;					// Type of next-level grid SRTS details
+
 
 	/**
 	 * The location in the smem grid where the calling thread can insert/extract

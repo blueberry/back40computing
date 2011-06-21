@@ -47,16 +47,19 @@ template <
 	int LOG_ELEMENTS_PER_THREAD,
 	int ACTIVE_THREADS,
 	st::CacheModifier CACHE_MODIFIER,
+	bool CHECK_ALIGNMENT,
 	typename T,
 	typename Flag,
-	typename Rank>
+	typename Rank,
+	typename SizeT>
 __device__ __forceinline__ void TwoPhaseScatterTile(
 	T data[1 << LOG_ELEMENTS_PER_THREAD],								// Elements of data to scatter
 	Flag flags[1 << LOG_ELEMENTS_PER_THREAD],							// Valid predicates for data elements
 	Rank ranks[1 << LOG_ELEMENTS_PER_THREAD],							// Local ranks of data to scatter
 	Rank valid_elements,												// Number of valid elements
 	T smem_exchange[(1 << LOG_ELEMENTS_PER_THREAD) * ACTIVE_THREADS],	// Smem swap exchange storage
-	T *d_out)															// Global output to scatter to
+	T *d_out,															// Global output to scatter to
+	SizeT cta_offset)													// CTA offset into d_out at which to scatter to
 {
 	const int ELEMENTS_PER_THREAD = 1 << LOG_ELEMENTS_PER_THREAD;
 
@@ -81,9 +84,11 @@ __device__ __forceinline__ void TwoPhaseScatterTile(
 		LOG_ELEMENTS_PER_THREAD,
 		0, 											// Vec-1
 		ACTIVE_THREADS,
-		ld::NONE>::LoadValid(
+		ld::NONE,
+		false>::LoadValid(							// No need to check alignment
 			compacted_data,
 			smem_exchange,
+			0,
 			valid_elements);
 
 	// Scatter compacted data to global output
@@ -91,9 +96,11 @@ __device__ __forceinline__ void TwoPhaseScatterTile(
 		LOG_ELEMENTS_PER_THREAD,
 		0, 											// Vec-1
 		ACTIVE_THREADS,
-		CACHE_MODIFIER>::Store(
+		CACHE_MODIFIER,
+		CHECK_ALIGNMENT>::Store(
 			compacted_data,
 			d_out,
+			cta_offset,
 			valid_elements);
 }
 

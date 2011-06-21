@@ -309,9 +309,11 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadValid(
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
 				(KeyType (*)[LOAD_VEC_SIZE]) this->keys,
-				cta->d_in_keys + cta_offset);
+				cta->d_in_keys,
+				cta_offset);
 
 		// Initialize valid flags
 		util::io::InitializeTile<
@@ -339,9 +341,11 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
+			KernelPolicy::WRITE_MODIFIER,
+			false>::Store(
 				valid,
-				cta->d_flags_out + cta_offset);
+				cta->d_flags_out,
+				cta_offset);
 	}
 };
 

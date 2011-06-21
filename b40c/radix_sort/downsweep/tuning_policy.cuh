@@ -44,6 +44,7 @@ template <
 	typename ProblemType,
 
 	int CUDA_ARCH,
+	bool CHECK_ALIGNMENT,
 	int LOG_BINS,
 	int LOG_SCHEDULE_GRANULARITY,
 	int CTA_OCCUPANCY,
@@ -61,6 +62,7 @@ struct TuningPolicy :
 	partition::downsweep::TuningPolicy <
 		ProblemType,
 		CUDA_ARCH,
+		CHECK_ALIGNMENT,
 		LOG_BINS,
 		LOG_SCHEDULE_GRANULARITY,
 		CTA_OCCUPANCY,

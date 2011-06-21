@@ -126,6 +126,7 @@ struct Policy :
 		partition::upsweep::TuningPolicy<
 			ProblemType,
 			CUDA_ARCH,
+			false,								// Do not check alignment
 			LOG_BINS,
 			LOG_SCHEDULE_GRANULARITY,
 			UPSWEEP_CTA_OCCUPANCY,
@@ -141,6 +142,7 @@ struct Policy :
 		partition::downsweep::TuningPolicy<
 			ProblemType,
 			CUDA_ARCH,
+			false,								// Do not check alignment
 			LOG_BINS,
 			LOG_SCHEDULE_GRANULARITY,
 			DOWNSWEEP_CTA_OCCUPANCY,

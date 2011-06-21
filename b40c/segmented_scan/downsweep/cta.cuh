@@ -194,9 +194,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::LoadValid(
+				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					partials,
-					cta->d_partials_in + cta_offset,
+					cta->d_partials_in,
+					cta_offset,
 					guarded_elements);
 
 			// Load tile of flags
@@ -204,9 +206,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER>::LoadValid(
+				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					flags,
-					cta->d_flags_in + cta_offset,
+					cta->d_flags_in,
+					cta_offset,
 					guarded_elements);
 
 			// Copy head flags (since we will trash them during scan)
@@ -231,9 +235,11 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Store(
+				KernelPolicy::WRITE_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::Store(
 					partials,
-					cta->d_partials_out + cta_offset,
+					cta->d_partials_out,
+					cta_offset,
 					guarded_elements);
 		}
 	};

@@ -106,8 +106,9 @@ struct Policy : ProblemType
 	// Kernel config for the upsweep reduction kernel
 	typedef KernelPolicy <
 		ProblemType,
-		false,
+		false,								// Not final kernel
 		CUDA_ARCH,
+		true,								// Check alignment
 		UPSWEEP_MAX_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
@@ -121,8 +122,9 @@ struct Policy : ProblemType
 	// Kernel config for the spine scan kernel
 	typedef KernelPolicy <
 		ProblemType,
-		false,
+		false,								// Not final kernel
 		CUDA_ARCH,
+		false,								// Do not check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -136,8 +138,9 @@ struct Policy : ProblemType
 	// Kernel config for downsweep scan kernel
 	typedef KernelPolicy <
 		ProblemType,
-		true,
+		true,								// Final kernel
 		CUDA_ARCH,
+		true,								// Check alignment
 		DOWNSWEEP_MAX_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
@@ -151,8 +154,9 @@ struct Policy : ProblemType
 	// Kernel config for a one-level pass using the spine scan kernel
 	typedef KernelPolicy <
 		ProblemType,
-		true,
+		true,								// Final kernel
 		CUDA_ARCH,
+		true,								// Check alignment
 		1,									// Only a single-CTA grid
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
@@ -160,7 +164,7 @@ struct Policy : ProblemType
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY>
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Single;
 
 	//---------------------------------------------------------------------
