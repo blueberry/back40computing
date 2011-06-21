@@ -54,7 +54,7 @@ __device__ __forceinline__ void DownsweepPass(
 	typedef Cta<KernelPolicy> 						Cta;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::SpineSoaTuple	SpineSoaTuple;
-	typedef typename KernelPolicy::SrtsSoaScanOp	SrtsSoaScanOp;
+	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 
 	// Read the exclusive spine partial
 	SpineSoaTuple spine_partial;
@@ -72,7 +72,7 @@ __device__ __forceinline__ void DownsweepPass(
 		d_in_values,
 		d_out_values,
 		d_num_compacted,
-		SrtsSoaScanOp(reduction_op, identity_op),
+		SoaScanOp(reduction_op, identity_op),
 		equality_op,
 		spine_partial);
 

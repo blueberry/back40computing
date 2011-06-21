@@ -112,7 +112,7 @@ struct CooperativeTileReduction
 		typename SrtsDetails::T &carry,
 		ReductionOp reduction_op)
 	{
-		// Reduce vectors in tile, placing resulting partials into corresponding SRTS grid lanes
+		// Reduce partials in each vector-load, placing resulting partials in SRTS smem grid lanes (one lane per load)
 		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data, reduction_op);
 
 		__syncthreads();
@@ -132,7 +132,7 @@ struct CooperativeTileReduction
 		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
 		ReductionOp reduction_op)
 	{
-		// Reduce vectors in tile, placing resulting partials into corresponding SRTS grid lanes
+		// Reduce partials in each vector-load, placing resulting partials in SRTS smem grid lanes (one lane per load)
 		ReduceLane<0, SrtsDetails::SCAN_LANES>::Invoke(srts_details, data, reduction_op);
 
 		__syncthreads();

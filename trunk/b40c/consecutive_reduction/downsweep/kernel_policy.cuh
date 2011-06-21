@@ -32,9 +32,12 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/consecutive_reduction/scan_operator.cuh>
+
 namespace b40c {
 namespace consecutive_reduction {
 namespace downsweep {
+
 
 /**
  * A detailed kernel configuration policy type that specializes kernel
@@ -75,16 +78,16 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::IdentityOp 				IdentityOp;
 
 	typedef int 											LocalFlag;			// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
+
 	typedef typename util::If<
 		_TWO_PHASE_SCATTER,
 		LocalFlag,
 		SizeT>::Type 										RankType;			// Type for local SRTS prefix sum
 
-	// Tuple of value-rank type
-	typedef util::Tuple<ValueType, RankType> 				SrtsSoaTuple;		// Structure-of-array tuple for local SRTS scanning
-
-	// Tuple of spine partial-flag type
+	typedef util::Tuple<ValueType, RankType> 				SoaTuple;			// Structure-of-array tuple for local SRTS scanning
 	typedef util::Tuple<ValueType, SizeT> 					SpineSoaTuple;		// Structure-of-array tuple for spine scan
+	typedef SoaScanOp<ReductionOp, IdentityOp, SoaTuple> 	SoaScanOp;			// Structure-of-array scan operator
+
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -179,53 +182,6 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	/**
-	 * SOA scan operator
-	 */
-	struct SrtsSoaScanOp
-	{
-		// Caller-supplied operators
-		ReductionOp 		reduction_op;
-		IdentityOp 			identity_op;
-
-		// Constructor
-		__device__ __forceinline__ SrtsSoaScanOp(
-			ReductionOp reduction_op,
-			IdentityOp identity_op) :
-				reduction_op(reduction_op),
-				identity_op(identity_op)
-		{}
-
-		// SOA scan operator
-		__device__ __forceinline__ SrtsSoaTuple operator()(
-			const SrtsSoaTuple &first,
-			const SrtsSoaTuple &second)
-		{
-/*
-			// NVBUGS XXXX: they are the same, but this leads to register corruption
-			return SrtsSoaTuple(
-				(second.t1) ?
-					second.t0 :
-					BinaryOp(first.t0, second.t0),
-				first.t1 + second.t1);
-*/
-			if (second.t1) {
-				return SrtsSoaTuple(second.t0, first.t1 + second.t1);
-			} else {
-				return SrtsSoaTuple(reduction_op(first.t0, second.t0), first.t1 + second.t1);
-			}
-		}
-
-		// SOA identity operator
-		__device__ __forceinline__ SrtsSoaTuple operator()()
-		{
-			return SrtsSoaTuple(
-				identity_op(),				// Partial Identity
-				0);							// Flag Identity
-		}
-	};
-
-
 	// Tuple type of SRTS grid types
 	typedef util::Tuple<
 		PartialsSrtsGrid,
@@ -234,7 +190,7 @@ struct KernelPolicy : ProblemType
 
 	// Operational details type for SRTS grid type
 	typedef util::SrtsSoaDetails<
-		SrtsSoaTuple,
+		SoaTuple,
 		SrtsGridTuple> SrtsSoaDetails;
 
 };
