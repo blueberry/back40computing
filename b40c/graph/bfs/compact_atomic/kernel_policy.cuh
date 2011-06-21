@@ -155,7 +155,7 @@ struct KernelPolicy : _ProblemType
 			union {
 				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
 				VertexId 						vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
-			} smem_pool;
+			};
 
 		} state;
 

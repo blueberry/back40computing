@@ -762,8 +762,8 @@ struct Cta
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
-					smem_storage.smem_pool.raking_lanes.coarse_lanes,
-					smem_storage.smem_pool.raking_lanes.fine_lanes),
+					smem_storage.raking_lanes.coarse_lanes,
+					smem_storage.raking_lanes.fine_lanes),
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.coarse_warpscan,
 					smem_storage.fine_warpscan),
@@ -771,9 +771,9 @@ struct Cta
 			warp_comm(smem_storage.warp_comm),
 			coarse_enqueue_offset(smem_storage.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.fine_enqueue_offset),
-			offset_scratch_pool(smem_storage.smem_pool.gather_scratch.offsets),
-			parent_scratch_pool(smem_storage.smem_pool.gather_scratch.parents),
-			s_vid_hashtable(smem_storage.smem_pool.vid_hashtable),
+			offset_scratch_pool(smem_storage.gather_scratch.offsets),
+			parent_scratch_pool(smem_storage.gather_scratch.parents),
+			s_vid_hashtable(smem_storage.vid_hashtable),
 			iteration(iteration),
 			queue_index(queue_index),
 			d_in(d_in),

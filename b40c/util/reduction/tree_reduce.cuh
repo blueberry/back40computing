@@ -60,10 +60,14 @@ struct TreeReduce
 		bool IS_WARPSCAN = (OFFSET_RIGHT <= B40C_WARP_THREADS(__B40C_CUDA_ARCH__))>
 	struct Iterate
 	{
-		template <bool ALL_VALID, typename T, typename ReductionOp>
+		template <
+			bool ALL_VALID,
+			typename T,
+			typename TreeT,
+			typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T my_partial,
-			volatile T reduction_tree[CTA_THREADS],
+			TreeT reduction_tree[CTA_THREADS],
 			int num_elements,
 			ReductionOp reduction_op)
 		{
@@ -88,10 +92,14 @@ struct TreeReduce
 	template <int OFFSET_RIGHT>
 	struct Iterate<OFFSET_RIGHT, false, true>
 	{
-		template <bool ALL_VALID, typename T, typename ReductionOp>
+		template <
+			bool ALL_VALID,
+			typename T,
+			typename TreeT,
+			typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T my_partial,
-			volatile T reduction_tree[CTA_THREADS],
+			TreeT reduction_tree[CTA_THREADS],
 			int num_elements,
 			ReductionOp reduction_op)
 		{
@@ -106,6 +114,9 @@ struct TreeReduce
 
 					// Update my partial
 					T current_partial = reduction_tree[threadIdx.x + OFFSET_RIGHT];
+
+					__threadfence_block();
+
 					my_partial = reduction_op(my_partial, current_partial);
 
 				}
@@ -123,20 +134,29 @@ struct TreeReduce
 	template <int OFFSET_RIGHT, bool WAS_WARPSCAN>
 	struct Iterate<OFFSET_RIGHT, WAS_WARPSCAN, true>
 	{
-		template <bool ALL_VALID, typename T, typename ReductionOp>
+		template <
+			bool ALL_VALID,
+			typename T,
+			typename TreeT,
+			typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T my_partial,
-			volatile T reduction_tree[CTA_THREADS],
+			TreeT reduction_tree[CTA_THREADS],
 			int num_elements,
 			ReductionOp reduction_op)
 		{
 			// Store partial
 			reduction_tree[threadIdx.x] = my_partial;
 
+			__threadfence_block();
+
 			if (ALL_VALID || (threadIdx.x + OFFSET_RIGHT < num_elements)) {
 
 				// Update my partial
 				T current_partial = reduction_tree[threadIdx.x + OFFSET_RIGHT];
+
+				__threadfence_block();
+
 				my_partial = reduction_op(my_partial, current_partial);
 			}
 
@@ -151,15 +171,21 @@ struct TreeReduce
 	template <bool WAS_WARPSCAN>
 	struct Iterate<0, WAS_WARPSCAN, true>
 	{
-		template <bool ALL_VALID, typename T, typename ReductionOp>
+		template <
+			bool ALL_VALID,
+			typename T,
+			typename TreeT,
+			typename ReductionOp>
 		static __device__ __forceinline__ T Invoke(
 			T my_partial,
-			volatile T reduction_tree[CTA_THREADS],
+			TreeT reduction_tree[CTA_THREADS],
 			int num_elements,
 			ReductionOp reduction_op)
 		{
 			if (ALL_RETURN) {
 				reduction_tree[threadIdx.x] = my_partial;
+
+				__threadfence_block();
 			}
 			return my_partial;
 		}
@@ -173,10 +199,13 @@ struct TreeReduce
 	 * Perform a cooperative tree reduction.  Threads with ranks less than
 	 * num_elements contribute one reduction partial.
 	 */
-	template <typename T, typename ReductionOp>
+	template <
+		typename T,
+		typename TreeT,
+		typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,									// Input partial
-		volatile T reduction_tree[CTA_THREADS],			// Shared memory for tree scan
+		TreeT reduction_tree[CTA_THREADS],			// Shared memory for tree scan
 		int num_elements,								// Number of valid elements to actually reduce (may be less than number of cta-threads)
 		ReductionOp reduction_op)						// Reduction operator
 
@@ -206,10 +235,13 @@ struct TreeReduce
 	 *
 	 * Assumes all threads contribute a valid element (no checks on num_elements)
 	 */
-	template <typename T, typename ReductionOp>
+	template <
+		typename T,
+		typename TreeT,
+		typename ReductionOp>
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,								// Input partial
-		volatile T reduction_tree[CTA_THREADS],		// Shared memory for tree scan
+		TreeT reduction_tree[CTA_THREADS],		// Shared memory for tree scan
 		ReductionOp reduction_op)					// Reduction operator
 	{
 		my_partial = Iterate<CTA_THREADS / 2, false>::template Invoke<true>(
@@ -235,10 +267,12 @@ struct TreeReduce
 	 * Perform a cooperative tree reduction using the addition operator.
 	 * Threads with ranks less than num_elements contribute one reduction partial.
 	 */
-	template <typename T>
+	template <
+		typename T,
+		typename TreeT>
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,									// Input partial
-		volatile T reduction_tree[CTA_THREADS],			// Shared memory for tree scan
+		TreeT reduction_tree[CTA_THREADS],			// Shared memory for tree scan
 		int num_elements)								// Number of valid elements to actually reduce (may be less than number of cta-threads)
 	{
 		Sum<T> reduction_op;
@@ -252,10 +286,12 @@ struct TreeReduce
 	 *
 	 * Assumes all threads contribute a valid element (no checks on num_elements)
 	 */
-	template <typename T>
+	template <
+		typename T,
+		typename TreeT>
 	static __device__ __forceinline__ T Invoke(
 		T my_partial,								// Input partial
-		volatile T reduction_tree[CTA_THREADS])		// Shared memory for tree scan
+		TreeT reduction_tree[CTA_THREADS])		// Shared memory for tree scan
 	{
 		Sum<T> reduction_op;
 		return Invoke(my_partial, reduction_tree, reduction_op);

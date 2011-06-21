@@ -232,7 +232,7 @@ struct KernelPolicy : _ProblemType
 				VertexId					parents[(ProblemType::MARK_PARENTS) ? SCRATCH_ELEMENTS : 0];
 			} gather_scratch;
 			VertexId 						vid_hashtable[HASH_ELEMENTS];
-		} smem_pool;
+		};
 	};
 
 	enum {

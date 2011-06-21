@@ -57,22 +57,30 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
 	};
 
+	// Simple SOA tuple "slice" type
 	typedef _SoaTuple SoaTuple;
 
-	typedef Tuple<typename SoaTuple::T0*, typename SoaTuple::T1*> GridStorageSoa;
-
+	// SOA type of raking lanes
 	typedef Tuple<
-		volatile typename SoaTuple::T0 (*)[WARP_THREADS],
-		volatile typename SoaTuple::T1 (*)[WARP_THREADS]> WarpscanSoa;
+		typename SoaTuple::T0*,
+		typename SoaTuple::T1*> GridStorageSoa;
 
+	// SOA type of warpscan storage
+	typedef Tuple<
+		typename SoaTuple::T0 (*)[WARP_THREADS],
+		typename SoaTuple::T1 (*)[WARP_THREADS]> WarpscanSoa;
+
+	// SOA type of partial-insertion pointers
 	typedef Tuple<
 		typename SrtsGridTuple::T0::LanePartial,
 		typename SrtsGridTuple::T1::LanePartial> LaneSoa;
 
+	// SOA type of raking segments
 	typedef Tuple<
 		typename SrtsGridTuple::T0::RakingSegment,
 		typename SrtsGridTuple::T1::RakingSegment> RakingSoa;
 
+	// SOA type of secondary grids
 	typedef Tuple<
 		typename SrtsGridTuple::T0::SecondaryGrid,
 		typename SrtsGridTuple::T1::SecondaryGrid> SecondarySrtsGridTuple;

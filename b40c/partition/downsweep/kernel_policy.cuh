@@ -114,7 +114,7 @@ struct KernelPolicy : TuningPolicy
 			int 						raking_lanes[Grid::RAKING_ELEMENTS];
 			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)
 			ValueType 					value_exchange[TILE_ELEMENTS + 1];
-		} smem_pool;
+		};
 	};
 
 	enum {
