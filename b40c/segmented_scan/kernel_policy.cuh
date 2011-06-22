@@ -32,6 +32,8 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/segmented_scan/soa_scan_operator.cuh>
+
 namespace b40c {
 namespace segmented_scan {
 
@@ -71,6 +73,14 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::Flag 				Flag;
 	typedef typename ProblemType::ReductionOp 		ReductionOp;
 	typedef typename ProblemType::IdentityOp 		IdentityOp;
+
+	typedef util::Tuple<T, Flag> 					TileTuple;			// Structure-of-array "slice" tuple for local SRTS scanning
+
+	typedef SoaScanOperator<
+		ReductionOp,
+		IdentityOp,
+		TileTuple> 									SoaScanOperator;	// Structure-of-array scan operator
+
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -156,60 +166,15 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// Tuple of partial-flag type
-	typedef util::Tuple<T, Flag> SoaTuple;
-
-
-	/**
-	 * SOA scan operator
-	 */
-	struct SoaScanOp
-	{
-		// Caller-supplied operators
-		ReductionOp 		scan_op;
-		IdentityOp 			identity_op;
-
-		// Constructor
-		__device__ __forceinline__ SoaScanOp(
-			ReductionOp scan_op,
-			IdentityOp identity_op) :
-				scan_op(scan_op),
-				identity_op(identity_op)
-		{}
-
-		// SOA scan operator
-		__device__ __forceinline__ SoaTuple operator()(
-			const SoaTuple &first,
-			const SoaTuple &second)
-		{
-			if (second.t1) {
-				return second;
-			}
-
-			return SoaTuple(scan_op(first.t0, second.t0), first.t1);
-		}
-
-		// SOA identity operator
-		__device__ __forceinline__ SoaTuple operator()()
-		{
-			return SoaTuple(
-				identity_op(),				// Partial Identity
-				0);							// Flag Identity
-		}
-	};
-
-
 	// Tuple type of SRTS grid types
 	typedef util::Tuple<
 		PartialsSrtsGrid,
 		FlagsSrtsGrid> SrtsGridTuple;
 
-
 	// Operational details type for SRTS grid type
 	typedef util::SrtsSoaDetails<
-		SoaTuple,
+		TileTuple,
 		SrtsGridTuple> SrtsSoaDetails;
-
 };
 
 

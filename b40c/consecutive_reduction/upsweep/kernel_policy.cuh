@@ -32,7 +32,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
-#include <b40c/consecutive_reduction/scan_operator.cuh>
+#include <b40c/consecutive_reduction/soa_scan_operator.cuh>
 
 namespace b40c {
 namespace consecutive_reduction {
@@ -69,15 +69,13 @@ template <
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::KeyType 					KeyType;
-	typedef typename ProblemType::ValueType 				ValueType;
-	typedef typename ProblemType::SizeT						SizeT;
-	typedef typename ProblemType::ReductionOp 				ReductionOp;
-	typedef typename ProblemType::IdentityOp 				IdentityOp;
+	typedef typename ProblemType::KeyType 				KeyType;
+	typedef typename ProblemType::ValueType 			ValueType;
+	typedef typename ProblemType::SizeT					SizeT;
+	typedef typename ProblemType::ReductionOp 			ReductionOp;
 
-	// Tuple of spine partial-flag type
-	typedef util::Tuple<ValueType, SizeT> 					SoaTuple;			// Structure-of-array tuple for spine scan
-	typedef SoaScanOp<ReductionOp, IdentityOp, SoaTuple> 	SoaScanOp;			// Structure-of-array scan operator
+	typedef util::Tuple<ValueType, SizeT> 				TileTuple;			// Structure-of-array "slice" tuple of spine partial-flag type for spine scan
+	typedef SoaScanOperator<ReductionOp, TileTuple> 	SoaScanOperator;	// Structure-of-array scan operator
 
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
@@ -170,7 +168,7 @@ struct KernelPolicy : ProblemType
 
 	// Operational details type for SRTS grid type
 	typedef util::SrtsSoaDetails<
-		SoaTuple,
+		TileTuple,
 		SrtsGridTuple> SrtsSoaDetails;
 
 };

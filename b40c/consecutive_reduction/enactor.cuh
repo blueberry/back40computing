@@ -92,8 +92,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to reduce.  If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to reduce.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to reduce (starting at offset 0)
 	 * @param h_num_compacted
@@ -105,9 +104,6 @@ public:
 	 * @param reduction_op
 	 * 		The function or functor type for binary scan, i.e., a type instance
 	 * 		that implements "T (const T&, const T&)"
-	 * @param identity_op
-	 * 		The function or functor type for the scan identity, i.e., a type instance
-	 * 		that implements "T ()"
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
 	 * 		PingPongStorage::KeyType instances, a type instance that
@@ -121,7 +117,6 @@ public:
 		typename PingPongStorage,
 		typename SizeT,
 		typename ReductionOp,
-		typename IdentityOp,
 		typename EqualityOp>
 	cudaError_t Reduce(
 		PingPongStorage 	&problem_storage,
@@ -129,7 +124,6 @@ public:
 		SizeT				*h_num_compacted,
 		SizeT				*d_num_compacted,
 		ReductionOp 		reduction_op,
-		IdentityOp 			identity_op,
 		EqualityOp			equality_op,
 		int 				max_grid_size = 0);
 
@@ -143,8 +137,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to reduce. If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to reduce.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to reduce (starting at offset 0)
 	 * @param h_num_compacted
@@ -156,9 +149,6 @@ public:
 	 * @param reduction_op
 	 * 		The function or functor type for binary scan, i.e., a type instance
 	 * 		that implements "T (const T&, const T&)"
-	 * @param identity_op
-	 * 		The function or functor type for the scan identity, i.e., a type instance
-	 * 		that implements "T ()"
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
 	 * 		PingPongStorage::KeyType instances, a type instance that
@@ -173,7 +163,6 @@ public:
 		typename PingPongStorage,
 		typename SizeT,
 		typename ReductionOp,
-		typename IdentityOp,
 		typename EqualityOp>
 	cudaError_t Reduce(
 		PingPongStorage 	&problem_storage,
@@ -181,7 +170,6 @@ public:
 		SizeT				*h_num_compacted,
 		SizeT				*d_num_compacted,
 		ReductionOp 		reduction_op,
-		IdentityOp 			identity_op,
 		EqualityOp			equality_op,
 		int 				max_grid_size = 0);
 
@@ -192,8 +180,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to reduce.  If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to reduce.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to reduce (starting at offset 0)
 	 * @param h_num_compacted
@@ -205,9 +192,6 @@ public:
 	 * @param reduction_op
 	 * 		The function or functor type for binary scan, i.e., a type instance
 	 * 		that implements "T (const T&, const T&)"
-	 * @param identity_op
-	 * 		The function or functor type for the scan identity, i.e., a type instance
-	 * 		that implements "T ()"
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
 	 * 		PingPongStorage::KeyType instances, a type instance that
@@ -226,7 +210,6 @@ public:
 		typename Policy::SizeT				*h_num_compacted,
 		typename Policy::SizeT				*d_num_compacted,
 		typename Policy::ReductionOp 		reduction_op,
-		typename Policy::IdentityOp 		identity_op,
 		typename Policy::EqualityOp			equality_op,
 		int 								max_grid_size = 0);
 
@@ -246,7 +229,6 @@ struct Detail : ProblemType
 {
 	typedef typename ProblemType::SizeT 		SizeT;
 	typedef typename ProblemType::ReductionOp 	ReductionOp;
-	typedef typename ProblemType::IdentityOp 	IdentityOp;
 	typedef typename ProblemType::EqualityOp 	EqualityOp;
 
 	typedef util::PingPongStorage<
@@ -260,7 +242,6 @@ struct Detail : ProblemType
 	SizeT				*h_num_compacted;
 	SizeT				*d_num_compacted;
 	ReductionOp			reduction_op;
-	IdentityOp			identity_op;
 	EqualityOp			equality_op;
 	int			 		max_grid_size;
 
@@ -272,7 +253,6 @@ struct Detail : ProblemType
 		SizeT 				*h_num_compacted,
 		SizeT 				*d_num_compacted,
 		ReductionOp			reduction_op,
-		IdentityOp			identity_op,
 		EqualityOp			equality_op,
 		int 				max_grid_size = 0) :
 			enactor(enactor),
@@ -281,7 +261,6 @@ struct Detail : ProblemType
 			d_num_compacted(d_num_compacted),
 			problem_storage(problem_storage),
 			reduction_op(reduction_op),
-			identity_op(identity_op),
 			equality_op(equality_op),
 			max_grid_size(max_grid_size)
 	{}
@@ -388,6 +367,11 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
+	// Make sure we have a valid policy
+	if (!Policy::VALID) {
+		return cudaErrorInvalidConfiguration;
+	}
+
 	// Compute sweep grid size
 	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
@@ -415,20 +399,18 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		}
 	}
 
-	bool allocate_output_values = (detail.problem_storage.d_values[detail.problem_storage.selector ^ 1] == NULL);
+	if (detail.d_num_compacted == NULL) {
+		// Write out compacted size to the last element of our flag spine instead
+		detail.d_num_compacted = ((SizeT*) flag_spine()) + spine_elements - 1;
+	}
 
 	cudaError_t retval = cudaSuccess;
 	do {
 
-		if ((work.grid_size == 1) && (!allocate_output_values)) {
+		if (work.grid_size == 1) {
 
 			// Single-CTA, single-grid operation
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
-
-			if (detail.d_num_compacted == NULL) {
-				// Write out compacted size to our spine instead
-				detail.d_num_compacted = (SizeT*) flag_spine();
-			}
 
 			SingleKernel<<<1, Single::THREADS, 0>>>(
 				detail.problem_storage.d_keys[detail.problem_storage.selector],
@@ -438,15 +420,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.d_num_compacted,
 				detail.num_elements,
 				detail.reduction_op,
-				detail.identity_op,
 				detail.equality_op);
-
-			// Copy out compacted size if necessary
-			if (detail.h_num_compacted != NULL) {
-				if (util::B40CPerror(cudaMemcpy(
-						detail.h_num_compacted, detail.d_num_compacted, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
-					"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__)) break;
-			}
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
@@ -477,7 +451,6 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				(ValueType*) partial_spine(),
 				(SizeT*) flag_spine(),
 				detail.reduction_op,
-				detail.identity_op,
 				detail.equality_op,
 				work);
 
@@ -490,33 +463,9 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				(SizeT*) flag_spine(),
 				(SizeT*) flag_spine(),
 				spine_elements,
-				detail.reduction_op,
-				detail.identity_op);
+				detail.reduction_op);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
-
-			// Copy out compacted size and/or allocate output values if necessary
-			if ((detail.h_num_compacted != NULL) || allocate_output_values) {
-
-				// Copy out compacted size
-				SizeT h_num_compacted;
-				if (util::B40CPerror(cudaMemcpy(
-						&h_num_compacted,
-						((SizeT*) flag_spine()) + grid_size[0],
-						sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
-					"Enactor cudaMemcpy spine[grid_size] failed: ", __FILE__, __LINE__)) break;
-
-				// Set caller's output parameter for compacted size
-				if (detail.h_num_compacted) detail.h_num_compacted[0] = h_num_compacted;
-
-				// Allocate output values
-				if (allocate_output_values) {
-					if (util::B40CPerror(cudaMalloc(
-							(void**) &detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
-							sizeof(ValueType) * h_num_compacted),
-						"Enactor cudaMalloc d_values failed: ", __FILE__, __LINE__)) break;
-				}
-			}
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
@@ -528,12 +477,22 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				(SizeT*) flag_spine(),
 				detail.d_num_compacted,
 				detail.reduction_op,
-				detail.identity_op,
 				detail.equality_op,
 				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
+
+		// Copy out compacted size if necessary
+		if (detail.h_num_compacted != NULL) {
+			if (util::B40CPerror(cudaMemcpy(
+					detail.h_num_compacted,
+					detail.d_num_compacted,
+					sizeof(SizeT) * 1,
+					cudaMemcpyDeviceToHost),
+				"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__)) break;
+		}
+
 	} while (0);
 
 	return retval;
@@ -552,7 +511,6 @@ cudaError_t Enactor::Reduce(
 	typename Policy::SizeT				*h_num_compacted,
 	typename Policy::SizeT				*d_num_compacted,
 	typename Policy::ReductionOp 		reduction_op,
-	typename Policy::IdentityOp 		identity_op,
 	typename Policy::EqualityOp			equality_op,
 	int 								max_grid_size)
 {
@@ -563,7 +521,6 @@ cudaError_t Enactor::Reduce(
 		h_num_compacted,
 		d_num_compacted,
 		reduction_op,
-		identity_op,
 		equality_op,
 		max_grid_size);
 
@@ -579,7 +536,6 @@ template <
 	typename PingPongStorage,
 	typename SizeT,
 	typename ReductionOp,
-	typename IdentityOp,
 	typename EqualityOp>
 cudaError_t Enactor::Reduce(
 	PingPongStorage 	&problem_storage,
@@ -587,7 +543,6 @@ cudaError_t Enactor::Reduce(
 	SizeT				*h_num_compacted,
 	SizeT				*d_num_compacted,
 	ReductionOp 		reduction_op,
-	IdentityOp 			identity_op,
 	EqualityOp			equality_op,
 	int 				max_grid_size)
 {
@@ -596,7 +551,6 @@ cudaError_t Enactor::Reduce(
 		typename PingPongStorage::ValueType,
 		SizeT,
 		ReductionOp,
-		IdentityOp,
 		EqualityOp> ProblemType;
 
 	Detail<ProblemType, Enactor> detail(
@@ -606,7 +560,6 @@ cudaError_t Enactor::Reduce(
 		h_num_compacted,
 		d_num_compacted,
 		reduction_op,
-		identity_op,
 		equality_op,
 		max_grid_size);
 
@@ -623,7 +576,6 @@ template <
 	typename PingPongStorage,
 	typename SizeT,
 	typename ReductionOp,
-	typename IdentityOp,
 	typename EqualityOp>
 cudaError_t Enactor::Reduce(
 	PingPongStorage 	&problem_storage,
@@ -631,7 +583,6 @@ cudaError_t Enactor::Reduce(
 	SizeT				*h_num_compacted,
 	SizeT				*d_num_compacted,
 	ReductionOp 		reduction_op,
-	IdentityOp 			identity_op,
 	EqualityOp			equality_op,
 	int 				max_grid_size)
 {
@@ -641,7 +592,6 @@ cudaError_t Enactor::Reduce(
 		h_num_compacted,
 		d_num_compacted,
 		reduction_op,
-		identity_op,
 		equality_op,
 		max_grid_size);
 }

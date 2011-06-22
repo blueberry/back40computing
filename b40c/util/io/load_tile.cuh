@@ -38,7 +38,7 @@ namespace io {
 
 
 /**
- * Load a tile of items and initialize discontinuity flags
+ * Load a tile of items
  */
 template <
 	int LOG_LOADS_PER_TILE, 									// Number of vector loads (log)
@@ -119,7 +119,7 @@ struct LoadTile
 		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			const T &oob_default,
+			T oob_default,
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
@@ -134,120 +134,6 @@ struct LoadTile
 
 			Iterate<LOAD, 1>::template LoadValid<T, Transform>(
 				data, oob_default, d_in, guarded_elements);
-		}
-
-		// Vector with discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename VectorType,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			VectorType vectors[], 
-			VectorType *d_in_vectors,
-			EqualityOp equality_op)
-		{
-			// Load the vector
-			ModifiedLoad<CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors);
-
-			// Process first vec element
-			T current = data[LOAD][0];
-
-			if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
-
-				// First load of first tile of first CTA: discontinuity
-				flags[LOAD][0] = 1;
-
-			} else {
-
-				// Get the previous vector element
-				T *d_ptr = (T*) d_in_vectors;
-				T previous;
-				ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
-
-				// Initialize discontinuity flag
-				flags[LOAD][0] = !equality_op(previous, current);
-			}
-
-			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, vectors, d_in_vectors, equality_op);
-		}
-
-		// With discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			EqualityOp equality_op)
-		{
-			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
-
-			ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
-
-			if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
-
-				// First load of first tile of first CTA: discontinuity
-				flags[LOAD][0] = 1;
-
-			} else {
-
-				// Get the previous vector element (which is in range b/c this one is in range)
-				T previous;
-				ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + thread_offset - 1);
-				flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
-			}
-
-			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, equality_op);
-		}
-
-		// With discontinuity flags (guarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename SizeT,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			const SizeT &guarded_elements,
-			const Flag &oob_default_flag,
-			EqualityOp equality_op)
-		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
-
-			if (thread_offset < guarded_elements) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
-
-				if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
-
-					// First load of first tile of first CTA: discontinuity
-					flags[LOAD][0] = 1;
-
-				} else {
-
-					// Get the previous vector element (which is in range b/c this one is in range)
-					T previous;
-					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_in + thread_offset - 1);
-					flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
-				}
-
-			} else {
-				flags[LOAD][0] = oob_default_flag;
-			}
-
-			Iterate<LOAD, 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 
@@ -308,7 +194,7 @@ struct LoadTile
 		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			const T &oob_default,
+			T oob_default,
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
@@ -323,85 +209,6 @@ struct LoadTile
 
 			Iterate<LOAD, VEC + 1>::template LoadValid<T, Transform>(
 				data, oob_default, d_in, guarded_elements);
-		}
-
-		// Vector with discontinuity flags
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename VectorType,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			VectorType vectors[], 
-			VectorType *d_in_vectors,
-			EqualityOp equality_op)
-		{
-			T current = data[LOAD][VEC];
-			T previous = data[LOAD][VEC - 1];
-			flags[LOAD][VEC] = !equality_op(previous, current);
-
-			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, vectors, d_in_vectors, equality_op);
-		}
-
-		// With discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			EqualityOp equality_op)
-		{
-			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
-
-			ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
-
-			T previous = data[LOAD][VEC - 1];
-			T current = data[LOAD][VEC];
-			flags[LOAD][VEC] = !equality_op(previous, current);
-
-			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, equality_op);
-		}
-
-		// With discontinuity flags (guarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename SizeT,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			const SizeT &guarded_elements,
-			const Flag &oob_default_flag,
-			EqualityOp equality_op)
-		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
-
-			if (thread_offset < guarded_elements) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
-
-				T previous = data[LOAD][VEC - 1];
-				T current = data[LOAD][VEC];
-				flags[LOAD][VEC] = !equality_op(previous, current);
-
-			} else {
-
-				flags[LOAD][VEC] = oob_default_flag;
-			}
-
-			Iterate<LOAD, VEC + 1>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 
@@ -448,65 +255,12 @@ struct LoadTile
 		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			const T &oob_default,
+			T oob_default,
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
 			Iterate<LOAD + 1, 0>::template LoadValid<T, Transform>(
 				data, oob_default, d_in, guarded_elements);
-		}
-
-		// Vector with discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename VectorType,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			VectorType vectors[], 
-			VectorType *d_in_vectors,
-			EqualityOp equality_op)
-		{
-			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, vectors, d_in_vectors + ACTIVE_THREADS, equality_op);
-		}
-
-		// With discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			EqualityOp equality_op)
-		{
-			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, equality_op);
-		}
-
-		// With discontinuity flags (guarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename SizeT,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			const SizeT &guarded_elements,
-			const Flag &oob_default_flag,
-			EqualityOp equality_op)
-		{
-			Iterate<LOAD + 1, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in, guarded_elements, oob_default_flag, equality_op);
 		}
 	};
 	
@@ -540,50 +294,9 @@ struct LoadTile
 		template <typename T, void Transform(T&), typename SizeT>
 		static __device__ __forceinline__ void LoadValid(
 			T data[][LOAD_VEC_SIZE],
-			const T &oob_default,
+			T oob_default,
 			T *d_in,
 			const SizeT &guarded_elements) {}
-
-		// Vector with discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename VectorType,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			VectorType vectors[], 
-			VectorType *d_in_vectors,
-			EqualityOp equality_op) {}
-
-		// With discontinuity flags (unguarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			EqualityOp equality_op) {}
-
-		// With discontinuity flags (guarded)
-		template <
-			bool FIRST_TILE,
-			typename T,
-			typename Flag,
-			typename SizeT,
-			typename EqualityOp>
-		static __device__ __forceinline__ void LoadDiscontinuity(
-			T data[][LOAD_VEC_SIZE],
-			Flag flags[][LOAD_VEC_SIZE],
-			T *d_in,
-			const SizeT &guarded_elements,
-			const Flag &oob_default_flag,
-			EqualityOp equality_op) {}
 	};
 
 
@@ -651,7 +364,7 @@ struct LoadTile
 		T *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
-		const T &oob_default)
+		T oob_default)
 	{
 		if (guarded_elements >= TILE_SIZE) {
 			LoadValid<T, Transform>(data, d_in, cta_offset);
@@ -695,7 +408,7 @@ struct LoadTile
 		T *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
-		const T &oob_default)
+		T oob_default)
 	{
 		LoadValid<T, Operators<T>::NopTransform>(
 			data, d_in, cta_offset, guarded_elements, oob_default);
@@ -717,74 +430,6 @@ struct LoadTile
 		LoadValid<T, Operators<T>::NopTransform, int>(
 			data, d_in, cta_offset, guarded_elements);
 	}
-
-
-	/**
-	 * Load a full tile and initialize discontinuity flags when values change
-	 * between consecutive elements
-	 */
-	template <
-		bool FIRST_TILE,								// Whether or not this is the first tile loaded by the CTA
-		typename T,										// Tile type
-		typename Flag,									// Discontinuity flag type
-		typename SizeT,
-		typename EqualityOp>
-	static __device__ __forceinline__ void LoadDiscontinuity(
-		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
-		T *d_in,
-		SizeT cta_offset,
-		EqualityOp equality_op)
-	{
-		const size_t MASK = ((sizeof(T) * 8 * LOAD_VEC_SIZE) - 1);
-
-		if ((CHECK_ALIGNMENT) && (LOAD_VEC_SIZE > 1) && (((size_t) d_in) & MASK)) {
-
-			Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in + cta_offset, equality_op);
-
-		} else {
-
-			// Use an aliased pointer to keys array to perform built-in vector loads
-			typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
-
-			VectorType *vectors = (VectorType *) data;
-			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
-
-			Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, vectors, d_in_vectors, equality_op);
-		}
-	}
-
-	/**
-	 * Load guarded_elements of a tile and initialize discontinuity flags when
-	 * values change between consecutive elements
-	 */
-	template <
-		bool FIRST_TILE,								// Whether or not this is the first tile loaded by the CTA
-		typename T,										// Tile type
-		typename Flag,									// Discontinuity flag type
-		typename SizeT,									// Integer type for indexing into global arrays
-		typename EqualityOp>
-	static __device__ __forceinline__ void LoadDiscontinuity(
-		T data[][LOAD_VEC_SIZE],
-		Flag flags[][LOAD_VEC_SIZE],
-		T *d_in,
-		SizeT cta_offset,
-		const SizeT &guarded_elements,
-		const Flag &oob_default_flag,
-		EqualityOp equality_op)
-	{
-		if (guarded_elements >= TILE_SIZE) {
-
-			LoadDiscontinuity<FIRST_TILE>(data, flags, d_in, cta_offset, equality_op);
-
-		} else {
-
-			Iterate<0, 0>::template LoadDiscontinuity<FIRST_TILE>(
-				data, flags, d_in + cta_offset, guarded_elements, oob_default_flag, equality_op);
-		}
-	} 
 };
 
 

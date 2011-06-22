@@ -88,8 +88,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to trim.  If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
 	 * @param h_num_compacted
@@ -129,8 +128,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to trim. If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
 	 * @param h_num_compacted
@@ -168,8 +166,7 @@ public:
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
-	 * 		problem to trim.  If the output "pong" arrays are NULL, the
-	 * 		enactor will allocate the appropriately-reduced storage for them.
+	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
 	 * @param h_num_compacted
@@ -347,6 +344,11 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
+	// Make sure we have a valid policy
+	if (!Policy::VALID) {
+		return cudaErrorInvalidConfiguration;
+	}
+
 	// Compute sweep grid size
 	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
@@ -374,21 +376,18 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		}
 	}
 
-	bool allocate_output_values = (!Policy::KEYS_ONLY) &&
-		(detail.problem_storage.d_values[detail.problem_storage.selector ^ 1] == NULL);
+	if (detail.d_num_compacted == NULL) {
+		// Write out compacted size to the last element of our flag spine instead
+		detail.d_num_compacted = ((SizeT*) spine()) + spine_elements - 1;
+	}
 
 	cudaError_t retval = cudaSuccess;
 	do {
 
-		if ((work.grid_size == 1) && (!allocate_output_values)) {
+		if (work.grid_size == 1) {
 
 			// Single-CTA, single-grid operation
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
-
-			if (detail.d_num_compacted == NULL) {
-				// Write out compacted size to our spine instead
-				detail.d_num_compacted = (SizeT*) spine();
-			}
 
 			SingleKernel<<<1, Single::THREADS, 0>>>(
 				detail.problem_storage.d_keys[detail.problem_storage.selector],
@@ -398,13 +397,6 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.d_num_compacted,
 				detail.num_elements,
 				detail.equality_op);
-
-			// Copy out compacted size if necessary
-			if (detail.h_num_compacted != NULL) {
-				if (util::B40CPerror(cudaMemcpy(
-						detail.h_num_compacted, detail.d_num_compacted, sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
-					"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__)) break;
-			}
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__))) break;
 
@@ -444,29 +436,6 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__))) break;
 
-			// Copy out compacted size and/or allocate output values if necessary
-			if ((detail.h_num_compacted != NULL) || allocate_output_values) {
-
-				// Copy out compacted size
-				SizeT h_num_compacted;
-				if (util::B40CPerror(cudaMemcpy(
-						&h_num_compacted,
-						((SizeT*) spine()) + grid_size[0],
-						sizeof(SizeT) * 1, cudaMemcpyDeviceToHost),
-					"Enactor cudaMemcpy spine[grid_size] failed: ", __FILE__, __LINE__)) break;
-
-				// Set caller's output parameter for compacted size
-				if (detail.h_num_compacted) detail.h_num_compacted[0] = h_num_compacted;
-
-				// Allocate output values
-				if (allocate_output_values) {
-					if (util::B40CPerror(cudaMalloc(
-							(void**) &detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
-							sizeof(ValueType) * h_num_compacted),
-						"Enactor cudaMalloc d_values failed: ", __FILE__, __LINE__)) break;
-				}
-			}
-
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				detail.problem_storage.d_keys[detail.problem_storage.selector],
@@ -480,6 +449,17 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__))) break;
 		}
+
+		// Copy out compacted size if necessary
+		if (detail.h_num_compacted != NULL) {
+			if (util::B40CPerror(cudaMemcpy(
+					detail.h_num_compacted,
+					detail.d_num_compacted,
+					sizeof(SizeT) * 1,
+					cudaMemcpyDeviceToHost),
+				"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__)) break;
+		}
+
 	} while (0);
 
 	return retval;

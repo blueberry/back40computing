@@ -275,6 +275,11 @@ cudaError_t Enactor::Copy(
 	typedef typename Policy::T 				T;
 	typedef typename Policy::SizeT 			SizeT;
 
+	// Make sure we have a valid policy
+	if (!Policy::VALID) {
+		return cudaErrorInvalidConfiguration;
+	}
+
 	// Compute sweep grid size
 	int grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Policy::SCHEDULE_GRANULARITY, Policy::CTA_OCCUPANCY>(num_elements, max_grid_size) :

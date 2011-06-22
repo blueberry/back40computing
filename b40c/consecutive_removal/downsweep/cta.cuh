@@ -28,9 +28,11 @@
 
 #include <b40c/util/scan/cooperative_scan.cuh>
 #include <b40c/util/operators.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/io/scatter_tile.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/load_tile_discontinuity.cuh>
 #include <b40c/util/io/store_tile.cuh>
 #include <b40c/util/io/two_phase_scatter_tile.cuh>
 
@@ -123,17 +125,20 @@ struct Cta
 			Cta *cta)
 		{
 			// Load keys, initializing discontinuity head_flags
-			util::io::LoadTile<
+			util::io::LoadTileDiscontinuity<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
-				KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
+				KernelPolicy::CHECK_ALIGNMENT,
+				FIRST_TILE,
+				false>::LoadValid(			// Do not set flag for first oob element
 					keys,
 					head_flags,
 					cta->d_in_keys,
 					cta_offset,
-					guarded_elements);
+					guarded_elements,
+					cta->equality_op);
 
 			// Copy discontinuity head_flags into ranks
 			util::io::InitializeTile<
@@ -153,13 +158,14 @@ struct Cta
 
 			// 2-phase scatter keys
 			util::io::TwoPhaseScatterTile<
-				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER,
-				KernelPolicy::CHECK_ALIGNMENT>(
-					(KeyType *) keys,
-					(LocalFlag *) head_flags,
-					(RankType *) ranks,
+				KernelPolicy::CHECK_ALIGNMENT>::Scatter(
+					keys,
+					head_flags,
+					ranks,
 					unique_elements,
 					cta->smem_storage.key_exchange,
 					cta->d_out_keys,
@@ -184,13 +190,14 @@ struct Cta
 
 				// 2-phase scatter values
 				util::io::TwoPhaseScatterTile<
-					KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+					KernelPolicy::LOG_LOADS_PER_TILE,
+					KernelPolicy::LOG_LOAD_VEC_SIZE,
 					KernelPolicy::THREADS,
 					KernelPolicy::WRITE_MODIFIER,
-					KernelPolicy::CHECK_ALIGNMENT>(
-						(ValueType *) values,
-						(LocalFlag *) head_flags,
-						(RankType *) ranks,
+					KernelPolicy::CHECK_ALIGNMENT>::Scatter(
+						values,
+						head_flags,
+						ranks,
 						unique_elements,
 						cta->smem_storage.value_exchange,
 						cta->d_out_values,
@@ -236,12 +243,14 @@ struct Cta
 			Cta *cta)
 		{
 			// Load keys tile, initializing discontinuity head_flags
-			util::io::LoadTile<
+			util::io::LoadTileDiscontinuity<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
-				KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
+				KernelPolicy::CHECK_ALIGNMENT,
+				FIRST_TILE,
+				false>::LoadValid(			// Do not set flag for first oob element
 					keys,
 					head_flags,
 					cta->d_in_keys,
@@ -264,13 +273,14 @@ struct Cta
 
 			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_keys,
-					(KeyType*) keys,						// Treat as linear arrays
-					(LocalFlag*) head_flags,
-					(RankType*) ranks);
+					keys,
+					head_flags,
+					ranks);
 
 			if (!util::Equals<ValueType, util::NullType>::VALUE) {
 
@@ -288,13 +298,14 @@ struct Cta
 
 				// Scatter valid values directly to global output, predicated on head_flags
 				util::io::ScatterTile<
-					KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+					KernelPolicy::LOG_LOADS_PER_TILE,
+					KernelPolicy::LOG_LOAD_VEC_SIZE,
 					KernelPolicy::THREADS,
 					KernelPolicy::WRITE_MODIFIER>::Scatter(
 						cta->d_out_values,
-						(ValueType*) values,				// Treat as linear arrays
-						(LocalFlag*) head_flags,
-						(RankType*) ranks);
+						values,
+						head_flags,
+						ranks);
 			}
 		}
 	};

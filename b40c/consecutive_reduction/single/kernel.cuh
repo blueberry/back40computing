@@ -44,13 +44,12 @@ __device__ __forceinline__ void SinglePass(
 	typename KernelPolicy::SizeT			*d_num_compacted,
 	typename KernelPolicy::SizeT 			num_elements,
 	typename KernelPolicy::ReductionOp 		reduction_op,
-	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::EqualityOp		equality_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef downsweep::Cta<KernelPolicy> 			Cta;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -63,7 +62,7 @@ __device__ __forceinline__ void SinglePass(
 		d_in_values,
 		d_out_values,
 		d_num_compacted,
-		SoaScanOp(reduction_op, identity_op),
+		SoaScanOperator(reduction_op),
 		equality_op);
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
@@ -98,7 +97,6 @@ void Kernel(
 	typename KernelPolicy::SizeT			*d_num_compacted,
 	typename KernelPolicy::SizeT 			num_elements,
 	typename KernelPolicy::ReductionOp 		reduction_op,
-	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::EqualityOp		equality_op)
 {
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -111,7 +109,6 @@ void Kernel(
 		d_num_compacted,
 		num_elements,
 		reduction_op,
-		identity_op,
 		equality_op,
 		smem_storage);
 }

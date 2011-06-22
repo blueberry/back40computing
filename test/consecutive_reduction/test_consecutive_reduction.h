@@ -47,12 +47,6 @@ struct Sum
 	{
 		return a + b;
 	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return 0;
-	}
 };
 
 template <typename T>
@@ -63,18 +57,13 @@ struct Max
 	{
 		return (a > b) ? a : b;
 	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return 0;
-	}
 };
 
 
 template <typename T>
 struct Equality
 {
+	// Equality test
 	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
 	{
 		return a == b;
@@ -95,14 +84,12 @@ template <
 	typename PingPongStorage,
 	typename SizeT,
 	typename ReductionOp,
-	typename IdentityOp,
 	typename EqualityOp>
 double TimedConsecutiveReduction(
 	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
 	ReductionOp scan_op,
-	IdentityOp identity_op,
 	EqualityOp equality_op,
 	int max_ctas,
 	bool verbose,
@@ -157,7 +144,6 @@ double TimedConsecutiveReduction(
 		&gpu_num_compacted,
 		d_num_compacted,
 		scan_op,
-		identity_op,
 		equality_op,
 		max_ctas);
 	enactor.DEBUG = false;
@@ -178,7 +164,6 @@ double TimedConsecutiveReduction(
 			(SizeT *) NULL,
 			d_num_compacted,
 			scan_op,
-			identity_op,
 			equality_op,
 			max_ctas);
 

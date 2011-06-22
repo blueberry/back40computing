@@ -351,6 +351,11 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
 	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
 
+	// Make sure we have a valid policy
+	if (!Policy::VALID) {
+		return cudaErrorInvalidConfiguration;
+	}
+
 	// Compute sweep grid size
 	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
 		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :

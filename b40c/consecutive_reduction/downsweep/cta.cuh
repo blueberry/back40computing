@@ -30,6 +30,7 @@
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/load_tile_discontinuity.cuh>
 #include <b40c/util/io/store_tile.cuh>
 #include <b40c/util/io/scatter_tile.cuh>
 
@@ -54,7 +55,6 @@ struct Cta
 	typedef typename KernelPolicy::KeyType 				KeyType;
 	typedef typename KernelPolicy::ValueType			ValueType;
 	typedef typename KernelPolicy::SizeT 				SizeT;
-	typedef typename KernelPolicy::IdentityOp			IdentityOp;			// Value identity operator type
 	typedef typename KernelPolicy::EqualityOp			EqualityOp;
 
 	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
@@ -63,12 +63,12 @@ struct Cta
 	typedef typename KernelPolicy::RankType				RankType;			// Type for local SRTS prefix sum
 
 	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 			SoaTuple;
-	typedef typename KernelPolicy::SoaScanOp			SoaScanOp;
+	typedef typename KernelPolicy::TileTuple 			TileTuple;
+	typedef typename KernelPolicy::SoaScanOperator		SoaScanOperator;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
-		RankType (*)[KernelPolicy::LOAD_VEC_SIZE]> 		DataSoa;
+		RankType (*)[KernelPolicy::LOAD_VEC_SIZE]> 		TileSoa;
 
 	typedef typename KernelPolicy::SmemStorage 			SmemStorage;
 
@@ -77,21 +77,21 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Operational details for SRTS grid
-	SrtsSoaDetails 	srts_soa_details;
+	SrtsSoaDetails 		srts_soa_details;
 
 	// The spine value-flag tuple value we will accumulate (in raking threads only)
-	SpineSoaTuple 	carry;
+	SpineSoaTuple 		carry;
 
 	// Device pointers
-	KeyType 		*d_in_keys;
-	KeyType			*d_out_keys;
-	ValueType 		*d_in_values;
-	ValueType 		*d_out_values;
-	SizeT			*d_num_compacted;
+	KeyType 			*d_in_keys;
+	KeyType				*d_out_keys;
+	ValueType 			*d_in_values;
+	ValueType 			*d_out_values;
+	SizeT				*d_num_compacted;
 
 	// Operators
-	SoaScanOp 		soa_scan_op;
-	EqualityOp		equality_op;
+	SoaScanOperator 	soa_scan_op;
+	EqualityOp			equality_op;
 
 
 	//---------------------------------------------------------------------
@@ -187,18 +187,19 @@ struct Cta
 			Cta *cta)
 		{
 			// Load keys, initializing discontinuity head_flags
-			util::io::LoadTile<
+			util::io::LoadTileDiscontinuity<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
-				KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
+				KernelPolicy::CHECK_ALIGNMENT,
+				FIRST_TILE,
+				true>::LoadValid(			// Set flag for first oob element
 					keys,
 					head_flags,
 					cta->d_in_keys,
 					cta_offset,
 					guarded_elements,
-					cta->soa_scan_op.FlagIdentity(),
 					cta->equality_op);
 
 			// Load values
@@ -219,26 +220,39 @@ struct Cta
 				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
 
 			// SOA-scan tile of tuple pairs
-			util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
-				cta->srts_soa_details,
-				DataSoa(values, ranks),
-				cta->carry,							// Seed with carry, maintain carry in raking threads
-				cta->soa_scan_op);
+			if (FIRST_TILE && (blockIdx.x == 0)) {
 
-			// Translate encoded flag identity if necessary for first head flag of first tile of first CTA
-			if (SoaScanOp::TRANSLATE_FLAG_IDENTITY && FIRST_TILE && (blockIdx.x == 0) && (threadIdx.x == 0)) {
-				ranks[0][0] = 0;
+				// A single-CTA or first-CTA does not incorporate a seed partial from carry
+				// on the first tile (because either the spine does not exist or the first
+				// spine element is invalid)
+				util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
+					ScanTileWithCarry<false>(				// Assign carry
+						cta->srts_soa_details,
+						TileSoa(values, ranks),
+						cta->carry,							// maintain carry in raking threads
+						cta->soa_scan_op);
+			} else {
+
+				// Seed the soa scan with carry
+				util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
+					ScanTileWithCarry<true>(				// Update carry
+						cta->srts_soa_details,
+						TileSoa(values, ranks),
+						cta->carry,							// Seed with carry, maintain carry in raking threads
+						cta->soa_scan_op);
 			}
 
 			// Scatter valid keys directly to global output, predicated on head_flags
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_keys,
-					(KeyType*) keys,				// Treat as linear arrays
-					(LocalFlag*) head_flags,
-					(RankType*) ranks);
+					keys,
+					head_flags,
+					ranks,
+					guarded_elements);			// We explicitly want to restrict by guarded_elements
 
 			// Decrement scatter ranks for values
 			Iterate<0, 0>::DecrementRanks(this);
@@ -250,13 +264,14 @@ struct Cta
 
 			// Scatter valid reduced values directly to global output, predicated on head_flags
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_values,
-					(ValueType*) values,			// Treat as linear arrays
-					(LocalFlag*) head_flags,
-					(RankType*) ranks);
+					values,
+					head_flags,
+					ranks);						// We explicitly do not want to restrict by guarded_elements
 		}
 	};
 
@@ -275,7 +290,7 @@ struct Cta
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		SizeT			*d_num_compacted,
-		SoaScanOp		soa_scan_op,
+		SoaScanOperator		soa_scan_op,
 		EqualityOp		equality_op) :
 
 			srts_soa_details(
@@ -292,8 +307,7 @@ struct Cta
 			d_out_values(d_out_values),
 			d_num_compacted(d_num_compacted),
 			soa_scan_op(soa_scan_op),
-			equality_op(equality_op),
-			carry(soa_scan_op())				// Seed carry with identity
+			equality_op(equality_op)
 	{}
 
 
@@ -301,15 +315,15 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		KeyType 		*d_out_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_out_values,
-		SizeT			*d_num_compacted,
-		SoaScanOp		soa_scan_op,
-		EqualityOp		equality_op,
-		SpineSoaTuple	spine_partial) :
+		SmemStorage 		&smem_storage,
+		KeyType 			*d_in_keys,
+		KeyType 			*d_out_keys,
+		ValueType 			*d_in_values,
+		ValueType 			*d_out_values,
+		SizeT				*d_num_compacted,
+		SoaScanOperator		soa_scan_op,
+		EqualityOp			equality_op,
+		SpineSoaTuple		spine_partial) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -347,6 +361,41 @@ struct Cta
 	/**
 	 * Process work range of tiles
 	 */
+	template <bool FIRST_TILE>
+	__device__ __forceinline__ void ProcessLastTile(
+		util::CtaWorkLimits<SizeT> &work_limits,
+		SizeT cta_offset)
+	{
+		// Clean up last partial tile with guarded-io if necessary
+		if (work_limits.guarded_elements) {
+
+			ProcessTile<FIRST_TILE>(
+				cta_offset,
+				work_limits.guarded_elements);
+
+			// Output the number of compacted items
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t1 - 1, d_num_compacted);
+
+		} else if ((work_limits.last_block) && (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD)) {
+
+			// Partial-tile processing outputs the final reduced value.  If there is
+			// no partial work for the last CTA, it must instead write the final reduced value
+			// residing in its carry.t1 flag
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t0,
+				d_out_values + carry.t1 - 1);
+
+			// Output the number of compacted items
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				carry.t1, d_num_compacted);
+		}
+	}
+
+
+	/**
+	 * Process work range of tiles
+	 */
 	__device__ __forceinline__ void ProcessWorkRange(
 		util::CtaWorkLimits<SizeT> &work_limits)
 	{
@@ -365,33 +414,13 @@ struct Cta
 				cta_offset += KernelPolicy::TILE_ELEMENTS;
 			}
 
-			// Clean up last partial tile with guarded-io (not first tile)
-			if (work_limits.guarded_elements) {
-				ProcessTile<false>(
-					cta_offset,
-					work_limits.guarded_elements);
-			}
+			// Process last (partial) tile (not first tile)
+			ProcessLastTile<false>(work_limits, cta_offset);
 
 		} else {
 
-			// Clean up last partial tile with guarded-io (first tile)
-			ProcessTile<true>(
-				cta_offset,
-				work_limits.guarded_elements);
-		}
-
-		// The last block writes final values
-		if ((work_limits.last_block) &&
-			(threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) &&
-			(d_num_compacted != NULL))
-		{
-			// Output the final reduced value
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				carry.t0, d_out_values + carry.t1 - 1);
-
-			// Output the number of compacted items
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				carry.t1, d_num_compacted);
+			// Process last (partial) tile (first tile)
+			ProcessLastTile<true>(work_limits, cta_offset);
 		}
 	}
 };

@@ -25,9 +25,6 @@
 
 #pragma once
 
-#include <b40c/scan/problem_type.cuh>
-#include <b40c/util/soa_tuple.cuh>
-
 namespace b40c {
 namespace consecutive_reduction {
 
@@ -37,17 +34,17 @@ namespace consecutive_reduction {
 template <
 	typename _KeyType,
 	typename _ValueType,
-	typename SizeT,
-	typename ReductionOp,
-	typename IdentityOp,
+	typename _SizeT,
+	typename _ReductionOp,
 	typename _EqualityOp>
 
-struct ProblemType :
-	scan::ProblemType<_ValueType, SizeT, ReductionOp, IdentityOp, true>		// Inherit from regular scan problem type
+struct ProblemType
 {
 	// The type of data we are operating upon
 	typedef _KeyType 		KeyType;
 	typedef _ValueType 		ValueType;
+	typedef _SizeT			SizeT;
+	typedef _ReductionOp 	ReductionOp;
 	typedef _EqualityOp		EqualityOp;
 
 	// The size_t type of spine we're using

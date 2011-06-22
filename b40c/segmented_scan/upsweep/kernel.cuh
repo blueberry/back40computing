@@ -47,14 +47,9 @@ __device__ __forceinline__ void UpsweepPass(
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelPolicy> 					Cta;
-	typedef typename KernelPolicy::SizeT 		SizeT;
-	typedef typename KernelPolicy::SoaScanOp	SoaScanOp;
-
-	// Quit if we're the last threadblock (no need for it in upsweep)
-	if (blockIdx.x == gridDim.x - 1) {
-		return;
-	}
+	typedef Cta<KernelPolicy> 						Cta;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	// CTA processing abstraction
 	Cta cta(
@@ -63,13 +58,18 @@ __device__ __forceinline__ void UpsweepPass(
 		d_flags_in,
 		d_spine_partials,
 		d_spine_flags,
-		SoaScanOp(scan_op, identity_op));
+		SoaScanOperator(scan_op, identity_op));
 
 	// Determine our threadblock's work range
 	util::CtaWorkLimits<SizeT> work_limits;
 	work_decomposition.template GetCtaWorkLimits<
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
+
+	// Quit if we're the last threadblock (no need for it in upsweep).
+	if (work_limits.last_block) {
+		return;
+	}
 
 	cta.ProcessWorkRange(work_limits);
 }

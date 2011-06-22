@@ -146,7 +146,7 @@ struct KernelPolicy : _ProblemType
 
 
 	// Tuple of partial-flag type
-	typedef util::Tuple<SizeT, SizeT> SoaTuple;
+	typedef util::Tuple<SizeT, SizeT> TileTuple;
 
 
 	/**
@@ -154,18 +154,22 @@ struct KernelPolicy : _ProblemType
 	 */
 	struct SoaScanOp
 	{
+		enum {
+			IDENTITY_STRIDES = true,			// There is an "identity" region of warpscan storage exists for strides to index into
+		};
+
 		// SOA scan operator
-		__device__ __forceinline__ SoaTuple operator()(
-			const SoaTuple &first,
-			const SoaTuple &second)
+		__device__ __forceinline__ TileTuple operator()(
+			const TileTuple &first,
+			const TileTuple &second)
 		{
-			return SoaTuple(first.t0 + second.t0, first.t1 + second.t1);
+			return TileTuple(first.t0 + second.t0, first.t1 + second.t1);
 		}
 
 		// SOA identity operator
-		__device__ __forceinline__ SoaTuple operator()()
+		__device__ __forceinline__ TileTuple operator()()
 		{
-			return SoaTuple(0,0);
+			return TileTuple(0,0);
 		}
 	};
 
@@ -178,7 +182,7 @@ struct KernelPolicy : _ProblemType
 
 	// Operational details type for SRTS grid type
 	typedef util::SrtsSoaDetails<
-		SoaTuple,
+		TileTuple,
 		SrtsGridTuple> SrtsSoaDetails;
 
 

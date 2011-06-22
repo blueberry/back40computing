@@ -47,10 +47,10 @@ __device__ __forceinline__ void DownsweepPass(
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
 {
-	typedef Cta<KernelPolicy> 					Cta;
-	typedef typename KernelPolicy::T			T;
-	typedef typename KernelPolicy::SizeT 		SizeT;
-	typedef typename KernelPolicy::SoaScanOp	SoaScanOp;
+	typedef Cta<KernelPolicy> 						Cta;
+	typedef typename KernelPolicy::T				T;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	// Read the exclusive partial from our spine
 	T spine_partial;
@@ -63,7 +63,7 @@ __device__ __forceinline__ void DownsweepPass(
 		d_partials_in,
 		d_flags_in,
 		d_partials_out,
-		SoaScanOp(scan_op, identity_op),
+		SoaScanOperator(scan_op, identity_op),
 		spine_partial);
 
 	// Determine our threadblock's work range

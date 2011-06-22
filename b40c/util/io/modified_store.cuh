@@ -64,7 +64,7 @@ struct ModifiedStore
 	 * Store operation we will provide specializations for
 	 */
 	template <typename T>
-	__device__ __forceinline__ static void St(T &val, T *ptr)
+	__device__ __forceinline__ static void St(T val, T *ptr)
 	{
 		*ptr = val;
 	}
@@ -73,19 +73,19 @@ struct ModifiedStore
 	/**
 	 * Vec-4 stores for 64-bit types are implemented as two vec-2 stores
 	 */
-	__device__ __forceinline__ static void St(double4 &val, double4* ptr)
+	__device__ __forceinline__ static void St(double4 val, double4* ptr)
 	{
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.x), reinterpret_cast<double2*>(ptr));
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<double2*>(&val.z), reinterpret_cast<double2*>(ptr) + 1);
 	}
 
-	__device__ __forceinline__ static void St(ulonglong4 &val, ulonglong4* ptr)
+	__device__ __forceinline__ static void St(ulonglong4 val, ulonglong4* ptr)
 	{
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.x), reinterpret_cast<ulonglong2*>(ptr));
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<ulonglong2*>(&val.z), reinterpret_cast<ulonglong2*>(ptr) + 1);
 	}
 
-	__device__ __forceinline__ static void St(longlong4 &val, longlong4* ptr)
+	__device__ __forceinline__ static void St(longlong4 val, longlong4* ptr)
 	{
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.x), reinterpret_cast<longlong2*>(ptr));
 		ModifiedStore<CACHE_MODIFIER>::St(*reinterpret_cast<longlong2*>(&val.z), reinterpret_cast<longlong2*>(ptr) + 1);
@@ -101,17 +101,17 @@ struct ModifiedStore
 	 * Vector store ops
 	 */
 	#define B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
-		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
+		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
 		}
 
 	#define B40C_STORE_VEC2(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
-		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
+		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)));		\
 		}
 
 	#define B40C_STORE_VEC4(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
-		template<> template<> void ModifiedStore<st::modifier>::St(base_type &val, base_type* ptr) {											\
+		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)), #reg_mod(reinterpret_cast<cast_type&>(val.z)), #reg_mod(reinterpret_cast<cast_type&>(val.w)));		\
 		}
 

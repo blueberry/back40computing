@@ -29,6 +29,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/load_tile_discontinuity.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/reduction/soa/cooperative_soa_reduction.cuh>
@@ -54,12 +55,12 @@ struct Cta
 	typedef typename KernelPolicy::EqualityOp				EqualityOp;
 
 	typedef typename KernelPolicy::SrtsSoaDetails 			SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 				SoaTuple;
-	typedef typename KernelPolicy::SoaScanOp				SoaScanOp;
+	typedef typename KernelPolicy::TileTuple 				TileTuple;
+	typedef typename KernelPolicy::SoaScanOperator			SoaScanOperator;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
-		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 			DataSoa;
+		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 			TileSoa;
 
 	typedef typename KernelPolicy::SmemStorage 				SmemStorage;
 
@@ -72,7 +73,7 @@ struct Cta
 	SrtsSoaDetails 		srts_soa_details;
 
 	// The spine value-flag tuple value we will accumulate (in raking threads only)
-	SoaTuple 			carry;
+	TileTuple 			carry;
 
 	// Device pointers
 	KeyType 			*d_in_keys;
@@ -82,7 +83,7 @@ struct Cta
 	SizeT 				*d_spine_flags;
 
 	// Operators
-	SoaScanOp 			soa_scan_op;
+	SoaScanOperator 	soa_scan_op;
 	EqualityOp			equality_op;
 
 
@@ -94,13 +95,13 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_spine_partials,
-		SizeT 			*d_spine_flags,
-		SoaScanOp		soa_scan_op,
-		EqualityOp		equality_op) :
+		SmemStorage 		&smem_storage,
+		KeyType 			*d_in_keys,
+		ValueType 			*d_in_values,
+		ValueType 			*d_spine_partials,
+		SizeT 				*d_spine_flags,
+		SoaScanOperator		soa_scan_op,
+		EqualityOp			equality_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -115,8 +116,8 @@ struct Cta
 			d_spine_partials(d_spine_partials),
 			d_spine_flags(d_spine_flags),
 			soa_scan_op(soa_scan_op),
-			equality_op(equality_op),
-			carry(soa_scan_op()) {}
+			equality_op(equality_op)
+	{}
 
 
 	/**
@@ -132,18 +133,19 @@ struct Cta
 		SizeT			ranks[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];			// Tile of global scatter offsets
 
 		// Load keys, initializing discontinuity flags in ranks
-		util::io::LoadTile<
+		util::io::LoadTileDiscontinuity<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER,
-			KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
+			KernelPolicy::CHECK_ALIGNMENT,
+			FIRST_TILE,
+			false>::LoadValid(								// Do not set flag for first oob element
 				keys,
 				ranks,
 				d_in_keys,
 				cta_offset,
 				guarded_elements,
-				soa_scan_op.FlagIdentity(),
 				equality_op);
 
 		// Load values
@@ -156,14 +158,13 @@ struct Cta
 				values,
 				d_in_values,
 				cta_offset,
-				guarded_elements,
-				soa_scan_op().t0);							// Value identity
+				guarded_elements);
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::soa::CooperativeSoaTileReduction<KernelPolicy::LOAD_VEC_SIZE>::template
-			ReduceTileWithCarry<true>(						// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
+			ReduceTileWithCarry<!FIRST_TILE>(				// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
 				srts_soa_details,
-				DataSoa(values, ranks),
+				TileSoa(values, ranks),
 				carry,
 				soa_scan_op);								// Seed with carry
 
