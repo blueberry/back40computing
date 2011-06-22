@@ -223,12 +223,28 @@ struct CooperativeSoaGridScan<SrtsSoaDetails, NullType>
 					srts_soa_details.warpscan_partials,
 					scan_op);
 
+
 			// Seed exclusive partial with carry-in
 			if (REDUCE_INTO_CARRY) {
-				exclusive_partial = scan_op(carry, exclusive_partial);
-				carry = scan_op(carry, warpscan_total);			// Update carry
+
+				if (!ReductionOp::IDENTITY_STRIDES && (threadIdx.x == 0)) {
+
+					// Thread-zero can't use the exclusive partial from the warpscan
+					// because it contains garbage
+					exclusive_partial = carry;
+
+				} else {
+
+					// Seed exclusive partial with the carry partial
+					exclusive_partial = scan_op(carry, exclusive_partial);
+				}
+
+				// Update carry
+				carry = scan_op(carry, warpscan_total);
+
 			} else {
-				carry = warpscan_total;							// Set carry
+				// Set carry
+				carry = warpscan_total;
 			}
 
 			// Exclusive raking scan

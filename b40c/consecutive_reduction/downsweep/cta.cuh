@@ -374,8 +374,10 @@ struct Cta
 				work_limits.guarded_elements);
 
 			// Output the number of compacted items
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				carry.t1 - 1, d_num_compacted);
+			if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
+				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+					carry.t1 - 1, d_num_compacted);
+			}
 
 		} else if ((work_limits.last_block) && (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD)) {
 
