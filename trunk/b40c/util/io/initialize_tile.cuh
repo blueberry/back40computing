@@ -68,6 +68,29 @@ struct InitializeTile
 			target[LOAD][VEC] = datum;
 			Iterate<LOAD, VEC + 1>::Init(target, datum);
 		}
+
+		template <typename T, typename S, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			T target[][LOAD_VEC_SIZE],
+			S source[][LOAD_VEC_SIZE],
+			TransformOp transform_op)
+		{
+			target[LOAD][VEC] = transform_op(source[LOAD][VEC]);
+			Iterate<LOAD, VEC + 1>::Transform(target, source, transform_op);
+		}
+
+		template <typename SoaT, typename SoaS, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			SoaT target_soa,
+			SoaS source_soa,
+			TransformOp transform_op)
+		{
+			SoaS source;
+			source_soa.Get(s, LOAD, VEC);
+			SoaT target = transform_op(source);
+			target_soa.Set(target, LOAD, VEC);
+			Iterate<LOAD, VEC + 1>::Transform(target, source, transform_op);
+		}
 	};
 
 	// Iterate over loads
@@ -89,6 +112,24 @@ struct InitializeTile
 		{
 			Iterate<LOAD + 1, 0>::Init(target, datum);
 		}
+
+		template <typename T, typename S, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			T target[][LOAD_VEC_SIZE],
+			S source[][LOAD_VEC_SIZE],
+			TransformOp transform_op)
+		{
+			Iterate<LOAD + 1, 0>::Transform(target, source, transform_op);
+		}
+
+		template <typename SoaT, typename SoaS, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			SoaT target_soa,
+			SoaS source_soa,
+			TransformOp transform_op)
+		{
+			Iterate<LOAD + 1, 0>::Transform(target, source, transform_op);
+		}
 	};
 
 	// Terminate
@@ -104,6 +145,18 @@ struct InitializeTile
 		static __device__ __forceinline__ void Init(
 			T target[][LOAD_VEC_SIZE],
 			S datum) {}
+
+		template <typename T, typename S, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			T target[][LOAD_VEC_SIZE],
+			S source[][LOAD_VEC_SIZE],
+			TransformOp transform_op) {}
+
+		template <typename SoaT, typename SoaS, typename TransformOp>
+		static __device__ __forceinline__ void Transform(
+			SoaT target_soa,
+			SoaS source_soa,
+			TransformOp transform_op) {}
 	};
 
 
@@ -132,6 +185,32 @@ struct InitializeTile
 		S datum)
 	{
 		Iterate<0, 0>::Init(target, datum);
+	}
+
+
+	/**
+	 * Apply unary transform_op operator to source
+	 */
+	template <typename T, typename S, typename TransformOp>
+	static __device__ __forceinline__ void Transform(
+		T target[][LOAD_VEC_SIZE],
+		S source[][LOAD_VEC_SIZE],
+		TransformOp transform_op)
+	{
+		Iterate<0, 0>::Transform(target, source, transform_op);
+	}
+
+
+	/**
+	 * Apply structure-of-array transform_op operator to source
+	 */
+	template <typename SoaT, typename SoaS, typename TransformOp>
+	static __device__ __forceinline__ void Transform(
+		SoaT target_soa,
+		SoaS source_soa,
+		TransformOp transform_op)
+	{
+		Iterate<0, 0>::Transform(target, source, transform_op);
 	}
 };
 
