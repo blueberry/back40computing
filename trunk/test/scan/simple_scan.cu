@@ -62,6 +62,7 @@ struct Max
  */
 template <
 	bool EXCLUSIVE_SCAN,
+	bool COMMUTATIVE,
 	typename T,
 	typename SizeT,
 	typename ReductionOp,
@@ -74,7 +75,7 @@ void TemplatedSubroutineScan(
 	ReductionOp scan_op,
 	IdentityOp identity_op)
 {
-	scan_enactor.template Scan<EXCLUSIVE_SCAN>(
+	scan_enactor.template Scan<EXCLUSIVE_SCAN, COMMUTATIVE>(
 		d_dest, d_src, num_elements, scan_op, identity_op);
 }
 
@@ -105,6 +106,7 @@ int main(int argc, char** argv)
 	T h_src[NUM_ELEMENTS];
 	T h_reference[NUM_ELEMENTS];
 	Max<T> max_op;
+	const bool IS_COMMUTATIVE = true;		// the maximum operator is commutative
 
 	for (size_t i = 0; i < NUM_ELEMENTS; ++i) {
 		h_src[i] = i;
@@ -135,7 +137,7 @@ int main(int argc, char** argv)
 	//
 	// Example 1: Enact simple exclusive scan using internal tuning heuristics
 	//
-	scan_enactor.Scan<EXCLUSIVE_SCAN>(
+	scan_enactor.Scan<EXCLUSIVE_SCAN, IS_COMMUTATIVE>(
 		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
 	printf("Simple scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -144,7 +146,7 @@ int main(int argc, char** argv)
 	//
 	// Example 2: Enact simple exclusive scan using "large problem" tuning configuration
 	//
-	scan_enactor.Scan<EXCLUSIVE_SCAN, b40c::scan::LARGE_SIZE>(
+	scan_enactor.Scan<EXCLUSIVE_SCAN, IS_COMMUTATIVE, b40c::scan::LARGE_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 
 	printf("Large-tuned scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -153,7 +155,7 @@ int main(int argc, char** argv)
 	//
 	// Example 3: Enact simple exclusive scan using "small problem" tuning configuration
 	//
-	scan_enactor.Scan<EXCLUSIVE_SCAN, b40c::scan::SMALL_SIZE>(
+	scan_enactor.Scan<EXCLUSIVE_SCAN, IS_COMMUTATIVE, b40c::scan::SMALL_SIZE>(
 		d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
 	printf("Small-tuned scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -162,7 +164,7 @@ int main(int argc, char** argv)
 	//
 	// Example 4: Enact simple exclusive scan using a templated subroutine function
 	//
-	TemplatedSubroutineScan<EXCLUSIVE_SCAN>(
+	TemplatedSubroutineScan<EXCLUSIVE_SCAN, IS_COMMUTATIVE>(
 		scan_enactor, d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 	
 	printf("Templated subroutine scan: "); b40c::CompareDeviceResults(h_reference, d_dest, NUM_ELEMENTS); printf("\n");
@@ -173,7 +175,7 @@ int main(int argc, char** argv)
 	//
 	typedef Max<T> ReductionOp;
 	typedef Max<T> IdentityOp;
-	typedef b40c::scan::ProblemType<T, int, ReductionOp, IdentityOp, EXCLUSIVE_SCAN> ProblemType;
+	typedef b40c::scan::ProblemType<T, int, ReductionOp, IdentityOp, EXCLUSIVE_SCAN, IS_COMMUTATIVE> ProblemType;
 	typedef b40c::scan::Policy<
 		ProblemType,
 		b40c::scan::SM20,
@@ -183,7 +185,7 @@ int main(int argc, char** argv)
 		false,
 		false,
 		6,
-		8, 7, 1, 0,
+		8, 7, 1, 0, 5,
 		8, 0, 1, 5,
 		8, 7, 1, 0, 5> CustomPolicy;
 	
@@ -195,7 +197,7 @@ int main(int argc, char** argv)
 	//
 	// Example 6: Enact simple exclusive scan with misaligned inputs
 	//
-	scan_enactor.Scan<EXCLUSIVE_SCAN>(
+	scan_enactor.Scan<EXCLUSIVE_SCAN, IS_COMMUTATIVE>(
 		d_dest + 1, d_src + 1, NUM_ELEMENTS - 1, max_op, max_op);
 
 	printf("Misaligned scan: "); b40c::CompareDeviceResults(

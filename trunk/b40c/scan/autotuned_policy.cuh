@@ -162,7 +162,7 @@ struct AutotunedClassifier :
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 11,
-	  8, 7, 2, 2,
+	  8, 7, 2, 2, 5,
 	  5, 2, 0, 5,
 	  8, 7, 2, 2, 5>
 {
@@ -173,7 +173,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 10,
-	  8, 7, 1, 2,
+	  8, 7, 1, 2, 5,
 	  5, 2, 0, 5,
 	  8, 6, 2, 2, 5>
 {
@@ -184,7 +184,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
-	  8, 7, 2, 2,
+	  8, 7, 2, 2, 5,
 	  5, 2, 0, 5,
 	  8, 9, 1, 1, 5>
 {
@@ -195,7 +195,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 0, 1,
+	  8, 7, 0, 1, 5,
 	  5, 2, 0, 5,
 	  8, 5, 1, 2, 5>
 {
@@ -207,7 +207,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  8, 5, 2, 2,
+	  8, 5, 2, 2, 5,
 	  5, 2, 0, 5,
 	  8, 6, 2, 1, 5>
 {
@@ -218,7 +218,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  8, 5, 2, 2,
+	  8, 5, 2, 2, 5,
 	  5, 2, 0, 5,
 	  8, 5, 2, 2, 5>
 {
@@ -229,7 +229,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 5, 2, 1,
+	  8, 5, 2, 1, 5,
 	  5, 2, 0, 5,
 	  8, 5, 2, 1, 5>
 {
@@ -240,7 +240,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 7,
-	  8, 5, 1, 1,
+	  8, 5, 1, 1, 5,
 	  5, 2, 0, 5,
 	  8, 5, 0, 2, 5>
 {
@@ -256,7 +256,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 12,
-	  8, 8, 2, 2,
+	  8, 8, 2, 2, 5,
 	  6, 2, 0, 5,
 	  8, 8, 2, 1, 5>
 {
@@ -267,7 +267,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  8, 7, 1, 1,
+	  8, 7, 1, 1, 5,
 	  6, 2, 0, 5,
 	  8, 6, 2, 2, 5>
 {
@@ -278,7 +278,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 0, 1,
+	  8, 7, 0, 1, 5,
 	  6, 2, 0, 5,
 	  8, 7, 1, 0, 5>
 {
@@ -289,7 +289,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 1, 0,
+	  8, 7, 1, 0, 5,
 	  6, 2, 0, 5,
 	  8, 7, 1, 0, 5>
 {
@@ -302,7 +302,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  8, 6, 2, 1,
+	  8, 6, 2, 1, 5,
 	  6, 2, 0, 5,
 	  8, 6, 2, 2, 5>
 {
@@ -313,7 +313,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, true, false, 9,
-	  8, 6, 1, 2,
+	  8, 6, 1, 2, 5,
 	  6, 2, 0, 5,
 	  8, 5, 2, 2, 5>
 {
@@ -324,7 +324,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 5, 2, 0,
+	  8, 5, 2, 0, 5,
 	  6, 2, 0, 5,
 	  8, 6, 1, 1, 5>
 {
@@ -335,7 +335,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 6,
-	  8, 5, 0, 1,
+	  8, 5, 0, 1, 5,
 	  6, 2, 0, 5,
 	  8, 5, 1, 0, 5>
 {
@@ -373,6 +373,7 @@ __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 									*d_in,
 	typename ProblemType::T 									*d_spine,
 	typename ProblemType::ReductionOp 							scan_op,
+	typename ProblemType::IdentityOp 							identity_op,
 	util::CtaWorkDistribution<typename ProblemType::SizeT> 		work_decomposition)
 {
 	// Load the kernel policy type identified by the enum for this architecture
@@ -381,10 +382,11 @@ __global__ void TunedUpsweepKernel(
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
-	upsweep::UpsweepPass<KernelPolicy>(
+	upsweep::UpsweepPass<KernelPolicy>::Invoke(
 		d_in,
 		d_spine,
 		scan_op,
+		identity_op,
 		work_decomposition,
 		smem_storage);
 }
@@ -507,7 +509,7 @@ struct AutotunedPolicy :
 	typedef typename ProblemType::ReductionOp 	ReductionOp;
 	typedef typename ProblemType::IdentityOp 	IdentityOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
 	typedef void (*DownsweepKernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SingleKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);

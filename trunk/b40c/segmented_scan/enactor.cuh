@@ -507,7 +507,7 @@ cudaError_t Enactor::Scan(
 	IdentityOp identity_op,
 	int max_grid_size)
 {
-	typedef segmented_scan::ProblemType<
+	typedef ProblemType<
 		T,
 		Flag,
 		SizeT,

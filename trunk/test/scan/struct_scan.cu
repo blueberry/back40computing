@@ -83,6 +83,10 @@ struct MultiScan
 	{
 		return Foo();
 	}
+
+	enum {
+		NON_COMMUTATIVE = true,
+	};
 };
 
 
@@ -138,10 +142,10 @@ int main(int argc, char** argv)
 
 	// Enact simple exclusive scan using internal tuning heuristics
 	if (exclusive) {
-		scan_enactor.Scan<true>(
+		scan_enactor.Scan<true, MultiScan::NON_COMMUTATIVE>(
 			d_dest, d_src, num_elements, max_op, max_op);
 	} else {
-		scan_enactor.Scan<false>(
+		scan_enactor.Scan<false, MultiScan::NON_COMMUTATIVE>(
 			d_dest, d_src, num_elements, max_op, max_op);
 	}
 	

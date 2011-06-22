@@ -68,6 +68,7 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
+	int UPSWEEP_LOG_RAKING_THREADS,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
@@ -93,7 +94,7 @@ struct Policy : ProblemType
 	typedef typename ProblemType::ReductionOp ReductionOp;
 	typedef typename ProblemType::IdentityOp IdentityOp;
 
-	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
 	typedef void (*DownsweepKernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SingleKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
@@ -103,7 +104,7 @@ struct Policy : ProblemType
 	//---------------------------------------------------------------------
 
 	// Kernel config for the upsweep reduction kernel
-	typedef reduction::KernelPolicy <
+	typedef KernelPolicy <
 		ProblemType,
 		CUDA_ARCH,
 		true,								// Check alignment
@@ -111,9 +112,9 @@ struct Policy : ProblemType
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
+		UPSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		false,								// No workstealing: upsweep and downsweep CTAs need to process the same tiles
 		LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
@@ -123,7 +124,8 @@ struct Policy : ProblemType
 		SizeT,
 		ReductionOp,
 		IdentityOp,
-		true> SpineProblemType;
+		true,								// Exclusive
+		ProblemType::COMMUTATIVE> SpineProblemType;
 
 	// Kernel config for the spine scan kernel
 	typedef KernelPolicy <

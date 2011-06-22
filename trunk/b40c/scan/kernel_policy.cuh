@@ -123,8 +123,15 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		T 		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-		T 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		T 			warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		union {
+			struct {
+				T 		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+			};
+			struct {
+				T 		reduction_tree[THREADS];
+			};
+		};
 	};
 
 

@@ -83,7 +83,8 @@ struct Policy : ProblemType
 		int,								// spine scan SizeT
 		util::Sum<SizeT>,
 		util::Sum<SizeT>,
-		true> SpineProblemType;
+		true,								// exclusive
+		true> SpineProblemType;				// addition is commutative
 
 	// Kernel config for spine scan
 	typedef scan::KernelPolicy <
