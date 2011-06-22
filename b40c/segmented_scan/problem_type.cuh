@@ -25,9 +25,6 @@
 
 #pragma once
 
-#include <b40c/scan/problem_type.cuh>
-#include <b40c/util/soa_tuple.cuh>
-
 namespace b40c {
 namespace segmented_scan {
 
@@ -35,17 +32,23 @@ namespace segmented_scan {
  * Type of segmented scan problem
  */
 template <
-	typename T,				// Partial type
+	typename _T,			// Partial type
 	typename _Flag,			// Flag type
-	typename SizeT,
-	typename ReductionOp,
-	typename IdentityOp,
-	bool EXCLUSIVE>
-struct ProblemType :
-	scan::ProblemType<T, SizeT, ReductionOp, IdentityOp, EXCLUSIVE>		// Inherit from regular scan problem type
+	typename _SizeT,
+	typename _ReductionOp,
+	typename _IdentityOp,
+	bool _EXCLUSIVE>
+struct ProblemType
 {
-	// The type of flag we're using
-	typedef _Flag Flag;
+	typedef _T 				T;				// The type of data we are operating upon
+	typedef _Flag 			Flag;			// The type of flag we're using
+	typedef _SizeT 			SizeT;			// The integer type we should use to index into data arrays (e.g., size_t, uint32, uint64, etc)
+	typedef _ReductionOp 	ReductionOp;	// The function or functor type for binary reduction (implements "T op(const T&, const T&)")
+	typedef _IdentityOp 	IdentityOp;		// Identity operator type
+
+	enum {
+		EXCLUSIVE 			= _EXCLUSIVE,
+	};
 };
 
 

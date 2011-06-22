@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/scan/cta.cuh>
+#include <b40c/scan/downsweep/cta.cuh>
 
 namespace b40c {
 namespace scan {
@@ -44,7 +44,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef Cta<KernelPolicy> 					Cta;
+	typedef downsweep::Cta<KernelPolicy> 		Cta;
 	typedef typename KernelPolicy::SizeT 		SizeT;
 
 	// Exit if we're not the first CTA

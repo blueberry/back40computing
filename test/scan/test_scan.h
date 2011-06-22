@@ -52,6 +52,8 @@ struct Sum
 	{
 		return 0;
 	}
+
+	static const bool IS_COMMUTATIVE = true;
 };
 
 template <typename T>
@@ -68,6 +70,8 @@ struct Max
 	{
 		return 0;
 	}
+
+	static const bool IS_COMMUTATIVE = true;
 };
 
 
@@ -115,7 +119,7 @@ double TimedScan(
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	scan_enactor.DEBUG = true;
-	scan_enactor.template Scan<EXCLUSIVE, PROB_SIZE_GENRE>(
+	scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
 		d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
 	scan_enactor.DEBUG = false;
 
@@ -129,7 +133,7 @@ double TimedScan(
 		timer.Start();
 
 		// Call the scan API routine
-		scan_enactor.template Scan<EXCLUSIVE, PROB_SIZE_GENRE>(
+		scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
 			d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
 
 		// End timing record

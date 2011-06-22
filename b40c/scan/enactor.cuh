@@ -106,7 +106,8 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		bool EXCLUSIVE,
+		bool EXCLUSIVE,				// Whether or not to perform an exclusive (vs. inclusive) prefix scan
+		bool COMMUTATIVE,		// Whether or not the associative scan operator is non-commuatative (the commutative-only implementation is generally faster)
 		typename T,
 		typename SizeT,
 		typename ReductionOp,
@@ -145,7 +146,8 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		bool EXCLUSIVE,
+		bool EXCLUSIVE,				// Whether or not to perform an exclusive (vs. inclusive) prefix scan
+		bool COMMUTATIVE,		// Whether or not the associative scan operator is non-commuatative (the commutative-only implementation is generally faster)
 		ProbSizeGenre PROB_SIZE_GENRE,
 		typename T,
 		typename SizeT,
@@ -405,6 +407,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.d_src,
 				(T*) spine(),
 				detail.scan_op,
+				detail.identity_op,
 				work);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__))) break;
@@ -466,6 +469,7 @@ cudaError_t Enactor::Scan(
  */
 template <
 	bool EXCLUSIVE,
+	bool COMMUTATIVE,
 	ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
 	typename SizeT,
@@ -484,7 +488,8 @@ cudaError_t Enactor::Scan(
 		SizeT,
 		ReductionOp,
 		IdentityOp,
-		EXCLUSIVE> ProblemType;
+		EXCLUSIVE,
+		COMMUTATIVE> ProblemType;
 
 	Detail<ProblemType, Enactor> detail(
 		this,
@@ -506,6 +511,7 @@ cudaError_t Enactor::Scan(
  */
 template <
 	bool EXCLUSIVE,
+	bool COMMUTATIVE,
 	typename T,
 	typename SizeT,
 	typename ReductionOp,
@@ -518,7 +524,7 @@ cudaError_t Enactor::Scan(
 	IdentityOp identity_op,
 	int max_grid_size)
 {
-	return Scan<EXCLUSIVE, UNKNOWN_SIZE>(
+	return Scan<EXCLUSIVE, COMMUTATIVE, UNKNOWN_SIZE>(
 		d_dest,
 		d_src,
 		num_elements,

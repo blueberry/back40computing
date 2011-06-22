@@ -124,7 +124,8 @@ struct Policy : ProblemType
 		SpineSizeT,
 		util::Sum<SizeT>,
 		util::Sum<SizeT>,
-		true> SpineProblemType;				// Exclusive
+		true,								// Exclusive
+		true> SpineProblemType;				// Addition is commutative
 
 	// Kernel config for the spine consecutive removal kernel
 	typedef scan::KernelPolicy <

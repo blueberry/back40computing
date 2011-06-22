@@ -39,12 +39,14 @@ template <
 	typename SizeT,
 	typename ReductionOp,
 	typename _IdentityOp,
-	bool _EXCLUSIVE>
+	bool _EXCLUSIVE,				// Whether or not to perform an exclusive (vs. inclusive) prefix scan
+	bool _COMMUTATIVE>				// Whether or not the associative scan operator is commutative vs. non-commuatative (the commutative-only implementation is generally faster)
 struct ProblemType :
 	reduction::ProblemType<T, SizeT, ReductionOp>	// Inherit from reduction problem type
 {
 	enum {
-		EXCLUSIVE = _EXCLUSIVE,
+		EXCLUSIVE 			= _EXCLUSIVE,
+		COMMUTATIVE 		= _COMMUTATIVE,
 	};
 
 	typedef _IdentityOp IdentityOp;					// Identity operator type

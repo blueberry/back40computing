@@ -34,10 +34,11 @@
 
 namespace b40c {
 namespace scan {
+namespace downsweep {
 
 
 /**
- * Scan CTA
+ * Scan downsweep scan CTA
  */
 template <typename KernelPolicy>
 struct Cta
@@ -125,7 +126,7 @@ struct Cta
 		const SizeT &guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tile of scan elements
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		T partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
 		util::io::LoadTile<
@@ -134,7 +135,7 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
-				data,
+				partials,
 				d_in,
 				cta_offset,
 				guarded_elements);
@@ -144,7 +145,7 @@ struct Cta
 			KernelPolicy::LOAD_VEC_SIZE,
 			KernelPolicy::EXCLUSIVE>::ScanTileWithCarry(
 				srts_details,
-				data,
+				partials,
 				carry,
 				scan_op);
 
@@ -155,7 +156,7 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::Store(
-				data,
+				partials,
 				d_out,
 				cta_offset,
 				guarded_elements);
@@ -189,6 +190,7 @@ struct Cta
 };
 
 
+} // namespace downsweep
 } // namespace scan
 } // namespace b40c
 
