@@ -67,7 +67,8 @@ template <
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY,
-	bool _TWO_PHASE_SCATTER>
+	bool _TWO_PHASE_SCATTER,
+	bool CONSECUTIVE_SMEM_ASSIST>
 
 struct KernelPolicy : ProblemType
 {
@@ -121,8 +122,8 @@ struct KernelPolicy : ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
 		TWO_PHASE_SCATTER				= _TWO_PHASE_SCATTER,
-
 		CHECK_ALIGNMENT					= CHECK_ALIGNMENT,
+		CONSECUTIVE_SMEM_ASSIST			= CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	//
@@ -166,9 +167,15 @@ struct KernelPolicy : ProblemType
 			};
 
 			// Swap exchange arenas for two-phase scatter
-			KeyType 		key_exchange[TILE_ELEMENTS];
-			ValueType 		value_exchange[TILE_ELEMENTS];
+			struct {
+				KeyType 	key_exchange[TILE_ELEMENTS];
+			};
+			struct {
+				ValueType 	value_exchange[TILE_ELEMENTS];
+			};
 		};
+
+		KeyType				assist_scratch[THREADS+ 1];
 	};
 
 

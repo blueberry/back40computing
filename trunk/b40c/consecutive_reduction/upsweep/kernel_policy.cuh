@@ -65,7 +65,8 @@ template <
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
-	int _LOG_SCHEDULE_GRANULARITY>
+	int _LOG_SCHEDULE_GRANULARITY,
+	bool CONSECUTIVE_SMEM_ASSIST>
 
 struct KernelPolicy : ProblemType
 {
@@ -109,7 +110,8 @@ struct KernelPolicy : ProblemType
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
+		CHECK_ALIGNMENT					= CHECK_ALIGNMENT,
+		CONSECUTIVE_SMEM_ASSIST			= CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	//
@@ -144,10 +146,12 @@ struct KernelPolicy : ProblemType
 	struct SmemStorage
 	{
 		ValueType	partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
-
 		SizeT 		flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+
+		ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 		SizeT 		flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+
+		KeyType		assist_scratch[THREADS+ 1];
 	};
 
 

@@ -60,6 +60,7 @@ template <
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
 	bool TWO_PHASE_SCATTER,
+	bool CONSECUTIVE_SMEM_ASSIST,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
 	bool _OVERSUBSCRIBED_GRID_SIZE,
@@ -115,7 +116,8 @@ struct Policy : ProblemType
 		UPSWEEP_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		LOG_SCHEDULE_GRANULARITY>
+		LOG_SCHEDULE_GRANULARITY,
+		CONSECUTIVE_SMEM_ASSIST>
 			Upsweep;
 
 	// Kernel config for the spine consecutive reduction kernel (uses upsweep config policy)
@@ -130,7 +132,8 @@ struct Policy : ProblemType
 		SPINE_LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
+		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS,
+		CONSECUTIVE_SMEM_ASSIST>
 			Spine;
 
 	// Kernel config for downsweep
@@ -146,7 +149,8 @@ struct Policy : ProblemType
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY,
-		TWO_PHASE_SCATTER>
+		TWO_PHASE_SCATTER,
+		CONSECUTIVE_SMEM_ASSIST>
 			Downsweep;
 
 	// Kernel config for single-cta (single-grid) consecutive duplicate reduction (uses downsweep config policy)
@@ -162,7 +166,8 @@ struct Policy : ProblemType
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS,
-		TWO_PHASE_SCATTER>
+		TWO_PHASE_SCATTER,
+		CONSECUTIVE_SMEM_ASSIST>
 			Single;
 
 	//---------------------------------------------------------------------
@@ -191,7 +196,8 @@ struct Policy : ProblemType
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-		VALID 						= Upsweep::VALID & Spine::VALID & Downsweep::VALID & Single::VALID
+		VALID 						= Upsweep::VALID && Spine::VALID && Downsweep::VALID && Single::VALID &&
+										(Upsweep::LOG_TILE_ELEMENTS >= LOG_SCHEDULE_GRANULARITY),
 	};
 
 };
