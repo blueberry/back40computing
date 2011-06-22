@@ -128,50 +128,20 @@ struct Cta
 
 
 		//---------------------------------------------------------------------
-		// Iteration Structures
+		// Helper structures
 		//---------------------------------------------------------------------
 
 		/**
-		 * Iterate over rank
+		 * Decrement transform
 		 */
-		template <int LOAD, int VEC, int dummy = 0>
-		struct Iterate
+		template <typename T>
+		struct DecrementOp
 		{
-			/**
-			 * DecrementRanks
-			 */
-			static __device__ __forceinline__ void DecrementRanks(Tile *tile)
+			__device__ __forceinline__ T operator()(T data)
 			{
-				tile->ranks[LOAD][VEC]--;
-
-				// Next
-				Iterate<LOAD, VEC + 1>::DecrementRanks(tile);
+				return data - 1;
 			}
 		};
-
-		/**
-		 * Iterate next load
-		 */
-		template <int LOAD, int dummy>
-		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
-		{
-			// DecrementRanks
-			static __device__ __forceinline__ void DecrementRanks(Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::DecrementRanks(tile);
-			}
-		};
-
-		/**
-		 * Terminate iteration
-		 */
-		template <int dummy>
-		struct Iterate<LOADS_PER_TILE, 0, dummy>
-		{
-			// DecrementRanks
-			static __device__ __forceinline__ void DecrementRanks(Tile *tile) {}
-		};
-
 
 		//---------------------------------------------------------------------
 		// Interface
@@ -252,10 +222,13 @@ struct Cta
 					keys,
 					head_flags,
 					ranks,
-					guarded_elements);			// We explicitly want to restrict by guarded_elements
+					guarded_elements);						// We explicitly want to restrict by guarded_elements
 
 			// Decrement scatter ranks for values
-			Iterate<0, 0>::DecrementRanks(this);
+			util::io::InitializeTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE>::Transform(
+					ranks, ranks, DecrementOp<RankType>());
 
 			// First CTA unsets the first head flag of first tile
 			if (FIRST_TILE && (blockIdx.x == 0) && (threadIdx.x == 0)) {
@@ -271,7 +244,7 @@ struct Cta
 					cta->d_out_values,
 					values,
 					head_flags,
-					ranks);						// We explicitly do not want to restrict by guarded_elements
+					ranks);									// We explicitly do not want to restrict by guarded_elements
 		}
 	};
 
