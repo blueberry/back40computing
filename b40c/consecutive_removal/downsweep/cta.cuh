@@ -131,8 +131,10 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT,
+				KernelPolicy::CONSECUTIVE_SMEM_ASSIST,
 				FIRST_TILE,
 				false>::LoadValid(			// Do not set flag for first oob element
+					cta->smem_storage.assist_scratch,
 					keys,
 					head_flags,
 					cta->d_in_keys,
@@ -249,8 +251,10 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT,
+				KernelPolicy::CONSECUTIVE_SMEM_ASSIST,
 				FIRST_TILE,
 				false>::LoadValid(			// Do not set flag for first oob element
+					cta->smem_storage.assist_scratch,
 					keys,
 					head_flags,
 					cta->d_in_keys,

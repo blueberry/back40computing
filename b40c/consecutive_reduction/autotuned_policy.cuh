@@ -167,7 +167,7 @@ template <
 	TypeSizeGenre TYPE_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre <ProblemType, CUDA_ARCH, _PROB_SIZE_GENRE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, true, 10,
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, false, true, 10,
 		8, 7, 1, 2, 5,
 		5, 2, 0, 5,
 		8, 7, 2, 0, 5>
@@ -190,7 +190,7 @@ template <
 	TypeSizeGenre TYPE_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre <ProblemType, CUDA_ARCH, _PROB_SIZE_GENRE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, false, 9,
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, true, false, false, false, 9,
 		8, 6, 1, 1, 5,
 		5, 2, 0, 5,
 		8, 6, 1, 1, 5>

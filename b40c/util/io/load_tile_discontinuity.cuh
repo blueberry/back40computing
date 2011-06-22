@@ -46,6 +46,7 @@ template <
 	int ACTIVE_THREADS,											// Active threads that will be loading
 	ld::CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
 	bool CHECK_ALIGNMENT,										// Whether or not to check alignment to see if vector loads can be used
+	bool CONSECUTIVE_SMEM_ASSIST,								// Whether nor not to use supplied smem to assist in discontinuity detection
 	bool FIRST_TILE,											// Whether or not this is the first tile loaded by the CTA
 	bool FLAG_FIRST_OOB>										// Whether or not the first element that is out-of-bounds should also be flagged
 struct LoadTileDiscontinuity
@@ -76,7 +77,8 @@ struct LoadTileDiscontinuity
 			typename Flag,
 			typename VectorType,
 			typename EqualityOp>
-		static __device__ __forceinline__ void LoadValid(
+		static __device__ __forceinline__ void VectorLoadValid(
+			T smem[ACTIVE_THREADS + 1],
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[], 
@@ -86,27 +88,62 @@ struct LoadTileDiscontinuity
 			// Load the vector
 			ModifiedLoad<CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors);
 
-			// Process first vec element
-			T current = data[LOAD][0];
 
-			if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
+			if (CONSECUTIVE_SMEM_ASSIST) {
 
-				// First load of first tile of first CTA: discontinuity
-				flags[LOAD][0] = 1;
+				// Place last vec element into shared buffer
+				smem[threadIdx.x + 1] = data[LOAD][LOAD_VEC_SIZE - 1];
+
+				__syncthreads();
+
+				// Process first vec element
+				if (FIRST_TILE && (LOAD == 0) && (threadIdx.x == 0)) {
+
+					// First thread's first load of first tile
+					if (blockIdx.x == 0) {
+
+						// First CTA: start a new discontinuity
+						flags[LOAD][0] = 1;
+
+					} else {
+						// Get the previous vector element from global
+						T *d_ptr = (T*) d_in_vectors;
+						T previous;
+						ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
+						flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
+					}
+				} else {
+
+					T previous = smem[threadIdx.x];
+					flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
+				}
+
+				__syncthreads();
+
+				// Save last vector item for first of next load
+				if (threadIdx.x == ACTIVE_THREADS - 1) {
+					smem[0] = data[LOAD][LOAD_VEC_SIZE - 1];
+				}
 
 			} else {
 
-				// Get the previous vector element
-				T *d_ptr = (T*) d_in_vectors;
-				T previous;
-				ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
+				// Process first vec element
+				if (FIRST_TILE && (LOAD == 0) && (blockIdx.x == 0) && (threadIdx.x == 0)) {
 
-				// Initialize discontinuity flag
-				flags[LOAD][0] = !equality_op(previous, current);
+					// First thread's first load of first tile of first CTA: start a new discontinuity
+					flags[LOAD][0] = 1;
+
+				} else {
+					// Get the previous vector element from global
+					T *d_ptr = (T*) d_in_vectors;
+					T previous;
+					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
+					flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
+				}
 			}
 
-			Iterate<LOAD, 1>::LoadValid(
-				data, flags, vectors, d_in_vectors, equality_op);
+			Iterate<LOAD, 1>::VectorLoadValid(
+				smem, data, flags, vectors, d_in_vectors, equality_op);
 		}
 
 		// With discontinuity flags (unguarded)
@@ -194,7 +231,8 @@ struct LoadTileDiscontinuity
 			typename Flag,
 			typename VectorType,
 			typename EqualityOp>
-		static __device__ __forceinline__ void LoadValid(
+		static __device__ __forceinline__ void VectorLoadValid(
+			T smem[ACTIVE_THREADS + 1],
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[], 
@@ -205,8 +243,8 @@ struct LoadTileDiscontinuity
 			T previous = data[LOAD][VEC - 1];
 			flags[LOAD][VEC] = !equality_op(previous, current);
 
-			Iterate<LOAD, VEC + 1>::LoadValid(
-				data, flags, vectors, d_in_vectors, equality_op);
+			Iterate<LOAD, VEC + 1>::VectorLoadValid(
+				smem, data, flags, vectors, d_in_vectors, equality_op);
 		}
 
 		// With discontinuity flags (unguarded)
@@ -276,15 +314,16 @@ struct LoadTileDiscontinuity
 			typename Flag,
 			typename VectorType,
 			typename EqualityOp>
-		static __device__ __forceinline__ void LoadValid(
+		static __device__ __forceinline__ void VectorLoadValid(
+			T smem[ACTIVE_THREADS + 1],
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[], 
 			VectorType *d_in_vectors,
 			EqualityOp equality_op)
 		{
-			Iterate<LOAD + 1, 0>::LoadValid(
-				data, flags, vectors, d_in_vectors + ACTIVE_THREADS, equality_op);
+			Iterate<LOAD + 1, 0>::VectorLoadValid(
+				smem, data, flags, vectors, d_in_vectors + ACTIVE_THREADS, equality_op);
 		}
 
 		// With discontinuity flags (unguarded)
@@ -332,7 +371,8 @@ struct LoadTileDiscontinuity
 			typename Flag,
 			typename VectorType,
 			typename EqualityOp>
-		static __device__ __forceinline__ void LoadValid(
+		static __device__ __forceinline__ void VectorLoadValid(
+			T smem[ACTIVE_THREADS + 1],
 			T data[][LOAD_VEC_SIZE],
 			Flag flags[][LOAD_VEC_SIZE],
 			VectorType vectors[], 
@@ -379,6 +419,7 @@ struct LoadTileDiscontinuity
 		typename SizeT,
 		typename EqualityOp>
 	static __device__ __forceinline__ void LoadValid(
+		T smem[ACTIVE_THREADS + 1],
 		T data[][LOAD_VEC_SIZE],
 		Flag flags[][LOAD_VEC_SIZE],
 		T *d_in,
@@ -386,6 +427,7 @@ struct LoadTileDiscontinuity
 		EqualityOp equality_op)
 	{
 		const size_t MASK = ((sizeof(T) * 8 * LOAD_VEC_SIZE) - 1);
+
 
 		if ((CHECK_ALIGNMENT) && (LOAD_VEC_SIZE > 1) && (((size_t) d_in) & MASK)) {
 
@@ -400,8 +442,8 @@ struct LoadTileDiscontinuity
 			VectorType *vectors = (VectorType *) data;
 			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 
-			Iterate<0, 0>::LoadValid(
-				data, flags, vectors, d_in_vectors, equality_op);
+			Iterate<0, 0>::VectorLoadValid(
+				smem, data, flags, vectors, d_in_vectors, equality_op);
 		}
 	}
 
@@ -415,6 +457,7 @@ struct LoadTileDiscontinuity
 		typename SizeT,									// Integer type for indexing into global arrays
 		typename EqualityOp>
 	static __device__ __forceinline__ void LoadValid(
+		T smem[ACTIVE_THREADS + 1],
 		T data[][LOAD_VEC_SIZE],
 		Flag flags[][LOAD_VEC_SIZE],
 		T *d_in,
@@ -424,7 +467,7 @@ struct LoadTileDiscontinuity
 	{
 		if (guarded_elements >= TILE_SIZE) {
 
-			LoadValid(data, flags, d_in, cta_offset, equality_op);
+			LoadValid(smem, data, flags, d_in, cta_offset, equality_op);
 
 		} else {
 

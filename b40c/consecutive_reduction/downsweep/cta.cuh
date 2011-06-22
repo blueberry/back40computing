@@ -93,6 +93,8 @@ struct Cta
 	SoaScanOperator 	soa_scan_op;
 	EqualityOp			equality_op;
 
+	SmemStorage			&smem_storage;
+
 
 	//---------------------------------------------------------------------
 	// Helper Structures
@@ -163,8 +165,10 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT,
+				KernelPolicy::CONSECUTIVE_SMEM_ASSIST,
 				FIRST_TILE,
 				true>::LoadValid(			// Set flag for first oob element
+					cta->smem_storage.assist_scratch,
 					keys,
 					head_flags,
 					cta->d_in_keys,
@@ -266,6 +270,7 @@ struct Cta
 		SoaScanOperator		soa_scan_op,
 		EqualityOp		equality_op) :
 
+			smem_storage(smem_storage),
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
@@ -298,6 +303,7 @@ struct Cta
 		EqualityOp			equality_op,
 		SpineSoaTuple		spine_partial) :
 
+			smem_storage(smem_storage),
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,

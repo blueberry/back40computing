@@ -60,11 +60,13 @@ template <
 	int _LOG_LOADS_PER_TILE,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
-	int _LOG_SCHEDULE_GRANULARITY>
+	int _LOG_SCHEDULE_GRANULARITY,
+	bool CONSECUTIVE_SMEM_ASSIST>
 
 struct KernelPolicy : ProblemType
 {
-	typedef typename ProblemType::SizeT SizeT;
+	typedef typename ProblemType::SizeT 	SizeT;
+	typedef typename ProblemType::KeyType 	KeyType;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -95,7 +97,8 @@ struct KernelPolicy : ProblemType
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
+		CHECK_ALIGNMENT					= CHECK_ALIGNMENT,
+		CONSECUTIVE_SMEM_ASSIST			= CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	/**
@@ -103,7 +106,8 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		SizeT reduction_tree[THREADS];
+		SizeT 				reduction_tree[THREADS];
+		KeyType				assist_scratch[THREADS+ 1];
 	};
 
 	enum {

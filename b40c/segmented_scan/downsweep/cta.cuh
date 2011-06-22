@@ -125,9 +125,9 @@ struct Cta
 		struct Iterate
 		{
 			/**
-			 * RepairHeads
+			 * ApplyIdentity
 			 */
-			static __device__ __forceinline__ void RepairHeads(Tile *tile, Cta *cta)
+			static __device__ __forceinline__ void ApplyIdentity(Tile *tile, Cta *cta)
 			{
 				// Set the partials of flagged items to identity
 				if (tile->is_head[LOAD][VEC]) {
@@ -135,7 +135,7 @@ struct Cta
 				}
 
 				// Next
-				Iterate<LOAD, VEC + 1>::RepairHeads(tile, cta);
+				Iterate<LOAD, VEC + 1>::ApplyIdentity(tile, cta);
 			}
 		};
 
@@ -145,10 +145,10 @@ struct Cta
 		template <int LOAD, int dummy>
 		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
 		{
-			// RepairHeads
-			static __device__ __forceinline__ void RepairHeads(Tile *tile, Cta *cta)
+			// ApplyIdentity
+			static __device__ __forceinline__ void ApplyIdentity(Tile *tile, Cta *cta)
 			{
-				Iterate<LOAD + 1, 0>::RepairHeads(tile, cta);
+				Iterate<LOAD + 1, 0>::ApplyIdentity(tile, cta);
 			}
 		};
 
@@ -158,8 +158,8 @@ struct Cta
 		template <int dummy>
 		struct Iterate<LOADS_PER_TILE, 0, dummy>
 		{
-			// RepairHeads
-			static __device__ __forceinline__ void RepairHeads(Tile *tile, Cta *cta) {}
+			// ApplyIdentity
+			static __device__ __forceinline__ void ApplyIdentity(Tile *tile, Cta *cta) {}
 		};
 
 
@@ -170,10 +170,10 @@ struct Cta
 		/**
 		 * Performs any cleanup work
 		 */
-		__device__ __forceinline__ void RepairHeads(Cta *cta)
+		__device__ __forceinline__ void ApplyIdentity(Cta *cta)
 		{
 			if (KernelPolicy::FINAL_KERNEL && KernelPolicy::EXCLUSIVE) {
-				Iterate<0, 0>::RepairHeads(this, cta);
+				Iterate<0, 0>::ApplyIdentity(this, cta);
 			}
 		}
 
@@ -226,7 +226,7 @@ struct Cta
 					cta->soa_scan_op);
 
 			// Fix up segment heads if exclusive scan
-			RepairHeads(cta);
+			ApplyIdentity(cta);
 
 			// Store tile of partials
 			util::io::StoreTile<
