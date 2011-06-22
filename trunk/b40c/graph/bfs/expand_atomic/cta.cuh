@@ -65,7 +65,7 @@ struct Cta
 
 	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
+	typedef typename KernelPolicy::TileTuple 		TileTuple;
 
 	typedef util::Tuple<
 		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE],
@@ -547,7 +547,7 @@ struct Cta
 				typename SrtsSoaDetails::WarpscanSoa(
 					smem_storage.state.coarse_warpscan,
 					smem_storage.state.fine_warpscan),
-				SoaTuple(0, 0)),
+				TileTuple(0, 0)),
 			warp_comm(smem_storage.state.warp_comm),
 			coarse_enqueue_offset(smem_storage.state.coarse_enqueue_offset),
 			fine_enqueue_offset(smem_storage.state.fine_enqueue_offset),
@@ -608,7 +608,7 @@ struct Cta
 
 		// Scan tile with carry update in raking threads
 		SoaScanOp scan_op;
-		SoaTuple totals;
+		TileTuple totals;
 		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
 			totals,
 			srts_soa_details,

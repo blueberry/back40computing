@@ -45,13 +45,12 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::SizeT			*d_out_flags,
 	typename KernelPolicy::SpineSizeT 		spine_elements,
 	typename KernelPolicy::ReductionOp 		reduction_op,
-	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
 	typedef Cta<KernelPolicy> Cta;
-	typedef typename KernelPolicy::SpineSizeT 		SpineSizeT;
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::SpineSizeT 			SpineSizeT;
+	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
+	typedef typename KernelPolicy::SoaScanOperator		SoaScanOperator;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -63,7 +62,7 @@ __device__ __forceinline__ void SpinePass(
 		d_out_partials,
 		d_in_flags,
 		d_out_flags,
-		SoaScanOp(reduction_op, identity_op));
+		SoaScanOperator(reduction_op));
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SpineSizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);
@@ -95,8 +94,7 @@ void Kernel(
 	typename KernelPolicy::SizeT				*d_in_flags,
 	typename KernelPolicy::SizeT				*d_out_flags,
 	typename KernelPolicy::SpineSizeT 			spine_elements,
-	typename KernelPolicy::ReductionOp 			reduction_op,
-	typename KernelPolicy::IdentityOp 			identity_op)
+	typename KernelPolicy::ReductionOp 			reduction_op)
 {
 	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
@@ -108,7 +106,6 @@ void Kernel(
 		d_out_flags,
 		spine_elements,
 		reduction_op,
-		identity_op,
 		smem_storage);
 }
 

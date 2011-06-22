@@ -52,16 +52,14 @@ struct Cta
 	typedef typename KernelPolicy::T 				T;
 	typedef typename KernelPolicy::Flag 			Flag;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::ReductionOp 		ReductionOp;
-	typedef typename KernelPolicy::IdentityOp 		IdentityOp;
 
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::TileTuple 		TileTuple;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	typedef util::Tuple<
 		T (*)[KernelPolicy::LOAD_VEC_SIZE],
-		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> 		DataSoa;
+		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> 		TileSoa;
 
 	// This kernel can only operate in inclusive scan mode if the it's the final kernel
 	// in the scan pass
@@ -75,7 +73,7 @@ struct Cta
 	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
-	SoaTuple 			carry;
+	TileTuple 			carry;
 
 	// Input device pointers
 	T 					*d_partials_in;
@@ -85,7 +83,7 @@ struct Cta
 	T 					*d_partials_out;
 
 	// Scan operator
-	SoaScanOp 			soa_scan_op;
+	SoaScanOperator 	soa_scan_op;
 
 
 	//---------------------------------------------------------------------
@@ -221,9 +219,9 @@ struct Cta
 			// Scan tile with carry update in raking threads
 			util::scan::soa::CooperativeSoaTileScan<
 				KernelPolicy::LOAD_VEC_SIZE,
-				KERNEL_EXCLUSIVE>::ScanTileWithCarry(
+				KERNEL_EXCLUSIVE>::template ScanTileWithCarry<true>(
 					cta->srts_soa_details,
-					DataSoa(partials, flags),
+					TileSoa(partials, flags),
 					cta->carry,
 					cta->soa_scan_op);
 
@@ -258,7 +256,7 @@ struct Cta
 		T 					*d_partials_in,
 		Flag 				*d_flags_in,
 		T 					*d_partials_out,
-		SoaScanOp			soa_scan_op) :
+		SoaScanOperator		soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -285,7 +283,7 @@ struct Cta
 		T 					*d_partials_in,
 		Flag 				*d_flags_in,
 		T 					*d_partials_out,
-		SoaScanOp			soa_scan_op,
+		SoaScanOperator		soa_scan_op,
 		T 					spine_partial) :
 
 			srts_soa_details(
@@ -300,7 +298,7 @@ struct Cta
 			d_flags_in(d_flags_in),
 			d_partials_out(d_partials_out),
 			soa_scan_op(soa_scan_op),
-			carry(spine_partial, 0)									// Seed carry with spine partial & flag identity
+			carry(spine_partial, soa_scan_op().t1)					// Seed carry with spine partial & flag identity
 	{}
 
 

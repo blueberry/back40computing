@@ -60,6 +60,11 @@ __device__ __forceinline__ void UpsweepPass(
 		KernelPolicy::LOG_TILE_ELEMENTS,
 		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
+	// Quit if we're the last threadblock (no need for it in upsweep).
+	if (work_limits.last_block) {
+		return;
+	}
+
 	cta.ProcessWorkRange(work_limits);
 }
 

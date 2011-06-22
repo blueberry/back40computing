@@ -75,12 +75,10 @@ void Usage()
 template<
 	typename T,
 	typename SizeT,
-	typename ReductionOp,
-	typename IdentityOp>
+	typename ReductionOp>
 void TestConsecutiveReduction(
 	SizeT num_elements,
-	ReductionOp scan_op,
-	IdentityOp identity_op)
+	ReductionOp scan_op)
 {
     // Allocate the consecutive reduction problem on the host
 	typedef util::PingPongStorage<T, T> PingPongStorage;
@@ -115,7 +113,6 @@ void TestConsecutiveReduction(
 	// Compute reference solution
 	SizeT num_compacted = 0;
 	h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
-	h_problem_storage.d_values[1][0] = identity_op();
 
 	for (SizeT i = 0; i < num_elements; ++i) {
 
@@ -127,9 +124,14 @@ void TestConsecutiveReduction(
 
 		} else {
 
-			h_problem_storage.d_values[1][num_compacted] = scan_op(
-				h_problem_storage.d_values[1][num_compacted],
-				h_problem_storage.d_values[0][i]);
+			if (i == 0) {
+				h_problem_storage.d_values[1][num_compacted] =
+					h_problem_storage.d_values[0][i];
+			} else {
+				h_problem_storage.d_values[1][num_compacted] = scan_op(
+					h_problem_storage.d_values[1][num_compacted],
+					h_problem_storage.d_values[0][i]);
+			}
 		}
 	}
 	num_compacted++;
@@ -146,7 +148,6 @@ void TestConsecutiveReduction(
 			num_elements,
 			num_compacted,
 			scan_op,
-			identity_op,
 			equality_op,
 			g_max_ctas,
 			g_verbose,
@@ -158,7 +159,6 @@ void TestConsecutiveReduction(
 			num_elements,
 			num_compacted,
 			scan_op,
-			identity_op,
 			equality_op,
 			g_max_ctas,
 			g_verbose,
@@ -215,25 +215,25 @@ int main(int argc, char** argv)
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
 		Sum<T> op;
-		TestConsecutiveReduction<T>(num_elements * 4, op, op);
+		TestConsecutiveReduction<T>(num_elements * 4, op);
 	}
 	{
 		printf("\n-- UNSIGNED SHORT ----------------------------------------------\n");
 		typedef unsigned short T;
 		Sum<T> op;
-		TestConsecutiveReduction<T>(num_elements * 2, op, op);
+		TestConsecutiveReduction<T>(num_elements * 2, op);
 	}
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		Sum<T> op;
-		TestConsecutiveReduction<T>(num_elements, op, op);
+		TestConsecutiveReduction<T>(num_elements, op);
 	}
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		Sum<T> op;
-		TestConsecutiveReduction<T>(num_elements / 2, op, op);
+		TestConsecutiveReduction<T>(num_elements / 2, op);
 	}
 
 	return 0;

@@ -47,19 +47,17 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 				T;
-	typedef typename KernelPolicy::Flag 			Flag;
-	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::ReductionOp 		ReductionOp;
-	typedef typename KernelPolicy::IdentityOp 		IdentityOp;
+	typedef typename KernelPolicy::T 					T;
+	typedef typename KernelPolicy::Flag 				Flag;
+	typedef typename KernelPolicy::SizeT 				SizeT;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
+	typedef typename KernelPolicy::TileTuple 			TileTuple;
+	typedef typename KernelPolicy::SoaScanOperator		SoaScanOperator;
 
 	typedef util::Tuple<
 		T (*)[KernelPolicy::LOAD_VEC_SIZE],
-		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> DataSoa;
+		Flag (*)[KernelPolicy::LOAD_VEC_SIZE]> TileSoa;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -69,7 +67,7 @@ struct Cta
 	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in SrtsDetails::CUMULATIVE_THREAD thread only)
-	SoaTuple 			carry;
+	TileTuple 			carry;
 
 	// Input device pointers
 	T 					*d_partials_in;
@@ -80,7 +78,7 @@ struct Cta
 	Flag 				*d_spine_flags;
 
 	// Scan operator
-	SoaScanOp 			soa_scan_op;
+	SoaScanOperator 	soa_scan_op;
 
 
 	//---------------------------------------------------------------------
@@ -92,12 +90,12 @@ struct Cta
 	 */
 	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		T 				*d_partials_in,
-		Flag 			*d_flags_in,
-		T 				*d_spine_partials,
-		Flag 			*d_spine_flags,
-		SoaScanOp 		soa_scan_op) :
+		SmemStorage 		&smem_storage,
+		T 					*d_partials_in,
+		Flag 				*d_flags_in,
+		T 					*d_spine_partials,
+		Flag 				*d_spine_flags,
+		SoaScanOperator 	soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -112,7 +110,8 @@ struct Cta
 			d_spine_partials(d_spine_partials),
 			d_spine_flags(d_spine_flags),
 			soa_scan_op(soa_scan_op),
-			carry(soa_scan_op()) {}
+			carry(soa_scan_op())
+	{}
 
 
 	/**
@@ -156,7 +155,7 @@ struct Cta
 		util::reduction::soa::CooperativeSoaTileReduction<
 			KernelPolicy::LOAD_VEC_SIZE>::template ReduceTileWithCarry<true>(		// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
 				srts_soa_details,
-				DataSoa(partials, flags),
+				TileSoa(partials, flags),
 				carry,																// Seed with carry
 				soa_scan_op);
 

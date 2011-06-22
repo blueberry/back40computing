@@ -120,14 +120,15 @@ struct Tile :
 	{
 		// Scatter keys to global bin partitions
 		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+			0,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::template Scatter<
 				KeyType,
 				KernelPolicy::PostprocessTraits::Postprocess>(
 					cta->d_out_keys,
-					(KeyType *) this->keys,
-					(SizeT *) this->scatter_offsets,
+					(KeyType (*)[1]) this->keys,
+					(SizeT (*)[1]) this->scatter_offsets,
 					guarded_elements);
 	}
 };

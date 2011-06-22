@@ -148,12 +148,13 @@ struct Tile
 	{
 		// Scatter keys to global bin partitions
 		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+			0,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_keys,
-				(KeyType *) keys,
-				(SizeT *) scatter_offsets,
+				(KeyType (*)[1]) keys,
+				(SizeT (*)[1]) scatter_offsets,
 				guarded_elements);
 	}
 
@@ -195,12 +196,13 @@ struct Tile
 	{
 		// Scatter values to global bin partitions
 		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+			0,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				cta->d_out_values,
-				values,
-				(SizeT *) scatter_offsets,
+				(ValueType (*)[1]) values,
+				(SizeT (*)[1]) scatter_offsets,
 				guarded_elements);
 	}
 
@@ -818,12 +820,13 @@ struct Tile
 
 			// Scatter keys to smem by local rank
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				util::io::st::NONE>::Scatter(
 					cta->smem_storage.key_exchange,
-					(KeyType *) tile->keys,
-					(int *) tile->local_ranks);
+					(KeyType (*)[1]) tile->keys,
+					(int (*)[1]) tile->local_ranks);
 
 			__syncthreads();
 
@@ -870,12 +873,13 @@ struct Tile
 
 			// Scatter values to smem by local rank
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				util::io::st::NONE>::Scatter(
 					cta->smem_storage.value_exchange,
-					tile->values,
-					(int *) tile->local_ranks);
+					(ValueType (*)[1]) tile->values,
+					(int (*)[1]) tile->local_ranks);
 
 			__syncthreads();
 

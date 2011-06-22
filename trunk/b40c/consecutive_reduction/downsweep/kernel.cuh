@@ -46,7 +46,6 @@ __device__ __forceinline__ void DownsweepPass(
 	typename KernelPolicy::SizeT 								*d_spine_flags,
 	typename KernelPolicy::SizeT								*d_num_compacted,
 	typename KernelPolicy::ReductionOp 							reduction_op,
-	typename KernelPolicy::IdentityOp 							identity_op,
 	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
 	typename KernelPolicy::SmemStorage							&smem_storage)
@@ -54,7 +53,7 @@ __device__ __forceinline__ void DownsweepPass(
 	typedef Cta<KernelPolicy> 						Cta;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::SpineSoaTuple	SpineSoaTuple;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	// Read the exclusive spine partial
 	SpineSoaTuple spine_partial;
@@ -72,7 +71,7 @@ __device__ __forceinline__ void DownsweepPass(
 		d_in_values,
 		d_out_values,
 		d_num_compacted,
-		SoaScanOp(reduction_op, identity_op),
+		SoaScanOperator(reduction_op),
 		equality_op,
 		spine_partial);
 
@@ -101,7 +100,6 @@ void Kernel(
 	typename KernelPolicy::SizeT 								*d_spine_flags,
 	typename KernelPolicy::SizeT								*d_num_compacted,
 	typename KernelPolicy::ReductionOp 							reduction_op,
-	typename KernelPolicy::IdentityOp 							identity_op,
 	typename KernelPolicy::EqualityOp							equality_op,
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition)
 {
@@ -117,7 +115,6 @@ void Kernel(
 		d_spine_flags,
 		d_num_compacted,
 		reduction_op,
-		identity_op,
 		equality_op,
 		work_decomposition,
 		smem_storage);

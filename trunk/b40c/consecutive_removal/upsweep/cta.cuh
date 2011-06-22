@@ -30,6 +30,7 @@
 #include <b40c/util/reduction/tree_reduce.cuh>
 #include <b40c/util/operators.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/load_tile_discontinuity.cuh>
 
 namespace b40c {
 namespace consecutive_removal {
@@ -109,16 +110,19 @@ struct Cta
 		LocalFlag 	head_flags[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];		// Tile of discontinuity head_flags
 
 		// Load data tile, initializing discontinuity head_flags
-		util::io::LoadTile<
+		util::io::LoadTileDiscontinuity<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER,
-			KernelPolicy::CHECK_ALIGNMENT>::template LoadDiscontinuity<FIRST_TILE>(
+			KernelPolicy::CHECK_ALIGNMENT,
+			FIRST_TILE,
+			false>::LoadValid(			// Do not set flag for first oob element
 				keys,
 				head_flags,
 				d_in_keys,
 				cta_offset,
+				guarded_elements,
 				equality_op);
 
 		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)

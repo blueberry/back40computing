@@ -424,15 +424,16 @@ struct Cta
 		__syncthreads();
 
 		// Scatter directly (without first compacting in smem scratch), predicated
-		// on flags (treat vertex_ids, flags, and ranks as linear arrays)
+		// on flags
 		util::io::ScatterTile<
-			KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				d_out,
-				(VertexId *) tile.vertex_ids,
-				(ValidFlag *) tile.flags,
-				(SizeT *) tile.ranks);
+				tile.vertex_ids,
+				tile.flags,
+				tile.ranks);
 
 		if (KernelPolicy::MARK_PARENTS) {
 
@@ -448,16 +449,16 @@ struct Cta
 					cta_offset,
 					guarded_elements);
 
-			// Scatter valid vertex_ids, predicated on flags (treat
-			// vertex_ids, flags, and ranks as linear arrays)
+			// Scatter valid vertex_ids, predicated on flags
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					d_parent_out,
-					(VertexId *) tile.parent_ids,
-					(ValidFlag *) tile.flags,
-					(SizeT *) tile.ranks);
+					tile.parent_ids,
+					tile.flags,
+					tile.ranks);
 		}
 	}
 };

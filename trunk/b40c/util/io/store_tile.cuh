@@ -40,19 +40,19 @@ namespace io {
  * Store of a tile of items using guarded stores 
  */
 template <
-	int LOG_STORES_PER_TILE, 									// Number of vector stores (log)
-	int LOG_STORE_VEC_SIZE,										// Number of items per vector store (log)
+	int LOG_LOADS_PER_TILE, 									// Number of vector stores (log)
+	int LOG_LOAD_VEC_SIZE,										// Number of items per vector store (log)
 	int ACTIVE_THREADS,											// Active threads that will be storing
 	st::CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., WB/CG/CS/NONE/etc.)
 	bool CHECK_ALIGNMENT>										// Whether or not to check alignment to see if vector stores can be used
 struct StoreTile
 {
 	enum {
-		STORES_PER_TILE 			= 1 << LOG_STORES_PER_TILE,
-		STORE_VEC_SIZE 				= 1 << LOG_STORE_VEC_SIZE,
-		LOG_ELEMENTS_PER_THREAD		= LOG_STORES_PER_TILE + LOG_STORE_VEC_SIZE,
+		LOADS_PER_TILE 			= 1 << LOG_LOADS_PER_TILE,
+		LOAD_VEC_SIZE 				= 1 << LOG_LOAD_VEC_SIZE,
+		LOG_ELEMENTS_PER_THREAD		= LOG_LOADS_PER_TILE + LOG_LOAD_VEC_SIZE,
 		ELEMENTS_PER_THREAD			= 1 << LOG_ELEMENTS_PER_THREAD,
-		TILE_SIZE 					= ACTIVE_THREADS * STORES_PER_TILE * STORE_VEC_SIZE,
+		TILE_SIZE 					= ACTIVE_THREADS * LOADS_PER_TILE * LOAD_VEC_SIZE,
 	};
 
 	//---------------------------------------------------------------------
@@ -60,7 +60,7 @@ struct StoreTile
 	//---------------------------------------------------------------------
 
 	// Iterate over vec-elements
-	template <int STORE, int VEC>
+	template <int LOAD, int VEC>
 	struct Iterate
 	{
 		// Vector
@@ -69,41 +69,41 @@ struct StoreTile
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
-			Iterate<STORE, VEC + 1>::Invoke(vectors, d_in_vectors);
+			Iterate<LOAD, VEC + 1>::Invoke(vectors, d_in_vectors);
 		}
 
 		// Unguarded
 		template <typename T>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out)
 		{
-			int thread_offset = (threadIdx.x << LOG_STORE_VEC_SIZE) + (STORE * ACTIVE_THREADS * STORE_VEC_SIZE) + VEC;
+			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
-			ModifiedStore<CACHE_MODIFIER>::St(data[STORE][VEC], d_out + thread_offset);
+			ModifiedStore<CACHE_MODIFIER>::St(data[LOAD][VEC], d_out + thread_offset);
 
-			Iterate<STORE, VEC + 1>::Invoke(data, d_out);
+			Iterate<LOAD, VEC + 1>::Invoke(data, d_out);
 		}
 
 		// Guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out,
 			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = (threadIdx.x << LOG_STORE_VEC_SIZE) + (STORE * ACTIVE_THREADS * STORE_VEC_SIZE) + VEC;
+			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < guarded_elements) {
-				ModifiedStore<CACHE_MODIFIER>::St(data[STORE][VEC], d_out + thread_offset);
+				ModifiedStore<CACHE_MODIFIER>::St(data[LOAD][VEC], d_out + thread_offset);
 			}
-			Iterate<STORE, VEC + 1>::Invoke(data, d_out, guarded_elements);
+			Iterate<LOAD, VEC + 1>::Invoke(data, d_out, guarded_elements);
 		}
 	};
 
 	// Iterate over stores
-	template <int STORE>
-	struct Iterate<STORE, STORE_VEC_SIZE>
+	template <int LOAD>
+	struct Iterate<LOAD, LOAD_VEC_SIZE>
 	{
 		// Vector
 		template <typename VectorType>
@@ -112,34 +112,34 @@ struct StoreTile
 			VectorType *d_in_vectors)
 		{
 			ModifiedStore<CACHE_MODIFIER>::St(
-				vectors[STORE], d_in_vectors + threadIdx.x);
+				vectors[LOAD], d_in_vectors + threadIdx.x);
 
-			Iterate<STORE + 1, 0>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+			Iterate<LOAD + 1, 0>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
 		}
 
 		// Unguarded
 		template <typename T>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out)
 		{
-			Iterate<STORE + 1, 0>::Invoke(data, d_out);
+			Iterate<LOAD + 1, 0>::Invoke(data, d_out);
 		}
 
 		// Guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out,
 			const SizeT &guarded_elements)
 		{
-			Iterate<STORE + 1, 0>::Invoke(data, d_out, guarded_elements);
+			Iterate<LOAD + 1, 0>::Invoke(data, d_out, guarded_elements);
 		}
 	};
 	
 	// Terminate
 	template <int VEC>
-	struct Iterate<STORES_PER_TILE, VEC>
+	struct Iterate<LOADS_PER_TILE, VEC>
 	{
 		// Vector
 		template <typename VectorType>
@@ -149,13 +149,13 @@ struct StoreTile
 		// Unguarded
 		template <typename T>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out) {}
 
 		// Guarded
 		template <typename T, typename SizeT>
 		static __device__ __forceinline__ void Invoke(
-			T data[][STORE_VEC_SIZE],
+			T data[][LOAD_VEC_SIZE],
 			T *d_out,
 			const SizeT &guarded_elements) {}
 	};
@@ -170,13 +170,13 @@ struct StoreTile
 	 */
 	template <typename T, typename SizeT>
 	static __device__ __forceinline__ void Store(
-		T data[][STORE_VEC_SIZE],
+		T data[][LOAD_VEC_SIZE],
 		T *d_out,
 		SizeT cta_offset)
 	{
-		const size_t MASK = ((sizeof(T) * 8 * STORE_VEC_SIZE) - 1);
+		const size_t MASK = ((sizeof(T) * 8 * LOAD_VEC_SIZE) - 1);
 
-		if ((CHECK_ALIGNMENT) && (STORE_VEC_SIZE > 1) && (((size_t) d_out) & MASK)) {
+		if ((CHECK_ALIGNMENT) && (LOAD_VEC_SIZE > 1) && (((size_t) d_out) & MASK)) {
 
 			Iterate<0, 0>::Invoke(
 				data, d_out + cta_offset);
@@ -184,7 +184,7 @@ struct StoreTile
 		} else {
 
 			// Aliased vector type
-			typedef typename VecType<T, STORE_VEC_SIZE>::Type VectorType;
+			typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
 
 			// Use an aliased pointer to keys array to perform built-in vector stores
 			VectorType *vectors = (VectorType *) data;
@@ -199,7 +199,7 @@ struct StoreTile
 	 */
 	template <typename T, typename SizeT>
 	static __device__ __forceinline__ void Store(
-		T data[][STORE_VEC_SIZE],
+		T data[][LOAD_VEC_SIZE],
 		T *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)

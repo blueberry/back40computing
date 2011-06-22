@@ -45,9 +45,9 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::IdentityOp 		identity_op,
 	typename KernelPolicy::SmemStorage		&smem_storage)
 {
-	typedef downsweep::Cta<KernelPolicy> 		Cta;
-	typedef typename KernelPolicy::SizeT 		SizeT;
-	typedef typename KernelPolicy::SoaScanOp	SoaScanOp;
+	typedef downsweep::Cta<KernelPolicy> 			Cta;
+	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
@@ -58,7 +58,7 @@ __device__ __forceinline__ void SpinePass(
 		d_partials_in,
 		d_flags_in,
 		d_partials_out,
-		SoaScanOp(scan_op, identity_op));
+		SoaScanOperator(scan_op, identity_op));
 
 	// Number of elements in (the last) partially-full tile (requires guarded loads)
 	SizeT guarded_elements = spine_elements & (KernelPolicy::TILE_ELEMENTS - 1);

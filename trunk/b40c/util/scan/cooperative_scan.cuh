@@ -51,8 +51,8 @@ struct CooperativeGridScan;
  * Cooperative tile scan
  */
 template <
-	int VEC_SIZE,
-	bool EXCLUSIVE = true>
+	int VEC_SIZE,							// Length of vector-loads (e.g, vec-1, vec-2, vec-4)
+	bool EXCLUSIVE = true>					// Whether or not this is an exclusive scan
 struct CooperativeTileScan
 {
 	//---------------------------------------------------------------------

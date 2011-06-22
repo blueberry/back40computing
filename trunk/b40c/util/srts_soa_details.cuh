@@ -38,7 +38,7 @@ namespace util {
  * Operational details for threads working in an SRTS grid
  */
 template <
-	typename SoaTuple,
+	typename TileTuple,
 	typename SrtsGridTuple,
 	int Grids = SrtsGridTuple::NUM_FIELDS>
 struct SrtsSoaDetails;
@@ -48,9 +48,9 @@ struct SrtsSoaDetails;
  * Two-field SRTS details
  */
 template <
-	typename _SoaTuple,
+	typename _TileTuple,
 	typename SrtsGridTuple>
-struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
+struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 {
 	enum {
 		CUMULATIVE_THREAD 	= SrtsSoaDetails::RAKING_THREADS - 1,
@@ -58,12 +58,12 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	};
 
 	// Simple SOA tuple "slice" type
-	typedef _SoaTuple SoaTuple;
+	typedef _TileTuple TileTuple;
 
 	// SOA type of raking lanes
 	typedef Tuple<
-		typename SoaTuple::T0*,
-		typename SoaTuple::T1*> GridStorageSoa;
+		typename TileTuple::T0*,
+		typename TileTuple::T1*> GridStorageSoa;
 
 	// SOA type of warpscan storage
 	typedef Tuple<
@@ -87,7 +87,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 
 	typedef typename If<Equals<NullType, typename SecondarySrtsGridTuple::T0>::VALUE,
 		NullType,
-		SrtsSoaDetails<SoaTuple, SecondarySrtsGridTuple> >::Type SecondarySrtsSoaDetails;
+		SrtsSoaDetails<TileTuple, SecondarySrtsGridTuple> >::Type SecondarySrtsSoaDetails;
 
 	/**
 	 * Warpscan storages
@@ -133,7 +133,7 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	__host__ __device__ __forceinline__ SrtsSoaDetails(
 		GridStorageSoa smem_pools,
 		WarpscanSoa warpscan_partials,
-		SoaTuple soa_tuple_identity) :
+		TileTuple soa_tuple_identity) :
 
 			warpscan_partials(warpscan_partials),
 			lane_partials(												// set lane partial pointer
@@ -156,9 +156,9 @@ struct SrtsSoaDetails<_SoaTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	/**
 	 * Return the cumulative partial left in the final warpscan cell
 	 */
-	__device__ __forceinline__ SoaTuple CumulativePartial()
+	__device__ __forceinline__ TileTuple CumulativePartial()
 	{
-		SoaTuple retval;
+		TileTuple retval;
 		warpscan_partials.Get(retval, 1, CUMULATIVE_THREAD);
 		return retval;
 	}

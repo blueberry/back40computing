@@ -512,13 +512,11 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 	typedef typename Detail::KeyTraits::ConvertedKeyType 	ConvertedKeyType;
 
 	cudaError_t retval = cudaSuccess;
-
-	// Kernel pointers
-	typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::template UpsweepKernel<PassPolicy>();
-	typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-	typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
-
 	do {
+		// Kernel pointers
+		typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::template UpsweepKernel<PassPolicy>();
+		typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
+		typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
 
 		int dynamic_smem[3] = 	{0, 0, 0};
 		int grid_size[3] = 		{detail.work.grid_size, 1, detail.work.grid_size};

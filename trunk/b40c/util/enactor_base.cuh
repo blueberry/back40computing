@@ -385,6 +385,11 @@ protected:
 			PrintTSizeInfo<KernelPolicy>(NULL);
 		}
 		PrintWorkstealingInfo<KernelPolicy>(NULL);
+
+		unsigned long last_grain_elements =
+			(work.num_elements & (KernelPolicy::SCHEDULE_GRANULARITY - 1));
+		if (last_grain_elements == 0) last_grain_elements = KernelPolicy::SCHEDULE_GRANULARITY;
+
 		printf("%lu byte SizeT, "
 				"%lu elements, "
 				"%lu-element granularity, "
@@ -398,7 +403,7 @@ protected:
 			(unsigned long) work.total_grains,
 			(unsigned long) work.grains_per_cta,
 			(unsigned long) work.extra_grains,
-			(unsigned long) (work.num_elements - (work.num_elements / KernelPolicy::SCHEDULE_GRANULARITY) * KernelPolicy::SCHEDULE_GRANULARITY));
+			(unsigned long) last_grain_elements);
 		fflush(stdout);
 	}
 

@@ -54,12 +54,12 @@ struct Cta
 	typedef typename KernelPolicy::SpineSizeT 		SpineSizeT;
 
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::SoaTuple 		SoaTuple;
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
+	typedef typename KernelPolicy::TileTuple 		TileTuple;
+	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
 	typedef util::Tuple<
 		ValueType (*)[KernelPolicy::LOAD_VEC_SIZE],
-		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 	DataSoa;
+		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 	TileSoa;
 
 
 	//---------------------------------------------------------------------
@@ -70,7 +70,7 @@ struct Cta
 	SrtsSoaDetails 		srts_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
-	SoaTuple 			carry;
+	TileTuple 			carry;
 
 	// Device input/outputs
 	ValueType 			*d_in_partials;
@@ -81,7 +81,7 @@ struct Cta
 	SizeT 				*d_out_flags;
 
 	// Scan operator
-	SoaScanOp 			soa_scan_op;
+	SoaScanOperator 	soa_scan_op;
 
 
 
@@ -94,12 +94,12 @@ struct Cta
 	 */
 	template <typename SmemStorage>
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		ValueType 		*d_in_partials,
-		ValueType 		*d_out_partials,
-		SizeT 			*d_in_flags,
-		SizeT			*d_out_flags,
-		SoaScanOp		soa_scan_op) :
+		SmemStorage 		&smem_storage,
+		ValueType 			*d_in_partials,
+		ValueType 			*d_out_partials,
+		SizeT 				*d_in_flags,
+		SizeT				*d_out_flags,
+		SoaScanOperator		soa_scan_op) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -113,8 +113,7 @@ struct Cta
 			d_out_partials(d_out_partials),
 			d_in_flags(d_in_flags),
 			d_out_flags(d_out_flags),
-			soa_scan_op(soa_scan_op),
-			carry(soa_scan_op())
+			soa_scan_op(soa_scan_op)
 	{}
 
 
@@ -124,6 +123,7 @@ struct Cta
 	/**
 	 * Process a single tile
 	 */
+	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SpineSizeT cta_offset,
 		SpineSizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
@@ -157,11 +157,12 @@ struct Cta
 				guarded_elements);
 
 		// SOA-scan tile of tuple pairs
-		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
-			srts_soa_details,
-			DataSoa(partials, flags),
-			carry,							// Seed with carry, maintain carry in raking threads
-			soa_scan_op);
+		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
+			ScanTileWithCarry<!FIRST_TILE>(
+				srts_soa_details,
+				TileSoa(partials, flags),
+				carry,							// Seed with carry, maintain carry in raking threads
+				soa_scan_op);
 
 		// Store tile of partials
 		util::io::StoreTile<
@@ -198,16 +199,29 @@ struct Cta
 		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
 		SpineSizeT cta_offset = work_limits.offset;
 
-		// Process full tiles of tile_elements
-		while (cta_offset < work_limits.guarded_offset) {
+		if (cta_offset < work_limits.guarded_offset) {
 
-			ProcessTile(cta_offset);
+			// Process at least one full tile of tile_elements (first tile)
+			ProcessTile<true>(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
-		}
 
-		// Clean up last partial tile with guarded-io
-		if (work_limits.guarded_elements) {
-			ProcessTile(
+			while (cta_offset < work_limits.guarded_offset) {
+				// Process more full tiles (not first tile)
+				ProcessTile<false>(cta_offset);
+				cta_offset += KernelPolicy::TILE_ELEMENTS;
+			}
+
+			// Clean up last partial tile with guarded-io (not first tile)
+			if (work_limits.guarded_elements) {
+				ProcessTile<false>(
+					cta_offset,
+					work_limits.guarded_elements);
+			}
+
+		} else {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			ProcessTile<true>(
 				cta_offset,
 				work_limits.guarded_elements);
 		}

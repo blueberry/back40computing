@@ -66,28 +66,31 @@ struct WarpSoaScan
 			typename WarpscanSoa,
 			typename ReductionOp>
 		static __device__ __forceinline__ Tuple Scan(
-			Tuple exclusive_partial,
+			Tuple partial,
 			WarpscanSoa warpscan_partials,
 			ReductionOp scan_op,
 			int warpscan_tid)
 		{
 			// Store exclusive partial
-			warpscan_partials.Set(exclusive_partial, 1, warpscan_tid);
+			warpscan_partials.Set(partial, 1, warpscan_tid);
 
 			if (!WarpscanSoa::VOLATILE) __threadfence_block();
 
-			// Load current partial
-			Tuple current_partial;
-			warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
+			if (ReductionOp::IDENTITY_STRIDES || (warpscan_tid >= OFFSET_LEFT)) {
+
+				// Load current partial
+				Tuple current_partial;
+				warpscan_partials.Get(current_partial, 1, warpscan_tid - OFFSET_LEFT);
+
+				// Compute inclusive partial from exclusive and current partials
+				partial = scan_op(current_partial, partial);
+			}
 
 			if (!WarpscanSoa::VOLATILE) __threadfence_block();
-
-			// Compute inclusive partial from exclusive and current partials
-			Tuple inclusive_partial = scan_op(current_partial, exclusive_partial);
 
 			// Recurse
 			return Iterate<OFFSET_LEFT * 2, WIDTH>::Scan(
-				inclusive_partial, warpscan_partials, scan_op, warpscan_tid);
+				partial, warpscan_partials, scan_op, warpscan_tid);
 		}
 	};
 

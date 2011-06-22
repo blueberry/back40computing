@@ -58,6 +58,7 @@ struct Tile :
 	//---------------------------------------------------------------------
 
 	typedef typename KernelPolicy::KeyType 					KeyType;
+	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::ValidFlag				ValidFlag;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 
@@ -149,23 +150,25 @@ struct Tile :
 			SizeT num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
 
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_keys,
-					(KeyType *) this->keys,
-					(SizeT *) this->scatter_offsets,
+					(KeyType (*)[1])  this->keys,
+					(SizeT (*)[1])  this->scatter_offsets,
 					num_compacted);
 		} else {
 
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_keys,
-					(KeyType *) this->keys,
-					(ValidFlag *) this->flags,
-					(SizeT *) this->scatter_offsets);
+					(KeyType (*)[1]) this->keys,
+					(ValidFlag (*)[1]) this->flags,
+					(SizeT (*)[1]) this->scatter_offsets);
 		}
 	}
 
@@ -184,22 +187,25 @@ struct Tile :
 			SizeT num_compacted = cta->smem_storage.bin_warpscan[1][KernelPolicy::BINS - 1];
 
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_values,
-					this->values,
-					(SizeT *) this->scatter_offsets,
+					(ValueType (*)[1]) this->values,
+					(SizeT (*)[1]) this->scatter_offsets,
 					num_compacted);
 		} else {
+
 			util::io::ScatterTile<
-				KernelPolicy::TILE_ELEMENTS_PER_THREAD,
+				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
+				0,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					cta->d_out_values,
-					this->values,
-					(ValidFlag *) this->flags,
-					(SizeT *) this->scatter_offsets);
+					(ValueType (*)[1]) this->values,
+					(ValidFlag (*)[1]) this->flags,
+					(SizeT (*)[1]) this->scatter_offsets);
 		}
 	}
 };
