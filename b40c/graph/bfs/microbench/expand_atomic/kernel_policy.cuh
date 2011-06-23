@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding BFS expand-compact granularity configuration
+ * "Metatype" for guiding BFS expansion granularity configuration
  ******************************************************************************/
 
 #pragma once
@@ -28,17 +28,20 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_details.cuh>
+#include <b40c/util/srts_soa_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
+namespace graph {
 namespace bfs {
-namespace expand_compact {
+namespace microbench {
+namespace expand_atomic {
 
 /**
- * BFS atomic expand-compact kernel granularity configuration meta-type.  Parameterizations of this
+ * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -55,6 +58,12 @@ template <
 	// Machine parameters
 	int CUDA_ARCH,
 
+	// Behavioral control parameters
+	bool _BENCHMARK,					// Whether or not this is a microbenchmark configuration
+	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
+	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
+	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
+
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
 	int _LOG_THREADS,
@@ -69,7 +78,7 @@ template <
 	bool _WORK_STEALING,
 	int _LOG_SCHEDULE_GRANULARITY>
 
-struct SweepKernelConfig : _ProblemType
+struct KernelPolicy : _ProblemType
 {
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
@@ -81,9 +90,14 @@ struct SweepKernelConfig : _ProblemType
 	static const util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER 	= _ROW_OFFSET_UNALIGNED_READ_MODIFIER;
 	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
 
-	static const bool WORK_STEALING		= _WORK_STEALING;
+	static const bool WORK_STEALING													= _WORK_STEALING;
 
 	enum {
+
+		INSTRUMENT						= _INSTRUMENT,
+		SATURATION_QUIT					= _SATURATION_QUIT,
+		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
+
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
@@ -109,10 +123,12 @@ struct SweepKernelConfig : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		BENCHMARK						= _BENCHMARK,
 	};
 
-	// SRTS grid type
+	// SRTS grid type for coarse
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
@@ -120,11 +136,58 @@ struct SweepKernelConfig : _ProblemType
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
+			CoarseGrid;
+
+	// SRTS grid type for fine
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		SizeT,									// Partial type
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			FineGrid;
+
+
+	// Tuple of partial-flag type
+	typedef util::Tuple<SizeT, SizeT> TileTuple;
+
+
+	/**
+	 * SOA scan operator
+	 */
+	struct SoaScanOp
+	{
+		enum {
+			IDENTITY_STRIDES = true,			// There is an "identity" region of warpscan storage exists for strides to index into
+		};
+
+		// SOA scan operator
+		__device__ __forceinline__ TileTuple operator()(
+			const TileTuple &first,
+			const TileTuple &second)
+		{
+			return TileTuple(first.t0 + second.t0, first.t1 + second.t1);
+		}
+
+		// SOA identity operator
+		__device__ __forceinline__ TileTuple operator()()
+		{
+			return TileTuple(0,0);
+		}
+	};
+
+
+	// Tuple type of SRTS grid types
+	typedef util::Tuple<
+		CoarseGrid,
+		FineGrid> SrtsGridTuple;
 
 
 	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	typedef util::SrtsSoaDetails<
+		TileTuple,
+		SrtsGridTuple> SrtsSoaDetails;
 
 
 	/**
@@ -132,8 +195,8 @@ struct SweepKernelConfig : _ProblemType
 	 */
 	struct SmemStorage
 	{
+		// Persistent shared state for the CTA
 		struct State {
-
 			// Type describing four shared memory channels per warp for intra-warp communication
 			typedef SizeT 						WarpComm[WARPS][4];
 
@@ -141,13 +204,15 @@ struct SweepKernelConfig : _ProblemType
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
 			// Shared memory channels for intra-warp communication
-			WarpComm							warp_comm;
+			volatile WarpComm					warp_comm;
 
-			// Storage for scanning local expand-compact ranks
-			SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			// Storage for scanning local compact-expand ranks
+			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 			// Enqueue offset for neighbors of the current tile
-			SizeT								enqueue_offset;
+			SizeT								fine_enqueue_offset;
+			SizeT								coarse_enqueue_offset;
 
 		} state;
 
@@ -155,7 +220,7 @@ struct SweepKernelConfig : _ProblemType
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
 												- sizeof(State)
-												- 64,
+												- 72,
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
@@ -163,19 +228,23 @@ struct SweepKernelConfig : _ProblemType
 
 			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
 			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
-
-			HASHTABLE_ELEMENTS				= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
 		};
 
-		union SmemPool {
-			SizeT 							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-			VertexId						hash_table[HASHTABLE_ELEMENTS];
-			struct {
-				SizeT 						offset_scratch[OFFSET_ELEMENTS];
-				VertexId 					parent_scratch[PARENT_ELEMENTS];
-			} scratch;
+		volatile VertexId gathered;
 
-		} smem_pool;
+		union {
+			// Raking elements
+			struct {
+				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT 						fine_raking_elements[FineGrid::TOTAL_RAKING_ELEMENTS];
+			};
+
+			// Scratch elements
+			struct {
+				volatile SizeT 				offset_scratch[OFFSET_ELEMENTS];
+				volatile VertexId 			parent_scratch[PARENT_ELEMENTS];
+			};
+		};
 	};
 
 	enum {
@@ -188,7 +257,9 @@ struct SweepKernelConfig : _ProblemType
 };
 
 
-} // namespace expand_compact
+} // namespace expand_atomic
+} // namespace microbench
 } // namespace bfs
+} // namespace graph
 } // namespace b40c
 
