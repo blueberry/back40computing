@@ -86,7 +86,7 @@ struct InitializeTile
 			TransformOp transform_op)
 		{
 			SoaS source;
-			source_soa.Get(s, LOAD, VEC);
+			source_soa.Get(source, LOAD, VEC);
 			SoaT target = transform_op(source);
 			target_soa.Set(target, LOAD, VEC);
 			Iterate<LOAD, VEC + 1>::Transform(target, source, transform_op);
@@ -128,7 +128,7 @@ struct InitializeTile
 			SoaS source_soa,
 			TransformOp transform_op)
 		{
-			Iterate<LOAD + 1, 0>::Transform(target, source, transform_op);
+			Iterate<LOAD + 1, 0>::Transform(target_soa, source_soa, transform_op);
 		}
 	};
 
@@ -210,7 +210,7 @@ struct InitializeTile
 		SoaS source_soa,
 		TransformOp transform_op)
 	{
-		Iterate<0, 0>::Transform(target, source, transform_op);
+		Iterate<0, 0>::Transform(target_soa, source_soa, transform_op);
 	}
 };
 

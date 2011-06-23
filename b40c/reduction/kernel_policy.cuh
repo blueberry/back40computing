@@ -51,7 +51,7 @@ template <
 
 	// Machine parameters
 	int CUDA_ARCH,
-	bool CHECK_ALIGNMENT,
+	bool _CHECK_ALIGNMENT,
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -98,7 +98,7 @@ struct KernelPolicy : ProblemType
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
+		CHECK_ALIGNMENT					= _CHECK_ALIGNMENT
 	};
 
 	/**
@@ -107,6 +107,9 @@ struct KernelPolicy : ProblemType
 	struct SmemStorage
 	{
 		T reduction_tree[THREADS];
+
+		// Accessors
+		__device__ __forceinline__ T* ReductionTree() { return reduction_tree; }
 	};
 
 	enum {

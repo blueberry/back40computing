@@ -169,7 +169,7 @@ struct Cta
 			KernelPolicy::LOG_THREADS,
 			false>::Invoke(								// No need to return aggregate reduction in all threads
 				carry,
-				smem_storage.reduction_tree,
+				smem_storage.ReductionTree(),
 				reduction_op);
 
 		// Write output
@@ -194,7 +194,7 @@ struct Cta
 			KernelPolicy::LOG_THREADS,
 			false>::Invoke(								// No need to return aggregate reduction in all threads
 				carry,
-				smem_storage.reduction_tree,
+				smem_storage.ReductionTree(),
 				num_elements,
 				reduction_op);
 

@@ -52,7 +52,7 @@ template <
 
 	// Machine parameters
 	int CUDA_ARCH,
-	bool CHECK_ALIGNMENT,
+	bool _CHECK_ALIGNMENT,
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -99,7 +99,7 @@ struct KernelPolicy : ProblemType
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
-		CHECK_ALIGNMENT					= CHECK_ALIGNMENT
+		CHECK_ALIGNMENT					= _CHECK_ALIGNMENT
 	};
 
 
@@ -124,14 +124,17 @@ struct KernelPolicy : ProblemType
 	struct SmemStorage
 	{
 		T 			warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		union {
-			struct {
-				T 		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-			};
-			struct {
-				T 		reduction_tree[THREADS];
-			};
-		};
+
+		__align__(16)
+		union {																			// Repurposable storage (complexity added b/c non-default-constructible types are not allowed in C++ unions)
+			char	raking_elements[sizeof(T[SrtsGrid::TOTAL_RAKING_ELEMENTS])];		// SRTS raking elements
+			char	reduction_tree[sizeof(T[THREADS])];									// Binary reduction tree
+		} pool;
+
+		// Accessors
+		__device__ __forceinline__ T* RakingElements() { return (T*) pool.raking_elements; }
+		__device__ __forceinline__ T* ReductionTree() { return (T*) pool.reduction_tree; }
+
 	};
 
 
