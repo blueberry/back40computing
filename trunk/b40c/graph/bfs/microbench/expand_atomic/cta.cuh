@@ -61,6 +61,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 	typedef typename SmemStorage::State::WarpComm 	WarpComm;
@@ -85,6 +86,8 @@ struct Cta
 	VertexId 				*d_out;
 	SizeT 					*d_in_row_lengths;
 	VertexId				*d_column_indices;
+	CollisionMask 			*d_collision_cache;
+	VertexId 				*d_source_path;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -95,6 +98,39 @@ struct Cta
 	// Smem storage
 	SmemStorage 			&smem_storage;
 
+
+	/**
+	 * BitmaskCull
+	 */
+	static __device__ __forceinline__ VertexId BitmaskCull(
+		Cta *cta,
+		VertexId vertex)
+	{
+
+		// Location of mask byte to read
+		SizeT mask_byte_offset = vertex >> 3;
+
+		// Read byte from from collision cache bitmask
+		CollisionMask mask_byte;
+		util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+			mask_byte, cta->d_collision_cache + mask_byte_offset);
+
+		// Bit in mask byte corresponding to current vertex id
+		CollisionMask mask_bit = 1 << (vertex & 7);
+
+		if (mask_bit & mask_byte) {
+			return -1;
+		}
+
+		VertexId gather;
+		util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+			gather,
+			cta->d_source_path + vertex);
+
+		return gather;
+
+//		return vertex;
+	}
 
 	//---------------------------------------------------------------------
 	// Helper Structures
@@ -133,6 +169,7 @@ struct Cta
 
 		SizeT 		fine_count;
 		SizeT		progress;
+
 
 		//---------------------------------------------------------------------
 		// Helper Structures
@@ -212,7 +249,7 @@ struct Cta
 							neighbor_id,
 							cta->d_column_indices + coop_offset);
 
-						cta->smem_storage.gathered = neighbor_id;
+						cta->smem_storage.gathered = BitmaskCull(cta, neighbor_id);
 
 						if (!KernelPolicy::BENCHMARK) {
 
@@ -270,7 +307,7 @@ struct Cta
 						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 							neighbor_id, cta->d_column_indices + coop_offset);
 
-						cta->smem_storage.gathered = neighbor_id;
+						cta->smem_storage.gathered = BitmaskCull(cta, neighbor_id);
 
 						if (!KernelPolicy::BENCHMARK) {
 
@@ -446,6 +483,8 @@ struct Cta
 		VertexId 				*d_out,
 		SizeT 					*d_in_row_lengths,
 		VertexId 				*d_column_indices,
+		CollisionMask 			*d_collision_cache,
+		VertexId 				*d_source_path,
 		util::CtaWorkProgress	&work_progress) :
 
 			smem_storage(smem_storage),
@@ -462,6 +501,8 @@ struct Cta
 			d_in_row_lengths(d_in_row_lengths),
 			d_out(d_out),
 			d_column_indices(d_column_indices),
+			d_collision_cache(d_collision_cache),
+			d_source_path(d_source_path),
 			work_progress(work_progress) {}
 
 
@@ -565,7 +606,7 @@ struct Cta
 					neighbor_id,
 					d_column_indices + smem_storage.offset_scratch[scratch_offset]);
 
-				smem_storage.gathered = neighbor_id;
+				smem_storage.gathered = BitmaskCull(this, neighbor_id);
 
 				if (!KernelPolicy::BENCHMARK) {
 

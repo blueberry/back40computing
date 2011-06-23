@@ -163,7 +163,7 @@ struct KernelPolicy : ProblemType
 
 		} state;
 
-		volatile CollisionMask mask_byte;
+		volatile VertexId gather;
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy

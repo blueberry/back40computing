@@ -55,11 +55,16 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime compact_kernel_stats;
-	long long 		total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
-	long long 		total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
+
+	unsigned long long 		expand_total_runtimes;			// Total time "worked" by each cta
+	unsigned long long 		expand_total_lifetimes;			// Total time elapsed by each cta
+
+	unsigned long long 		compact_total_runtimes;
+	unsigned long long 		compact_total_lifetimes;
+
+
 	long long 		total_queued;
 	long long 		search_depth;
-
 
 public: 	
 	
@@ -69,7 +74,12 @@ public:
 	EnactorMicrobench(bool DEBUG = false) :
 		EnactorBase(DEBUG),
 		search_depth(0),
-		total_queued(0)
+		total_queued(0),
+
+		expand_total_runtimes(0),
+		expand_total_lifetimes(0),
+		compact_total_runtimes(0),
+		compact_total_lifetimes(0)
 	{}
 
 
@@ -87,8 +97,6 @@ public:
 			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
 
 			// Reset statistics
-			total_avg_live 		= 0;
-			total_max_live 		= 0;
 			total_queued 		= 0;
 			search_depth 		= 0;
 
@@ -115,7 +123,12 @@ public:
     {
     	total_queued = this->total_queued;
     	search_depth = this->search_depth;
-    	avg_live = double(total_avg_live) / total_max_live;
+
+    	avg_live = 0.0;
+
+    	printf("Expand duty: %f, Compact duty: %f\n",
+    		(expand_total_lifetimes > 0) ? double(expand_total_runtimes) / expand_total_lifetimes : 0.0,
+    		(compact_total_lifetimes > 0) ? double(compact_total_runtimes) / compact_total_lifetimes : 0.0);
     }
 
     
@@ -222,12 +235,17 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
+						graph_slice->d_collision_cache,
+						graph_slice->d_source_path,
 						this->work_progress,
 						this->expand_kernel_stats);
 
 				if (INSTRUMENT) {
 					// Get expand stats (i.e., duty %)
-					if (retval = expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live)) break;
+					if (retval = expand_kernel_stats.Accumulate(
+						expand_grid_size,
+						expand_total_runtimes,
+						expand_total_lifetimes)) break;
 				}
 
 				steal_index++;
@@ -242,6 +260,8 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
+						graph_slice->d_collision_cache,
+						graph_slice->d_source_path,
 						this->work_progress);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
@@ -277,7 +297,10 @@ public:
 
 				if (INSTRUMENT) {
 					// Get compact downsweep stats (i.e., duty %)
-					if (retval = compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) break;
+					if (retval = compact_kernel_stats.Accumulate(
+						compact_grid_size,
+						compact_total_runtimes,
+						compact_total_lifetimes)) break;
 				}
 
 				steal_index++;
@@ -313,6 +336,8 @@ public:
 			}
 
 		} while(0);
+
+		printf("\n");
 
 		return retval;
 	}

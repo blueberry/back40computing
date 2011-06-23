@@ -147,12 +147,6 @@ DEPS = 			./Makefile \
 				 
 
 
-#-------------------------------------------------------------------------------
-# (make simple) Simple example driver for 
-#-------------------------------------------------------------------------------
-
-
-
 
 #-------------------------------------------------------------------------------
 # (make test) Test driver for 
@@ -166,14 +160,14 @@ bin/test_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_bfs.cu $(DEPS)
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of bfs configuration types
+# (make microbench) Microbenchmark test driver
 #-------------------------------------------------------------------------------
 
+microbench: bin/microbench_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-
-#-------------------------------------------------------------------------------
-# (make compare) Compares bfs performance against other libraries (e.g., Thrust)
-#-------------------------------------------------------------------------------
+bin/microbench_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) : microbench_bfs.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/microbench_bfs_$(NVCC_VERSION)_$(ARCH_SUFFIX) microbench_bfs.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 
