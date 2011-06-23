@@ -167,10 +167,6 @@ struct Cta
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						mask_byte, cta->d_collision_cache + mask_byte_offset);
 
-					cta->smem_storage.mask_byte = mask_byte;
-
-/* Not needed for micro-benchmarking
-
 					// Bit in mask byte corresponding to current vertex id
 					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
 
@@ -181,13 +177,22 @@ struct Cta
 
 					} else {
 
-						// Update with best effort
-						mask_byte |= mask_bit;
-						util::io::ModifiedStore<util::io::st::cg>::St(
-							mask_byte,
-							cta->d_collision_cache + mask_byte_offset);
+						if (!KernelPolicy::BENCHMARK) {
+
+							// Update with best effort
+							mask_byte |= mask_bit;
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								mask_byte,
+								cta->d_collision_cache + mask_byte_offset);
+						}
+
+						VertexId gather;
+						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+							gather,
+							cta->d_source_path + tile->vertex_ids[LOAD][VEC]);
+
+						cta->smem_storage.gather = gather;
 					}
-*/
 				}
 
 				// Next

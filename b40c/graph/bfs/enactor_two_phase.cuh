@@ -59,10 +59,10 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime compact_kernel_stats;
-	long long 		total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
-	long long 		total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
-	long long 		total_queued;
-	long long 		search_depth;
+	unsigned long long 		total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
+	unsigned long long 		total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
+	unsigned long long 		total_queued;
+	unsigned long long 		search_depth;
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration

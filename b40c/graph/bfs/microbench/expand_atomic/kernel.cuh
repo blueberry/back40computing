@@ -51,6 +51,8 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::SizeT 			*&d_in_row_lengths,
 		typename KernelPolicy::VertexId			*&d_column_indices,
+		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId 		*&d_source_path,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
@@ -77,6 +79,8 @@ struct SweepPass
 			d_out,
 			d_in_row_lengths,
 			d_column_indices,
+			d_collision_cache,
+			d_source_path,
 			work_progress);
 
 		// Process full tiles
@@ -130,6 +134,8 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::SizeT 			*&d_in_row_lengths,
 		typename KernelPolicy::VertexId			*&d_column_indices,
+		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId 		*&d_source_path,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
@@ -145,6 +151,8 @@ struct SweepPass <KernelPolicy, true>
 			d_out,
 			d_in_row_lengths,
 			d_column_indices,
+			d_collision_cache,
+			d_source_path,
 			work_progress);
 
 		// Total number of elements in full tiles
@@ -183,6 +191,8 @@ void Kernel(
 	typename KernelPolicy::VertexId 		*d_out,
 	typename KernelPolicy::SizeT 			*d_in_row_lengths,
 	typename KernelPolicy::VertexId			*d_column_indices,
+	typename KernelPolicy::CollisionMask 	*d_collision_cache,
+	typename KernelPolicy::VertexId 		*d_source_path,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
@@ -223,6 +233,8 @@ void Kernel(
 			d_out,
 			d_in_row_lengths,
 			d_column_indices,
+			d_collision_cache,
+			d_source_path,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
@@ -257,6 +269,8 @@ void Kernel(
 			d_out,
 			d_in_row_lengths,
 			d_column_indices,
+			d_collision_cache,
+			d_source_path,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);

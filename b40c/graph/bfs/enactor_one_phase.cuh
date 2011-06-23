@@ -65,9 +65,9 @@ protected:
 	 * CTA duty kernel stats
 	 */
 	util::KernelRuntimeStatsLifetime 	kernel_stats;
-	long long 							total_avg_live;
-	long long 							total_max_live;
-	long long 							total_queued;
+	unsigned long long 							total_avg_live;
+	unsigned long long 							total_max_live;
+	unsigned long long 							total_queued;
 
 	/**
 	 * Current iteration (mapped into GPU space so that it can

@@ -101,8 +101,10 @@ public:
 	 */
 	__device__ __forceinline__ void Flush()
 	{
-		d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = clocks;
-		d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = aggregate;
+		if (d_stat != NULL) {
+			d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = clocks;
+			d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = aggregate;
+		}
 	}
 
 	/**
@@ -110,8 +112,10 @@ public:
 	 */
 	__device__ __forceinline__ void Reset() const
 	{
-		d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = 0;
-		d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = 0;
+		if (d_stat != NULL) {
+			d_stat[blockIdx.x + (CLOCKS * gridDim.x)] = 0;
+			d_stat[blockIdx.x + (AGGREGATE * gridDim.x)] = 0;
+		}
 	}
 
 };
@@ -232,9 +236,9 @@ public:
 	 */
 	cudaError_t Accumulate(
 		int grid_size,
-		long long &total_avg_live,
-		long long &total_max_live,
-		long long &total_aggregate)
+		unsigned long long &total_runtimes,
+		unsigned long long &total_lifetimes,
+		unsigned long long &total_aggregate)
 	{
 		cudaError_t retval = cudaSuccess;
 
@@ -259,9 +263,7 @@ public:
 				"KernelRuntimeStatsLifetime cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 
 			// Compute runtimes, find max
-			int ctas_with_work = 0;
 			unsigned long long max_runtime = 0;
-			unsigned long long total_runtimes = 0;
 			for (int block = 0; block < grid_size; block++) {
 
 				unsigned long long runtime = h_stat[(CLOCKS * grid_size) + block];
@@ -271,16 +273,9 @@ public:
 				}
 
 				total_runtimes += runtime;
-				ctas_with_work++;
 			}
 
-			// Compute avg runtime
-			double avg_runtime = (ctas_with_work > 0) ?
-				double(total_runtimes) / ctas_with_work :
-				0.0;
-
-			total_max_live += max_runtime;
-			total_avg_live += avg_runtime;
+			total_lifetimes += (max_runtime * grid_size);
 
 			// Accumulate aggregates
 			for (int block = 0; block < grid_size; block++) {
@@ -300,11 +295,11 @@ public:
 	 */
 	cudaError_t Accumulate(
 		int grid_size,
-		long long &total_avg_live,
-		long long &total_max_live)
+		unsigned long long &total_runtimes,
+		unsigned long long &total_lifetimes)
 	{
-		long long total_aggregate = 0;
-		return Accumulate(grid_size, total_avg_live, total_max_live, total_aggregate);
+		unsigned long long total_aggregate = 0;
+		return Accumulate(grid_size, total_runtimes, total_lifetimes, total_aggregate);
 	}
 };
 
