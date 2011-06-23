@@ -52,7 +52,7 @@ template <
 
 	// Machine parameters
 	int CUDA_ARCH,
-	bool CHECK_ALIGNMENT,
+	bool _CHECK_ALIGNMENT,
 
 	// Tunable parameters
 	int _MAX_CTA_OCCUPANCY,
@@ -64,7 +64,7 @@ template <
 	util::io::st::CacheModifier _WRITE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY,
 	bool _TWO_PHASE_SCATTER,
-	bool CONSECUTIVE_SMEM_ASSIST>
+	bool _CONSECUTIVE_SMEM_ASSIST>
 
 struct KernelPolicy : ProblemType
 {
@@ -110,8 +110,8 @@ struct KernelPolicy : ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
 		TWO_PHASE_SCATTER				= _TWO_PHASE_SCATTER,
-		CHECK_ALIGNMENT					= CHECK_ALIGNMENT,
-		CONSECUTIVE_SMEM_ASSIST			= CONSECUTIVE_SMEM_ASSIST,
+		CHECK_ALIGNMENT					= _CHECK_ALIGNMENT,
+		CONSECUTIVE_SMEM_ASSIST			= _CONSECUTIVE_SMEM_ASSIST,
 	};
 
 

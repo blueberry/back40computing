@@ -89,7 +89,7 @@ struct Cta
 		IdentityOp 			identity_op) :
 
 			srts_details(
-				smem_storage.raking_elements,
+				smem_storage.RakingElements(),
 				smem_storage.warpscan,
 				identity_op()),
 			d_in(d_in),
@@ -109,7 +109,7 @@ struct Cta
 		T 					spine_partial) :
 
 			srts_details(
-				smem_storage.raking_elements,
+				smem_storage.RakingElements(),
 				smem_storage.warpscan,
 				identity_op()),
 			d_in(d_in),

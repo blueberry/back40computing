@@ -210,7 +210,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
 	g_verbose = args.CheckCmdLineFlag("v");
-/*
+
 	{
 		printf("\n-- UNSIGNED CHAR ----------------------------------------------\n");
 		typedef unsigned char T;
@@ -223,21 +223,19 @@ int main(int argc, char** argv)
 		Sum<T> op;
 		TestConsecutiveReduction<T>(num_elements * 2, op);
 	}
-*/
 	{
 		printf("\n-- UNSIGNED INT -----------------------------------------------\n");
 		typedef unsigned int T;
 		Sum<T> op;
 		TestConsecutiveReduction<T>(num_elements, op);
 	}
-/*
 	{
 		printf("\n-- UNSIGNED LONG LONG -----------------------------------------\n");
 		typedef unsigned long long T;
 		Sum<T> op;
 		TestConsecutiveReduction<T>(num_elements / 2, op);
 	}
-*/
+
 	return 0;
 }
 
