@@ -1,1 +1,1 @@
-Version v1.0.530 (SVN r530)
+Version v1.0.578 (SVN r578)
