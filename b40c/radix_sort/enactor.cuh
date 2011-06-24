@@ -189,7 +189,11 @@ public:
 
 	/**
 	 * Enacts a sorting operation on the specified device data.  Uses the
-	 * specified problem size genre enumeration to select autotuning policy.
+	 * specified problem size genre enumeration to select autotuning policy:
+	 *
+	 * 		b40c::radix_sort::SMALL_SIZE		// < 1M elements
+	 * 		b40c::radix_sort::LARGE_SIZE		// > 1M elements
+	 * 		b40c::radix_sort::UNKNOWN_SIZE		// Compiles both and selects appropriately
 	 *
 	 * (Using this entrypoint can save compile time by not compiling tuned
 	 * kernels for each problem size genre.)
@@ -370,7 +374,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
-			LargePolicy::Upsweep::CTA_OCCUPANCY *
+			LargePolicy::Upsweep::MAX_CTA_OCCUPANCY *
 			detail.enactor->SmCount();
 
 		if (detail.num_elements < saturating_load) {

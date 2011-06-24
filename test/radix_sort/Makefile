@@ -150,6 +150,11 @@ DEPS = 			./Makefile \
 # (make simple) Simple example driver for 
 #-------------------------------------------------------------------------------
 
+simple: bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_sort.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 
