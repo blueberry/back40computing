@@ -121,16 +121,19 @@ public:
     void GetStatistics(
     	long long &total_queued,
     	VertexId &search_depth,
-    	double &avg_live)
+    	double &expand_duty,
+    	double &compact_duty)
     {
     	total_queued = this->total_queued;
     	search_depth = this->search_depth;
 
-    	avg_live = 0.0;
+    	expand_duty = (expand_total_lifetimes > 0) ?
+    		double(expand_total_runtimes) / expand_total_lifetimes :
+    		0.0;
 
-    	printf("Expand duty: %f, Compact duty: %f\n",
-    		(expand_total_lifetimes > 0) ? double(expand_total_runtimes) / expand_total_lifetimes : 0.0,
-    		(compact_total_lifetimes > 0) ? double(compact_total_runtimes) / compact_total_lifetimes : 0.0);
+    	compact_duty = (compact_total_lifetimes > 0) ?
+    		double(compact_total_runtimes) / compact_total_lifetimes :
+    		0.0;
     }
 
     
