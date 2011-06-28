@@ -188,10 +188,11 @@ struct Stats {
 	Statistic rate;
 	Statistic search_depth;
 	Statistic redundant_work;
-	Statistic duty;
+	Statistic expand_duty;
+	Statistic compact_duty;
 	
-	Stats() : name(NULL), rate(), search_depth(), redundant_work(), duty() {}
-	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), duty() {}
+	Stats() : name(NULL), rate(), search_depth(), redundant_work(), expand_duty(), compact_duty() {}
+	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), expand_duty(), compact_duty() {}
 };
 
 
@@ -303,7 +304,8 @@ void DisplayStats(
 	double 									elapsed,
 	VertexId								search_depth,
 	long long 								total_queued,
-	double 									avg_duty)
+	double 									expand_duty,
+	double 									compact_duty)
 {
 	// Compute nodes and edges visited
 	SizeT edges_visited = 0;
@@ -399,8 +401,11 @@ void DisplayStats(
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
 		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
 		if (search_depth != 0) printf(", search_depth: %lld", (long long) search_depth);
-		if (avg_duty != 0) {
-			printf("\n\tavg cta duty: %.2f%%", avg_duty * 100);
+		if (expand_duty != 0) {
+			printf("\n\texpand cta duty: %.2f%%", expand_duty * 100);
+		}
+		if (compact_duty != 0) {
+			printf("\n\tcompact cta duty: %.2f%%", compact_duty * 100);
 		}
 		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
 			(long long) src, (long long) nodes_visited, (long long) edges_visited);
@@ -423,9 +428,13 @@ void DisplayStats(
 		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
-		double duty_stddev = sqrt(stats.duty.Update(avg_duty * 100));
-		if (avg_duty > 0) printf(	"\t\t[Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
-			stats.duty.mean, duty_stddev, duty_stddev / stats.duty.mean);
+		double expand_duty_stddev = sqrt(stats.expand_duty.Update(expand_duty * 100));
+		if (expand_duty > 0) printf(	"\t\t[Expand Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
+			stats.expand_duty.mean, expand_duty_stddev, expand_duty_stddev / stats.expand_duty.mean);
+
+		double compact_duty_stddev = sqrt(stats.compact_duty.Update(compact_duty * 100));
+		if (compact_duty > 0) printf(	"\t\t[Compact Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
+			stats.compact_duty.mean, compact_duty_stddev, compact_duty_stddev / stats.compact_duty.mean);
 
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
 		printf(								"\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
@@ -484,9 +493,11 @@ cudaError_t TestGpuBfs(
 
 		long long 	total_queued = 0;
 		VertexId	search_depth = 0;
-		double		avg_duty = 0.0;
+		double		expand_duty = 0.0;
+		double		compact_duty = 0.0;
 
-		enactor.GetStatistics(total_queued, search_depth, avg_duty);
+		enactor.GetStatistics(total_queued, search_depth, expand_duty, compact_duty);
+
 		DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
 			stats,
 			src,
@@ -496,7 +507,8 @@ cudaError_t TestGpuBfs(
 			elapsed,
 			search_depth,
 			total_queued,
-			avg_duty);
+			expand_duty,
+			compact_duty);
 
 	} while (0);
 	
@@ -575,6 +587,7 @@ void SimpleReferenceBfs(
 		elapsed,
 		search_depth,
 		0,							// No redundant queuing
+		0,
 		0);							// No barrier duty
 }
 
