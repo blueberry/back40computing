@@ -45,6 +45,7 @@ struct SweepPass
 {
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::SizeT 			*&d_in_row_offsets,
@@ -73,6 +74,7 @@ struct SweepPass
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
 			queue_index,
 			smem_storage,
 			d_in_row_offsets,
@@ -128,6 +130,7 @@ struct SweepPass <KernelPolicy, true>
 {
 	template <typename SmemStorage>
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::SizeT 			*&d_in_row_offsets,
@@ -145,6 +148,7 @@ struct SweepPass <KernelPolicy, true>
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
 			queue_index,
 			smem_storage,
 			d_in_row_offsets,
@@ -227,6 +231,7 @@ void Kernel(
 		// global barrier after queue-reset, the queue may be inconsistent
 		// across CTAs
 		SweepPass<KernelPolicy, false>::Invoke(
+			iteration,
 			queue_index,
 			steal_index,
 			d_in_row_offsets,
@@ -263,6 +268,7 @@ void Kernel(
 		__syncthreads();
 
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+			iteration,
 			queue_index,
 			steal_index,
 			d_in_row_offsets,

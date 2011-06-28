@@ -82,6 +82,7 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Current BFS queue index
+	VertexId 				iteration;
 	VertexId 				queue_index;
 
 	// Input and output device pointers
@@ -109,29 +110,27 @@ struct Cta
 		Cta *cta,
 		VertexId vertex)
 	{
-		if (KernelPolicy::BENCHMARK) {
+/*
+		// Location of mask byte to read
+		SizeT mask_byte_offset = vertex >> 3;
 
-			// Location of mask byte to read
-			SizeT mask_byte_offset = vertex >> 3;
+		// Read byte from from collision cache bitmask
+		CollisionMask mask_byte = tex1Dfetch(
+			bitmask_tex_ref,
+			mask_byte_offset);
 
-			// Read byte from from collision cache bitmask
-			CollisionMask mask_byte = tex1Dfetch(
-				bitmask_tex_ref,
-				mask_byte_offset);
+		// Bit in mask byte corresponding to current vertex id
+		CollisionMask mask_bit = 1 << (vertex & 7);
 
-			// Bit in mask byte corresponding to current vertex id
-			CollisionMask mask_bit = 1 << (vertex & 7);
+		if ((mask_bit & mask_byte) == 0) {
 
-			if (mask_bit & mask_byte == 0) {
-
-				// Update with best effort
-				mask_byte |= mask_bit;
-				util::io::ModifiedStore<util::io::st::cg>::St(
-					mask_byte,
-					cta->d_collision_cache + mask_byte_offset);
-			}
+			// Update with best effort
+			mask_byte |= mask_bit;
+			util::io::ModifiedStore<util::io::st::cg>::St(
+				mask_byte,
+				cta->d_collision_cache + mask_byte_offset);
 		}
-
+*/
 		cta->smem_storage.gathered = vertex;
 	}
 
@@ -243,11 +242,10 @@ struct Cta
 					SizeT coop_rank	 	= cta->smem_storage.state.warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[0][2];
 
-					VertexId neighbor_id;
-
 					while (coop_offset < coop_oob) {
 
 						// Gather
+						VertexId neighbor_id;
 						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 							neighbor_id,
 							cta->d_column_indices + coop_offset);
@@ -302,11 +300,10 @@ struct Cta
 					SizeT coop_rank 	= cta->smem_storage.state.warp_comm[warp_id][1] + lane_id;
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[warp_id][2];
 
-					VertexId neighbor_id;
-
 					while (coop_offset < coop_oob) {
 
 						// Gather
+						VertexId neighbor_id;
 						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 							neighbor_id, cta->d_column_indices + coop_offset);
 
@@ -480,6 +477,7 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
+		VertexId				iteration,
 		VertexId 				queue_index,
 		SmemStorage 			&smem_storage,
 		SizeT 					*d_in_row_offsets,
@@ -490,6 +488,7 @@ struct Cta
 		VertexId 				*d_source_path,
 		util::CtaWorkProgress	&work_progress) :
 
+			iteration(iteration),
 			smem_storage(smem_storage),
 			queue_index(queue_index),
 			srts_soa_details(
