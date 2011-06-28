@@ -38,6 +38,7 @@ namespace bfs {
 namespace partition_compact {
 namespace upsweep {
 
+
 /**
  * CTA
  *

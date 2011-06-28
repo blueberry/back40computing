@@ -45,6 +45,10 @@ namespace partition_compact {
 namespace upsweep {
 
 
+texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+
+
+
 /**
  * Tile
  *
@@ -111,10 +115,15 @@ struct Tile :
 				CollisionMask mask_bit = 1 << (tile->keys[LOAD][VEC] & 7);
 
 				// Read byte from from collision cache bitmask
+				CollisionMask mask_byte = tex1Dfetch(
+					bitmask_tex_ref,
+					mask_byte_offset);
+/*
+				// Read byte from from collision cache bitmask
 				CollisionMask mask_byte;
 				util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 					mask_byte, cta->d_collision_cache + mask_byte_offset);
-
+*/
 				if (mask_bit & mask_byte) {
 
 					// Seen it

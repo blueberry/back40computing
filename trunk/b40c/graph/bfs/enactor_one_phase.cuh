@@ -188,6 +188,17 @@ public:
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
+			// Bind bitmask texture
+			int bytes = (graph_slice->nodes + 8 - 1) / 8;
+			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					compact_expand_atomic::bitmask_tex_ref,
+					graph_slice->d_collision_cache,
+					bitmask_desc,
+					bytes),
+				"EnactorOnePhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
 			// Initiate single-grid kernel
 			compact_expand_atomic::Kernel<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(

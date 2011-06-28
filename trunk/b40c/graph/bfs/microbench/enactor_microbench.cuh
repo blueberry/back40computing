@@ -153,6 +153,8 @@ public:
 	{
 		typedef typename CsrProblem::VertexId					VertexId;
 		typedef typename CsrProblem::SizeT						SizeT;
+		typedef typename CsrProblem::CollisionMask				CollisionMask;
+		typedef typename CsrProblem::ValidFlag					ValidFlag;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -223,6 +225,26 @@ public:
 					cudaMemcpyHostToDevice),
 				"EnactorMicrobench cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
 
+			// Initialize d_keep to reuse as alternate bitmask
+			util::MemsetKernel<ValidFlag><<<128, 128, 0, graph_slice->stream>>>(
+				graph_slice->d_keep,
+				0,
+				graph_slice->nodes);
+
+			// Init tex
+			int bytes = (graph_slice->nodes + 8 - 1) / 8;
+			cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<char>();
+			if (util::B40CPerror(cudaBindTexture(
+					0,
+					compact_atomic::bitmask_tex_ref,
+					graph_slice->d_collision_cache,
+					channelDesc,
+					bytes),
+				"EnactorMicrobench cudaBindTexture failed", __FILE__, __LINE__)) exit(1);
+
+			printf("Go time\n");
+			fflush(stdout);
+
 			while (true) {
 
 				// BenchExpansion
@@ -260,7 +282,7 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
-						graph_slice->d_collision_cache,
+						(CollisionMask *) graph_slice->d_keep,
 						graph_slice->d_source_path,
 						this->work_progress);
 
@@ -314,7 +336,7 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_in
 						graph_slice->frontier_queues.d_keys[selector],			// d_out_row_offsets
 						graph_slice->frontier_queues.d_values[selector],		// d_out_row_lengths
-						graph_slice->d_collision_cache,
+						(CollisionMask *) graph_slice->d_keep,
 						graph_slice->d_row_offsets,
 						graph_slice->d_source_path,
 						this->work_progress);
