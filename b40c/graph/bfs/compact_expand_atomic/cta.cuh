@@ -44,6 +44,10 @@ namespace bfs {
 namespace compact_expand_atomic {
 
 
+texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+
+
+
 /**
  * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
@@ -422,11 +426,16 @@ struct Cta
 
 					// Bit in mask byte corresponding to current vertex id
 					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
-
+/*
 					// Read byte from from collision cache bitmask
 					CollisionMask mask_byte;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						mask_byte, cta->d_collision_cache + mask_byte_offset);
+*/
+					// Read byte from from collision cache bitmask
+					CollisionMask mask_byte = tex1Dfetch(
+						bitmask_tex_ref,
+						mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
 

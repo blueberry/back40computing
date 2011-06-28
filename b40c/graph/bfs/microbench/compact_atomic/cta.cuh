@@ -46,6 +46,9 @@ namespace microbench {
 namespace compact_atomic {
 
 
+texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+
+
 /**
  * Cta
  */
@@ -150,6 +153,7 @@ struct Cta
 				Iterate<LOAD, VEC + 1>::InitFlags(tile);
 			}
 
+
 			/**
 			 * BitmaskCull
 			 */
@@ -157,41 +161,35 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-				if (tile->flags[LOAD][VEC]) {
+				if (KernelPolicy::BENCHMARK) {
 
-					// Location of mask byte to read
-					SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
+					if (tile->flags[LOAD][VEC]) {
 
-					// Read byte from from collision cache bitmask
-					CollisionMask mask_byte;
-					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-						mask_byte, cta->d_collision_cache + mask_byte_offset);
+						// Location of mask byte to read
+						SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
-					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
+						// Read byte from from collision cache bitmask
+						CollisionMask mask_byte = tex1Dfetch(
+							bitmask_tex_ref,
+							mask_byte_offset);
 
-					if (mask_bit & mask_byte) {
+						// Bit in mask byte corresponding to current vertex id
+						CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
 
-						// Seen it
-						tile->flags[LOAD][VEC] = 0;
+						if (mask_bit & mask_byte) {
 
-					} else {
+							// Seen it
+							tile->flags[LOAD][VEC] = 0;
 
-						if (!KernelPolicy::BENCHMARK) {
-
+						} else {
+/*
 							// Update with best effort
 							mask_byte |= mask_bit;
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								mask_byte,
 								cta->d_collision_cache + mask_byte_offset);
+*/
 						}
-
-						VertexId gather;
-						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-							gather,
-							cta->d_source_path + tile->vertex_ids[LOAD][VEC]);
-
-						cta->smem_storage.gather = gather;
 					}
 				}
 

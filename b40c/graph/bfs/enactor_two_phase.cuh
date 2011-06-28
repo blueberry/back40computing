@@ -208,6 +208,17 @@ public:
 			// Setup / lazy initialization
 			if (retval = Setup(expand_grid_size, compact_grid_size)) break;
 
+			// Bind bitmask texture
+			int bytes = (graph_slice->nodes + 8 - 1) / 8;
+			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					compact_atomic::bitmask_tex_ref,
+					graph_slice->d_collision_cache,
+					bitmask_desc,
+					bytes),
+				"EnactorTwoPhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
 			while (!done[0]) {
 
 				int selector = queue_index & 1;

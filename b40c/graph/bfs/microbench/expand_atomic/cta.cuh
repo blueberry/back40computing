@@ -45,6 +45,9 @@ namespace microbench {
 namespace expand_atomic {
 
 
+texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+
+
 /**
  * Cta
  */
@@ -102,34 +105,34 @@ struct Cta
 	/**
 	 * BitmaskCull
 	 */
-	static __device__ __forceinline__ VertexId BitmaskCull(
+	static __device__ __forceinline__ void BitmaskCull(
 		Cta *cta,
 		VertexId vertex)
 	{
+		if (KernelPolicy::BENCHMARK) {
 
-		// Location of mask byte to read
-		SizeT mask_byte_offset = vertex >> 3;
+			// Location of mask byte to read
+			SizeT mask_byte_offset = vertex >> 3;
 
-		// Read byte from from collision cache bitmask
-		CollisionMask mask_byte;
-		util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-			mask_byte, cta->d_collision_cache + mask_byte_offset);
+			// Read byte from from collision cache bitmask
+			CollisionMask mask_byte = tex1Dfetch(
+				bitmask_tex_ref,
+				mask_byte_offset);
 
-		// Bit in mask byte corresponding to current vertex id
-		CollisionMask mask_bit = 1 << (vertex & 7);
+			// Bit in mask byte corresponding to current vertex id
+			CollisionMask mask_bit = 1 << (vertex & 7);
 
-		if (mask_bit & mask_byte) {
-			return -1;
+			if (mask_bit & mask_byte == 0) {
+
+				// Update with best effort
+				mask_byte |= mask_bit;
+				util::io::ModifiedStore<util::io::st::cg>::St(
+					mask_byte,
+					cta->d_collision_cache + mask_byte_offset);
+			}
 		}
 
-		VertexId gather;
-		util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-			gather,
-			cta->d_source_path + vertex);
-
-		return gather;
-
-//		return vertex;
+		cta->smem_storage.gathered = vertex;
 	}
 
 	//---------------------------------------------------------------------
@@ -249,7 +252,7 @@ struct Cta
 							neighbor_id,
 							cta->d_column_indices + coop_offset);
 
-						cta->smem_storage.gathered = BitmaskCull(cta, neighbor_id);
+							BitmaskCull(cta, neighbor_id);
 
 						if (!KernelPolicy::BENCHMARK) {
 
@@ -307,7 +310,7 @@ struct Cta
 						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 							neighbor_id, cta->d_column_indices + coop_offset);
 
-						cta->smem_storage.gathered = BitmaskCull(cta, neighbor_id);
+						BitmaskCull(cta, neighbor_id);
 
 						if (!KernelPolicy::BENCHMARK) {
 
@@ -606,7 +609,7 @@ struct Cta
 					neighbor_id,
 					d_column_indices + smem_storage.offset_scratch[scratch_offset]);
 
-				smem_storage.gathered = BitmaskCull(this, neighbor_id);
+				BitmaskCull(this, neighbor_id);
 
 				if (!KernelPolicy::BENCHMARK) {
 

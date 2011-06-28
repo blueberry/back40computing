@@ -337,6 +337,27 @@ public:
 
 				if (retval = control_blocks[i]->template Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
 					max_grid_size, csr_problem.num_gpus)) break;
+
+				// Setup texture bitmask caches
+				int bytes = (csr_problem.graph_slices[i]->nodes + 8 - 1) / 8;
+				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+
+				if (retval = util::B40CPerror(cudaBindTexture(
+						0,
+						compact_atomic::bitmask_tex_ref,
+						csr_problem.graph_slices[i]->d_collision_cache,
+						bitmask_desc,
+						bytes),
+					"EnactorMultiGpu cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
+				if (retval = util::B40CPerror(cudaBindTexture(
+						0,
+						partition_compact::upsweep::bitmask_tex_ref,
+						csr_problem.graph_slices[i]->d_collision_cache,
+						bitmask_desc,
+						bytes),
+					"EnactorMultiGpu cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
 			}
 			if (retval) break;
 
