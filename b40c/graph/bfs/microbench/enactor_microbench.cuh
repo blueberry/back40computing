@@ -34,6 +34,8 @@
 #include <b40c/graph/bfs/microbench/expand_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/microbench/compact_atomic/kernel.cuh>
 #include <b40c/graph/bfs/microbench/compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/microbench/expand_serial/kernel.cuh>
+#include <b40c/graph/bfs/microbench/expand_serial/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -139,8 +141,10 @@ public:
 	 */
     template <
     	typename ExpandPolicy,
+    	typename SerialPolicy,
     	typename CompactPolicy,
     	typename BenchExpandPolicy,
+    	typename BenchSerialPolicy,
     	typename BenchCompactPolicy,
     	bool INSTRUMENT,
     	typename CsrProblem>
@@ -248,8 +252,10 @@ public:
 			while (true) {
 
 				// BenchExpansion
-				expand_atomic::Kernel<BenchExpandPolicy>
-					<<<expand_grid_size, BenchExpandPolicy::THREADS>>>(
+				expand_serial::Kernel<BenchSerialPolicy>
+					<<<expand_grid_size, BenchSerialPolicy::THREADS>>>(
+//				expand_atomic::Kernel<BenchExpandPolicy>
+//					<<<expand_grid_size, BenchExpandPolicy::THREADS>>>(
 						iteration,
 						queue_index,
 						steal_index,
@@ -273,8 +279,10 @@ public:
 				steal_index++;
 
 				// Expansion
-				expand_atomic::Kernel<ExpandPolicy>
-					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
+				expand_serial::Kernel<SerialPolicy>
+					<<<expand_grid_size, SerialPolicy::THREADS>>>(
+//				expand_atomic::Kernel<ExpandPolicy>
+//					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						iteration,
 						queue_index,
 						steal_index,
@@ -405,6 +413,27 @@ public:
 				true,					// WORK_STEALING
 				6> ExpandPolicy;
 
+			// Serial expansion kernel config
+			typedef expand_serial::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				false,					// BENCHMARK
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				true, 					// DEQUEUE_PROBLEM_SIZE
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				true,					// WORK_STEALING
+				6> SerialPolicy;
+
 			// Compaction kernel config
 			typedef compact_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -447,6 +476,27 @@ public:
 				true,					// WORK_STEALING
 				6> BenchExpandPolicy;
 
+			// Serial kernel config
+			typedef expand_serial::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,
+				true,					// BENCHMARK
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				true, 					// DEQUEUE_PROBLEM_SIZE
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				true,					// WORK_STEALING
+				6> BenchSerialPolicy;
+
 			// Compaction kernel config
 			typedef compact_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -467,8 +517,10 @@ public:
 
 			return EnactSearch<
 				ExpandPolicy,
+				SerialPolicy,
 				CompactPolicy,
 				BenchExpandPolicy,
+				BenchSerialPolicy,
 				BenchCompactPolicy,
 				INSTRUMENT>(
 					csr_problem,
