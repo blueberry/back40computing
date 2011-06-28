@@ -161,35 +161,26 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-				if (KernelPolicy::BENCHMARK) {
+				if (tile->flags[LOAD][VEC]) {
 
-					if (tile->flags[LOAD][VEC]) {
+					// Location of mask byte to read
+					SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
-						// Location of mask byte to read
-						SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
+					// Read byte from from collision cache bitmask
+					CollisionMask mask_byte = tex1Dfetch(
+						bitmask_tex_ref,
+						mask_byte_offset);
 
-						// Read byte from from collision cache bitmask
-						CollisionMask mask_byte = tex1Dfetch(
-							bitmask_tex_ref,
-							mask_byte_offset);
+					// Bit in mask byte corresponding to current vertex id
+					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
 
-						// Bit in mask byte corresponding to current vertex id
-						CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
+					if ((mask_bit & mask_byte) == 0) {
 
-						if (mask_bit & mask_byte) {
-
-							// Seen it
-							tile->flags[LOAD][VEC] = 0;
-
-						} else {
-/*
-							// Update with best effort
-							mask_byte |= mask_bit;
-							util::io::ModifiedStore<util::io::st::cg>::St(
-								mask_byte,
-								cta->d_collision_cache + mask_byte_offset);
-*/
-						}
+						// Update with best effort
+						mask_byte |= mask_bit;
+						util::io::ModifiedStore<util::io::st::cg>::St(
+							mask_byte,
+							cta->d_collision_cache + mask_byte_offset);
 					}
 				}
 
