@@ -104,7 +104,7 @@ struct Spine
 			int current_gpu;
 			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
 				"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
-#if CUDA_VERSION > 4000
+#if CUDA_VERSION >= 4000
 			if (retval = util::B40CPerror(cudaSetDevice(gpu),
 				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 #endif
@@ -121,7 +121,7 @@ struct Spine
 				if (retval = util::B40CPerror(cudaFree(d_spine),
 					"Spine cudaFree d_spine failed: ", __FILE__, __LINE__)) break;
 			}
-#if CUDA_VERSION > 4000
+#if CUDA_VERSION >= 4000
 			// Restore current gpu
 			if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
 				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;

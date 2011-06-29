@@ -339,7 +339,7 @@ public:
 					max_grid_size, csr_problem.num_gpus)) break;
 
 				// Setup texture bitmask caches
-				int bytes = (csr_problem.graph_slices[i]->nodes + 8 - 1) / 8;
+				int bytes = (csr_problem.nodes + 8 - 1) / 8;
 				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 
 				if (retval = util::B40CPerror(cudaBindTexture(
