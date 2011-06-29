@@ -834,6 +834,8 @@ public:
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				true,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> ExpandPolicy;		// LOG_SCHEDULE_GRANULARITY
 
 
