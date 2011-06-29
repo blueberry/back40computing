@@ -74,6 +74,8 @@ template <
 	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,
 	bool _WORK_STEALING,
+	int _WARP_GATHER_THRESHOLD,
+	int _CTA_GATHER_THRESHOLD,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelPolicy : _ProblemType
@@ -87,8 +89,6 @@ struct KernelPolicy : _ProblemType
 	static const util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER 		= _ROW_OFFSET_ALIGNED_READ_MODIFIER;
 	static const util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER 	= _ROW_OFFSET_UNALIGNED_READ_MODIFIER;
 	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
-
-	static const bool WORK_STEALING													= _WORK_STEALING;
 
 	enum {
 
@@ -121,7 +121,12 @@ struct KernelPolicy : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		WORK_STEALING					= _WORK_STEALING,
+		WARP_GATHER_THRESHOLD			= _WARP_GATHER_THRESHOLD,
+		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
+
 	};
 
 	// SRTS grid type for coarse
@@ -200,7 +205,8 @@ struct KernelPolicy : _ProblemType
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
 			// Shared memory channels for intra-warp communication
-			WarpComm							warp_comm;
+			volatile WarpComm					warp_comm;
+			int 								cta_comm;
 
 			// Storage for scanning local compact-expand ranks
 			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
@@ -231,13 +237,13 @@ struct KernelPolicy : _ProblemType
 			struct {
 				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
 				SizeT 						fine_raking_elements[FineGrid::TOTAL_RAKING_ELEMENTS];
-			} raking_elements;
+			};
 
 			// Scratch elements
 			struct {
 				SizeT 						offset_scratch[OFFSET_ELEMENTS];
 				VertexId 					parent_scratch[PARENT_ELEMENTS];
-			} scratch;
+			};
 		};
 	};
 

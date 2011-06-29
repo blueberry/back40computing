@@ -58,10 +58,6 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	// Row-length cutoff below which we expand neighbors by writing gather
-	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
-	static const int SCAN_EXPAND_CUTOFF = B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
-
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
@@ -199,13 +195,15 @@ struct Cta
 			 */
 			static __device__ __forceinline__ void Categorize(Cta *cta, Tile *tile)
 			{
-
-				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < KernelPolicy::WARP_GATHER_THRESHOLD) ?
 					tile->row_length[LOAD][VEC] : 0;
 
-				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < SCAN_EXPAND_CUTOFF) ?
+				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < KernelPolicy::WARP_GATHER_THRESHOLD) ?
 					0 : tile->row_length[LOAD][VEC];
-
+/*
+				tile->fine_row_rank[LOAD][VEC] = tile->row_length[LOAD][VEC];
+				tile->coarse_row_rank[LOAD][VEC] = 0;
+*/
 				Iterate<LOAD, VEC + 1>::Categorize(cta, tile);
 			}
 
@@ -216,16 +214,26 @@ struct Cta
 			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
-				while (__syncthreads_or(tile->row_length[LOAD][VEC] >= KernelPolicy::THREADS)) {
+				while (true) {
 
-					if (tile->row_length[LOAD][VEC] >= KernelPolicy::THREADS) {
-						// Vie for control of the CTA
-						cta->smem_storage.state.warp_comm[0][0] = threadIdx.x;
+					if (threadIdx.x == 0) {
+						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;
 					}
 
 					__syncthreads();
 
-					if (threadIdx.x == cta->smem_storage.state.warp_comm[0][0]) {
+					if (tile->row_length[LOAD][VEC] >= KernelPolicy::CTA_GATHER_THRESHOLD) {
+						cta->smem_storage.state.cta_comm = threadIdx.x;
+					}
+
+					__syncthreads();
+
+					int owner = cta->smem_storage.state.cta_comm;
+					if (owner == KernelPolicy::THREADS) {
+						break;
+					}
+
+					if (owner == threadIdx.x) {
 
 						// Got control of the CTA
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
@@ -278,9 +286,9 @@ struct Cta
 				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 				int lane_id = util::LaneId();
 
-				while (__any(tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF)) {
+				while (__any(tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD)) {
 
-					if (tile->row_length[LOAD][VEC] >= SCAN_EXPAND_CUTOFF) {
+					if (tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD) {
 						// Vie for control of the warp
 						cta->smem_storage.state.warp_comm[warp_id][0] = lane_id;
 					}
@@ -578,6 +586,7 @@ struct Cta
 
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByWarp(this);
+
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly

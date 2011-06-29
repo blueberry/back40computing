@@ -255,10 +255,10 @@ public:
 			while (true) {
 
 				// BenchExpansion
-				expand_serial::Kernel<BenchSerialPolicy>
-					<<<expand_grid_size, BenchSerialPolicy::THREADS>>>(
-//				expand_atomic::Kernel<BenchExpandPolicy>
-//					<<<expand_grid_size, BenchExpandPolicy::THREADS>>>(
+//				expand_serial::Kernel<BenchSerialPolicy>
+//					<<<expand_grid_size, BenchSerialPolicy::THREADS>>>(
+				expand_atomic::Kernel<BenchExpandPolicy>
+					<<<expand_grid_size, BenchExpandPolicy::THREADS>>>(
 						iteration,
 						queue_index,
 						steal_index,
@@ -282,10 +282,10 @@ public:
 				steal_index++;
 
 				// Expansion
-				expand_serial::Kernel<SerialPolicy>
-					<<<expand_grid_size, SerialPolicy::THREADS>>>(
-//				expand_atomic::Kernel<ExpandPolicy>
-//					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
+//				expand_serial::Kernel<SerialPolicy>
+//					<<<expand_grid_size, SerialPolicy::THREADS>>>(
+				expand_atomic::Kernel<ExpandPolicy>
+					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						iteration,
 						queue_index,
 						steal_index,
@@ -312,7 +312,7 @@ public:
 					// Done
 					break;
 				}
-
+/*
 				// BenchCompaction
 				compact_atomic::Kernel<BenchCompactPolicy>
 					<<<compact_grid_size, BenchCompactPolicy::THREADS>>>(
@@ -337,7 +337,7 @@ public:
 				}
 
 				steal_index++;
-
+*/
 				// Compaction
 				compact_atomic::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
@@ -392,7 +392,7 @@ public:
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			//
-			// Full worker configs
+			// Worker configs
 			//
 
 			// Expansion kernel config
@@ -414,6 +414,8 @@ public:
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
 				true,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> ExpandPolicy;
 
 			// Serial expansion kernel config
@@ -477,6 +479,8 @@ public:
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
 				true,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> BenchExpandPolicy;
 
 			// Serial kernel config
