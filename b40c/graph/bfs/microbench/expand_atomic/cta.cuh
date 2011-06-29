@@ -108,7 +108,7 @@ struct Cta
 	{
 /*
 		// Location of mask byte to read
-		SizeT mask_byte_offset = vertex >> 3;
+		SizeT mask_byte_offset = (vertex & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 		// Read byte from from collision cache bitmask
 		CollisionMask mask_byte = tex1Dfetch(
@@ -120,11 +120,25 @@ struct Cta
 
 		if ((mask_bit & mask_byte) == 0) {
 
-			// Update with best effort
-			mask_byte |= mask_bit;
-			util::io::ModifiedStore<util::io::st::cg>::St(
-				mask_byte,
-				cta->d_collision_cache + mask_byte_offset);
+			util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+				mask_byte, cta->d_collision_cache + mask_byte_offset);
+
+			if ((mask_bit & mask_byte) == 0) {
+
+				// Update with best effort
+				mask_byte |= mask_bit;
+				util::io::ModifiedStore<util::io::st::cg>::St(
+					mask_byte,
+					cta->d_collision_cache + mask_byte_offset);
+
+				// Load source path of node
+				VertexId source_path;
+				util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+					source_path,
+					cta->d_source_path + vertex);
+
+				vertex = source_path;
+			}
 		}
 */
 		cta->smem_storage.gathered = vertex;
