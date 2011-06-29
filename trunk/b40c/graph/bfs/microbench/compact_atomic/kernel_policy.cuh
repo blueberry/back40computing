@@ -163,7 +163,7 @@ struct KernelPolicy : ProblemType
 
 		} state;
 
-		volatile VertexId gather;
+		volatile VertexId gathered;
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy

@@ -312,7 +312,7 @@ public:
 					// Done
 					break;
 				}
-/*
+
 				// BenchCompaction
 				compact_atomic::Kernel<BenchCompactPolicy>
 					<<<compact_grid_size, BenchCompactPolicy::THREADS>>>(
@@ -337,7 +337,7 @@ public:
 				}
 
 				steal_index++;
-*/
+
 				// Compaction
 				compact_atomic::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
