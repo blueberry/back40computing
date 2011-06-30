@@ -60,17 +60,17 @@ echo /bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.15 $OPTIONS --mark-par
 	sleep 5 
 
 i=random.2Mv.128Me.gr
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
+echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS 
+./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS --mark-parents 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
+echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS --mark-parents 
+./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
 	sleep 5 
  
 i=rmat.2Mv.128Me.gr
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
+echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS 
+./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS --mark-parents 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt
+echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS --mark-parents 
+./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --queue-sizing=1.0 $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt
 	sleep 5 

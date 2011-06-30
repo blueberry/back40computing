@@ -116,6 +116,8 @@ int ReadDimacsStream(
 	// Vector of latest tuples
 	std::vector<EdgeTupleType> tuples(files.size(), EdgeTupleType(-1, 0, 0));
 
+	int progress = 0;
+
 	// Splice in ordered vertices
 	while(true) {
 
@@ -157,6 +159,12 @@ int ReadDimacsStream(
 
 						ordered_rows = false;
 						edges_read++;
+					}
+
+					if (edges_read > (edges / 32) * (progress + 1)) {
+						progress++;
+						printf("%.2f%%\n", float(progress) * (100.0 / 32.0));
+						fflush(stdout);
 					}
 
 					break;
@@ -220,7 +228,7 @@ int BuildDimacsGraph(
 	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected,
-	bool splice)
+	int splice)
 { 
 	int retval = 0;
 
@@ -238,8 +246,7 @@ int BuildDimacsGraph(
 		// Read from file(s)
 		FILE *f_in;
 		if (splice) {
-			int i = 0;
-			while (true) {
+			for (int i = 0; i < splice; i++) {
 				std::stringstream formatter;
 				formatter << dimacs_filename << "." << i;
 				if ((f_in = fopen(formatter.str().c_str(), "r")) == NULL) {
@@ -247,7 +254,6 @@ int BuildDimacsGraph(
 				}
 				files.push_back(f_in);
 				printf("Opened %s\n", formatter.str().c_str());
-				i++;
 			}
 		} else {
 			if ((f_in = fopen(dimacs_filename, "r")) != NULL) {
