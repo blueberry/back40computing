@@ -859,7 +859,8 @@ int main( int argc, char** argv)
 		// DIMACS-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
-		bool splice = args.CheckCmdLineFlag("splice");
+		int splice = 0;
+		args.GetCmdLineArgument("splice", splice);
 		if (builder::BuildDimacsGraph<false>(
 			dimacs_filename,
 			src,

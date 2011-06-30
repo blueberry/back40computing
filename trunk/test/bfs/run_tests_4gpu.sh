@@ -5,7 +5,7 @@ SUFFIX="default.gtx480.4x"
 
 mkdir -p eval/$SUFFIX
 
-for i in audikw1.graph cage15.graph coPapersCiteseer.graph kkt_power.graph kron_g500-logn20.graph 
+for i in audikw1.graph cage15.graph coPapersCiteseer.graph kkt_power.graph  
 do
 	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS  
 	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt
@@ -15,23 +15,33 @@ do
 	sleep 5 
 done
 
+for i in kron_g500-logn20.graph 
+do
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.35
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.35 > eval/$SUFFIX/$i.$SUFFIX.txt 
+	sleep 5 
+	echo ./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --queue-sizing=1.35 --mark-parents
+	./bin/test_bfs_4.0_i386 metis ../../../graphs/$i $OPTIONS --uneven --queue-sizing=1.35 --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
+	sleep 5 
+done
+
 for i in europe.osm.graph hugebubbles-00020.graph
 do
-	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10
-	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 > eval/$SUFFIX/$i.$SUFFIX.txt 
+	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20
+	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 --mark-parents
-	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
+	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 --mark-parents
+	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
 	sleep 5 
 done
 
 for i in nlpkkt160.graph
 do
-	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10
-	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 > eval/$SUFFIX/$i.$SUFFIX.txt 
+	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20
+	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 --mark-parents
-	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.10 --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
+	echo ./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 --mark-parents
+	./bin/test_bfs_4.0_x86_64 metis ../../../graphs/$i $OPTIONS --queue-sizing=0.20 --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
 	sleep 5 
 done
 
@@ -52,11 +62,11 @@ echo /bin/test_bfs_4.0_x86_64 grid2d 5000 --queue-sizing=0.15 $OPTIONS --mark-pa
 ./bin/test_bfs_4.0_x86_64 grid2d 5000 --queue-sizing=0.15 $OPTIONS --mark-parents > eval/$SUFFIX/grid2d.5000.$SUFFIX.parent.txt	
 	sleep 5 
 
-echo /bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.15 $OPTIONS 
-./bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.15 $OPTIONS > eval/$SUFFIX/grid3d.300.$SUFFIX.txt	
+echo /bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.30 $OPTIONS 
+./bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.30 $OPTIONS > eval/$SUFFIX/grid3d.300.$SUFFIX.txt	
 	sleep 5 
-echo /bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.15 $OPTIONS --mark-parents 
-./bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.15 $OPTIONS --mark-parents > eval/$SUFFIX/grid3d.300.$SUFFIX.parent.txt	
+echo /bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.30 $OPTIONS --mark-parents 
+./bin/test_bfs_4.0_x86_64 grid3d 300 --queue-sizing=0.30 $OPTIONS --mark-parents > eval/$SUFFIX/grid3d.300.$SUFFIX.parent.txt	
 	sleep 5 
 
 i=random.2Mv.128Me.gr
