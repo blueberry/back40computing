@@ -555,7 +555,7 @@ public:
 					if (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu cudaDeviceSynchronize failed", __FILE__, __LINE__)) break;
 
-					SizeT *spine = (SizeT *) control->spine.h_spine;
+					volatile SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
 
 					if (INSTRUMENT) {
@@ -609,7 +609,7 @@ public:
 						int peer 							= (i + j) % csr_problem.num_gpus;
 						GpuControlBlock *peer_control 		= control_blocks[peer];
 						GraphSlice *peer_slice 				= csr_problem.graph_slices[peer];
-						SizeT *peer_spine 					= (SizeT*) peer_control->spine.h_spine;
+						volatile SizeT *peer_spine 					= (SizeT*) peer_control->spine.h_spine;
 
 						SizeT queue_offset 	= peer_spine[bins_per_gpu * i * peer_control->partition_grid_size];
 						SizeT queue_oob 	= peer_spine[bins_per_gpu * (i + 1) * peer_control->partition_grid_size];
