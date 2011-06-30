@@ -42,9 +42,9 @@ do
 	
 
 	echo ./bin/microbench_bfs_4.0_i386.lookup.$j grid2d 5000 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5
-	./bin/microbench_bfs_4.0_i386.$j grid2d 5000 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5 | grep Duty > duty/grid2d5000.duty.$j.out
+	./bin/microbench_bfs_4.0_i386.lookup.$j grid2d 5000 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5 | grep Duty > duty/grid2d5000.duty.$j.out
 	
 	echo ./bin/microbench_bfs_4.0_i386.lookup.$j grid3d 300 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5
-	./bin/microbench_bfs_4.0_i386.$j grid3d 300 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5 | grep Duty > duty/grid3d300.duty.$j.out
+	./bin/microbench_bfs_4.0_i386.lookup.$j grid3d 300 --src=randomize --i=100 --quick --device=1 --instrumented --queue-sizing=0.5 | grep Duty > duty/grid3d300.duty.$j.out
 
 done
