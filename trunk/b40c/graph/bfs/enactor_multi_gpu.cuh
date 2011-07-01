@@ -694,9 +694,6 @@ public:
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-					if (retval = util::B40CPerror(cudaStreamSynchronize(slice->stream),
-						"GpuControlBlock cudaStreamSynchronize failed", __FILE__, __LINE__)) break;
-
 					// Update queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 
