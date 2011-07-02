@@ -171,6 +171,7 @@ struct KernelPolicy : _ProblemType
 
 			// Shared memory channels for intra-warp communication
 			volatile WarpComm					warp_comm;
+			int									cta_comm;
 
 			// Storage for scanning local compact-expand ranks
 			volatile SizeT 						warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
@@ -190,8 +191,8 @@ struct KernelPolicy : _ProblemType
 
 			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
 
-			OFFSET_ELEMENTS					= THREADS, // MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
-			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  THREADS : 0, // OFFSET_ELEMENTS : 0,
+			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
 		};
 
 		union {

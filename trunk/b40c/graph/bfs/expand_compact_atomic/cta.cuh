@@ -312,16 +312,26 @@ struct Cta
 			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
-				while (__syncthreads_or(tile->row_length[LOAD][VEC] >= KernelPolicy::THREADS)) {
+				while (true) {
 
-					if (tile->row_length[LOAD][VEC] >= KernelPolicy::THREADS) {
-						// Vie for control of the CTA
-						cta->smem_storage.state.warp_comm[0][0] = threadIdx.x;
+					if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
+						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;
 					}
 
 					__syncthreads();
 
-					if (threadIdx.x == cta->smem_storage.state.warp_comm[0][0]) {
+					if (tile->row_length[LOAD][VEC] >= KernelPolicy::CTA_GATHER_THRESHOLD) {
+						cta->smem_storage.state.cta_comm = threadIdx.x;
+					}
+
+					__syncthreads();
+
+					int owner = cta->smem_storage.state.cta_comm;
+					if (owner == KernelPolicy::THREADS) {
+						break;
+					}
+
+					if (owner == threadIdx.x) {
 						// Got control of the CTA
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
 						cta->smem_storage.state.warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
@@ -355,12 +365,8 @@ struct Cta
 
 							// Check
 							cta->BitmaskCull(neighbor_id);
+							if (neighbor_id != -1) ranks[0][0] = 1;
 						}
-
-						__syncthreads();
-						cta->LocalCull(neighbor_id);
-						if (neighbor_id != -1) ranks[0][0] = 1;
-						__syncthreads();
 
 						// Scan tile of ranks, using an atomic add to reserve
 						// space in the compacted queue, seeding ranks
@@ -605,13 +611,13 @@ struct Cta
 					guarded_elements);
 		}
 
-		// Inspect dequeued vertices, updating source path and obtaining
-		// edge-list details
+		LocalCull(tile.vertex_id[0][0]);
+
+		// Inspect dequeued vertices, obtaining edge-list details
 		tile.Inspect(this);
 
 		// Enqueue valid edge lists into outgoing queue
-//		tile.ExpandByCta(this);
-		__syncthreads();
+		tile.ExpandByCta(this);
 
 		// Copy lengths into ranks
 		util::io::InitializeTile<
@@ -627,8 +633,6 @@ struct Cta
 
 		__syncthreads();
 
-		// Enqueue valid edge lists into outgoing queue
-//		tile.ExpandByWarp(this);
 
 		//
 		// Enqueue the adjacency lists of unvisited node-IDs by repeatedly
@@ -663,12 +667,8 @@ struct Cta
 
 					// Check
 					BitmaskCull(neighbor_id);
+					if (neighbor_id != -1) ranks[0][0] = 1;
 				}
-
-				__syncthreads();
-				LocalCull(neighbor_id);
-				if (neighbor_id != -1) ranks[0][0] = 1;
-				__syncthreads();
 
 				// Scan tile of ranks, using an atomic add to reserve
 				// space in the compacted queue, seeding ranks
