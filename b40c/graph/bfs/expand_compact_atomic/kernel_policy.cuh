@@ -30,14 +30,14 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_soa_details.cuh>
+#include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace expand_atomic {
+namespace expand_compact_atomic {
 
 /**
  * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
@@ -126,66 +126,34 @@ struct KernelPolicy : _ProblemType
 		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
 	};
 
-	// SRTS grid type for coarse
+
+	// Expand SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
-		SizeT,									// Partial type
+		SizeT,									// Partial type (valid counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			CoarseGrid;
-
-	// SRTS grid type for fine
-	typedef util::SrtsGrid<
-		CUDA_ARCH,
-		SizeT,									// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
-		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
-		LOG_RAKING_THREADS,						// Raking threads
-		true>									// There are prefix dependences between lanes
-			FineGrid;
-
-
-	// Tuple of partial-flag type
-	typedef util::Tuple<SizeT, SizeT> TileTuple;
-
-
-	/**
-	 * SOA scan operator
-	 */
-	struct SoaScanOp
-	{
-		enum {
-			IDENTITY_STRIDES = true,			// There is an "identity" region of warpscan storage exists for strides to index into
-		};
-
-		// SOA scan operator
-		__device__ __forceinline__ TileTuple operator()(
-			const TileTuple &first,
-			const TileTuple &second)
-		{
-			return TileTuple(first.t0 + second.t0, first.t1 + second.t1);
-		}
-
-		// SOA identity operator
-		__device__ __forceinline__ TileTuple operator()()
-		{
-			return TileTuple(0,0);
-		}
-	};
-
-
-	// Tuple type of SRTS grid types
-	typedef util::Tuple<
-		CoarseGrid,
-		FineGrid> SrtsGridTuple;
-
+			SrtsExpandGrid;
 
 	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
-		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
+	typedef util::SrtsDetails<SrtsExpandGrid> SrtsExpandDetails;
+
+
+	// Compact SRTS grid type
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		SizeT,									// Partial type (valid counts)
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		0,										// 1 lane
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			SrtsCompactGrid;
+
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsCompactGrid> SrtsCompactDetails;
+
 
 
 	/**
@@ -203,15 +171,10 @@ struct KernelPolicy : _ProblemType
 
 			// Shared memory channels for intra-warp communication
 			volatile WarpComm					warp_comm;
-			int 								cta_comm;
 
 			// Storage for scanning local compact-expand ranks
-			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-
-			// Enqueue offset for neighbors of the current tile
-			SizeT								fine_enqueue_offset;
-			SizeT								coarse_enqueue_offset;
+			volatile SizeT 						warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								compact_raking_elements[SrtsCompactGrid::TOTAL_RAKING_ELEMENTS];
 
 		} state;
 
@@ -225,22 +188,23 @@ struct KernelPolicy : _ProblemType
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
 													sizeof(SizeT),								// Just gather offset
 
-			GATHER_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
-			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  GATHER_ELEMENTS : 0,
+			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
+
+			OFFSET_ELEMENTS					= THREADS, // MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  THREADS : 0, // OFFSET_ELEMENTS : 0,
 		};
 
 		union {
 			// Raking elements
-			struct {
-				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
-				SizeT 						fine_raking_elements[FineGrid::TOTAL_RAKING_ELEMENTS];
-			};
+			SizeT 							expand_raking_elements[SrtsExpandGrid::TOTAL_RAKING_ELEMENTS];
 
 			// Scratch elements
 			struct {
-				SizeT 						gather_offsets[GATHER_ELEMENTS];
-				VertexId 					gather_parents[PARENT_ELEMENTS];
+				SizeT 						offset_scratch[OFFSET_ELEMENTS];
+				VertexId 					parent_scratch[PARENT_ELEMENTS];
 			};
+
+			VertexId 						vid_hashtable[HASH_ELEMENTS];
 		};
 	};
 
@@ -254,7 +218,7 @@ struct KernelPolicy : _ProblemType
 };
 
 
-} // namespace expand_atomic
+} // namespace expand_compact_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

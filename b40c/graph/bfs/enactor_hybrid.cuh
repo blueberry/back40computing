@@ -360,7 +360,6 @@ public:
 						expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 								src,
-								0,														// num_elements (unused: we obtain this from device-side counters instead)
 								(VertexId) iteration[0],
 								queue_index,
 								queue_index,											// also serves as steal_index
@@ -458,7 +457,6 @@ public:
 				200,
 				INSTRUMENT, 			// INSTRUMENT
 				SATURATION_QUIT, 		// SATURATION_QUIT
-				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE

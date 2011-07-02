@@ -433,8 +433,7 @@ public:
 				// Expansion
 				expand_atomic::Kernel<ExpandPolicy>
 						<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
-					src,
-					(owns_source) ? 1 : 0,														// num_elements
+					(owns_source) ? src : -1,
 					control->iteration,
 					control->queue_index,
 					control->steal_index,
@@ -744,7 +743,6 @@ public:
 					expand_atomic::Kernel<ExpandPolicy>
 							<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
 						-1,														// source (not used)
-						0,														// num_elements (unused: we obtain this from device-side counters instead)
 						control->iteration,
 						control->queue_index,
 						control->steal_index,
@@ -822,7 +820,6 @@ public:
 				200,
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
-				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
