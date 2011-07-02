@@ -60,7 +60,7 @@ struct SweepPass
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy, SmemStorage> 			Cta;
+		typedef Cta<KernelPolicy> 						Cta;
 		typedef typename KernelPolicy::SizeT 			SizeT;
 
 		// Determine our threadblock's work range
@@ -149,7 +149,7 @@ struct SweepPass <KernelPolicy, true>
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy, SmemStorage> 		Cta;
+		typedef Cta<KernelPolicy> 					Cta;
 		typedef typename KernelPolicy::SizeT 		SizeT;
 
 		// CTA processing abstraction
@@ -247,7 +247,7 @@ void Kernel(
 
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
-				smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
@@ -264,7 +264,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -295,7 +295,7 @@ void Kernel(
 		d_source_path,
 		d_collision_cache,
 		work_progress,
-		smem_storage.work_decomposition,
+		smem_storage.state.work_decomposition,
 		smem_storage);
 
 	iteration++;
@@ -328,7 +328,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -342,8 +342,8 @@ void Kernel(
 		// Barrier to protect work decomposition
 		__syncthreads();
 
-		if ((!smem_storage.work_decomposition.num_elements) ||
-			(KernelPolicy::SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		if ((!smem_storage.state.work_decomposition.num_elements) ||
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
 		{
 			break;
 		}
@@ -361,7 +361,7 @@ void Kernel(
 			d_source_path,
 			d_collision_cache,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 
 		iteration++;
@@ -392,7 +392,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -406,8 +406,8 @@ void Kernel(
 		__syncthreads();
 
 		// Check if done
-		if ((!smem_storage.work_decomposition.num_elements) ||
-			(KernelPolicy::SATURATION_QUIT && (smem_storage.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		if ((!smem_storage.state.work_decomposition.num_elements) ||
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
 		{
 			break;
 		}
@@ -425,7 +425,7 @@ void Kernel(
 			d_source_path,
 			d_collision_cache,
 			work_progress,
-			smem_storage.work_decomposition,
+			smem_storage.state.work_decomposition,
 			smem_storage);
 
 		iteration++;

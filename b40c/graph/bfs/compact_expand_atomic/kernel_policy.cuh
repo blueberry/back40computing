@@ -73,6 +73,8 @@ template <
 	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,
 	bool _WORK_STEALING,
+	int _WARP_GATHER_THRESHOLD,
+	int _CTA_GATHER_THRESHOLD,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelPolicy : _ProblemType
@@ -86,8 +88,6 @@ struct KernelPolicy : _ProblemType
 	static const util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER 		= _ROW_OFFSET_ALIGNED_READ_MODIFIER;
 	static const util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER 	= _ROW_OFFSET_UNALIGNED_READ_MODIFIER;
 	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
-
-	static const bool WORK_STEALING		= _WORK_STEALING;
 
 	enum {
 		INSTRUMENT						= _INSTRUMENT,
@@ -118,7 +118,11 @@ struct KernelPolicy : _ProblemType
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
-		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY
+		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		WORK_STEALING					= _WORK_STEALING,
+		WARP_GATHER_THRESHOLD			= _WARP_GATHER_THRESHOLD,
+		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
 	};
 
 	// SRTS grid type for coarse
@@ -189,53 +193,59 @@ struct KernelPolicy : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		// Type describing four shared memory channels per warp for intra-warp communication
-		typedef SizeT 						WarpComm[WARPS][4];
+		// Persistent shared state for the CTA
+		struct State {
+			// Type describing four shared memory channels per warp for intra-warp communication
+			typedef SizeT 						WarpComm[WARPS][4];
 
-		// Shared work-processing limits
-		util::CtaWorkDistribution<SizeT>	work_decomposition;
+			// Shared work-processing limits
+			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
-		// Shared memory channels for intra-warp communication
-		WarpComm							warp_comm;
+			// Shared memory channels for intra-warp communication
+			volatile WarpComm					warp_comm;
+			int 								cta_comm;
 
-		// Storage for scanning local compact-expand ranks
-		SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			// Storage for scanning local compact-expand ranks
+			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
-		// Enqueue offset for neighbors of the current tile
-		SizeT								fine_enqueue_offset;
-		SizeT								coarse_enqueue_offset;
+			// Enqueue offset for neighbors of the current tile
+			SizeT								fine_enqueue_offset;
+			SizeT								coarse_enqueue_offset;
+
+		} state;
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
-												- sizeof(util::CtaWorkDistribution<SizeT>)
-												- sizeof(WarpComm)
-												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
-												- sizeof(SizeT[2][B40C_WARP_THREADS(CUDA_ARCH)])
-												- sizeof(SizeT)
-												- sizeof(SizeT)
-												- 128,
+			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MAX_CTA_OCCUPANCY)
+												- sizeof(State)
+												- 72,
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
 													sizeof(SizeT),								// Just gather offset
 
-			SCRATCH_ELEMENTS				= FULL_OCCUPANCY_BYTES / SCRATCH_ELEMENT_SIZE,
+			GATHER_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  GATHER_ELEMENTS : 0,
+			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
 
-			HASH_ELEMENTS					= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
+			WARP_HASH_ELEMENTS				= 128,
 		};
 
 		union {
+			// Raking elements
 			struct {
-				SizeT						coarse_lanes[CoarseGrid::TOTAL_RAKING_ELEMENTS];
-				SizeT						fine_lanes[FineGrid::TOTAL_RAKING_ELEMENTS];
-			} raking_lanes;
+				SizeT 						coarse_raking_elements[CoarseGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT 						fine_raking_elements[FineGrid::TOTAL_RAKING_ELEMENTS];
+			};
+
+			// Scratch elements
 			struct {
-				SizeT						offsets[SCRATCH_ELEMENTS];
-				VertexId					parents[(ProblemType::MARK_PARENTS) ? SCRATCH_ELEMENTS : 0];
-			} gather_scratch;
+				SizeT 						gather_offsets[GATHER_ELEMENTS];
+				VertexId 					gather_parents[PARENT_ELEMENTS];
+			};
 			VertexId 						vid_hashtable[HASH_ELEMENTS];
+			volatile VertexId 				warp_hashtable[WARPS][WARP_HASH_ELEMENTS];
 		};
 	};
 

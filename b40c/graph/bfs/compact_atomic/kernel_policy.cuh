@@ -77,7 +77,6 @@ struct KernelPolicy : _ProblemType
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
-	typedef char							ThreadId;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -154,7 +153,7 @@ struct KernelPolicy : _ProblemType
 			// General pool for hashing & tree-reduction
 			union {
 				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-				VertexId 						vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
+				volatile VertexId 				vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
 			};
 
 		} state;
@@ -170,7 +169,7 @@ struct KernelPolicy : _ProblemType
 		};
 
 		// Fill the remainder of smem with a history-based hash-cache of seen vertex-ids
-		VertexId								history[HISTORY_HASH_ELEMENTS];
+		volatile VertexId						history[HISTORY_HASH_ELEMENTS];
 	};
 
 	enum {

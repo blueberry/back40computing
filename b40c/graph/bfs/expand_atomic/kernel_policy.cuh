@@ -228,8 +228,8 @@ struct KernelPolicy : _ProblemType
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
 													sizeof(SizeT),								// Just gather offset
 
-			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
-			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
+			GATHER_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  GATHER_ELEMENTS : 0,
 		};
 
 		union {
@@ -241,8 +241,8 @@ struct KernelPolicy : _ProblemType
 
 			// Scratch elements
 			struct {
-				SizeT 						offset_scratch[OFFSET_ELEMENTS];
-				VertexId 					parent_scratch[PARENT_ELEMENTS];
+				SizeT 						gather_offsets[GATHER_ELEMENTS];
+				VertexId 					gather_parents[PARENT_ELEMENTS];
 			};
 		};
 	};
