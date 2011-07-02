@@ -62,7 +62,7 @@ struct Cta
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
 	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::ThreadId			ThreadId;
+
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
@@ -86,9 +86,8 @@ struct Cta
 	// Operational details for SRTS scan grid
 	SrtsDetails 			srts_details;
 
-	// Smem storage for reduction tree and hashing scratch
-	volatile VertexId 		(*vid_hashtable)[SmemStorage::WARP_HASH_ELEMENTS];
-	volatile VertexId		*history;
+	// Shared memory for the CTA
+	SmemStorage				&smem_storage;
 
 
 
@@ -119,10 +118,10 @@ struct Cta
 		//---------------------------------------------------------------------
 
 		// Dequeued vertex ids
-		VertexId 	vertex_ids[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_ids[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		// Whether or not the corresponding vertex_ids is valid for exploring
+		// Whether or not the corresponding vertex_id is valid for exploring
 		ValidFlag 	flags[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Tile of local scatter offsets
@@ -144,7 +143,8 @@ struct Cta
 			static __device__ __forceinline__ void InitFlags(Tile *tile)
 			{
 				// Initially valid if vertex-id is valid
-				tile->flags[LOAD][VEC] = (tile->vertex_ids[LOAD][VEC] == -1) ? 0 : 1;
+				tile->flags[LOAD][VEC] = (tile->vertex_id[LOAD][VEC] == -1) ? 0 : 1;
+				tile->ranks[LOAD][VEC] = tile->flags[LOAD][VEC];
 
 				// Next
 				Iterate<LOAD, VEC + 1>::InitFlags(tile);
@@ -157,13 +157,13 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-				if (tile->flags[LOAD][VEC]) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					// Location of mask byte to read
-					SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
+					SizeT mask_byte_offset = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
+					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
 					// Read byte from from collision cache bitmask
 					CollisionMask mask_byte = tex1Dfetch(
@@ -173,7 +173,7 @@ struct Cta
 					if (mask_bit & mask_byte) {
 
 						// Seen it
-						tile->flags[LOAD][VEC] = 0;
+						tile->vertex_id[LOAD][VEC] = -1;
 
 					} else {
 
@@ -183,7 +183,7 @@ struct Cta
 						if (mask_bit & mask_byte) {
 
 							// Seen it
-							tile->flags[LOAD][VEC] = 0;
+							tile->vertex_id[LOAD][VEC] = -1;
 
 						} else {
 
@@ -208,18 +208,18 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-				if (tile->flags[LOAD][VEC]) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
-					int hash = ((typename KernelPolicy::UnsignedBits) tile->vertex_ids[LOAD][VEC]) % SmemStorage::HISTORY_HASH_ELEMENTS;
-					VertexId retrieved = cta->history[hash];
+					int hash = ((typename KernelPolicy::UnsignedBits) tile->vertex_id[LOAD][VEC]) % SmemStorage::HISTORY_HASH_ELEMENTS;
+					VertexId retrieved = cta->smem_storage.history[hash];
 
-					if (retrieved == tile->vertex_ids[LOAD][VEC]) {
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
 						// Seen it
-						tile->flags[LOAD][VEC] = 0;
+						tile->vertex_id[LOAD][VEC] = -1;
 
 					} else {
 						// Update it
-						cta->history[hash] = tile->vertex_ids[LOAD][VEC];
+						cta->smem_storage.history[hash] = tile->vertex_id[LOAD][VEC];
 					}
 				}
 
@@ -235,20 +235,20 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-				if (tile->flags[LOAD][VEC]) {
+				if (tile->vertex_id[LOAD][VEC] != -1) {
 
 					int warp_id 		= threadIdx.x >> 5;
-					int hash 			= tile->vertex_ids[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
+					int hash 			= tile->vertex_id[LOAD][VEC] & (SmemStorage::WARP_HASH_ELEMENTS - 1);
 
-					cta->vid_hashtable[warp_id][hash] = tile->vertex_ids[LOAD][VEC];
-					VertexId retrieved = cta->vid_hashtable[warp_id][hash];
+					cta->smem_storage.state.vid_hashtable[warp_id][hash] = tile->vertex_id[LOAD][VEC];
+					VertexId retrieved = cta->smem_storage.state.vid_hashtable[warp_id][hash];
 
-					if (retrieved == tile->vertex_ids[LOAD][VEC]) {
+					if (retrieved == tile->vertex_id[LOAD][VEC]) {
 
-						cta->vid_hashtable[warp_id][hash] = threadIdx.x;
-						VertexId tid = cta->vid_hashtable[warp_id][hash];
+						cta->smem_storage.state.vid_hashtable[warp_id][hash] = threadIdx.x;
+						VertexId tid = cta->smem_storage.state.vid_hashtable[warp_id][hash];
 						if (tid != threadIdx.x) {
-							tile->flags[LOAD][VEC] = 0;
+							tile->vertex_id[LOAD][VEC] = -1;
 						}
 					}
 				}
@@ -368,9 +368,7 @@ struct Cta
 				smem_storage.state.raking_elements,
 				smem_storage.state.warpscan,
 				0),
-			vid_hashtable(smem_storage.state.vid_hashtable),
-			history(smem_storage.history),
-
+			smem_storage(smem_storage),
 			d_in(d_in),
 			d_out(d_out),
 			d_parent_in(d_parent_in),
@@ -381,7 +379,7 @@ struct Cta
 	{
 		// Initialize history duplicate-filter
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
-			history[offset] = -1;
+			smem_storage.history[offset] = -1;
 		}
 	}
 
@@ -402,14 +400,11 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER,
 			false>::LoadValid(
-				tile.vertex_ids,
+				tile.vertex_id,
 				d_in,
 				cta_offset,
 				guarded_elements,
 				(VertexId) -1);
-
-		// Init valid flags
-		tile.InitFlags();
 
 		// Cull using global collision bitmask
 		tile.BitmaskCull(this);
@@ -417,10 +412,8 @@ struct Cta
 		// Cull using local collision hashing
 		tile.LocalCull(this);
 
-		// Copy flags into ranks
-		util::io::InitializeTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.ranks, tile.flags);
+		// Init valid flags and ranks
+		tile.InitFlags();
 
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();
@@ -445,7 +438,7 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::WRITE_MODIFIER>::Scatter(
 				d_out,
-				tile.vertex_ids,
+				tile.vertex_id,
 				tile.flags,
 				tile.ranks);
 
@@ -458,19 +451,19 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				false>::LoadValid(
-					tile.parent_ids,
+					tile.parent_id,
 					d_parent_in,
 					cta_offset,
 					guarded_elements);
 
-			// Scatter valid vertex_ids, predicated on flags
+			// Scatter valid vertex_id, predicated on flags
 			util::io::ScatterTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::WRITE_MODIFIER>::Scatter(
 					d_parent_out,
-					tile.parent_ids,
+					tile.parent_id,
 					tile.flags,
 					tile.ranks);
 		}

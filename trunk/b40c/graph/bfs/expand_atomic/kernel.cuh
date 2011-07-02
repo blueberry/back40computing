@@ -59,7 +59,7 @@ struct SweepPass
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy, SmemStorage> 			Cta;
+		typedef Cta<KernelPolicy>			 			Cta;
 		typedef typename KernelPolicy::SizeT 			SizeT;
 
 		// Determine our threadblock's work range
@@ -148,7 +148,7 @@ struct SweepPass <KernelPolicy, true>
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy, SmemStorage> 			Cta;
+		typedef Cta<KernelPolicy> 						Cta;
 		typedef typename KernelPolicy::SizeT 			SizeT;
 
 		// CTA processing abstraction

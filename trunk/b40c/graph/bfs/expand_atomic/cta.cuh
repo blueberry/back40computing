@@ -47,7 +47,7 @@ namespace expand_atomic {
 /**
  * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
-template <typename KernelPolicy, typename SmemStorage>
+template <typename KernelPolicy>
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -57,7 +57,7 @@ struct Cta
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
-	typedef typename SmemStorage::State::WarpComm 	WarpComm;
+	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
 	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
 	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
@@ -151,6 +151,7 @@ struct Cta
 			/**
 			 * Init
 			 */
+			template <typename Tile>
 			static __device__ __forceinline__ void Init(Tile *tile)
 			{
 				tile->row_length[LOAD][VEC] = 0;
@@ -162,6 +163,7 @@ struct Cta
 			/**
 			 * Inspect
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
@@ -230,12 +232,13 @@ struct Cta
 			/**
 			 * Expand by CTA
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
 				while (true) {
 
-					if (threadIdx.x == 0) {
+					if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
 						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;
 					}
 
@@ -306,72 +309,77 @@ struct Cta
 			/**
 			 * Expand by warp
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
-				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelPolicy::CUDA_ARCH);
-				int lane_id = util::LaneId();
+				if (KernelPolicy::WARP_GATHER_THRESHOLD < KernelPolicy::CTA_GATHER_THRESHOLD) {
 
-				while (__any(tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD)) {
+					// Warp-based expansion/loading
+					int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+					int lane_id = util::LaneId();
 
-					if (tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD) {
-						// Vie for control of the warp
-						cta->smem_storage.state.warp_comm[warp_id][0] = lane_id;
-					}
+					while (__any(tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD)) {
 
-					if (lane_id == cta->smem_storage.state.warp_comm[warp_id][0]) {
-
-						// Got control of the warp
-						cta->smem_storage.state.warp_comm[warp_id][0] = tile->row_offset[LOAD][VEC];									// start
-						cta->smem_storage.state.warp_comm[warp_id][1] = tile->coarse_row_rank[LOAD][VEC];								// queue rank
-						cta->smem_storage.state.warp_comm[warp_id][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
-						if (KernelPolicy::MARK_PARENTS) {
-							cta->smem_storage.state.warp_comm[warp_id][3] = tile->vertex_id[LOAD][VEC];								// parent
+						if (tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD) {
+							// Vie for control of the warp
+							cta->smem_storage.state.warp_comm[warp_id][0] = lane_id;
 						}
 
-						// Unset row length
-						tile->row_length[LOAD][VEC] = 0;
-					}
+						if (lane_id == cta->smem_storage.state.warp_comm[warp_id][0]) {
 
-					SizeT coop_offset 	= cta->smem_storage.state.warp_comm[warp_id][0] + lane_id;
-					SizeT coop_rank 	= cta->smem_storage.state.warp_comm[warp_id][1] + lane_id;
-					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[warp_id][2];
+							// Got control of the warp
+							cta->smem_storage.state.warp_comm[warp_id][0] = tile->row_offset[LOAD][VEC];									// start
+							cta->smem_storage.state.warp_comm[warp_id][1] = tile->coarse_row_rank[LOAD][VEC];								// queue rank
+							cta->smem_storage.state.warp_comm[warp_id][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
+							if (KernelPolicy::MARK_PARENTS) {
+								cta->smem_storage.state.warp_comm[warp_id][3] = tile->vertex_id[LOAD][VEC];								// parent
+							}
 
-					VertexId parent_id;
-					if (KernelPolicy::MARK_PARENTS) {
-						parent_id = cta->smem_storage.state.warp_comm[warp_id][3];
-					}
+							// Unset row length
+							tile->row_length[LOAD][VEC] = 0;
+						}
 
-					VertexId neighbor_id;
-					while (coop_offset < coop_oob) {
-						// Gather
-						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
-							neighbor_id, cta->d_column_indices + coop_offset);
+						SizeT coop_offset 	= cta->smem_storage.state.warp_comm[warp_id][0] + lane_id;
+						SizeT coop_rank 	= cta->smem_storage.state.warp_comm[warp_id][1] + lane_id;
+						SizeT coop_oob 		= cta->smem_storage.state.warp_comm[warp_id][2];
 
-						// Scatter neighbor
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-							neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
-
+						VertexId parent_id;
 						if (KernelPolicy::MARK_PARENTS) {
-							// Scatter parent
+							parent_id = cta->smem_storage.state.warp_comm[warp_id][3];
+						}
+
+						VertexId neighbor_id;
+						while (coop_offset < coop_oob) {
+							// Gather
+							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+								neighbor_id, cta->d_column_indices + coop_offset);
+
+							// Scatter neighbor
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-								parent_id, cta->d_parent_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+
+							if (KernelPolicy::MARK_PARENTS) {
+								// Scatter parent
+								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+									parent_id, cta->d_parent_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+							}
+
+							coop_offset += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+							coop_rank += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 						}
 
-						coop_offset += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
-						coop_rank += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 					}
 
+					// Next vector element
+					Iterate<LOAD, VEC + 1>::ExpandByWarp(cta, tile);
 				}
-
-				// Next vector element
-				Iterate<LOAD, VEC + 1>::ExpandByWarp(cta, tile);
 			}
 
 
 			/**
 			 * Expand by scan
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				// Attempt to make further progress on this dequeued item's neighbor
@@ -379,14 +387,14 @@ struct Cta
 				SizeT scratch_offset = tile->fine_row_rank[LOAD][VEC] + tile->row_progress[LOAD][VEC] - tile->progress;
 
 				while ((tile->row_progress[LOAD][VEC] < tile->row_length[LOAD][VEC]) &&
-					(scratch_offset < SmemStorage::OFFSET_ELEMENTS))
+					(scratch_offset < SmemStorage::GATHER_ELEMENTS))
 				{
 					// Put gather offset into scratch space
-					cta->smem_storage.offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
+					cta->smem_storage.gather_offsets[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
 					if (KernelPolicy::MARK_PARENTS) {
 						// Put dequeued vertex as the parent into scratch space
-						cta->smem_storage.parent_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
+						cta->smem_storage.gather_parents[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -408,6 +416,7 @@ struct Cta
 			/**
 			 * Init
 			 */
+			template <typename Tile>
 			static __device__ __forceinline__ void Init(Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::Init(tile);
@@ -416,6 +425,7 @@ struct Cta
 			/**
 			 * Inspect
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::Inspect(cta, tile);
@@ -424,6 +434,7 @@ struct Cta
 			/**
 			 * Expand by CTA
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
@@ -432,6 +443,7 @@ struct Cta
 			/**
 			 * Expand by warp
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByWarp(cta, tile);
@@ -440,6 +452,7 @@ struct Cta
 			/**
 			 * Expand by scan
 			 */
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::ExpandByScan(cta, tile);
@@ -453,18 +466,23 @@ struct Cta
 		struct Iterate<LOADS_PER_TILE, 0, dummy>
 		{
 			// Init
+			template <typename Tile>
 			static __device__ __forceinline__ void Init(Tile *tile) {}
 
 			// Inspect
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile) {}
 
 			// ExpandByCta
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile) {}
 
 			// ExpandByWarp
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile) {}
 
 			// ExpandByScan
+			template <typename Cta, typename Tile>
 			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile) {}
 		};
 
@@ -625,8 +643,6 @@ struct Cta
 				smem_storage.state.coarse_enqueue_offset + coarse_count;
 		}
 
-		__syncthreads();
-
 		// Enqueue valid edge lists into outgoing queue
 		tile.ExpandByCta(this);
 
@@ -649,7 +665,7 @@ struct Cta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::OFFSET_ELEMENTS, tile.fine_count - tile.progress);
+			int scratch_remainder = B40C_MIN(SmemStorage::GATHER_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = threadIdx.x;
 				scratch_offset < scratch_remainder;
@@ -659,7 +675,7 @@ struct Cta
 				VertexId neighbor_id;
 				util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 					neighbor_id,
-					d_column_indices + smem_storage.offset_scratch[scratch_offset]);
+					d_column_indices + smem_storage.gather_offsets[scratch_offset]);
 
 				// Scatter it into queue
 				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
@@ -668,14 +684,14 @@ struct Cta
 
 				if (KernelPolicy::MARK_PARENTS) {
 					// Scatter parent it into queue
-					VertexId parent_id = smem_storage.parent_scratch[scratch_offset];
+					VertexId parent_id = smem_storage.gather_parents[scratch_offset];
 					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 						parent_id,
 						d_parent_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 
-			tile.progress += SmemStorage::OFFSET_ELEMENTS;
+			tile.progress += SmemStorage::GATHER_ELEMENTS;
 
 			__syncthreads();
 		}
