@@ -48,6 +48,7 @@
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_one_phase.cuh>
+#include <b40c/graph/bfs/enactor_one_phase_ec.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
@@ -599,6 +600,7 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
+	bfs::EnactorOnePhaseInCore 		one_phase_enactor_ec(g_verbose);
 	bfs::EnactorOnePhase 			one_phase_enactor(g_verbose);
 	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
 	bfs::EnactorHybrid 				hybrid_enactor(g_verbose);
@@ -620,12 +622,13 @@ void RunTests(
 	}
 
 	// Initialize statistics
-	Stats stats[5];
+	Stats stats[6];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("One-phase GPU BFS");
-	stats[2] = Stats("Two-phase GPU BFS");
-	stats[3] = Stats("Hybrid GPU BFS");
-	stats[4] = Stats("Multi-GPU BFS");
+	stats[1] = Stats("One-phase GPU BFS (in-core)");
+	stats[2] = Stats("One-phase GPU BFS (out-of-core)");
+	stats[3] = Stats("Two-phase GPU BFS");
+	stats[4] = Stats("Hybrid GPU BFS");
+	stats[5] = Stats("Multi-GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
 		(INSTRUMENT) ? "instrumented" : "non-instrumented",
@@ -650,8 +653,23 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
+/*
 			if (!csr_problem.uneven) {
-
+				// Perform one-phase in-core BFS implementation (single grid launch)
+				if (TestGpuBfs<INSTRUMENT>(
+					one_phase_enactor_ec,
+					csr_problem,
+					src,
+					h_source_path,
+					(g_quick) ? (VertexId*) NULL : reference_source_dist,
+					csr_graph,
+					stats[1],
+					max_grid_size)) exit(1);
+				printf("\n");
+				fflush(stdout);
+			}
+*/
+			if (!csr_problem.uneven) {
 				// Perform one-phase out-of-core BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
 					one_phase_enactor,
@@ -660,7 +678,7 @@ void RunTests(
 					h_source_path,
 					(g_quick) ? (VertexId*) NULL : reference_source_dist,
 					csr_graph,
-					stats[1],
+					stats[2],
 					max_grid_size)) exit(1);
 				printf("\n");
 				fflush(stdout);
@@ -674,7 +692,7 @@ void RunTests(
 				h_source_path,
 				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
-				stats[2],
+				stats[3],
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);
@@ -689,11 +707,12 @@ void RunTests(
 					h_source_path,
 					(g_quick) ? (VertexId*) NULL : reference_source_dist,
 					csr_graph,
-					stats[3],
+					stats[4],
 					max_grid_size)) exit(1);
 				printf("\n");
 				fflush(stdout);
 			}
+
 		}
 
 		if (!csr_problem.uneven) {
@@ -705,7 +724,7 @@ void RunTests(
 				h_source_path,
 				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
-				stats[4],
+				stats[5],
 				max_grid_size)) exit(1);
 			printf("\n");
 			fflush(stdout);

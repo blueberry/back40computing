@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS atomic expansion kernel
+ * BFS atomic expand-compact kernel
  ******************************************************************************/
 
 #pragma once
@@ -28,16 +28,17 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
-#include <b40c/graph/bfs/expand_atomic/cta.cuh>
+
+#include <b40c/graph/bfs/expand_compact_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace expand_atomic {
+namespace expand_compact_atomic {
 
 
 /**
- * Sweep expansion pass (non-workstealing)
+ * Sweep compact-expand pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -47,7 +48,6 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
-		int								 		&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -55,11 +55,12 @@ struct SweepPass
 		typename KernelPolicy::VertexId			*&d_column_indices,
 		typename KernelPolicy::SizeT			*&d_row_offsets,
 		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy>			 			Cta;
+		typedef Cta<KernelPolicy> 						Cta;
 		typedef typename KernelPolicy::SizeT 			SizeT;
 
 		// Determine our threadblock's work range
@@ -77,7 +78,6 @@ struct SweepPass
 		Cta cta(
 			iteration,
 			queue_index,
-			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
@@ -86,6 +86,7 @@ struct SweepPass
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
+			d_collision_cache,
 			work_progress);
 
 		// Process full tiles
@@ -126,7 +127,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep expansion pass (workstealing)
+ * Sweep compact-expand pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -136,7 +137,6 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
-		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
@@ -144,18 +144,18 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId			*&d_column_indices,
 		typename KernelPolicy::SizeT			*&d_row_offsets,
 		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
 	{
-		typedef Cta<KernelPolicy> 						Cta;
-		typedef typename KernelPolicy::SizeT 			SizeT;
+		typedef Cta<KernelPolicy> 					Cta;
+		typedef typename KernelPolicy::SizeT 		SizeT;
 
 		// CTA processing abstraction
 		Cta cta(
 			iteration,
 			queue_index,
-			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
@@ -164,6 +164,7 @@ struct SweepPass <KernelPolicy, true>
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
+			d_collision_cache,
 			work_progress);
 
 		// Total number of elements in full tiles
@@ -185,32 +186,36 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Expansion Kernel Entrypoint
+ * Sweep Kernel Entrypoint
  ******************************************************************************/
 
 /**
- * Sweep expansion kernel entry point
+ * Sweep compact-expand kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
+	typename KernelPolicy::VertexId			iteration,
+	typename KernelPolicy::VertexId			queue_index,
+	typename KernelPolicy::VertexId			steal_index,
 	typename KernelPolicy::VertexId 		src,
-	typename KernelPolicy::VertexId 		iteration,
-	typename KernelPolicy::VertexId 		queue_index,
-	typename KernelPolicy::VertexId 		steal_index,
-	int										num_gpus,
-	volatile int 							*d_done,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
 	typename KernelPolicy::VertexId 		*d_parent_in,
 	typename KernelPolicy::VertexId 		*d_parent_out,
+
 	typename KernelPolicy::VertexId			*d_column_indices,
 	typename KernelPolicy::SizeT			*d_row_offsets,
 	typename KernelPolicy::VertexId			*d_source_path,
+	typename KernelPolicy::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
+	util::GlobalBarrier						global_barrier,
+
+	util::KernelRuntimeStats				kernel_stats,
+	typename KernelPolicy::VertexId			*d_iteration)
 {
+	typedef typename KernelPolicy::VertexId VertexId;
 	typedef typename KernelPolicy::SizeT SizeT;
 
 	// Shared storage for the kernel
@@ -230,49 +235,27 @@ void Kernel(
 			// Determine work decomposition for first iteration
 			if (threadIdx.x == 0) {
 
-				SizeT num_elements = 0;
-				if (src != -1) {
+				// We'll be the only block with active work this iteration.
+				// Enqueue the source for us to subsequently process.
+				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
 
-					num_elements = 1;
-
-					// We'll be the only block with active work this iteration.
-					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
-
-					if (KernelPolicy::MARK_PARENTS) {
-						// Enqueue parent of source
-						typename KernelPolicy::VertexId parent = -2;
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
-					}
+				if (KernelPolicy::MARK_PARENTS) {
+					// Enqueue parent of source
+					typename KernelPolicy::VertexId parent = -2;
+					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
 				}
 
+				// Update source path with current iteration (mooch parent)
+				util::io::ModifiedStore<util::io::st::cg>::St(
+					iteration,
+					d_source_path + src);
+
 				// Initialize work decomposition in smem
+				SizeT num_elements = 1;
 				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
-
-		// Barrier to protect work decomposition
-		__syncthreads();
-
-		// Don't do workstealing this iteration because without a
-		// global barrier after queue-reset, the queue may be inconsistent
-		// across CTAs
-		SweepPass<KernelPolicy, false>::Invoke(
-			iteration,
-			queue_index,
-			steal_index,
-			num_gpus,
-			d_in,
-			d_out,
-			d_parent_in,
-			d_parent_out,
-			d_column_indices,
-			d_row_offsets,
-			d_source_path,
-			work_progress,
-			smem_storage.state.work_decomposition,
-			smem_storage);
 
 	} else {
 
@@ -281,12 +264,72 @@ void Kernel(
 
 			// Obtain problem size
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements);
+			}
 
-			// Signal to host that we're done
-			if ((num_elements == 0) ||
-				(KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
-			{
-				if (d_done) d_done[0] = 1;
+			// Initialize work decomposition in smem
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				num_elements, gridDim.x);
+
+			// Reset our next outgoing queue counter to zero
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+			// Reset our next workstealing counter to zero
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
+
+		}
+	}
+
+	// Barrier to protect work decomposition
+	__syncthreads();
+
+	// Don't do workstealing this iteration because without a
+	// global barrier after queue-reset, the queue may be inconsistent
+	// across CTAs
+	SweepPass<KernelPolicy, false>::Invoke(
+		iteration,
+		queue_index,
+		steal_index,
+		d_in,
+		d_out,
+		d_parent_in,
+		d_parent_out,
+		d_column_indices,
+		d_row_offsets,
+		d_source_path,
+		d_collision_cache,
+		work_progress,
+		smem_storage.state.work_decomposition,
+		smem_storage);
+
+	iteration++;
+	queue_index++;
+	steal_index++;
+
+	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+		kernel_stats.MarkStop();
+	}
+
+	global_barrier.Sync();
+
+	while (true) {
+
+		//---------------------------------------------------------------------
+		// Flip
+		//---------------------------------------------------------------------
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStart();
+		}
+
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
+
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements);
 			}
 
 			// Initialize work decomposition in smem
@@ -304,11 +347,80 @@ void Kernel(
 		// Barrier to protect work decomposition
 		__syncthreads();
 
+		if ((!smem_storage.state.work_decomposition.num_elements) ||
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		{
+			break;
+		}
+
 		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
 			steal_index,
-			num_gpus,
+			d_out,
+			d_in,
+			d_parent_out,
+			d_parent_in,
+			d_column_indices,
+			d_row_offsets,
+			d_source_path,
+			d_collision_cache,
+			work_progress,
+			smem_storage.state.work_decomposition,
+			smem_storage);
+
+		iteration++;
+		queue_index++;
+		steal_index++;
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStop();
+		}
+
+		global_barrier.Sync();
+
+		//---------------------------------------------------------------------
+		// Flop
+		//---------------------------------------------------------------------
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStart();
+		}
+
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
+
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::INSTRUMENT && (blockIdx.x == 0)) {
+				kernel_stats.Aggregate(num_elements);
+			}
+
+			// Initialize work decomposition in smem
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				num_elements, gridDim.x);
+
+			// Reset our next outgoing queue counter to zero
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+			// Reset our next workstealing counter to zero
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
+		}
+
+		// Barrier to protect work decomposition
+		__syncthreads();
+
+		// Check if done
+		if ((!smem_storage.state.work_decomposition.num_elements) ||
+			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		{
+			break;
+		}
+
+		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+			iteration,
+			queue_index,
+			steal_index,
 			d_in,
 			d_out,
 			d_parent_in,
@@ -316,9 +428,25 @@ void Kernel(
 			d_column_indices,
 			d_row_offsets,
 			d_source_path,
+			d_collision_cache,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
+
+		iteration++;
+		queue_index++;
+		steal_index++;
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStop();
+		}
+
+		global_barrier.Sync();
+	}
+
+	// Write out our final iteration
+	if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
+		d_iteration[0] = iteration;
 	}
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
@@ -327,7 +455,7 @@ void Kernel(
 	}
 }
 
-} // namespace expand_atomic
+} // namespace expand_compact_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
