@@ -307,7 +307,11 @@ public:
 		CsrProblem 		&csr_problem,
 		int 			max_grid_size)
     {
-    	cudaError_t retval = cudaSuccess;
+		typedef typename CsrProblem::SizeT 			SizeT;
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+
+		cudaError_t retval = cudaSuccess;
 
     	do {
 			// Check if last run was with an different number of GPUs (in which
@@ -344,7 +348,7 @@ public:
 
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						compact_atomic::bitmask_tex_ref,
+						compact_atomic::BitmaskTex<CollisionMask>::ref,
 						csr_problem.graph_slices[i]->d_collision_cache,
 						bitmask_desc,
 						bytes),
@@ -352,7 +356,7 @@ public:
 
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						partition_compact::upsweep::bitmask_tex_ref,
+						partition_compact::upsweep::BitmaskTex<CollisionMask>::ref,
 						csr_problem.graph_slices[i]->d_collision_cache,
 						bitmask_desc,
 						bytes),

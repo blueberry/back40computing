@@ -175,8 +175,9 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-		typedef typename CsrProblem::VertexId					VertexId;
-		typedef typename CsrProblem::SizeT						SizeT;
+		typedef typename CsrProblem::SizeT 			SizeT;
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::CollisionMask 	CollisionMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -213,7 +214,7 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::bitmask_tex_ref,
+					compact_atomic::BitmaskTex<CollisionMask>::ref,
 					graph_slice->d_collision_cache,
 					bitmask_desc,
 					bytes),
