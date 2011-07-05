@@ -664,7 +664,7 @@ public:
 						SizeT num_elements	= queue_oob - queue_offset;
 
 						if (DEBUG2) {
-							printf("Gpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
+							printf("\nGpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
 								i,
 								num_elements,
 								peer,
