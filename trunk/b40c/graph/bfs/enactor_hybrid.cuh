@@ -64,10 +64,11 @@ protected:
 	util::KernelRuntimeStatsLifetime 	one_phase_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	compact_kernel_stats;
-	unsigned long long 							total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
-	unsigned long long 							total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
-	unsigned long long 							total_queued;
-	unsigned long long 							search_depth;
+
+	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
+	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
+	unsigned long long 					total_queued;
+	unsigned long long 					search_depth;
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration
@@ -149,8 +150,8 @@ public:
 			// Reset statistics
 			iteration[0]		= 0;
 			done[0] 			= 0;
-			total_avg_live 		= 0;
-			total_max_live 		= 0;
+			total_runtimes 		= 0;
+			total_lifetimes 	= 0;
 			total_queued 		= 0;
 			search_depth 		= 0;
 
@@ -182,12 +183,16 @@ public:
     void GetStatistics(
     	long long &total_queued,
     	VertexId &search_depth,
-    	double &avg_live)
+    	double &avg_duty)
     {
-    	total_queued = total_queued;
-    	search_depth = search_depth;
-    	avg_live = double(total_avg_live) / total_max_live;
+    	total_queued = this->total_queued;
+    	search_depth = this->search_depth;
+
+    	avg_duty = (total_lifetimes > 0) ?
+    		double(total_runtimes) / total_lifetimes :
+    		0.0;
     }
+
 
 	/**
 	 * Enacts a breadth-first-search on the specified graph problem.
@@ -226,16 +231,17 @@ public:
 			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
 			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
-			if (DEBUG) printf("BFS one_phase min occupancy %d, level-grid size %d\n",
+			if (DEBUG) {
+				printf("BFS one_phase min occupancy %d, level-grid size %d\n",
 					one_phase_min_occupancy, one_phase_grid_size);
-			if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
+				printf("BFS expand min occupancy %d, level-grid size %d\n",
 					expand_min_occupancy, expand_grid_size);
-			if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
-				compact_min_occupancy, compact_grid_size);
-
-			if (INSTRUMENT) {
-				printf("Iteration, Queue Size\n");
-				printf("1, 1\n");
+				printf("BFS compact min occupancy %d, level-grid size %d\n",
+					compact_min_occupancy, compact_grid_size);
+				if (INSTRUMENT) {
+					printf("Iteration, Queue Size\n");
+					printf("1, 1\n");
+				}
 			}
 
 			VertexId queue_index 			= 0;	// Work stealing/queue index
@@ -338,9 +344,14 @@ public:
 					if (INSTRUMENT) {
 						// Get stats
 						if (retval = one_phase_kernel_stats.Accumulate(
-							one_phase_grid_size, total_avg_live, total_max_live, total_queued)) break;
+							one_phase_grid_size,
+							total_runtimes,
+							total_lifetimes,
+							total_queued)) break;
+
 						total_queued += queue_length;
-						printf("%lld, %lld\n", iteration[0], (long long) queue_length);
+
+						if (DEBUG) printf("%lld, %lld\n", iteration[0], (long long) queue_length);
 					}
 
 				} else {
@@ -375,8 +386,13 @@ public:
 						if (INSTRUMENT) {
 							// Get compact downsweep stats (i.e., duty %)
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
-							printf("%lld, %lld", iteration[0], (long long) queue_length);
-							if (compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) break;
+
+							if (DEBUG) printf("%lld, %lld", iteration[0], (long long) queue_length);
+
+							if (compact_kernel_stats.Accumulate(
+								compact_grid_size,
+								total_runtimes,
+								total_lifetimes)) break;
 						}
 
 						// Expansion
@@ -401,10 +417,15 @@ public:
 
 						if (INSTRUMENT) {
 							// Get expand stats (i.e., duty %)
-							expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live);
+							expand_kernel_stats.Accumulate(
+								expand_grid_size,
+								total_runtimes,
+								total_lifetimes);
+
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 							total_queued += queue_length;
-							printf(", %lld\n", (long long) queue_length);
+
+							if (DEBUG) printf(", %lld\n", (long long) queue_length);
 						}
 
 						// Throttle

@@ -59,8 +59,9 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime compact_kernel_stats;
-	unsigned long long 		total_avg_live;			// Running aggregate of average clock cycles per CTA (reset each traversal)
-	unsigned long long 		total_max_live;			// Running aggregate of maximum clock cycles (reset each traversal)
+
+	unsigned long long 		total_runtimes;			// Total time "worked" by each cta
+	unsigned long long 		total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 		total_queued;
 	unsigned long long 		search_depth;
 
@@ -119,8 +120,8 @@ public:
 
 			// Reset statistics
 			done[0] 			= 0;
-			total_avg_live 		= 0;
-			total_max_live 		= 0;
+			total_runtimes 		= 0;
+			total_lifetimes 	= 0;
 			total_queued 		= 0;
 			search_depth 		= 0;
 
@@ -152,11 +153,14 @@ public:
     void GetStatistics(
     	long long &total_queued,
     	VertexId &search_depth,
-    	double &avg_live)
+    	double &avg_duty)
     {
     	total_queued = this->total_queued;
     	search_depth = this->search_depth;
-    	avg_live = double(total_avg_live) / total_max_live;
+
+    	avg_duty = (total_lifetimes > 0) ?
+    		double(total_runtimes) / total_lifetimes :
+    		0.0;
     }
 
     
@@ -189,14 +193,15 @@ public:
 			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
 			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
-			if (DEBUG) printf("BFS expand min occupancy %d, level-grid size %d\n",
-				expand_min_occupancy, expand_grid_size);
-			if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
-				compact_min_occupancy, compact_grid_size);
-
-			if (INSTRUMENT) {
-				printf("Compaction queue, Expansion queue\n");
-				printf("1, ");
+			if (DEBUG) {
+				printf("BFS expand min occupancy %d, level-grid size %d\n",
+					expand_min_occupancy, expand_grid_size);
+				printf("BFS compact min occupancy %d, level-grid size %d\n",
+					compact_min_occupancy, compact_grid_size);
+				if (INSTRUMENT) {
+					printf("Compaction queue, Expansion queue\n");
+					printf("1, ");
+				}
 			}
 
 			SizeT queue_length;
@@ -259,10 +264,13 @@ public:
 				if (INSTRUMENT) {
 					// Get compaction queue length
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-					printf("%lld, ", (long long) queue_length);
+					if (DEBUG) printf("%lld, ", (long long) queue_length);
 
 					// Get compact downsweep stats (i.e., duty %)
-					if (retval = compact_kernel_stats.Accumulate(compact_grid_size, total_avg_live, total_max_live)) break;
+					if (retval = compact_kernel_stats.Accumulate(
+						compact_grid_size,
+						total_runtimes,
+						total_lifetimes)) break;
 				}
 
 				// Throttle
@@ -299,10 +307,13 @@ public:
 					// Get expansion queue length
 					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 					total_queued += queue_length;
-					printf("%lld\n", (long long) queue_length);
+					if (DEBUG) printf("%lld\n", (long long) queue_length);
 
 					// Get expand stats (i.e., duty %)
-					if (retval = expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live)) break;
+					if (retval = expand_kernel_stats.Accumulate(
+						expand_grid_size,
+						total_runtimes,
+						total_lifetimes)) break;
 				}
 
 			}
