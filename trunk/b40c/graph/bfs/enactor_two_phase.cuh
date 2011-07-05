@@ -230,55 +230,24 @@ public:
 					(graph_slice->nodes + 1) * sizeof(SizeT)),
 				"EnactorTwoPhase cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
 
-			while (!done[0]) {
+			while (true) {
 
 				int selector = queue_index & 1;
-
-				// Expansion
-				expand_atomic::Kernel<ExpandPolicy>
-					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
-						src,
-						iteration,
-						queue_index,
-						queue_index,								// also serves as steal_index
-						1,											// number of GPUs
-						d_done,
-						graph_slice->frontier_queues.d_keys[selector],
-						graph_slice->frontier_queues.d_keys[selector ^ 1],
-						graph_slice->frontier_queues.d_values[selector],
-						graph_slice->frontier_queues.d_values[selector ^ 1],
-						graph_slice->d_column_indices,
-						graph_slice->d_row_offsets,
-						graph_slice->d_source_path,
-						this->work_progress,
-						this->expand_kernel_stats);
-
-				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
-
-				queue_index++;
-				iteration++;
-
-				if (INSTRUMENT) {
-					// Get expansion queue length
-					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
-					total_queued += queue_length;
-					printf("%lld\n", (long long) queue_length);
-
-					// Get expand stats (i.e., duty %)
-					if (retval = expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live)) break;
-				}
 
 				// Compaction
 				compact_atomic::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
+						src,
+						iteration,
 						0,											// num_elements (unused: we obtain this from device-side counters instead)
 						queue_index,
 						queue_index,								// also serves as steal_index
+						1,											// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[selector ^ 1],
-						graph_slice->frontier_queues.d_keys[selector],
-						graph_slice->frontier_queues.d_values[selector ^ 1],
-						graph_slice->frontier_queues.d_values[selector],
+						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex in
+						graph_slice->frontier_queues.d_keys[selector],				// vertex out
+						graph_slice->frontier_queues.d_values[selector ^ 1],		// parent in
+						graph_slice->d_source_path,
 						graph_slice->d_collision_cache,
 						this->work_progress,
 						this->compact_kernel_stats);
@@ -304,6 +273,38 @@ public:
 					if (retval = util::B40CPerror(cudaEventSynchronize(throttle_event),
 						"EnactorTwoPhase cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
 				};
+				if (done[0]) break;
+
+				// Expansion
+				expand_atomic::Kernel<ExpandPolicy>
+					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
+						queue_index,
+						queue_index,								// also serves as steal_index
+						1,											// number of GPUs
+						d_done,
+						graph_slice->frontier_queues.d_keys[selector],				// vertex in
+						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex out
+						graph_slice->frontier_queues.d_values[selector ^ 1],		// parent out
+						graph_slice->d_column_indices,
+						graph_slice->d_row_offsets,
+						this->work_progress,
+						this->expand_kernel_stats);
+
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+				queue_index++;
+				iteration++;
+
+				if (INSTRUMENT) {
+					// Get expansion queue length
+					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
+					total_queued += queue_length;
+					printf("%lld\n", (long long) queue_length);
+
+					// Get expand stats (i.e., duty %)
+					if (retval = expand_kernel_stats.Accumulate(expand_grid_size, total_avg_live, total_max_live)) break;
+				}
+
 			}
 			if (retval) break;
 

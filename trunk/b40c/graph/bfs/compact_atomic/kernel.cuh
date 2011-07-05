@@ -44,12 +44,14 @@ template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
 {
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
+		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId			*&d_source_path,
 		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
@@ -71,12 +73,14 @@ struct SweepPass
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
 			queue_index,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
 			d_parent_in,
-			d_parent_out,
+			d_source_path,
 			d_collision_cache,
 			work_progress);
 
@@ -124,12 +128,14 @@ template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
 {
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
+		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId			*&d_source_path,
 		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
@@ -140,12 +146,14 @@ struct SweepPass <KernelPolicy, true>
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
 			queue_index,
+			num_gpus,
 			smem_storage,
 			d_in,
 			d_out,
 			d_parent_in,
-			d_parent_out,
+			d_source_path,
 			d_collision_cache,
 			work_progress);
 
@@ -178,65 +186,124 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
+	typename KernelPolicy::VertexId 		src,
+	typename KernelPolicy::VertexId 		iteration,
 	typename KernelPolicy::SizeT			num_elements,
 	typename KernelPolicy::VertexId			queue_index,
 	typename KernelPolicy::VertexId			steal_index,
+	int										num_gpus,
 	volatile int							*d_done,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
 	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId 		*d_parent_out,
+	typename KernelPolicy::VertexId			*d_source_path,
 	typename KernelPolicy::CollisionMask 	*d_collision_cache,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 
-	// Shared storage for CTA processing
+	// Shared storage for the kernel
 	__shared__ typename KernelPolicy::SmemStorage smem_storage;
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStart();
 	}
 
-	// Determine work decomposition
-	if (threadIdx.x == 0) {
+	if (iteration == 0) {
 
-		// Obtain problem size
-		if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
-			num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+		if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
+
+			// Reset all counters
+			work_progress.template Reset<SizeT>();
+
+			// Determine work decomposition for first iteration
+			if (threadIdx.x == 0) {
+
+				SizeT num_elements = 0;
+				if (src != -1) {
+
+					num_elements = 1;
+
+					// We'll be the only block with active work this iteration.
+					// Enqueue the source for us to subsequently process.
+					util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(src, d_in);
+
+					if (KernelPolicy::MARK_PARENTS) {
+						// Enqueue parent of source
+						typename KernelPolicy::VertexId parent = -2;
+						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(parent, d_parent_in);
+					}
+				}
+
+				// Initialize work decomposition in smem
+				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+					num_elements, gridDim.x);
+			}
 		}
 
-		// Signal to host that we're done
-		if (num_elements == 0) {
-			if (d_done) d_done[0] = 1;
+		// Barrier to protect work decomposition
+		__syncthreads();
+
+		// Don't do workstealing this iteration because without a
+		// global barrier after queue-reset, the queue may be inconsistent
+		// across CTAs
+		SweepPass<KernelPolicy, false>::Invoke(
+			iteration,
+			queue_index,
+			steal_index,
+			num_gpus,
+			d_in,
+			d_out,
+			d_parent_in,
+			d_source_path,
+			d_collision_cache,
+			work_progress,
+			smem_storage.state.work_decomposition,
+			smem_storage);
+
+	} else {
+
+		// Determine work decomposition
+		if (threadIdx.x == 0) {
+
+			// Obtain problem size
+			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+
+			// Signal to host that we're done
+			if (num_elements == 0) {
+				if (d_done) d_done[0] = 1;
+			}
+
+			// Initialize work decomposition in smem
+			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				num_elements, gridDim.x);
+
+			// Reset our next outgoing queue counter to zero
+			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+			// Reset our next workstealing counter to zero
+			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
+
 		}
 
-		// Initialize work decomposition in smem
-		smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
-			num_elements, gridDim.x);
+		// Barrier to protect work decomposition
+		__syncthreads();
 
-		// Reset our next outgoing queue counter to zero
-		work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
-
-		// Reset our next workstealing counter to zero
-		work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
+		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+			iteration,
+			queue_index,
+			steal_index,
+			num_gpus,
+			d_in,
+			d_out,
+			d_parent_in,
+			d_source_path,
+			d_collision_cache,
+			work_progress,
+			smem_storage.state.work_decomposition,
+			smem_storage);
 	}
-
-	// Barrier to protect work decomposition
-	__syncthreads();
-
-	SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
-		queue_index,
-		steal_index,
-		d_in,
-		d_out,
-		d_parent_in,
-		d_parent_out,
-		d_collision_cache,
-		work_progress,
-		smem_storage.state.work_decomposition,
-		smem_storage);
 
 	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
 		kernel_stats.MarkStop();

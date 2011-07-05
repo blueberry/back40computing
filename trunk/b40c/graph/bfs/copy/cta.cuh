@@ -55,28 +55,168 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
+	// Current BFS iteration
+	VertexId 				iteration;
+	int 					num_gpus;
+
 	// Input and output device pointers
-	VertexId* d_in;
-	VertexId* d_out;
-	VertexId* d_parent_in;
-	VertexId* d_parent_out;
+	VertexId 				*d_in;
+	VertexId 				*d_out;
+	VertexId 				*d_parent_in;
+	VertexId 				*d_parent_out;
+	VertexId				*d_source_path;
+
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
+
+	/**
+	 * Tile
+	 */
+	template <
+		int LOG_LOADS_PER_TILE,
+		int LOG_LOAD_VEC_SIZE>
+	struct Tile
+	{
+		//---------------------------------------------------------------------
+		// Typedefs and Constants
+		//---------------------------------------------------------------------
+
+		enum {
+			LOADS_PER_TILE 		= 1 << LOG_LOADS_PER_TILE,
+			LOAD_VEC_SIZE 		= 1 << LOG_LOAD_VEC_SIZE
+		};
+
+
+		//---------------------------------------------------------------------
+		// Members
+		//---------------------------------------------------------------------
+
+		// Dequeued vertex ids
+		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+
+
+		//---------------------------------------------------------------------
+		// Helper Structures
+		//---------------------------------------------------------------------
+
+		/**
+		 * Iterate over vertex id
+		 */
+		template <int LOAD, int VEC, int dummy = 0>
+		struct Iterate
+		{
+			/**
+			 * MarkSource
+			 */
+			static __device__ __forceinline__ void MarkSource(
+				Cta *cta,
+				Tile *tile)
+			{
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+
+					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
+
+					// Load source path of node
+					VertexId source_path;
+					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+						source_path,
+						cta->d_source_path + row_id);
+
+
+					if (source_path != -1) {
+
+						// Seen it
+						tile->vertex_id[LOAD][VEC] = -1;
+
+					} else {
+
+						if (KernelPolicy::MARK_PARENTS) {
+
+							// Update source path with parent vertex
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								tile->parent_id[LOAD][VEC],
+								cta->d_source_path + row_id);
+						} else {
+
+							// Update source path with current iteration
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								cta->iteration,
+								cta->d_source_path + row_id);
+						}
+					}
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::MarkSource(cta, tile);
+			}
+		};
+
+
+		/**
+		 * Iterate next load
+		 */
+		template <int LOAD, int dummy>
+		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
+		{
+			// MarkSource
+			static __device__ __forceinline__ void MarkSource(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::MarkSource(cta, tile);
+			}
+		};
+
+
+
+		/**
+		 * Terminate iteration
+		 */
+		template <int dummy>
+		struct Iterate<LOADS_PER_TILE, 0, dummy>
+		{
+			// MarkSource
+			static __device__ __forceinline__ void MarkSource(Cta *cta, Tile *tile) {}
+		};
+
+
+		//---------------------------------------------------------------------
+		// Interface
+		//---------------------------------------------------------------------
+
+		/**
+		 * MarkSource
+		 */
+		__device__ __forceinline__ void MarkSource(Cta *cta)
+		{
+			Iterate<0, 0>::MarkSource(cta, this);
+		}
+	};
+
 
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
 
+
 	/**
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
+		VertexId 				iteration,
+		int						num_gpus,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
 		VertexId 				*d_parent_in,
-		VertexId 				*d_parent_out) :
+		VertexId 				*d_parent_out,
+		VertexId 				*d_source_path) :
+			iteration(iteration),
+			num_gpus(num_gpus),
 			d_in(d_in),
 			d_out(d_out),
 			d_parent_in(d_parent_in),
-			d_parent_out(d_parent_out)
+			d_parent_out(d_parent_out),
+			d_source_path(d_source_path)
 	{}
 
 
@@ -90,7 +230,7 @@ struct Cta
 		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{
 		// Tile of elements
-		VertexId data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		Tile<KernelPolicy::LOG_LOADS_PER_TILE, KernelPolicy::LOG_LOAD_VEC_SIZE> tile;
 
 		// Load tile of vertices
 		util::io::LoadTile<
@@ -99,24 +239,11 @@ struct Cta
 			KernelPolicy::THREADS,
 			KernelPolicy::READ_MODIFIER,
 			false>::LoadValid(
-				data,
+				tile.vertex_id,
 				d_in,
 				cta_offset,
-				guarded_elements);
-
-		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
-
-		// Store tile of vertices
-		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER,
-			false>::Store(
-				data,
-				d_out,
-				cta_offset,
-				guarded_elements);
+				guarded_elements,
+				(VertexId) -1);
 
 		if (KernelPolicy::MARK_PARENTS) {
 
@@ -127,25 +254,28 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				false>::LoadValid(
-					data,
+					tile.parent_id,
 					d_parent_in,
 					cta_offset,
 					guarded_elements);
-
-			if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
-
-			// Store tile of parents
-			util::io::StoreTile<
-				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER,
-				false>::Store(
-					data,
-					d_parent_out,
-					cta_offset,
-					guarded_elements);
 		}
+
+		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
+
+		// Mark sources
+		tile.MarkSource(this);
+
+		// Store tile of vertices
+		util::io::StoreTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER,
+			false>::Store(
+				tile.vertex_id,
+				d_out,
+				cta_offset,
+				guarded_elements);
 	}
 };
 

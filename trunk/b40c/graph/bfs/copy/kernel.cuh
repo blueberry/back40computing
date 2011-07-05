@@ -44,11 +44,14 @@ template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
 {
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&steal_index,
+		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
 		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId			*&d_source_path,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -68,10 +71,13 @@ struct SweepPass
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
+			num_gpus,
 			d_in,
 			d_out,
 			d_parent_in,
-			d_parent_out);
+			d_parent_out,
+			d_source_path);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -117,11 +123,14 @@ template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
 {
 	static __device__ __forceinline__ void Invoke(
+		typename KernelPolicy::VertexId 		&iteration,
 		typename KernelPolicy::VertexId 		&steal_index,
+		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_parent_in,
 		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId			*&d_source_path,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -130,10 +139,13 @@ struct SweepPass <KernelPolicy, true>
 
 		// CTA processing abstraction
 		Cta cta(
+			iteration,
+			num_gpus,
 			d_in,
 			d_out,
 			d_parent_in,
-			d_parent_out);
+			d_parent_out,
+			d_source_path);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -164,13 +176,16 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
+	typename KernelPolicy::VertexId 		iteration,
 	typename KernelPolicy::SizeT			num_elements,
 	typename KernelPolicy::VertexId 		queue_index,
 	typename KernelPolicy::VertexId 		steal_index,
+	int										num_gpus,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
 	typename KernelPolicy::VertexId 		*d_parent_in,
 	typename KernelPolicy::VertexId 		*d_parent_out,
+	typename KernelPolicy::VertexId			*d_source_path,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
@@ -205,11 +220,14 @@ void Kernel(
 	__syncthreads();
 
 	SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+		iteration,
 		steal_index,
+		num_gpus,
 		d_in,
 		d_out,
 		d_parent_in,
 		d_parent_out,
+		d_source_path,
 		work_progress,
 		work_decomposition);
 

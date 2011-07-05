@@ -80,17 +80,17 @@ echo /bin/test_bfs_4.0_i386 grid3d 300 --queue-sizing=0.15 $OPTIONS --mark-paren
 	sleep 5 
 
 i=random.2Mv.128Me.gr
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
+echo ./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS 
+./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
+echo ./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents 
+./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt 
 	sleep 5 
  
 i=rmat.2Mv.128Me.gr
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
+echo ./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS 
+./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS > eval/$SUFFIX/$i.$SUFFIX.txt 
 	sleep 5 
-echo ./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents 
-./bin/test_bfs_4.0_x86_64 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt
+echo ./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents 
+./bin/test_bfs_4.0_i386 dimacs ../../../graphs/$i --uneven $OPTIONS --mark-parents > eval/$SUFFIX/$i.$SUFFIX.parent.txt
 	sleep 5 

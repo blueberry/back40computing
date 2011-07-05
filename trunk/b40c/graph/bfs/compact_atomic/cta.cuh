@@ -80,14 +80,16 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Current BFS queue index
+	VertexId 				iteration;
 	VertexId 				queue_index;
+	int 					num_gpus;
 
 	// Input and output device pointers
 	VertexId 				*d_in;					// Incoming vertex ids
 	VertexId 				*d_out;					// Compacted vertex ids
 	VertexId 				*d_parent_in;			// Incoming parent vertex ids (optional)
-	VertexId 				*d_parent_out;			// Compacted parent vertex ids (optional)
 	CollisionMask 			*d_collision_cache;
+	VertexId				*d_source_path;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -174,7 +176,7 @@ struct Cta
 					// Bit in mask byte corresponding to current vertex id
 					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
-					// Read byte from from collision cache bitmask
+					// Read byte from from collision cache bitmask tex
 					CollisionMask mask_byte = tex1Dfetch(
 						BitmaskTex<CollisionMask>::ref,
 						mask_byte_offset);
@@ -207,6 +209,52 @@ struct Cta
 
 				// Next
 				Iterate<LOAD, VEC + 1>::BitmaskCull(cta, tile);
+			}
+
+
+			/**
+			 * VertexCull
+			 */
+			static __device__ __forceinline__ void VertexCull(
+				Cta *cta,
+				Tile *tile)
+			{
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+
+					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
+
+					// Load source path of node
+					VertexId source_path;
+					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+						source_path,
+						cta->d_source_path + row_id);
+
+
+					if (source_path != -1) {
+
+						// Seen it
+						tile->vertex_id[LOAD][VEC] = -1;
+
+					} else {
+
+						if (KernelPolicy::MARK_PARENTS) {
+
+							// Update source path with parent vertex
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								tile->parent_id[LOAD][VEC],
+								cta->d_source_path + row_id);
+						} else {
+
+							// Update source path with current iteration
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								cta->iteration,
+								cta->d_source_path + row_id);
+						}
+					}
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::VertexCull(cta, tile);
 			}
 
 
@@ -286,6 +334,12 @@ struct Cta
 				Iterate<LOAD + 1, 0>::BitmaskCull(cta, tile);
 			}
 
+			// VertexCull
+			static __device__ __forceinline__ void VertexCull(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::VertexCull(cta, tile);
+			}
+
 			// HistoryCull
 			static __device__ __forceinline__ void HistoryCull(Cta *cta, Tile *tile)
 			{
@@ -312,6 +366,9 @@ struct Cta
 
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile) {}
+
+			// VertexCull
+			static __device__ __forceinline__ void VertexCull(Cta *cta, Tile *tile) {}
 
 			// HistoryCull
 			static __device__ __forceinline__ void HistoryCull(Cta *cta, Tile *tile) {}
@@ -343,6 +400,14 @@ struct Cta
 		}
 
 		/**
+		 * Culls vertices
+		 */
+		__device__ __forceinline__ void VertexCull(Cta *cta)
+		{
+			Iterate<0, 0>::VertexCull(cta, this);
+		}
+
+		/**
 		 * Culls vertices based upon local duplicate collisions
 		 */
 		__device__ __forceinline__ void LocalCull(Cta *cta)
@@ -363,16 +428,20 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		VertexId				queue_index,
+		VertexId 				iteration,
+		VertexId 				queue_index,
+		int						num_gpus,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
 		VertexId 				*d_parent_in,
-		VertexId 				*d_parent_out,
+		VertexId 				*d_source_path,
 		CollisionMask 			*d_collision_cache,
 		util::CtaWorkProgress	&work_progress) :
 
+			iteration(iteration),
 			queue_index(queue_index),
+			num_gpus(num_gpus),
 			srts_details(
 				smem_storage.state.raking_elements,
 				smem_storage.state.warpscan,
@@ -381,7 +450,7 @@ struct Cta
 			d_in(d_in),
 			d_out(d_out),
 			d_parent_in(d_parent_in),
-			d_parent_out(d_parent_out),
+			d_source_path(d_source_path),
 			d_collision_cache(d_collision_cache),
 			work_progress(work_progress)
 
@@ -415,8 +484,26 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
+		if (KernelPolicy::MARK_PARENTS) {
+
+			// Load parent vertices as well
+			util::io::LoadTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER,
+				false>::LoadValid(
+					tile.parent_id,
+					d_parent_in,
+					cta_offset,
+					guarded_elements);
+		}
+
 		// Cull using global collision bitmask
 		tile.BitmaskCull(this);
+
+		// Cull using vertex visitation status
+		tile.VertexCull(this);
 
 		// Cull using local collision hashing
 		tile.LocalCull(this);
@@ -450,32 +537,6 @@ struct Cta
 				tile.vertex_id,
 				tile.flags,
 				tile.ranks);
-
-		if (KernelPolicy::MARK_PARENTS) {
-
-			// Compact parent vertices as well
-			util::io::LoadTile<
-				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
-				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
-					cta_offset,
-					guarded_elements);
-
-			// Scatter valid vertex_id, predicated on flags
-			util::io::ScatterTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
-					d_parent_out,
-					tile.parent_id,
-					tile.flags,
-					tile.ranks);
-		}
 	}
 };
 
