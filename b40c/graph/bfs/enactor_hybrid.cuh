@@ -264,6 +264,16 @@ public:
 					bytes),
 				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
 
+			// Bind row-offsets texture
+			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					expand_atomic::RowOffsetTex<SizeT>::ref,
+					graph_slice->d_row_offsets,
+					row_offsets_desc,
+					(graph_slice->nodes + 1) * sizeof(SizeT)),
+				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+
 			// Bind bitmask texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
@@ -274,7 +284,6 @@ public:
 				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Bind row-offsets texture
-			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
 					compact_expand_atomic::RowOffsetTex<SizeT>::ref,
