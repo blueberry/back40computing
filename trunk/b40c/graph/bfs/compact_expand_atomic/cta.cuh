@@ -47,7 +47,28 @@ namespace bfs {
 namespace compact_expand_atomic {
 
 
-texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+/**
+ * Templated texture reference for collision bitmask
+ */
+template <typename CollisionMask>
+struct BitmaskTex
+{
+	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename CollisionMask>
+texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
+
+
+/**
+ * Templated texture reference for row-offsets
+ */
+template <typename SizeT>
+struct RowOffsetTex
+{
+	static texture<SizeT, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename SizeT>
+texture<SizeT, cudaTextureType1D, cudaReadModeElementType> RowOffsetTex<SizeT>::ref;
 
 
 
@@ -163,30 +184,81 @@ struct Cta
 		struct Iterate
 		{
 			/**
+			 * Inspect
+			 */
+			template <typename Cta, typename Tile>
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
+			{
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+
+					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
+					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
+
+					// Node is previously unvisited: compute row offset and length
+					tile->row_offset[LOAD][VEC] = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id);
+					tile->row_length[LOAD][VEC] = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id + 1) - tile->row_offset[LOAD][VEC];
+				}
+
+				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < KernelPolicy::WARP_GATHER_THRESHOLD) ?
+					tile->row_length[LOAD][VEC] : 0;
+
+				tile->coarse_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < KernelPolicy::WARP_GATHER_THRESHOLD) ?
+					0 : tile->row_length[LOAD][VEC];
+
+				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
+			}
+
+			/**
 			 * BitmaskCull
 			 */
 			static __device__ __forceinline__ void BitmaskCull(
 				Cta *cta,
 				Tile *tile)
 			{
+
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
+					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
+					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
+
+					// Load source path of node
+					VertexId source_path;
+					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+						source_path,
+						cta->d_source_path + row_id);
+
+					if (source_path != -1) {
+
+						// Seen it
+						tile->vertex_id[LOAD][VEC] = -1;
+
+					} else {
+
+						if (KernelPolicy::MARK_PARENTS) {
+
+							// Update source path with parent vertex
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								tile->parent_id[LOAD][VEC],
+								cta->d_source_path + row_id);
+						} else {
+
+							// Update source path with current iteration
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								cta->iteration,
+								cta->d_source_path + row_id);
+						}
+					}
+
+/*
 					// Location of mask byte to read
 					SizeT mask_byte_offset = tile->vertex_id[LOAD][VEC] >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
 					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
-/*
-					// Read byte from from collision cache bitmask
-					CollisionMask mask_byte;
-					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-						mask_byte, cta->d_collision_cache + mask_byte_offset);
-*/
-
 					// Read byte from from collision cache bitmask
 					CollisionMask mask_byte = tex1Dfetch(
-						bitmask_tex_ref,
+						BitmaskTex<CollisionMask>::ref,
 						mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
@@ -202,6 +274,7 @@ struct Cta
 							mask_byte,
 							cta->d_collision_cache + mask_byte_offset);
 					}
+*/
 				}
 
 				// Next
@@ -328,6 +401,14 @@ struct Cta
 		struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
 		{
 			/**
+			 * Inspect
+			 */
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::Inspect(cta, tile);
+			}
+
+			/**
 			 * BitmaskCull
 			 */
 			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile)
@@ -382,6 +463,9 @@ struct Cta
 		template <int dummy>
 		struct Iterate<LOADS_PER_TILE, 0, dummy>
 		{
+			// Inspect
+			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile) {}
+
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile) {}
 
@@ -422,9 +506,7 @@ struct Cta
 		 */
 		__device__ __forceinline__ void Inspect(Cta *cta)
 		{
-			expand_atomic::Cta<KernelPolicy>::template Tile<
-				LOG_LOADS_PER_TILE,
-				LOG_LOAD_VEC_SIZE>::template Iterate<0, 0>::Inspect(cta, this);
+			Iterate<0, 0>::Inspect(cta, this);
 		}
 
 		/**

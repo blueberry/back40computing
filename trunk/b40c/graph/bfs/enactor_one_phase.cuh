@@ -168,8 +168,9 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-		typedef typename CsrProblem::SizeT SizeT;
-		typedef typename CsrProblem::VertexId VertexId;
+		typedef typename CsrProblem::SizeT 			SizeT;
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::CollisionMask 	CollisionMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -193,11 +194,21 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::bitmask_tex_ref,
+					compact_expand_atomic::BitmaskTex<CollisionMask>::ref,
 					graph_slice->d_collision_cache,
 					bitmask_desc,
 					bytes),
 				"EnactorOnePhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
+			// Bind row-offsets texture
+			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					compact_expand_atomic::RowOffsetTex<SizeT>::ref,
+					graph_slice->d_row_offsets,
+					row_offsets_desc,
+					(graph_slice->nodes + 1) * sizeof(SizeT)),
+				"EnactorOnePhase cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Initiate single-grid kernel
 			compact_expand_atomic::Kernel<KernelPolicy>

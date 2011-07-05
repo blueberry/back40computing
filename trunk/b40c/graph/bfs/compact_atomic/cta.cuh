@@ -45,7 +45,16 @@ namespace bfs {
 namespace compact_atomic {
 
 
-texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
+/**
+ * Templated texture reference for collision bitmask
+ */
+template <typename CollisionMask>
+struct BitmaskTex
+{
+	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename CollisionMask>
+texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
 
 
 /**
@@ -167,7 +176,7 @@ struct Cta
 
 					// Read byte from from collision cache bitmask
 					CollisionMask mask_byte = tex1Dfetch(
-						bitmask_tex_ref,
+						BitmaskTex<CollisionMask>::ref,
 						mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
