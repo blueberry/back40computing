@@ -268,7 +268,9 @@ void Kernel(
 		if (threadIdx.x == 0) {
 
 			// Obtain problem size
-			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
+				num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			}
 
 			// Signal to host that we're done
 			if (num_elements == 0) {
