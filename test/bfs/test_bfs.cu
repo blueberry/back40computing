@@ -940,7 +940,6 @@ int main( int argc, char** argv)
 	csr_graph.PrintHistogram();
 
 	// Run tests
-/*
 	if (instrumented) {
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
@@ -951,7 +950,7 @@ int main( int argc, char** argv)
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
 	} else {
-*/
+
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
@@ -960,5 +959,5 @@ int main( int argc, char** argv)
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
-//	}
+	}
 }

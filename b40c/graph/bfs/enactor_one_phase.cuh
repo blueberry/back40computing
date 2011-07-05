@@ -65,9 +65,11 @@ protected:
 	 * CTA duty kernel stats
 	 */
 	util::KernelRuntimeStatsLifetime 	kernel_stats;
-	unsigned long long 							total_avg_live;
-	unsigned long long 							total_max_live;
-	unsigned long long 							total_queued;
+
+	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
+	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
+
+	unsigned long long 					total_queued;
 
 	/**
 	 * Current iteration (mapped into GPU space so that it can
@@ -128,8 +130,8 @@ public:
 
 			// Reset statistics
 			iteration[0] 		= 0;
-			total_avg_live 		= 0;
-			total_max_live 		= 0;
+			total_runtimes 		= 0;
+			total_lifetimes 	= 0;
 			total_queued 		= 0;
 
 
@@ -144,13 +146,15 @@ public:
      */
 	template <typename VertexId>
     void GetStatistics(
-		long long &total_queued,
-		VertexId &search_depth,
-		double &avg_live)
+    	long long &total_queued,
+    	VertexId &search_depth,
+    	double &avg_duty)
     {
     	total_queued = this->total_queued;
     	search_depth = iteration[0] - 1;
-    	avg_live = double(total_avg_live) / total_max_live;
+    	avg_duty = (total_lifetimes > 0) ?
+    		double(total_runtimes) / total_lifetimes :
+    		0.0;
     }
     
 
@@ -237,7 +241,11 @@ public:
 
 			if (INSTRUMENT) {
 				// Get stats
-				if (retval = kernel_stats.Accumulate(grid_size, total_avg_live, total_max_live, total_queued)) break;
+				if (retval = kernel_stats.Accumulate(
+					grid_size,
+					total_runtimes,
+					total_lifetimes,
+					total_queued)) break;
 			}
 
 		} while (0);

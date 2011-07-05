@@ -606,13 +606,6 @@ public:
 					volatile SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
 
-					if (INSTRUMENT) {
-						printf("Iteration %lld GPU %d partition compacted %lld\n",
-							(long long) control->iteration,
-							control->gpu,
-							(long long) spine[control->spine_elements - 1]);
-					}
-
 					if (DEBUG2) {
 						printf("Iteration %lld sort-compacted queue on gpu %d (%lld elements):\n",
 							(long long) control->iteration,
@@ -632,8 +625,7 @@ public:
 				// Check if all done in all GPUs
 				if (done) break;
 
-				if (DEBUG2) printf("---------------------------------------------------------");
-				if (INSTRUMENT) printf("\n");
+				if (DEBUG2) printf("---------------------------------------------------------\n");
 
 
 				//---------------------------------------------------------------------
@@ -664,7 +656,7 @@ public:
 						SizeT num_elements	= queue_oob - queue_offset;
 
 						if (DEBUG2) {
-							printf("\nGpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
+							printf("Gpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
 								i,
 								num_elements,
 								peer,
@@ -750,13 +742,6 @@ public:
 					// Update queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 
-					if (INSTRUMENT) {
-						printf("Iteration %lld GPU %d partition enqueued %lld\n",
-							(long long) control->iteration - 1,
-							control->gpu,
-							(long long) control->queue_length);
-					}
-
 					// Check if this gpu is not done
 					if (control->queue_length) done = false;
 
@@ -777,8 +762,6 @@ public:
 
 				// Check if all done in all GPUs
 				if (done) break;
-
-				if (INSTRUMENT) printf("\n");
 			}
 
 		} while (0);
