@@ -653,7 +653,7 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
-/*
+/* bit rot?
 			if (!csr_problem.uneven) {
 				// Perform one-phase in-core BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
@@ -669,6 +669,7 @@ void RunTests(
 				fflush(stdout);
 			}
 */
+
 			if (!csr_problem.uneven) {
 				// Perform one-phase out-of-core BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(

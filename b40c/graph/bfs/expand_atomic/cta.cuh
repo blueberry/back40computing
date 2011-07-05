@@ -85,18 +85,15 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Current BFS iteration
-	VertexId 				iteration;
 	VertexId 				queue_index;
 	int 					num_gpus;
 
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_out;
-	VertexId 				*d_parent_in;
 	VertexId 				*d_parent_out;
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
-	VertexId				*d_source_path;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -139,7 +136,6 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -184,37 +180,14 @@ struct Cta
 					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
 					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
 
-					// Load source path of node
-					VertexId source_path;
-					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-						source_path,
-						cta->d_source_path + row_id);
-
 					// Load neighbor row range from d_row_offsets
 					Vec2SizeT row_range;
 					row_range.x = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id);
 					row_range.y = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id + 1);
 
-					if (source_path == -1) {
-
-						// Node is previously unvisited: compute row offset and length
-						tile->row_offset[LOAD][VEC] = row_range.x;
-						tile->row_length[LOAD][VEC] = row_range.y - row_range.x;
-
-						if (KernelPolicy::MARK_PARENTS) {
-
-							// Update source path with parent vertex
-							util::io::ModifiedStore<util::io::st::cg>::St(
-								tile->parent_id[LOAD][VEC],
-								cta->d_source_path + row_id);
-						} else {
-
-							// Update source path with current iteration
-							util::io::ModifiedStore<util::io::st::cg>::St(
-								cta->iteration,
-								cta->d_source_path + row_id);
-						}
-					}
+					// Node is previously unvisited: compute row offset and length
+					tile->row_offset[LOAD][VEC] = row_range.x;
+					tile->row_length[LOAD][VEC] = row_range.y - row_range.x;
 				}
 
 				tile->fine_row_rank[LOAD][VEC] = (tile->row_length[LOAD][VEC] < KernelPolicy::WARP_GATHER_THRESHOLD) ?
@@ -540,20 +513,16 @@ struct Cta
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		VertexId 				iteration,
 		VertexId 				queue_index,
 		int						num_gpus,
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_in,
 		VertexId 				*d_parent_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
-		VertexId 				*d_source_path,
 		util::CtaWorkProgress	&work_progress) :
 
-			iteration(iteration),
 			queue_index(queue_index),
 			num_gpus(num_gpus),
 			smem_storage(smem_storage),
@@ -566,12 +535,10 @@ struct Cta
 					smem_storage.state.fine_warpscan),
 				TileTuple(0, 0)),
 			d_in(d_in),
-			d_parent_in(d_parent_in),
 			d_out(d_out),
 			d_parent_out(d_parent_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
-			d_source_path(d_source_path),
 			work_progress(work_progress) {}
 
 
@@ -598,21 +565,6 @@ struct Cta
 				cta_offset,
 				guarded_elements,
 				(VertexId) -1);
-
-		// Load tile of parents
-		if (KernelPolicy::MARK_PARENTS) {
-
-			util::io::LoadTile<
-				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::THREADS,
-				KernelPolicy::QUEUE_READ_MODIFIER,
-				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
-					cta_offset,
-					guarded_elements);
-		}
 
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details

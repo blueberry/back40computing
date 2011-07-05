@@ -353,14 +353,17 @@ public:
 						// Compaction
 						compact_atomic::Kernel<CompactPolicy>
 							<<<compact_grid_size, CompactPolicy::THREADS>>>(
+								src,
+								(VertexId) iteration[0],
 								0,														// num_elements (unused: we obtain this from device-side counters instead)
 								queue_index,
 								queue_index,											// also serves as steal_index
+								1,														// number of GPUs
 								d_done,
-								graph_slice->frontier_queues.d_keys[selector],
-								graph_slice->frontier_queues.d_keys[selector ^ 1],
-								graph_slice->frontier_queues.d_values[selector],
-								graph_slice->frontier_queues.d_values[selector ^ 1],
+								graph_slice->frontier_queues.d_keys[selector],			// in vertices
+								graph_slice->frontier_queues.d_keys[selector ^ 1],		// out vertices
+								graph_slice->frontier_queues.d_values[selector],		// in parents
+								graph_slice->d_source_path,
 								graph_slice->d_collision_cache,
 								work_progress,
 								compact_kernel_stats);
@@ -379,19 +382,15 @@ public:
 						// Expansion
 						expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
-								src,
-								(VertexId) iteration[0],
 								queue_index,
 								queue_index,											// also serves as steal_index
 								1,														// number of GPUs
 								d_done,
-								graph_slice->frontier_queues.d_keys[selector ^ 1],
-								graph_slice->frontier_queues.d_keys[selector],
-								graph_slice->frontier_queues.d_values[selector ^ 1],
-								graph_slice->frontier_queues.d_values[selector],
+								graph_slice->frontier_queues.d_keys[selector ^ 1],		// in vertices
+								graph_slice->frontier_queues.d_keys[selector],			// out vertices
+								graph_slice->frontier_queues.d_values[selector],		// out parents
 								graph_slice->d_column_indices,
 								graph_slice->d_row_offsets,
-								graph_slice->d_source_path,
 								work_progress,
 								expand_kernel_stats);
 
