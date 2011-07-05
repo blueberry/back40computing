@@ -45,6 +45,19 @@ namespace expand_atomic {
 
 
 /**
+ * Templated texture reference for row-offsets
+ */
+template <typename SizeT>
+struct RowOffsetTex
+{
+	static texture<SizeT, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename SizeT>
+texture<SizeT, cudaTextureType1D, cudaReadModeElementType> RowOffsetTex<SizeT>::ref;
+
+
+
+/**
  * Derivation of KernelPolicy that encapsulates tile-processing routines
  */
 template <typename KernelPolicy>
@@ -179,23 +192,8 @@ struct Cta
 
 					// Load neighbor row range from d_row_offsets
 					Vec2SizeT row_range;
-					if (row_id & 1) {
-
-						// Misaligned: load separately
-						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
-							row_range.x,
-							cta->d_row_offsets + row_id);
-
-						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_UNALIGNED_READ_MODIFIER>::Ld(
-							row_range.y,
-							cta->d_row_offsets + row_id + 1);
-
-					} else {
-						// Aligned: load together
-						util::io::ModifiedLoad<KernelPolicy::ROW_OFFSET_ALIGNED_READ_MODIFIER>::Ld(
-							row_range,
-							reinterpret_cast<Vec2SizeT*>(cta->d_row_offsets + row_id));
-					}
+					row_range.x = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id);
+					row_range.y = tex1Dfetch(RowOffsetTex<SizeT>::ref, row_id + 1);
 
 					if (source_path == -1) {
 
