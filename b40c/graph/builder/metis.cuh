@@ -171,7 +171,7 @@ int ReadMetisStream(
 
 /**
  * Loads a METIS-formatted CSR graph from the specified file.  If 
- * dimacs_filename == NULL, then it is loaded from stdin.
+ * metis_filename == NULL, then it is loaded from stdin.
  * 
  * If src == -1, it is assigned a random node.  Otherwise it is verified 
  * to be in range of the constructed graph.
@@ -217,6 +217,74 @@ int BuildMetisGraph(
 		return -1;
 	}
 	
+	return 0;
+}
+
+
+/**
+ *
+ */
+template<typename VertexId, typename Value, typename SizeT>
+int WriteMetisStream(
+	FILE *f_out,
+	const CsrGraph<VertexId, Value, SizeT> &csr_graph)
+{
+	time_t mark0 = time(NULL);
+	printf("  Writing METIS CSR format... ");
+	fflush(stdout);
+
+	fprintf(f_out, "%lld %lld\n", (long long) csr_graph.nodes, (long long) csr_graph.edges);
+
+	for (VertexId node = 0; node < csr_graph.nodes; node++) {
+
+		for (SizeT edge = csr_graph.row_offsets[node]; edge < csr_graph.row_offsets[node + 1]; edge++) {
+
+			fprintf(f_out, "%lld ", (long long) csr_graph.column_indices[edge] + 1);
+		}
+		fprintf(f_out, "\n");
+	}
+
+	time_t mark1 = time(NULL);
+	printf("Done writing (%ds).\n", (int) (mark1 - mark0));
+	fflush(stdout);
+
+	return 0;
+}
+
+
+/**
+ * Writes a METIS-formatted CSR graph to the specified file.  If
+ * metis_filename == NULL, then it is written to stdout.
+ */
+template<typename VertexId, typename Value, typename SizeT>
+int WriteMetisGraph(
+	char *metis_filename,
+	CsrGraph<VertexId, Value, SizeT> &csr_graph)
+{
+	if (metis_filename == NULL) {
+
+		// Write to stdout
+		printf("Writing to stdout:\n");
+		if (WriteMetisStream(stdout, csr_graph) != 0) {
+			return -1;
+		}
+
+	} else {
+
+		// Write to file
+		FILE *f_out = fopen(metis_filename, "w");
+		if (f_out) {
+			printf("Reading from %s:\n", metis_filename);
+			if (WriteMetisStream(f_out, csr_graph) != 0) {
+				fclose(f_out);
+				return -1;
+			}
+			fclose(f_out);
+		} else {
+			perror("Unable to open file");
+			return -1;
+		}
+	}
 	return 0;
 }
 

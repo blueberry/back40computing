@@ -136,8 +136,8 @@ int ReadDimacsStream(
 						fprintf(stderr, "Error parsing DIMACS graph: invalid format\n");
 						return -1;
 					}
-					if (edges_read >= edges) {
-						fprintf(stderr, "Error parsing DIMACS graph: encountered more than %d edges\n", edges);
+					if (edges_read >= directed_edges) {
+						fprintf(stderr, "Error parsing DIMACS graph: encountered more than %d edges\n", directed_edges);
 						if (coo) free(coo);
 						return -1;
 					}
@@ -161,7 +161,7 @@ int ReadDimacsStream(
 						edges_read++;
 					}
 
-					if (edges_read > (edges / 32) * (progress + 1)) {
+					if (edges_read > (directed_edges / 32) * (progress + 1)) {
 						progress++;
 						printf("%.2f%%\n", float(progress) * (100.0 / 32.0));
 						fflush(stdout);
@@ -196,8 +196,8 @@ int ReadDimacsStream(
 		}
 	}
 
-	if (edges_read != edges) {
-		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d edges read\n", edges_read, edges);
+	if (edges_read != directed_edges) {
+		fprintf(stderr, "Error parsing DIMACS graph: only %d/%d edges read\n", edges_read, directed_edges);
 		if (coo) free(coo);
 		return -1;
 	}
