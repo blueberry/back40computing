@@ -310,87 +310,6 @@ struct Cta
 				// Next
 				Iterate<LOAD, VEC + 1>::WarpCull(cta, tile);
 			}
-
-
-			/**
-			 * HashInVertex
-			 */
-			static __device__ __forceinline__ void HashInVertex(
-				Cta *cta,
-				Tile *tile)
-			{
-				tile->hash[LOAD][VEC] = tile->vertex_id[LOAD][VEC] % SmemStorage::HASH_ELEMENTS;
-				tile->duplicate[LOAD][VEC] = false;
-
-				// Hash the node-IDs into smem scratch
-				if (tile->vertex_id[LOAD][VEC] != -1) {
-					cta->smem_storage.vid_hashtable[tile->hash[LOAD][VEC]] = tile->vertex_id[LOAD][VEC];
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashInVertex(cta, tile);
-			}
-
-
-			/**
-			 * HashOutVertex
-			 */
-			static __device__ __forceinline__ void HashOutVertex(
-				Cta *cta,
-				Tile *tile)
-			{
-				// Retrieve what vertices "won" at the hash locations. If a
-				// different node beat us to this hash cell; we must assume
-				// that we may not be a duplicate.  Otherwise assume that
-				// we are a duplicate... for now.
-
-				if (tile->vertex_id[LOAD][VEC] != -1) {
-					VertexId hashed_node = cta->smem_storage.vid_hashtable[tile->hash[LOAD][VEC]];
-					tile->duplicate[LOAD][VEC] = (hashed_node == tile->vertex_id[LOAD][VEC]);
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashOutVertex(cta, tile);
-			}
-
-
-			/**
-			 * HashInTid
-			 */
-			static __device__ __forceinline__ void HashInTid(
-				Cta *cta,
-				Tile *tile)
-			{
-				// For the possible-duplicates, hash in thread-IDs to select
-				// one of the threads to be the unique one
-				if (tile->duplicate[LOAD][VEC]) {
-					cta->smem_storage.vid_hashtable[tile->hash[LOAD][VEC]] = threadIdx.x;
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashInTid(cta, tile);
-			}
-
-
-			/**
-			 * HashOutTid
-			 */
-			static __device__ __forceinline__ void HashOutTid(
-				Cta *cta,
-				Tile *tile)
-			{
-				// See if our thread won out amongst everyone with similar node-IDs
-				if (tile->duplicate[LOAD][VEC]) {
-					// If not equal to our tid, we are not an authoritative thread
-					// for this node-ID
-					if (cta->smem_storage.vid_hashtable[tile->hash[LOAD][VEC]] != threadIdx.x) {
-						tile->vertex_id[LOAD][VEC] = -1;
-					}
-				}
-
-				// Next
-				Iterate<LOAD, VEC + 1>::HashOutTid(cta, tile);
-			}
 		};
 
 
@@ -423,38 +342,6 @@ struct Cta
 			{
 				Iterate<LOAD + 1, 0>::WarpCull(cta, tile);
 			}
-
-			/**
-			 * HashInVertex
-			 */
-			static __device__ __forceinline__ void HashInVertex(Cta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashInVertex(cta, tile);
-			}
-
-			/**
-			 * HashOutVertex
-			 */
-			static __device__ __forceinline__ void HashOutVertex(Cta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashOutVertex(cta, tile);
-			}
-
-			/**
-			 * HashInTid
-			 */
-			static __device__ __forceinline__ void HashInTid(Cta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashInTid(cta, tile);
-			}
-
-			/**
-			 * HashOutTid
-			 */
-			static __device__ __forceinline__ void HashOutTid(Cta *cta, Tile *tile)
-			{
-				Iterate<LOAD + 1, 0>::HashOutTid(cta, tile);
-			}
 		};
 
 		/**
@@ -471,18 +358,6 @@ struct Cta
 
 			// WarpCull
 			static __device__ __forceinline__ void WarpCull(Cta *cta, Tile *tile) {}
-
-			// HashInVertex
-			static __device__ __forceinline__ void HashInVertex(Cta *cta, Tile *tile) {}
-
-			// HashOutVertex
-			static __device__ __forceinline__ void HashOutVertex(Cta *cta, Tile *tile) {}
-
-			// HashInTid
-			static __device__ __forceinline__ void HashInTid(Cta *cta, Tile *tile) {}
-
-			// HashOutTid
-			static __device__ __forceinline__ void HashOutTid(Cta *cta, Tile *tile) {}
 		};
 
 
@@ -556,35 +431,6 @@ struct Cta
 			Iterate<0, 0>::WarpCull(cta, this);
 
 			__syncthreads();
-		}
-
-		/**
-		 * Culls vertices based upon whether or not we've set a bit for them
-		 * in the d_collision_cache bitmask
-		 */
-		__device__ __forceinline__ void LocalCull(Cta *cta)
-		{
-
-			// Hash the node-IDs into smem scratch
-			Iterate<0, 0>::HashInVertex(cta, this);
-
-			__syncthreads();
-
-			// Retrieve what node-IDs "won" at those locations
-			Iterate<0, 0>::HashOutVertex(cta, this);
-
-			__syncthreads();
-
-			// For the winners, hash in thread-IDs to select one of the threads
-			Iterate<0, 0>::HashInTid(cta, this);
-
-			__syncthreads();
-
-			// See if our thread won out amongst everyone with similar node-IDs
-			Iterate<0, 0>::HashOutTid(cta, this);
-
-			__syncthreads();
-
 		}
 	};
 
@@ -678,8 +524,7 @@ struct Cta
 		tile.BitmaskCull(this);
 
 		// Cull valid flags using local collision hashing
-		tile.LocalCull(this);
-//		tile.WarpCull(this);
+		tile.WarpCull(this);
 
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details
