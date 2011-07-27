@@ -56,19 +56,25 @@ We implement these distribution sorting passes using a very efficient implementa
 
 ====<FONT color=#006666>Authors' Request</FONT>====
 
-If you use/reference/benchmark this code, please cite our [http://back40computing.googlecode.com/svn/wiki/documents/RadixSortTR.pdf Technical Report]:
+If you use/reference/benchmark this code, please cite our [http://back40computing.googlecode.com/svn/wiki/documents/PplGpuSortingPreprint.pdf PPL Journal Article]:
 
- _Duane Merrill and Andrew Grimshaw, "Revisiting Sorting for GPGPU Stream Architectures," University of Virginia, Department of Computer Science, Charlottesville, VA, USA, Technical Report CS2010-03, 2010._
+_D. Merrill and A. Grimshaw, “High Performance and Scalable Radix Sorting: A case study of implementing dynamic parallelism for GPU computing,” Parallel Processing Letters, vol. 21, no. 2, pp. 245-272, 2011._
 
 Bibtex:
+
 {{{
- @TechReport{ Merrill:Sorting:2010,
-	author = "Duane Merrill and Andrew Grimshaw",
-	title = "Revisiting Sorting for GPGPU Stream Architectures",
-	year = "2010",
-	institution = "University of Virginia, Department of Computer Science",
-	address = "Charlottesville, VA, USA",
-	number = "CS2010-03"
+ @article{
+	title = {High Performance and Scalable Radix Sorting: A case study of implementing dynamic parallelism for {GPU} computing},
+	volume = {21},
+	issn = {0129-6264},
+	shorttitle = {High Performance and Scalable Radix Sorting},
+	url = {http://www.worldscinet.com/ppl/21/2102/S0129626411000187.html},
+	doi = {10.1142/S0129626411000187},
+	number = {02},
+	journal = {Parallel Processing Letters},
+	author = {Duane Merrill and Andrew Grimshaw},
+	year = {2011},
+	pages = {245--272}
  }
 }}}
 
