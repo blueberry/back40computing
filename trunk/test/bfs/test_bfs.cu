@@ -600,8 +600,8 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	bfs::EnactorOnePhaseInCore 		one_phase_enactor_ec(g_verbose);
-	bfs::EnactorOnePhase 			one_phase_enactor(g_verbose);
+	bfs::EnactorOnePhaseInCore 		expand_contract_enactor(g_verbose);
+	bfs::EnactorOnePhase 			contract_expand_enactor(g_verbose);
 	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
 	bfs::EnactorHybrid 				hybrid_enactor(g_verbose);
 	bfs::EnactorMultiGpu			multi_gpu_enactor(g_verbose);
@@ -624,10 +624,10 @@ void RunTests(
 	// Initialize statistics
 	Stats stats[6];
 	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("One-phase GPU BFS (in-core)");
-	stats[2] = Stats("One-phase GPU BFS (out-of-core)");
+	stats[1] = Stats("One-phase expand-contract GPU BFS");
+	stats[2] = Stats("One-phase contract-expand GPU BFS");
 	stats[3] = Stats("Two-phase GPU BFS");
-	stats[4] = Stats("Hybrid GPU BFS");
+	stats[4] = Stats("Hybrid online-vertex + two-phase GPU BFS");
 	stats[5] = Stats("Multi-GPU BFS");
 	
 	printf("Running %s %s %s tests...\n\n",
@@ -653,11 +653,11 @@ void RunTests(
 		}
 
 		if (num_gpus == 1) {
-/* bit rot?
+
 			if (!csr_problem.uneven) {
-				// Perform one-phase in-core BFS implementation (single grid launch)
+				// Perform one-phase expand-contract BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
-					one_phase_enactor_ec,
+					expand_contract_enactor,
 					csr_problem,
 					src,
 					h_source_path,
@@ -668,12 +668,11 @@ void RunTests(
 				printf("\n");
 				fflush(stdout);
 			}
-*/
 
 			if (!csr_problem.uneven) {
-				// Perform one-phase out-of-core BFS implementation (single grid launch)
+				// Perform one-phase contract-expand BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
-					one_phase_enactor,
+					contract_expand_enactor,
 					csr_problem,
 					src,
 					h_source_path,
@@ -714,21 +713,22 @@ void RunTests(
 				fflush(stdout);
 			}
 
-		}
+		} else {
 
-		if (!csr_problem.uneven) {
-			// Perform multi-GPU out-of-core BFS implementation
-			if (TestGpuBfs<INSTRUMENT>(
-				multi_gpu_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
-				csr_graph,
-				stats[5],
-				max_grid_size)) exit(1);
-			printf("\n");
-			fflush(stdout);
+			if (!csr_problem.uneven) {
+				// Perform multi-GPU out-of-core BFS implementation
+				if (TestGpuBfs<INSTRUMENT>(
+					multi_gpu_enactor,
+					csr_problem,
+					src,
+					h_source_path,
+					(g_quick) ? (VertexId*) NULL : reference_source_dist,
+					csr_graph,
+					stats[5],
+					max_grid_size)) exit(1);
+				printf("\n");
+				fflush(stdout);
+			}
 		}
 
 		if (g_verbose2) {
