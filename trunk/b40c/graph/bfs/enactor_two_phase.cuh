@@ -373,7 +373,7 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				9> CompactPolicy;
+				6> CompactPolicy;
 
 			return EnactSearch<ExpandPolicy, CompactPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
