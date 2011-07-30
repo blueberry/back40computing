@@ -342,14 +342,13 @@ public:
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
 
 					if (INSTRUMENT) {
+
 						// Get stats
 						if (retval = one_phase_kernel_stats.Accumulate(
 							one_phase_grid_size,
 							total_runtimes,
 							total_lifetimes,
 							total_queued)) break;
-
-						total_queued += queue_length;
 
 						if (DEBUG) printf("%lld, %lld\n", iteration[0], (long long) queue_length);
 					}
