@@ -190,6 +190,7 @@ struct KernelPolicy : _ProblemType
 													sizeof(SizeT),								// Just gather offset
 
 			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
+			WARP_HASH_ELEMENTS				= 128,
 
 			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
 			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  OFFSET_ELEMENTS : 0,
@@ -205,7 +206,8 @@ struct KernelPolicy : _ProblemType
 				VertexId 					parent_scratch[PARENT_ELEMENTS];
 			};
 
-			VertexId 						vid_hashtable[HASH_ELEMENTS];
+			volatile VertexId 				warp_hashtable[WARPS][WARP_HASH_ELEMENTS];
+			VertexId 						cta_hashtable[HASH_ELEMENTS];
 		};
 	};
 

@@ -245,6 +245,7 @@ struct KernelPolicy : _ProblemType
 				VertexId 					gather_parents[PARENT_ELEMENTS];
 			};
 			volatile VertexId 				warp_hashtable[WARPS][WARP_HASH_ELEMENTS];
+			VertexId 						cta_hashtable[HASH_ELEMENTS];
 		};
 	};
 
