@@ -208,6 +208,7 @@ struct Cta
 				Iterate<LOAD, VEC + 1>::Inspect(cta, tile);
 			}
 
+
 			/**
 			 * BitmaskCull
 			 */
@@ -215,10 +216,59 @@ struct Cta
 				Cta *cta,
 				Tile *tile)
 			{
-
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
-					// Translate vertex-id into local gpu row-id (currently stride of num_gpu)
+					// Location of mask byte to read
+					SizeT mask_byte_offset = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
+
+					// Bit in mask byte corresponding to current vertex id
+					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
+
+					// Read byte from from collision cache bitmask tex
+					CollisionMask mask_byte = tex1Dfetch(
+						BitmaskTex<CollisionMask>::ref,
+						mask_byte_offset);
+
+					if (mask_bit & mask_byte) {
+
+						// Seen it
+						tile->vertex_id[LOAD][VEC] = -1;
+
+					} else {
+
+						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+							mask_byte, cta->d_collision_cache + mask_byte_offset);
+
+						if (mask_bit & mask_byte) {
+
+							// Seen it
+							tile->vertex_id[LOAD][VEC] = -1;
+
+						} else {
+
+							// Update with best effort
+							mask_byte |= mask_bit;
+							util::io::ModifiedStore<util::io::st::cg>::St(
+								mask_byte,
+								cta->d_collision_cache + mask_byte_offset);
+						}
+					}
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::BitmaskCull(cta, tile);
+			}
+
+
+			/**
+			 * VertexCull
+			 */
+			static __device__ __forceinline__ void VertexCull(
+				Cta *cta,
+				Tile *tile)
+			{
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+
 					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
 
 					// Load source path of node
@@ -226,6 +276,7 @@ struct Cta
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						source_path,
 						cta->d_source_path + row_id);
+
 
 					if (source_path != -1) {
 
@@ -248,37 +299,63 @@ struct Cta
 								cta->d_source_path + row_id);
 						}
 					}
-
-/*
-					// Location of mask byte to read
-					SizeT mask_byte_offset = tile->vertex_id[LOAD][VEC] >> 3;
-
-					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
-
-					// Read byte from from collision cache bitmask
-					CollisionMask mask_byte = tex1Dfetch(
-						BitmaskTex<CollisionMask>::ref,
-						mask_byte_offset);
-
-					if (mask_bit & mask_byte) {
-
-						// Seen it
-						tile->vertex_id[LOAD][VEC] = -1;
-
-					} else {
-
-						// Update with best effort
-						mask_byte |= mask_bit;
-						util::io::ModifiedStore<util::io::st::cg>::St(
-							mask_byte,
-							cta->d_collision_cache + mask_byte_offset);
-					}
-*/
 				}
 
 				// Next
-				Iterate<LOAD, VEC + 1>::BitmaskCull(cta, tile);
+				Iterate<LOAD, VEC + 1>::VertexCull(cta, tile);
+			}
+
+
+			/**
+			 * CtaCull
+			 */
+			__device__ __forceinline__ void CtaCull(
+				Cta *cta,
+				Tile *tile)
+			{
+				// Hash the node-IDs into smem scratch
+
+				int hash = tile->vertex_id[LOAD][VEC] % SmemStorage::HASH_ELEMENTS;
+				bool duplicate = false;
+
+				// Hash the node-IDs into smem scratch
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+					cta->smem_storage.cta_hashtable[hash] = tile->vertex_id[LOAD][VEC];
+				}
+
+				__syncthreads();
+
+				// Retrieve what vertices "won" at the hash locations. If a
+				// different node beat us to this hash cell; we must assume
+				// that we may not be a duplicate.  Otherwise assume that
+				// we are a duplicate... for now.
+
+				if (tile->vertex_id[LOAD][VEC] != -1) {
+					VertexId hashed_node = cta->smem_storage.cta_hashtable[hash];
+					duplicate = (hashed_node == tile->vertex_id[LOAD][VEC]);
+				}
+
+				__syncthreads();
+
+				// For the possible-duplicates, hash in thread-IDs to select
+				// one of the threads to be the unique one
+				if (duplicate) {
+					cta->smem_storage.cta_hashtable[hash] = threadIdx.x;
+				}
+
+				__syncthreads();
+
+				// See if our thread won out amongst everyone with similar node-IDs
+				if (duplicate) {
+					// If not equal to our tid, we are not an authoritative thread
+					// for this node-ID
+					if (cta->smem_storage.cta_hashtable[hash] != threadIdx.x) {
+						tile->vertex_id[LOAD][VEC] = -1;
+					}
+				}
+
+				// Next
+				Iterate<LOAD, VEC + 1>::CtaCull(cta, tile);
 			}
 
 
@@ -335,12 +412,26 @@ struct Cta
 				Iterate<LOAD + 1, 0>::BitmaskCull(cta, tile);
 			}
 
+			// VertexCull
+			static __device__ __forceinline__ void VertexCull(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::VertexCull(cta, tile);
+			}
+
 			/**
 			 * WarpCull
 			 */
 			static __device__ __forceinline__ void WarpCull(Cta *cta, Tile *tile)
 			{
 				Iterate<LOAD + 1, 0>::WarpCull(cta, tile);
+			}
+
+			/**
+			 * CtaCull
+			 */
+			static __device__ __forceinline__ void CtaCull(Cta *cta, Tile *tile)
+			{
+				Iterate<LOAD + 1, 0>::CtaCull(cta, tile);
 			}
 		};
 
@@ -356,8 +447,14 @@ struct Cta
 			// BitmaskCull
 			static __device__ __forceinline__ void BitmaskCull(Cta *cta, Tile *tile) {}
 
+			// VertexCull
+			static __device__ __forceinline__ void VertexCull(Cta *cta, Tile *tile) {}
+
 			// WarpCull
 			static __device__ __forceinline__ void WarpCull(Cta *cta, Tile *tile) {}
+
+			// CtaCull
+			static __device__ __forceinline__ void CtaCull(Cta *cta, Tile *tile) {}
 		};
 
 
@@ -424,9 +521,27 @@ struct Cta
 		}
 
 		/**
+		 * Culls vertices
+		 */
+		__device__ __forceinline__ void VertexCull(Cta *cta)
+		{
+			Iterate<0, 0>::VertexCull(cta, this);
+		}
+
+		/**
 		 * Warp cull
 		 */
 		__device__ __forceinline__ void WarpCull(Cta *cta)
+		{
+			Iterate<0, 0>::WarpCull(cta, this);
+
+			__syncthreads();
+		}
+
+		/**
+		 * CTA cull
+		 */
+		__device__ __forceinline__ void CtaCull(Cta *cta)
 		{
 			Iterate<0, 0>::WarpCull(cta, this);
 
@@ -520,11 +635,15 @@ struct Cta
 					guarded_elements);
 		}
 
-		// Cull valid flags using global collision bitmask
-		tile.BitmaskCull(this);
+		// Cull using global collision bitmask
+//		tile.BitmaskCull(this);
+
+		// Cull using vertex visitation status
+		tile.VertexCull(this);
 
 		// Cull valid flags using local collision hashing
 		tile.WarpCull(this);
+//		tile.CtaCull(this);
 
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details

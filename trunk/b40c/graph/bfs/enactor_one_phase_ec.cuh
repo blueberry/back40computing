@@ -200,6 +200,16 @@ public:
 					bytes),
 				"EnactorOnePhaseInCore cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
 
+			// Bind row-offsets texture
+			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					expand_compact_atomic::RowOffsetTex<SizeT>::ref,
+					graph_slice->d_row_offsets,
+					row_offsets_desc,
+					(graph_slice->nodes + 1) * sizeof(SizeT)),
+				"EnactorOnePhaseInCore cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+
 			// Initiate single-grid kernel
 			expand_compact_atomic::Kernel<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(
