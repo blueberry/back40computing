@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * One-phase out-of-core BFS implementation (single grid launch)
+ * Expand-contract, single-launch breadth-first-search enactor.
  ******************************************************************************/
 
 #pragma once
@@ -32,8 +32,8 @@
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
 
-#include <b40c/graph/bfs/compact_expand_atomic/kernel_policy.cuh>
-#include <b40c/graph/bfs/compact_expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/expand_compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/expand_compact_atomic/kernel.cuh>
 
 
 namespace b40c {
@@ -43,14 +43,14 @@ namespace bfs {
 
 
 /**
- * One-phase out-of-core breadth-first-search enactor.
+ * Expand-contract, single-launch breadth-first-search enactor.
  *
  * Performs all search iterations with single kernel launch (using
  * software global barriers).  For each BFS iteration, the kernel
  * culls visited vertices and expands neighbor lists in a
  * single tile-processing phase.
  */
-class EnactorOnePhase : public EnactorBase
+class EnactorExpandContractGBarrier : public EnactorBase
 {
 
 protected:
@@ -83,7 +83,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	EnactorOnePhase(bool DEBUG = false) :
+	EnactorExpandContractGBarrier(bool DEBUG = false) :
 		EnactorBase(DEBUG),
 		iteration(NULL),
 		d_iteration(NULL)
@@ -93,9 +93,9 @@ public:
 	/**
 	 * Destructor
 	 */
-	virtual ~EnactorOnePhase()
+	virtual ~EnactorExpandContractGBarrier()
 	{
-		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "EnactorOnePhase cudaFreeHost iteration failed", __FILE__, __LINE__);
+		if (iteration) util::B40CPerror(cudaFreeHost((void *) iteration), "EnactorExpandContractGBarrier cudaFreeHost iteration failed", __FILE__, __LINE__);
 	}
 
 
@@ -115,11 +115,11 @@ public:
 
 				// Allocate pinned memory
 				if (retval = util::B40CPerror(cudaHostAlloc((void **)&iteration, sizeof(long long) * 1, flags),
-					"EnactorOnePhase cudaHostAlloc iteration failed", __FILE__, __LINE__)) break;
+					"EnactorExpandContractGBarrier cudaHostAlloc iteration failed", __FILE__, __LINE__)) break;
 
 				// Map into GPU space
 				if (retval = util::B40CPerror(cudaHostGetDevicePointer((void **)&d_iteration, (void *) iteration, 0),
-					"EnactorOnePhase cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) break;
+					"EnactorExpandContractGBarrier cudaHostGetDevicePointer iteration failed", __FILE__, __LINE__)) break;
 			}
 
 			// Make sure barriers are initialized
@@ -198,24 +198,24 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::BitmaskTex<CollisionMask>::ref,
+					expand_compact_atomic::BitmaskTex<CollisionMask>::ref,
 					graph_slice->d_collision_cache,
 					bitmask_desc,
 					bytes),
-				"EnactorOnePhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+				"EnactorExpandContractGBarrier cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Bind row-offsets texture
 			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::RowOffsetTex<SizeT>::ref,
+					expand_compact_atomic::RowOffsetTex<SizeT>::ref,
 					graph_slice->d_row_offsets,
 					row_offsets_desc,
 					(graph_slice->nodes + 1) * sizeof(SizeT)),
-				"EnactorOnePhase cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+				"EnactorExpandContractGBarrier cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
 
 			// Initiate single-grid kernel
-			compact_expand_atomic::Kernel<KernelPolicy>
+			expand_compact_atomic::KernelGlobalBarrier<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(
 				0,												// iteration
 				0,												// queue_index
@@ -237,7 +237,7 @@ public:
 				this->kernel_stats,
 				(VertexId *) d_iteration);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "EnactorOnePhase Kernel failed ", __FILE__, __LINE__))) break;
+			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "EnactorExpandContractGBarrier Kernel failed ", __FILE__, __LINE__))) break;
 
 			if (INSTRUMENT) {
 				// Get stats
@@ -267,7 +267,7 @@ public:
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Single-grid tuning configuration
-			typedef compact_expand_atomic::KernelPolicy<
+			typedef expand_compact_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -285,6 +285,7 @@ public:
 				false,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
+				1,						// BITMASK_CULL_THRESHOLD
 				6> KernelPolicy;
 
 			return EnactSearch<KernelPolicy, INSTRUMENT, CsrProblem>(

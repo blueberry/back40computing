@@ -305,7 +305,7 @@ public:
 				if (queue_length <= saturation_boundary) {
 
 					// Run one_phase-grid, no-separate-compaction
-					compact_expand_atomic::Kernel<OnePhasePolicy>
+					compact_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
 						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
 							iteration[0],
 							queue_index,
@@ -488,6 +488,7 @@ public:
 				false,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128,	 				// CTA_GATHER_THRESHOLD,
+				-1,						// BITMASK_CULL_THRESHOLD
 				6> OnePhasePolicy;
 
 			// Expansion kernel config

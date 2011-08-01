@@ -427,7 +427,9 @@ struct Cta
 								neighbor_id, cta->d_column_indices + coop_offset + threadIdx.x);
 
 							// Check
-//							cta->BitmaskCull(neighbor_id);
+							if (cta->smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * gridDim.x) {
+								cta->BitmaskCull(neighbor_id);
+							}
 							cta->VertexCull(neighbor_id);
 
 							if (neighbor_id != -1) ranks[0][0] = 1;
@@ -733,7 +735,9 @@ struct Cta
 						d_column_indices + smem_storage.offset_scratch[scratch_offset + threadIdx.x]);
 
 					// Check
-//					BitmaskCull(neighbor_id);
+					if (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * gridDim.x) {
+						BitmaskCull(neighbor_id);
+					}
 					VertexCull(neighbor_id);
 
 					if (neighbor_id != -1) ranks[0][0] = 1;

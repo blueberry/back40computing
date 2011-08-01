@@ -47,8 +47,10 @@
 
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
-#include <b40c/graph/bfs/enactor_one_phase.cuh>
-#include <b40c/graph/bfs/enactor_one_phase_ec.cuh>
+#include <b40c/graph/bfs/enactor_contract_expand_gbarrier.cuh>
+#include <b40c/graph/bfs/enactor_expand_contract_gbarrier.cuh>
+#include <b40c/graph/bfs/enactor_contract_expand.cuh>
+#include <b40c/graph/bfs/enactor_expand_contract.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
@@ -561,7 +563,9 @@ void SimpleReferenceBfs(
 	float elapsed = cpu_timer.ElapsedMillis();
 	search_depth++;
 
-//	Histogram(src, source_path, csr_graph, search_depth);
+	if (g_verbose) {
+		Histogram(src, source_path, csr_graph, search_depth);
+	}
 
 	DisplayStats<false, VertexId, Value, SizeT>(
 		stats,
@@ -600,11 +604,13 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	bfs::EnactorOnePhaseInCore 		expand_contract_enactor(g_verbose);
-	bfs::EnactorOnePhase 			contract_expand_enactor(g_verbose);
-	bfs::EnactorTwoPhase			two_phase_enactor(g_verbose);
-	bfs::EnactorHybrid 				hybrid_enactor(g_verbose);
-	bfs::EnactorMultiGpu			multi_gpu_enactor(g_verbose);
+//	bfs::EnactorExpandContractGBarrier 		expand_contract_enactor(g_verbose);
+	bfs::EnactorExpandContract 				expand_contract_enactor(g_verbose);
+//	bfs::EnactorContractExpandGBarrier 		contract_expand_enactor(g_verbose);
+	bfs::EnactorContractExpand				contract_expand_enactor(g_verbose);
+	bfs::EnactorTwoPhase					two_phase_enactor(g_verbose);
+	bfs::EnactorHybrid 						hybrid_enactor(g_verbose);
+	bfs::EnactorMultiGpu					multi_gpu_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	bfs::CsrProblem<VertexId, SizeT, MARK_PARENTS> csr_problem;
