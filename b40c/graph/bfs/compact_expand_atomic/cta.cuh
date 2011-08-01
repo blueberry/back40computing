@@ -126,6 +126,8 @@ struct Cta
 	// Shared memory for the CTA
 	SmemStorage				&smem_storage;
 
+	bool 					bitmask_cull;
+
 
 	//---------------------------------------------------------------------
 	// Helper Structures
@@ -591,7 +593,9 @@ struct Cta
 			d_row_offsets(d_row_offsets),
 			d_source_path(d_source_path),
 			d_collision_cache(d_collision_cache),
-			work_progress(work_progress) {}
+			work_progress(work_progress),
+			bitmask_cull((KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) && (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
+	{}
 
 
 
@@ -636,10 +640,8 @@ struct Cta
 		}
 
 		// Cull using global collision bitmask
-		if (KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) {
-			if (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)) {
-				tile.BitmaskCull(this);
-			}
+		if (bitmask_cull) {
+			tile.BitmaskCull(this);
 		}
 
 		// Cull using vertex visitation status
