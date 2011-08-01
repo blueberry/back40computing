@@ -636,7 +636,11 @@ struct Cta
 		}
 
 		// Cull using global collision bitmask
-//		tile.BitmaskCull(this);
+		if (KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) {
+			if (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)) {
+				tile.BitmaskCull(this);
+			}
+		}
 
 		// Cull using vertex visitation status
 		tile.VertexCull(this);
