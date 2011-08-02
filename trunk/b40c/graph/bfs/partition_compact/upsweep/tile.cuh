@@ -123,9 +123,9 @@ struct Tile :
 				// Bit in mask byte corresponding to current vertex id
 				CollisionMask mask_bit = 1 << (tile->keys[LOAD][VEC] & 7);
 
-				// Read byte from from collision cache bitmask
+				// Read byte from from collision cache bitmask tex
 				CollisionMask mask_byte = tex1Dfetch(
-					BitmaskTex<CollisionMask>::ref,
+					compact_atomic::BitmaskTex<CollisionMask>::ref,
 					mask_byte_offset);
 
 				if (mask_bit & mask_byte) {
@@ -135,12 +135,24 @@ struct Tile :
 
 				} else {
 
-					// Update with best effort
-					mask_byte |= mask_bit;
-					util::io::ModifiedStore<util::io::st::cg>::St(
-						mask_byte,
-						cta->d_collision_cache + mask_byte_offset);
+					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
+						mask_byte, cta->d_collision_cache + mask_byte_offset);
+
+					if (mask_bit & mask_byte) {
+
+						// Seen it
+						tile->valid[LOAD][VEC] = 0;
+
+					} else {
+
+						// Update with best effort
+						mask_byte |= mask_bit;
+						util::io::ModifiedStore<util::io::st::cg>::St(
+							mask_byte,
+							cta->d_collision_cache + mask_byte_offset);
+					}
 				}
+
 			}
 
 			// Next
