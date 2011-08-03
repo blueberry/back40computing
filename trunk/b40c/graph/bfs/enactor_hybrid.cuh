@@ -487,7 +487,7 @@ public:
 				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
-				128,	 				// CTA_GATHER_THRESHOLD,
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				-1,						// BITMASK_CULL_THRESHOLD
 				6> OnePhasePolicy;
 
