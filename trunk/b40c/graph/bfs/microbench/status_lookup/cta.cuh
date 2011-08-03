@@ -43,7 +43,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace compact_atomic {
+namespace status_lookup {
 
 
 texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
@@ -523,7 +523,7 @@ struct Cta
 };
 
 
-} // namespace compact_atomic
+} // namespace status_lookup
 } // namespace microbench
 } // namespace bfs
 } // namespace graph

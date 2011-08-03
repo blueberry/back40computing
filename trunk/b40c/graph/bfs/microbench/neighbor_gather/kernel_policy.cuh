@@ -38,7 +38,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace expand_atomic {
+namespace neighbor_gather {
 
 /**
  * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
@@ -262,7 +262,7 @@ struct KernelPolicy : _ProblemType
 };
 
 
-} // namespace expand_atomic
+} // namespace neighbor_gather
 } // namespace microbench
 } // namespace bfs
 } // namespace graph
