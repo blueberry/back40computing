@@ -309,8 +309,8 @@ public:
 				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				128,					// WARP_GATHER_THRESHOLD
-				128, 					// CTA_GATHER_THRESHOLD,
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				3,						// BITMASK_CULL_THRESHOLD
 				6> KernelPolicy;
 
