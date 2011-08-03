@@ -29,13 +29,13 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/microbench/compact_atomic/cta.cuh>
+#include <b40c/graph/bfs/microbench/status_lookup/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace compact_atomic {
+namespace status_lookup {
 
 
 /**
@@ -249,7 +249,7 @@ void Kernel(
 }
 
 
-} // namespace compact_atomic
+} // namespace status_lookup
 } // namespace microbench
 } // namespace bfs
 } // namespace graph

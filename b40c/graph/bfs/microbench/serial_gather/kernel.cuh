@@ -28,13 +28,13 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
-#include <b40c/graph/bfs/microbench/expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/microbench/serial_gather/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace expand_atomic {
+namespace serial_gather {
 
 
 /**
@@ -218,7 +218,7 @@ void Kernel(
 
 			if (threadIdx.x == 0) {
 				// Initialize work decomposition in smem
-				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					1,				// one element
 					gridDim.x);
 			}
@@ -241,7 +241,7 @@ void Kernel(
 			d_collision_cache,
 			d_source_path,
 			work_progress,
-			smem_storage.state.work_decomposition,
+			smem_storage.work_decomposition,
 			smem_storage);
 
 	} else {
@@ -253,7 +253,7 @@ void Kernel(
 			SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 
 			// Initialize work decomposition in smem
-			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -278,7 +278,7 @@ void Kernel(
 			d_collision_cache,
 			d_source_path,
 			work_progress,
-			smem_storage.state.work_decomposition,
+			smem_storage.work_decomposition,
 			smem_storage);
 	}
 
@@ -288,7 +288,7 @@ void Kernel(
 	}
 }
 
-} // namespace expand_atomic
+} // namespace serial_gather
 } // namespace microbench
 } // namespace bfs
 } // namespace graph

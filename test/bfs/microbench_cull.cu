@@ -47,7 +47,7 @@
 
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
-#include <b40c/graph/bfs/microbench/enactor_gather_lookup.cuh>
+#include <b40c/graph/bfs/microbench/enactor_cull.cuh>
 
 using namespace b40c;
 using namespace graph;
@@ -110,7 +110,7 @@ void Usage()
 			"\n"
 			"--v2\tSame as --v, but also displays the input graph to the console.\n"
 			"\n"
-			"--instrumented\tKernels keep track of queue-search_depth, redundant work (i.e., the \n"
+			"--instrumented\tKernels keep track of queue-search_depth, culling efficiency (i.e., the \n"
 			"\t\toverhead of duplicates in the frontier), and average barrier duty (a \n"
 			"\t\trelative indicator of load imbalance.)\n"
 			"\n"
@@ -187,12 +187,12 @@ struct Stats {
 	char *name;
 	Statistic rate;
 	Statistic search_depth;
-	Statistic redundant_work;
+	Statistic culling_efficiency;
 	Statistic expand_duty;
 	Statistic compact_duty;
 	
-	Stats() : name(NULL), rate(), search_depth(), redundant_work(), expand_duty(), compact_duty() {}
-	Stats(char *name) : name(name), rate(), search_depth(), redundant_work(), expand_duty(), compact_duty() {}
+	Stats() : name(NULL), rate(), search_depth(), culling_efficiency(), expand_duty(), compact_duty() {}
+	Stats(char *name) : name(name), rate(), search_depth(), culling_efficiency(), expand_duty(), compact_duty() {}
 };
 
 
@@ -303,7 +303,7 @@ void DisplayStats(
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	double 									elapsed,
 	VertexId								search_depth,
-	long long 								total_queued,
+	long long 								total_unculled,
 	double 									expand_duty,
 	double 									compact_duty)
 {
@@ -317,11 +317,11 @@ void DisplayStats(
 		}
 	}
 	
-	double redundant_work = 0.0;
-	if (total_queued > 0)  {
-		redundant_work = ((double) total_queued - edges_visited) / edges_visited;		// measure duplicate edges put through queue
+	double culling_efficiency = 0.0;
+	if (total_unculled > 0)  {
+		culling_efficiency = double(edges_visited - total_unculled) / (edges_visited - nodes_visited);
 	}
-	redundant_work *= 100;
+	culling_efficiency *= 100;
 
 	// Display test name
 	printf("[%s] finished. ", stats.name);
@@ -409,11 +409,11 @@ void DisplayStats(
 		}
 		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
 			(long long) src, (long long) nodes_visited, (long long) edges_visited);
-		if (total_queued > 0) {
-			printf(", total queued: %lld", total_queued);
+		if (total_unculled > 0) {
+			printf(", total queued: %lld", total_unculled);
 		}
-		if (redundant_work > 0) {
-			printf(", redundant work: %.2f%%", redundant_work);
+		if (culling_efficiency > 0) {
+			printf(", culling efficiency: %.4f%%", culling_efficiency);
 		}
 		printf("\n");
 
@@ -424,9 +424,9 @@ void DisplayStats(
 		if (search_depth > 0) printf(			"\t\t[Search depth]:           u: %.1f, s: %.1f, cv: %.4f\n",
 			stats.search_depth.mean, search_depth_stddev, search_depth_stddev / stats.search_depth.mean);
 
-		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
-		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
-			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
+		double culling_efficiency_stddev = sqrt(stats.culling_efficiency.Update(culling_efficiency));
+		if (culling_efficiency > 0) printf(	"\t\t[Culling Efficiency %%]: u: %.4f, s: %.4f, cv: %.4f\n",
+			stats.culling_efficiency.mean, culling_efficiency_stddev, culling_efficiency_stddev / stats.culling_efficiency.mean);
 
 		double expand_duty_stddev = sqrt(stats.expand_duty.Update(expand_duty * 100));
 		if (expand_duty > 0) printf(	"\t\t[Expand Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
@@ -491,12 +491,12 @@ cudaError_t TestGpuBfs(
 		// Copy out results
 		if (retval = csr_problem.ExtractResults(h_source_path)) break;
 
-		long long 	total_queued = 0;
+		long long 	total_unculled = 0;
 		VertexId	search_depth = 0;
 		double		expand_duty = 0.0;
 		double		compact_duty = 0.0;
 
-		enactor.GetStatistics(total_queued, search_depth, expand_duty, compact_duty);
+		enactor.GetStatistics(total_unculled, search_depth, expand_duty, compact_duty);
 
 		DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
 			stats,
@@ -506,7 +506,7 @@ cudaError_t TestGpuBfs(
 			csr_graph,
 			elapsed,
 			search_depth,
-			total_queued,
+			total_unculled,
 			expand_duty,
 			compact_duty);
 
@@ -616,7 +616,7 @@ void RunTests(
 	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
 	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-	bfs::microbench::EnactorGatherLookup micobench_enactor(g_verbose);
+	bfs::microbench::EnactorCull micobench_enactor(g_verbose);
 
 	// Allocate problem on GPU
 	bfs::CsrProblem<VertexId, SizeT, MARK_PARENTS> csr_problem;

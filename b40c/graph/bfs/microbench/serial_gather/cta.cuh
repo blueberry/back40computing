@@ -33,6 +33,7 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/initialize_tile.cuh>
 #include <b40c/util/operators.cuh>
 
 #include <b40c/util/soa_tuple.cuh>
@@ -42,7 +43,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace expand_serial {
+namespace serial_gather {
 
 
 texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
@@ -300,7 +301,7 @@ struct Cta
 
 
 
-} // namespace expand_serial
+} // namespace serial_gather
 } // namespace microbench
 } // namespace bfs
 } // namespace graph

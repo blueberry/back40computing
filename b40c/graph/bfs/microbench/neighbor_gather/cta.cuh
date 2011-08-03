@@ -42,7 +42,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace microbench {
-namespace expand_atomic {
+namespace neighbor_gather {
 
 
 texture<char, cudaTextureType1D, cudaReadModeElementType> bitmask_tex_ref;
@@ -651,7 +651,7 @@ struct Cta
 
 
 
-} // namespace expand_atomic
+} // namespace neighbor_gather
 } // namespace microbench
 } // namespace bfs
 } // namespace graph
