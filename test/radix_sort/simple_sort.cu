@@ -56,7 +56,7 @@ int main(int argc, char** argv)
     }
 
     b40c::DeviceInit(args);
-    int num_elements = 77;
+    unsigned int num_elements = 77;
     bool verbose = args.CheckCmdLineFlag("v");
     bool keys_only = args.CheckCmdLineFlag("keys-only");
     args.GetCmdLineArgument("n", num_elements);
