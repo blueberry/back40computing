@@ -453,9 +453,9 @@ public:
 					control->steal_index,
 					csr_problem.num_gpus,
 					NULL,																		// d_done (not used)
-					slice->frontier_queues.d_keys[control->selector],							// sorted in
-					slice->frontier_queues.d_keys[control->selector ^ 1],						// expanded out
-					(VertexId *) slice->frontier_queues.d_values[control->selector],			// sorted parents in
+					slice->frontier_queues.d_keys[control->selector ^ 1],						// in vertices
+					slice->d_multigpu_vqueue,													// out vertices
+					(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],		// in parents
 					slice->d_source_path,
 					slice->d_collision_cache,
 					control->work_progress,
@@ -464,7 +464,6 @@ public:
 				if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 					"EnactorMultiGpu expand_atomic::Kernel failed", __FILE__, __LINE__))) break;
 
-				control->selector ^= 1;
 				control->queue_index++;
 				control->steal_index++;
 			}
@@ -492,9 +491,9 @@ public:
 						control->steal_index,
 						csr_problem.num_gpus,
 						NULL,														// d_done (not used)
-						slice->frontier_queues.d_keys[control->selector],			// in vertices
-						slice->frontier_queues.d_keys[control->selector ^ 1],		// out vertices
-						slice->frontier_queues.d_values[control->selector ^ 1],		// out parents
+						slice->d_multigpu_vqueue,									// in vertices
+						slice->frontier_queues.d_keys[control->selector],			// out vertices
+						slice->frontier_queues.d_values[control->selector],			// out parents
 						slice->d_column_indices,
 						slice->d_row_offsets,
 						control->work_progress,
@@ -503,7 +502,6 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu expand_atomic::Kernel failed", __FILE__, __LINE__))) break;
 
-					control->selector ^= 1;
 					control->queue_index++;
 					control->steal_index++;
 					control->iteration++;
@@ -529,7 +527,7 @@ public:
 							<<<control->partition_grid_size, PartitionUpsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
-						slice->frontier_queues.d_keys[control->selector],
+						slice->frontier_queues.d_keys[control->selector],			// in vertices
 						slice->d_keep,
 						(SizeT *) control->spine(),
 						slice->d_collision_cache,
@@ -571,10 +569,10 @@ public:
 							<<<control->partition_grid_size, PartitionDownsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
-						slice->frontier_queues.d_keys[control->selector],						// expanded in
-						slice->frontier_queues.d_keys[control->selector ^ 1],					// partitioned out
-						(VertexId *) slice->frontier_queues.d_values[control->selector],		// expanded parents in
-						(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],	// partitioned parents out
+						slice->frontier_queues.d_keys[control->selector],						// in vertices
+						slice->frontier_queues.d_keys[control->selector ^ 1],					// out vertices
+						(VertexId *) slice->frontier_queues.d_values[control->selector],		// in parents
+						(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],	// out parents
 						slice->d_keep,
 						(SizeT *) control->spine(),
 						control->work_progress,
@@ -583,7 +581,6 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu DownsweepKernel failed", __FILE__, __LINE__))) break;
 
-					control->selector ^= 1;
 					control->queue_index++;
 				}
 				if (retval) break;
@@ -682,10 +679,9 @@ public:
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,
-									slice->frontier_queues.d_keys[control->selector ^ 1],
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,
-									(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],
+									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
+									slice->d_multigpu_vqueue,																	// out vertices
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,		// in parents
 									slice->d_source_path,
 									control->work_progress,
 									control->copy_kernel_stats);
@@ -704,10 +700,10 @@ public:
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									NULL,													// d_done (not used)
-									peer_slice->frontier_queues.d_keys[control->selector] + queue_offset,					// in vertices
-									slice->frontier_queues.d_keys[control->selector ^ 1],									// out vertices
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,	// in parents
+									NULL,																						// d_done (not used)
+									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
+									slice->d_multigpu_vqueue,																	// out vertices
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector ^ 1] + queue_offset,		// in parents
 									slice->d_source_path,
 									slice->d_collision_cache,
 									control->work_progress,
@@ -719,49 +715,9 @@ public:
 						control->steal_index++;
 					}
 
-					control->selector ^= 1;
 					control->queue_index++;
 				}
 				if (retval) break;
-
-
-				//---------------------------------------------------------------------
-				// Synchronization point to protect streamed-from queues from being trashed
-				//---------------------------------------------------------------------
-
-				done = true;
-				for (volatile int i = 0; i < csr_problem.num_gpus; i++) {
-
-					GpuControlBlock *control 	= control_blocks[i];
-					GraphSlice *slice 			= csr_problem.graph_slices[i];
-
-					// Set device
-					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
-						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
-
-					// Update queue length
-					if (retval = control->template UpdateQueueLength<SizeT>()) break;
-
-					// Check if this gpu is not done
-					if (control->queue_length) done = false;
-
-					if (DEBUG2) {
-						printf("Iteration %lld stream-compacted queue on gpu %d (%lld elements):\n",
-							(long long) control->iteration,
-							control->gpu, (long long) control->queue_length);
-						DisplayDeviceResults(
-							slice->frontier_queues.d_keys[control->selector],
-							control->queue_length);
-						printf("Source distance vector on gpu %d:\n", control->gpu);
-						DisplayDeviceResults(
-							slice->d_source_path,
-							slice->nodes);
-					}
-				}
-				if (retval) break;
-
-				// Check if all done in all GPUs
-				if (done) break;
 			}
 
 		} while (0);
