@@ -673,7 +673,7 @@ void RunTests(
 
 		if (num_gpus == 1) {
 
-			if (!csr_problem.uneven) {
+			if ((!csr_problem.uneven) && (!MARK_PARENTS)) {
 				// Perform one-phase expand-contract BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
 					test_iteration,
