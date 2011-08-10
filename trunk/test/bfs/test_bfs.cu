@@ -455,6 +455,7 @@ template <
 	typename Value,
 	typename SizeT>
 cudaError_t TestGpuBfs(
+	int 									test_iteration,
 	BfsEnactor 								&enactor,
 	ProblemStorage 							&csr_problem,
 	VertexId 								src,
@@ -485,17 +486,23 @@ cudaError_t TestGpuBfs(
 		VertexId	search_depth = 0;
 		double		avg_duty = 0.0;
 
-		enactor.GetStatistics(total_queued, search_depth, avg_duty);
-		DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
-			stats,
-			src,
-			h_source_path,
-			reference_source_dist,
-			csr_graph,
-			elapsed,
-			search_depth,
-			total_queued,
-			avg_duty);
+		if (test_iteration < 0) {
+			printf("Warmup iteration: %.3f ms\n", elapsed);
+
+		} else {
+
+			enactor.GetStatistics(total_queued, search_depth, avg_duty);
+			DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
+				stats,
+				src,
+				h_source_path,
+				reference_source_dist,
+				csr_graph,
+				elapsed,
+				search_depth,
+				total_queued,
+				avg_duty);
+		}
 
 	} while (0);
 	
@@ -513,6 +520,7 @@ template<
 	typename Value,
 	typename SizeT>
 void SimpleReferenceBfs(
+	int 									test_iteration,
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,
 	VertexId 								*source_path,
 	VertexId 								src,
@@ -567,16 +575,21 @@ void SimpleReferenceBfs(
 		Histogram(src, source_path, csr_graph, search_depth);
 	}
 
-	DisplayStats<false, VertexId, Value, SizeT>(
-		stats,
-		src,
-		source_path,
-		NULL,						// No reference source path
-		csr_graph,
-		elapsed,
-		search_depth,
-		0,							// No redundant queuing
-		0);							// No barrier duty
+	if (test_iteration < 0) {
+		printf("Warmup iteration: %.3f ms\n", elapsed);
+
+	} else {
+		DisplayStats<false, VertexId, Value, SizeT>(
+			stats,
+			src,
+			source_path,
+			NULL,						// No reference source path
+			csr_graph,
+			elapsed,
+			search_depth,
+			0,							// No redundant queuing
+			0);							// No barrier duty
+	}
 }
 
 
@@ -643,7 +656,7 @@ void RunTests(
 	fflush(stdout);
 	
 	// Perform the specified number of test iterations
-	int test_iteration = 0;
+	int test_iteration = -1;
 	while (test_iteration < test_iterations) {
 	
 		// If randomized-src was specified, re-roll the src
@@ -653,7 +666,7 @@ void RunTests(
 
 		// Compute reference CPU BFS solution for source-distance
 		if (!g_quick) {
-			SimpleReferenceBfs(csr_graph, reference_source_dist, src, stats[0]);
+			SimpleReferenceBfs(test_iteration, csr_graph, reference_source_dist, src, stats[0]);
 			printf("\n");
 			fflush(stdout);
 		}
@@ -663,6 +676,7 @@ void RunTests(
 			if (!csr_problem.uneven) {
 				// Perform one-phase expand-contract BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
+					test_iteration,
 					expand_contract_enactor,
 					csr_problem,
 					src,
@@ -678,6 +692,7 @@ void RunTests(
 			if (!csr_problem.uneven) {
 				// Perform one-phase contract-expand BFS implementation (single grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
+					test_iteration,
 					contract_expand_enactor,
 					csr_problem,
 					src,
@@ -692,6 +707,7 @@ void RunTests(
 
 			// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
 			if (TestGpuBfs<INSTRUMENT>(
+				test_iteration,
 				two_phase_enactor,
 				csr_problem,
 				src,
@@ -707,6 +723,7 @@ void RunTests(
 
 				// Perform hybrid-phase out-of-core BFS implementation
 				if (TestGpuBfs<INSTRUMENT>(
+					test_iteration,
 					hybrid_enactor,
 					csr_problem,
 					src,
@@ -724,6 +741,7 @@ void RunTests(
 			if (!csr_problem.uneven) {
 				// Perform multi-GPU out-of-core BFS implementation
 				if (TestGpuBfs<INSTRUMENT>(
+					test_iteration,
 					multi_gpu_enactor,
 					csr_problem,
 					src,
@@ -947,6 +965,7 @@ int main( int argc, char** argv)
 
 	// Run tests
 	if (instrumented) {
+
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, true, true>(
@@ -955,6 +974,7 @@ int main( int argc, char** argv)
 			RunTests<VertexId, Value, SizeT, true, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
+
 	} else {
 
 		// Run regular kernel 
