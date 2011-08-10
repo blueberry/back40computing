@@ -510,7 +510,7 @@ public:
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6> ExpandPolicy;
+				7> ExpandPolicy;
 
 
 			// Compaction kernel config
@@ -521,13 +521,13 @@ public:
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOAD_VEC_SIZE
 				2,						// LOG_LOADS_PER_TILE
-				5,						// LOG_RAKING_THREADS
+				6,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				9> CompactPolicy;
+				10> CompactPolicy;
 
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
