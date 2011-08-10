@@ -45,18 +45,6 @@ namespace partition_compact {
 namespace upsweep {
 
 
-/**
- * Templated texture reference for collision bitmask
- */
-template <typename CollisionMask>
-struct BitmaskTex
-{
-	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
-};
-template <typename CollisionMask>
-texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
-
-
 
 /**
  * Tile
