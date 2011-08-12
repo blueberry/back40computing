@@ -42,6 +42,7 @@
 #include <b40c/graph/builder/grid3d.cuh>
 #include <b40c/graph/builder/market.cuh>
 #include <b40c/graph/builder/metis.cuh>
+#include <b40c/graph/builder/rmat.cuh>
 #include <b40c/graph/builder/random.cuh>
 #include <b40c/graph/builder/rr.cuh>
 
@@ -70,7 +71,6 @@ bool g_verbose2;
 bool g_undirected;
 bool g_quick;			// Whether or not to perform CPU traversal as reference
 bool g_uneven;
-
 
 /******************************************************************************
  * Housekeeping Routines
@@ -641,7 +641,7 @@ void RunTests(
 	}
 
 	// Initialize statistics
-	Stats stats[6];
+	Stats stats[7];
 	stats[0] = Stats("Simple CPU BFS");
 	stats[1] = Stats("One-phase expand-contract GPU BFS");
 	stats[2] = Stats("One-phase contract-expand GPU BFS");
@@ -834,6 +834,7 @@ int main( int argc, char** argv)
 			src = atoi(src_str);
 		}
 	}
+
 	g_undirected = args.CheckCmdLineFlag("undirected");
 	g_quick = args.CheckCmdLineFlag("quick");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
@@ -928,6 +929,24 @@ int main( int argc, char** argv)
 		if (graph_args < 1) { Usage(); return 1; }
 		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
 		if (builder::BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
+			return 1;
+		}
+
+	} else if (graph_type == "rmat") {
+		// Random graph of n nodes and m edges
+		if (graph_args < 3) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = atol(argv[3]);
+		if (builder::BuildRmatGraph<false>(
+			nodes,
+			edges,
+			src,
+			csr_graph,
+			g_undirected,
+			0.45,
+			0.15,
+			0.15) != 0)
+		{
 			return 1;
 		}
 
