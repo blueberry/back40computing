@@ -67,11 +67,10 @@ namespace bfs {
  */
 class EnactorMultiGpu : public EnactorBase
 {
-
-protected:
+public :
 
 	//---------------------------------------------------------------------
-	// Helper Structures
+	// Policy Structures
 	//---------------------------------------------------------------------
 
 	template <bool INSTRUMENT, typename CsrProblem, int SM_ARCH>
@@ -168,6 +167,11 @@ protected:
 	};
 
 
+protected:
+
+	//---------------------------------------------------------------------
+	// Helper Structures
+	//---------------------------------------------------------------------
 
 	/**
 	 * Management structure for each GPU
