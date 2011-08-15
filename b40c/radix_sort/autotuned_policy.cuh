@@ -498,7 +498,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE,
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::MAX_CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,
@@ -560,7 +560,7 @@ __global__ void TunedSpineKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::MAX_CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,

@@ -63,7 +63,7 @@ protected:
 	// Helper structures
 	//-----------------------------------------------------------------------------
 
-	template <typename ProblemType, typename Enactor>
+	template <typename ProblemType>
 	friend class Detail;
 
 
@@ -224,7 +224,7 @@ public:
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ProblemType, typename Enactor>
+template <typename ProblemType>
 struct Detail : ProblemType
 {
 	typedef typename ProblemType::SizeT 		SizeT;
@@ -514,7 +514,7 @@ cudaError_t Enactor::Reduce(
 	typename Policy::EqualityOp			equality_op,
 	int 								max_grid_size)
 {
-	Detail<Policy, Enactor> detail(
+	Detail<Policy> detail(
 		this,
 		problem_storage,
 		num_elements,
@@ -553,7 +553,7 @@ cudaError_t Enactor::Reduce(
 		ReductionOp,
 		EqualityOp> ProblemType;
 
-	Detail<ProblemType, Enactor> detail(
+	Detail<ProblemType> detail(
 		this,
 		problem_storage,
 		num_elements,

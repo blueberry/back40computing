@@ -61,7 +61,7 @@ protected:
 	// Helper structures
 	//-----------------------------------------------------------------------------
 
-	template <typename ProblemType, typename Enactor>
+	template <typename ProblemType>
 	friend class Detail;
 
 
@@ -201,7 +201,7 @@ public:
 /**
  * Type for encapsulating operational details regarding an invocation
  */
-template <typename ProblemType, typename Enactor>
+template <typename ProblemType>
 struct Detail : ProblemType
 {
 	typedef typename ProblemType::T 			T;
@@ -451,7 +451,7 @@ cudaError_t Enactor::Scan(
 	typename Policy::IdentityOp identity_op,
 	int max_grid_size)
 {
-	Detail<Policy, Enactor> detail(
+	Detail<Policy> detail(
 		this,
 		d_dest,
 		d_src,
@@ -491,7 +491,7 @@ cudaError_t Enactor::Scan(
 		EXCLUSIVE,
 		COMMUTATIVE> ProblemType;
 
-	Detail<ProblemType, Enactor> detail(
+	Detail<ProblemType> detail(
 		this,
 		d_dest,
 		d_src,

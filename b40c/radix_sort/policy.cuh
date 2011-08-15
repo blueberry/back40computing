@@ -61,7 +61,7 @@ template <
 
 	// Common
 	int CUDA_ARCH,
-	int LOG_BINS,
+	int _RADIX_BITS,
 	int LOG_SCHEDULE_GRANULARITY,
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
@@ -125,7 +125,7 @@ struct Policy :
 		ProblemType,
 		CUDA_ARCH,
 		CHECK_ALIGNMENT,
-		LOG_BINS,
+		_RADIX_BITS,
 		LOG_SCHEDULE_GRANULARITY,
 		UPSWEEP_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
@@ -136,11 +136,13 @@ struct Policy :
 		EARLY_EXIT>
 			Upsweep;
 
+	typedef typename Policy::Spine SpinePolicy;
+
 	typedef downsweep::TuningPolicy<
 		ProblemType,
 		CUDA_ARCH,
 		CHECK_ALIGNMENT,
-		LOG_BINS,
+		_RADIX_BITS,
 		LOG_SCHEDULE_GRANULARITY,
 		DOWNSWEEP_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
@@ -153,7 +155,6 @@ struct Policy :
 		DOWNSWEEP_TWO_PHASE_SCATTER,
 		EARLY_EXIT>
 			Downsweep;
-
 
 	//---------------------------------------------------------------------
 	// Kernel function pointer retrieval
@@ -175,9 +176,12 @@ struct Policy :
 	//---------------------------------------------------------------------
 
 	enum {
+		RADIX_BITS					= _RADIX_BITS,
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
+
+		VALID 						= Upsweep::VALID && SpinePolicy::VALID && Downsweep::VALID,
 	};
 };
 		
