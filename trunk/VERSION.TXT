@@ -1,1 +1,1 @@
-Version v1.0.647 (SVN r647)
+Version v1.0.648 (SVN r648)
