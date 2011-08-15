@@ -91,20 +91,27 @@ typedef b40c::radix_sort::Policy<
 		true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
 		true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
 
-		// Upsweep kernel policy
+		// Policy for upsweep kernel.
+		// 		Reduces/counts all the different digit numerals for a given digit-place
+		//
 		8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 		0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
 		2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
 
-		// Spine-scan kernel policy	(relatively insignificant)
+		// Spine-scan kernel policy
+		//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
+		//
 		1,							// SPINE_CTA_OCCUPANCY				The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
 		0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
 		5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
 
-		// Downsweep kernel policy (a "cycle" is a tile sub-segment up to 256 keys)
+		// Policy for downsweep kernel
+		//		Given prefix counts, scans/scatters keys into appropriate bins
+		// 		Note: a "cycle" is a tile sub-segment up to 256 keys
+		//
 		true,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
 		8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		6,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
@@ -192,7 +199,7 @@ int main(int argc, char** argv)
 	enactor.Sort<
 		0,
 		Policy::RADIX_BITS,
-		Policy>(sort_storage, num_elements);
+		Policy>(sort_storage, num_elements, max_ctas);
 
 	printf("Restricted-range key-value sort: "); b40c::CompareDeviceResults(
 		h_reference_keys, sort_storage.d_keys[sort_storage.selector], num_elements, verbose, verbose); printf("\n");
