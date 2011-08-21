@@ -29,6 +29,7 @@
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
+#include <b40c/util/ping_pong_storage.cuh>
 
 #include <b40c/radix_sort/problem_type.cuh>
 #include <b40c/radix_sort/policy.cuh>
