@@ -159,10 +159,14 @@ int main(int argc, char** argv)
 
 	// Only use RADIX_BITS effective bits (remaining high order bits
 	// are left zero): we only want to perform one sorting pass
+	printf("Original: ");
 	for (size_t i = 0; i < num_elements; ++i) {
 		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
 		h_reference_keys[i] = h_keys[i];
+
+		printf("%d, ", h_keys[i]);
 	}
+	printf("\n");
 
     // Compute reference solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);

@@ -291,11 +291,37 @@ public:
 			return EnactSearch<KernelPolicy, INSTRUMENT, CsrProblem>(
 				csr_problem, src, max_grid_size);
 
-		} else {
+		} else if (this->cuda_props.device_sm_version == 130) {
+/*
+			// Single-grid tuning configuration
+			typedef expand_compact_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				128,					// WARP_GATHER_THRESHOLD
+				128, 					// CTA_GATHER_THRESHOLD,
+				1,						// BITMASK_CULL_THRESHOLD
+				6> KernelPolicy;
 
-			printf("Not yet tuned for this architecture\n");
-			return cudaErrorInvalidConfiguration;
+			return EnactSearch<KernelPolicy, INSTRUMENT, CsrProblem>(
+				csr_problem, src, max_grid_size);
+*/
 		}
+
+		printf("Not yet tuned for this architecture\n");
+		return cudaErrorInvalidConfiguration;
 	}
     
 };

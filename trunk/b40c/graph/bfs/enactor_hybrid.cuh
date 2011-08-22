@@ -532,11 +532,75 @@ public:
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
 
-		} else {
+    	} else if (cuda_props.device_sm_version >= 130) {
+/*
+			// Single-grid tuning configuration
+			typedef compact_expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT,		// SATURATION_QUIT
+				1,						// CTA_OCCUPANCY
+				8,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
+				-1,						// BITMASK_CULL_THRESHOLD
+				6> OnePhasePolicy;
 
-			printf("Not yet tuned for this architecture\n");
-			return cudaErrorInvalidConfiguration;
-		}
+			// Expansion kernel config
+			typedef expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT, 		// SATURATION_QUIT
+				1,						// CTA_OCCUPANCY
+				8,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
+				7> ExpandPolicy;
+
+
+			// Compaction kernel config
+			typedef compact_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,
+				INSTRUMENT, 			// INSTRUMENT
+				true, 					// DEQUEUE_PROBLEM_SIZE
+				1,						// CTA_OCCUPANCY
+				8,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOADS_PER_TILE
+				6,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				10> CompactPolicy;
+
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
+				csr_problem, src, max_grid_size);
+*/
+	    }
+
+		printf("Not yet tuned for this architecture\n");
+		return cudaErrorInvalidConfiguration;
 	}
 
 };

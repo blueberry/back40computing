@@ -433,6 +433,10 @@ void DisplayStats(
 		if (avg_duty > 0) printf(	"\t\t[Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.duty.mean, duty_stddev, duty_stddev / stats.duty.mean);
 
+		double time_stddev = sqrt(stats.rate.Update(m_teps));
+		printf(								"\t\t[Time (ms)]:   u: %.3f\n",
+			double(edges_visited) / stats.rate.mean / 1000.0);
+
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
 		printf(								"\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
 			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);

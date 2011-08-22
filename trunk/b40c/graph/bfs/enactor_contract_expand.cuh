@@ -180,14 +180,14 @@ public:
 			int min_occupancy 		= KernelPolicy::CTA_OCCUPANCY;
 			int grid_size 			= MaxGridSize(min_occupancy, max_grid_size);
 
-			if (DEBUG) {
+//			if (DEBUG) {
 				printf("BFS min occupancy %d, level-grid size %d\n",
 					min_occupancy, grid_size);
 				if (INSTRUMENT) {
 					printf("Queue\n");
 					printf("1\n");
 				}
-			}
+//			}
 
 			SizeT queue_length;
 			VertexId iteration = 0;		// BFS iteration
@@ -317,10 +317,37 @@ public:
 			return EnactSearch<KernelPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
 
-		} else {
-			printf("Not yet tuned for this architecture\n");
-			return cudaErrorInvalidConfiguration;
+		} else if (this->cuda_props.device_sm_version >= 130) {
+/*
+			// Single-grid tuning configuration
+			typedef compact_expand_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				1,						// CTA_OCCUPANCY
+				8,						// LOG_THREADS
+				0,						// LOG_LOAD_VEC_SIZE
+				1, //0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				32,						// WARP_GATHER_THRESHOLD
+				128 * 4, 				// CTA_GATHER_THRESHOLD,
+				3,						// BITMASK_CULL_THRESHOLD
+				6> KernelPolicy;
+
+			return EnactSearch<KernelPolicy, INSTRUMENT>(
+				csr_problem, src, max_grid_size);
+*/
 		}
+
+		printf("Not yet tuned for this architecture\n");
+		return cudaErrorInvalidConfiguration;
 	}
 
 };
