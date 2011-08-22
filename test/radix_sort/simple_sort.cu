@@ -116,8 +116,10 @@ int main(int argc, char** argv)
 		printf("Small-problem keys-only sort: "); b40c::CompareDeviceResults(
 			h_reference_keys, sort_storage.d_keys[sort_storage.selector], num_elements, verbose, verbose); printf("\n");
 
-
+		//
 		// Example 3: small-problem-tuned sort over specific bit-range
+		//
+
 		cudaMemcpy(sort_storage.d_keys[sort_storage.selector], h_keys, sizeof(int) * num_elements, cudaMemcpyHostToDevice);
 		enactor.Sort<0, LOWER_BITS, b40c::radix_sort::SMALL_SIZE>(sort_storage, num_elements);
 
@@ -162,7 +164,10 @@ int main(int argc, char** argv)
 			h_reference_keys, sort_storage.d_keys[sort_storage.selector], num_elements, verbose, verbose); printf("\n");
 
 
+		//
 		// Example 3: small-problem-tuned sort over specific bit-range
+		//
+
 		cudaMemcpy(sort_storage.d_keys[sort_storage.selector], h_keys, sizeof(int) * num_elements, cudaMemcpyHostToDevice);
 		cudaMemcpy(sort_storage.d_values[sort_storage.selector], h_values, sizeof(int) * num_elements, cudaMemcpyHostToDevice);
 
