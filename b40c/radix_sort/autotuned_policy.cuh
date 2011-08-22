@@ -92,6 +92,7 @@ template <
 	ProbSizeGenre PROB_SIZE_GENRE,
 	ArchGenre ARCH_GENRE,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre;
 
@@ -128,12 +129,21 @@ struct TypeSizeClassifier
 
 
 /**
- * Classifies the pointer type into a type-size genre
+ * Classifies the offset type into a type-size genre
  */
 template <typename ProblemType>
-struct PointerSizeClassifier
+struct OffsetSizeClassifier
 {
 	static const TypeSizeGenre GENRE 		= (sizeof(typename ProblemType::SizeT) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
+};
+
+
+/**
+ * Classifies the pointer type into a type-size genre
+ */
+struct PointerSizeClassifier
+{
+	static const TypeSizeGenre GENRE 		= (sizeof(size_t) < 8) ? MEDIUM_TYPE : LARGE_TYPE;
 };
 
 
@@ -151,7 +161,8 @@ struct AutotunedClassifier :
 		PROB_SIZE_GENRE,
 		ArchClassifier<CUDA_ARCH>::GENRE,
 		TypeSizeClassifier<ProblemType>::GENRE,
-		PointerSizeClassifier<ProblemType>::GENRE>
+		OffsetSizeClassifier<ProblemType>::GENRE,
+		PointerSizeClassifier::GENRE>
 {};
 
 
@@ -168,8 +179,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
@@ -204,7 +216,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE,
 		6,						// DOWNSWEEP_LOG_THREADS
 		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
-		((TYPE_SIZE_GENRE < LARGE_TYPE) && (POINTER_SIZE_GENRE < LARGE_TYPE)) ?		// DOWNSWEEP_LOG_CYCLES_PER_TILE
+		(((ProblemType::KEYS_ONLY) || (POINTER_SIZE_GENRE < LARGE_TYPE)) && (OFFSET_SIZE_GENRE < LARGE_TYPE)) ?
 			1 :
 			0,
 		6>						// DOWNSWEEP_LOG_RAKING_THREADS
@@ -218,8 +230,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
@@ -270,8 +283,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
@@ -330,8 +344,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
@@ -386,8 +401,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
@@ -434,8 +450,9 @@ template <
 	typename ProblemType,
 	int CUDA_ARCH,
 	TypeSizeGenre TYPE_SIZE_GENRE,
+	TypeSizeGenre OFFSET_SIZE_GENRE,
 	TypeSizeGenre POINTER_SIZE_GENRE>
-struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE, POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE, OFFSET_SIZE_GENRE, POINTER_SIZE_GENRE>
 	: Policy<
 		// Problem Type
 		ProblemType,
