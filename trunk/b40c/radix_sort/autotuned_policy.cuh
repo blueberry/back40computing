@@ -211,7 +211,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		8,						// DOWNSWEEP_CTA_OCCUPANCY
 		6,						// DOWNSWEEP_LOG_THREADS
 		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -262,7 +262,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		7,						// DOWNSWEEP_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -319,7 +319,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		5,						// DOWNSWEEP_CTA_OCCUPANCY
 		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_THREADS
 			6 :
@@ -376,7 +376,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		5,						// DOWNSWEEP_CTA_OCCUPANCY
 		6,						// DOWNSWEEP_LOG_THREADS
 		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -433,7 +433,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_WARP_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		2,						// DOWNSWEEP_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
@@ -482,7 +482,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE,
 		5,						// SPINE_LOG_RAKING_THREADS
 
 		// Downsweep Kernel
-		true,					// DOWNSWEEP_TWO_PHASE_SCATTER
+		partition::downsweep::SCATTER_WARP_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
 		2,						// DOWNSWEEP_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
