@@ -161,7 +161,6 @@ int main(int argc, char** argv)
 	// are left zero): we only want to perform one sorting pass
 	for (size_t i = 0; i < num_elements; ++i) {
 		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
-		h_values[i] = i;
 		h_reference_keys[i] = h_keys[i];
 	}
 
@@ -201,7 +200,12 @@ int main(int argc, char** argv)
 		Policy::RADIX_BITS,
 		Policy>(sort_storage, num_elements, max_ctas);
 
-	printf("Restricted-range key-value sort: "); b40c::CompareDeviceResults(
+	if (b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE) {
+		printf("Restricted-range keys-only sort: ");
+	} else {
+		printf("Restricted-range key-value sort: ");
+	}
+	b40c::CompareDeviceResults(
 		h_reference_keys, sort_storage.d_keys[sort_storage.selector], num_elements, verbose, verbose); printf("\n");
 
 	// Cleanup any "pong" storage allocated by the enactor
