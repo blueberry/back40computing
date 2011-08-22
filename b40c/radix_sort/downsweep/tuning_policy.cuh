@@ -55,7 +55,7 @@ template <
 	int LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier READ_MODIFIER,
 	util::io::st::CacheModifier WRITE_MODIFIER,
-	bool TWO_PHASE_SCATTER,
+	partition::downsweep::ScatterStrategy SCATTER_STRATEGY,
 	bool _EARLY_EXIT>
 
 struct TuningPolicy :
@@ -73,7 +73,7 @@ struct TuningPolicy :
 		LOG_RAKING_THREADS,
 		READ_MODIFIER,
 		WRITE_MODIFIER,
-		TWO_PHASE_SCATTER>
+		SCATTER_STRATEGY>
 {
 	enum {
 		EARLY_EXIT								= _EARLY_EXIT,

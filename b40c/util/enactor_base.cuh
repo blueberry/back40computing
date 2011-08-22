@@ -219,8 +219,8 @@ protected:
 
 			if (cuda_props.device_sm_version < 120) {
 
-				// G80/G90: CTA occupancy times SM count
-				grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
+				// G80/G90: double CTA occupancy times SM count
+				grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY * 2;
 
 			} else if (cuda_props.device_sm_version < 200) {
 
