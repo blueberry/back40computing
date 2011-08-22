@@ -889,6 +889,8 @@ struct Tile
 						cta->d_out_values,
 						valid_elements);
 
+					__syncthreads();
+
 				} else {
 
 					// Gather values linearly from smem (vec-1)
@@ -902,11 +904,11 @@ struct Tile
 							cta->smem_storage.value_exchange,
 							0);
 
+					__syncthreads();
+
 					// Scatter values to global bin partitions
 					tile->ScatterValues(cta, valid_elements);
 				}
-
-				__syncthreads();
 			}
 		};
 
@@ -997,6 +999,8 @@ struct Tile
 					cta->d_out_keys,
 					valid_elements);
 
+				__syncthreads();
+
 			} else {
 
 				// Gather keys linearly from smem (vec-1)
@@ -1019,8 +1023,6 @@ struct Tile
 				tile->ScatterKeys(cta, valid_elements);
 
 			}
-
-			__syncthreads();
 
 			// Partition values
 			ScatterValues<KernelPolicy::KEYS_ONLY>::Invoke(
