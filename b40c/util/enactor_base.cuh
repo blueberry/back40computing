@@ -50,7 +50,7 @@ public:
 
 	// Debug level.  If set, the enactor blocks after kernel calls to check
 	// for successful launch/execution
-	bool DEBUG;
+	bool ENACTOR_DEBUG;
 
 
 	// The arch version of the code for the current device that actually have
@@ -468,9 +468,9 @@ protected:
 
 	EnactorBase() :
 #if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
-			DEBUG(true)
+			ENACTOR_DEBUG(true)
 #else
-			DEBUG(false)
+			ENACTOR_DEBUG(false)
 #endif
 		{}
 

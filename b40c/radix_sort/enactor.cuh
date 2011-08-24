@@ -118,7 +118,7 @@ public:
     virtual ~Enactor()
     {
    		if (d_selectors) {
-   			util::B40CPerror(cudaFree(d_selectors), "Enactor cudaFree d_selectors failed: ", __FILE__, __LINE__, DEBUG);
+   			util::B40CPerror(cudaFree(d_selectors), "Enactor cudaFree d_selectors failed: ", __FILE__, __LINE__, ENACTOR_DEBUG);
    		}
     }
 
@@ -546,13 +546,13 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 			(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
 			detail.work);
 
-		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		// Spine scan
 		SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 			(SizeT*) spine(), (SizeT*) spine(), detail.spine_elements);
 
-		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		// Downsweep scan from spine
 		DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
@@ -564,7 +564,7 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 			detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
 			detail.work);
 
-		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 	} while (0);
 
@@ -587,26 +587,26 @@ cudaError_t Enactor::PreSort(Detail &detail)
 		// Setup d_selectors if necessary
 		if (d_selectors == NULL) {
 			if (retval = util::B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
-				"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__, DEBUG)) break;
+				"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 		}
 
 		// Setup pong-storage if necessary
 		if (detail.problem_storage.d_keys[0] == NULL) {
 			if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_keys[0], detail.num_elements * sizeof(KeyType)),
-				"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[0] failed", __FILE__, __LINE__, DEBUG)) break;
+				"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[0] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 		}
 		if (detail.problem_storage.d_keys[1] == NULL) {
 			if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_keys[1], detail.num_elements * sizeof(KeyType)),
-				"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[1] failed", __FILE__, __LINE__, DEBUG)) break;
+				"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[1] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 		}
 		if (!util::Equals<ValueType, util::NullType>::VALUE) {
 			if (detail.problem_storage.d_values[0] == NULL) {
 				if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_values[0], detail.num_elements * sizeof(ValueType)),
-					"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[0] failed", __FILE__, __LINE__, DEBUG)) break;
+					"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[0] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 			}
 			if (detail.problem_storage.d_values[1] == NULL) {
 				if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_values[1], detail.num_elements * sizeof(ValueType)),
-					"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[1] failed", __FILE__, __LINE__, DEBUG)) break;
+					"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[1] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 			}
 		}
 
@@ -640,7 +640,7 @@ cudaError_t Enactor::PostSort(Detail &detail, int num_passes)
 
 			// Copy out the selector from the last pass
 			if (retval = util::B40CPerror(cudaMemcpy(&detail.problem_storage.selector, &d_selectors[num_passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
-				"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__, DEBUG)) break;
+				"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 
 			// Correct new selector if the original indicated that we started off from the alternate
 			detail.problem_storage.selector ^= old_selector;
@@ -690,7 +690,7 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 	detail.work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(
 		detail.num_elements, grid_size);
 
-	if (DEBUG) {
+	if (ENACTOR_DEBUG) {
 		printf("\n\n");
 		PrintPassInfo<Upsweep, Spine, Downsweep>(detail.work, detail.spine_elements);
 		printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d]\n",
