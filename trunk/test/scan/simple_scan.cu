@@ -132,7 +132,7 @@ int main(int argc, char** argv)
 
 	// Create a scan enactor
 	b40c::scan::Enactor scan_enactor;
-	scan_enactor.DEBUG = verbose;
+	scan_enactor.ENACTOR_DEBUG = verbose;
 
 	//
 	// Example 1: Enact simple exclusive scan using internal tuning heuristics
