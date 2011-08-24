@@ -308,7 +308,7 @@ cudaError_t Enactor::Copy(
 		Kernel<<<work.grid_size, Policy::THREADS, dynamic_smem>>>(
 			d_src, d_dest, work, work_progress, extra_bytes);
 
-		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor Kernel failed ", __FILE__, __LINE__))) break;
+		if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor Kernel failed ", __FILE__, __LINE__, DEBUG))) break;
 
 	} while (0);
 
