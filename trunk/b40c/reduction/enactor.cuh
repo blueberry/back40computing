@@ -332,7 +332,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	util::CtaWorkDistribution<SizeT> work;
 	work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
 
-	if (DEBUG) {
+	if (ENACTOR_DEBUG) {
 		if (sweep_grid_size > 1) {
 			PrintPassInfo<Upsweep, Spine>(work, spine_elements);
 		} else {
@@ -350,7 +350,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			SingleKernel<<<1, Single::THREADS, 0>>>(
 				detail.d_src, detail.d_dest, work.num_elements, detail.reduction_op);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		} else {
 
@@ -380,13 +380,13 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
 				detail.d_src, (T*) spine(), detail.reduction_op, work, work_progress);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 			// Spine reduction
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 				(T*) spine(), detail.d_dest, spine_elements, detail.reduction_op);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 		}
 	} while (0);
 

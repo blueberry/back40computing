@@ -391,7 +391,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	util::CtaWorkDistribution<SizeT> work;
 	work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
 
-	if (DEBUG) {
+	if (ENACTOR_DEBUG) {
 		if (sweep_grid_size > 1) {
 			PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
 		} else {
@@ -422,7 +422,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.reduction_op,
 				detail.equality_op);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		} else {
 
@@ -454,7 +454,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.equality_op,
 				work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 			// Spine scan
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
@@ -465,7 +465,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				spine_elements,
 				detail.reduction_op);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
@@ -480,7 +480,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 				detail.equality_op,
 				work);
 
-			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, DEBUG))) break;
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 		}
 
 		// Copy out compacted size if necessary
@@ -490,7 +490,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 					detail.d_num_compacted,
 					sizeof(SizeT) * 1,
 					cudaMemcpyDeviceToHost),
-				"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__, DEBUG)) break;
+				"Enactor cudaMemcpy d_num_compacted failed: ", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 		}
 
 	} while (0);
