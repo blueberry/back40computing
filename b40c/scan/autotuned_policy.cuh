@@ -184,9 +184,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
-	  8, 7, 2, 2, 5,
+	  3, 9, 2, 0, 5,
 	  5, 2, 0, 5,
-	  8, 9, 1, 1, 5>
+	  3, 9, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
