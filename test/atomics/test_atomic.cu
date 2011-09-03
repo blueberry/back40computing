@@ -42,6 +42,7 @@ int 	g_iterations  					= 1;
 int 	g_num_elements 					= 1024;
 int 	g_log_stride					= -2;
 bool 	g_stream						= false;
+bool 	g_local							= false;
 
 
 /******************************************************************************
@@ -55,7 +56,7 @@ void Usage()
 {
 	printf("\ntest_atomic [--device=<device index>] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-elements>] "
-			"[log-stride=<log2(access stride)>] [--stream]\n");
+			"[log-stride=<log2(access stride)>] [--stream] [--local]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -71,6 +72,9 @@ void Usage()
 	printf("\t--stream\tWhether or not threads also stream 32-bit words \n");
 	printf("\t\t\tthrough global memory concurrently as well (to simulate)\n");
 	printf("\n");
+	printf("\t--local\tWhether or not to perform atomics on local smem \n");
+	printf("\t\t\tcounters versus a global gmem counter\n");
+	printf("\n");
 }
 
 
@@ -79,7 +83,7 @@ void Usage()
  ******************************************************************************/
 
 /**
- * Updates global global counter
+ * Updates global counter
  */
 __global__ void GlobalAtomicKernel(
 	int *d_counter,
@@ -128,6 +132,59 @@ __global__ void GlobalAtomicKernel(
 }
 
 
+/**
+ * Updates local counter
+ */
+__global__ void LocalAtomicKernel(
+	int *d_in,
+	int *d_out,
+	int stride,
+	int tiles_per_cta,
+	int extra_tiles)
+{
+	__shared__ int s_counter;
+
+	int data;
+	int tid = (blockIdx.x * blockDim.x * tiles_per_cta) + threadIdx.x;
+	int mask = stride - 1;
+
+	if (blockIdx.x < extra_tiles) {
+
+		// We get an extra tile
+		tiles_per_cta++;
+		tid += blockIdx.x * blockDim.x;
+
+	} else if (extra_tiles > 0) {
+
+		// We don't get an extra tile, but others did
+		tid += blockDim.x * extra_tiles;
+	}
+
+	// Iterate over tiles
+	for (int i = 0; i < tiles_per_cta; i++) {
+
+		if (d_in) {
+			data = d_in[tid];
+		}
+
+		if ((tid & mask) == mask) {
+			if (stride > 0) {
+
+#if __B40C_CUDA_ARCH__ >= 120
+				// access shared counter
+				atomicAdd(&s_counter, 1);
+#endif
+			}
+		}
+
+		if (d_out) {
+			d_out[tid] = data;
+		}
+
+		tid += blockDim.x;
+	}
+}
+
 
 /******************************************************************************
  * Main
@@ -138,7 +195,12 @@ __global__ void GlobalAtomicKernel(
  */
 int main(int argc, char** argv)
 {
-	CommandLineArgs args(argc, argv);
+    const int LOG_CTA_THREADS = 8;
+    const int CTA_THREADS = 1 << LOG_CTA_THREADS;
+    const int MAX_CTAS = 1024 * 16;
+
+
+    CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
 	// Check command line arguments
@@ -148,6 +210,7 @@ int main(int argc, char** argv)
 	}
 
     g_stream = args.CheckCmdLineFlag("stream");
+    g_local = args.CheckCmdLineFlag("local");
     args.GetCmdLineArgument("log-stride", g_log_stride);
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", g_num_elements);
@@ -169,9 +232,6 @@ int main(int argc, char** argv)
 
     // Compute kernel params
     util::CudaProperties cuda_props;
-    const int CTA_THREADS = 128;
-    const int MAX_CTAS = 1024 * 16;
-
     if (g_max_ctas <= 0) {
         g_max_ctas = MAX_CTAS;
     }
@@ -217,13 +277,23 @@ int main(int argc, char** argv)
 
 		timer.Start();
 		for (int i = 0; i < g_iterations; i++) {
-			GlobalAtomicKernel<<<grid_size, CTA_THREADS>>>(
-				d_counter,
-				d_in,
-				d_out,
-				stride,
-				tiles_per_cta,
-				extra_tiles);
+
+			if (g_local) {
+				LocalAtomicKernel<<<grid_size, CTA_THREADS>>>(
+					d_in,
+					d_out,
+					stride,
+					tiles_per_cta,
+					extra_tiles);
+			} else {
+				GlobalAtomicKernel<<<grid_size, CTA_THREADS>>>(
+					d_counter,
+					d_in,
+					d_out,
+					stride,
+					tiles_per_cta,
+					extra_tiles);
+			}
 		}
 		timer.Stop();
 
