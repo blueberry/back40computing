@@ -198,13 +198,12 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE,
 		true,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		8,						// UPSWEEP_CTA_OCCUPANCY
+		8,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 		2,						// UPSWEEP_LOG_LOADS_PER_TILE
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		7,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -212,7 +211,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		8,						// DOWNSWEEP_CTA_OCCUPANCY
+		8,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		6,						// DOWNSWEEP_LOG_THREADS
 		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
@@ -249,13 +248,12 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE,
 		false,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		8,						// UPSWEEP_CTA_OCCUPANCY
+		8,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		8,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -263,7 +261,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		7,						// DOWNSWEEP_CTA_OCCUPANCY
+		7,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
@@ -302,17 +300,16 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE,
 		true,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		5,						// UPSWEEP_CTA_OCCUPANCY
+		5,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// UPSWEEP_LOG_LOAD_VEC_SIZE
-			1 :
+			0: //1 :
 			0,
 		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// UPSWEEP_LOG_LOADS_PER_TILE
-			0 :
+			2: //0 :
 			1,
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		7,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -320,7 +317,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		5,						// DOWNSWEEP_CTA_OCCUPANCY
+		5,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		(TYPE_SIZE_GENRE < LARGE_TYPE) ?	// DOWNSWEEP_LOG_THREADS
 			6 :
 			7,
@@ -363,13 +360,12 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE,
 		true,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		5,						// UPSWEEP_CTA_OCCUPANCY
+		5,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		1,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		7,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -377,7 +373,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		5,						// DOWNSWEEP_CTA_OCCUPANCY
+		5,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		6,						// DOWNSWEEP_LOG_THREADS
 		2,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
@@ -420,13 +416,12 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE,
 		true,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		3,						// UPSWEEP_CTA_OCCUPANCY
+		4,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		7,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -434,7 +429,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_WARP_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		2,						// DOWNSWEEP_CTA_OCCUPANCY
+		2,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
@@ -469,13 +464,12 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE,
 		true,					// OVERSUBSCRIBED_GRID_SIZE
 
 		// Upsweep Kernel
-		3,						// UPSWEEP_CTA_OCCUPANCY
+		4,						// UPSWEEP_MIN_CTA_OCCUPANCY
 		7,						// UPSWEEP_LOG_THREADS
 		0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 		0,						// UPSWEEP_LOG_LOADS_PER_TILE
 
 		// Spine-scan Kernel
-		1,						// SPINE_CTA_OCCUPANCY
 		7,						// SPINE_LOG_THREADS
 		2,						// SPINE_LOG_LOAD_VEC_SIZE
 		0,						// SPINE_LOG_LOADS_PER_TILE
@@ -483,7 +477,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE,
 
 		// Downsweep Kernel
 		partition::downsweep::SCATTER_WARP_TWO_PHASE,			// DOWNSWEEP_SCATTER_POLICY
-		2,						// DOWNSWEEP_CTA_OCCUPANCY
+		2,						// DOWNSWEEP_MIN_CTA_OCCUPANCY
 		7,						// DOWNSWEEP_LOG_THREADS
 		1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 		1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
@@ -511,7 +505,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TYPE_SIZE_GENRE,
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::MIN_CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,
@@ -541,7 +535,7 @@ __global__ void TunedUpsweepKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::MIN_CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
 	typename ProblemType::SizeT 		*d_spine_in,
 	typename ProblemType::SizeT 		*d_spine_out,
@@ -573,7 +567,7 @@ __global__ void TunedSpineKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE, typename PassPolicy>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::MIN_CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
 	int 													*d_selectors,
 	typename ProblemType::SizeT 							*d_spine,

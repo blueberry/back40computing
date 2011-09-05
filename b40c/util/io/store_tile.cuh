@@ -112,7 +112,7 @@ struct StoreTile
 			VectorType *d_in_vectors)
 		{
 			ModifiedStore<CACHE_MODIFIER>::St(
-				vectors[LOAD], d_in_vectors + threadIdx.x);
+				vectors[LOAD], d_in_vectors);
 
 			Iterate<LOAD + 1, 0>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
 		}
@@ -188,7 +188,7 @@ struct StoreTile
 
 			// Use an aliased pointer to keys array to perform built-in vector stores
 			VectorType *vectors = (VectorType *) data;
-			VectorType *d_in_vectors = (VectorType *) (d_out + cta_offset);
+			VectorType *d_in_vectors = (VectorType *) (d_out + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 
 			Iterate<0, 0>::Invoke(vectors, d_in_vectors);
 		}

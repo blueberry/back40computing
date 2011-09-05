@@ -37,6 +37,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
+GEN_SM11 = -gencode=arch=compute_11,code=\"sm_11,compute_11\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
 SM_TARGETS = $(GEN_SM20)
@@ -57,15 +58,23 @@ endif
 ifeq ($(TUNE_ARCH), 130) 
 	TUNE_SM_TARGETS = $(GEN_SM13)
 endif
+ifeq ($(TUNE_ARCH), 110) 
+	TUNE_SM_TARGETS = $(GEN_SM11)
+endif
 ifeq ($(TUNE_ARCH), 100) 
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
 
 
 #-------------------------------------------------------------------------------
-# Libs
+# Tune size
 #-------------------------------------------------------------------------------
 
+ifdef tunesize
+    TUNE_SIZE = $(tunesize)
+else 
+	TUNE_SIZE = 0
+endif
 
 #-------------------------------------------------------------------------------
 # Includes
@@ -163,7 +172,7 @@ tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
 
 bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_copy.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) tune_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH)  
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE)   
 
 
 #-------------------------------------------------------------------------------

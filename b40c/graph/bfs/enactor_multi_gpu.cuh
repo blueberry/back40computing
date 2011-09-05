@@ -136,7 +136,6 @@ public :
 			0,						// UPSWEEP_LOG_LOAD_VEC_SIZE
 			2,						// UPSWEEP_LOG_LOADS_PER_TILE
 
-			1,						// SPINE_CTA_OCCUPANCY
 			7,						// SPINE_LOG_THREADS
 			2,						// SPINE_LOG_LOAD_VEC_SIZE
 			0,						// SPINE_LOG_LOADS_PER_TILE
@@ -163,7 +162,7 @@ public :
 			0,						// LOG_LOADS_PER_TILE
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-			false> CopyPolicy;			// WORK_STEALING
+			false> CopyPolicy;		// WORK_STEALING
 	};
 
 
@@ -275,7 +274,7 @@ protected:
 				int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 				expand_grid_size 				= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-				int partition_min_occupancy		= B40C_MIN((int) PartitionPolicy::Upsweep::CTA_OCCUPANCY, (int) PartitionPolicy::Downsweep::CTA_OCCUPANCY);
+				int partition_min_occupancy		= B40C_MIN((int) PartitionPolicy::Upsweep::MAX_CTA_OCCUPANCY, (int) PartitionPolicy::Downsweep::MAX_CTA_OCCUPANCY);
 				partition_grid_size 			= MaxGridSize(partition_min_occupancy, max_grid_size);
 
 				int copy_min_occupancy			= CopyPolicy::CTA_OCCUPANCY;

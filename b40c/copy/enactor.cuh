@@ -275,34 +275,52 @@ cudaError_t Enactor::Copy(
 	typedef typename Policy::T 				T;
 	typedef typename Policy::SizeT 			SizeT;
 
-	// Make sure we have a valid policy
-	if (!Policy::VALID) {
-		return cudaErrorInvalidConfiguration;
-	}
-
-	// Compute sweep grid size
-	int grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Policy::SCHEDULE_GRANULARITY, Policy::CTA_OCCUPANCY>(num_elements, max_grid_size) :
-		OccupiedGridSize<Policy::SCHEDULE_GRANULARITY, Policy::CTA_OCCUPANCY>(num_elements, max_grid_size);
-
-	// Obtain a CTA work distribution
-	util::CtaWorkDistribution<SizeT> work;
-	work.template Init<Policy::LOG_SCHEDULE_GRANULARITY>(num_elements, grid_size);
-
-	if (ENACTOR_DEBUG) {
-		PrintPassInfo<Policy>(work);
-	}
-
 	cudaError_t retval = cudaSuccess;
 	do {
+
+		// Make sure we have a valid policy
+		if (!Policy::VALID) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Enactor invalid policy", __FILE__, __LINE__);
+			break;
+		}
+
+		// Copy kernel
+		typename Policy::KernelPtr Kernel = Policy::Kernel();
+
+		// Get kernel attributes
+		cudaFuncAttributes kernel_attrs;
+		if (retval = util::B40CPerror(cudaFuncGetAttributes(&kernel_attrs, Kernel),
+			"Enactor cudaFuncGetAttributes kernel_attrs failed", __FILE__, __LINE__)) break;
+
+		// Max CTA occupancy for the actual target device
+		int max_cta_occupancy;
+		if (retval = MaxCtaOccupancy(max_cta_occupancy, Kernel, Policy::THREADS)) break;
+
+		if (ENACTOR_DEBUG) printf("Occupancy:\t[sweep occupancy: %d]\n",
+			max_cta_occupancy);
+
+		// Compute sweep grid size
+		int grid_size = GridSize(
+			Policy::OVERSUBSCRIBED_GRID_SIZE,
+			Policy::SCHEDULE_GRANULARITY,
+			max_cta_occupancy,
+			num_elements,
+			max_grid_size);
+
+		// Obtain a CTA work distribution
+		util::CtaWorkDistribution<SizeT> work;
+		work.template Init<Policy::LOG_SCHEDULE_GRANULARITY>(num_elements, grid_size);
+
+		if (ENACTOR_DEBUG) {
+			PrintPassInfo<Policy>(work);
+		}
+
 		// If we're work-stealing, make sure our work progress is set up
 		// for the next pass
 		if (Policy::WORK_STEALING) {
 			if (retval = work_progress.Setup()) break;
 		}
 
-		// Copy kernel
-		typename Policy::KernelPtr Kernel = Policy::Kernel();
 		int dynamic_smem = 0;
 
 		Kernel<<<work.grid_size, Policy::THREADS, dynamic_smem>>>(

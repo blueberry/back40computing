@@ -162,9 +162,9 @@ struct AutotunedClassifier :
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 11,
-	  8, 7, 2, 2, 5,
+	  1, 7, 2, 2, 5,
 	  5, 2, 0, 5,
-	  8, 7, 2, 2, 5>
+	  1, 7, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -173,9 +173,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 10,
-	  8, 7, 1, 2, 5,
+	  1, 7, 1, 2, 5,
 	  5, 2, 0, 5,
-	  8, 6, 2, 2, 5>
+	  1, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -195,9 +195,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 0, 1, 5,
+	  1, 7, 0, 1, 5,
 	  5, 2, 0, 5,
-	  8, 5, 1, 2, 5>
+	  1, 5, 1, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -207,9 +207,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  8, 5, 2, 2, 5,
+	  1, 5, 2, 2, 5,
 	  5, 2, 0, 5,
-	  8, 6, 2, 1, 5>
+	  1, 6, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -218,9 +218,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  8, 5, 2, 2, 5,
+	  1, 5, 2, 2, 5,
 	  5, 2, 0, 5,
-	  8, 5, 2, 2, 5>
+	  1, 5, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -229,9 +229,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 5, 2, 1, 5,
+	  1, 5, 2, 1, 5,
 	  5, 2, 0, 5,
-	  8, 5, 2, 1, 5>
+	  1, 5, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -240,9 +240,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 7,
-	  8, 5, 1, 1, 5,
+	  1, 5, 1, 1, 5,
 	  5, 2, 0, 5,
-	  8, 5, 0, 2, 5>
+	  1, 5, 0, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -256,9 +256,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 12,
-	  8, 8, 2, 2, 5,
+	  1, 8, 2, 2, 5,
 	  6, 2, 0, 5,
-	  8, 8, 2, 1, 5>
+	  1, 8, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -267,9 +267,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  8, 7, 1, 1, 5,
+	  1, 7, 1, 1, 5,
 	  6, 2, 0, 5,
-	  8, 6, 2, 2, 5>
+	  1, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -278,9 +278,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 0, 1, 5,
+	  1, 7, 0, 1, 5,
 	  6, 2, 0, 5,
-	  8, 7, 1, 0, 5>
+	  1, 7, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -289,9 +289,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 7, 1, 0, 5,
+	  1, 7, 1, 0, 5,
 	  6, 2, 0, 5,
-	  8, 7, 1, 0, 5>
+	  1, 7, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -302,9 +302,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  8, 6, 2, 1, 5,
+	  1, 6, 2, 1, 5,
 	  6, 2, 0, 5,
-	  8, 6, 2, 2, 5>
+	  1, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -313,9 +313,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINT
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, true, false, 9,
-	  8, 6, 1, 2, 5,
+	  1, 6, 1, 2, 5,
 	  6, 2, 0, 5,
-	  8, 5, 2, 2, 5>
+	  1, 5, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -324,9 +324,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  8, 5, 2, 0, 5,
+	  1, 5, 2, 0, 5,
 	  6, 2, 0, 5,
-	  8, 6, 1, 1, 5>
+	  1, 6, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -335,9 +335,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POI
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 6,
-	  8, 5, 0, 1, 5,
+	  1, 5, 0, 1, 5,
 	  6, 2, 0, 5,
-	  8, 5, 1, 0, 5>
+	  1, 5, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -368,7 +368,7 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, LARGE_TYPE, POIN
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep::MIN_CTA_OCCUPANCY))
 __global__ void TunedUpsweepKernel(
 	typename ProblemType::T 									*d_in,
 	typename ProblemType::T 									*d_spine,
@@ -397,7 +397,7 @@ __global__ void TunedUpsweepKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Spine::MIN_CTA_OCCUPANCY))
 __global__ void TunedSpineKernel(
 	typename ProblemType::T				*d_in,
 	typename ProblemType::T				*d_out,
@@ -427,7 +427,7 @@ __global__ void TunedSpineKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Downsweep::MIN_CTA_OCCUPANCY))
 __global__ void TunedDownsweepKernel(
 	typename ProblemType::T 				*d_in,
 	typename ProblemType::T 				*d_out,
@@ -459,7 +459,7 @@ __global__ void TunedDownsweepKernel(
 template <typename ProblemType, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::THREADS),
-	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::CTA_OCCUPANCY))
+	(AutotunedClassifier<ProblemType, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::Single::MIN_CTA_OCCUPANCY))
 __global__ void TunedSingleKernel(
 	typename ProblemType::T				*d_in,
 	typename ProblemType::T				*d_out,

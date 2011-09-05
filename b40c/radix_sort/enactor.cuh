@@ -291,10 +291,6 @@ struct Detail
 	SizeT				num_elements;
 	int			 		max_grid_size;
 
-	// Operational details
-	util::CtaWorkDistribution<SizeT> 	work;
-	SizeT 								spine_elements;
-
 	// Constructor
 	Detail(
 		Enactor *enactor,
@@ -371,7 +367,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
-			LargePolicy::Upsweep::MAX_CTA_OCCUPANCY *
+			B40C_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		if (detail.num_elements < saturating_load) {
@@ -411,7 +407,11 @@ struct PassIteration
 		template <typename Detail>
 		static cudaError_t Invoke(Detail &detail)
 		{
-			typedef PassPolicy<CURRENT_PASS, CURRENT_BIT, NopKeyConversion, NopKeyConversion> PassPolicy;
+			typedef PassPolicy<
+				CURRENT_PASS,
+				CURRENT_BIT,
+				NopKeyConversion,
+				NopKeyConversion> PassPolicy;
 
 			cudaError_t retval = detail.template EnactPass<Policy, PassPolicy>();
 			if (retval) return retval;
@@ -510,27 +510,70 @@ struct PassIteration
 /**
  * Performs a radix sorting pass
  */
-template <typename Policy, typename PassPolicy, typename Detail>
+template <
+	typename Policy,
+	typename PassPolicy,
+	typename Detail>
 cudaError_t Enactor::EnactPass(Detail &detail)
 {
-	// Policy
-	typedef typename Policy::Upsweep 						Upsweep;
-	typedef typename Policy::Spine 							Spine;
-	typedef typename Policy::Downsweep 						Downsweep;
+	// Tuning policy
+	typedef typename Policy::Upsweep 					Upsweep;
+	typedef typename Policy::Spine 						Spine;
+	typedef typename Policy::Downsweep 					Downsweep;
 
 	// Data types
-	typedef typename Policy::KeyType 						KeyType;	// Converted key type
-	typedef typename Policy::SizeT 							SizeT;
+	typedef typename Policy::KeyType 					KeyType;	// Converted key type
+	typedef typename Policy::SizeT 						SizeT;
 
 	cudaError_t retval = cudaSuccess;
 	do {
-		// Kernel pointers
-		typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::template UpsweepKernel<PassPolicy>();
-		typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-		typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
+		if (ENACTOR_DEBUG) {
+			printf("Pass %d, Bit %d:\n", PassPolicy::CURRENT_PASS, PassPolicy::CURRENT_BIT);
+		}
 
+		// Kernel pointers
+		typename Policy::UpsweepKernelPtr 		UpsweepKernel = Policy::template UpsweepKernel<PassPolicy>();
+		typename Policy::SpineKernelPtr 		SpineKernel = Policy::SpineKernel();
+		typename Policy::DownsweepKernelPtr		DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
+
+		// Max CTA occupancy for the actual target device
+		int max_cta_occupancy;
+		if (retval = MaxCtaOccupancy(
+			max_cta_occupancy,
+			UpsweepKernel,
+			Upsweep::THREADS,
+			DownsweepKernel,
+			Downsweep::THREADS)) break;
+
+		// Compute sweep grid size
+		int sweep_grid_size = GridSize(
+			Policy::OVERSUBSCRIBED_GRID_SIZE,
+			Upsweep::SCHEDULE_GRANULARITY,
+			max_cta_occupancy,
+			detail.num_elements,
+			detail.max_grid_size);
+
+		// Compute spine elements: BIN elements per CTA, rounded
+		// up to nearest spine tile size
+		SizeT spine_elements = sweep_grid_size << Downsweep::LOG_BINS;
+		spine_elements = ((spine_elements + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
+
+		// Make sure our spine is big enough
+		if (retval = spine.Setup<SizeT>(spine_elements)) break;
+
+		// Obtain a CTA work distribution
+		util::CtaWorkDistribution<SizeT> work;
+		work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
+
+		if (ENACTOR_DEBUG) {
+			PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
+			printf("\n");
+			fflush(stdout);
+		}
+
+		// Operational details
 		int dynamic_smem[3] = 	{0, 0, 0};
-		int grid_size[3] = 		{detail.work.grid_size, 1, detail.work.grid_size};
+		int grid_size[3] = 		{sweep_grid_size, 1, sweep_grid_size};
 
 		// Tuning option: make sure all kernels have the same overall smem allocation
 		if (Policy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
@@ -544,13 +587,13 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 			(SizeT*) spine(),
 			(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector],
 			(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
-			detail.work);
+			work);
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		// Spine scan
 		SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-			(SizeT*) spine(), (SizeT*) spine(), detail.spine_elements);
+			(SizeT*) spine(), (SizeT*) spine(), spine_elements);
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
@@ -562,7 +605,7 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 			(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
 			detail.problem_storage.d_values[detail.problem_storage.selector],
 			detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
-			detail.work);
+			work);
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
@@ -609,9 +652,6 @@ cudaError_t Enactor::PreSort(Detail &detail)
 					"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[1] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
 			}
 		}
-
-		// Make sure our spine is big enough
-		if (retval = spine.Setup<SizeT>(detail.spine_elements)) break;
 
 	} while (0);
 
@@ -668,42 +708,19 @@ cudaError_t Enactor::EnactSort(Detail &detail)
 	typedef typename Policy::SizeT 		SizeT;
 
 	const int NUM_PASSES 				= (Detail::NUM_BITS + Downsweep::LOG_BINS - 1) / Downsweep::LOG_BINS;
-	const int MIN_OCCUPANCY 			= B40C_MIN((int) Upsweep::MAX_CTA_OCCUPANCY, (int) Downsweep::MAX_CTA_OCCUPANCY);
-	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
-
-	// Make sure we have a valid policy
-	if (!Policy::VALID) {
-		return cudaErrorInvalidConfiguration;
-	}
-
-	// Compute sweep grid size
-	int grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
-		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
-
-	// Compute spine elements: BIN elements per CTA, rounded
-	// up to nearest spine tile size
-	detail.spine_elements = grid_size << Downsweep::LOG_BINS;
-	detail.spine_elements = ((detail.spine_elements + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
-
-	// Obtain a CTA work distribution
-	detail.work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(
-		detail.num_elements, grid_size);
-
-	if (ENACTOR_DEBUG) {
-		printf("\n\n");
-		PrintPassInfo<Upsweep, Spine, Downsweep>(detail.work, detail.spine_elements);
-		printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d]\n",
-			Downsweep::LOG_BINS,
-			Detail::START_BIT,
-			Detail::NUM_BITS,
-			NUM_PASSES);
-		fflush(stdout);
-	}
 
 	cudaError_t retval = cudaSuccess;
-
 	do {
+
+		if (ENACTOR_DEBUG) {
+			printf("\n\n");
+			printf("Sorting: \t[radix_bits: %d, start_bit: %d, num_bits: %d, num_passes: %d]\n",
+				Downsweep::LOG_BINS,
+				Detail::START_BIT,
+				Detail::NUM_BITS,
+				NUM_PASSES);
+			fflush(stdout);
+		}
 
 		// Perform any preparation prior to sorting
 		if (retval = PreSort<Policy>(detail)) break;

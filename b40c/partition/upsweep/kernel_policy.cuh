@@ -85,7 +85,7 @@ struct KernelPolicy : TuningPolicy
 		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
 
 		// Unroll tiles in batches of X elements per thread (X = log(255) is maximum without risking overflow)
-		LOG_UNROLL_COUNT 					= 6 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
+		LOG_UNROLL_COUNT 					= 7 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
@@ -107,7 +107,11 @@ struct KernelPolicy : TuningPolicy
 	};
 	
 	enum {
-		SMEM_BYTES 							= sizeof(SmemStorage),
+		THREAD_OCCUPANCY					= B40C_SM_THREADS(CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
+		SMEM_OCCUPANCY						= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		MAX_CTA_OCCUPANCY					= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+
+		VALID								= (MAX_CTA_OCCUPANCY > 0),
 	};
 };
 

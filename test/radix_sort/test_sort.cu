@@ -196,7 +196,7 @@ void TestSort(SizeT num_elements)
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort<radix_sort::UNKNOWN_SIZE>(
+		TimedSort<radix_sort::LARGE_SIZE>(
 			device_storage, num_elements, h_keys, g_iterations);
 
 	    // Free allocated memory
@@ -215,7 +215,7 @@ void TestSort(SizeT num_elements)
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_values[0] failed: ", __FILE__, __LINE__)) exit(1);
 
-		TimedSort<radix_sort::UNKNOWN_SIZE>(device_storage, num_elements, h_keys, g_iterations);
+		TimedSort<radix_sort::LARGE_SIZE>(device_storage, num_elements, h_keys, g_iterations);
 
 	    // Free allocated memory
 	    if (device_storage.d_keys[0]) cudaFree(device_storage.d_keys[0]);

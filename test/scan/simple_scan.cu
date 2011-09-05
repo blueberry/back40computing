@@ -184,10 +184,10 @@ int main(int argc, char** argv)
 		false, 
 		false,
 		false,
-		6,
-		8, 7, 1, 0, 5,
+		8,
+		1, 7, 1, 0, 5,
 		8, 0, 1, 5,
-		8, 7, 1, 0, 5> CustomPolicy;
+		1, 7, 1, 0, 5> CustomPolicy;
 	
 	scan_enactor.Scan<CustomPolicy>(d_dest, d_src, NUM_ELEMENTS, max_op, max_op);
 

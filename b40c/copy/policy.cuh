@@ -56,7 +56,7 @@ template <
 
 	// Tunable parameters
 	int _LOG_SCHEDULE_GRANULARITY,
-	int _MAX_CTA_OCCUPANCY,
+	int _MIN_CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
@@ -121,13 +121,34 @@ struct Policy
 		CHECK_ALIGNMENT					= 1,
 
 		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		CTA_OCCUPANCY  					= B40C_MIN(_MAX_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY  				= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY),
+		MIN_CTA_OCCUPANCY				= _MIN_CTA_OCCUPANCY,
 
 		WORK_STEALING				 	= _WORK_STEALING,
 		OVERSUBSCRIBED_GRID_SIZE		= _OVERSUBSCRIBED_GRID_SIZE,
 
-		VALID 							= (CTA_OCCUPANCY > 0)
+		VALID 							= (MAX_CTA_OCCUPANCY > 0)
 	};
+
+
+	static void Print()
+	{
+		// ProblemType type parameters
+		printf("%d, ", sizeof(T));
+		printf("%d, ", sizeof(SizeT));
+		printf("%d, ", CUDA_ARCH);
+
+		// Tunable parameters
+		printf("%d, ", _LOG_SCHEDULE_GRANULARITY);
+		printf("%d, ", _MIN_CTA_OCCUPANCY);
+		printf("%d, ", _LOG_THREADS);
+		printf("%d, ", _LOG_LOAD_VEC_SIZE);
+		printf("%d, ", _LOG_LOADS_PER_TILE);
+		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", (WORK_STEALING) ? "true" : "false");
+		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");
+	}
 };
 		
 

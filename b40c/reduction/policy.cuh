@@ -62,7 +62,7 @@ template <
 	bool _OVERSUBSCRIBED_GRID_SIZE,
 
 	// Upsweep tunable params
-	int UPSWEEP_MAX_CTA_OCCUPANCY,
+	int UPSWEEP_MIN_CTA_OCCUPANCY,
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
@@ -98,7 +98,7 @@ struct Policy : ProblemType
 		ProblemType,
 		CUDA_ARCH,
 		true,								// Check alignment
-		UPSWEEP_MAX_CTA_OCCUPANCY,
+		UPSWEEP_MIN_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -173,21 +173,30 @@ struct Policy : ProblemType
 
 	static void Print()
 	{
-		printf("%s, %s, %s, %s, %s, %s, %d, %d, %d, %d, %d, %d, %d, %d",
-			CacheModifierToString((int) READ_MODIFIER),
-			CacheModifierToString((int) WRITE_MODIFIER),
-			(WORK_STEALING) ? "true" : "false",
-			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
-			(UNIFORM_GRID_SIZE) ? "true" : "false",
-			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
-			UPSWEEP_MAX_CTA_OCCUPANCY,
-			UPSWEEP_LOG_THREADS,
-			UPSWEEP_LOG_LOAD_VEC_SIZE,
-			UPSWEEP_LOG_LOADS_PER_TILE,
-			UPSWEEP_LOG_SCHEDULE_GRANULARITY,
-			SPINE_LOG_THREADS,
-			SPINE_LOG_LOAD_VEC_SIZE,
-			SPINE_LOG_LOADS_PER_TILE);
+		// ProblemType type parameters
+		printf("%d, ", sizeof(T));
+		printf("%d, ", sizeof(SizeT));
+		printf("%d, ", CUDA_ARCH);
+
+		// Common tunable params
+		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", (WORK_STEALING) ? "true" : "false");
+		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
+		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");
+		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");
+
+		// Upsweep tunable params
+		printf("%d, ", UPSWEEP_MIN_CTA_OCCUPANCY);
+		printf("%d, ", UPSWEEP_LOG_THREADS);
+		printf("%d, ", UPSWEEP_LOG_LOAD_VEC_SIZE);
+		printf("%d, ", UPSWEEP_LOG_LOADS_PER_TILE);
+		printf("%d, ", UPSWEEP_LOG_SCHEDULE_GRANULARITY);
+
+		// Spine tunable params
+		printf("%d, ", SPINE_LOG_THREADS);
+		printf("%d, ", SPINE_LOG_LOAD_VEC_SIZE);
+		printf("%d, ", SPINE_LOG_LOADS_PER_TILE);
 	}
 };
 		

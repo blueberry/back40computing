@@ -272,7 +272,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
-			LargePolicy::Upsweep::CTA_OCCUPANCY *
+			B40C_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		if (detail.num_elements < saturating_load) {
@@ -309,53 +309,67 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	typedef typename Policy::Spine 			Spine;
 	typedef typename Policy::Single			Single;
 
-	// Make sure we have a valid policy
-	if (!Policy::VALID) {
-		return cudaErrorInvalidConfiguration;
-	}
-
-	// Compute sweep grid size
-	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
-		OccupiedGridSize<Upsweep::SCHEDULE_GRANULARITY, Upsweep::CTA_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
-
-	// Use single-CTA kernel instead of multi-pass if problem is small enough
-	if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
-		sweep_grid_size = 1;
-	}
-
-	// Compute spine elements: one element per CTA, rounded
-	// up to nearest spine tile size
-	int spine_elements = sweep_grid_size;
-
-	// Obtain a CTA work distribution
-	util::CtaWorkDistribution<SizeT> work;
-	work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
-
-	if (ENACTOR_DEBUG) {
-		if (sweep_grid_size > 1) {
-			PrintPassInfo<Upsweep, Spine>(work, spine_elements);
-		} else {
-			PrintPassInfo<Single>(work);
-		}
-	}
-
 	cudaError_t retval = cudaSuccess;
 	do {
+
+		// Make sure we have a valid policy
+		if (!Policy::VALID) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Enactor invalid policy", __FILE__, __LINE__);
+			break;
+		}
+
+		// Kernels
+		typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
+
+		// Max CTA occupancy for the actual target device
+		int max_cta_occupancy;
+		if (retval = MaxCtaOccupancy(max_cta_occupancy, UpsweepKernel, Upsweep::THREADS)) break;
+
+		// Compute sweep grid size
+		int sweep_grid_size = GridSize(
+			Policy::OVERSUBSCRIBED_GRID_SIZE,
+			Upsweep::SCHEDULE_GRANULARITY,
+			max_cta_occupancy,
+			detail.num_elements,
+			detail.max_grid_size);
+
+		// Use single-CTA kernel instead of multi-pass if problem is small enough
+		if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
+			sweep_grid_size = 1;
+		}
+
+		// Compute spine elements: one element per CTA, rounded
+		// up to nearest spine tile size
+		int spine_elements = sweep_grid_size;
+
+		// Obtain a CTA work distribution
+		util::CtaWorkDistribution<SizeT> work;
+		work.template Init<Upsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
+
+		if (ENACTOR_DEBUG) {
+			if (sweep_grid_size > 1) {
+				PrintPassInfo<Upsweep, Spine>(work, spine_elements);
+			} else {
+				PrintPassInfo<Single>(work);
+			}
+		}
+
 		if (work.grid_size == 1) {
 
 			// Single-CTA, single-grid operation
 			typename Policy::SingleKernelPtr SingleKernel = Policy::SingleKernel();
 
 			SingleKernel<<<1, Single::THREADS, 0>>>(
-				detail.d_src, detail.d_dest, work.num_elements, detail.reduction_op);
+				detail.d_src,
+				detail.d_dest,
+				work.num_elements,
+				detail.reduction_op);
 
 			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		} else {
 
 			// Upsweep-downsweep operation
-			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
 
 			// If we're work-stealing, make sure our work progress is set up
@@ -378,13 +392,20 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			// Upsweep reduction into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				detail.d_src, (T*) spine(), detail.reduction_op, work, work_progress);
+				detail.d_src,
+				(T*) spine(),
+				detail.reduction_op,
+				work,
+				work_progress);
 
 			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 			// Spine reduction
 			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(T*) spine(), detail.d_dest, spine_elements, detail.reduction_op);
+				(T*) spine(),
+				detail.d_dest,
+				spine_elements,
+				detail.reduction_op);
 
 			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 		}
