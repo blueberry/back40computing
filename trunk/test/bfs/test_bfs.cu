@@ -757,6 +757,7 @@ void RunTests(
 				printf("\n");
 				fflush(stdout);
 			}
+
 		}
 
 		if (g_verbose2) {
@@ -855,6 +856,11 @@ int main( int argc, char** argv)
 	}
 	int flags = args.ParsedArgc();
 	int graph_args = argc - flags - 1;
+
+	if ((num_gpus > 1) && (__B40C_LP64__ == 0)) {
+		printf("Must be compiled in 64-bit to run multiple GPUs\n");
+		exit(1);
+	}
 
 	// Enable symmetric peer access between gpus
 	for (int gpu = 0; gpu < num_gpus; gpu++) {

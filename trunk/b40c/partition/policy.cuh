@@ -57,7 +57,6 @@ template <
 	util::io::st::CacheModifier WRITE_MODIFIER,
 	
 	// Spine-scan
-	int SPINE_CTA_OCCUPANCY,
 	int SPINE_LOG_THREADS,
 	int SPINE_LOG_LOAD_VEC_SIZE,
 	int SPINE_LOG_LOADS_PER_TILE,

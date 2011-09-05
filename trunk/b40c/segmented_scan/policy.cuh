@@ -62,7 +62,7 @@ template <
 	int LOG_SCHEDULE_GRANULARITY,
 
 	// Upsweep tunable params
-	int UPSWEEP_MAX_CTA_OCCUPANCY,
+	int UPSWEEP_MIN_CTA_OCCUPANCY,
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
@@ -75,7 +75,7 @@ template <
 	int SPINE_LOG_RAKING_THREADS,
 
 	// Downsweep tunable params
-	int DOWNSWEEP_MAX_CTA_OCCUPANCY,
+	int DOWNSWEEP_MIN_CTA_OCCUPANCY,
 	int DOWNSWEEP_LOG_THREADS,
 	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 	int DOWNSWEEP_LOG_LOADS_PER_TILE,
@@ -109,7 +109,7 @@ struct Policy : ProblemType
 		false,								// Not final kernel
 		CUDA_ARCH,
 		true,								// Check alignment
-		UPSWEEP_MAX_CTA_OCCUPANCY,
+		UPSWEEP_MIN_CTA_OCCUPANCY,
 		UPSWEEP_LOG_THREADS,
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
@@ -141,7 +141,7 @@ struct Policy : ProblemType
 		true,								// Final kernel
 		CUDA_ARCH,
 		true,								// Check alignment
-		DOWNSWEEP_MAX_CTA_OCCUPANCY,
+		DOWNSWEEP_MIN_CTA_OCCUPANCY,
 		DOWNSWEEP_LOG_THREADS,
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 		DOWNSWEEP_LOG_LOADS_PER_TILE,
@@ -201,34 +201,39 @@ struct Policy : ProblemType
 
 	static void Print()
 	{
-		printf("%s, %s, %s, %s, %s, %d, "
-				"%d, %d, %d, %d, %d, "
-				"%d, %d, %d, %d, "
-				"%d, %d, %d, %d, %d",
+		// ProblemType type parameters
+		printf("%d, ", sizeof(T));
+		printf("%d, ", sizeof(Flag));
+		printf("%d, ", sizeof(SizeT));
+		printf("%d, ", CUDA_ARCH);
 
-			CacheModifierToString((int) READ_MODIFIER),
-			CacheModifierToString((int) WRITE_MODIFIER),
-			(UNIFORM_SMEM_ALLOCATION) ? "true" : "false",
-			(UNIFORM_GRID_SIZE) ? "true" : "false",
-			(OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false",
-			LOG_SCHEDULE_GRANULARITY,
+		// Common tunable params
+		printf("%s, ", CacheModifierToString(READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(WRITE_MODIFIER));
+		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
+		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");
+		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");
+		printf("%d, ", LOG_SCHEDULE_GRANULARITY);
 
-			UPSWEEP_MAX_CTA_OCCUPANCY,
-			UPSWEEP_LOG_THREADS,
-			UPSWEEP_LOG_LOAD_VEC_SIZE,
-			UPSWEEP_LOG_LOADS_PER_TILE,
-			UPSWEEP_LOG_RAKING_THREADS,
+		// Upsweep tunable params
+		printf("%d, ", UPSWEEP_MIN_CTA_OCCUPANCY);
+		printf("%d, ", UPSWEEP_LOG_THREADS);
+		printf("%d, ", UPSWEEP_LOG_LOAD_VEC_SIZE);
+		printf("%d, ", UPSWEEP_LOG_LOADS_PER_TILE);
+		printf("%d, ", UPSWEEP_LOG_RAKING_THREADS);
 
-			SPINE_LOG_THREADS,
-			SPINE_LOG_LOAD_VEC_SIZE,
-			SPINE_LOG_LOADS_PER_TILE,
-			SPINE_LOG_RAKING_THREADS,
+		// Spine tunable params
+		printf("%d, ", SPINE_LOG_THREADS);
+		printf("%d, ", SPINE_LOG_LOAD_VEC_SIZE);
+		printf("%d, ", SPINE_LOG_LOADS_PER_TILE);
+		printf("%d, ", SPINE_LOG_RAKING_THREADS);
 
-			DOWNSWEEP_MAX_CTA_OCCUPANCY,
-			DOWNSWEEP_LOG_THREADS,
-			DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-			DOWNSWEEP_LOG_LOADS_PER_TILE,
-			DOWNSWEEP_LOG_RAKING_THREADS);
+		// Upsweep tunable params
+		printf("%d, ", DOWNSWEEP_MIN_CTA_OCCUPANCY);
+		printf("%d, ", DOWNSWEEP_LOG_THREADS);
+		printf("%d, ", DOWNSWEEP_LOG_LOAD_VEC_SIZE);
+		printf("%d, ", DOWNSWEEP_LOG_LOADS_PER_TILE);
+		printf("%d, ", DOWNSWEEP_LOG_RAKING_THREADS);
 	}
 };
 		

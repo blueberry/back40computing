@@ -64,11 +64,7 @@ struct ModifiedStore
 	 * Store operation we will provide specializations for
 	 */
 	template <typename T>
-	__device__ __forceinline__ static void St(T val, T *ptr)
-	{
-		*ptr = val;
-	}
-
+	__device__ __forceinline__ static void St(T val, T *ptr);
 
 	/**
 	 * Vec-4 stores for 64-bit types are implemented as two vec-2 stores
@@ -96,23 +92,47 @@ struct ModifiedStore
 
 #if __CUDA_ARCH__ >= 200
 
+	/**
+	 * Specialization for NONE modifier
+	 */
+	template <>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedStore<st::NONE>::St(T val, T *ptr)
+	{
+		*ptr = val;
+	}
 
 	/**
-	 * Vector store ops
+	 * Singleton store op
 	 */
-	#define B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define B40C_STORE(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
 		}
 
-	#define B40C_STORE_VEC2(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	/**
+	 * Vector store ops
+	 */
+	#define B40C_STORE_VEC1(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
-			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)));		\
+			component_type c = val.x;																											\
+			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(c)));			\
 		}
 
-	#define B40C_STORE_VEC4(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define B40C_STORE_VEC2(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
-			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val.x)), #reg_mod(reinterpret_cast<cast_type&>(val.y)), #reg_mod(reinterpret_cast<cast_type&>(val.z)), #reg_mod(reinterpret_cast<cast_type&>(val.w)));		\
+			component_type cx = val.x;																											\
+			component_type cy = val.y;																											\
+			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)));		\
+		}
+
+	#define B40C_STORE_VEC4(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
+			component_type cx = val.x;																											\
+			component_type cy = val.y;																											\
+			component_type cz = val.z;																											\
+			component_type cw = val.w;																											\
+			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)), #reg_mod(reinterpret_cast<cast_type&>(cz)), #reg_mod(reinterpret_cast<cast_type&>(cw)));		\
 		}
 
 
@@ -120,26 +140,24 @@ struct ModifiedStore
 	 * Defines specialized store ops for only the base type
 	 */
 	#define B40C_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)		\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)		\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, wb)		\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)
+		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cg)		\
+		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, wb)		\
+		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cs)
 
 
 	/**
 	 * Defines specialized store ops for the base type and for its derivative vec1 and vec2 types
 	 */
 	#define B40C_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)		\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)									\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, wb)									\
-		B40C_STORE_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)									\
+		B40C_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)										\
 																										\
-		B40C_STORE_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cg)								\
-		B40C_STORE_VEC1(short_type##1, ptx_type, reg_mod, cast_type, wb)								\
-		B40C_STORE_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cs)								\
+		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cg)						\
+		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wb)						\
+		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cs)						\
 																										\
-		B40C_STORE_VEC2(short_type##2, ptx_type, reg_mod, cast_type, cg)								\
-		B40C_STORE_VEC2(short_type##2, ptx_type, reg_mod, cast_type, wb)								\
-		B40C_STORE_VEC2(short_type##2, ptx_type, reg_mod, cast_type, cs)
+		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cg)								\
+		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wb)								\
+		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cs)
 
 
 	/**
@@ -147,9 +165,10 @@ struct ModifiedStore
 	 */
 	#define B40C_STORE_BASE_ONE_TWO_FOUR(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)	\
 		B40C_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)				\
-		B40C_STORE_VEC4(short_type##4, ptx_type, reg_mod, cast_type, cg)									\
-		B40C_STORE_VEC4(short_type##4, ptx_type, reg_mod, cast_type, wb)									\
-		B40C_STORE_VEC4(short_type##4, ptx_type, reg_mod, cast_type, cs)
+																											\
+		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cg)									\
+		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wb)									\
+		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 
 #if CUDA_VERSION >= 4000
@@ -196,7 +215,6 @@ struct ModifiedStore
 	B40C_STORE_BASE_ONE_TWO(unsigned long, 			unsigned long, 			ulong, 		u64, l, unsigned long)
 	#endif
 
-
 	/**
 	 * Undefine macros
 	 */
@@ -210,6 +228,14 @@ struct ModifiedStore
 	#undef B40C_REG8
 	#undef B40C_REG16
 
+#else  //__CUDA_ARCH__
+
+	template <st::CacheModifier WRITE_MODIFIER>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedStore<WRITE_MODIFIER>::St(T val, T *ptr)
+	{
+		*ptr = val;
+	}
 
 #endif //__CUDA_ARCH__
 

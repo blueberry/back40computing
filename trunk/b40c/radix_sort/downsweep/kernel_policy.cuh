@@ -44,18 +44,6 @@ struct KernelPolicy :
 	partition::downsweep::KernelPolicy<TuningPolicy>,
 	PassPolicy
 {
-	typedef typename TuningPolicy::KeyType KeyType;
-
-
-	__device__ __forceinline__ static void PreprocessKey(KeyType &key)
-	{
-		PassPolicy::PreprocessTraits::Preprocess(key);
-	}
-
-	__device__ __forceinline__ static void PostprocessKey(KeyType &key)
-	{
-		PassPolicy::PostprocessTraits::Postprocess(key);
-	}
 };
 	
 

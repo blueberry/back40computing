@@ -322,7 +322,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
-			LargePolicy::Upsweep::CTA_OCCUPANCY *
+			B40C_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		if (detail.num_elements < saturating_load) {
@@ -364,48 +364,63 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	typedef typename Policy::Downsweep 			Downsweep;
 	typedef typename Policy::Single 			Single;
 
-	const int MIN_OCCUPANCY = B40C_MIN((int) Upsweep::CTA_OCCUPANCY, (int) Downsweep::CTA_OCCUPANCY);
-	util::SuppressUnusedConstantWarning(MIN_OCCUPANCY);
-
-	// Make sure we have a valid policy
-	if (!Policy::VALID) {
-		return cudaErrorInvalidConfiguration;
-	}
-
-	// Compute sweep grid size
-	int sweep_grid_size = (Policy::OVERSUBSCRIBED_GRID_SIZE) ?
-		OversubscribedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size) :
-		OccupiedGridSize<Downsweep::SCHEDULE_GRANULARITY, MIN_OCCUPANCY>(detail.num_elements, detail.max_grid_size);
-
-	// Use single-CTA kernel instead of multi-pass if problem is small enough
-	if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
-		sweep_grid_size = 1;
-	}
-
-	// Compute spine elements: one element per CTA plus 1 extra for total, rounded
-	// up to nearest spine tile size
-	SpineSizeT spine_elements = ((sweep_grid_size + 1 + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) *
-		Spine::TILE_ELEMENTS;
-
-	// Obtain a CTA work distribution
-	util::CtaWorkDistribution<SizeT> work;
-	work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
-
-	if (ENACTOR_DEBUG) {
-		if (sweep_grid_size > 1) {
-			PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
-		} else {
-			PrintPassInfo<Single>(work);
-		}
-	}
-
-	if (detail.d_num_compacted == NULL) {
-		// Write out compacted size to the last element of our flag spine instead
-		detail.d_num_compacted = ((SizeT*) flag_spine()) + spine_elements - 1;
-	}
-
 	cudaError_t retval = cudaSuccess;
 	do {
+
+		// Make sure we have a valid policy
+		if (!Policy::VALID) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Enactor invalid policy", __FILE__, __LINE__);
+			break;
+		}
+
+		// Kernels
+		typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
+		typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
+
+		// Max CTA occupancy for the actual target device
+		int max_cta_occupancy;
+		if (retval = MaxCtaOccupancy(
+			max_cta_occupancy,
+			UpsweepKernel,
+			Upsweep::THREADS,
+			DownsweepKernel,
+			Downsweep::THREADS)) break;
+
+		// Compute sweep grid size
+		int sweep_grid_size = GridSize(
+			Policy::OVERSUBSCRIBED_GRID_SIZE,
+			Upsweep::SCHEDULE_GRANULARITY,
+			max_cta_occupancy,
+			detail.num_elements,
+			detail.max_grid_size);
+
+		// Use single-CTA kernel instead of multi-pass if problem is small enough
+		if (detail.num_elements <= Single::TILE_ELEMENTS * 3) {
+			sweep_grid_size = 1;
+		}
+
+		// Compute spine elements: one element per CTA plus 1 extra for total, rounded
+		// up to nearest spine tile size
+		SpineSizeT spine_elements = ((sweep_grid_size + 1 + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) *
+			Spine::TILE_ELEMENTS;
+
+		// Obtain a CTA work distribution
+		util::CtaWorkDistribution<SizeT> work;
+		work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
+
+		if (ENACTOR_DEBUG) {
+			if (sweep_grid_size > 1) {
+				PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
+			} else {
+				PrintPassInfo<Single>(work);
+			}
+		}
+
+		if (detail.d_num_compacted == NULL) {
+			// If we're to output the compacted sizes to device memory, write out
+			// compacted size to the last element of our flag spine instead
+			detail.d_num_compacted = ((SizeT*) flag_spine()) + spine_elements - 1;
+		}
 
 		if (work.grid_size == 1) {
 
@@ -427,9 +442,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		} else {
 
 			// Upsweep-downsweep operation
-			typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-			typename Policy::DownsweepKernelPtr DownsweepKernel = Policy::DownsweepKernel();
 
 			// Make sure our spine is big enough
 			if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;

@@ -61,7 +61,7 @@ template <typename T, int vec_elements> struct VecType;
 template <typename T> 
 struct VecType<T, 1> {
 	T x;
-	typedef T Type;
+	typedef VecType<T, 1> Type;
 };
 
 /**

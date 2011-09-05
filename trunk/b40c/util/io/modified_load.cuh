@@ -57,14 +57,14 @@ namespace ld {
 /**
  * TODO: replace this with something better
  */
-#define CacheModifierToString(modifier)	(	(modifier == b40c::util::io::ld::NONE) ? 	"NONE" :	\
-											(modifier == b40c::util::io::ld::cg) ? 		"cg" :		\
-											(modifier == b40c::util::io::ld::ca) ? 		"ca" :		\
-											(modifier == b40c::util::io::ld::cs) ? 		"cs" :		\
-											(modifier == b40c::util::io::st::NONE) ? 	"NONE" :	\
-											(modifier == b40c::util::io::st::cg) ? 		"cg" :		\
-											(modifier == b40c::util::io::st::wb) ? 		"wb" :		\
-											(modifier == b40c::util::io::st::cs) ? 		"cs" :		\
+#define CacheModifierToString(modifier)	(	(modifier == b40c::util::io::ld::NONE) ? 	"util::io::ld::NONE" :	\
+											(modifier == b40c::util::io::ld::cg) ? 		"util::io::ld::cg" :		\
+											(modifier == b40c::util::io::ld::ca) ? 		"util::io::ld::ca" :		\
+											(modifier == b40c::util::io::ld::cs) ? 		"util::io::ld::cs" :		\
+											(modifier == b40c::util::io::st::NONE) ? 	"util::io::st::NONE" :	\
+											(modifier == b40c::util::io::st::cg) ? 		"util::io::st::cg" :		\
+											(modifier == b40c::util::io::st::wb) ? 		"util::io::st::wb" :		\
+											(modifier == b40c::util::io::st::cs) ? 		"util::io::st::cs" :		\
 																						"<ERROR>")
 
 /**
@@ -104,13 +104,30 @@ struct ModifiedLoad
 
 #if __CUDA_ARCH__ >= 200
 
+	/**
+	 * Specialization for NONE modifier
+	 */
+	template <>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
+	{
+		val = *ptr;
+	}
+
+	/**
+	 * Singleton store op
+	 */
+	#define B40C_LOAD(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+		template<> template<> void ModifiedLoad<ld::modifier>::Ld(base_type &val, base_type* ptr) {												\
+			asm("ld.global."#modifier"."#ptx_type" %0, [%1];" : "="#reg_mod(reinterpret_cast<cast_type&>(val)) : _B40C_ASM_PTR_(ptr));			\
+		}																																		\
 
 	/**
 	 * Vector load ops
 	 */
 	#define B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedLoad<ld::modifier>::Ld(base_type &val, base_type* ptr) {												\
-			asm("ld.global."#modifier"."#ptx_type" %0, [%1];" : "="#reg_mod(reinterpret_cast<cast_type&>(val)) : _B40C_ASM_PTR_(ptr));			\
+			asm("ld.global."#modifier"."#ptx_type" %0, [%1];" : "="#reg_mod(reinterpret_cast<cast_type&>(val.x)) : _B40C_ASM_PTR_(ptr));			\
 		}																																		\
 
 	#define B40C_LOAD_VEC2(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
@@ -128,18 +145,16 @@ struct ModifiedLoad
 	 * Defines specialized load ops for only the base type
 	 */
 	#define B40C_LOAD_BASE(base_type, ptx_type, reg_mod, cast_type)		\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)		\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, ca)		\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)
+		B40C_LOAD(base_type, ptx_type, reg_mod, cast_type, cg)			\
+		B40C_LOAD(base_type, ptx_type, reg_mod, cast_type, ca)			\
+		B40C_LOAD(base_type, ptx_type, reg_mod, cast_type, cs)
 
 
 	/**
 	 * Defines specialized load ops for the base type and for its derivative vec1 and vec2 types
 	 */
 	#define B40C_LOAD_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)	\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cg)									\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, ca)									\
-		B40C_LOAD_VEC1(base_type, ptx_type, reg_mod, cast_type, cs)									\
+		B40C_LOAD_BASE(base_type, ptx_type, reg_mod, cast_type)										\
 																									\
 		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, cg)								\
 		B40C_LOAD_VEC1(short_type##1, ptx_type, reg_mod, cast_type, ca)								\
@@ -218,13 +233,6 @@ struct ModifiedLoad
 	#undef B40C_REG8
 	#undef B40C_REG16
 
-
-	template <>
-	template <typename T>
-	__device__ __forceinline__ void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
-	{
-		val = *ptr;
-	}
 
 
 #else  //__CUDA_ARCH__

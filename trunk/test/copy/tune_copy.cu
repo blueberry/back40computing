@@ -27,7 +27,7 @@
 #include <stdio.h> 
 
 // Copy includes
-#include <b40c/copy/problem_config.cuh>
+#include <b40c/copy/policy.cuh>
 #include <b40c/copy/enactor.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
@@ -67,6 +67,8 @@ void Usage()
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-words>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
+	printf("\n");
+	printf("\t--verify\tChecks the result.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the copy operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Default = 1\n");
@@ -108,7 +110,7 @@ enum TuningParam {
  * 		- Wrapping problem type and storage
  * 		- Providing call-back for parameter-list generation
  */
-template <typename T>
+template <typename T, typename SizeT>
 class TuneEnactor : public copy::Enactor
 {
 public:
@@ -117,7 +119,7 @@ public:
 	T *d_src;
 	T *h_data;
 	T *h_reference;
-	size_t num_elements;
+	SizeT num_elements;
 
 	/**
 	 * Ranges for the tuning params
@@ -190,79 +192,100 @@ public:
 	/**
 	 * Constructor
 	 */
-	TuneEnactor(size_t num_elements) :
-		copy::Enactor(), d_dest(NULL), d_src(NULL), h_data(NULL), h_reference(NULL), num_elements(num_elements) {}
+	TuneEnactor(SizeT num_elements) :
+		copy::Enactor(),
+		d_dest(NULL),
+		d_src(NULL),
+		h_data(NULL),
+		h_reference(NULL),
+		num_elements(num_elements) {}
 
 
 	/**
 	 * Timed scan for applying a specific granularity configuration type
 	 */
-	template <typename ProblemConfig>
-	void TimedCopy()
+	template <typename Policy, int EST_REGS_OCCUPANCY>
+	struct TimedCopy
 	{
-		printf("%lu, ", (unsigned long) sizeof(T));
-		ProblemConfig::Print();
-		fflush(stdout);
+		template <typename Enactor>
+		static void Invoke(Enactor *enactor)
+		{
+			Policy::Print();
+			fflush(stdout);
 
-		// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-		this->ENACTOR_DEBUG = g_verbose;
-		if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
-			exit(1);
-		}
-		this->ENACTOR_DEBUG = false;
-
-		// Perform the timed number of iterations
-
-		cudaEvent_t start_event, stop_event;
-		cudaEventCreate(&start_event);
-		cudaEventCreate(&stop_event);
-
-		double elapsed = 0;
-		float duration = 0;
-		for (int i = 0; i < g_iterations; i++) {
-
-			// Start cuda timing record
-			cudaEventRecord(start_event, 0);
-
-			// Call the scan API routine
-			if (this->template Enact<ProblemConfig>(d_dest, d_src, num_elements, g_max_ctas)) {
+			// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
+			enactor->ENACTOR_DEBUG = g_verbose;
+			if (enactor->template Copy<Policy>(
+					enactor->d_dest,
+					enactor->d_src,
+					enactor->num_elements,
+					g_max_ctas))
+			{
 				exit(1);
 			}
+			enactor->ENACTOR_DEBUG = false;
 
-			// End cuda timing record
-			cudaEventRecord(stop_event, 0);
-			cudaEventSynchronize(stop_event);
-			cudaEventElapsedTime(&duration, start_event, stop_event);
-			elapsed += (double) duration;
+			// Perform the timed number of iterations
+			GpuTimer timer;
+			for (int i = 0; i < g_iterations; i++) {
 
-			// Flushes any stdio from the GPU
-			cudaThreadSynchronize();
+				// Start cuda timing record
+				timer.Start();
+
+				// Call the scan API routine
+				if (enactor->template Copy<Policy>(
+					enactor->d_dest,
+					enactor->d_src,
+					enactor->num_elements,
+					g_max_ctas))
+				{
+					exit(1);
+				}
+
+				// End cuda timing record
+				timer.Stop();
+
+				// Flushes any stdio from the GPU
+				if (util::B40CPerror(cudaThreadSynchronize(), "TimedCopy cudaThreadSynchronize failed: ", __FILE__, __LINE__)) {
+					exit(1);
+				}
+			}
+
+			// Display timing information
+			double avg_runtime = double(timer.ElapsedMillis()) / g_iterations;
+			double throughput =  0.0;
+			if (avg_runtime > 0.0) throughput = ((double) enactor->num_elements) / avg_runtime / 1000.0 / 1000.0;
+			printf(", %f, %f, %f, ",
+				avg_runtime, throughput, throughput * sizeof(T) * 2);
+			fflush(stdout);
+
+			if (g_verify) {
+				// Copy out data
+				if (util::B40CPerror(cudaMemcpy(
+						enactor->h_data,
+						enactor->d_dest, sizeof(T) *
+						enactor->num_elements, cudaMemcpyDeviceToHost),
+					"TimedCopy cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+				// Verify solution
+				CompareResults<T>(
+					enactor->h_data,
+					enactor->h_reference,
+					enactor->num_elements, true);
+			}
+
+			printf("\n");
+			fflush(stdout);
 		}
+	};
 
-		// Display timing information
-		double avg_runtime = elapsed / g_iterations;
-		double throughput =  0.0;
-		if (avg_runtime > 0.0) throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-	    printf(", %f, %f, %f, ",
-			avg_runtime, throughput, throughput * sizeof(T) * 2);
-	    fflush(stdout);
+	template <typename Policy>
+	struct TimedCopy<Policy, 0>
+	{
+		template <typename Enactor>
+		static void Invoke(Enactor *enactor) {}
+	};
 
-	    // Clean up events
-		cudaEventDestroy(start_event);
-		cudaEventDestroy(stop_event);
-
-		if (g_verify) {
-			// Copy out data
-			if (util::B40CPerror(cudaMemcpy(h_data, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-				"TimedCopy cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
-	
-			// Verify solution
-			CompareResults<T>(h_data, h_reference, num_elements, true);
-		}
-	
-		printf("\n");
-		fflush(stdout);
-	}
 
 
 	/**
@@ -286,36 +309,35 @@ public:
 			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE;
-		const int C_MAX_CTA_OCCUPANCY =
-//			util::Access<ParamList, MAX_CTA_OCCUPANCY>::VALUE;
-			B40C_MIN((B40C_SM_THREADS(TUNE_ARCH) / (1 << C_LOG_THREADS)),
-				B40C_MIN(B40C_SM_REGISTERS(TUNE_ARCH) / ((1 << (C_LOG_THREADS + C_LOG_LOAD_VEC_SIZE + C_LOG_LOADS_PER_TILE)) + 2),
-					B40C_SM_CTAS(TUNE_ARCH)));
-
+		const int C_MIN_CTA_OCCUPANCY = 1;
 		const int C_LOG_SCHEDULE_GRANULARITY =
 			C_LOG_LOADS_PER_TILE +
 			C_LOG_LOAD_VEC_SIZE +
 			C_LOG_THREADS;
 
 		// Establish the granularity configuration type
-		typedef copy::ProblemConfig <
+		typedef copy::Policy <
 			T,
-			size_t,
+			SizeT,
 			TUNE_ARCH,
 
-			(util::io::ld::CacheModifier) C_READ_MODIFIER,
-			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
-			C_WORK_STEALING,
-			C_OVERSUBSCRIBED_GRID_SIZE,
-
-			C_MAX_CTA_OCCUPANCY,
+			C_LOG_SCHEDULE_GRANULARITY,
+			C_MIN_CTA_OCCUPANCY,
 			C_LOG_THREADS,
 			C_LOG_LOAD_VEC_SIZE,
 			C_LOG_LOADS_PER_TILE,
-			C_LOG_SCHEDULE_GRANULARITY> ProblemConfig;
+			(util::io::ld::CacheModifier) C_READ_MODIFIER,
+			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
+			C_WORK_STEALING,
+			C_OVERSUBSCRIBED_GRID_SIZE> Policy;
+
+		const int REG_MULTIPLIER = (sizeof(T) + 3) / 4;
+		const int TILE_ELEMENTS_PER_THREAD = 1 << (C_LOG_THREADS + C_LOG_LOAD_VEC_SIZE + C_LOG_LOADS_PER_TILE);
+		const int REGS_ESTIMATE = (REG_MULTIPLIER * TILE_ELEMENTS_PER_THREAD) + 2;
+		const int EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / REGS_ESTIMATE;
 
 		// Invoke this config
-		TimedCopy<ProblemConfig>();
+		TimedCopy<Policy, EST_REGS_OCCUPANCY>::Invoke(this);
 	}
 };
 
@@ -324,11 +346,11 @@ public:
  * Creates an example scan problem and then dispatches the problem
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T>
-void TestCopy(size_t num_elements)
+template<typename T, typename SizeT>
+void TestCopy(SizeT num_elements)
 {
 	// Allocate storage and enactor
-	typedef TuneEnactor<T> Detail;
+	typedef TuneEnactor<T, SizeT> Detail;
 	Detail detail(num_elements);
 
 	if (util::B40CPerror(cudaMalloc((void**) &detail.d_src, sizeof(T) * num_elements),
@@ -346,7 +368,7 @@ void TestCopy(size_t num_elements)
 		exit(1);
 	}
 
-	for (size_t i = 0; i < num_elements; ++i) {
+	for (SizeT i = 0; i < num_elements; ++i) {
 		// util::RandomBits<T>(detail.h_data[i], 0);
 		detail.h_data[i] = i;
 		detail.h_reference[i] = detail.h_data[i];
@@ -387,7 +409,7 @@ int main(int argc, char** argv)
 	//srand(time(NULL));
 	srand(0);				// presently deterministic
 
-    size_t num_elements 								= 1024;
+    int num_elements 								= 1024;
 
 	// Check command line arguments
     if (args.CheckCmdLineFlag("help")) {
@@ -407,27 +429,36 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, OVERSUBSCRIBED_GRID_SIZE, "
-		"MAX_CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, LOG_SCHEDULE_GRANULARITY, "
+	printf("sizeof(T), sizeof(SizeT), CUDA_ARCH, "
+		"LOG_SCHEDULE_GRANULARITY, MIN_CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, "
+		"READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, OVERSUBSCRIBED_GRID_SIZE, "
 		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
 
 	// Execute test(s)
+#if (TUNE_SIZE == 0) || (TUNE_SIZE == 1)
 	{
 		typedef unsigned char T;
 		TestCopy<T>(num_elements * 4);
 	}
+#endif
+#if (TUNE_SIZE == 0) || (TUNE_SIZE == 2)
 	{
 		typedef unsigned short T;
 		TestCopy<T>(num_elements * 2);
 	}
+#endif
+#if (TUNE_SIZE == 0) || (TUNE_SIZE == 4)
 	{
 		typedef unsigned int T;
 		TestCopy<T>(num_elements);
 	}
+#endif
+#if (TUNE_SIZE == 0) || (TUNE_SIZE == 8)
 	{
 		typedef unsigned long long T;
 		TestCopy<T>(num_elements / 2);
 	}
+#endif
 
 	return 0;
 }

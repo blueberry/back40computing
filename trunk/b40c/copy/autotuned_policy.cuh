@@ -146,7 +146,7 @@ struct AutotunedClassifier :
 template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM20, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
-	  SM20, 8, 8, 7, 1, 0,
+	  SM20, 8, 1, 7, 1, 0,
 	  util::io::ld::cg, util::io::st::cg, true, false>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
@@ -156,7 +156,7 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM20, POINTER_SIZE_GENRE>
 template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM20, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
-	  SM20, 6, 8, 6, 0, 0,
+	  SM20, 6, 1, 6, 0, 0,
 	  util::io::ld::cg, util::io::st::cs, false, false>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
@@ -172,7 +172,7 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM20, POINTER_SIZE_GENRE>
 template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM13, POINTER_SIZE_GENRE>
 	: Policy<unsigned short, SizeT,
-	  SM13, 8, 8, 7, 2, 0,
+	  SM13, 8, 1, 7, 2, 0,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
@@ -182,7 +182,7 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, LARGE_SIZE, SM13, POINTER_SIZE_GENRE>
 template <typename SizeT, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM13, POINTER_SIZE_GENRE>
 	: Policy<unsigned long long, SizeT,
-	  SM13, 6, 8, 5, 0, 1,
+	  SM13, 6, 1, 5, 0, 1,
 	  util::io::ld::NONE, util::io::st::NONE, false, false>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
@@ -214,7 +214,7 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM13, POINTER_SIZE_GENRE>
 template <typename SizeT, int PROB_SIZE_GENRE>
 __launch_bounds__ (
 	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
-	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::CTA_OCCUPANCY))
+	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::MIN_CTA_OCCUPANCY))
 __global__ void TunedKernel(
 	void 								*d_in,
 	void 								*d_out,

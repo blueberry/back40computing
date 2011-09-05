@@ -79,7 +79,7 @@ __device__ __forceinline__ void SpinePass(
  * Spine reduction kernel entry point
  */
 template <typename KernelPolicy>
-__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__ 
 void Kernel(
 	typename KernelPolicy::T 				*d_in,

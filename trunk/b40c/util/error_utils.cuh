@@ -51,6 +51,24 @@ cudaError_t B40CPerror(
 }
 
 /**
+ * Checks and resets last CUDA error.  If set, displays last error message in accordance with debug mode.
+ */
+cudaError_t B40CPerror(
+	const char *message,
+	const char *filename,
+	int line,
+	bool print = true)
+{
+	cudaError_t error = cudaGetLastError();
+	if (error && print) {
+
+		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
+
+/**
  * Displays error message in accordance with debug mode
  */
 cudaError_t B40CPerror(
@@ -64,6 +82,20 @@ cudaError_t B40CPerror(
 	return error;
 }
 
+
+/**
+ * Checks and resets last CUDA error.  If set, displays last error message in accordance with debug mode.
+ */
+cudaError_t B40CPerror(
+	bool print = true)
+{
+	cudaError_t error = cudaGetLastError();
+	if (error && print) {
+		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
 
 
 } // namespace util

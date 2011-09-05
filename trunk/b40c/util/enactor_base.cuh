@@ -141,7 +141,7 @@ protected:
 		typename UpsweepKernelPtr,
 		typename SpineKernelPtr>
 	cudaError_t PadUniformSmem(
-		int dynamic_smem[2],
+		int dynamic_smem[2],				// out param
 		UpsweepKernelPtr UpsweepKernel,
 		SpineKernelPtr SpineKernel)
 	{
@@ -168,6 +168,61 @@ protected:
 	}
 
 
+	template <typename KernelPtr>
+	cudaError_t MaxCtaOccupancy(
+		int &max_cta_occupancy,					// out param
+		KernelPtr Kernel,
+		int threads)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			// Get kernel attributes
+			cudaFuncAttributes kernel_attrs;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&kernel_attrs, Kernel),
+				"EnactorBase cudaFuncGetAttributes kernel_attrs failed", __FILE__, __LINE__)) break;
+
+			max_cta_occupancy = B40C_MIN(
+				B40C_SM_CTAS(cuda_props.device_sm_version),
+				B40C_MIN(
+					B40C_SMEM_BYTES(cuda_props.device_sm_version) / (kernel_attrs.sharedSizeBytes + 1),
+					B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads)));
+
+		} while (0);
+
+		return retval;
+
+	}
+
+	template <
+		typename UpsweepKernelPtr,
+		typename DownsweepKernelPtr>
+	cudaError_t MaxCtaOccupancy(
+		int &max_cta_occupancy,					// out param
+		UpsweepKernelPtr UpsweepKernel,
+		int upsweep_threads,
+		DownsweepKernelPtr DownsweepKernel,
+		int downsweep_threads)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			int upsweep_cta_occupancy, downsweep_cta_occupancy;
+
+			if (retval = MaxCtaOccupancy(upsweep_cta_occupancy, UpsweepKernel, upsweep_threads)) break;
+			if (retval = MaxCtaOccupancy(downsweep_cta_occupancy, DownsweepKernel, downsweep_threads)) break;
+
+			if (ENACTOR_DEBUG) printf("Occupancy:\t[upsweep occupancy: %d, downsweep occupancy %d]\n",
+				upsweep_cta_occupancy, downsweep_cta_occupancy);
+
+			max_cta_occupancy = B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy);
+
+		} while (0);
+
+		return retval;
+
+	}
+
+
+
 	/**
 	 * Returns the number of threadblocks to launch for the given problem size.
 	 * Does not exceed the full-occupancy on the current device or the
@@ -176,20 +231,23 @@ protected:
 	 * Useful for kernels that work-steal or use global barriers (where
 	 * over-subscription is not ideal or allowed)
 	 */
-	template <int SCHEDULE_GRANULARITY, int CTA_OCCUPANCY>
-	int OccupiedGridSize(int num_elements, int max_grid_size = 0)
+	int OccupiedGridSize(
+		int schedule_granularity,
+		int max_cta_occupancy,
+		int num_elements,
+		int max_grid_size = 0)
 	{
 		int grid_size;
 
 		if (max_grid_size > 0) {
 			grid_size = max_grid_size;
 		} else {
-			grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
+			grid_size = cuda_props.device_props.multiProcessorCount * max_cta_occupancy;
 		}
 
 		// Reduce if we have less work than we can divide up among this
 		// many CTAs
-		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
+		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
 		if (grid_size > grains) {
 			grid_size = grains;
 		}
@@ -206,8 +264,11 @@ protected:
 	 *
 	 * Useful for kernels that evenly divide up the work amongst threadblocks.
 	 */
-	template <int SCHEDULE_GRANULARITY, int CTA_OCCUPANCY>
-	int OversubscribedGridSize(int num_elements, int max_grid_size)
+	int OversubscribedGridSize(
+		int schedule_granularity,
+		int max_cta_occupancy,
+		int num_elements,
+		int max_grid_size)
 	{
 		int grid_size;
 
@@ -220,7 +281,7 @@ protected:
 			if (cuda_props.device_sm_version < 120) {
 
 				// G80/G90: double CTA occupancy times SM count
-				grid_size = cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY * 2;
+				grid_size = cuda_props.device_props.multiProcessorCount * max_cta_occupancy * 2;
 
 			} else if (cuda_props.device_sm_version < 200) {
 
@@ -228,7 +289,7 @@ protected:
 
 				// Start with with full downsweep occupancy of all SMs
 				grid_size =
-					cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY;
+					cuda_props.device_props.multiProcessorCount * max_cta_occupancy;
 
 				// Increase by default every 64 million key-values
 				int step = 1024 * 1024 * 64;
@@ -278,10 +339,10 @@ protected:
 				// GF10x
 				if (cuda_props.device_sm_version == 210) {
 					// GF110
-					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY);
+					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * max_cta_occupancy);
 				} else {
 					// Anything but GF110
-					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * CTA_OCCUPANCY) - 2;
+					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * max_cta_occupancy) - 2;
 				}
 			}
 		}
@@ -289,7 +350,7 @@ protected:
 
 		// Reduce if we have less work than we can divide up among this
 		// many CTAs
-		int grains = (num_elements + SCHEDULE_GRANULARITY - 1) / SCHEDULE_GRANULARITY;
+		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
 		if (grid_size > grains) {
 			grid_size = grains;
 		}
@@ -297,6 +358,29 @@ protected:
 		return grid_size;
 	}
 
+
+	/**
+	 * Returns the number of threadblocks to launch for the given problem size.
+	 */
+	int GridSize(
+		bool oversubscribed,
+		int schedule_granularity,
+		int max_cta_occupancy,
+		int num_elements,
+		int max_grid_size)
+	{
+		return (oversubscribed) ?
+			OversubscribedGridSize(
+				schedule_granularity,
+				max_cta_occupancy,
+				num_elements,
+				max_grid_size) :
+			OccupiedGridSize(
+				schedule_granularity,
+				max_cta_occupancy,
+				num_elements,
+				max_grid_size);
+	}
 
 	//-----------------------------------------------------------------------------
 	// Debug Utility Routines
@@ -416,9 +500,10 @@ protected:
 		util::CtaWorkDistribution<SizeT> &work,
 		int spine_elements = 0)
 	{
-		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n",
+		printf("CodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d, SM count: %d]\n",
 			cuda_props.device_sm_version,
-			cuda_props.kernel_ptx_version);
+			cuda_props.kernel_ptx_version,
+			cuda_props.device_props.multiProcessorCount);
 		PrintWorkInfo<UpsweepPolicy, SizeT>(work);
 		printf("Upsweep: \t[sweep_grid_size: %d, threads %d, tile_elements: %d]\n",
 			work.grid_size,
