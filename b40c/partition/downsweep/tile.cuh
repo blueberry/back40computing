@@ -364,15 +364,13 @@ struct Tile
 			int base_byte_raking_tid =
 				(threadIdx.x + (KernelPolicy::THREADS * LOAD)) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
 
-			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
-
-			int lane = bin >> 2;
-			int word = (bin >> 1) & 1;
-			int select = bin & 1;
+			int lane = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 2, 2);
+			int half = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 1);
+			int quarter = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 1, 1);
 
 			int raking_tid = base_byte_raking_tid + (lane << KernelPolicy::ByteGrid::LOG_RAKING_THREADS_PER_LANE);
-			short * short_offsets = (short *) &cta->smem_storage.short_deposits[word][raking_tid];
-			int scan_prefix = short_offsets[select];
+			short * short_offsets = (short *) &cta->smem_storage.short_deposits[half][raking_tid];
+			int scan_prefix = short_offsets[quarter];
 
 			local_ranks[CYCLE][LOAD][VEC] = scan_prefix + nibble_prefix;
 
@@ -633,14 +631,9 @@ struct Tile
 			halves[0] = cta->short_grid_details.lane_partial[0][0] + addend;
 			halves[1] = cta->short_grid_details.lane_partial[1][0] + addend;
 
-			// rebundle halves
-			int rebundled_halves[2];
-			rebundled_halves[0] = util::PRMT(halves[0], halves[1], 0x5410);
-			rebundled_halves[1] = util::PRMT(halves[0], halves[1], 0x7632);
-
 			// Store using short raking lanes
-			cta->smem_storage.short_deposits[0][threadIdx.x] = rebundled_halves[0];
-			cta->smem_storage.short_deposits[1][threadIdx.x] = rebundled_halves[1];
+			cta->smem_storage.short_deposits[0][threadIdx.x] = halves[0];
+			cta->smem_storage.short_deposits[1][threadIdx.x] = halves[1];
 /*
 			printf("\tRaking thread %d computed half0(%u, %u)\n",
 				threadIdx.x,
