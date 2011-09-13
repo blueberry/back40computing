@@ -361,16 +361,21 @@ struct Tile
 
 			int nibble_prefix = util::BFE(escan_bytes[CYCLE][LOAD], VEC * 8, 8);
 
-			int base_byte_raking_tid =
-				(threadIdx.x + (KernelPolicy::THREADS * LOAD)) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
 
 			int lane = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 2, 2);
 			int half = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 1);
 			int quarter = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 1, 1);
 
-			int raking_tid = base_byte_raking_tid + (lane << KernelPolicy::ByteGrid::LOG_RAKING_THREADS_PER_LANE);
-			short * short_offsets = (short *) &cta->smem_storage.short_deposits[half][raking_tid];
-			int scan_prefix = short_offsets[quarter];
+			const int LOAD_RAKING_TID_OFFSET = (KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
+
+			int base_byte_raking_tid = threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
+
+			int raking_tid =
+				(lane << KernelPolicy::ByteGrid::LOG_RAKING_THREADS_PER_LANE) +
+				LOAD_RAKING_TID_OFFSET +
+				base_byte_raking_tid;
+
+			int scan_prefix = cta->smem_storage.short_offsets[half][raking_tid][quarter];
 
 			local_ranks[CYCLE][LOAD][VEC] = scan_prefix + nibble_prefix;
 
@@ -621,19 +626,39 @@ struct Tile
 			cta->short_grid_details.lane_partial[0][0] = halves[0];
 			cta->short_grid_details.lane_partial[1][0] = halves[1];
 
-			util::Sum<int> scan_op;
-			util::scan::CooperativeGridScan<typename Cta::ShortGridDetails>::ScanTile(
-				cta->short_grid_details,
-				scan_op);
 
-			int total = cta->short_grid_details.CumulativePartial();
-			int addend = total << 16;
-			halves[0] = cta->short_grid_details.lane_partial[0][0] + addend;
-			halves[1] = cta->short_grid_details.lane_partial[1][0] + addend;
+			if (threadIdx.x < KernelPolicy::ShortGrid::RAKING_THREADS) {
+
+				util::Sum<int> scan_op;
+
+				// Raking reduction
+				int inclusive_partial = util::reduction::SerialReduce<Cta::ShortGridDetails::PARTIALS_PER_SEG>::Invoke(
+					cta->short_grid_details.raking_segment, scan_op);
+
+				// Exclusive warp scan
+				int total;
+				int exclusive_partial = util::scan::WarpScan<Cta::ShortGridDetails::LOG_RAKING_THREADS, false>::Invoke(
+					inclusive_partial,
+					total,
+					cta->short_grid_details.warpscan,
+					scan_op) - inclusive_partial;
+
+				int addend = total << 16;
+
+				// Exclusive raking scan
+				util::scan::SerialScan<Cta::ShortGridDetails::PARTIALS_PER_SEG>::Invoke(
+					cta->short_grid_details.raking_segment,
+					exclusive_partial + addend,
+					scan_op);
+			}
+
+			halves[0] = cta->short_grid_details.lane_partial[0][0];
+			halves[1] = cta->short_grid_details.lane_partial[1][0];
 
 			// Store using short raking lanes
-			cta->smem_storage.short_deposits[0][threadIdx.x] = halves[0];
-			cta->smem_storage.short_deposits[1][threadIdx.x] = halves[1];
+			cta->smem_storage.short_words[0][threadIdx.x] = halves[0];
+			cta->smem_storage.short_words[1][threadIdx.x] = halves[1];
+
 /*
 			printf("\tRaking thread %d computed half0(%u, %u)\n",
 				threadIdx.x,
