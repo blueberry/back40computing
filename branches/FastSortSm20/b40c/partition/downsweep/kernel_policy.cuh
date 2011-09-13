@@ -121,7 +121,8 @@ struct KernelPolicy : TuningPolicy
 				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
 				union {
 					int 				short_raking_lanes[ShortGrid::RAKING_ELEMENTS];
-					int					short_deposits[2][ByteGrid::RAKING_THREADS];
+					int 				short_words[2][ByteGrid::RAKING_THREADS];
+					short				short_offsets[2][ByteGrid::RAKING_THREADS][2];
 				};
 			};
 
