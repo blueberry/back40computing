@@ -73,11 +73,10 @@ struct KernelPolicy : TuningPolicy
 		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_TILE_ELEMENTS - TuningPolicy::LOG_THREADS,
 		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
 	
-		LOG_SCAN_LANES_PER_LOAD			= B40C_MAX((TuningPolicy::LOG_BINS - 2), 0),		// Always at least one lane per load
-		SCAN_LANES_PER_LOAD				= 1 << LOG_SCAN_LANES_PER_LOAD,
-
-		LOG_SCAN_LANES_PER_CYCLE		= TuningPolicy::LOG_LOADS_PER_CYCLE + LOG_SCAN_LANES_PER_LOAD,
+		LOG_SCAN_LANES_PER_CYCLE		= B40C_MAX((TuningPolicy::LOG_BINS - 2), 0),		// Always at least one lane per load
 		SCAN_LANES_PER_CYCLE			= 1 << LOG_SCAN_LANES_PER_CYCLE,
+
+		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_CYCLE,
 	};
 
 
@@ -85,11 +84,11 @@ struct KernelPolicy : TuningPolicy
 	// (bins/4) lanes of composite 8-bit bin counters
 	typedef util::SrtsGrid<
 		TuningPolicy::CUDA_ARCH,
-		int,									// Partial type
-		TuningPolicy::LOG_THREADS,				// Depositing threads (the CTA size)
-		LOG_SCAN_LANES_PER_CYCLE,				// Lanes (the number of loads)
-		TuningPolicy::LOG_RAKING_THREADS,		// Raking threads
-		false>									// Any prefix dependences between lanes are explicitly managed
+		int,											// Partial type
+		LOG_DEPOSITS_PER_LANE,							// Deposits per lane
+		LOG_SCAN_LANES_PER_CYCLE,						// Lanes (the number of composite digits)
+		TuningPolicy::LOG_RAKING_THREADS,				// Raking threads
+		false>											// Any prefix dependences between lanes are explicitly managed
 			ByteGrid;
 
 	// Short grid

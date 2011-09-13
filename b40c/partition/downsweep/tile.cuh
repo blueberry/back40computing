@@ -68,7 +68,9 @@ struct Tile
 		CYCLES_PER_TILE 			= KernelPolicy::CYCLES_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
-		RAKING_THREADS_PER_LOAD		= KernelPolicy::ByteGrid::RAKING_THREADS_PER_LANE * KernelPolicy::SCAN_LANES_PER_LOAD,
+
+		LANE_ROWS_PER_LOAD 			= KernelPolicy::ByteGrid::ROWS_PER_LANE / KernelPolicy::LOADS_PER_CYCLE,
+		LANE_STRIDE_PER_LOAD 		= KernelPolicy::ByteGrid::PADDED_PARTIALS_PER_ROW * LANE_ROWS_PER_LOAD,
 
 		INVALID_BIN					= -1,
 	};
@@ -327,15 +329,16 @@ struct Tile
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
 
 			if (VEC == 0) {
-				const int BASE_LANE = KernelPolicy::SCAN_LANES_PER_LOAD * LOAD;
+
+				const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
 
 				// Todo fix for other radix digits
 
 				// Lane 0
-				counts_bytes[CYCLE][LOAD][0][0] = cta->byte_grid_details.lane_partial[BASE_LANE + 0][0];
+				counts_bytes[CYCLE][LOAD][0][0] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
 
 				// Lane 1
-				counts_bytes[CYCLE][LOAD][0][1] = cta->byte_grid_details.lane_partial[BASE_LANE + 1][0];
+				counts_bytes[CYCLE][LOAD][0][1] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
 
 				escan_bytes[CYCLE][LOAD] += util::PRMT(
 					counts_bytes[CYCLE][LOAD][0][0],
@@ -359,8 +362,7 @@ struct Tile
 			int nibble_prefix = util::BFE(escan_bytes[CYCLE][LOAD], VEC * 8, 8);
 
 			int base_byte_raking_tid =
-				(threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG) +
-				(RAKING_THREADS_PER_LOAD * LOAD);
+				(threadIdx.x + (KernelPolicy::THREADS * LOAD)) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
 
 			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
 
@@ -505,25 +507,27 @@ struct Tile
 			util::NibblesToBytes(
 				tile->counts_bytes[CYCLE][LOAD][0],
 				tile->counts_nibbles[CYCLE][LOAD][0]);
+
+			const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
+
+			// Todo fix for other radix digits
+			cta->byte_grid_details.lane_partial[0][LANE_OFFSET] = tile->counts_bytes[CYCLE][LOAD][0][0];
+			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes[CYCLE][LOAD][0][1];
 /*
 			printf("Thread %u cycle %u load %u:\t,"
 				"escan_bytes(%x), "
 				"bins_nibbles(%x), "
 				"counts_bytes1(%08x), "
 				"counts_bytes0(%08x), "
+				"lane_offset(%d)"
 				"\n",
 				threadIdx.x, CYCLE, LOAD,
 				tile->escan_bytes[CYCLE][LOAD],
 				tile->bins_nibbles[CYCLE][LOAD],
 				tile->counts_bytes[CYCLE][LOAD][0][1],
-				tile->counts_bytes[CYCLE][LOAD][0][0]);
+				tile->counts_bytes[CYCLE][LOAD][0][0],
+				LANE_OFFSET);
 */
-			const int BASE_LANE = KernelPolicy::SCAN_LANES_PER_LOAD * LOAD;
-
-			// Todo fix for other radix digits
-			cta->byte_grid_details.lane_partial[BASE_LANE + 0][0] = tile->counts_bytes[CYCLE][LOAD][0][0];
-			cta->byte_grid_details.lane_partial[BASE_LANE + 1][0] = tile->counts_bytes[CYCLE][LOAD][0][1];
-
 			IterateCycleElements<CYCLE, LOAD + 1, 0>::DecodeKeys(cta, tile);
 		}
 
@@ -593,7 +597,16 @@ struct Tile
 
 		// Use our raking threads to, in aggregate, scan the composite counter lanes
 		if (threadIdx.x < KernelPolicy::ByteGrid::RAKING_THREADS) {
-
+/*
+			if (threadIdx.x == 0) {
+				printf("ByteGrid:\n");
+				KernelPolicy::ByteGrid::Print();
+				printf("\n");
+				printf("ShortGrid:\n");
+				KernelPolicy::ShortGrid::Print();
+				printf("\n");
+			}
+*/
 			// Upsweep rake
 			int partial = util::scan::SerialScan<KernelPolicy::ByteGrid::PARTIALS_PER_SEG>::Invoke(
 				cta->byte_grid_details.raking_segment,
@@ -609,16 +622,7 @@ struct Tile
 
 			cta->short_grid_details.lane_partial[0][0] = halves[0];
 			cta->short_grid_details.lane_partial[1][0] = halves[1];
-/*
-			if (threadIdx.x == 0) {
-				printf("ByteGrid:\n");
-				KernelPolicy::ByteGrid::Print();
-				printf("\n");
-				printf("ShortGrid:\n");
-				KernelPolicy::ShortGrid::Print();
-				printf("\n");
-			}
-*/
+
 			util::Sum<int> scan_op;
 			util::scan::CooperativeGridScan<typename Cta::ShortGridDetails>::ScanTile(
 				cta->short_grid_details,
@@ -1087,6 +1091,7 @@ struct Tile
 			// Update the local ranks in each load with the bin prefixes for the tile
 			IterateCycles<0>::UpdateRanks(cta, tile);
 */
+
 			// Scatter keys to smem by local rank
 			util::io::ScatterTile<
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
@@ -1100,6 +1105,7 @@ struct Tile
 			__syncthreads();
 
 			SizeT valid_elements = tile->ValidElements(cta, guarded_elements);
+
 /*
 			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
@@ -1253,6 +1259,7 @@ struct Tile
 			guarded_elements,
 			cta,
 			(Dispatch *) this);
+
 	}
 
 };
