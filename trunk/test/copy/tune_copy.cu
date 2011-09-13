@@ -130,8 +130,9 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
+			// TODO: load.cs seems to have some problems on Fermi
 			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::NONE + 1,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::ca //1		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
@@ -227,6 +228,7 @@ public:
 
 			// Perform the timed number of iterations
 			GpuTimer timer;
+			double elapsed = 0;
 			for (int i = 0; i < g_iterations; i++) {
 
 				// Start cuda timing record
@@ -244,6 +246,7 @@ public:
 
 				// End cuda timing record
 				timer.Stop();
+				elapsed += timer.ElapsedMillis();
 
 				// Flushes any stdio from the GPU
 				if (util::B40CPerror(cudaThreadSynchronize(), "TimedCopy cudaThreadSynchronize failed: ", __FILE__, __LINE__)) {
@@ -252,7 +255,7 @@ public:
 			}
 
 			// Display timing information
-			double avg_runtime = double(timer.ElapsedMillis()) / g_iterations;
+			double avg_runtime = elapsed / g_iterations;
 			double throughput =  0.0;
 			if (avg_runtime > 0.0) throughput = ((double) enactor->num_elements) / avg_runtime / 1000.0 / 1000.0;
 			printf(", %f, %f, %f, ",
