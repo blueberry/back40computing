@@ -49,7 +49,7 @@
  */
 typedef b40c::radix_sort::ProblemType<
 		unsigned int,						// Key type
-		unsigned int,						// Value type (alternatively, use b40c::util::NullType for keys-only sorting)
+		b40c::util::NullType,						// Value type (alternatively, use b40c::util::NullType for keys-only sorting)
 		int> 								// SizeT (what type to use for counting)
 	ProblemType;
 
@@ -80,7 +80,7 @@ typedef b40c::radix_sort::Policy<
 
 		// Common
 		200,						// SM ARCH
-		4,							// RADIX_BITS
+		3,							// RADIX_BITS
 
 		// Launch tuning policy
 		10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
@@ -102,7 +102,6 @@ typedef b40c::radix_sort::Policy<
 		// Spine-scan kernel policy
 		//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
 		//
-		1,							// SPINE_CTA_OCCUPANCY				The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
 		0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
@@ -112,13 +111,13 @@ typedef b40c::radix_sort::Policy<
 		//		Given prefix counts, scans/scatters keys into appropriate bins
 		// 		Note: a "cycle" is a tile sub-segment up to 256 keys
 		//
-		true,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+		b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
 		8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		6,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
 		2,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-		1,							// DOWNSWEEP_LOG_LOADS_PER_CYCLE	The number of loads (log) per cycle.  Valid range: 0-2, subject to constraints described above
-		1, 							// DOWNSWEEP_LOG_CYCLES_PER_TILE	The number of cycles (log) per tile.  Valid range: 0-2
-		6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+		2,							// DOWNSWEEP_LOG_LOADS_PER_CYCLE	The number of loads (log) per cycle.  Valid range: 0-2, subject to constraints described above
+		0,//1, 							// DOWNSWEEP_LOG_CYCLES_PER_TILE	The number of cycles (log) per tile.  Valid range: 0-2
+		5>//6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 	Policy;
 
 
@@ -159,14 +158,15 @@ int main(int argc, char** argv)
 
 	// Only use RADIX_BITS effective bits (remaining high order bits
 	// are left zero): we only want to perform one sorting pass
-	printf("Original: ");
+	if (verbose) printf("Original: ");
 	for (size_t i = 0; i < num_elements; ++i) {
-		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
+//		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
+		h_keys[i] = i & ((1 << Policy::RADIX_BITS) - 1);
 		h_reference_keys[i] = h_keys[i];
 
-		printf("%d, ", h_keys[i]);
+		if (verbose) printf("%d, ", h_keys[i]);
 	}
-	printf("\n");
+	if (verbose) printf("\n");
 
     // Compute reference solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
@@ -180,6 +180,7 @@ int main(int argc, char** argv)
 
 	// Create a scan enactor
 	b40c::radix_sort::Enactor enactor;
+	enactor.ENACTOR_DEBUG = true;
 
 	// Create ping-pong storage wrapper.
 	b40c::util::PingPongStorage<KeyType, ValueType> sort_storage(d_keys, d_values);
@@ -210,7 +211,11 @@ int main(int argc, char** argv)
 		printf("Restricted-range key-value sort: ");
 	}
 	b40c::CompareDeviceResults(
-		h_reference_keys, sort_storage.d_keys[sort_storage.selector], num_elements, verbose, verbose); printf("\n");
+		h_reference_keys,
+		sort_storage.d_keys[sort_storage.selector],
+		num_elements,
+		true,
+		verbose); printf("\n");
 
 	// Cleanup any "pong" storage allocated by the enactor
 	if (sort_storage.d_keys[1]) cudaFree(sort_storage.d_keys[1]);

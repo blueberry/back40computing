@@ -55,64 +55,47 @@ struct DownsweepPass
 		typedef typename KernelPolicy::ValueType 			ValueType;
 		typedef typename KernelPolicy::SizeT 				SizeT;
 		typedef Cta<KernelPolicy> 							Cta;
-		typedef typename KernelPolicy::Grid::LanePartial	LanePartial;
-
-		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
-		int *raking_segment = 0;
 
 		// Shared storage to help us choose which set of inputs to stream from
 		__shared__ KeyType* 	d_keys[2];
 		__shared__ ValueType* 	d_values[2];
 
-		if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {
+		// initialize bin warpscans
+		if (threadIdx.x < KernelPolicy::BINS) {
 
-			// initalize lane warpscans
-			int warpscan_lane = threadIdx.x >> KernelPolicy::Grid::LOG_RAKING_THREADS_PER_LANE;
-			int warpscan_tid = threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
-			smem_storage.lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
+			// We can early-exit if all keys go into the same bin (leave them as-is)
+			const int SELECTOR_IDX 			= (KernelPolicy::CURRENT_PASS) & 0x1;
+			const int NEXT_SELECTOR_IDX 	= (KernelPolicy::CURRENT_PASS + 1) & 0x1;
 
-			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.raking_lanes);
+			// Determine where to read our input
+			bool selector = (KernelPolicy::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
 
-			// initialize bin warpscans
-			if (threadIdx.x < KernelPolicy::BINS) {
-
-				// Initialize bin_warpscan
-				smem_storage.bin_warpscan[0][threadIdx.x] = 0;
-
-				// We can early-exit if all keys go into the same bin (leave them as-is)
-				const int SELECTOR_IDX 			= (KernelPolicy::CURRENT_PASS) & 0x1;
-				const int NEXT_SELECTOR_IDX 	= (KernelPolicy::CURRENT_PASS + 1) & 0x1;
-
-				// Determine where to read our input
-				bool selector = (KernelPolicy::CURRENT_PASS == 0) ? 0 : d_selectors[SELECTOR_IDX];
-
-				// Determine whether or not we have work to do and setup the next round
-				// accordingly.  We can do this by looking at the first-block's
-				// histograms and counting the number of bins with counts that are
-				// non-zero and not-the-problem-size.
-				if (KernelPolicy::PreprocessTraits::MustApply || KernelPolicy::PostprocessTraits::MustApply) {
-					smem_storage.non_trivial_pass = true;
-				} else {
-					int first_block_carry = d_spine[util::FastMul(gridDim.x, threadIdx.x)];
-					int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
-					smem_storage.non_trivial_pass = util::WarpVoteAny<KernelPolicy::LOG_BINS>(predicate);
-				}
-
-				// Let the next round know which set of buffers to use
-				if (blockIdx.x == 0) {
-					d_selectors[NEXT_SELECTOR_IDX] = selector ^ smem_storage.non_trivial_pass;
-				}
-
-				// Determine our threadblock's work range
-				work_decomposition.template GetCtaWorkLimits<
-					KernelPolicy::LOG_TILE_ELEMENTS,
-					KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
-
-				d_keys[0] = (selector) ? d_keys1 : d_keys0;
-				d_keys[1] = (selector) ? d_keys0 : d_keys1;
-				d_values[0] = (selector) ? d_values1 : d_values0;
-				d_values[1] = (selector) ? d_values0 : d_values1;
+			// Determine whether or not we have work to do and setup the next round
+			// accordingly.  We can do this by looking at the first-block's
+			// histograms and counting the number of bins with counts that are
+			// non-zero and not-the-problem-size.
+			if (KernelPolicy::PreprocessTraits::MustApply || KernelPolicy::PostprocessTraits::MustApply) {
+				smem_storage.non_trivial_pass = true;
+			} else {
+				int first_block_carry = d_spine[util::FastMul(gridDim.x, threadIdx.x)];
+				int predicate = ((first_block_carry > 0) && (first_block_carry < work_decomposition.num_elements));
+				smem_storage.non_trivial_pass = util::WarpVoteAny<KernelPolicy::LOG_BINS>(predicate);
 			}
+
+			// Let the next round know which set of buffers to use
+			if (blockIdx.x == 0) {
+				d_selectors[NEXT_SELECTOR_IDX] = selector ^ smem_storage.non_trivial_pass;
+			}
+
+			// Determine our threadblock's work range
+			work_decomposition.template GetCtaWorkLimits<
+				KernelPolicy::LOG_TILE_ELEMENTS,
+				KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
+
+			d_keys[0] = (selector) ? d_keys1 : d_keys0;
+			d_keys[1] = (selector) ? d_keys0 : d_keys1;
+			d_values[0] = (selector) ? d_values1 : d_values0;
+			d_values[1] = (selector) ? d_values0 : d_values1;
 		}
 
 		// Sync to acquire non_trivial_pass, selector, and work limits
@@ -127,9 +110,7 @@ struct DownsweepPass
 			d_keys[1],
 			d_values[0],
 			d_values[1],
-			d_spine,
-			base_composite_counter,
-			raking_segment);
+			d_spine);
 
 		cta.ProcessWorkRange(smem_storage.work_limits);
 	}
@@ -152,38 +133,20 @@ struct DownsweepPass<KernelPolicy, false>
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage	&smem_storage)
 	{
-		typedef typename KernelPolicy::KeyType 				KeyType;
-		typedef typename KernelPolicy::ValueType 			ValueType;
-		typedef typename KernelPolicy::SizeT 				SizeT;
-		typedef Cta<KernelPolicy> 							Cta;
-		typedef typename KernelPolicy::Grid::LanePartial	LanePartial;
+		typedef typename KernelPolicy::KeyType 					KeyType;
+		typedef typename KernelPolicy::ValueType 				ValueType;
+		typedef typename KernelPolicy::SizeT 					SizeT;
+		typedef Cta<KernelPolicy> 								Cta;
 
-		LanePartial base_composite_counter = KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
-		int *raking_segment = 0;
+		if (threadIdx.x == 0) {
 
-		if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {
-
-			// initalize lane warpscans
-			int warpscan_lane = threadIdx.x >> KernelPolicy::Grid::LOG_RAKING_THREADS_PER_LANE;
-			int warpscan_tid = threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
-			smem_storage.lanes_warpscan[warpscan_lane][0][warpscan_tid] = 0;
-
-			raking_segment = KernelPolicy::Grid::MyRakingSegment(smem_storage.raking_lanes);
-
-			// initialize bin warpscans
-			if (threadIdx.x < KernelPolicy::BINS) {
-
-				// Initialize bin_warpscan
-				smem_storage.bin_warpscan[0][threadIdx.x] = 0;
-
-				// Determine our threadblock's work range
-				work_decomposition.template GetCtaWorkLimits<
-					KernelPolicy::LOG_TILE_ELEMENTS,
-					KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
-			}
+			// Determine our threadblock's work range
+			work_decomposition.template GetCtaWorkLimits<
+				KernelPolicy::LOG_TILE_ELEMENTS,
+				KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
 		}
 
-		// Sync to acquire non_trivial_pass, selector, and work limits
+		// Sync to acquire work limits
 		__syncthreads();
 
 		if (KernelPolicy::CURRENT_PASS & 0x1) {
@@ -195,9 +158,7 @@ struct DownsweepPass<KernelPolicy, false>
 				d_keys0,
 				d_values1,
 				d_values0,
-				d_spine,
-				base_composite_counter,
-				raking_segment);
+				d_spine);
 
 			cta.ProcessWorkRange(smem_storage.work_limits);
 
@@ -210,9 +171,7 @@ struct DownsweepPass<KernelPolicy, false>
 				d_keys1,
 				d_values0,
 				d_values1,
-				d_spine,
-				base_composite_counter,
-				raking_segment);
+				d_spine);
 
 			cta.ProcessWorkRange(smem_storage.work_limits);
 		}

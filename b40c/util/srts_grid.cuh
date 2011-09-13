@@ -215,10 +215,12 @@ struct SrtsGrid
 	 * its partial for raking reduction/scan into the first lane.  Positions in subsequent
 	 * lanes can be obtained via increments of LANE_STRIDE.
 	 */
-	static __host__ __device__ __forceinline__  LanePartial MyLanePartial(T *smem)
+	static __host__ __device__ __forceinline__  LanePartial MyLanePartial(
+		T *smem,
+		int tid = threadIdx.x)
 	{
-		int row = threadIdx.x >> LOG_PARTIALS_PER_ROW;
-		int col = threadIdx.x & (PARTIALS_PER_ROW - 1);
+		int row = tid >> LOG_PARTIALS_PER_ROW;
+		int col = tid & (PARTIALS_PER_ROW - 1);
 
 		return (LanePartial) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
 	}

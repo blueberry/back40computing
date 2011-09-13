@@ -252,6 +252,8 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 {
 	for (SizeT i = 0; i < len; i++) {
 
+		int window = 8;
+
 		if (computed[i] != reference[i]) {
 			printf("INCORRECT: [%lu]: ", (unsigned long) i);
 			PrintValue<T>(computed[i]);
@@ -260,13 +262,13 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 
 			if (verbose) {
 				printf("\nresult[...");
-				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
+				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
 					PrintValue<T>(computed[j]);
 					printf(", ");
 				}
 				printf("...]");
 				printf("\nreference[...");
-				for (size_t j = (i >= 5) ? i - 5 : 0; (j < i + 5) && (j < len); j++) {
+				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
 					PrintValue<T>(reference[j]);
 					printf(", ");
 				}

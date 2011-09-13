@@ -68,6 +68,7 @@ struct Tile
 		CYCLES_PER_TILE 			= KernelPolicy::CYCLES_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
+		RAKING_THREADS_PER_LOAD		= KernelPolicy::ByteGrid::RAKING_THREADS_PER_LANE * KernelPolicy::SCAN_LANES_PER_LOAD,
 
 		INVALID_BIN					= -1,
 	};
@@ -81,10 +82,21 @@ struct Tile
 	KeyType 	keys[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];
 	ValueType 	values[TILE_ELEMENTS_PER_THREAD];
 
+	// For each load:
+	// 		counts_nibbles contains the bin counts within nibbles ordered right to left
+	// 		bins_nibbles contains the bin for each key within nibbles ordered right to left
+	// 		escan_bytes contains the exclusive scan for each key within nibbles ordered right to left
+
+	int 		counts_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE][1];
+	int 		escan_bytes[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		bins_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+
+	int			counts_bytes[CYCLES_PER_TILE][LOADS_PER_CYCLE][1][2];
+
+	int 		short_offsets[SCAN_LANES_PER_CYCLE][2];
+
 	int 		local_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];		// The local rank of each key
-	int 		key_bins[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];			// The bin for each key
 	SizeT 		scatter_offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];	// The global rank of each key
-	int 		counter_offsets[LOADS_PER_CYCLE][LOAD_VEC_SIZE];					// The (byte) counter offset for each key
 
 	// Counts of my bin in each load in each cycle, valid in threads [0,BINS)
 	int 		bin_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE];
@@ -219,41 +231,30 @@ struct Tile
 
 
 	//---------------------------------------------------------------------
-	// Helper Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Computes the number of previously-binned keys owned by the calling thread
-	 * that have been marked for the specified bin.
-	 */
-	struct SameBinCount
-	{
-		// Inspect previous vec-element
-		template <int CYCLE, int LOAD, int VEC>
-		struct Iterate
-		{
-			static __device__ __forceinline__ int Invoke(Tile *tile, int current_bin)
-			{
-				return (current_bin == tile->key_bins[CYCLE][LOAD][VEC - 1]) +
-					Iterate<CYCLE, LOAD, VEC - 1>::Invoke(tile, current_bin);
-			}
-		};
-
-		// Terminate (0th vec-element has no previous elements)
-		template <int CYCLE, int LOAD>
-		struct Iterate<CYCLE, LOAD, 0>
-		{
-			static __device__ __forceinline__ int Invoke(Tile *tile, int current_bin)
-			{
-				return 0;
-			}
-		};
-	};
-
-
-	//---------------------------------------------------------------------
 	// Cycle Methods
 	//---------------------------------------------------------------------
+
+
+
+	static __device__ __forceinline__ int MapBin(int native_bin)
+	{
+		// Remap bins
+		// e.g., (0s, 1s, 2s, 3s, 4s, 5s, 6s, 7s) -> (0s, 4s, 1s, 5s, 2s, 6s, 3s, 7s)
+		const int LUT0 = 0x05010400;
+		const int LUT1 = 0x07030602;
+
+		return util::PRMT(LUT0, LUT1, native_bin) & 0xff;
+	}
+
+	static __device__ __forceinline__ int UnmapBin(int mapped_bin)
+	{
+		// Unmap bins
+		// e.g., (0, 1, 2, 3, 4, 5, 6, 7) -> (0, 2, 4, 6, 1, 3, 5, 7)
+		const int LUT0 = 0x06040200;
+		const int LUT1 = 0x07050301;
+
+		return util::PRMT(LUT0, LUT1, mapped_bin) & 0xff;
+	}
 
 
 	/**
@@ -267,36 +268,51 @@ struct Tile
 		// Update composite-counter
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
 
-			const int PADDED_BYTES_PER_LANE 	= KernelPolicy::Grid::ROWS_PER_LANE * KernelPolicy::Grid::PADDED_PARTIALS_PER_ROW * 4;
-			const int LOAD_OFFSET_BYTES 		= LOAD * KernelPolicy::SCAN_LANES_PER_LOAD * PADDED_BYTES_PER_LANE;
-			const KeyType COUNTER_BYTE_MASK 	= (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
-
 			// Decode the bin for this key
-			key_bins[CYCLE][LOAD][VEC] = dispatch->DecodeBin(keys[CYCLE][LOAD][VEC], cta);
+			int bin = dispatch->DecodeBin(keys[CYCLE][LOAD][VEC], cta);
 
-			// Decode composite-counter lane and sub-counter from bin
-			int lane = key_bins[CYCLE][LOAD][VEC] >> 2;										// extract composite counter lane
-			int sub_counter = key_bins[CYCLE][LOAD][VEC] & COUNTER_BYTE_MASK;				// extract 8-bit counter offset
+			const int LOG_BITS_PER_NIBBLE = 2;
+			const int BITS_PER_NIBBLE = 1 << LOG_BITS_PER_NIBBLE;
 
-			// Compute partial (because we overwrite, we need to accommodate all previous
-			// vec-elements if they have the same bin)
-			int partial = 1 + SameBinCount::template Iterate<CYCLE, LOAD, VEC>::Invoke(
-				dispatch,
-				key_bins[CYCLE][LOAD][VEC]);
+			bin = MapBin(bin);
 
-			// Counter offset in bytes from this thread's "base_composite_counter" location
-			counter_offsets[LOAD][VEC] =
-				LOAD_OFFSET_BYTES +
-				util::FastMul(lane, PADDED_BYTES_PER_LANE) +
-				sub_counter;
+			int shift = bin << LOG_BITS_PER_NIBBLE;
 
-			// Overwrite partial
-			unsigned char *base_partial_chars = (unsigned char *) cta->base_composite_counter;
-			base_partial_chars[counter_offsets[LOAD][VEC]] = partial;
+			if (VEC == 0) {
+
+				counts_nibbles[CYCLE][LOAD][0] = 1 << shift;
+				escan_bytes[CYCLE][LOAD] = 0;
+				bins_nibbles[CYCLE][LOAD] = bin;
+
+			} else {
+
+				int prev_counts_nibbles = counts_nibbles[CYCLE][LOAD][0] >> shift;
+
+				util::BFI(
+					escan_bytes[CYCLE][LOAD],
+					escan_bytes[CYCLE][LOAD],
+					prev_counts_nibbles,
+					8 * VEC,
+					BITS_PER_NIBBLE);
+
+				util::BFI(
+					bins_nibbles[CYCLE][LOAD],
+					bins_nibbles[CYCLE][LOAD],
+					bin,
+					4 * VEC,
+					4);
+
+				util::SHL_ADD(
+					counts_nibbles[CYCLE][LOAD][0],
+					1,
+					shift,
+					counts_nibbles[CYCLE][LOAD][0]);
+			}
 
 		} else {
 
-			key_bins[CYCLE][LOAD][VEC] = INVALID_BIN;
+			// Mooch
+//			key_bins[CYCLE][LOAD][VEC] = INVALID_BIN;
 		}
 	}
 
@@ -308,20 +324,86 @@ struct Tile
 	__device__ __forceinline__ void ExtractRanks(Cta *cta)
 	{
 		Dispatch *dispatch = (Dispatch *) this;
-
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
 
-			unsigned char *base_partial_chars = (unsigned char *) cta->base_composite_counter;
+			if (VEC == 0) {
+				const int BASE_LANE = KernelPolicy::SCAN_LANES_PER_LOAD * LOAD;
 
-			local_ranks[CYCLE][LOAD][VEC] = base_partial_chars[counter_offsets[LOAD][VEC]] +
-				SameBinCount::template Iterate<CYCLE, LOAD, VEC>::Invoke(
-					dispatch,
-					key_bins[CYCLE][LOAD][VEC]);
+				// Todo fix for other radix digits
+
+				// Lane 0
+				counts_bytes[CYCLE][LOAD][0][0] = cta->byte_grid_details.lane_partial[BASE_LANE + 0][0];
+
+				// Lane 1
+				counts_bytes[CYCLE][LOAD][0][1] = cta->byte_grid_details.lane_partial[BASE_LANE + 1][0];
+
+				escan_bytes[CYCLE][LOAD] += util::PRMT(
+					counts_bytes[CYCLE][LOAD][0][0],
+					counts_bytes[CYCLE][LOAD][0][1],
+					bins_nibbles[CYCLE][LOAD]);
+/*
+				printf("Downsweep thread %u cycle %u load %u:\t,"
+					"escan_bytes(%x), "
+					"bins_nibbles(%x), "
+					"counts_bytes1(%08x), "
+					"counts_bytes0(%08x), "
+					"\n",
+					threadIdx.x, CYCLE, LOAD,
+					escan_bytes[CYCLE][LOAD],
+					bins_nibbles[CYCLE][LOAD],
+					counts_bytes[CYCLE][LOAD][0][1],
+					counts_bytes[CYCLE][LOAD][0][0]);
+*/
+			}
+
+			int nibble_prefix = util::BFE(escan_bytes[CYCLE][LOAD], VEC * 8, 8);
+
+			int base_byte_raking_tid =
+				(threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG) +
+				(RAKING_THREADS_PER_LOAD * LOAD);
+
+			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
+
+			int lane = bin >> 2;
+			int word = (bin >> 1) & 1;
+			int select = bin & 1;
+
+			int raking_tid = base_byte_raking_tid + (lane << KernelPolicy::ByteGrid::LOG_RAKING_THREADS_PER_LANE);
+			short * short_offsets = (short *) &cta->smem_storage.short_deposits[word][raking_tid];
+			int scan_prefix = short_offsets[select];
+
+			local_ranks[CYCLE][LOAD][VEC] = scan_prefix + nibble_prefix;
+
+/*
+			bin = UnmapBin(bin);
+			printf("\tExtract "
+				"thread %u load %u vec %u\t:"
+				"key(%u), "
+				"bin(%u), "
+				"base_byte_raking_tid(%u), "
+				"lane(%u), "
+				"word(%u), "
+				"select(%u), "
+				"nibble_prefix(%u),"
+				"scan_prefix(%u), "
+				"local_ranks(%u)\n",
+
+				threadIdx.x, LOAD, VEC,
+				keys[CYCLE][LOAD][VEC],
+				bin,
+				base_byte_raking_tid,
+				lane,
+				word,
+				select,
+				nibble_prefix,
+				scan_prefix,
+				local_ranks[CYCLE][LOAD][VEC]);
+*/
 		} else {
-
 			// Put invalid keys just after the end of the valid swap exchange.
 			local_ranks[CYCLE][LOAD][VEC] = KernelPolicy::TILE_ELEMENTS;
 		}
+
 	}
 
 
@@ -332,11 +414,14 @@ struct Tile
 	__device__ __forceinline__ void UpdateRanks(Cta *cta)
 	{
 		Dispatch *dispatch = (Dispatch *) this;
-
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
+
 			// Update this key's rank with the bin-prefix for it's bin
+
+			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
+
 			local_ranks[CYCLE][LOAD][VEC] +=
-				cta->smem_storage.bin_prefixes[CYCLE][LOAD][key_bins[CYCLE][LOAD][VEC]];
+				cta->smem_storage.bin_prefixes[CYCLE][LOAD][bin];
 		}
 	}
 
@@ -347,57 +432,20 @@ struct Tile
 	template <int CYCLE, int LOAD, int VEC, typename Cta>
 	__device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta)
 	{
-		Dispatch *dispatch = (Dispatch *) this;
 
+		Dispatch *dispatch = (Dispatch *) this;
 		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
+
+			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
+
 			// Update this key's global scatter offset with its
 			// cycle rank and with the bin-prefix for it's bin
 			scatter_offsets[CYCLE][LOAD][VEC] =
 				local_ranks[CYCLE][LOAD][VEC] +
-				cta->smem_storage.bin_prefixes[CYCLE][LOAD][key_bins[CYCLE][LOAD][VEC]];
+				cta->smem_storage.bin_prefixes[CYCLE][LOAD][bin];
 		}
 	}
 
-
-	/**
-	 * ResetLanes
-	 */
-	template <int LANE, typename Cta>
-	__device__ __forceinline__ void ResetLanes(Cta *cta)
-	{
-		cta->base_composite_counter[LANE][0] = 0;
-	}
-
-
-	//---------------------------------------------------------------------
-	// IterateCycleLanes Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate next lane
-	 */
-	template <int LANE, int dummy = 0>
-	struct IterateCycleLanes
-	{
-		// ResetLanes
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ResetLanes(Cta *cta, Tile *tile)
-		{
-			tile->ResetLanes<LANE>(cta);
-			IterateCycleLanes<LANE + 1>::ResetLanes(cta, tile);
-		}
-	};
-
-	/**
-	 * Terminate lane iteration
-	 */
-	template <int dummy>
-	struct IterateCycleLanes<SCAN_LANES_PER_CYCLE, dummy>
-	{
-		// ResetLanes
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ResetLanes(Cta *cta, Tile *tile) {}
-	};
 
 
 	//---------------------------------------------------------------------
@@ -454,6 +502,28 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile)
 		{
+			util::NibblesToBytes(
+				tile->counts_bytes[CYCLE][LOAD][0],
+				tile->counts_nibbles[CYCLE][LOAD][0]);
+/*
+			printf("Thread %u cycle %u load %u:\t,"
+				"escan_bytes(%x), "
+				"bins_nibbles(%x), "
+				"counts_bytes1(%08x), "
+				"counts_bytes0(%08x), "
+				"\n",
+				threadIdx.x, CYCLE, LOAD,
+				tile->escan_bytes[CYCLE][LOAD],
+				tile->bins_nibbles[CYCLE][LOAD],
+				tile->counts_bytes[CYCLE][LOAD][0][1],
+				tile->counts_bytes[CYCLE][LOAD][0][0]);
+*/
+			const int BASE_LANE = KernelPolicy::SCAN_LANES_PER_LOAD * LOAD;
+
+			// Todo fix for other radix digits
+			cta->byte_grid_details.lane_partial[BASE_LANE + 0][0] = tile->counts_bytes[CYCLE][LOAD][0][0];
+			cta->byte_grid_details.lane_partial[BASE_LANE + 1][0] = tile->counts_bytes[CYCLE][LOAD][0][1];
+
 			IterateCycleElements<CYCLE, LOAD + 1, 0>::DecodeKeys(cta, tile);
 		}
 
@@ -516,41 +586,67 @@ struct Tile
 	{
 		Dispatch *dispatch = (Dispatch*) this;
 
-		// Reset smem composite counters
-		IterateCycleLanes<0>::ResetLanes(cta, dispatch);
-
 		// Decode bins and update 8-bit composite counters for the keys in this cycle
 		IterateCycleElements<CYCLE, 0, 0>::DecodeKeys(cta, dispatch);
 
 		__syncthreads();
 
 		// Use our raking threads to, in aggregate, scan the composite counter lanes
-		if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {
+		if (threadIdx.x < KernelPolicy::ByteGrid::RAKING_THREADS) {
 
 			// Upsweep rake
-			int partial = util::reduction::SerialReduce<KernelPolicy::Grid::PARTIALS_PER_SEG>::Invoke(
-				cta->raking_segment);
+			int partial = util::scan::SerialScan<KernelPolicy::ByteGrid::PARTIALS_PER_SEG>::Invoke(
+				cta->byte_grid_details.raking_segment,
+				0);
 
-			int warpscan_lane 		= threadIdx.x >> KernelPolicy::Grid::LOG_RAKING_THREADS_PER_LANE;
-			int warpscan_tid 		= threadIdx.x & (KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1);
+			int halves[2];
 
-			// Inclusive warpscan in bin warpscan_lane
-			int inclusive_prefix 	= util::scan::WarpScan<KernelPolicy::Grid::LOG_RAKING_THREADS_PER_LANE, false>::Invoke(
-				partial,
-				cta->smem_storage.lanes_warpscan[warpscan_lane],
-				warpscan_tid);
-			int exclusive_prefix 	= inclusive_prefix - partial;
+			util::PRMT(halves[0], partial, 0, 0x4240);		// (d, c, b, a) -> (-, c, -, a),
+			util::PRMT(halves[1], partial, 0, 0x4341);		// (d, c, b, a) -> (-, d, -, b),
 
-			// Save off each lane's warpscan total for this cycle
-			if (warpscan_tid == KernelPolicy::Grid::RAKING_THREADS_PER_LANE - 1) {
-				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][0] = exclusive_prefix;
-				cta->smem_storage.lane_totals[CYCLE][warpscan_lane][1] = partial;
+			// raking tid < (RAKING_THREADS / 2) does even bins
+			// raking tid >= (RAKING_THREADS / 2) does odd bins
+
+			cta->short_grid_details.lane_partial[0][0] = halves[0];
+			cta->short_grid_details.lane_partial[1][0] = halves[1];
+/*
+			if (threadIdx.x == 0) {
+				printf("ByteGrid:\n");
+				KernelPolicy::ByteGrid::Print();
+				printf("\n");
+				printf("ShortGrid:\n");
+				KernelPolicy::ShortGrid::Print();
+				printf("\n");
 			}
+*/
+			util::Sum<int> scan_op;
+			util::scan::CooperativeGridScan<typename Cta::ShortGridDetails>::ScanTile(
+				cta->short_grid_details,
+				scan_op);
 
-			// Downsweep rake
-			util::scan::SerialScan<KernelPolicy::Grid::PARTIALS_PER_SEG>::Invoke(
-				cta->raking_segment,
-				exclusive_prefix);
+			int total = cta->short_grid_details.CumulativePartial();
+			int addend = total << 16;
+			halves[0] = cta->short_grid_details.lane_partial[0][0] + addend;
+			halves[1] = cta->short_grid_details.lane_partial[1][0] + addend;
+
+			// rebundle halves
+			int rebundled_halves[2];
+			rebundled_halves[0] = util::PRMT(halves[0], halves[1], 0x5410);
+			rebundled_halves[1] = util::PRMT(halves[0], halves[1], 0x7632);
+
+			// Store using short raking lanes
+			cta->smem_storage.short_deposits[0][threadIdx.x] = rebundled_halves[0];
+			cta->smem_storage.short_deposits[1][threadIdx.x] = rebundled_halves[1];
+/*
+			printf("\tRaking thread %d computed half0(%u, %u)\n",
+				threadIdx.x,
+				halves[0] & 0x0000ffff,
+				(halves[0] >> 16) & 0x0000ffff);
+			printf("\tRaking thread %d computed half1(%u, %u)\n",
+				threadIdx.x,
+				halves[1] & 0x0000ffff,
+				(halves[1] >> 16) & 0x0000ffff);
+*/
 		}
 
 		__syncthreads();
@@ -583,7 +679,8 @@ struct Tile
 	template <int CYCLE, int LOAD, typename Cta>
 	__device__ __forceinline__ void UpdateBinPrefixes(int bin_prefix, Cta *cta)
 	{
-		cta->smem_storage.bin_prefixes[CYCLE][LOAD][threadIdx.x] = bin_counts[CYCLE][LOAD] + bin_prefix;
+		cta->smem_storage.bin_prefixes[CYCLE][LOAD][threadIdx.x] =
+			bin_counts[CYCLE][LOAD] + bin_prefix;
 	}
 
 
@@ -601,8 +698,15 @@ struct Tile
 		int bin = dispatch->DecodeBin(linear_keys[ELEMENT], cta);
 
 		linear_offsets[ELEMENT] =
-			cta->smem_storage.bin_carry[bin] +
+//			cta->smem_storage.bin_carry[bin] +							// mooch
 			(KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
+/*
+		printf("Tid %d scattering key[%d](%d) to offset %d\n",
+			threadIdx.x,
+			ELEMENT,
+			linear_keys[ELEMENT],
+			linear_offsets[ELEMENT]);
+*/
 	}
 
 
@@ -624,7 +728,7 @@ struct Tile
 			IterateCycles<CYCLE + 1>::UpdateRanks(cta, tile);
 		}
 
-		// UpdateRanks
+		// UpdateGlobalOffsets
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
 		{
@@ -795,7 +899,7 @@ struct Tile
 		/**
 		 * Warp based scattering that does not cross alignment boundaries, e.g., for SM1.0-1.1
 		 * coalescing rules
-		 */
+		 * /
 		template <int PASS, int SCATTER_PASSES>
 		struct WarpScatter
 		{
@@ -923,6 +1027,7 @@ struct Tile
 					Cta *cta,
 					Tile *tile) {}
 		};
+*/
 
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(
@@ -937,6 +1042,11 @@ struct Tile
 			// Scan cycles
 			IterateCycles<0>::ScanCycles(cta, tile);
 
+			__syncthreads();
+
+
+
+/*
 			// Scan across bins
 			if (threadIdx.x < KernelPolicy::BINS) {
 
@@ -976,7 +1086,7 @@ struct Tile
 
 			// Update the local ranks in each load with the bin prefixes for the tile
 			IterateCycles<0>::UpdateRanks(cta, tile);
-
+*/
 			// Scatter keys to smem by local rank
 			util::io::ScatterTile<
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
@@ -990,7 +1100,7 @@ struct Tile
 			__syncthreads();
 
 			SizeT valid_elements = tile->ValidElements(cta, guarded_elements);
-
+/*
 			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
 				WarpScatter<0, SCATTER_PASSES>::template ScatterPass<KeyType, KernelPolicy::PostprocessKey>(
@@ -1002,6 +1112,7 @@ struct Tile
 				__syncthreads();
 
 			} else {
+*/
 
 				// Gather keys linearly from smem (vec-1)
 				util::io::LoadTile<
@@ -1022,18 +1133,20 @@ struct Tile
 				// Scatter keys to global bin partitions
 				tile->ScatterKeys(cta, valid_elements);
 
+/*
 			}
 
 			// Partition values
 			ScatterValues<KernelPolicy::KEYS_ONLY>::Invoke(
 				cta_offset, guarded_elements, valid_elements, cta, tile);
+*/
 		}
 	};
 
 
 	/**
 	 * Specialized for direct scatter
-	 */
+	 * /
 	template <int dummy>
 	struct PartitionTile<SCATTER_DIRECT, dummy>
 	{
@@ -1119,7 +1232,7 @@ struct Tile
 				cta_offset, guarded_elements, valid_elements, cta, tile);
 		}
 	};
-
+*/
 
 
 	//---------------------------------------------------------------------

@@ -57,7 +57,6 @@ struct Cta :
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
-	typedef typename KernelPolicy::Grid::LanePartial		LanePartial;
 
 
 	//---------------------------------------------------------------------
@@ -73,18 +72,14 @@ struct Cta :
 		KeyType 		*&d_out_keys,
 		ValueType 		*&d_in_values,
 		ValueType 		*&d_out_values,
-		SizeT 			*&d_spine,
-		LanePartial		base_composite_counter,
-		int				*raking_segment) :
+		SizeT 			*&d_spine) :
 			Base(
 				smem_storage,
 				d_in_keys,
 				d_out_keys,
 				d_in_values,
 				d_out_values,
-				d_spine,
-				base_composite_counter,
-				raking_segment)
+				d_spine)
 	{}
 };
 

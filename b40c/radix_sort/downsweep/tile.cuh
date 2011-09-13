@@ -94,6 +94,7 @@ struct Tile :
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
 	{
+/*
 		// Read tile of keys, use -1 if key is out-of-bounds
 		util::io::LoadTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
@@ -107,6 +108,19 @@ struct Tile :
 					cta_offset,
 					guarded_elements,
 					(KeyType) -1);
+*/
+		// Read tile of keys, use -1 if key is out-of-bounds
+		util::io::LoadTile<
+			KernelPolicy::LOG_LOADS_PER_TILE,
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::CHECK_ALIGNMENT>
+				::template LoadValid<KeyType, KernelPolicy::PreprocessTraits::Preprocess>(
+					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
+					cta->d_in_keys,
+					cta_offset);
+
 	}
 
 

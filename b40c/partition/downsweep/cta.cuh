@@ -55,7 +55,11 @@ struct Cta
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
-	typedef typename KernelPolicy::Grid::LanePartial		LanePartial;
+	typedef typename KernelPolicy::ByteGrid::LanePartial	LanePartial;
+
+	// Operational details type for short grid
+	typedef util::SrtsDetails<typename KernelPolicy::ByteGrid> 		ByteGridDetails;
+	typedef util::SrtsDetails<typename KernelPolicy::ShortGrid> 	ShortGridDetails;
 
 	typedef DerivedCta Dispatch;
 
@@ -75,10 +79,9 @@ struct Cta
 
 	SizeT								*&d_spine;
 
-	// SRTS details
-	LanePartial							base_composite_counter;
-	int									*raking_segment;
-
+	// Operational details for scan grids
+	ByteGridDetails 					byte_grid_details;
+	ShortGridDetails 					short_grid_details;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -93,22 +96,20 @@ struct Cta
 		KeyType 		*&d_out_keys,
 		ValueType 		*&d_in_values,
 		ValueType 		*&d_out_values,
-		SizeT 			*&d_spine,
-		LanePartial		base_composite_counter,
-		int				*raking_segment) :
+		SizeT 			*&d_spine) :
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
 			d_spine(d_spine),
-			base_composite_counter(base_composite_counter),
-			raking_segment(raking_segment)
+			byte_grid_details(smem_storage.byte_raking_lanes),
+			short_grid_details(
+				smem_storage.short_raking_lanes,
+				smem_storage.warpscan,
+				0)
 	{
 		if (threadIdx.x < KernelPolicy::BINS) {
-
-			// Reset value-area of bin_warpscan
-			smem_storage.bin_warpscan[1][threadIdx.x] = 0;
 
 			// Read bin_carry in parallel
 			SizeT my_bin_carry;
@@ -153,13 +154,14 @@ struct Cta
 			ProcessTile(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
 		}
-
+/*
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
 			ProcessTile(
 				cta_offset,
 				work_limits.guarded_elements);
 		}
+*/
 	}
 };
 

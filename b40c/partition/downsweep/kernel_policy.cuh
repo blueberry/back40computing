@@ -90,7 +90,18 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_LANES_PER_CYCLE,				// Lanes (the number of loads)
 		TuningPolicy::LOG_RAKING_THREADS,		// Raking threads
 		false>									// Any prefix dependences between lanes are explicitly managed
-			Grid;
+			ByteGrid;
+
+	// Short grid
+	typedef util::SrtsGrid<
+		TuningPolicy::CUDA_ARCH,
+		int,									// Partial type
+		TuningPolicy::LOG_RAKING_THREADS,		// Depositing threads (the CTA size)
+		1,										// Lanes (the number of loads)
+		B40C_LOG_WARP_THREADS(CUDA_ARCH),		// Raking threads
+		true>									// There are prefix dependences between lanes
+			ShortGrid;
+
 
 	
 	/**
@@ -98,21 +109,23 @@ struct KernelPolicy : TuningPolicy
 	 */
 	struct SmemStorage
 	{
-		volatile int 					lanes_warpscan[SCAN_LANES_PER_CYCLE][3][Grid::RAKING_THREADS_PER_LANE];		// One warpscan per lane
-		volatile int 					bin_warpscan[2][BINS];
-
-		SizeT							bin_carry[BINS];
-		SizeT 							bin_prefixes[CYCLES_PER_TILE][LOADS_PER_CYCLE][BINS];
-		union {
-			int 						lane_totals[CYCLES_PER_TILE][SCAN_LANES_PER_CYCLE][2];
-			unsigned char				lane_totals_c[CYCLES_PER_TILE][LOADS_PER_CYCLE][SCAN_LANES_PER_LOAD][2][4];
-		};
-
 		bool 							non_trivial_pass;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
+		SizeT							bin_carry[BINS];
+
+		// Storage for scanning local ranks
+		int 							warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+
 		union {
-			int 						raking_lanes[Grid::RAKING_ELEMENTS];
+			struct {
+				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
+				union {
+					int 				short_raking_lanes[ShortGrid::RAKING_ELEMENTS];
+					int					short_deposits[2][ByteGrid::RAKING_THREADS];
+				};
+			};
+
 			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)
 			ValueType 					value_exchange[TILE_ELEMENTS + 1];
 		};
