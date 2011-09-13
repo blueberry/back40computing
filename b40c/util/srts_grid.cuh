@@ -219,10 +219,13 @@ struct SrtsGrid
 		T *smem,
 		int tid = threadIdx.x)
 	{
+/*
 		int row = tid >> LOG_PARTIALS_PER_ROW;
 		int col = tid & (PARTIALS_PER_ROW - 1);
 
 		return (LanePartial) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
+*/
+		return (LanePartial) (smem + tid + (tid >> LOG_PARTIALS_PER_ROW));
 	}
 
 
@@ -232,9 +235,13 @@ struct SrtsGrid
 	 */
 	static __host__ __device__ __forceinline__  RakingSegment MyRakingSegment(T *smem)
 	{
+/*
 		int row = threadIdx.x >> LOG_SEGS_PER_ROW;
 		int col = (threadIdx.x & (SEGS_PER_ROW - 1)) << LOG_PARTIALS_PER_SEG;
 		return (RakingSegment) (smem + (row * PADDED_PARTIALS_PER_ROW) + col);
+*/
+		return (RakingSegment) (smem + (threadIdx.x << LOG_PARTIALS_PER_SEG) +
+			(threadIdx.x >> LOG_SEGS_PER_ROW));
 	}
 
 
