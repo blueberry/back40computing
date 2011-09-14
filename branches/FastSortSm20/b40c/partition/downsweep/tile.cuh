@@ -616,7 +616,7 @@ struct Tile
 					int bin_exclusive = cta->short_grid_details.warpscan[1][bin_thread - 1] + addend;
 					int bin_inclusive = cta->short_grid_details.warpscan[1][bin_thread - 1 + BIN_STRIDE] + addend;
 
-					int extract_offset = (bin & 1) << 16;
+					int extract_offset = (bin & 1) << 4;
 					bin_exclusive = util::BFE(bin_exclusive, extract_offset, 16);
 					bin_inclusive = util::BFE(bin_inclusive, extract_offset, 16);
 
