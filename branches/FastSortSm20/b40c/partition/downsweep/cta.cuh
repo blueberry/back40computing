@@ -116,6 +116,7 @@ struct Cta
 				d_spine + spine_bin_offset);
 
 			smem_storage.bin_carry[threadIdx.x] = my_bin_carry;
+			smem_storage.bin_inclusive[threadIdx.x] = 0;
 		}
 	}
 

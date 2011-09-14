@@ -432,47 +432,6 @@ struct Tile
 	}
 
 
-	/**
-	 * UpdateRanks
-	 */
-	template <int CYCLE, int LOAD, int VEC, typename Cta>
-	__device__ __forceinline__ void UpdateRanks(Cta *cta)
-	{
-		Dispatch *dispatch = (Dispatch *) this;
-		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
-
-			// Update this key's rank with the bin-prefix for it's bin
-
-			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
-
-			local_ranks[CYCLE][LOAD][VEC] +=
-				cta->smem_storage.bin_prefixes[CYCLE][LOAD][bin];
-		}
-	}
-
-
-	/**
-	 * UpdateGlobalOffsets
-	 */
-	template <int CYCLE, int LOAD, int VEC, typename Cta>
-	__device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta)
-	{
-
-		Dispatch *dispatch = (Dispatch *) this;
-		if (dispatch->template IsValid<CYCLE, LOAD, VEC>()) {
-
-			int bin = util::BFE(bins_nibbles[CYCLE][LOAD], VEC * 4, 4);
-
-			// Update this key's global scatter offset with its
-			// cycle rank and with the bin-prefix for it's bin
-			scatter_offsets[CYCLE][LOAD][VEC] =
-				local_ranks[CYCLE][LOAD][VEC] +
-				cta->smem_storage.bin_prefixes[CYCLE][LOAD][bin];
-		}
-	}
-
-
-
 	//---------------------------------------------------------------------
 	// IterateCycleElements Structures
 	//---------------------------------------------------------------------
@@ -497,22 +456,6 @@ struct Tile
 		{
 			tile->ExtractRanks<CYCLE, LOAD, VEC>(cta);
 			IterateCycleElements<CYCLE, LOAD, VEC + 1>::ExtractRanks(cta, tile);
-		}
-
-		// UpdateRanks
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile)
-		{
-			tile->UpdateRanks<CYCLE, LOAD, VEC>(cta);
-			IterateCycleElements<CYCLE, LOAD, VEC + 1>::UpdateRanks(cta, tile);
-		}
-
-		// UpdateGlobalOffsets
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
-		{
-			tile->UpdateGlobalOffsets<CYCLE, LOAD, VEC>(cta);
-			IterateCycleElements<CYCLE, LOAD, VEC + 1>::UpdateGlobalOffsets(cta, tile);
 		}
 	};
 
@@ -565,19 +508,6 @@ struct Tile
 			IterateCycleElements<CYCLE, LOAD + 1, 0>::ExtractRanks(cta, tile);
 		}
 
-		// UpdateRanks
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile)
-		{
-			IterateCycleElements<CYCLE, LOAD + 1, 0>::UpdateRanks(cta, tile);
-		}
-
-		// UpdateGlobalOffsets
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
-		{
-			IterateCycleElements<CYCLE, LOAD + 1, 0>::UpdateGlobalOffsets(cta, tile);
-		}
 	};
 
 	/**
@@ -593,14 +523,6 @@ struct Tile
 		// ExtractRanks
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ExtractRanks(Cta *cta, Tile *tile) {}
-
-		// UpdateRanks
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile) {}
-
-		// UpdateGlobalOffsets
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile) {}
 	};
 
 
@@ -655,8 +577,7 @@ struct Tile
 			cta->short_grid_details.lane_partial[1][0] = halves[1];
 
 
-			if (threadIdx.x < KernelPolicy::ShortGrid::RAKING_THREADS) {
-
+			{
 				util::Sum<int> scan_op;
 
 				// Raking reduction
@@ -665,18 +586,58 @@ struct Tile
 
 				// Exclusive warp scan
 				int total;
-				int exclusive_partial = util::scan::WarpScan<Cta::ShortGridDetails::LOG_RAKING_THREADS, false>::Invoke(
+				int exclusive_partial = util::scan::WarpScan<Cta::ShortGridDetails::LOG_RAKING_THREADS>::Invoke(
 					inclusive_partial,
 					total,
 					cta->short_grid_details.warpscan,
-					scan_op) - inclusive_partial;
+					scan_op);
 
 				int addend = total << 16;
+				exclusive_partial += addend;
+
+				// update carry
+				if (threadIdx.x < KernelPolicy::BINS) {
+
+					const int LOG_BIN_STRIDE = KernelPolicy::ShortGrid::LOG_RAKING_THREADS + 1 - KernelPolicy::LOG_BINS;
+					const int BIN_STRIDE = 1 << LOG_BIN_STRIDE;
+
+					// Add the previous tile's inclusive-scan to the running bin-carry
+					SizeT my_carry =
+						cta->smem_storage.bin_carry[threadIdx.x] +
+						cta->smem_storage.bin_inclusive[threadIdx.x];
+
+					// Extract current bin exclusive and inclusive prefixes
+					int bin = UnmapBin(threadIdx.x);
+					int bin_thread = (bin >> 1) << LOG_BIN_STRIDE;
+
+					int bin_exclusive = cta->short_grid_details.warpscan[1][bin_thread - 1] + addend;
+					int bin_inclusive = cta->short_grid_details.warpscan[1][bin_thread - 1 + BIN_STRIDE] + addend;
+
+					bin_exclusive = (bin & 1) ?
+						bin_exclusive >> 16 :
+						bin_exclusive & 0x0000ffff;
+					bin_inclusive = (bin & 1) ?
+						bin_inclusive >> 16 :
+						bin_inclusive & 0x0000ffff;
+
+					// Save inclusive scan
+					cta->smem_storage.bin_inclusive[threadIdx.x] = bin_inclusive;
+
+					// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
+					cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
+/*
+					printf("bin (%d) has exclusive(%d), inclusive(%d)\n",
+						threadIdx.x,
+						bin_exclusive,
+						bin_inclusive);
+*/
+				}
+
 
 				// Exclusive raking scan
 				util::scan::SerialScan<Cta::ShortGridDetails::PARTIALS_PER_SEG>::Invoke(
 					cta->short_grid_details.raking_segment,
-					exclusive_partial + addend,
+					exclusive_partial,
 					scan_op);
 			}
 
@@ -706,37 +667,6 @@ struct Tile
 	}
 
 
-	/**
-	 * RecoverBinCounts
-	 *
-	 * Called by threads [0, KernelPolicy::BINS)
-	 */
-	template <int CYCLE, int LOAD, typename Cta>
-	__device__ __forceinline__ void RecoverBinCounts(
-		int my_base_lane, int my_quad_byte, Cta *cta)
-	{
-/*
-		bin_counts[CYCLE][LOAD] =
-			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][0][my_quad_byte] +
-			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][1][my_quad_byte];
-*/
-	}
-
-
-	/**
-	 * UpdateBinPrefixes
-	 *
-	 * Called by threads [0, KernelPolicy::BINS)
-	 */
-	template <int CYCLE, int LOAD, typename Cta>
-	__device__ __forceinline__ void UpdateBinPrefixes(int bin_prefix, Cta *cta)
-	{
-/*
-		cta->smem_storage.bin_prefixes[CYCLE][LOAD][threadIdx.x] =
-			bin_counts[CYCLE][LOAD] + bin_prefix;
-*/
-	}
-
 
 	/**
 	 * DecodeGlobalOffsets
@@ -752,13 +682,14 @@ struct Tile
 		int bin = dispatch->DecodeBin(linear_keys[ELEMENT], cta);
 
 		linear_offsets[ELEMENT] =
-//			cta->smem_storage.bin_carry[bin] +							// mooch
+			cta->smem_storage.bin_carry[bin] +
 			(KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
 /*
-		printf("Tid %d scattering key[%d](%d) to offset %d\n",
+		printf("Tid %d scattering key[%d] (%d) with carry_bin %d to offset %d\n",
 			threadIdx.x,
 			ELEMENT,
 			linear_keys[ELEMENT],
+			cta->smem_storage.bin_carry[bin],
 			linear_offsets[ELEMENT]);
 */
 	}
@@ -774,22 +705,6 @@ struct Tile
 	template <int CYCLE, int dummy = 0>
 	struct IterateCycles
 	{
-		// UpdateRanks
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile)
-		{
-			IterateCycleElements<CYCLE, 0, 0>::UpdateRanks(cta, tile);
-			IterateCycles<CYCLE + 1>::UpdateRanks(cta, tile);
-		}
-
-		// UpdateGlobalOffsets
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile)
-		{
-			IterateCycleElements<CYCLE, 0, 0>::UpdateGlobalOffsets(cta, tile);
-			IterateCycles<CYCLE + 1>::UpdateGlobalOffsets(cta, tile);
-		}
-
 		// ScanCycles
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile)
@@ -805,86 +720,9 @@ struct Tile
 	template <int dummy>
 	struct IterateCycles<CYCLES_PER_TILE, dummy>
 	{
-		// UpdateRanks
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateRanks(Cta *cta, Tile *tile) {}
-
-		// UpdateGlobalOffsets
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateGlobalOffsets(Cta *cta, Tile *tile) {}
-
 		// ScanCycles
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile) {}
-	};
-
-
-	//---------------------------------------------------------------------
-	// IterateCycleLoads Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate next load
-	 */
-	template <int CYCLE, int LOAD, int dummy = 0>
-	struct IterateCycleLoads
-	{
-		// RecoverBinCounts
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void RecoverBinCounts(
-			int my_base_lane, int my_quad_byte, Cta *cta, Tile *tile)
-		{
-			tile->template RecoverBinCounts<CYCLE, LOAD>(my_base_lane, my_quad_byte, cta);
-			IterateCycleLoads<CYCLE, LOAD + 1>::RecoverBinCounts(my_base_lane, my_quad_byte, cta, tile);
-		}
-
-		// UpdateBinPrefixes
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateBinPrefixes(
-			int bin_prefix, Cta *cta, Tile *tile)
-		{
-			tile->template UpdateBinPrefixes<CYCLE, LOAD>(bin_prefix, cta);
-			IterateCycleLoads<CYCLE, LOAD + 1>::UpdateBinPrefixes(bin_prefix, cta, tile);
-		}
-	};
-
-
-	/**
-	 * Iterate next cycle
-	 */
-	template <int CYCLE, int dummy>
-	struct IterateCycleLoads<CYCLE, LOADS_PER_CYCLE, dummy>
-	{
-		// RecoverBinCounts
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void RecoverBinCounts(
-			int my_base_lane, int my_quad_byte, Cta *cta, Tile *tile)
-		{
-			IterateCycleLoads<CYCLE + 1, 0>::RecoverBinCounts(my_base_lane, my_quad_byte, cta, tile);
-		}
-
-		// UpdateBinPrefixes
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateBinPrefixes(
-			int bin_prefix, Cta *cta, Tile *tile)
-		{
-			IterateCycleLoads<CYCLE + 1, 0>::UpdateBinPrefixes(bin_prefix, cta, tile);
-		}
-	};
-
-	/**
-	 * Terminate iteration
-	 */
-	template <int dummy>
-	struct IterateCycleLoads<CYCLES_PER_TILE, 0, dummy>
-	{
-		// RecoverBinCounts
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void RecoverBinCounts(int my_base_lane, int my_quad_byte, Cta *cta, Tile *tile) {}
-
-		// UpdateBinPrefixes
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void UpdateBinPrefixes(int bin_prefix, Cta *cta, Tile *tile) {}
 	};
 
 
@@ -1098,50 +936,6 @@ struct Tile
 
 			__syncthreads();
 
-
-
-/*
-			// Scan across bins
-			if (threadIdx.x < KernelPolicy::BINS) {
-
-				// Recover bin-counts from lane totals
-				int my_base_lane = threadIdx.x >> 2;
-				int my_quad_byte = threadIdx.x & 3;
-				IterateCycleLoads<0, 0>::RecoverBinCounts(
-					my_base_lane, my_quad_byte, cta, tile);
-
-				// Scan across my bin counts for each load
-				int tile_bin_total = util::scan::SerialScan<KernelPolicy::LOADS_PER_TILE>::Invoke(
-					(int *) tile->bin_counts, 0);
-
-				// Add the previous tile's inclusive-scan to the running bin-carry
-				SizeT my_carry = cta->smem_storage.bin_carry[threadIdx.x] +
-					cta->smem_storage.bin_warpscan[1][threadIdx.x];
-
-				// Perform overflow-free inclusive SIMD Kogge-Stone across bins
-				int tile_bin_inclusive = util::scan::WarpScan<KernelPolicy::LOG_BINS, false>::Invoke(
-					tile_bin_total,
-					cta->smem_storage.bin_warpscan);
-
-				// Save inclusive scan in bin_warpscan
-				cta->smem_storage.bin_warpscan[1][threadIdx.x] = tile_bin_inclusive;
-
-				// Calculate exclusive scan
-				int tile_bin_exclusive = tile_bin_inclusive - tile_bin_total;
-
-				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
-				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - tile_bin_exclusive;
-
-				// Compute the bin prefixes for this tile for each load
-				IterateCycleLoads<0, 0>::UpdateBinPrefixes(tile_bin_exclusive, cta, tile);
-			}
-
-			__syncthreads();
-
-			// Update the local ranks in each load with the bin prefixes for the tile
-			IterateCycles<0>::UpdateRanks(cta, tile);
-*/
-
 			// Scatter keys to smem by local rank
 			util::io::ScatterTile<
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
@@ -1169,7 +963,6 @@ struct Tile
 
 			} else {
 */
-
 				// Gather keys linearly from smem (vec-1)
 				util::io::LoadTile<
 					KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
