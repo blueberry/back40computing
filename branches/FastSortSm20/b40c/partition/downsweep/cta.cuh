@@ -77,8 +77,6 @@ struct Cta
 	ValueType							*&d_in_values;
 	ValueType							*&d_out_values;
 
-	SizeT								*&d_spine;
-
 	// Operational details for scan grids
 	ByteGridDetails 					byte_grid_details;
 	ShortGridDetails 					short_grid_details;
@@ -102,7 +100,6 @@ struct Cta
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
-			d_spine(d_spine),
 			byte_grid_details(smem_storage.byte_raking_lanes),
 			short_grid_details(
 				smem_storage.short_raking_lanes,

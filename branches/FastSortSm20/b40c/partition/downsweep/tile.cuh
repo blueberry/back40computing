@@ -89,19 +89,15 @@ struct Tile
 	// 		bins_nibbles contains the bin for each key within nibbles ordered right to left
 	// 		escan_bytes contains the exclusive scan for each key within nibbles ordered right to left
 
-	int 		counts_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE][1];
-	int 		escan_bytes[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	int 		bins_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		counts_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE][1];		// predInc
+	int 		escan_bytes0[CYCLES_PER_TILE][LOADS_PER_CYCLE];				// offsets packed (first 4 keys)
+	int 		escan_bytes1[CYCLES_PER_TILE][LOADS_PER_CYCLE];				// offsets packed (second 4 keys)
+	int 		bins_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE];				// buckets packed
 
 	int			counts_bytes[CYCLES_PER_TILE][LOADS_PER_CYCLE][1][2];
 
-	int 		short_offsets[SCAN_LANES_PER_CYCLE][2];
-
 	int 		local_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];		// The local rank of each key
 	SizeT 		scatter_offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];	// The global rank of each key
-
-	// Counts of my bin in each load in each cycle, valid in threads [0,BINS)
-	int 		bin_counts[CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
 
 	//---------------------------------------------------------------------
@@ -280,22 +276,36 @@ struct Tile
 
 			int shift = bin << LOG_BITS_PER_NIBBLE;
 
+			int prev_counts_nibbles = counts_nibbles[CYCLE][LOAD][0] >> shift;
+
+			// Initialize exclusive scan bytes
 			if (VEC == 0) {
-
-				counts_nibbles[CYCLE][LOAD][0] = 1 << shift;
-				escan_bytes[CYCLE][LOAD] = 0;
-				bins_nibbles[CYCLE][LOAD] = bin;
-
-			} else {
-
-				int prev_counts_nibbles = counts_nibbles[CYCLE][LOAD][0] >> shift;
-
+				escan_bytes0[CYCLE][LOAD] = 0;
+			} else if (VEC == 4) {
+				escan_bytes1[CYCLE][LOAD] = 0;
+			} else if (VEC < 4) {
 				util::BFI(
-					escan_bytes[CYCLE][LOAD],
-					escan_bytes[CYCLE][LOAD],
+					escan_bytes0[CYCLE][LOAD],
+					escan_bytes0[CYCLE][LOAD],
 					prev_counts_nibbles,
 					8 * VEC,
 					BITS_PER_NIBBLE);
+			} else {
+				util::BFI(
+					escan_bytes1[CYCLE][LOAD],
+					escan_bytes1[CYCLE][LOAD],
+					prev_counts_nibbles,
+					8 * (VEC - 4),
+					BITS_PER_NIBBLE);
+			}
+
+			// Initialize counts and bins nibbles
+			if (VEC == 0) {
+
+				counts_nibbles[CYCLE][LOAD][0] = 1 << shift;
+				bins_nibbles[CYCLE][LOAD] = bin;
+
+			} else {
 
 				util::BFI(
 					bins_nibbles[CYCLE][LOAD],
@@ -332,34 +342,47 @@ struct Tile
 
 				const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
 
-				// Todo fix for other radix digits
-
 				// Lane 0
 				counts_bytes[CYCLE][LOAD][0][0] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
 
 				// Lane 1
 				counts_bytes[CYCLE][LOAD][0][1] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
 
-				escan_bytes[CYCLE][LOAD] += util::PRMT(
+				escan_bytes0[CYCLE][LOAD] += util::PRMT(
 					counts_bytes[CYCLE][LOAD][0][0],
 					counts_bytes[CYCLE][LOAD][0][1],
 					bins_nibbles[CYCLE][LOAD]);
+
+				if (LOAD_VEC_SIZE >= 4) {
+
+					escan_bytes1[CYCLE][LOAD] += util::PRMT(
+						counts_bytes[CYCLE][LOAD][0][0],
+						counts_bytes[CYCLE][LOAD][0][1],
+						bins_nibbles[CYCLE][LOAD] >> 16);
+				}
 /*
 				printf("Downsweep thread %u cycle %u load %u:\t,"
-					"escan_bytes(%x), "
+					"escan_bytes0(%x), "
+					"escan_bytes1(%x), "
 					"bins_nibbles(%x), "
 					"counts_bytes1(%08x), "
 					"counts_bytes0(%08x), "
 					"\n",
 					threadIdx.x, CYCLE, LOAD,
-					escan_bytes[CYCLE][LOAD],
+					escan_bytes0[CYCLE][LOAD],
+					escan_bytes1[CYCLE][LOAD],
 					bins_nibbles[CYCLE][LOAD],
 					counts_bytes[CYCLE][LOAD][0][1],
 					counts_bytes[CYCLE][LOAD][0][0]);
 */
 			}
 
-			int nibble_prefix = util::BFE(escan_bytes[CYCLE][LOAD], VEC * 8, 8);
+			int nibble_prefix;
+			if (VEC < 4) {
+				nibble_prefix = util::BFE(escan_bytes0[CYCLE][LOAD], VEC * 8, 8);
+			} else {
+				nibble_prefix = util::BFE(escan_bytes1[CYCLE][LOAD], (VEC - 4) * 8, 8);
+			}
 
 
 			int lane = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 2, 2);
@@ -380,26 +403,23 @@ struct Tile
 			local_ranks[CYCLE][LOAD][VEC] = scan_prefix + nibble_prefix;
 
 /*
-			bin = UnmapBin(bin);
 			printf("\tExtract "
 				"thread %u load %u vec %u\t:"
 				"key(%u), "
-				"bin(%u), "
 				"base_byte_raking_tid(%u), "
 				"lane(%u), "
-				"word(%u), "
-				"select(%u), "
+				"half(%u), "
+				"quarter(%u), "
 				"nibble_prefix(%u),"
 				"scan_prefix(%u), "
 				"local_ranks(%u)\n",
 
 				threadIdx.x, LOAD, VEC,
 				keys[CYCLE][LOAD][VEC],
-				bin,
 				base_byte_raking_tid,
 				lane,
-				word,
-				select,
+				half,
+				quarter,
 				nibble_prefix,
 				scan_prefix,
 				local_ranks[CYCLE][LOAD][VEC]);
@@ -518,15 +538,19 @@ struct Tile
 			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes[CYCLE][LOAD][0][1];
 /*
 			printf("Thread %u cycle %u load %u:\t,"
-				"escan_bytes(%x), "
+				"escan_bytes0(%x), "
+				"escan_bytes1(%x), "
 				"bins_nibbles(%x), "
+				"counts_nibbles(%08x), "
 				"counts_bytes1(%08x), "
 				"counts_bytes0(%08x), "
 				"lane_offset(%d)"
 				"\n",
 				threadIdx.x, CYCLE, LOAD,
-				tile->escan_bytes[CYCLE][LOAD],
+				tile->escan_bytes0[CYCLE][LOAD],
+				tile->escan_bytes1[CYCLE][LOAD],
 				tile->bins_nibbles[CYCLE][LOAD],
+				tile->counts_nibbles[CYCLE][LOAD][0],
 				tile->counts_bytes[CYCLE][LOAD][0][1],
 				tile->counts_bytes[CYCLE][LOAD][0][0],
 				LANE_OFFSET);
@@ -614,6 +638,10 @@ struct Tile
 			int partial = util::scan::SerialScan<KernelPolicy::ByteGrid::PARTIALS_PER_SEG>::Invoke(
 				cta->byte_grid_details.raking_segment,
 				0);
+/*
+			printf("\t\tRaking thread %d reduced partial(%u)\n",
+				threadIdx.x, partial);
+*/
 
 			int halves[2];
 
@@ -687,9 +715,11 @@ struct Tile
 	__device__ __forceinline__ void RecoverBinCounts(
 		int my_base_lane, int my_quad_byte, Cta *cta)
 	{
+/*
 		bin_counts[CYCLE][LOAD] =
 			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][0][my_quad_byte] +
 			cta->smem_storage.lane_totals_c[CYCLE][LOAD][my_base_lane][1][my_quad_byte];
+*/
 	}
 
 
@@ -701,8 +731,10 @@ struct Tile
 	template <int CYCLE, int LOAD, typename Cta>
 	__device__ __forceinline__ void UpdateBinPrefixes(int bin_prefix, Cta *cta)
 	{
+/*
 		cta->smem_storage.bin_prefixes[CYCLE][LOAD][threadIdx.x] =
 			bin_counts[CYCLE][LOAD] + bin_prefix;
+*/
 	}
 
 
