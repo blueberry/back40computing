@@ -60,100 +60,61 @@ struct LoadTile
 	// Iteration Structures
 	//---------------------------------------------------------------------
 
-	template <int LOAD, int VEC, int dummy = 0> struct Iterate;
-
-	/**
-	 * First vec element of a vector-load
-	 */
-	template <int LOAD, int dummy>
-	struct Iterate<LOAD, 0, dummy>
+	template <int CURRENT, int STRIDE>
+	struct IterateVecLoad
 	{
 		// Vector (unguarded)
-		template <typename T, void Transform(T&), typename VectorType>
+		template <typename VectorType>
 		static __device__ __forceinline__ void LoadVector(
-			T data[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
-			ModifiedLoad<CACHE_MODIFIER>::Ld(vectors[LOAD], d_in_vectors);
-			Transform(data[LOAD][0]);		// Apply transform function with in_bounds = true
+			ModifiedLoad<CACHE_MODIFIER>::Ld(
+				vectors[CURRENT],
+				d_in_vectors + CURRENT);
 
-			Iterate<LOAD, 1>::template LoadVector<T, Transform>(
-				data, vectors, d_in_vectors);
-		}
+			IterateVecLoad<CURRENT + 1, STRIDE>::LoadVector(
+				vectors,
+				d_in_vectors);
 
-		// Regular (unguarded)
-		template <typename T, void Transform(T&)>
-		static __device__ __forceinline__ void LoadValid(
-			T data[][LOAD_VEC_SIZE],
-			T *d_in)
-		{
-			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
-
-			ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
-			Transform(data[LOAD][0]);
-
-			Iterate<LOAD, 1>::template LoadValid<T, Transform>(
-				data, d_in);
-		}
-
-		// Regular (guarded)
-		template <typename T, void Transform(T&), typename SizeT>
-		static __device__ __forceinline__ void LoadValid(
-			T data[][LOAD_VEC_SIZE],
-			T *d_in,
-			const SizeT &guarded_elements)
-		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
-
-			if (thread_offset < guarded_elements) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
-				Transform(data[LOAD][0]);
-			}
-
-			Iterate<LOAD, 1>::template LoadValid<T, Transform>(
-				data, d_in, guarded_elements);
-		}
-
-		// Regular (guarded with out-of-bounds default)
-		template <typename T, void Transform(T&), typename SizeT>
-		static __device__ __forceinline__ void LoadValid(
-			T data[][LOAD_VEC_SIZE],
-			T oob_default,
-			T *d_in,
-			const SizeT &guarded_elements)
-		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + 0;
-
-			if (thread_offset < guarded_elements) {
-				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][0], d_in + thread_offset);
-				Transform(data[LOAD][0]);
-			} else {
-				data[LOAD][0] = oob_default;
-			}
-
-			Iterate<LOAD, 1>::template LoadValid<T, Transform>(
-				data, oob_default, d_in, guarded_elements);
 		}
 	};
 
+	template <int STRIDE>
+	struct IterateVecLoad<STRIDE, STRIDE>
+	{
+		// Vector (unguarded)
+		template <typename VectorType>
+		static __device__ __forceinline__ void LoadVector(
+			VectorType vectors[],
+			VectorType *d_in_vectors) {}
+	};
 
 	/**
 	 * Next vec element of a vector-load
 	 */
-	template <int LOAD, int VEC, int dummy>
+	template <int LOAD, int VEC, int dummy = 0>
 	struct Iterate
 	{
 		// Vector (unguarded)
-		template <typename T, void Transform(T&), typename VectorType>
+		template <
+			typename T,
+			void Transform(T&),
+			int STRIDE,
+			typename VectorType>
 		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
+			if (VEC == 0) {
+				// Load all vectors for this load
+				IterateVecLoad<0, STRIDE>::LoadVector(vectors, d_in_vectors);
+			}
+
 			Transform(data[LOAD][VEC]);
 
-			Iterate<LOAD, VEC + 1>::template LoadVector<T, Transform>(
+			Iterate<LOAD, VEC + 1>::template LoadVector<T, Transform, STRIDE>(
 				data, vectors, d_in_vectors);
 		}
 
@@ -220,14 +181,20 @@ struct LoadTile
 	struct Iterate<LOAD, LOAD_VEC_SIZE, dummy>
 	{
 		// Vector (unguarded)
-		template <typename T, void Transform(T&), typename VectorType>
+		template <
+			typename T,
+			void Transform(T&),
+			int STRIDE,
+			typename VectorType>
 		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
 			VectorType vectors[],
 			VectorType *d_in_vectors)
 		{
-			Iterate<LOAD + 1, 0>::template LoadVector<T, Transform>(
-				data, vectors, d_in_vectors + ACTIVE_THREADS);
+			Iterate<LOAD + 1, 0>::template LoadVector<T, Transform, STRIDE>(
+				data,
+				vectors + STRIDE,
+				d_in_vectors + (ACTIVE_THREADS * STRIDE));
 		}
 
 		// Regular (unguarded)
@@ -271,7 +238,7 @@ struct LoadTile
 	struct Iterate<LOADS_PER_TILE, 0, dummy>
 	{
 		// Vector (unguarded)
-		template <typename T, void Transform(T&), typename VectorType>
+		template <typename T, void Transform(T&), int STRIDE, typename VectorType>
 		static __device__ __forceinline__ void LoadVector(
 			T data[][LOAD_VEC_SIZE],
 			VectorType vectors[],
@@ -318,10 +285,21 @@ struct LoadTile
 	{
 		const size_t MASK = ((sizeof(T) * 8 * LOAD_VEC_SIZE) - 1);
 
-		if ((CHECK_ALIGNMENT) && (LOAD_VEC_SIZE > 1) && (((size_t) d_in) & MASK)) {
+		if ((CHECK_ALIGNMENT) && (((size_t) d_in) & MASK)) {
 
 			Iterate<0, 0>::template LoadValid<T, Transform>(
 				data, d_in + cta_offset);
+
+		} else if (LOAD_VEC_SIZE > 4) {
+
+			// Use an aliased pointer to keys array to perform built-in vector loads
+			typedef typename VecType<T, 4>::Type VectorType;
+
+			VectorType *vectors = (VectorType *) data;
+			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+
+			Iterate<0, 0>::template LoadVector<T, Transform, (LOAD_VEC_SIZE / 4)>(
+				data, vectors, d_in_vectors);
 
 		} else {
 
@@ -331,7 +309,7 @@ struct LoadTile
 			VectorType *vectors = (VectorType *) data;
 			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
 
-			Iterate<0, 0>::template LoadVector<T, Transform>(
+			Iterate<0, 0>::template LoadVector<T, Transform, 1>(
 				data, vectors, d_in_vectors);
 		}
 	}

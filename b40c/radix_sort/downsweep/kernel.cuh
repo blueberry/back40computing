@@ -138,6 +138,12 @@ struct DownsweepPass<KernelPolicy, false>
 		typedef typename KernelPolicy::SizeT 					SizeT;
 		typedef Cta<KernelPolicy> 								Cta;
 
+		util::CtaWorkLimits<SizeT> work_limits;
+		work_decomposition.template GetCtaWorkLimits<
+			KernelPolicy::LOG_TILE_ELEMENTS,
+			KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
+
+/*
 		if (threadIdx.x == 0) {
 
 			// Determine our threadblock's work range
@@ -148,6 +154,7 @@ struct DownsweepPass<KernelPolicy, false>
 
 		// Sync to acquire work limits
 		__syncthreads();
+*/
 
 		if (KernelPolicy::CURRENT_PASS & 0x1) {
 
@@ -160,7 +167,8 @@ struct DownsweepPass<KernelPolicy, false>
 				d_values0,
 				d_spine);
 
-			cta.ProcessWorkRange(smem_storage.work_limits);
+			cta.ProcessWorkRange(work_limits);
+//			cta.ProcessWorkRange(smem_storage.work_limits);
 
 		} else {
 
@@ -173,7 +181,8 @@ struct DownsweepPass<KernelPolicy, false>
 				d_values1,
 				d_spine);
 
-			cta.ProcessWorkRange(smem_storage.work_limits);
+			cta.ProcessWorkRange(work_limits);
+//			cta.ProcessWorkRange(smem_storage.work_limits);
 		}
 	}
 };

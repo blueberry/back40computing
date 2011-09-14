@@ -76,6 +76,31 @@ __device__ __forceinline__ void BFI(int &ret, int x, int y, int bit_start, int n
 
 
 /**
+ * SHR_ADD (shift-right then add)
+ */
+__device__ __forceinline__ void SHR_ADD(int &ret, int x, int shift, int addend)
+{
+#if __CUDA_ARCH__ >= 200
+	asm("vshr.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
+		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
+#else
+	ret = (x >> shift) + addend;
+#endif
+}
+__device__ __forceinline__ int SHR_ADD(int x, int shift, int addend)
+{
+	int ret;
+#if __CUDA_ARCH__ >= 200
+	asm("vshr.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
+		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
+#else
+	ret = (x >> shift) + addend;
+#endif
+	return ret;
+}
+
+
+/**
  * SHL_ADD (shift-left then add)
  */
 __device__ __forceinline__ void SHL_ADD(int &ret, int x, int shift, int addend)
@@ -86,6 +111,17 @@ __device__ __forceinline__ void SHL_ADD(int &ret, int x, int shift, int addend)
 #else
 	ret = (x << shift) + addend;
 #endif
+}
+__device__ __forceinline__ int SHL_ADD(int x, int shift, int addend)
+{
+	int ret;
+#if __CUDA_ARCH__ >= 200
+	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
+		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
+#else
+	ret = (x << shift) + addend;
+#endif
+	return ret;
 }
 
 
