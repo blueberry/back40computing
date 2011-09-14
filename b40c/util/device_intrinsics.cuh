@@ -124,6 +124,23 @@ __device__ __forceinline__ int SHL_ADD(int x, int shift, int addend)
 	return ret;
 }
 
+/**
+ * SHL_ADD_C (shift-left then add)
+ */
+__device__ __forceinline__ int SHL_ADD_C(int x, int shift, int addend)
+{
+	int ret;
+/*
+#if __CUDA_ARCH__ >= 200
+	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
+		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
+#else
+*/
+	ret = (x << shift) + addend;
+//#endif
+	return ret;
+}
+
 
 /**
  * PMT (byte permute).  Pick four arbitrary bytes from two 32-bit registers, and
@@ -145,15 +162,17 @@ __device__ __forceinline__ int PRMT(int a, int b, int index)
  * Expands packed nibbles into packed bytes
  */
 __device__ __forceinline__ static void NibblesToBytes(
-	int int_bytes[2], int int_nibbles)
+	int &int_byte0,
+	int &int_byte1,
+	int int_nibbles)
 {
 	int nib_shifted = int_nibbles >> 4;
 
-	PRMT(int_bytes[0], int_nibbles, nib_shifted, 0x5140);
-	int_bytes[0] &= 0x0f0f0f0f;
+	PRMT(int_byte0, int_nibbles, nib_shifted, 0x5140);
+	int_byte0 &= 0x0f0f0f0f;
 
-	PRMT(int_bytes[1], int_nibbles, nib_shifted, 0x7362);
-	int_bytes[1] &= 0x0f0f0f0f;
+	PRMT(int_byte1, int_nibbles, nib_shifted, 0x7362);
+	int_byte1 &= 0x0f0f0f0f;
 }
 
 

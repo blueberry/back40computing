@@ -59,7 +59,6 @@ struct Cta
 
 	// Operational details type for short grid
 	typedef util::SrtsDetails<typename KernelPolicy::ByteGrid> 		ByteGridDetails;
-	typedef util::SrtsDetails<typename KernelPolicy::ShortGrid> 	ShortGridDetails;
 
 	typedef DerivedCta Dispatch;
 
@@ -79,7 +78,6 @@ struct Cta
 
 	// Operational details for scan grids
 	ByteGridDetails 					byte_grid_details;
-	ShortGridDetails 					short_grid_details;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -100,23 +98,27 @@ struct Cta
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
-			byte_grid_details(smem_storage.byte_raking_lanes),
-			short_grid_details(
-				smem_storage.short_raking_lanes,
-				smem_storage.warpscan,
-				0)
+			byte_grid_details(smem_storage.byte_raking_lanes)
 	{
-		if (threadIdx.x < KernelPolicy::BINS) {
+		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
 
-			// Read bin_carry in parallel
-			SizeT my_bin_carry;
-			int spine_bin_offset = util::FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
-			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
-				my_bin_carry,
-				d_spine + spine_bin_offset);
+			if (threadIdx.x < KernelPolicy::BINS) {
 
-			smem_storage.bin_carry[threadIdx.x] = my_bin_carry;
-			smem_storage.bin_inclusive[threadIdx.x] = 0;
+				// Read bin_carry in parallel
+				SizeT my_bin_carry;
+				int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+					my_bin_carry,
+					d_spine + spine_bin_offset);
+
+// mooch
+//				smem_storage.bin_carry[threadIdx.x] = my_bin_carry;
+				smem_storage.bin_carry[threadIdx.x] = 0;
+				smem_storage.bin_inclusive[threadIdx.x] = 0;
+			}
+
+			smem_storage.warpscan_low[0][threadIdx.x] = 0;
+			smem_storage.warpscan_high[0][threadIdx.x] = 0;
 		}
 	}
 
