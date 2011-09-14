@@ -91,17 +91,6 @@ struct KernelPolicy : TuningPolicy
 		false>											// Any prefix dependences between lanes are explicitly managed
 			ByteGrid;
 
-	// Short grid
-	typedef util::SrtsGrid<
-		TuningPolicy::CUDA_ARCH,
-		int,									// Partial type
-		TuningPolicy::LOG_RAKING_THREADS,		// Depositing threads (the CTA size)
-		1,										// Lanes (the number of loads)
-		B40C_LOG_WARP_THREADS(CUDA_ARCH),		// Raking threads
-		true>									// There are prefix dependences between lanes
-			ShortGrid;
-
-
 	
 	/**
 	 * Shared storage for partitioning upsweep
@@ -115,16 +104,18 @@ struct KernelPolicy : TuningPolicy
 		int								bin_inclusive[BINS];
 
 		// Storage for scanning local ranks
-		int 							warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile int 					warpscan_low[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile int 					warpscan_high[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 		union {
 			struct {
 				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
+
 				union {
-					int 				short_raking_lanes[ShortGrid::RAKING_ELEMENTS];
-					int 				short_words[2][ByteGrid::RAKING_THREADS];
-					short				short_offsets[2][ByteGrid::RAKING_THREADS][2];
+					int					short_prefixes_a[ByteGrid::RAKING_THREADS * 2];
+					short				short_prefixes_b[4][ByteGrid::RAKING_THREADS / 2][2];
 				};
+
 			};
 
 			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)

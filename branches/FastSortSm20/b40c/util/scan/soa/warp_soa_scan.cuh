@@ -43,6 +43,10 @@ namespace soa {
  *
  * The type WarpscanSoa is a 2D structure-of-array of smem storage, each SOA array having
  * dimensions [2][NUM_ELEMENTS].
+ *
+ * IDENTITY_STRIDES = true means an "identity" region of warpscan storage
+ * exists for strides to index into
+ *
  */
 template <
 	int LOG_NUM_ELEMENTS,					// Log of number of elements to warp-reduce
