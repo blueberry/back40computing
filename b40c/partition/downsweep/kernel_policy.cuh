@@ -112,6 +112,7 @@ struct KernelPolicy : TuningPolicy
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
 		SizeT							bin_carry[BINS];
+		int								bin_inclusive[BINS];
 
 		// Storage for scanning local ranks
 		int 							warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
