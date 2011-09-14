@@ -76,6 +76,9 @@ struct Tile
 
 		INVALID_BIN					= -1,
 
+		LOG_RAKING_THREADS 			= KernelPolicy::ByteGrid::LOG_RAKING_THREADS,
+		RAKING_THREADS 				= 1 << LOG_RAKING_THREADS,
+
 		LOG_WARPSCAN_THREADS		= B40C_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPSCAN_THREADS 			= 1 << LOG_WARPSCAN_THREADS,
 
@@ -333,59 +336,111 @@ struct Tile
 					counts_bytes1[CYCLE][LOAD],
 					bins_nibbles[CYCLE][LOAD]);
 
+				// Extract warpscan shorts
+				int warpscan_shorts[4];
+
+				int base_raking_tid = 2 * (threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
+				warpscan_shorts[0] = cta->smem_storage.short_prefixes_a[base_raking_tid];
+				warpscan_shorts[1] = cta->smem_storage.short_prefixes_a[base_raking_tid + 1];
+				warpscan_shorts[2] = cta->smem_storage.short_prefixes_a[base_raking_tid + RAKING_THREADS];
+				warpscan_shorts[3] = cta->smem_storage.short_prefixes_a[base_raking_tid + RAKING_THREADS + 1];
+
+				// Decode scan low and high packed words for first four keys
+				int warpscan_prefix[2];
+				warpscan_prefix[0] = util::PRMT(
+					warpscan_shorts[0],
+					warpscan_shorts[1],
+					bins_nibbles[CYCLE][LOAD]);
+
+				warpscan_prefix[1] = util::PRMT(
+					warpscan_shorts[2],
+					warpscan_shorts[3],
+					bins_nibbles[CYCLE][LOAD]);
+
+				// Low
+				int packed_scatter =
+					util::PRMT(								// Warpscan component (de-interleaved)
+						warpscan_prefix[0],
+						warpscan_prefix[1],
+						0x5140) +
+					util::PRMT(								// Raking scan component (lower bytes from each half)
+						load_prefix_bytes0[CYCLE][LOAD],
+						0,
+						0x4140);
+
+				local_ranks[CYCLE][LOAD][0] = packed_scatter & 0x0000ffff;
+				local_ranks[CYCLE][LOAD][1] = packed_scatter >> 16;
+
+				// High
+				packed_scatter =
+					util::PRMT(								// Warpscan component (de-interleaved)
+						warpscan_prefix[0],
+						warpscan_prefix[1],
+						0x7362) +
+					util::PRMT(								// Raking scan component (upper bytes from each half)
+						load_prefix_bytes0[CYCLE][LOAD],
+						0,
+						0x4342);
+
+				local_ranks[CYCLE][LOAD][2] = packed_scatter & 0x0000ffff;
+				local_ranks[CYCLE][LOAD][3] = packed_scatter >> 16;
+
+				// Process second four keys if we have them
 				if (LOAD_VEC_SIZE >= 4) {
+
+					int upper_bins_nibbles = bins_nibbles[CYCLE][LOAD] >> 16;
+
 					// Decode prefix bytes for second four keys
 					load_prefix_bytes1[CYCLE][LOAD] += util::PRMT(
 						counts_bytes0[CYCLE][LOAD],
 						counts_bytes1[CYCLE][LOAD],
-						bins_nibbles[CYCLE][LOAD] >> 16);
+						upper_bins_nibbles);
+
+					// Decode scan low and high packed words for second four keys
+					warpscan_prefix[0] = util::PRMT(
+						warpscan_shorts[0],
+						warpscan_shorts[1],
+						upper_bins_nibbles);
+
+					warpscan_prefix[1] = util::PRMT(
+						warpscan_shorts[2],
+						warpscan_shorts[3],
+						upper_bins_nibbles);
+
+					// Low
+					packed_scatter =
+						util::PRMT(								// Warpscan component (de-interleaved)
+							warpscan_prefix[0],
+							warpscan_prefix[1],
+							0x5140) +
+						util::PRMT(								// Raking scan component (lower bytes from each half)
+							load_prefix_bytes0[CYCLE][LOAD],
+							0,
+							0x4140);
+
+					local_ranks[CYCLE][LOAD][4] = packed_scatter & 0x0000ffff;
+					local_ranks[CYCLE][LOAD][5] = packed_scatter >> 16;
+
+					// High
+					packed_scatter =
+						util::PRMT(								// Warpscan component (de-interleaved)
+							warpscan_prefix[0],
+							warpscan_prefix[1],
+							0x7362) +
+						util::PRMT(								// Raking scan component (upper bytes from each half)
+							load_prefix_bytes0[CYCLE][LOAD],
+							0,
+							0x4342);
+
+					local_ranks[CYCLE][LOAD][6] = packed_scatter & 0x0000ffff;
+					local_ranks[CYCLE][LOAD][7] = packed_scatter >> 16;
 				}
 			}
-
-			// Determine prefix from nibble- and byte-packed predecessors in the raking segment
-			int raking_seg_prefix;
-			if (VEC < 4) {
-				raking_seg_prefix = util::BFE(load_prefix_bytes0[CYCLE][LOAD], VEC * 8, 8);
-			} else {
-				raking_seg_prefix = util::BFE(load_prefix_bytes1[CYCLE][LOAD], (VEC - 4) * 8, 8);
-			}
-
-			// Determine the prefix from the short-packed warpscans
-
-			int byte_raking_segment =
-				(threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG) +
-				((KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
-
-			int lane = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 2, 2);
-			int half = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4), 1);
-			int quarter = util::BFE(bins_nibbles[CYCLE][LOAD], (VEC * 4) + 1, 1);
-			int row = (lane << 1) + half;
-
-			int warpscan_prefix = cta->smem_storage.short_prefixes_b[row][byte_raking_segment][quarter];
-
-			local_ranks[CYCLE][LOAD][VEC] = raking_seg_prefix + warpscan_prefix;
-
 /*
-			printf("\ttid(%u), load(%u), vec(%u), "
-				"key(%u):\t,"
-				"raking_seg_prefix(%u), "
-				"byte_raking_segment(%u), "
-				"lane(%u), "
-				"half(%u), "
-				"row(%u), "
-				"quarter(%u), "
-				"warpscan_prefix(%u), "
-				"local_ranks(%u), "
-				"\n",
-				threadIdx.x, LOAD, VEC,
+			printf("tid(%d) vec(%d) key(%d) scatter(%d)\n",
+				threadIdx.x,
+				VEC,
 				keys[CYCLE][LOAD][VEC],
-				raking_seg_prefix,
-				byte_raking_segment,
-				lane,
-				half,
-				row,
-				quarter,
-				warpscan_prefix,
 				local_ranks[CYCLE][LOAD][VEC]);
 */
 		} else {
@@ -564,7 +619,7 @@ struct Tile
 		__syncthreads();
 
 		// Use our raking threads to, in aggregate, scan the composite counter lanes
-		if (threadIdx.x < KernelPolicy::ByteGrid::RAKING_THREADS) {
+		if (threadIdx.x < RAKING_THREADS) {
 /*
 			if (threadIdx.x == 0) {
 				printf("ByteGrid:\n");
@@ -629,26 +684,37 @@ struct Tile
 				exclusive_partial.t0 >> 16, exclusive_partial.t0 & 0x0000ffff,
 				exclusive_partial.t1 >> 16, exclusive_partial.t1 & 0x0000ffff);
 */
-			// Place short-packed partials into smem
-			cta->smem_storage.short_prefixes_a[threadIdx.x] = exclusive_partial.t0;
-			cta->smem_storage.short_prefixes_a[threadIdx.x + KernelPolicy::ByteGrid::RAKING_THREADS] = exclusive_partial.t1;
+			// First half of raking threads hold bins (0,2),(4,6) in t0, t1
+			// Second half of raking threads hold bins (1,3),(5,7) in t0, t1
 
-/*
-			if ((threadIdx.x & (KernelPolicy::ByteGrid::RAKING_THREADS / 2) - 1) == 0) {
-				int tid = threadIdx.x >> (KernelPolicy::ByteGrid::RAKING_THREADS - 1);
-				cta->smem_storage.bin_inclusive[tid + 0] = inclusive_partial.t0 >> 16;
-				cta->smem_storage.bin_inclusive[tid + 2] = inclusive_partial.t0 & 0x0000ffff;
-				cta->smem_storage.bin_inclusive[tid + 4] = inclusive_partial.t1 >> 16;
-				cta->smem_storage.bin_inclusive[tid + 6] = inclusive_partial.t1 & 0x0000ffff;
+			// Place short-packed partials back into smem for trading
+			cta->smem_storage.warpscan_low[1][threadIdx.x] = exclusive_partial.t0;
+			cta->smem_storage.warpscan_high[1][threadIdx.x] = exclusive_partial.t1;
+
+			if (threadIdx.x < (RAKING_THREADS / 2)) {
+				int a = exclusive_partial.t0;													// 0,2
+				int b = cta->smem_storage.warpscan_low[1][threadIdx.x + (RAKING_THREADS / 2)];	// 1,3
+				int c = exclusive_partial.t1;													// 4,6
+				int d = cta->smem_storage.warpscan_high[1][threadIdx.x + (RAKING_THREADS / 2)];	// 5,7
+
+				// (0L, 1L, 2L, 3L), (4L, 5L, 6L, 7L),
+				// (0H, 1H, 2H, 3H), (4H, 5H, 6H, 7H).
+				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2)] =
+					util::PRMT(a, b, 0x6240);
+				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + 1] =
+					util::PRMT(c, d, 0x6240);
+				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS] =
+					util::PRMT(a, b, 0x7351);
+				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS + 1] =
+					util::PRMT(c, d, 0x7351);
 			}
-*/
+
 		}
 
 		__syncthreads();
 
 		// Extract the local ranks of each key
 		IterateCycleElements<CYCLE, 0, 0>::ExtractRanks(cta, dispatch);
-
 	}
 
 
