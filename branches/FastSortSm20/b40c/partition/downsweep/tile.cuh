@@ -276,28 +276,31 @@ struct Tile
 
 			int shift = bin << LOG_BITS_PER_NIBBLE;
 
-			int prev_counts_nibbles = counts_nibbles[CYCLE][LOAD][0] >> shift;
-
 			// Initialize exclusive scan bytes
 			if (VEC == 0) {
 				escan_bytes0[CYCLE][LOAD] = 0;
 			} else if (VEC == 4) {
 				escan_bytes1[CYCLE][LOAD] = 0;
-			} else if (VEC < 4) {
-				util::BFI(
-					escan_bytes0[CYCLE][LOAD],
-					escan_bytes0[CYCLE][LOAD],
-					prev_counts_nibbles,
-					8 * VEC,
-					BITS_PER_NIBBLE);
 			} else {
-				util::BFI(
-					escan_bytes1[CYCLE][LOAD],
-					escan_bytes1[CYCLE][LOAD],
-					prev_counts_nibbles,
-					8 * (VEC - 4),
-					BITS_PER_NIBBLE);
+
+				int prev_counts_nibbles = counts_nibbles[CYCLE][LOAD][0] >> shift;
+				if (VEC < 4) {
+					util::BFI(
+						escan_bytes0[CYCLE][LOAD],
+						escan_bytes0[CYCLE][LOAD],
+						prev_counts_nibbles,
+						8 * VEC,
+						BITS_PER_NIBBLE);
+				} else {
+					util::BFI(
+						escan_bytes1[CYCLE][LOAD],
+						escan_bytes1[CYCLE][LOAD],
+						prev_counts_nibbles,
+						8 * (VEC - 4),
+						BITS_PER_NIBBLE);
+				}
 			}
+
 
 			// Initialize counts and bins nibbles
 			if (VEC == 0) {
@@ -613,12 +616,9 @@ struct Tile
 					int bin_exclusive = cta->short_grid_details.warpscan[1][bin_thread - 1] + addend;
 					int bin_inclusive = cta->short_grid_details.warpscan[1][bin_thread - 1 + BIN_STRIDE] + addend;
 
-					bin_exclusive = (bin & 1) ?
-						bin_exclusive >> 16 :
-						bin_exclusive & 0x0000ffff;
-					bin_inclusive = (bin & 1) ?
-						bin_inclusive >> 16 :
-						bin_inclusive & 0x0000ffff;
+					int extract_offset = (bin & 1) << 16;
+					bin_exclusive = util::BFE(bin_exclusive, extract_offset, 16);
+					bin_inclusive = util::BFE(bin_inclusive, extract_offset, 16);
 
 					// Save inclusive scan
 					cta->smem_storage.bin_inclusive[threadIdx.x] = bin_inclusive;
@@ -632,7 +632,6 @@ struct Tile
 						bin_inclusive);
 */
 				}
-
 
 				// Exclusive raking scan
 				util::scan::SerialScan<Cta::ShortGridDetails::PARTIALS_PER_SEG>::Invoke(
