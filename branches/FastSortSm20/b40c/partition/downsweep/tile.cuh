@@ -740,11 +740,9 @@ struct Tile
 				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
 				int bin_exclusive = cta->smem_storage.bin_inclusive[1][threadIdx.x - 1];
 				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
-/*
-				printf("bin (%d) has exclusive(%d)\n",
-					threadIdx.x,
-					bin_exclusive);
-*/
+
+//				printf("bin (%d) has exclusive(%d)\n", threadIdx.x, bin_exclusive);
+
 			}
 		}
 
@@ -774,7 +772,9 @@ struct Tile
 
 		if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
-			*(cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + carry_offset) = linear_keys[ELEMENT];
+			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				linear_keys[ELEMENT],
+				cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + carry_offset);
 		}
 
 /*
