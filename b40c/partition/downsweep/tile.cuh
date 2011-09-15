@@ -895,7 +895,43 @@ struct Tile
 			Tile *tile)
 		{
 			// Load keys
-			tile->LoadKeys(cta, cta_offset, guarded_elements);
+			const int LOG_WARP_SIZE = B40C_LOG_WARP_THREADS(CUDA_ARCH);
+			const int WARP_SIZE = 1 << LOG_WARP_SIZE;
+
+			int warp = threadIdx.x >> LOG_WARP_SIZE;
+			int lane = (WARP_SIZE - 1) & threadIdx.x;
+
+			int threadStart =
+				cta_offset +
+				(TILE_ELEMENTS_PER_THREAD * WARP_SIZE * warp) +
+				lane;
+
+			#pragma unroll
+			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
+				tile->keys[0][0][ELEMENT] = cta->d_in_keys[threadStart + (ELEMENT * WARP_SIZE)];
+			}
+
+			// Store keys
+			const int STRIDE = WARP_SIZE + 1;
+			int sharedStart = (STRIDE * TILE_ELEMENTS_PER_THREAD * warp) + lane;
+
+			KeyType *exchange = cta->smem_storage.exchange;
+
+			#pragma unroll
+			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
+				exchange[sharedStart + (STRIDE * ELEMENT)] = tile->keys[0][0][ELEMENT];
+			}
+
+			// Gather keys
+			int smem_offset = threadIdx.x * TILE_ELEMENTS_PER_THREAD;
+			exchange += smem_offset + (smem_offset >> LOG_WARP_SIZE);
+
+			#pragma unroll
+			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
+				tile->keys[0][0][ELEMENT] = exchange[ELEMENT];
+			}
+
+			__syncthreads();
 
 			// Scan cycles
 			IterateCycles<0>::ScanCycles(cta, tile);
@@ -929,6 +965,7 @@ struct Tile
 
 			// Scatter keys to global bin partitions
 			IterateElements<0>::DecodeAndScatterKeys(cta, tile, guarded_elements);
+
 		}
 	};
 
