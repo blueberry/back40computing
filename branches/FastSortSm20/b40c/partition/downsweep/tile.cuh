@@ -680,21 +680,19 @@ struct Tile
 			// Add it into the upper inclusive partial
 			inclusive_partial.t1 += lower_addend;
 
-			// Place short-packed inclusive partials back into smem for trading
-			cta->smem_storage.inclusive_prefixes_c[0][threadIdx.x] = inclusive_partial.t0;
-			cta->smem_storage.inclusive_prefixes_c[1][threadIdx.x] = inclusive_partial.t1;
-
 			// Create exclusive partial
 			TileTuple exclusive_partial(
 				inclusive_partial.t0 - partial_shorts.t0,
 				inclusive_partial.t1 - partial_shorts.t1);
-
 /*
-			printf("Raking tid %d with exclusive_partial((%u,%u),(%u,%u))\n",
+			printf("Raking tid %d with exclusive_partial((%u,%u),(%u,%u), inclusive_partial((%u,%u),(%u,%u)))\n",
 				threadIdx.x,
 				exclusive_partial.t0 >> 16, exclusive_partial.t0 & 0x0000ffff,
-				exclusive_partial.t1 >> 16, exclusive_partial.t1 & 0x0000ffff);
+				exclusive_partial.t1 >> 16, exclusive_partial.t1 & 0x0000ffff,
+				inclusive_partial.t0 >> 16, inclusive_partial.t0 & 0x0000ffff,
+				inclusive_partial.t1 >> 16, inclusive_partial.t1 & 0x0000ffff);
 */
+
 			// First half of raking threads hold bins (0,2),(4,6) in t0, t1
 			// Second half of raking threads hold bins (1,3),(5,7) in t0, t1
 
@@ -703,43 +701,22 @@ struct Tile
 			cta->smem_storage.exclusive_prefixes_c[1][threadIdx.x] = exclusive_partial.t1;
 
 			// Update digit-carry
+			SizeT my_carry;
 			if (threadIdx.x < KernelPolicy::BINS) {
-
 				// Add the previous tile's inclusive-scan to the running bin-carry
-				SizeT my_carry =
-					cta->smem_storage.bin_carry[threadIdx.x] +
-					cta->smem_storage.bin_inclusive[threadIdx.x];
+				my_carry = cta->smem_storage.bin_carry[threadIdx.x] +
+					cta->smem_storage.bin_inclusive[1][threadIdx.x];
+			}
 
-				// Map bin to row: (0s, 1s, 2s, 3s, 4s, 5s, 6s, 7s) -> (0s, 4s, 1s, 5s, 2s, 6s, 3s, 7s)
-				const int LUT0 = 0x01000100;
-				const int LUT1 = 0x03020302;
+			// Save off bin inclusive scans
+			const int BIN_INCLUSIVE_MASK = (RAKING_THREADS / 2) - 1;
 
-				int row = util::PRMT(
-					LUT0,
-					LUT1,
-					threadIdx.x) & 0xff;
-
-				int exclusive_packed = cta->smem_storage.exclusive_prefixes_d[row][0];
-				int inclusive_packed = cta->smem_storage.inclusive_prefixes_d[row][(RAKING_THREADS / 2) - 1];
-
-				int bin_exclusive = (threadIdx.x & 2) ?
-					exclusive_packed >> 16 :
-					exclusive_packed & 0x0000ffff;
-				int bin_inclusive = ((threadIdx.x) & 2) ?
-					inclusive_packed >> 16 :
-					inclusive_packed & 0x0000ffff;
-
-				// Save inclusive scan
-				cta->smem_storage.bin_inclusive[threadIdx.x] = bin_inclusive;
-
-				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
-				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
-/*
-				printf("bin (%d) has exclusive(%d), inclusive(%d)\n",
-					threadIdx.x,
-					bin_exclusive,
-					bin_inclusive);
-*/
+			if ((threadIdx.x & BIN_INCLUSIVE_MASK) == BIN_INCLUSIVE_MASK) {
+				int base = threadIdx.x >> (LOG_RAKING_THREADS - 1);
+				cta->smem_storage.bin_inclusive[1][base + 0] = inclusive_partial.t0 & 0x0000ffff;
+				cta->smem_storage.bin_inclusive[1][base + 2] = inclusive_partial.t0 >> 16;;
+				cta->smem_storage.bin_inclusive[1][base + 4] = inclusive_partial.t1 & 0x0000ffff;
+				cta->smem_storage.bin_inclusive[1][base + 6] = inclusive_partial.t1 >> 16;;
 			}
 
 			// Reorganize partials, interleaving them so they can be decoded by bin nibbles (TODO: think about parallelizing this better)
@@ -759,6 +736,19 @@ struct Tile
 					util::PRMT(a, b, 0x7351);
 				cta->smem_storage.exclusive_prefixes_a[1][threadIdx.x][1] =
 					util::PRMT(c, d, 0x7351);
+			}
+
+			// Update carry
+			if (threadIdx.x < KernelPolicy::BINS) {
+
+				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
+				int bin_exclusive = cta->smem_storage.bin_inclusive[1][threadIdx.x - 1];
+				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
+/*
+				printf("bin (%d) has exclusive(%d)\n",
+					threadIdx.x,
+					bin_exclusive);
+*/
 			}
 		}
 
