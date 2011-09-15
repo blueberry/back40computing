@@ -728,28 +728,33 @@ struct Tile
 
 
 	/**
-	 * DecodeGlobalOffsets
+	 * DecodeAndScatterKey
 	 */
 	template <int ELEMENT, typename Cta>
-	__device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta)
+	__device__ __forceinline__ void DecodeAndScatterKey(
+		Cta *cta,
+		const SizeT &guarded_elements)
 	{
 		Dispatch *dispatch = (Dispatch*) this;
-
-		KeyType *linear_keys 	= (KeyType *) keys;
-		SizeT *linear_offsets 	= (SizeT *) scatter_offsets;
+		KeyType *linear_keys = (KeyType *) keys;
 
 		int bin = dispatch->DecodeBin(linear_keys[ELEMENT], cta);
+		SizeT carry_offset = cta->smem_storage.bin_carry[bin];
 
-		linear_offsets[ELEMENT] =
-			cta->smem_storage.bin_carry[bin] +
-			(KernelPolicy::THREADS * ELEMENT) + threadIdx.x;
+		int tile_element = threadIdx.x + (KernelPolicy::THREADS * ELEMENT);
+
+		if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
+
+			*(cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + carry_offset) = linear_keys[ELEMENT];
+		}
+
 /*
 		printf("Tid %d scattering key[%d] (%d) with carry_bin %d to offset %d\n",
 			threadIdx.x,
 			ELEMENT,
 			linear_keys[ELEMENT],
 			cta->smem_storage.bin_carry[bin],
-			linear_offsets[ELEMENT]);
+			threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + carry_offset);
 */
 	}
 
@@ -795,12 +800,16 @@ struct Tile
 	template <int ELEMENT, int dummy = 0>
 	struct IterateElements
 	{
-		// DecodeGlobalOffsets
+		// DecodeAndScatterKeys
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta, Tile *tile)
+		static __device__ __forceinline__ void DecodeAndScatterKeys(
+			Cta *cta,
+			Tile *tile,
+			const SizeT &guarded_elements)
 		{
-			tile->DecodeGlobalOffsets<ELEMENT>(cta);
-			IterateElements<ELEMENT + 1>::DecodeGlobalOffsets(cta, tile);
+			tile->DecodeAndScatterKey<ELEMENT>(cta, guarded_elements);
+
+			IterateElements<ELEMENT + 1>::DecodeAndScatterKeys(cta, tile, guarded_elements);
 		}
 	};
 
@@ -811,9 +820,10 @@ struct Tile
 	template <int dummy>
 	struct IterateElements<TILE_ELEMENTS_PER_THREAD, dummy>
 	{
-		// DecodeGlobalOffsets
+		// DecodeAndScatterKeys
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void DecodeGlobalOffsets(Cta *cta, Tile *tile) {}
+		static __device__ __forceinline__ void DecodeAndScatterKeys(
+			Cta *cta, Tile *tile, const SizeT &guarded_elements) {}
 	};
 
 
@@ -888,12 +898,8 @@ struct Tile
 
 			__syncthreads();
 
-			// Compute global scatter offsets for gathered keys
-			IterateElements<0>::DecodeGlobalOffsets(cta, tile);
-
 			// Scatter keys to global bin partitions
-			tile->ScatterKeys(cta, guarded_elements);
-
+			IterateElements<0>::DecodeAndScatterKeys(cta, tile, guarded_elements);
 		}
 	};
 
