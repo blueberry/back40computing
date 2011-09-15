@@ -53,7 +53,10 @@ namespace util {
  * 		} 
  * 
  */
-template <typename T, int vec_elements> struct VecType;
+template <typename T, int vec_elements> struct VecType
+{
+	typedef util::NullType Type;
+};
 
 /**
  * Partially-specialized generic vec1 type 
@@ -109,8 +112,6 @@ B40C_DEFINE_VECTOR_TYPE(unsigned long long, ulonglong)
 B40C_DEFINE_VECTOR_TYPE(float,              float)
 B40C_DEFINE_VECTOR_TYPE(double,             double)
 
-template<> struct VecType<int, 8> { typedef longlong4 Type; };
-template<> struct VecType<unsigned int, 8> { typedef ulonglong4 Type; };
 
 #undef B40C_DEFINE_VECTOR_TYPE
 
