@@ -79,6 +79,8 @@ struct ModifiedLoad
 	template <typename T>
 	__device__ __forceinline__ static void Ld(T &val, T *ptr);
 
+	__device__ __forceinline__ static void Ld(NullType &val, NullType* ptr) {}
+
 	/**
 	 * Vec-4 loads for 64-bit types are implemented as two vec-2 loads
 	 */
