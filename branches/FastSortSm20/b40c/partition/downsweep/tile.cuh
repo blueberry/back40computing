@@ -410,10 +410,8 @@ struct Tile
 			// Decode the bin for this key
 			int bin = dispatch->DecodeBin(tile->keys[CYCLE][LOAD][VEC], cta);
 
-			const int LOG_BITS_PER_NIBBLE = 2;
-			const int BITS_PER_NIBBLE = 1 << LOG_BITS_PER_NIBBLE;
-
-			int shift = bin << LOG_BITS_PER_NIBBLE;
+			const int BITS_PER_NIBBLE = 4;
+			int shift = bin * BITS_PER_NIBBLE;
 
 			// Initialize exclusive scan bytes
 			if (VEC == 0) {

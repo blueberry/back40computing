@@ -124,7 +124,7 @@ struct LoadTile
 			T data[][LOAD_VEC_SIZE],
 			T *d_in)
 		{
-			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
+			int thread_offset = (threadIdx.x * LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
 			ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
 			Transform(data[LOAD][VEC]);
@@ -140,7 +140,7 @@ struct LoadTile
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
+			SizeT thread_offset = (threadIdx.x * LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
@@ -159,7 +159,7 @@ struct LoadTile
 			T *d_in,
 			const SizeT &guarded_elements)
 		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
+			SizeT thread_offset = (threadIdx.x * LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
 
 			if (thread_offset < guarded_elements) {
 				ModifiedLoad<CACHE_MODIFIER>::Ld(data[LOAD][VEC], d_in + thread_offset);
@@ -296,7 +296,7 @@ struct LoadTile
 			typedef typename VecType<T, 4>::Type VectorType;
 
 			VectorType *vectors = (VectorType *) data;
-			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x * LOAD_VEC_SIZE));
 
 			Iterate<0, 0>::template LoadVector<T, Transform, (LOAD_VEC_SIZE / 4)>(
 				data, vectors, d_in_vectors);
@@ -307,7 +307,7 @@ struct LoadTile
 			typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
 
 			VectorType *vectors = (VectorType *) data;
-			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
+			VectorType *d_in_vectors = (VectorType *) (d_in + cta_offset + (threadIdx.x * LOAD_VEC_SIZE));
 
 			Iterate<0, 0>::template LoadVector<T, Transform, 1>(
 				data, vectors, d_in_vectors);
