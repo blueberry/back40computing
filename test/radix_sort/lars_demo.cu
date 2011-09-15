@@ -83,7 +83,7 @@ typedef b40c::radix_sort::Policy<
 		3,							// RADIX_BITS
 
 		// Launch tuning policy
-		10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
+		11,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
 		b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
 		b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
 		false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
@@ -112,10 +112,10 @@ typedef b40c::radix_sort::Policy<
 		// 		Note: a "cycle" is a tile sub-segment up to 256 keys
 		//
 		b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-		8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-		6,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+		5,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+		7,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
 		3,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-		1,							// DOWNSWEEP_LOG_LOADS_PER_CYCLE	The number of loads (log) per cycle.  Valid range: 0-2, subject to constraints described above
+		0,							// DOWNSWEEP_LOG_LOADS_PER_CYCLE	The number of loads (log) per cycle.  Valid range: 0-2, subject to constraints described above
 		0,//1, 							// DOWNSWEEP_LOG_CYCLES_PER_TILE	The number of cycles (log) per tile.  Valid range: 0-2
 		5>//6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 	Policy;
