@@ -278,13 +278,13 @@ struct Tile
 				tile->bins_nibbles[CYCLE][LOAD]);
 
 			// Extract warpscan shorts
-			const int LOAD_RAKING_TID_OFFSET = 2 * ((KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
+			const int LOAD_RAKING_TID_OFFSET = KernelPolicy::THREADS * LOAD * KernelPolicy::ByteGrid::PARTIALS_PER_SEG;
 
-			int base_raking_tid = 2 * (threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
-			tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET];
-			tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + 1];
-			tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + RAKING_THREADS];
-			tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + RAKING_THREADS + 1];
+			int base_raking_tid = (threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG) + LOAD_RAKING_TID_OFFSET;
+			tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.exclusive_prefixes_a[0][base_raking_tid][0];
+			tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.exclusive_prefixes_a[0][base_raking_tid][1];
+			tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.exclusive_prefixes_a[1][base_raking_tid][0];
+			tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.exclusive_prefixes_a[1][base_raking_tid][1];
 
 			// Decode scan low and high packed words for first four keys
 			int warpscan_prefix[2];
@@ -680,10 +680,15 @@ struct Tile
 			// Add it into the upper inclusive partial
 			inclusive_partial.t1 += lower_addend;
 
+			// Place short-packed inclusive partials back into smem for trading
+			cta->smem_storage.inclusive_prefixes_c[0][threadIdx.x] = inclusive_partial.t0;
+			cta->smem_storage.inclusive_prefixes_c[1][threadIdx.x] = inclusive_partial.t1;
+
 			// Create exclusive partial
 			TileTuple exclusive_partial(
 				inclusive_partial.t0 - partial_shorts.t0,
 				inclusive_partial.t1 - partial_shorts.t1);
+
 /*
 			printf("Raking tid %d with exclusive_partial((%u,%u),(%u,%u))\n",
 				threadIdx.x,
@@ -693,28 +698,68 @@ struct Tile
 			// First half of raking threads hold bins (0,2),(4,6) in t0, t1
 			// Second half of raking threads hold bins (1,3),(5,7) in t0, t1
 
-			// Place short-packed partials back into smem for trading
-			cta->smem_storage.warpscan_low[1][threadIdx.x] = exclusive_partial.t0;
-			cta->smem_storage.warpscan_high[1][threadIdx.x] = exclusive_partial.t1;
+			// Place short-packed exclusive partials back into smem for trading
+			cta->smem_storage.exclusive_prefixes_c[0][threadIdx.x] = exclusive_partial.t0;
+			cta->smem_storage.exclusive_prefixes_c[1][threadIdx.x] = exclusive_partial.t1;
 
+			// Update digit-carry
+			if (threadIdx.x < KernelPolicy::BINS) {
+
+				// Add the previous tile's inclusive-scan to the running bin-carry
+				SizeT my_carry =
+					cta->smem_storage.bin_carry[threadIdx.x] +
+					cta->smem_storage.bin_inclusive[threadIdx.x];
+
+				// Map bin to row: (0s, 1s, 2s, 3s, 4s, 5s, 6s, 7s) -> (0s, 4s, 1s, 5s, 2s, 6s, 3s, 7s)
+				const int LUT0 = 0x01000100;
+				const int LUT1 = 0x03020302;
+
+				int row = util::PRMT(
+					LUT0,
+					LUT1,
+					threadIdx.x) & 0xff;
+
+				int exclusive_packed = cta->smem_storage.exclusive_prefixes_d[row][0];
+				int inclusive_packed = cta->smem_storage.inclusive_prefixes_d[row][(RAKING_THREADS / 2) - 1];
+
+				int bin_exclusive = (threadIdx.x & 2) ?
+					exclusive_packed >> 16 :
+					exclusive_packed & 0x0000ffff;
+				int bin_inclusive = ((threadIdx.x) & 2) ?
+					inclusive_packed >> 16 :
+					inclusive_packed & 0x0000ffff;
+
+				// Save inclusive scan
+				cta->smem_storage.bin_inclusive[threadIdx.x] = bin_inclusive;
+
+				// Subtract the bin prefix from the running carry (to offset threadIdx during scatter)
+				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
+/*
+				printf("bin (%d) has exclusive(%d), inclusive(%d)\n",
+					threadIdx.x,
+					bin_exclusive,
+					bin_inclusive);
+*/
+			}
+
+			// Reorganize partials, interleaving them so they can be decoded by bin nibbles (TODO: think about parallelizing this better)
 			if (threadIdx.x < (RAKING_THREADS / 2)) {
-				int a = exclusive_partial.t0;													// 0,2
-				int b = cta->smem_storage.warpscan_low[1][threadIdx.x + (RAKING_THREADS / 2)];	// 1,3
-				int c = exclusive_partial.t1;													// 4,6
-				int d = cta->smem_storage.warpscan_high[1][threadIdx.x + (RAKING_THREADS / 2)];	// 5,7
+				int a = exclusive_partial.t0;											// 0,2
+				int b = cta->smem_storage.exclusive_prefixes_b[0][1][threadIdx.x];		// 1,3
+				int c = exclusive_partial.t1;											// 4,6
+				int d = cta->smem_storage.exclusive_prefixes_b[1][1][threadIdx.x];		// 5,7
 
 				// (0L, 1L, 2L, 3L), (4L, 5L, 6L, 7L),
 				// (0H, 1H, 2H, 3H), (4H, 5H, 6H, 7H).
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2)] =
+				cta->smem_storage.exclusive_prefixes_a[0][threadIdx.x][0] =
 					util::PRMT(a, b, 0x6240);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + 1] =
+				cta->smem_storage.exclusive_prefixes_a[0][threadIdx.x][1] =
 					util::PRMT(c, d, 0x6240);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS] =
+				cta->smem_storage.exclusive_prefixes_a[1][threadIdx.x][0] =
 					util::PRMT(a, b, 0x7351);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS + 1] =
+				cta->smem_storage.exclusive_prefixes_a[1][threadIdx.x][1] =
 					util::PRMT(c, d, 0x7351);
 			}
-
 		}
 
 		__syncthreads();
