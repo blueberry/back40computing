@@ -101,7 +101,11 @@ struct KernelPolicy : TuningPolicy
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
 		SizeT							bin_carry[BINS];
-		int								bin_inclusive[BINS];
+
+		union {
+			volatile int				bin_inclusive[2][BINS];
+			int							bin_zeros[B40C_WARP_THREADS(CUDA_ARCH)];
+		};
 
 		// Storage for scanning local ranks
 		volatile int 					warpscan_low[2][B40C_WARP_THREADS(CUDA_ARCH)];
@@ -117,12 +121,6 @@ struct KernelPolicy : TuningPolicy
 					volatile int		exclusive_prefixes_c[2][ByteGrid::RAKING_THREADS];
 					volatile int		exclusive_prefixes_d[4][ByteGrid::RAKING_THREADS / 2];
 				};
-
-				union {
-					volatile int		inclusive_prefixes_c[2][ByteGrid::RAKING_THREADS];
-					volatile int		inclusive_prefixes_d[4][ByteGrid::RAKING_THREADS / 2];
-				};
-
 			};
 
 			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)
