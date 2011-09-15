@@ -112,8 +112,15 @@ struct KernelPolicy : TuningPolicy
 				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
 
 				union {
-					int					short_prefixes_a[ByteGrid::RAKING_THREADS * 2];
-					short				short_prefixes_b[4][ByteGrid::RAKING_THREADS / 2][2];
+					volatile int		exclusive_prefixes_a[2][ByteGrid::RAKING_THREADS / 2][2];
+					volatile int		exclusive_prefixes_b[2][2][ByteGrid::RAKING_THREADS / 2];
+					volatile int		exclusive_prefixes_c[2][ByteGrid::RAKING_THREADS];
+					volatile int		exclusive_prefixes_d[4][ByteGrid::RAKING_THREADS / 2];
+				};
+
+				union {
+					volatile int		inclusive_prefixes_c[2][ByteGrid::RAKING_THREADS];
+					volatile int		inclusive_prefixes_d[4][ByteGrid::RAKING_THREADS / 2];
 				};
 
 			};
