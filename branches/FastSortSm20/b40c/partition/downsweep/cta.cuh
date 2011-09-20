@@ -144,19 +144,21 @@ struct Cta
 		util::CtaWorkLimits<SizeT> &work_limits)
 	{
 		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
-		SizeT cta_offset = work_limits.offset;
+		SizeT pack_offset = work_limits.offset >> KernelPolicy::LOG_PACK_SIZE;
+		SizeT guarded_pack_offset =  work_limits.guarded_offset >> KernelPolicy::LOG_PACK_SIZE;
 
 		// Process full tiles of tile_elements
-		while (cta_offset < work_limits.guarded_offset) {
+		while (pack_offset < guarded_pack_offset) {
 
-			ProcessTile(cta_offset);
-			cta_offset += KernelPolicy::TILE_ELEMENTS;
+			ProcessTile(pack_offset);
+			pack_offset += (KernelPolicy::TILE_ELEMENTS / KernelPolicy::PACK_SIZE);
 		}
+
 /*
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
 			ProcessTile(
-				cta_offset,
+				pack_offset,
 				work_limits.guarded_elements);
 		}
 */

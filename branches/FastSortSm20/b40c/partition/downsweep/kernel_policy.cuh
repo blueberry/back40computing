@@ -114,18 +114,11 @@ struct KernelPolicy : TuningPolicy
 		union {
 			struct {
 				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
-
-				union {
-					int					short_prefixes_a[ByteGrid::RAKING_THREADS * 2];
-					short				short_prefixes_b[4][ByteGrid::RAKING_THREADS / 2][2];
-				};
-
+				int						short_prefixes[2][ByteGrid::RAKING_THREADS];
 			};
 
 			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)
 			ValueType 					value_exchange[TILE_ELEMENTS + 1];
-
-			KeyType						exchange[WARPS * TILE_ELEMENTS_PER_THREAD * 33];
 		};
 	};
 
