@@ -45,6 +45,19 @@ namespace downsweep {
 
 
 /**
+ * Templated texture reference for collision bitmask
+ */
+template <typename KeyType>
+struct KeysTex
+{
+	static texture<KeyType, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename KeyType>
+texture<KeyType, cudaTextureType1D, cudaReadModeElementType> KeysTex<KeyType>::ref;
+
+
+
+/**
  * Tile
  *
  * Abstract class
@@ -70,6 +83,9 @@ struct Tile
 		CYCLES_PER_TILE 			= KernelPolicy::CYCLES_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
+
+		LOG_PACKS_PER_LOAD			= KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE,
+		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
 		LANE_ROWS_PER_LOAD 			= KernelPolicy::ByteGrid::ROWS_PER_LANE / KernelPolicy::LOADS_PER_CYCLE,
 		LANE_STRIDE_PER_LOAD 		= KernelPolicy::ByteGrid::PADDED_PARTIALS_PER_ROW * LANE_ROWS_PER_LOAD,
@@ -278,13 +294,13 @@ struct Tile
 				tile->bins_nibbles[CYCLE][LOAD]);
 
 			// Extract warpscan shorts
-			const int LOAD_RAKING_TID_OFFSET = 2 * ((KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
+			const int LOAD_RAKING_TID_OFFSET = (KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
 
-			int base_raking_tid = 2 * (threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG);
-			tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET];
-			tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + 1];
-			tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + RAKING_THREADS];
-			tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes_a[base_raking_tid + LOAD_RAKING_TID_OFFSET + RAKING_THREADS + 1];
+			int base_raking_tid = threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
+			tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+			tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+			tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+			tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
 
 			// Decode scan low and high packed words for first four keys
 			int warpscan_prefix[2];
@@ -697,23 +713,21 @@ struct Tile
 			cta->smem_storage.warpscan_low[1][threadIdx.x] = exclusive_partial.t0;
 			cta->smem_storage.warpscan_high[1][threadIdx.x] = exclusive_partial.t1;
 
-			if (threadIdx.x < (RAKING_THREADS / 2)) {
-				int a = exclusive_partial.t0;													// 0,2
-				int b = cta->smem_storage.warpscan_low[1][threadIdx.x + (RAKING_THREADS / 2)];	// 1,3
-				int c = exclusive_partial.t1;													// 4,6
-				int d = cta->smem_storage.warpscan_high[1][threadIdx.x + (RAKING_THREADS / 2)];	// 5,7
+			// Interleave:
+			// First half of raking threads:	(0L, 1L, 2L, 3L),(4L, 5L, 6L, 7L)
+			// Second half of raking threads: 	(0H, 1H, 2H, 3H), (4H, 5H, 6H, 7H).
+			int prmt = (threadIdx.x < (RAKING_THREADS / 2)) ? 0x6240 : 0x7351;
+			int other = (threadIdx.x + (RAKING_THREADS / 2)) & (RAKING_THREADS - 1);
+			int a = exclusive_partial.t0;													// 0,2
+			int b = cta->smem_storage.warpscan_low[1][other];								// 1,3
+			int c = exclusive_partial.t1;													// 4,6
+			int d = cta->smem_storage.warpscan_high[1][other];								// 5,7
 
-				// (0L, 1L, 2L, 3L), (4L, 5L, 6L, 7L),
-				// (0H, 1H, 2H, 3H), (4H, 5H, 6H, 7H).
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2)] =
-					util::PRMT(a, b, 0x6240);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + 1] =
-					util::PRMT(c, d, 0x6240);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS] =
-					util::PRMT(a, b, 0x7351);
-				cta->smem_storage.short_prefixes_a[(threadIdx.x * 2) + RAKING_THREADS + 1] =
-					util::PRMT(c, d, 0x7351);
-			}
+			cta->smem_storage.short_prefixes[0][threadIdx.x] =
+				util::PRMT(a, b, prmt);
+			cta->smem_storage.short_prefixes[1][threadIdx.x] =
+				util::PRMT(c, d, prmt);
+
 
 			// Update digit-carry
 			SizeT my_carry;
@@ -722,6 +736,7 @@ struct Tile
 				my_carry = cta->smem_storage.bin_carry[threadIdx.x] +
 					cta->smem_storage.bin_inclusive[1][threadIdx.x];
 			}
+
 
 			// Save off bin inclusive scans
 			const int BIN_INCLUSIVE_MASK = (RAKING_THREADS / 2) - 1;
@@ -889,49 +904,30 @@ struct Tile
 
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(
-			SizeT cta_offset,
+			SizeT pack_offset,
 			const SizeT &guarded_elements,
 			Cta *cta,
 			Tile *tile)
 		{
 			// Load keys
-			const int LOG_WARP_SIZE = B40C_LOG_WARP_THREADS(CUDA_ARCH);
-			const int WARP_SIZE = 1 << LOG_WARP_SIZE;
+/*
+			tile->LoadKeys(cta, cta_offset, guarded_elements);
+*/
 
-			int warp = threadIdx.x >> LOG_WARP_SIZE;
-			int lane = (WARP_SIZE - 1) & threadIdx.x;
-
-			int threadStart =
-				cta_offset +
-				(TILE_ELEMENTS_PER_THREAD * WARP_SIZE * warp) +
-				lane;
+			typedef typename util::VecType<KeyType, KernelPolicy::PACK_SIZE>::Type VectorType;
+			VectorType (*vectors)[PACKS_PER_LOAD] = (VectorType (*)[PACKS_PER_LOAD]) tile->keys;
 
 			#pragma unroll
-			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
-				tile->keys[0][0][ELEMENT] = cta->d_in_keys[threadStart + (ELEMENT * WARP_SIZE)];
+			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
+
+				#pragma unroll
+				for (int PACK = 0; PACK < PACKS_PER_LOAD; PACK++) {
+
+					vectors[LOAD][PACK] = tex1Dfetch(
+						KeysTex<VectorType>::ref,
+						pack_offset + (threadIdx.x * PACKS_PER_LOAD) + (LOAD * KernelPolicy::THREADS * PACKS_PER_LOAD) + PACK);
+				}
 			}
-
-			// Store keys
-			const int STRIDE = WARP_SIZE + 1;
-			int sharedStart = (STRIDE * TILE_ELEMENTS_PER_THREAD * warp) + lane;
-
-			KeyType *exchange = cta->smem_storage.exchange;
-
-			#pragma unroll
-			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
-				exchange[sharedStart + (STRIDE * ELEMENT)] = tile->keys[0][0][ELEMENT];
-			}
-
-			// Gather keys
-			int smem_offset = threadIdx.x * TILE_ELEMENTS_PER_THREAD;
-			exchange += smem_offset + (smem_offset >> LOG_WARP_SIZE);
-
-			#pragma unroll
-			for (int ELEMENT = 0; ELEMENT < TILE_ELEMENTS_PER_THREAD; ELEMENT++) {
-				tile->keys[0][0][ELEMENT] = exchange[ELEMENT];
-			}
-
-			__syncthreads();
 
 			// Scan cycles
 			IterateCycles<0>::ScanCycles(cta, tile);
@@ -982,12 +978,12 @@ struct Tile
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void Partition(
-		SizeT cta_offset,
+		SizeT pack_offset,
 		const SizeT &guarded_elements,
 		Cta *cta)
 	{
 		PartitionTile<KernelPolicy::SCATTER_STRATEGY>::Invoke(
-			cta_offset,
+			pack_offset,
 			guarded_elements,
 			cta,
 			(Dispatch *) this);

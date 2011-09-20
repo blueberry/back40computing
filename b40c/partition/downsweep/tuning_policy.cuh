@@ -107,6 +107,9 @@ struct TuningPolicy : ProblemType
 		SCHEDULE_GRANULARITY						= 1 << LOG_SCHEDULE_GRANULARITY,
 		THREADS										= 1 << LOG_THREADS,
 		TILE_ELEMENTS								= 1 << (LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_CYCLE + LOG_CYCLES_PER_TILE),
+
+		LOG_PACK_SIZE 								= 2,
+		PACK_SIZE									= 1 << LOG_PACK_SIZE,
 	};
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
