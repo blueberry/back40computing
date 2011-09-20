@@ -716,7 +716,7 @@ struct Tile
 			// Interleave:
 			// First half of raking threads:	(0L, 1L, 2L, 3L),(4L, 5L, 6L, 7L)
 			// Second half of raking threads: 	(0H, 1H, 2H, 3H), (4H, 5H, 6H, 7H).
-			int prmt = (threadIdx.x < (RAKING_THREADS / 2)) ? 0x6240 : 0x7351;
+			int prmt = (threadIdx.x < (RAKING_THREADS / 2)) ? 0x6240 : 0x3715;
 			int other = (threadIdx.x + (RAKING_THREADS / 2)) & (RAKING_THREADS - 1);
 			int a = exclusive_partial.t0;													// 0,2
 			int b = cta->smem_storage.warpscan_low[1][other];								// 1,3
@@ -757,7 +757,6 @@ struct Tile
 				cta->smem_storage.bin_carry[threadIdx.x] = my_carry - bin_exclusive;
 
 //				printf("bin (%d) has exclusive(%d)\n", threadIdx.x, bin_exclusive);
-
 			}
 		}
 
