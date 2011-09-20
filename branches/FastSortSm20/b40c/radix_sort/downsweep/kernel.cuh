@@ -143,18 +143,19 @@ struct DownsweepPass<KernelPolicy, false>
 			KernelPolicy::LOG_TILE_ELEMENTS,
 			KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
-/*
 		if (threadIdx.x == 0) {
 
 			// Determine our threadblock's work range
 			work_decomposition.template GetCtaWorkLimits<
 				KernelPolicy::LOG_TILE_ELEMENTS,
 				KernelPolicy::LOG_SCHEDULE_GRANULARITY>(smem_storage.work_limits);
+
+			smem_storage.packed_offset = smem_storage.work_limits.offset >> KernelPolicy::LOG_PACK_SIZE;
+			smem_storage.packed_offset_limit = smem_storage.work_limits.guarded_offset >> KernelPolicy::LOG_PACK_SIZE;
 		}
 
 		// Sync to acquire work limits
 		__syncthreads();
-*/
 
 		if (KernelPolicy::CURRENT_PASS & 0x1) {
 
@@ -167,8 +168,7 @@ struct DownsweepPass<KernelPolicy, false>
 				d_values0,
 				d_spine);
 
-			cta.ProcessWorkRange(work_limits);
-//			cta.ProcessWorkRange(smem_storage.work_limits);
+			cta.ProcessWorkRange(smem_storage.work_limits);
 
 		} else {
 
@@ -181,8 +181,7 @@ struct DownsweepPass<KernelPolicy, false>
 				d_values1,
 				d_spine);
 
-			cta.ProcessWorkRange(work_limits);
-//			cta.ProcessWorkRange(smem_storage.work_limits);
+			cta.ProcessWorkRange(smem_storage.work_limits);
 		}
 	}
 };

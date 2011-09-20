@@ -97,6 +97,9 @@ struct KernelPolicy : TuningPolicy
 	 */
 	struct SmemStorage
 	{
+		SizeT							packed_offset;
+		SizeT							packed_offset_limit;
+
 		bool 							non_trivial_pass;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
