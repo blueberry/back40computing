@@ -111,8 +111,7 @@ struct KernelPolicy : TuningPolicy
 		};
 
 		// Storage for scanning local ranks
-		volatile int 					warpscan_low[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		volatile int 					warpscan_high[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile int 					warpscan[2][2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 		union {
 			struct {

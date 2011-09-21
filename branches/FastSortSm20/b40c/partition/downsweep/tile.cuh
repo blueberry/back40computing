@@ -84,6 +84,9 @@ struct Tile
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
 		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
 
+		LOG_SCAN_LANES				= KernelPolicy::LOG_SCAN_LANES_PER_CYCLE,
+		SCAN_LANES					= KernelPolicy::SCAN_LANES_PER_CYCLE,
+
 		LOG_PACKS_PER_LOAD			= KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE,
 		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
@@ -114,14 +117,12 @@ struct Tile
 	// 		bins_nibbles contains the bin for each key within nibbles ordered right to left
 	// 		load_prefix_bytes contains the exclusive scan for each key within nibbles ordered right to left
 
-	int 		bins_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		bins_nibbles[(LOAD_VEC_SIZE + 7) / 8][CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
-	int 		counts_nibbles[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	int			counts_bytes0[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	int			counts_bytes1[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		counts_nibbles[SCAN_LANES / 2][CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int			counts_bytes[SCAN_LANES][CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
-	int 		load_prefix_bytes0[CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	int 		load_prefix_bytes1[CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		load_prefix_bytes[(LOAD_VEC_SIZE + 3) / 4][CYCLES_PER_TILE][LOADS_PER_CYCLE];
 
 	int 		warpscan_shorts[CYCLES_PER_TILE][LOADS_PER_CYCLE][4];
 
@@ -264,7 +265,7 @@ struct Tile
 	/**
 	 * ExtractRanks
 	 */
-	template <int CYCLE, int LOAD, int VEC>
+	template <int CYCLE, int LOAD, int VEC, int REM = (VEC & 7)>
 	struct ExtractRanks
 	{
 		template <typename Cta, typename Tile>
@@ -273,46 +274,35 @@ struct Tile
 
 
 	/**
-	 * ExtractRanks (VEC == 0)
+	 * ExtractRanks (VEC % 8 == 0)
 	 */
-	template <int CYCLE, int LOAD>
-	struct ExtractRanks<CYCLE, LOAD, 0>
+	template <int CYCLE, int LOAD, int VEC>
+	struct ExtractRanks<CYCLE, LOAD, VEC, 0>
 	{
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(Cta *cta, Tile *tile)
 		{
-			const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
-
-			// Extract prefix bytes from bytes raking grid
-			tile->counts_bytes0[CYCLE][LOAD] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
-			tile->counts_bytes1[CYCLE][LOAD] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
-
+/*
+			printf("\tTid(%d) Vec(%d) bins_nibbles(%08x)\n",
+				threadIdx.x, VEC, tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
+*/
 			// Decode prefix bytes for first four keys
-			tile->load_prefix_bytes0[CYCLE][LOAD] += util::PRMT(
-				tile->counts_bytes0[CYCLE][LOAD],
-				tile->counts_bytes1[CYCLE][LOAD],
-				tile->bins_nibbles[CYCLE][LOAD]);
-
-			// Extract warpscan shorts
-			const int LOAD_RAKING_TID_OFFSET = (KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
-
-			int base_raking_tid = threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
-			tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET];
-			tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET];
-			tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
-			tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+			tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] += util::PRMT(
+				tile->counts_bytes[0][CYCLE][LOAD],
+				tile->counts_bytes[1][CYCLE][LOAD],
+				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
 
 			// Decode scan low and high packed words for first four keys
 			int warpscan_prefix[2];
 			warpscan_prefix[0] = util::PRMT(
 				tile->warpscan_shorts[CYCLE][LOAD][0],
 				tile->warpscan_shorts[CYCLE][LOAD][1],
-				tile->bins_nibbles[CYCLE][LOAD]);
+				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
 
 			warpscan_prefix[1] = util::PRMT(
 				tile->warpscan_shorts[CYCLE][LOAD][2],
 				tile->warpscan_shorts[CYCLE][LOAD][3],
-				tile->bins_nibbles[CYCLE][LOAD]);
+				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
 
 			// Low
 			int packed_scatter =
@@ -321,12 +311,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x5140) +
 				util::PRMT(								// Raking scan component (lower bytes from each half)
-					tile->load_prefix_bytes0[CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 					0,
 					0x4140);
 
-			tile->local_ranks[CYCLE][LOAD][0] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][1] = packed_scatter >> 16;
+			tile->local_ranks[CYCLE][LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[CYCLE][LOAD][VEC + 1] = packed_scatter >> 16;
 
 			// High
 			packed_scatter =
@@ -335,32 +325,32 @@ struct Tile
 					warpscan_prefix[1],
 					0x7362) +
 				util::PRMT(								// Raking scan component (upper bytes from each half)
-					tile->load_prefix_bytes0[CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 					0,
 					0x4342);
 
-			tile->local_ranks[CYCLE][LOAD][2] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][3] = packed_scatter >> 16;
+			tile->local_ranks[CYCLE][LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[CYCLE][LOAD][VEC + 3] = packed_scatter >> 16;
 
 		}
 	};
 
 
 	/**
-	 * ExtractRanks (VEC == 4)
+	 * ExtractRanks (VEC % 8 == 4)
 	 */
-	template <int CYCLE, int LOAD>
-	struct ExtractRanks<CYCLE, LOAD, 4>
+	template <int CYCLE, int LOAD, int VEC>
+	struct ExtractRanks<CYCLE, LOAD, VEC, 4>
 	{
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(Cta *cta, Tile *tile)
 		{
-			int upper_bins_nibbles = tile->bins_nibbles[CYCLE][LOAD] >> 16;
+			int upper_bins_nibbles = tile->bins_nibbles[VEC / 8][CYCLE][LOAD] >> 16;
 
 			// Decode prefix bytes for second four keys
-			tile->load_prefix_bytes1[CYCLE][LOAD] += util::PRMT(
-				tile->counts_bytes0[CYCLE][LOAD],
-				tile->counts_bytes1[CYCLE][LOAD],
+			tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] += util::PRMT(
+				tile->counts_bytes[0][CYCLE][LOAD],
+				tile->counts_bytes[1][CYCLE][LOAD],
 				upper_bins_nibbles);
 
 			// Decode scan low and high packed words for second four keys
@@ -382,12 +372,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x5140) +
 				util::PRMT(								// Raking scan component (lower bytes from each half)
-					tile->load_prefix_bytes0[CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 					0,
 					0x4140);
 
-			tile->local_ranks[CYCLE][LOAD][4] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][5] = packed_scatter >> 16;
+			tile->local_ranks[CYCLE][LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[CYCLE][LOAD][VEC + 1] = packed_scatter >> 16;
 
 			// High
 			packed_scatter =
@@ -396,12 +386,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x7362) +
 				util::PRMT(								// Raking scan component (upper bytes from each half)
-					tile->load_prefix_bytes0[CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 					0,
 					0x4342);
 
-			tile->local_ranks[CYCLE][LOAD][6] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][7] = packed_scatter >> 16;
+			tile->local_ranks[CYCLE][LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[CYCLE][LOAD][VEC + 3] = packed_scatter >> 16;
 		}
 	};
 
@@ -431,48 +421,58 @@ struct Tile
 
 			// Initialize exclusive scan bytes
 			if (VEC == 0) {
-				tile->load_prefix_bytes0[CYCLE][LOAD] = 0;
 
-			} else if (VEC == 4) {
-				tile->load_prefix_bytes1[CYCLE][LOAD] = 0;
+				tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] = 0;
 
 			} else {
-				int prev_counts_nibbles = tile->counts_nibbles[CYCLE][LOAD] >> shift;
-				if (VEC < 4) {
+				int prev_counts_nibbles = tile->counts_nibbles[0][CYCLE][LOAD] >> shift;
+
+				if ((VEC & 3) == 0) {
+
+					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] = prev_counts_nibbles & 0xf;
+
+				} else if ((VEC & 7) < 4) {
+
 					util::BFI(
-						tile->load_prefix_bytes0[CYCLE][LOAD],
-						tile->load_prefix_bytes0[CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 						prev_counts_nibbles,
-						8 * VEC,
+						8 * (VEC & 7),
 						BITS_PER_NIBBLE);
+
 				} else {
+
 					util::BFI(
-						tile->load_prefix_bytes1[CYCLE][LOAD],
-						tile->load_prefix_bytes1[CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
 						prev_counts_nibbles,
-						8 * (VEC - 4),
+						8 * ((VEC & 7) - 4),
 						BITS_PER_NIBBLE);
 				}
 			}
 
-			// Initialize counts and bins nibbles
+			// Initialize counts nibbles
 			if (VEC == 0) {
-				tile->counts_nibbles[CYCLE][LOAD] = 1 << shift;
-				tile->bins_nibbles[CYCLE][LOAD] = bin;
+				tile->counts_nibbles[0][CYCLE][LOAD] = 1 << shift;
+			} else {
+				util::SHL_ADD(
+					tile->counts_nibbles[0][CYCLE][LOAD],
+					1,
+					shift,
+					tile->counts_nibbles[0][CYCLE][LOAD]);
+			}
+
+			// Initialize bins nibbles
+			if ((VEC & 7) == 0) {
+				tile->bins_nibbles[VEC / 8][CYCLE][LOAD] = bin;
 
 			} else {
 				util::BFI(
-					tile->bins_nibbles[CYCLE][LOAD],
-					tile->bins_nibbles[CYCLE][LOAD],
+					tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
+					tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
 					bin,
-					4 * VEC,
+					4 * (VEC & 7),
 					4);
-
-				util::SHL_ADD(
-					tile->counts_nibbles[CYCLE][LOAD],
-					1,
-					shift,
-					tile->counts_nibbles[CYCLE][LOAD]);
 			}
 
 			// Next vector element
@@ -483,8 +483,25 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile)
 		{
-			ExtractRanks<CYCLE, LOAD, VEC>::Invoke(cta, tile);
+			if (VEC == 0) {
 
+				const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
+
+				// Extract prefix bytes from bytes raking grid
+				tile->counts_bytes[0][CYCLE][LOAD] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
+				tile->counts_bytes[1][CYCLE][LOAD] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
+
+				// Extract warpscan shorts
+				const int LOAD_RAKING_TID_OFFSET = (KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
+
+				int base_raking_tid = threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
+				tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+				tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+				tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+				tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+			}
+
+			ExtractRanks<CYCLE, LOAD, VEC>::Invoke(cta, tile);
 /*
 			printf("tid(%d) vec(%d) key(%d) scatter(%d)\n",
 				threadIdx.x,
@@ -492,7 +509,6 @@ struct Tile
 				tile->keys[CYCLE][LOAD][VEC],
 				tile->local_ranks[CYCLE][LOAD][VEC]);
 */
-
 			// Next vector element
 			IterateCycleElements<CYCLE, LOAD, VEC + 1>::ComputeRanks(cta, tile);
 		}
@@ -512,31 +528,30 @@ struct Tile
 		{
 			// Expand nibble-packed counts into pair of byte-packed counts
 			util::NibblesToBytes(
-				tile->counts_bytes0[CYCLE][LOAD],
-				tile->counts_bytes1[CYCLE][LOAD],
-				tile->counts_nibbles[CYCLE][LOAD]);
+				tile->counts_bytes[0][CYCLE][LOAD],
+				tile->counts_bytes[1][CYCLE][LOAD],
+				tile->counts_nibbles[0][CYCLE][LOAD]);
 
 			const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
 
 			// Place keys into raking grid
-			cta->byte_grid_details.lane_partial[0][LANE_OFFSET] = tile->counts_bytes0[CYCLE][LOAD];
-			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes1[CYCLE][LOAD];
+			cta->byte_grid_details.lane_partial[0][LANE_OFFSET] = tile->counts_bytes[0][CYCLE][LOAD];
+			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes[1][CYCLE][LOAD];
 /*
 			printf("Tid %u cycle %u load %u:\t,"
-				"load_prefix_bytes0(%08x), "
-				"load_prefix_bytes1(%08x), "
+				"load_prefix_bytes[0](%08x), "
+				"load_prefix_bytes[1](%08x), "
 				"bins_nibbles(%08x), "
-				"counts_bytes0(%08x), "
-				"counts_bytes1(%08x), "
+				"counts_bytes[0](%08x), "
+				"counts_bytes[1](%08x), "
 				"\n",
 				threadIdx.x, CYCLE, LOAD,
-				tile->load_prefix_bytes0[CYCLE][LOAD],
-				tile->load_prefix_bytes1[CYCLE][LOAD],
-				tile->bins_nibbles[CYCLE][LOAD],
-				tile->counts_bytes0[CYCLE][LOAD],
-				tile->counts_bytes1[CYCLE][LOAD]);
+				tile->load_prefix_bytes[0][CYCLE][LOAD],
+				tile->load_prefix_bytes[1][CYCLE][LOAD],
+				tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
+				tile->counts_bytes[0][CYCLE][LOAD],
+				tile->counts_bytes[1][CYCLE][LOAD]);
 */
-
 			// First vector element, next load
 			IterateCycleElements<CYCLE, LOAD + 1, 0>::DecodeKeys(cta, tile);
 		}
@@ -601,24 +616,43 @@ struct Tile
 		template <typename WarpscanT>
 		static __device__ __forceinline__ TileTuple WarpScanInclusive(
 			TileTuple &total,
-			TileTuple partial,
-			WarpscanT warpscan_low,
-			WarpscanT warpscan_high)
+			TileTuple &input_partial,
+			WarpscanT warpscan0,
+			WarpscanT warpscan1)
 		{
 			// SOA type of warpscan storage
 			typedef util::Tuple<WarpscanT, WarpscanT> WarpscanSoa;
 
-			WarpscanSoa warpscan_soa(warpscan_low, warpscan_high);
+			WarpscanSoa warpscan_soa(warpscan0, warpscan1);
 			SoaSumOp scan_op;
 
-			// Exclusive warp scan, get total
-			TileTuple inclusive_partial = util::scan::soa::WarpSoaScan<
-				LOG_WARPSCAN_THREADS,
-				false>::Scan(
-					partial,
-					total,
-					warpscan_soa,
-					scan_op);
+			TileTuple current_partial;
+			TileTuple inclusive_partial;
+
+			// Extract input partial
+			warpscan_soa.Get(input_partial, 1, threadIdx.x - 0);
+
+			warpscan_soa.Get(current_partial, 1, threadIdx.x - 1);
+			inclusive_partial = scan_op(current_partial, input_partial);
+			warpscan_soa.Set(inclusive_partial, 1, threadIdx.x);
+
+			warpscan_soa.Get(current_partial, 1, threadIdx.x - 2);
+			inclusive_partial = scan_op(current_partial, inclusive_partial);
+			warpscan_soa.Set(inclusive_partial, 1, threadIdx.x);
+
+			warpscan_soa.Get(current_partial, 1, threadIdx.x - 4);
+			inclusive_partial = scan_op(current_partial, inclusive_partial);
+			warpscan_soa.Set(inclusive_partial, 1, threadIdx.x);
+
+			warpscan_soa.Get(current_partial, 1, threadIdx.x - 8);
+			inclusive_partial = scan_op(current_partial, inclusive_partial);
+			warpscan_soa.Set(inclusive_partial, 1, threadIdx.x);
+
+			warpscan_soa.Get(current_partial, 1, threadIdx.x - 16);
+			inclusive_partial = scan_op(current_partial, inclusive_partial);
+			warpscan_soa.Set(inclusive_partial, 1, threadIdx.x);
+
+			warpscan_soa.Get(total, 1, 31);
 
 			return inclusive_partial;
 		}
@@ -654,26 +688,31 @@ struct Tile
 				cta->byte_grid_details.raking_segment,
 				0);
 
+			// Trade
+			int offset = (threadIdx.x < RAKING_THREADS / 2) ?
+				0 :
+				(2 * B40C_WARP_THREADS(CUDA_ARCH)) - 16;
+
 			// Unpack byte-packed partial sum into short-packed partial sums
-			TileTuple partial_shorts(
-				util::PRMT(partial_bytes, 0, 0x4240),
-				util::PRMT(partial_bytes, 0, 0x4341));
+			cta->smem_storage.warpscan[0][1][threadIdx.x + offset] 			= util::PRMT(partial_bytes, 0, 0x4240);
+			cta->smem_storage.warpscan[0][1][threadIdx.x + offset + 16] 	= util::PRMT(partial_bytes, 0, 0x4341);
+
+			// Perform structure-of-arrays warpscan
+			TileTuple total;
+			TileTuple partial_shorts;
+			TileTuple inclusive_partial = SoaSumOp::WarpScanInclusive(
+				total,
+				partial_shorts,
+				cta->smem_storage.warpscan[0],
+				cta->smem_storage.warpscan[1]);
+
 /*
 			printf("\t\tRaking thread %d reduced partial(%08x), extracted to ((%u,%u),(%u,%u))\n",
 				threadIdx.x,
 				partial_bytes,
 				partial_shorts.t0 >> 16, partial_shorts.t0 & 0x0000ffff,
 				partial_shorts.t1 >> 16, partial_shorts.t1 & 0x0000ffff);
-*/
-			// Perform structure-of-arrays warpscan
 
-			TileTuple total;
-			TileTuple inclusive_partial = SoaSumOp::WarpScanInclusive(
-				total,
-				partial_shorts,
-				cta->smem_storage.warpscan_low,
-				cta->smem_storage.warpscan_high);
-/*
 			printf("Raking tid %d with inclusive_partial((%u,%u),(%u,%u)) and sums((%u,%u),(%u,%u))\n",
 				threadIdx.x,
 				inclusive_partial.t0 >> 16, inclusive_partial.t0 & 0x0000ffff,
@@ -681,17 +720,14 @@ struct Tile
 				total.t0 >> 16, total.t0 & 0x0000ffff,
 				total.t1 >> 16, total.t1 & 0x0000ffff);
 */
+
 			// Propagate the bottom total halves into the top inclusive partial halves
 			inclusive_partial.t0 = util::SHL_ADD_C(total.t0, 16, inclusive_partial.t0);
 			inclusive_partial.t1 = util::SHL_ADD_C(total.t1, 16, inclusive_partial.t1);
 
-
-			// Take the bottom half of the lower inclusive partial
-			// and add it into the top half (top half now contains sum of both halves of total.t0)
-			int lower_addend = util::SHL_ADD_C(total.t0, 16, total.t0);
-
-			// Duplicate the top half
-			lower_addend = util::PRMT(lower_addend, 0, 0x3232);
+			// Sum of the lower inclusive partial in both halves
+			int lower_addend = util::PRMT(total.t0, total.t0, 0x1032);
+			lower_addend += total.t0;
 
 			// Add it into the upper inclusive partial
 			inclusive_partial.t1 += lower_addend;
@@ -710,8 +746,8 @@ struct Tile
 			// Second half of raking threads hold bins (1,3),(5,7) in t0, t1
 
 			// Place short-packed partials back into smem for trading
-			cta->smem_storage.warpscan_low[1][threadIdx.x] = exclusive_partial.t0;
-			cta->smem_storage.warpscan_high[1][threadIdx.x] = exclusive_partial.t1;
+			cta->smem_storage.warpscan[0][1][threadIdx.x] = exclusive_partial.t0;
+			cta->smem_storage.warpscan[1][1][threadIdx.x] = exclusive_partial.t1;
 
 			// Interleave:
 			// First half of raking threads:	(0L, 1L, 2L, 3L),(4L, 5L, 6L, 7L)
@@ -719,9 +755,9 @@ struct Tile
 			int prmt = (threadIdx.x < (RAKING_THREADS / 2)) ? 0x6240 : 0x3715;
 			int other = (threadIdx.x + (RAKING_THREADS / 2)) & (RAKING_THREADS - 1);
 			int a = exclusive_partial.t0;													// 0,2
-			int b = cta->smem_storage.warpscan_low[1][other];								// 1,3
+			int b = cta->smem_storage.warpscan[0][1][other];								// 1,3
 			int c = exclusive_partial.t1;													// 4,6
-			int d = cta->smem_storage.warpscan_high[1][other];								// 5,7
+			int d = cta->smem_storage.warpscan[1][1][other];								// 5,7
 
 			cta->smem_storage.short_prefixes[0][threadIdx.x] =
 				util::PRMT(a, b, prmt);
