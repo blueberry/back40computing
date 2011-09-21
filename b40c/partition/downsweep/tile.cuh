@@ -79,18 +79,16 @@ struct Tile
 
 	enum {
 		LOAD_VEC_SIZE 				= KernelPolicy::LOAD_VEC_SIZE,
-		LOADS_PER_CYCLE 			= KernelPolicy::LOADS_PER_CYCLE,
-		CYCLES_PER_TILE 			= KernelPolicy::CYCLES_PER_TILE,
+		LOADS_PER_TILE 				= KernelPolicy::LOADS_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD 	= KernelPolicy::TILE_ELEMENTS_PER_THREAD,
-		SCAN_LANES_PER_CYCLE		= KernelPolicy::SCAN_LANES_PER_CYCLE,
 
-		LOG_SCAN_LANES				= KernelPolicy::LOG_SCAN_LANES_PER_CYCLE,
-		SCAN_LANES					= KernelPolicy::SCAN_LANES_PER_CYCLE,
+		LOG_SCAN_LANES				= KernelPolicy::LOG_SCAN_LANES_PER_TILE,
+		SCAN_LANES					= KernelPolicy::SCAN_LANES_PER_TILE,
 
 		LOG_PACKS_PER_LOAD			= KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE,
 		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
-		LANE_ROWS_PER_LOAD 			= KernelPolicy::ByteGrid::ROWS_PER_LANE / KernelPolicy::LOADS_PER_CYCLE,
+		LANE_ROWS_PER_LOAD 			= KernelPolicy::ByteGrid::ROWS_PER_LANE / KernelPolicy::LOADS_PER_TILE,
 		LANE_STRIDE_PER_LOAD 		= KernelPolicy::ByteGrid::PADDED_PARTIALS_PER_ROW * LANE_ROWS_PER_LOAD,
 
 		INVALID_BIN					= -1,
@@ -108,8 +106,8 @@ struct Tile
 	//---------------------------------------------------------------------
 
 
-	// The keys (and values) this thread will read this cycle
-	KeyType 	keys[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];
+	// The keys (and values) this thread will read this tile
+	KeyType 	keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
 	ValueType 	values[TILE_ELEMENTS_PER_THREAD];
 
 	// For each load:
@@ -117,17 +115,17 @@ struct Tile
 	// 		bins_nibbles contains the bin for each key within nibbles ordered right to left
 	// 		load_prefix_bytes contains the exclusive scan for each key within nibbles ordered right to left
 
-	int 		bins_nibbles[(LOAD_VEC_SIZE + 7) / 8][CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		bins_nibbles[(LOAD_VEC_SIZE + 7) / 8][LOADS_PER_TILE];
 
-	int 		counts_nibbles[SCAN_LANES / 2][CYCLES_PER_TILE][LOADS_PER_CYCLE];
-	int			counts_bytes[SCAN_LANES][CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		counts_nibbles[SCAN_LANES / 2][LOADS_PER_TILE];
+	int			counts_bytes[SCAN_LANES][LOADS_PER_TILE];
 
-	int 		load_prefix_bytes[(LOAD_VEC_SIZE + 3) / 4][CYCLES_PER_TILE][LOADS_PER_CYCLE];
+	int 		load_prefix_bytes[(LOAD_VEC_SIZE + 3) / 4][LOADS_PER_TILE];
 
-	int 		warpscan_shorts[CYCLES_PER_TILE][LOADS_PER_CYCLE][4];
+	int 		warpscan_shorts[LOADS_PER_TILE][4];
 
-	int 		local_ranks[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];		// The local rank of each key
-	SizeT 		scatter_offsets[CYCLES_PER_TILE][LOADS_PER_CYCLE][LOAD_VEC_SIZE];	// The global rank of each key
+	int 		local_ranks[LOADS_PER_TILE][LOAD_VEC_SIZE];		// The local rank of each key
+	SizeT 		scatter_offsets[LOADS_PER_TILE][LOAD_VEC_SIZE];	// The global rank of each key
 
 
 	//---------------------------------------------------------------------
@@ -159,7 +157,7 @@ struct Tile
 	 *
 	 * To be overloaded.
 	 */
-	template <int CYCLE, int LOAD, int VEC>
+	template <int LOAD, int VEC>
 	__device__ __forceinline__ bool IsValid();
 
 
@@ -259,13 +257,13 @@ struct Tile
 
 
 	//---------------------------------------------------------------------
-	// Cycle Methods
+	// Tile Methods
 	//---------------------------------------------------------------------
 
 	/**
 	 * ExtractRanks
 	 */
-	template <int CYCLE, int LOAD, int VEC, int REM = (VEC & 7)>
+	template <int LOAD, int VEC, int REM = (VEC & 7)>
 	struct ExtractRanks
 	{
 		template <typename Cta, typename Tile>
@@ -276,33 +274,33 @@ struct Tile
 	/**
 	 * ExtractRanks (VEC % 8 == 0)
 	 */
-	template <int CYCLE, int LOAD, int VEC>
-	struct ExtractRanks<CYCLE, LOAD, VEC, 0>
+	template <int LOAD, int VEC>
+	struct ExtractRanks<LOAD, VEC, 0>
 	{
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(Cta *cta, Tile *tile)
 		{
 /*
 			printf("\tTid(%d) Vec(%d) bins_nibbles(%08x)\n",
-				threadIdx.x, VEC, tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
+				threadIdx.x, VEC, tile->bins_nibbles[VEC / 8][LOAD]);
 */
 			// Decode prefix bytes for first four keys
-			tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] += util::PRMT(
-				tile->counts_bytes[0][CYCLE][LOAD],
-				tile->counts_bytes[1][CYCLE][LOAD],
-				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
+			tile->load_prefix_bytes[VEC / 4][LOAD] += util::PRMT(
+				tile->counts_bytes[0][LOAD],
+				tile->counts_bytes[1][LOAD],
+				tile->bins_nibbles[VEC / 8][LOAD]);
 
 			// Decode scan low and high packed words for first four keys
 			int warpscan_prefix[2];
 			warpscan_prefix[0] = util::PRMT(
-				tile->warpscan_shorts[CYCLE][LOAD][0],
-				tile->warpscan_shorts[CYCLE][LOAD][1],
-				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
+				tile->warpscan_shorts[LOAD][0],
+				tile->warpscan_shorts[LOAD][1],
+				tile->bins_nibbles[VEC / 8][LOAD]);
 
 			warpscan_prefix[1] = util::PRMT(
-				tile->warpscan_shorts[CYCLE][LOAD][2],
-				tile->warpscan_shorts[CYCLE][LOAD][3],
-				tile->bins_nibbles[VEC / 8][CYCLE][LOAD]);
+				tile->warpscan_shorts[LOAD][2],
+				tile->warpscan_shorts[LOAD][3],
+				tile->bins_nibbles[VEC / 8][LOAD]);
 
 			// Low
 			int packed_scatter =
@@ -311,12 +309,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x5140) +
 				util::PRMT(								// Raking scan component (lower bytes from each half)
-					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4140);
 
-			tile->local_ranks[CYCLE][LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][VEC + 1] = packed_scatter >> 16;
+			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[LOAD][VEC + 1] = packed_scatter >> 16;
 
 			// High
 			packed_scatter =
@@ -325,12 +323,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x7362) +
 				util::PRMT(								// Raking scan component (upper bytes from each half)
-					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4342);
 
-			tile->local_ranks[CYCLE][LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][VEC + 3] = packed_scatter >> 16;
+			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[LOAD][VEC + 3] = packed_scatter >> 16;
 
 		}
 	};
@@ -339,30 +337,30 @@ struct Tile
 	/**
 	 * ExtractRanks (VEC % 8 == 4)
 	 */
-	template <int CYCLE, int LOAD, int VEC>
-	struct ExtractRanks<CYCLE, LOAD, VEC, 4>
+	template <int LOAD, int VEC>
+	struct ExtractRanks<LOAD, VEC, 4>
 	{
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(Cta *cta, Tile *tile)
 		{
-			int upper_bins_nibbles = tile->bins_nibbles[VEC / 8][CYCLE][LOAD] >> 16;
+			int upper_bins_nibbles = tile->bins_nibbles[VEC / 8][LOAD] >> 16;
 
 			// Decode prefix bytes for second four keys
-			tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] += util::PRMT(
-				tile->counts_bytes[0][CYCLE][LOAD],
-				tile->counts_bytes[1][CYCLE][LOAD],
+			tile->load_prefix_bytes[VEC / 4][LOAD] += util::PRMT(
+				tile->counts_bytes[0][LOAD],
+				tile->counts_bytes[1][LOAD],
 				upper_bins_nibbles);
 
 			// Decode scan low and high packed words for second four keys
 			int warpscan_prefix[2];
 			warpscan_prefix[0] = util::PRMT(
-				tile->warpscan_shorts[CYCLE][LOAD][0],
-				tile->warpscan_shorts[CYCLE][LOAD][1],
+				tile->warpscan_shorts[LOAD][0],
+				tile->warpscan_shorts[LOAD][1],
 				upper_bins_nibbles);
 
 			warpscan_prefix[1] = util::PRMT(
-				tile->warpscan_shorts[CYCLE][LOAD][2],
-				tile->warpscan_shorts[CYCLE][LOAD][3],
+				tile->warpscan_shorts[LOAD][2],
+				tile->warpscan_shorts[LOAD][3],
 				upper_bins_nibbles);
 
 			// Low
@@ -372,12 +370,12 @@ struct Tile
 					warpscan_prefix[1],
 					0x5140) +
 				util::PRMT(								// Raking scan component (lower bytes from each half)
-					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4140);
 
-			tile->local_ranks[CYCLE][LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][VEC + 1] = packed_scatter >> 16;
+			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[LOAD][VEC + 1] = packed_scatter >> 16;
 
 			// High
 			packed_scatter =
@@ -386,26 +384,26 @@ struct Tile
 					warpscan_prefix[1],
 					0x7362) +
 				util::PRMT(								// Raking scan component (upper bytes from each half)
-					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4342);
 
-			tile->local_ranks[CYCLE][LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
-			tile->local_ranks[CYCLE][LOAD][VEC + 3] = packed_scatter >> 16;
+			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
+			tile->local_ranks[LOAD][VEC + 3] = packed_scatter >> 16;
 		}
 	};
 
 
 
 	//---------------------------------------------------------------------
-	// IterateCycleElements Structures
+	// IterateTileElements Structures
 	//---------------------------------------------------------------------
 
 	/**
 	 * Iterate next vector element
 	 */
-	template <int CYCLE, int LOAD, int VEC, int dummy = 0>
-	struct IterateCycleElements
+	template <int LOAD, int VEC, int dummy = 0>
+	struct IterateTileElements
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
@@ -414,7 +412,7 @@ struct Tile
 			Dispatch *dispatch = (Dispatch *) tile;
 
 			// Decode the bin for this key
-			int bin = dispatch->DecodeBin(tile->keys[CYCLE][LOAD][VEC], cta);
+			int bin = dispatch->DecodeBin(tile->keys[LOAD][VEC], cta);
 
 			const int BITS_PER_NIBBLE = 4;
 			int shift = bin * BITS_PER_NIBBLE;
@@ -422,20 +420,20 @@ struct Tile
 			// Initialize exclusive scan bytes
 			if (VEC == 0) {
 
-				tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] = 0;
+				tile->load_prefix_bytes[VEC / 4][LOAD] = 0;
 
 			} else {
-				int prev_counts_nibbles = tile->counts_nibbles[0][CYCLE][LOAD] >> shift;
+				int prev_counts_nibbles = tile->counts_nibbles[0][LOAD] >> shift;
 
 				if ((VEC & 3) == 0) {
 
-					tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD] = prev_counts_nibbles & 0xf;
+					tile->load_prefix_bytes[VEC / 4][LOAD] = prev_counts_nibbles & 0xf;
 
 				} else if ((VEC & 7) < 4) {
 
 					util::BFI(
-						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
-						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][LOAD],
+						tile->load_prefix_bytes[VEC / 4][LOAD],
 						prev_counts_nibbles,
 						8 * (VEC & 7),
 						BITS_PER_NIBBLE);
@@ -443,8 +441,8 @@ struct Tile
 				} else {
 
 					util::BFI(
-						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
-						tile->load_prefix_bytes[VEC / 4][CYCLE][LOAD],
+						tile->load_prefix_bytes[VEC / 4][LOAD],
+						tile->load_prefix_bytes[VEC / 4][LOAD],
 						prev_counts_nibbles,
 						8 * ((VEC & 7) - 4),
 						BITS_PER_NIBBLE);
@@ -453,30 +451,30 @@ struct Tile
 
 			// Initialize counts nibbles
 			if (VEC == 0) {
-				tile->counts_nibbles[0][CYCLE][LOAD] = 1 << shift;
+				tile->counts_nibbles[0][LOAD] = 1 << shift;
 			} else {
 				util::SHL_ADD(
-					tile->counts_nibbles[0][CYCLE][LOAD],
+					tile->counts_nibbles[0][LOAD],
 					1,
 					shift,
-					tile->counts_nibbles[0][CYCLE][LOAD]);
+					tile->counts_nibbles[0][LOAD]);
 			}
 
 			// Initialize bins nibbles
 			if ((VEC & 7) == 0) {
-				tile->bins_nibbles[VEC / 8][CYCLE][LOAD] = bin;
+				tile->bins_nibbles[VEC / 8][LOAD] = bin;
 
 			} else {
 				util::BFI(
-					tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
-					tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
+					tile->bins_nibbles[VEC / 8][LOAD],
+					tile->bins_nibbles[VEC / 8][LOAD],
 					bin,
 					4 * (VEC & 7),
 					4);
 			}
 
 			// Next vector element
-			IterateCycleElements<CYCLE, LOAD, VEC + 1>::DecodeKeys(cta, tile);
+			IterateTileElements<LOAD, VEC + 1>::DecodeKeys(cta, tile);
 		}
 
 
@@ -488,39 +486,39 @@ struct Tile
 				const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
 
 				// Extract prefix bytes from bytes raking grid
-				tile->counts_bytes[0][CYCLE][LOAD] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
-				tile->counts_bytes[1][CYCLE][LOAD] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
+				tile->counts_bytes[0][LOAD] = cta->byte_grid_details.lane_partial[0][LANE_OFFSET];
+				tile->counts_bytes[1][LOAD] = cta->byte_grid_details.lane_partial[1][LANE_OFFSET];
 
 				// Extract warpscan shorts
 				const int LOAD_RAKING_TID_OFFSET = (KernelPolicy::THREADS * LOAD) >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
 
 				int base_raking_tid = threadIdx.x >> KernelPolicy::ByteGrid::LOG_PARTIALS_PER_SEG;
-				tile->warpscan_shorts[CYCLE][LOAD][0] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET];
-				tile->warpscan_shorts[CYCLE][LOAD][1] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET];
-				tile->warpscan_shorts[CYCLE][LOAD][2] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
-				tile->warpscan_shorts[CYCLE][LOAD][3] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+				tile->warpscan_shorts[LOAD][0] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+				tile->warpscan_shorts[LOAD][1] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET];
+				tile->warpscan_shorts[LOAD][2] = cta->smem_storage.short_prefixes[0][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
+				tile->warpscan_shorts[LOAD][3] = cta->smem_storage.short_prefixes[1][base_raking_tid + LOAD_RAKING_TID_OFFSET + (RAKING_THREADS / 2)];
 			}
 
-			ExtractRanks<CYCLE, LOAD, VEC>::Invoke(cta, tile);
+			ExtractRanks<LOAD, VEC>::Invoke(cta, tile);
 /*
 			printf("tid(%d) vec(%d) key(%d) scatter(%d)\n",
 				threadIdx.x,
 				VEC,
-				tile->keys[CYCLE][LOAD][VEC],
-				tile->local_ranks[CYCLE][LOAD][VEC]);
+				tile->keys[LOAD][VEC],
+				tile->local_ranks[LOAD][VEC]);
 */
 			// Next vector element
-			IterateCycleElements<CYCLE, LOAD, VEC + 1>::ComputeRanks(cta, tile);
+			IterateTileElements<LOAD, VEC + 1>::ComputeRanks(cta, tile);
 		}
 	};
 
 
 
 	/**
-	 * IterateCycleElements next load
+	 * IterateTileElements next load
 	 */
-	template <int CYCLE, int LOAD, int dummy>
-	struct IterateCycleElements<CYCLE, LOAD, LOAD_VEC_SIZE, dummy>
+	template <int LOAD, int dummy>
+	struct IterateTileElements<LOAD, LOAD_VEC_SIZE, dummy>
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
@@ -528,39 +526,39 @@ struct Tile
 		{
 			// Expand nibble-packed counts into pair of byte-packed counts
 			util::NibblesToBytes(
-				tile->counts_bytes[0][CYCLE][LOAD],
-				tile->counts_bytes[1][CYCLE][LOAD],
-				tile->counts_nibbles[0][CYCLE][LOAD]);
+				tile->counts_bytes[0][LOAD],
+				tile->counts_bytes[1][LOAD],
+				tile->counts_nibbles[0][LOAD]);
 
 			const int LANE_OFFSET = LOAD * LANE_STRIDE_PER_LOAD;
 
 			// Place keys into raking grid
-			cta->byte_grid_details.lane_partial[0][LANE_OFFSET] = tile->counts_bytes[0][CYCLE][LOAD];
-			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes[1][CYCLE][LOAD];
+			cta->byte_grid_details.lane_partial[0][LANE_OFFSET] = tile->counts_bytes[0][LOAD];
+			cta->byte_grid_details.lane_partial[1][LANE_OFFSET] = tile->counts_bytes[1][LOAD];
 /*
-			printf("Tid %u cycle %u load %u:\t,"
+			printf("Tid %u load %u:\t,"
 				"load_prefix_bytes[0](%08x), "
 				"load_prefix_bytes[1](%08x), "
 				"bins_nibbles(%08x), "
 				"counts_bytes[0](%08x), "
 				"counts_bytes[1](%08x), "
 				"\n",
-				threadIdx.x, CYCLE, LOAD,
-				tile->load_prefix_bytes[0][CYCLE][LOAD],
-				tile->load_prefix_bytes[1][CYCLE][LOAD],
-				tile->bins_nibbles[VEC / 8][CYCLE][LOAD],
-				tile->counts_bytes[0][CYCLE][LOAD],
-				tile->counts_bytes[1][CYCLE][LOAD]);
+				threadIdx.x, LOAD,
+				tile->load_prefix_bytes[0][LOAD],
+				tile->load_prefix_bytes[1][LOAD],
+				tile->bins_nibbles[VEC / 8][LOAD],
+				tile->counts_bytes[0][LOAD],
+				tile->counts_bytes[1][LOAD]);
 */
 			// First vector element, next load
-			IterateCycleElements<CYCLE, LOAD + 1, 0>::DecodeKeys(cta, tile);
+			IterateTileElements<LOAD + 1, 0>::DecodeKeys(cta, tile);
 		}
 
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile)
 		{
 			// First vector element, next load
-			IterateCycleElements<CYCLE, LOAD + 1, 0>::ComputeRanks(cta, tile);
+			IterateTileElements<LOAD + 1, 0>::ComputeRanks(cta, tile);
 		}
 
 	};
@@ -568,8 +566,8 @@ struct Tile
 	/**
 	 * Terminate iteration
 	 */
-	template <int CYCLE, int dummy>
-	struct IterateCycleElements<CYCLE, LOADS_PER_CYCLE, 0, dummy>
+	template <int dummy>
+	struct IterateTileElements<LOADS_PER_TILE, 0, dummy>
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
@@ -660,17 +658,17 @@ struct Tile
 
 
 	/**
-	 * Scan Cycle
+	 * Scan Tile
 	 */
-	template <int CYCLE, typename Cta>
-	__device__ __forceinline__ void ScanCycle(Cta *cta)
+	template <typename Cta>
+	__device__ __forceinline__ void ScanTile(Cta *cta)
 	{
 		typedef typename SoaSumOp::TileTuple TileTuple;
 
 		Dispatch *dispatch = (Dispatch*) this;
 
 		// Decode bins and place keys into grid
-		IterateCycleElements<CYCLE, 0, 0>::DecodeKeys(cta, dispatch);
+		IterateTileElements<0, 0>::DecodeKeys(cta, dispatch);
 
 		__syncthreads();
 
@@ -799,7 +797,7 @@ struct Tile
 		__syncthreads();
 
 		// Extract the local ranks of each key
-		IterateCycleElements<CYCLE, 0, 0>::ComputeRanks(cta, dispatch);
+		IterateTileElements<0, 0>::ComputeRanks(cta, dispatch);
 	}
 
 
@@ -837,36 +835,6 @@ struct Tile
 */
 	}
 
-
-	//---------------------------------------------------------------------
-	// IterateCycles Structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate next cycle
-	 */
-	template <int CYCLE, int dummy = 0>
-	struct IterateCycles
-	{
-		// ScanCycles
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile)
-		{
-			tile->ScanCycle<CYCLE>(cta);
-			IterateCycles<CYCLE + 1>::ScanCycles(cta, tile);
-		}
-	};
-
-	/**
-	 * Terminate iteration
-	 */
-	template <int dummy>
-	struct IterateCycles<CYCLES_PER_TILE, dummy>
-	{
-		// ScanCycles
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void ScanCycles(Cta *cta, Tile *tile) {}
-	};
 
 
 	//---------------------------------------------------------------------
@@ -964,8 +932,8 @@ struct Tile
 				}
 			}
 
-			// Scan cycles
-			IterateCycles<0>::ScanCycles(cta, tile);
+			// Scan tile
+			tile->ScanTile(cta);
 
 			__syncthreads();
 

@@ -78,7 +78,7 @@ struct Tile :
 	/**
 	 * Returns whether or not the key is valid.
 	 */
-	template <int CYCLE, int LOAD, int VEC>
+	template <int LOAD, int VEC>
 	__device__ __forceinline__ bool IsValid()
 	{
 		return true;

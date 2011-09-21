@@ -115,9 +115,8 @@ typedef b40c::radix_sort::Policy<
 		8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
 		3,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-		0,							// DOWNSWEEP_LOG_LOADS_PER_CYCLE	The number of loads (log) per cycle.  Valid range: 0-2, subject to constraints described above
-		0,//1, 							// DOWNSWEEP_LOG_CYCLES_PER_TILE	The number of cycles (log) per tile.  Valid range: 0-2
-		5>//6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+		0,							// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+		5>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 	Policy;
 
 
