@@ -55,22 +55,6 @@ enum ScatterStrategy {
  * expanding/unrolling the kernel code for specific architectures and problem
  * types.
  *
- * Constraints:
- * 		(i) 	A load can't contain more than 256 keys or we might overflow inside a lane of
- * 				8-bit composite counters, i.e., (threads * load-vec-size <= 256), equivalently:
- *
- * 					(LOG_THREADS + LOG_LOAD_VEC_SIZE <= 8)
- *
- * 		(ii) 	We must have between one and one warp of raking threads per lane of composite
- * 				counters, i.e., (1 <= raking-threads / (loads-per-cycle * bins / 4) <= 32),
- * 				equivalently:
- *
- * 					(0 <= LOG_RAKING_THREADS - LOG_LOADS_PER_CYCLE - LOG_BINS + 2 <= B40C_LOG_WARP_THREADS(arch))
- *
- * 		(iii) 	We must have more (or equal) threads than bins in the threadblock,
- * 				i.e., (threads >= bins) equivalently:
- * 
- * 					LOG_THREADS >= LOG_BINS
  */
 template <
 	// Problem type
@@ -83,8 +67,7 @@ template <
 	int _MIN_CTA_OCCUPANCY,
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
-	int _LOG_LOADS_PER_CYCLE,
-	int _LOG_CYCLES_PER_TILE,
+	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
 	util::io::ld::CacheModifier _READ_MODIFIER,
 	util::io::st::CacheModifier _WRITE_MODIFIER,
@@ -100,13 +83,12 @@ struct TuningPolicy : ProblemType
 		MIN_CTA_OCCUPANCY  							= _MIN_CTA_OCCUPANCY,
 		LOG_THREADS 								= _LOG_THREADS,
 		LOG_LOAD_VEC_SIZE 							= _LOG_LOAD_VEC_SIZE,
-		LOG_LOADS_PER_CYCLE							= _LOG_LOADS_PER_CYCLE,
-		LOG_CYCLES_PER_TILE							= _LOG_CYCLES_PER_TILE,
+		LOG_LOADS_PER_TILE							= _LOG_LOADS_PER_TILE,
 		LOG_RAKING_THREADS							= _LOG_RAKING_THREADS,
 
 		SCHEDULE_GRANULARITY						= 1 << LOG_SCHEDULE_GRANULARITY,
 		THREADS										= 1 << LOG_THREADS,
-		TILE_ELEMENTS								= 1 << (LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_CYCLE + LOG_CYCLES_PER_TILE),
+		TILE_ELEMENTS								= 1 << (LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE),
 
 		LOG_PACK_SIZE 								= 2,
 		PACK_SIZE									= 1 << LOG_PACK_SIZE,

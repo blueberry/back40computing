@@ -101,7 +101,7 @@ struct DownsweepPass
 		// Sync to acquire non_trivial_pass, selector, and work limits
 		__syncthreads();
 
-		// Short-circuit this entire cycle
+		// Short-circuit this entire pass
 		if (!smem_storage.non_trivial_pass) return;
 
 		Cta cta(

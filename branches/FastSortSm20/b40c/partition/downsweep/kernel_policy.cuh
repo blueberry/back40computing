@@ -55,38 +55,28 @@ struct KernelPolicy : TuningPolicy
 		WARPS							= 1 << LOG_WARPS,
 
 		LOAD_VEC_SIZE					= 1 << TuningPolicy::LOG_LOAD_VEC_SIZE,
-		LOADS_PER_CYCLE					= 1 << TuningPolicy::LOG_LOADS_PER_CYCLE,
-		CYCLES_PER_TILE					= 1 << TuningPolicy::LOG_CYCLES_PER_TILE,
+		LOADS_PER_TILE					= 1 << TuningPolicy::LOG_LOADS_PER_TILE,
 
-		LOG_LOADS_PER_TILE				= TuningPolicy::LOG_LOADS_PER_CYCLE +
-												TuningPolicy::LOG_CYCLES_PER_TILE,
-		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
-
-		LOG_CYCLE_ELEMENTS				= TuningPolicy::LOG_THREADS +
-												TuningPolicy::LOG_LOADS_PER_CYCLE +
-												TuningPolicy::LOG_LOAD_VEC_SIZE,
-		CYCLE_ELEMENTS					= 1 << LOG_CYCLE_ELEMENTS,
-
-		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_CYCLES_PER_TILE + LOG_CYCLE_ELEMENTS,
-		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
-
-		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_TILE_ELEMENTS - TuningPolicy::LOG_THREADS,
+		LOG_TILE_ELEMENTS_PER_THREAD	= TuningPolicy::LOG_LOAD_VEC_SIZE + TuningPolicy::LOG_LOADS_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
-	
-		LOG_SCAN_LANES_PER_CYCLE		= B40C_MAX((TuningPolicy::LOG_BINS - 2), 0),		// Always at least one lane per load
-		SCAN_LANES_PER_CYCLE			= 1 << LOG_SCAN_LANES_PER_CYCLE,
 
-		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_CYCLE,
+		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_THREADS + LOG_TILE_ELEMENTS_PER_THREAD,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+	
+		LOG_SCAN_LANES_PER_TILE			= B40C_MAX((TuningPolicy::LOG_BINS - 2), 0),		// Always at least one lane per load
+		SCAN_LANES_PER_TILE				= 1 << LOG_SCAN_LANES_PER_TILE,
+
+		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_TILE,
 	};
 
 
-	// Smem SRTS grid type for reducing and scanning a cycle of 
+	// Smem SRTS grid type for reducing and scanning a tile of
 	// (bins/4) lanes of composite 8-bit bin counters
 	typedef util::SrtsGrid<
 		TuningPolicy::CUDA_ARCH,
 		int,											// Partial type
 		LOG_DEPOSITS_PER_LANE,							// Deposits per lane
-		LOG_SCAN_LANES_PER_CYCLE,						// Lanes (the number of composite digits)
+		LOG_SCAN_LANES_PER_TILE,						// Lanes (the number of composite digits)
 		TuningPolicy::LOG_RAKING_THREADS,				// Raking threads
 		false>											// Any prefix dependences between lanes are explicitly managed
 			ByteGrid;
