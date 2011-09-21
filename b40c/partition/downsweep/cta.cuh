@@ -115,8 +115,8 @@ struct Cta
 			}
 
 			smem_storage.bin_zeros[threadIdx.x] = 0;
-			smem_storage.warpscan_low[0][threadIdx.x] = 0;
-			smem_storage.warpscan_high[0][threadIdx.x] = 0;
+			smem_storage.warpscan[0][0][threadIdx.x] = 0;
+			smem_storage.warpscan[1][0][threadIdx.x] = 0;
 		}
 	}
 
