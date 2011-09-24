@@ -313,6 +313,8 @@ struct Tile
 					0,
 					0x4140);
 
+			packed_scatter <<= 2;
+
 			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
 			tile->local_ranks[LOAD][VEC + 1] = packed_scatter >> 16;
 
@@ -326,6 +328,8 @@ struct Tile
 					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4342);
+
+			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
 			tile->local_ranks[LOAD][VEC + 3] = packed_scatter >> 16;
@@ -374,6 +378,8 @@ struct Tile
 					0,
 					0x4140);
 
+			packed_scatter <<= 2;
+
 			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
 			tile->local_ranks[LOAD][VEC + 1] = packed_scatter >> 16;
 
@@ -387,6 +393,8 @@ struct Tile
 					tile->load_prefix_bytes[VEC / 4][LOAD],
 					0,
 					0x4342);
+
+			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
 			tile->local_ranks[LOAD][VEC + 3] = packed_scatter >> 16;
@@ -937,15 +945,19 @@ struct Tile
 
 			__syncthreads();
 
-			// Scatter keys to smem by local rank
-			util::io::ScatterTile<
-				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
-				0,
-				KernelPolicy::THREADS,
-				util::io::st::NONE>::Scatter(
-					cta->smem_storage.key_exchange,
-					(KeyType (*)[1]) tile->keys,
-					(int (*)[1]) tile->local_ranks);
+			// Scatter keys to smem by local rank (strided)
+			#pragma unroll
+			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
+
+				#pragma unroll
+				for (int VEC = 0; VEC < LOAD_VEC_SIZE; VEC++) {
+
+					char * ptr = (char *) cta->smem_storage.key_exchange;
+					KeyType * ptr_key = (KeyType *)(ptr + tile->local_ranks[LOAD][VEC]);
+
+					*ptr_key = tile->keys[LOAD][VEC];
+				}
+			}
 
 			__syncthreads();
 
