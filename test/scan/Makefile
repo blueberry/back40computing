@@ -205,6 +205,17 @@ bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_scan.cu $(DEPS) test_s
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_scan_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
+#-------------------------------------------------------------------------------
+# (make grid) Evaluates grid sizes
+#-------------------------------------------------------------------------------
+
+grid: bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) : grid_size.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) grid_size.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3
+
+
 #
 # Clean
 #
