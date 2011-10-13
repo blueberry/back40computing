@@ -135,7 +135,114 @@ enum TuningParam {
 	LOG_SCHEDULE_GRANULARITY,
 };
 
+/**
+ * Ranges for the tuning params
+ */
+template <typename ParamList, int PARAM> struct Ranges;
 
+// READ_MODIFIER
+template <typename ParamList>
+struct Ranges<ParamList, READ_MODIFIER> {
+	enum {
+		MIN = util::io::ld::NONE,
+		MAX = util::io::ld::LIMIT - 1,
+	};
+};
+
+// WRITE_MODIFIER
+template <typename ParamList>
+struct Ranges<ParamList, WRITE_MODIFIER> {
+	enum {
+		MIN = util::io::st::NONE,
+		MAX = util::io::st::LIMIT - 1,
+	};
+};
+
+// UNIFORM_SMEM_ALLOCATION
+template <typename ParamList>
+struct Ranges<ParamList, UNIFORM_SMEM_ALLOCATION> {
+	enum {
+		MIN = 0,
+		MAX = 1
+	};
+};
+
+// UNIFORM_GRID_SIZE
+template <typename ParamList>
+struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
+	enum {
+		MIN = 0,
+		MAX = 1
+	};
+};
+
+// WORK_STEALING
+template <typename ParamList>
+struct Ranges<ParamList, WORK_STEALING> {
+	enum {
+		MIN = 0,
+		MAX = 1
+	};
+};
+
+// UPSWEEP_LOG_THREADS
+template <typename ParamList>
+struct Ranges<ParamList, UPSWEEP_LOG_THREADS> {
+	enum {
+		MIN = 5,		// 32
+		MAX = 10		// 1024
+	};
+};
+
+// UPSWEEP_LOG_LOAD_VEC_SIZE
+template <typename ParamList>
+struct Ranges<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
+	enum {
+		MIN = 0,
+		MAX = 2
+	};
+};
+
+// UPSWEEP_LOG_LOADS_PER_TILE
+template <typename ParamList>
+struct Ranges<ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
+	enum {
+		MIN = 0,
+		MAX = 2
+	};
+};
+
+// SPINE_LOG_THREADS
+template <typename ParamList>
+struct Ranges<ParamList, SPINE_LOG_THREADS> {
+	enum {
+		MIN = 5,		// 32
+		MAX = 10		// 1024
+	};
+};
+
+// SPINE_LOG_LOAD_VEC_SIZE
+template <typename ParamList>
+struct Ranges<ParamList, SPINE_LOG_LOAD_VEC_SIZE> {
+	enum {
+		MIN = 0,
+		MAX = 2
+	};
+};
+
+// SPINE_LOG_LOADS_PER_TILE
+template <typename ParamList>
+struct Ranges<ParamList, SPINE_LOG_LOADS_PER_TILE> {
+	enum {
+		MIN = 0,
+		MAX = 2
+	};
+};
+
+
+/******************************************************************************
+ * Derived tuning enactor
+ ******************************************************************************/
 
 /**
  * Encapsulation structure for
@@ -153,110 +260,6 @@ public:
 	T *h_reference;
 	SizeT num_elements;
 	OpType binary_op;
-
-	/**
-	 * Ranges for the tuning params
-	 */
-	template <typename ParamList, int PARAM> struct Ranges;
-
-	// READ_MODIFIER
-	template <typename ParamList>
-	struct Ranges<ParamList, READ_MODIFIER> {
-		enum {
-			MIN = util::io::ld::NONE,
-			MAX = util::io::ld::LIMIT - 1,
-		};
-	};
-
-	// WRITE_MODIFIER
-	template <typename ParamList>
-	struct Ranges<ParamList, WRITE_MODIFIER> {
-		enum {
-			MIN = util::io::st::NONE,
-			MAX = util::io::st::LIMIT - 1,
-		};
-	};
-
-	// UNIFORM_SMEM_ALLOCATION
-	template <typename ParamList>
-	struct Ranges<ParamList, UNIFORM_SMEM_ALLOCATION> {
-		enum {
-			MIN = 0,
-			MAX = 1
-		};
-	};
-
-	// UNIFORM_GRID_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, UNIFORM_GRID_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 1
-		};
-	};
-
-	// WORK_STEALING
-	template <typename ParamList>
-	struct Ranges<ParamList, WORK_STEALING> {
-		enum {
-			MIN = 0,
-			MAX = (TUNE_ARCH < 200) ? 0 : 1				// Only bother tuning atomic worstealing on Fermi+
-		};
-	};
-
-	// UPSWEEP_LOG_THREADS
-	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_THREADS> {
-		enum {
-			MIN = 5,		// 32
-			MAX = 10		// 1024
-		};
-	};
-
-	// UPSWEEP_LOG_LOAD_VEC_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_LOAD_VEC_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
-
-	// UPSWEEP_LOG_LOADS_PER_TILE
-	template <typename ParamList>
-	struct Ranges<ParamList, UPSWEEP_LOG_LOADS_PER_TILE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
-
-	// SPINE_LOG_THREADS
-	template <typename ParamList>
-	struct Ranges<ParamList, SPINE_LOG_THREADS> {
-		enum {
-			MIN = 5,		// 32
-			MAX = 10		// 1024
-		};
-	};
-
-	// SPINE_LOG_LOAD_VEC_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, SPINE_LOG_LOAD_VEC_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
-
-	// SPINE_LOG_LOADS_PER_TILE
-	template <typename ParamList>
-	struct Ranges<ParamList, SPINE_LOG_LOADS_PER_TILE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
 
 	/**
 	 * Constructor
@@ -519,7 +522,7 @@ void TestReduction(
 		Detail,
 		PARAM_BEGIN + 1,
 		PARAM_END,
-		Detail::template Ranges>::template Invoke<util::EmptyTuple>(detail);
+		Ranges>::template Invoke<util::EmptyTuple>(detail);
 
 	// Free allocated memory
 	if (detail.d_src) cudaFree(detail.d_src);
