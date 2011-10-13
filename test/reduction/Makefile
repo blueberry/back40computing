@@ -58,6 +58,9 @@ endif
 ifeq ($(TUNE_ARCH), 130) 
 	TUNE_SM_TARGETS = $(GEN_SM13)
 endif
+ifeq ($(TUNE_ARCH), 110) 
+	TUNE_SM_TARGETS = $(GEN_SM11)
+endif
 ifeq ($(TUNE_ARCH), 100) 
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
