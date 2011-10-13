@@ -38,16 +38,126 @@
  * Utility Routines
  ******************************************************************************/
 
+
 /**
  * Timed copy.  Uses the GPU to copy the specified vector of elements for the given
  * number of iterations, displaying runtime information.
  */
-template <typename T, b40c::copy::ProbSizeGenre PROB_SIZE_GENRE>
+template <
+	b40c::copy::ProbSizeGenre PROB_SIZE_GENRE,
+	typename T,
+	typename SizeT>
+double TimedCopy(
+	T *d_src,
+	T *d_dest,
+	SizeT num_elements,
+	int max_ctas,
+	int iterations)
+{
+	using namespace b40c;
+
+	// Create enactor
+	copy::Enactor copy_enactor;
+
+	// Perform the timed number of iterations
+	GpuTimer timer;
+
+	double elapsed = 0;
+	for (int i = 0; i < iterations; i++) {
+
+		// Start timing record
+		timer.Start();
+
+		// Call the copy API routine
+		copy_enactor.template Copy<PROB_SIZE_GENRE>(
+			d_dest, d_src, num_elements * sizeof(T), max_ctas);
+
+		// End timing record
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
+	}
+
+	double avg_runtime = elapsed / iterations;
+	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+
+	return throughput;
+}
+
+template <
+	typename Policy,
+	typename T,
+	typename SizeT>
+double TimedCopy(
+	T *d_src,
+	T *d_dest,
+	SizeT num_elements,
+	int max_ctas,
+	int iterations)
+{
+	using namespace b40c;
+
+	SizeT bytes = num_elements * sizeof(T);
+	SizeT elements = bytes / sizeof(typename Policy::T);
+	SizeT extra_bytes = bytes - (elements * sizeof(typename Policy::T));
+
+	// Create enactor
+	copy::Enactor copy_enactor;
+
+/*
+	copy_enactor.ENACTOR_DEBUG = true;
+	copy_enactor.template Copy<Policy>(
+		(typename Policy::T *) d_dest,
+		(typename Policy::T *) d_src,
+		elements,
+		extra_bytes,
+		max_ctas);
+	copy_enactor.ENACTOR_DEBUG = false;
+*/
+
+	// Perform the timed number of iterations
+	GpuTimer timer;
+
+	double elapsed = 0;
+	for (int i = 0; i < iterations; i++) {
+
+		// Start timing record
+		timer.Start();
+
+		// Call the copy API routine
+		copy_enactor.template Copy<Policy>(
+			(typename Policy::T *) d_dest,
+			(typename Policy::T *) d_src,
+			elements,
+			extra_bytes,
+			max_ctas);
+
+		// End timing record
+		timer.Stop();
+		elapsed += (double) timer.ElapsedMillis();
+
+	}
+
+	double avg_runtime = elapsed / iterations;
+	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+
+	return throughput;
+}
+
+
+
+/**
+ * Timed copy.  Uses the GPU to copy the specified vector of elements for the given
+ * number of iterations, displaying runtime information.
+ */
+template <
+	b40c::copy::ProbSizeGenre PROB_SIZE_GENRE,
+	typename T,
+	typename SizeT>
 double TimedCopy(
 	T *d_src,
 	T *d_dest,
 	T *h_reference,
-	size_t num_elements,
+	SizeT num_elements,
 	int max_ctas,
 	bool verbose,
 	int iterations,

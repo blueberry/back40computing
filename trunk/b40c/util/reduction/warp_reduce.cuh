@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/operators.cuh>
 
 namespace b40c {
