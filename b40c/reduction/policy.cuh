@@ -179,8 +179,8 @@ struct Policy : ProblemType
 		printf("%d, ", CUDA_ARCH);
 
 		// Common tunable params
-		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
-		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", CacheModifierToString(READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(WRITE_MODIFIER));
 		printf("%s, ", (WORK_STEALING) ? "true" : "false");
 		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
 		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");

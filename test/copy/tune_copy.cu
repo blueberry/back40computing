@@ -52,6 +52,7 @@ bool g_verbose;
 int g_max_ctas = 0;
 int g_iterations = 0;
 bool g_verify;
+int g_policy_id = 0;
 
 
 /******************************************************************************
@@ -64,7 +65,7 @@ bool g_verify;
 void Usage()
 {
 	printf("\ntune_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-words>]\n");
+			"[--max-ctas=<max-thread-blocks>] [--n=<num-words>] [--verify]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
 	printf("\n");
@@ -74,6 +75,8 @@ void Usage()
 	printf("\t\t\ton the device. Default = 1\n");
 	printf("\n");
 	printf("\t--n\tThe number of 32-bit words to comprise the sample problem\n");
+	printf("\n");
+	printf("\t--max-ctas\tThe number of CTAs to launch\n");
 	printf("\n");
 }
 
@@ -88,19 +91,12 @@ enum TuningParam {
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		WORK_STEALING,
-		OVERSUBSCRIBED_GRID_SIZE,
 
 		LOG_THREADS,
 		LOG_LOAD_VEC_SIZE,
 		LOG_LOADS_PER_TILE,
 
 	PARAM_END,
-
-	// Parameters below here are currently not part of the tuning sweep
-	MAX_CTA_OCCUPANCY,
-
-	// Derive these from the others above
-	LOG_SCHEDULE_GRANULARITY,
 };
 
 
@@ -130,9 +126,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, READ_MODIFIER> {
 		enum {
-			// TODO: load.cs seems to have some problems on Fermi
-			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::NONE + 1,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::ld::NONE : util::io::ld::ca //1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::ld::NONE,
+			MAX = util::io::ld::LIMIT - 1,
 		};
 	};
 
@@ -140,8 +135,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, WRITE_MODIFIER> {
 		enum {
-			MIN = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::NONE + 1,
-			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::io::st::NONE : util::io::st::LIMIT - 1		// No type modifiers for pre-Fermi or non-builtin types
+			MIN = util::io::st::NONE,
+			MAX = util::io::st::LIMIT - 1,
 		};
 	};
 
@@ -150,16 +145,7 @@ public:
 	struct Ranges<ParamList, WORK_STEALING> {
 		enum {
 			MIN = 0,
-			MAX = (TUNE_ARCH < 200) ? 0 : 1				// Only bother tuning atomic worstealing on Fermi+
-		};
-	};
-
-	// OVERSUBSCRIBED_GRID_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = !util::Access<ParamList, WORK_STEALING>::VALUE		// Don't oversubscribe if we're workstealing
+			MAX = 1
 		};
 	};
 
@@ -167,8 +153,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, LOG_THREADS> {
 		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+			MIN = 5,		// 32
+			MAX = 10		// 1024
 		};
 	};
 
@@ -203,14 +189,17 @@ public:
 
 
 	/**
-	 * Timed scan for applying a specific granularity configuration type
+	 * Applies a specific granularity configuration type
 	 */
-	template <typename Policy, int EST_REGS_OCCUPANCY>
-	struct TimedCopy
+	template <typename Policy, int VALID>
+	struct ApplyPolicy
 	{
 		template <typename Enactor>
 		static void Invoke(Enactor *enactor)
 		{
+			printf("%d, ", g_policy_id);
+			g_policy_id++;
+
 			Policy::Print();
 			fflush(stdout);
 
@@ -274,7 +263,8 @@ public:
 				CompareResults<T>(
 					enactor->h_data,
 					enactor->h_reference,
-					enactor->num_elements, true);
+					enactor->num_elements,
+					true);
 			}
 
 			printf("\n");
@@ -283,10 +273,17 @@ public:
 	};
 
 	template <typename Policy>
-	struct TimedCopy<Policy, 0>
+	struct ApplyPolicy<Policy, 0>
 	{
 		template <typename Enactor>
-		static void Invoke(Enactor *enactor) {}
+		static void Invoke(Enactor *enactor)
+		{
+			printf("%d, ", g_policy_id);
+			g_policy_id++;
+			Policy::Print();
+			printf("\n");
+			fflush(stdout);
+		}
 	};
 
 
@@ -304,15 +301,15 @@ public:
 		const int C_WORK_STEALING =
 			util::Access<ParamList, WORK_STEALING>::VALUE;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
-			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE;
-
+			(C_WORK_STEALING) ? 0 : 1;	// Over-subscribe if we're not work-stealing
 		const int C_LOG_THREADS =
 			util::Access<ParamList, LOG_THREADS>::VALUE;
 		const int C_LOG_LOAD_VEC_SIZE =
 			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE;
 		const int C_LOG_LOADS_PER_TILE =
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE;
-		const int C_MIN_CTA_OCCUPANCY = 1;
+		const int C_MIN_CTA_OCCUPANCY =
+			1;
 		const int C_LOG_SCHEDULE_GRANULARITY =
 			C_LOG_LOADS_PER_TILE +
 			C_LOG_LOAD_VEC_SIZE +
@@ -334,13 +331,20 @@ public:
 			C_WORK_STEALING,
 			C_OVERSUBSCRIBED_GRID_SIZE> Policy;
 
-		const int REG_MULTIPLIER = (sizeof(T) + 3) / 4;
+		// Check if this configuration is worth compiling
+		const int REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4;
 		const int TILE_ELEMENTS_PER_THREAD = 1 << (C_LOG_THREADS + C_LOG_LOAD_VEC_SIZE + C_LOG_LOADS_PER_TILE);
 		const int REGS_ESTIMATE = (REG_MULTIPLIER * TILE_ELEMENTS_PER_THREAD) + 2;
 		const int EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / REGS_ESTIMATE;
 
+		const int VALID =
+			(((TUNE_ARCH >= 200) || (C_READ_MODIFIER == util::io::ld::NONE)) &&
+			((TUNE_ARCH >= 200) || (C_WRITE_MODIFIER == util::io::st::NONE)) &&
+			(C_LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
+			(EST_REGS_OCCUPANCY > 0));
+
 		// Invoke this config
-		TimedCopy<Policy, EST_REGS_OCCUPANCY>::Invoke(this);
+		ApplyPolicy<Policy, VALID>::Invoke(this);
 	}
 };
 
@@ -405,14 +409,15 @@ void TestCopy(SizeT num_elements)
 
 int main(int argc, char** argv)
 {
-
+	// Initialize commandline args and device
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
 
-	//srand(time(NULL));
+	// Seed random number generator
 	srand(0);				// presently deterministic
 
-    int num_elements 								= 1024;
+	typedef int SizeT;
+	SizeT num_elements = 1024;
 
 	// Check command line arguments
     if (args.CheckCmdLineFlag("help")) {
@@ -432,10 +437,24 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("sizeof(T), sizeof(SizeT), CUDA_ARCH, "
-		"LOG_SCHEDULE_GRANULARITY, MIN_CTA_OCCUPANCY, LOG_THREADS, LOG_LOAD_VEC_SIZE, LOG_LOADS_PER_TILE, "
-		"READ_MODIFIER, WRITE_MODIFIER, WORK_STEALING, OVERSUBSCRIBED_GRID_SIZE, "
-		"elapsed time (ms), throughput (10^9 items/s), bandwidth (10^9 B/s), Correctness\n");
+	printf(""
+		"sizeof(T), "
+		"sizeof(SizeT), "
+		"CUDA_ARCH, "
+		"LOG_SCHEDULE_GRANULARITY, "
+		"MIN_CTA_OCCUPANCY, "
+		"LOG_THREADS, "
+		"LOG_LOAD_VEC_SIZE, "
+		"LOG_LOADS_PER_TILE, "
+		"READ_MODIFIER, "
+		"WRITE_MODIFIER, "
+		"WORK_STEALING, "
+		"OVERSUBSCRIBED_GRID_SIZE, "
+		"elapsed time (ms), "
+		"throughput (10^9 items/s), "
+		"bandwidth (10^9 B/s)");
+	if (g_verify) printf(", Correctness");
+	printf("\n");
 
 	// Execute test(s)
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 1)

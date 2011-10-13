@@ -168,9 +168,9 @@ bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_copy.cu $(DEPS)
 # (make tune) Evaluates the space of copy configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
+tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_copy.cu $(DEPS)
+bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_copy.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE)   
 
