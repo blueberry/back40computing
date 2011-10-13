@@ -49,11 +49,11 @@ using namespace b40c;
 	#define TUNE_ARCH (200)
 #endif
 
-bool g_verbose;
-int g_max_ctas = 0;
-int g_iterations = 0;
-bool g_verify;
-int g_policy_id = 0;
+bool 	g_verbose;
+int 	g_max_ctas = 0;
+int 	g_iterations = 0;
+bool 	g_verify;
+int 	g_policy_id = 0;
 
 
 /******************************************************************************
@@ -130,8 +130,6 @@ enum TuningParam {
 	WRITE_MODIFIER,
 	UNIFORM_SMEM_ALLOCATION,
 	UNIFORM_GRID_SIZE,
-
-	// Derive these from the others above
 	LOG_SCHEDULE_GRANULARITY,
 };
 
@@ -350,7 +348,7 @@ public:
 						"TimedReduction cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
 				// Verify solution
-				CompareResults<T>(
+				CompareResults(
 					enactor->h_data,
 					enactor->h_reference,
 					1,

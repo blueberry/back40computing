@@ -37,6 +37,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
+GEN_SM11 = -gencode=arch=compute_11,code=\"sm_11,compute_11\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
 SM_TARGETS = $(GEN_SM20) 
@@ -57,6 +58,9 @@ endif
 ifeq ($(TUNE_ARCH), 130) 
 	TUNE_SM_TARGETS = $(GEN_SM13)
 endif
+ifeq ($(TUNE_ARCH), 110) 
+	TUNE_SM_TARGETS = $(GEN_SM11)
+endif
 ifeq ($(TUNE_ARCH), 100) 
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
@@ -68,7 +72,7 @@ endif
 ifdef tunesize
     TUNE_SIZE = $(tunesize)
 else 
-	TUNE_SIZE = 4
+	TUNE_SIZE = 0
 endif
 
 
