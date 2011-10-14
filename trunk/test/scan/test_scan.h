@@ -120,7 +120,12 @@ double TimedScan(
 	printf("\n");
 	scan_enactor.ENACTOR_DEBUG = true;
 	scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
+		d_dest,
+		d_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_ctas);
 	scan_enactor.ENACTOR_DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -134,7 +139,12 @@ double TimedScan(
 
 		// Call the scan API routine
 		scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
+			d_dest,
+			d_src,
+			num_elements,
+			scan_op,
+			identity_op,
+			max_ctas);
 
 		// End timing record
 		timer.Stop();

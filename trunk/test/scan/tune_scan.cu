@@ -29,7 +29,7 @@
 // Scan includes
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/problem_config.cuh>
+#include <b40c/scan/policy.cuh>
 #include <b40c/scan/enactor.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/numeric_traits.cuh>
@@ -66,19 +66,37 @@ int 	g_policy_id = 0;;
 template <typename T>
 struct Sum
 {
+	// Binary reduction
 	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
 	}
+
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
+	{
+		return 0;
+	}
+
+	static const bool IS_COMMUTATIVE = true;
 };
 
 template <typename T>
 struct Max
 {
-	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+	// Binary reduction
+	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
+
+	// Identity
+	__host__ __device__ __forceinline__ T operator()()
+	{
+		return 0;
+	}
+
+	static const bool IS_COMMUTATIVE = true;
 };
 
 
@@ -294,10 +312,12 @@ public:
 
 			// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 			enactor->ENACTOR_DEBUG = g_verbose;
-			if (enactor->template Enact<ProblemConfig>(
+			if (enactor->template Scan<Policy>(
 					enactor->d_dest,
 					enactor->d_src,
 					enactor->num_elements,
+					enactor->binary_op,
+					enactor->binary_op,
 					g_max_ctas))
 			{
 				exit(1);
@@ -313,10 +333,12 @@ public:
 				timer.Start();
 
 				// Call the scan API routine
-				if (enactor->template Enact<ProblemConfig>(
+				if (enactor->template Scan<Policy>(
 						enactor->d_dest,
 						enactor->d_src,
 						enactor->num_elements,
+						enactor->binary_op,
+						enactor->binary_op,
 						g_max_ctas))
 				{
 					exit(1);
@@ -457,7 +479,7 @@ public:
 			COMMUTATIVE> ProblemType;
 
 		// Establish the granularity configuration type
-		typedef scan::ProblemConfig <
+		typedef scan::Policy <
 			ProblemType,
 			TUNE_ARCH,
 
@@ -468,7 +490,7 @@ public:
 			C_OVERSUBSCRIBED_GRID_SIZE,
 			C_LOG_SCHEDULE_GRANULARITY,
 
-			C_UPSWEEP_MAX_CTA_OCCUPANCY,
+			C_UPSWEEP_MIN_CTA_OCCUPANCY,
 			C_UPSWEEP_LOG_THREADS,
 			C_UPSWEEP_LOG_LOAD_VEC_SIZE,
 			C_UPSWEEP_LOG_LOADS_PER_TILE,
@@ -479,11 +501,11 @@ public:
 			C_SPINE_LOG_LOADS_PER_TILE, 
 			C_SPINE_LOG_RAKING_THREADS,
 
-			C_DOWNSWEEP_MAX_CTA_OCCUPANCY,
+			C_DOWNSWEEP_MIN_CTA_OCCUPANCY,
 			C_DOWNSWEEP_LOG_THREADS,
 			C_DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 			C_DOWNSWEEP_LOG_LOADS_PER_TILE,
-			C_DOWNSWEEP_LOG_RAKING_THREADS> ProblemConfig;
+			C_DOWNSWEEP_LOG_RAKING_THREADS> Policy;
 
 		// Check if this configuration is worth compiling
 		const int REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4;
@@ -544,7 +566,7 @@ void TestScan(
 		exit(1);
 	}
 
-	detail.h_reference[0] = OpType::Identity();
+	detail.h_reference[0] = binary_op();
 
 	for (size_t i = 0; i < num_elements; ++i) {
 //		util::RandomBits<T>(h_data[i], 0);
