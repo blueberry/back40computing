@@ -21,7 +21,7 @@
 
 
 /******************************************************************************
- * Tuning tool for establishing optimal scan granularity configuration types
+ * Tuning tool for establishing optimal consecutive removal granularity configuration types
  ******************************************************************************/
 
 #include <stdio.h> 
@@ -34,8 +34,9 @@
 #include <b40c/util/parameter_generation.cuh>
 #include <b40c/util/enactor_base.cuh>
 
-#include <b40c/scan/problem_type.cuh>
-#include <b40c/scan/policy.cuh>
+#include <b40c/consecutive_reduction/problem_type.cuh>
+#include <b40c/consecutive_reduction/policy.cuh>
+
 
 // Test utils
 #include "b40c_test_util.h"
@@ -81,39 +82,30 @@ struct KernelDetails
 template <typename T>
 struct Sum
 {
-	// Binary reduction
 	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
 	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return 0;
-	}
-
-	static const bool IS_COMMUTATIVE = true;
 };
 
 template <typename T>
 struct Max
 {
-	// Binary reduction
 	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return 0;
-	}
-
-	static const bool IS_COMMUTATIVE = true;
 };
 
+template <typename T>
+struct Equality
+{
+	// Equality test
+	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
+	{
+		return a == b;
+	}
+};
 
 
 /******************************************************************************
@@ -125,7 +117,7 @@ struct Max
  */
 void Usage()
 {
-	printf("\ntune_scan [--device=<device index>] [--v] [--i=<num-iterations>] "
+	printf("\ntune_consecutive_reduction [--device=<device index>] [--v] [--i=<num-iterations>] "
 			"[--max-ctas=<max-thread-blocks>] [--n=<num-words>] [--verify]\n");
 	printf("\n");
 	printf("\t--v\tDisplays verbose configuration to the console.\n");
@@ -167,7 +159,7 @@ struct UpsweepTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy = scan::KernelPolicy <
+		typename BaseKernelPolicy = consecutive_reduction::upsweep::KernelPolicy <
 			ProblemType,
 			TUNE_ARCH,
 			true,														// CHECK_ALIGNMENT
@@ -216,7 +208,7 @@ struct UpsweepTuning
 		struct GenKernel
 		{
 			static KernelPtr Kernel() {
-				return scan::upsweep::Kernel<KernelPolicy>;
+				return consecutive_reduction::upsweep::Kernel<KernelPolicy>;
 			}
 		};
 
@@ -306,7 +298,7 @@ struct SpineTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy =	scan::KernelPolicy <
+		typename BaseKernelPolicy =	consecutive_reduction::upsweep::KernelPolicy <
 			ProblemType,
 			TUNE_ARCH,
 			true,														// CHECK_ALIGNMENT
@@ -362,7 +354,7 @@ struct SpineTuning
 		struct GenKernel
 		{
 			static KernelPtr Kernel() {
-				return scan::spine::Kernel<KernelPolicy>;
+				return consecutive_reduction::spine::Kernel<KernelPolicy>;
 			}
 		};
 
@@ -450,7 +442,7 @@ struct DownsweepTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy = scan::KernelPolicy <
+		typename BaseKernelPolicy = consecutive_reduction::downsweep::KernelPolicy <
 			ProblemType,
 			TUNE_ARCH,
 			true,														// CHECK_ALIGNMENT
@@ -499,7 +491,7 @@ struct DownsweepTuning
 		struct GenKernel
 		{
 			static KernelPtr Kernel() {
-				return scan::downsweep::Kernel<KernelPolicy>;
+				return consecutive_reduction::downsweep::Kernel<KernelPolicy>;
 			}
 		};
 
@@ -709,16 +701,6 @@ struct Enactor : public util::EnactorBase
 	typedef typename ProblemType::ReductionOp ReductionOp;
 	typedef typename ProblemType::IdentityOp IdentityOp;
 
-	// Spine scan problem type
-	typedef scan::ProblemType<
-		typename ProblemType::T,
-		typename ProblemType::SizeT,
-		typename ProblemType::ReductionOp,
-		typename ProblemType::IdentityOp,
-		true,								// EXCLUSIVE
-		ProblemType::COMMUTATIVE>
-			SpineProblemType;
-
 	// Kernel pointer types
 	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
@@ -781,7 +763,7 @@ struct Enactor : public util::EnactorBase
 	void GenerateConfigs()
 	{
 		Callback<ProblemType, UpsweepTuning, UpsweepMap> 		upsweep_callback(&upsweep_configs);
-		Callback<SpineProblemType, SpineTuning, SpineMap> 		spine_callback(&spine_configs);
+		Callback<ProblemType, SpineTuning, SpineMap> 		spine_callback(&spine_configs);
 		Callback<ProblemType, DownsweepTuning, DownsweepMap> 	downsweep_callback(&downsweep_configs);
 
 		upsweep_callback.Generate();
@@ -1091,7 +1073,7 @@ struct Enactor : public util::EnactorBase
 
 
 /**
- * Creates an example scan problem and then dispatches the iterations
+ * Creates an example problem and then dispatches the iterations
  * to the GPU for the given number of iterations, displaying runtime information.
  */
 template<typename T, typename SizeT, typename OpType>
@@ -1100,7 +1082,7 @@ void Test(
 	OpType binary_op)
 {
 	// Establish the problem types
-	typedef scan::ProblemType<
+	typedef consecutive_reduction::ProblemType<
 		T,
 		SizeT,
 		OpType,
