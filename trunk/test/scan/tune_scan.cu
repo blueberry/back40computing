@@ -182,6 +182,13 @@ struct UpsweepTuning
 			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::T T;
+		typedef typename ProblemType::SizeT SizeT;
+		typedef typename ProblemType::ReductionOp ReductionOp;
+		typedef typename ProblemType::IdentityOp IdentityOp;
+
+		typedef void (*KernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+
 		// Check if this configuration is worth compiling
 		enum {
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
@@ -195,13 +202,6 @@ struct UpsweepTuning
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 
 		static std::string TypeString()
 		{
@@ -321,6 +321,13 @@ struct SpineTuning
 			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::T T;
+		typedef typename ProblemType::SizeT SizeT;
+		typedef typename ProblemType::ReductionOp ReductionOp;
+		typedef typename ProblemType::IdentityOp IdentityOp;
+
+		typedef void (*KernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
+
 		// Check if this configuration is worth compiling
 		enum {
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
@@ -341,13 +348,6 @@ struct SpineTuning
 				(EST_REGS_OCCUPANCY > 0) &&
 				(INVALID_SPECIAL == 0)),
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
 
 		static std::string TypeString()
 		{
@@ -465,6 +465,13 @@ struct DownsweepTuning
 			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::T T;
+		typedef typename ProblemType::SizeT SizeT;
+		typedef typename ProblemType::ReductionOp ReductionOp;
+		typedef typename ProblemType::IdentityOp IdentityOp;
+
+		typedef void (*KernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+
 		// Check if this configuration is worth compiling
 		enum {
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
@@ -478,13 +485,6 @@ struct DownsweepTuning
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 
 		static std::string TypeString()
 		{
