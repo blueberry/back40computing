@@ -99,8 +99,25 @@ struct CtaWorkDistribution
 
 		this->num_elements 		= num_elements;
 		this->total_grains 		= ((num_elements + SCHEDULE_GRANULARITY - 1) >> LOG_SCHEDULE_GRANULARITY);	// round up
-		this->grains_per_cta 	= total_grains / grid_size;																// round down for the ks
-		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);											// the CTAs with +1 grains
+		this->grains_per_cta 	= total_grains / grid_size;													// round down for the ks
+		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);								// the CTAs with +1 grains
+		this->grid_size 		= grid_size;
+	}
+
+	/**
+	 * Initializer
+	 */
+	__host__ __device__ __forceinline__ void Init(
+		SizeT num_elements,
+		int grid_size,
+		int log_schedule_granularity)
+	{
+		const int SCHEDULE_GRANULARITY = 1 << log_schedule_granularity;
+
+		this->num_elements 		= num_elements;
+		this->total_grains 		= ((num_elements + SCHEDULE_GRANULARITY - 1) >> log_schedule_granularity);	// round up
+		this->grains_per_cta 	= total_grains / grid_size;													// round down for the ks
+		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);								// the CTAs with +1 grains
 		this->grid_size 		= grid_size;
 	}
 

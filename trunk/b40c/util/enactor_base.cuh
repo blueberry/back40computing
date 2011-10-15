@@ -184,8 +184,12 @@ protected:
 			max_cta_occupancy = B40C_MIN(
 				B40C_SM_CTAS(cuda_props.device_sm_version),
 				B40C_MIN(
-					B40C_SMEM_BYTES(cuda_props.device_sm_version) / (kernel_attrs.sharedSizeBytes + 1),
-					B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads)));
+					B40C_SM_THREADS(cuda_props.device_sm_version) / threads,
+					B40C_MIN(
+						(kernel_attrs.sharedSizeBytes > 0) ?
+							B40C_SMEM_BYTES(cuda_props.device_sm_version) / (kernel_attrs.sharedSizeBytes) :
+							B40C_SMEM_BYTES(cuda_props.device_sm_version),
+						B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads))));
 
 		} while (0);
 
