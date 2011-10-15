@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#for i in 200 130 110; do for j in 1 2 4 8; do time make tune tunearch=$i tunesize=$j force64=1; done; done
+#for i in 200 130 110; do for j in 1 2 4 8; do time make tune tunearch=$i tunesize=$j; done; done
 
 OPTIONS="--i=2 --device=1"
 
