@@ -33,6 +33,7 @@
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
 #include <b40c/util/enactor_base.cuh>
+#include <b40c/util/spine.cuh>
 
 #include <b40c/scan/problem_type.cuh>
 #include <b40c/scan/policy.cuh>
