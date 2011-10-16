@@ -452,7 +452,11 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
 			// Tuning option: make sure all kernels have the same overall smem allocation
-			if (Policy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
+			if (Policy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(
+				dynamic_smem,
+				UpsweepKernel,
+				SpineKernel,
+				DownsweepKernel)) break;
 
 			// Tuning option: make sure that all kernels launch the same number of CTAs)
 			if (Policy::UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
