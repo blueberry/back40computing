@@ -478,12 +478,19 @@ struct DownsweepTuning
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
+			// ptxas dies on this special case
+			INVALID_SPECIAL =
+				(TUNE_ARCH < 200) &&
+				(sizeof(T) > 4) &&
+				(BaseKernelPolicy::LOG_TILE_ELEMENTS > 9),
+
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
-				(EST_REGS_OCCUPANCY > 0)),
+				(EST_REGS_OCCUPANCY > 0) &&
+				(INVALID_SPECIAL == 0)),
 		};
 
 		static std::string TypeString()
