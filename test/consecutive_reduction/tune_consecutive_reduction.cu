@@ -151,9 +151,9 @@ struct UpsweepTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
-			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
+		CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	/**
@@ -175,7 +175,7 @@ struct UpsweepTuning
 				util::io::ld::NONE,											// READ_MODIFIER,
 				util::io::st::NONE,											// WRITE_MODIFIER,
 				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
-				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+				1> >														// CONSECUTIVE_SMEM_ASSIST
 
 	struct KernelPolicy : BaseKernelPolicy
 	{
@@ -199,6 +199,7 @@ struct UpsweepTuning
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
+				(REGS_ESTIMATE < 63) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
@@ -308,9 +309,9 @@ struct SpineTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
-			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
+		CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	/**
@@ -332,7 +333,7 @@ struct SpineTuning
 				util::io::ld::NONE,											// READ_MODIFIER,
 				util::io::st::NONE,											// WRITE_MODIFIER,
 				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
-				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+				1> >														// CONSECUTIVE_SMEM_ASSIST
 
 	struct KernelPolicy : BaseKernelPolicy
 	{
@@ -362,6 +363,7 @@ struct SpineTuning
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
 //				(INVALID_SPECIAL == 0) &&
+				(REGS_ESTIMATE < 63) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
@@ -470,9 +472,9 @@ struct DownsweepTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
-			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
+		CONSECUTIVE_SMEM_ASSIST,
 	};
 
 	/**
@@ -495,7 +497,7 @@ struct DownsweepTuning
 				util::io::st::NONE,											// WRITE_MODIFIER,
 				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
 				false,														// TWO_PHASE_SCATTER
-				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+				1> >														// CONSECUTIVE_SMEM_ASSIST
 
 	struct KernelPolicy : BaseKernelPolicy
 	{
@@ -511,14 +513,17 @@ struct DownsweepTuning
 		// Check if this configuration is worth compiling
 		enum {
 			REG_MULTIPLIER =
-				((sizeof(KeyType) + 4 - 1) / 4) + 		// Keys
-				((sizeof(ValueType) + 4 - 1) / 4) +		// Values
-				((sizeof(SizeT) + 4 - 1) / 4),			// Ranks
-			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
+				((sizeof(KeyType) + 4 - 1) / 4) + 		// keys
+				((sizeof(ValueType) + 4 - 1) / 4) +		// values
+				((sizeof(int) + 4 - 1) / 4) +			// head_flags
+				((sizeof(SizeT) + 4 - 1) / 4),			// ranks
+			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 6,
+
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
+				(REGS_ESTIMATE < 63) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
