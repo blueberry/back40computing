@@ -717,7 +717,7 @@ struct Enactor : public util::EnactorBase
 	typedef typename ProblemType::ReductionOp ReductionOp;
 	typedef typename ProblemType::IdentityOp IdentityOp;
 
-	// Spine scan problem type
+	// Spine problem type
 	typedef scan::ProblemType<
 		typename ProblemType::T,
 		typename ProblemType::SizeT,
@@ -767,27 +767,19 @@ struct Enactor : public util::EnactorBase
 	 * Constructor
 	 */
 	Enactor(
-		SizeT num_elements,
 		ReductionOp reduction_op,
 		IdentityOp identity_op) :
 			d_dest(NULL),
 			d_src(NULL),
 			h_data(NULL),
 			h_reference(NULL),
-			num_elements(num_elements),
 			reduction_op(reduction_op),
 			identity_op(identity_op)
 	{
 		// Pre-allocate our spine
 		if (spine.Setup<long long>(SmCount() * 8 * 8)) exit(1);
-	}
 
-
-	/**
-	 * Generates all config maps
-	 */
-	void GenerateConfigs()
-	{
+		// Generates all config maps
 		Callback<ProblemType, UpsweepTuning, UpsweepMap> 		upsweep_callback(&upsweep_configs);
 		Callback<SpineProblemType, SpineTuning, SpineMap> 		spine_callback(&spine_configs);
 		Callback<ProblemType, DownsweepTuning, DownsweepMap> 	downsweep_callback(&downsweep_configs);
@@ -1088,6 +1080,57 @@ struct Enactor : public util::EnactorBase
 		}
 	}
 
+
+	/**
+	 * Creates an example problem and then dispatches the iterations
+	 * to the GPU for the given number of iterations, displaying runtime information.
+	 */
+	void Test(SizeT num_elements)
+	{
+		this->num_elements = num_elements;
+
+		if (util::B40CPerror(cudaMalloc((void**) &d_src, sizeof(T) * num_elements),
+			"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
+
+		if (util::B40CPerror(cudaMalloc((void**) &d_dest, sizeof(T) * num_elements),
+			"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
+
+		if ((h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
+			fprintf(stderr, "Host malloc of problem data failed\n");
+			exit(1);
+		}
+		if ((h_reference = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
+			fprintf(stderr, "Host malloc of problem data failed\n");
+			exit(1);
+		}
+
+		h_reference[0] = identity_op();
+
+		for (SizeT i = 0; i < num_elements; ++i) {
+	//		util::RandomBits<T>(h_data[i], 0);
+			h_data[i] = i;
+
+			h_reference[i] = (i == 0) ?
+				identity_op() :
+				reduction_op(h_reference[i - 1], h_data[i - 1]);
+		}
+
+		// Move a fresh copy of the problem into device storage
+		if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
+			"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
+
+		// Iterate configuration space
+		IterateConfigSpace();
+
+		// Free allocated memory
+		if (d_src) cudaFree(d_src);
+		if (d_dest) cudaFree(d_dest);
+
+		// Free our allocated host memory
+		if (h_data) free(h_data);
+		if (h_reference) free(h_reference);
+	}
+
 };
 
 
@@ -1099,68 +1142,36 @@ struct Enactor : public util::EnactorBase
 
 
 /**
- * Creates an example scan problem and then dispatches the iterations
+ * Creates an example problem and then dispatches the iterations
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T, typename SizeT, typename OpType>
+template<
+	typename T,
+	typename SizeT,
+	typename ReductionOp,
+	typename IdentityOp>
 void Test(
 	SizeT num_elements,
-	OpType binary_op)
+	ReductionOp reduction_op,
+	IdentityOp identity_op)
 {
 	// Establish the problem types
 	typedef scan::ProblemType<
 		T,
 		SizeT,
-		OpType,
-		OpType,
+		ReductionOp,
+		IdentityOp,
 		true,								// EXCLUSIVE,
 		true>								// COMMUTATIVE
 			ProblemType;
 
 	// Create enactor
-	Enactor<ProblemType> enactor(num_elements, binary_op, binary_op);
-	enactor.GenerateConfigs();
+	Enactor<ProblemType> enactor(
+		reduction_op,
+		identity_op);
 
-	if (util::B40CPerror(cudaMalloc((void**) &enactor.d_src, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-
-	if (util::B40CPerror(cudaMalloc((void**) &enactor.d_dest, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-	if ((enactor.h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
-		fprintf(stderr, "Host malloc of problem data failed\n");
-		exit(1);
-	}
-	if ((enactor.h_reference = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
-		fprintf(stderr, "Host malloc of problem data failed\n");
-		exit(1);
-	}
-
-	enactor.h_reference[0] = binary_op();
-
-	for (size_t i = 0; i < num_elements; ++i) {
-//		util::RandomBits<T>(h_data[i], 0);
-		enactor.h_data[i] = i;
-
-		enactor.h_reference[i] = (i == 0) ?
-			binary_op() :
-			binary_op(enactor.h_reference[i - 1], enactor.h_data[i - 1]);
-	}
-
-	// Move a fresh copy of the problem into device storage
-	if (util::B40CPerror(cudaMemcpy(enactor.d_src, enactor.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
-
-	// Iterate configuration space
-	enactor.IterateConfigSpace();
-
-	// Free allocated memory
-	if (enactor.d_src) cudaFree(enactor.d_src);
-	if (enactor.d_dest) cudaFree(enactor.d_dest);
-
-	// Free our allocated host memory
-	if (enactor.h_data) free(enactor.h_data);
-	if (enactor.h_reference) free(enactor.h_reference);
+	// Run test
+	enactor.Test(num_elements);
 }
 
 
@@ -1199,33 +1210,17 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf(""
-		"sizeof(T), "
-		"sizeof(SizeT), "
-		"CUDA_ARCH, "
-
-		"READ_MODIFIER, "
-		"WRITE_MODIFIER, "
-		"UNIFORM_SMEM_ALLOCATION, "
-		"UNIFORM_GRID_SIZE, "
-		"OVERSUBSCRIBED_GRID_SIZE, "
-		"LOG_SCHEDULE_GRANULARITY, "
-
-		"UPSWEEP_MIN_CTA_OCCUPANCY, "
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "
-		"UPSWEEP_LOG_RAKING_THREADS, "
 
 		"SPINE_LOG_THREADS, "
 		"SPINE_LOG_LOAD_VEC_SIZE, "
 		"SPINE_LOG_LOADS_PER_TILE, "
-		"SPINE_LOG_RAKING_THREADS, "
 
-		"DOWNSWEEP_MIN_CTA_OCCUPANCY, "
 		"DOWNSWEEP_LOG_THREADS, "
 		"DOWNSWEEP_LOG_LOAD_VEC_SIZE, "
 		"DOWNSWEEP_LOG_LOADS_PER_TILE, "
-		"DOWNSWEEP_LOG_RAKING_THREADS, "
 
 		"elapsed time (ms), "
 		"throughput (10^9 items/s), "
@@ -1239,28 +1234,28 @@ int main(int argc, char** argv)
 	{
 		typedef unsigned char T;
 		Sum<T> binary_op;
-		Test<T>(num_elements * 4, binary_op);
+		Test<T>(num_elements * 4, binary_op, binary_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 2)
 	{
 		typedef unsigned short T;
 		Sum<T> binary_op;
-		Test<T>(num_elements * 2, binary_op);
+		Test<T>(num_elements * 2, binary_op, binary_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 4)
 	{
 		typedef unsigned int T;
 		Sum<T> binary_op;
-		Test<T>(num_elements, binary_op);
+		Test<T>(num_elements, binary_op, binary_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 8)
 	{
 		typedef unsigned long long T;
 		Sum<T> binary_op;
-		Test<T>(num_elements / 2, binary_op);
+		Test<T>(num_elements / 2, binary_op, binary_op);
 	}
 #endif
 

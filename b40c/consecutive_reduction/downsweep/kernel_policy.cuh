@@ -165,7 +165,7 @@ struct KernelPolicy : ProblemType
 				ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
 				RankType 	ranks_raking_elements[RanksSrtsGrid::TOTAL_RAKING_ELEMENTS];
 			};
-
+/*
 			// Swap exchange arenas for two-phase scatter
 			struct {
 				KeyType 	key_exchange[TILE_ELEMENTS];
@@ -173,6 +173,7 @@ struct KernelPolicy : ProblemType
 			struct {
 				ValueType 	value_exchange[TILE_ELEMENTS];
 			};
+*/
 		};
 
 		KeyType				assist_scratch[THREADS+ 1];

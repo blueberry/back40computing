@@ -1328,33 +1328,17 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf(""
-		"sizeof(T), "
-		"sizeof(SizeT), "
-		"CUDA_ARCH, "
-
-		"READ_MODIFIER, "
-		"WRITE_MODIFIER, "
-		"UNIFORM_SMEM_ALLOCATION, "
-		"UNIFORM_GRID_SIZE, "
-		"OVERSUBSCRIBED_GRID_SIZE, "
-		"LOG_SCHEDULE_GRANULARITY, "
-
-		"UPSWEEP_MIN_CTA_OCCUPANCY, "
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "
-		"UPSWEEP_LOG_RAKING_THREADS, "
 
 		"SPINE_LOG_THREADS, "
 		"SPINE_LOG_LOAD_VEC_SIZE, "
 		"SPINE_LOG_LOADS_PER_TILE, "
-		"SPINE_LOG_RAKING_THREADS, "
 
-		"DOWNSWEEP_MIN_CTA_OCCUPANCY, "
 		"DOWNSWEEP_LOG_THREADS, "
 		"DOWNSWEEP_LOG_LOAD_VEC_SIZE, "
 		"DOWNSWEEP_LOG_LOADS_PER_TILE, "
-		"DOWNSWEEP_LOG_RAKING_THREADS, "
 
 		"elapsed time (ms), "
 		"throughput (10^9 items/s), "
