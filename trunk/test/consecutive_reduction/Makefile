@@ -107,7 +107,7 @@ else
 	ARCH = -m64
 endif
 
-NVCCFLAGS = -Xptxas -v -Xcudafe -\#
+NVCCFLAGS = -Xptxas -v -Xopencc -OPT:Olimit=0 -Xcudafe -\# 
 
 ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
 	NVCCFLAGS += -Xcompiler /bigobj 
