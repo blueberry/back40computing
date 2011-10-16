@@ -33,6 +33,8 @@
 #include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/parameter_generation.cuh>
 #include <b40c/util/enactor_base.cuh>
+#include <b40c/util/spine.cuh>
+#include <b40c/util/ping_pong_storage.cuh>
 
 #include <b40c/consecutive_reduction/problem_type.cuh>
 #include <b40c/consecutive_reduction/policy.cuh>
@@ -91,7 +93,7 @@ struct Sum
 template <typename T>
 struct Max
 {
-	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
@@ -149,6 +151,7 @@ struct UpsweepTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
+			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
 	};
@@ -159,23 +162,38 @@ struct UpsweepTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy = consecutive_reduction::upsweep::KernelPolicy <
-			ProblemType,
-			TUNE_ARCH,
-			true,														// CHECK_ALIGNMENT
-			0,															// MIN_CTA_OCCUPANCY,
-			util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
-			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
-			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
-			B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
-			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
+		typename BaseKernelPolicy =
+			consecutive_reduction::upsweep::KernelPolicy <
+				ProblemType,
+				TUNE_ARCH,
+				true,														// CHECK_ALIGNMENT
+				0,															// MIN_CTA_OCCUPANCY,
+				util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
+				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
+				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
+				B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
+				util::io::ld::NONE,											// READ_MODIFIER,
+				util::io::st::NONE,											// WRITE_MODIFIER,
+				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
+				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::KeyType 			KeyType;
+		typedef typename ProblemType::ValueType			ValueType;
+		typedef typename ProblemType::SizeT 			SizeT;
+		typedef typename ProblemType::ReductionOp 		ReductionOp;
+		typedef typename ProblemType::EqualityOp		EqualityOp;
+		typedef typename ProblemType::SpineSizeT		SpineSizeT;
+
+		typedef void (*KernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, ReductionOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+
 		// Check if this configuration is worth compiling
 		enum {
-			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
+			REG_MULTIPLIER =
+				((sizeof(KeyType) + 4 - 1) / 4) + 		// Keys
+				((sizeof(ValueType) + 4 - 1) / 4) +		// Values
+				((sizeof(SizeT) + 4 - 1) / 4),			// Ranks
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
@@ -186,13 +204,6 @@ struct UpsweepTuning
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 
 		static std::string TypeString()
 		{
@@ -258,6 +269,15 @@ struct UpsweepTuning
 		};
 	};
 
+	// CONSECUTIVE_SMEM_ASSIST
+	template <typename ParamList>
+	struct Ranges<ParamList, CONSECUTIVE_SMEM_ASSIST> {
+		enum {
+			MIN = 1,
+			MAX = 1
+		};
+	};
+
 	// LOG_SCHEDULE_GRANULARITY
 	template <typename ParamList>
 	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
@@ -288,6 +308,7 @@ struct SpineTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
+			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
 	};
@@ -298,47 +319,54 @@ struct SpineTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy =	consecutive_reduction::upsweep::KernelPolicy <
-			ProblemType,
-			TUNE_ARCH,
-			true,														// CHECK_ALIGNMENT
-			1,															// MIN_CTA_OCCUPANCY,
-			util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
-			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
-			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
-			B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
-			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
+		typename BaseKernelPolicy =
+			consecutive_reduction::upsweep::KernelPolicy <
+				ProblemType,
+				TUNE_ARCH,
+				true,														// CHECK_ALIGNMENT
+				1,															// MIN_CTA_OCCUPANCY,
+				util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
+				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
+				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
+				B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
+				util::io::ld::NONE,											// READ_MODIFIER,
+				util::io::st::NONE,											// WRITE_MODIFIER,
+				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
+				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::KeyType 			KeyType;
+		typedef typename ProblemType::ValueType			ValueType;
+		typedef typename ProblemType::SizeT 			SizeT;
+		typedef typename ProblemType::ReductionOp 		ReductionOp;
+		typedef typename ProblemType::EqualityOp		EqualityOp;
+		typedef typename ProblemType::SpineSizeT		SpineSizeT;
+
+		typedef void (*KernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT, ReductionOp);
+
 		// Check if this configuration is worth compiling
 		enum {
-			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
+			REG_MULTIPLIER =
+				((sizeof(ValueType) + 4 - 1) / 4) +		// Values
+				((sizeof(SizeT) + 4 - 1) / 4),			// Ranks
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
-
+/*
 			// ptxas dies on this special case
 			INVALID_SPECIAL =
 				(TUNE_ARCH < 200) &&
 				(sizeof(T) > 4) &&
 				(BaseKernelPolicy::LOG_TILE_ELEMENTS > 9),
-
+*/
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
+//				(INVALID_SPECIAL == 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
-				(EST_REGS_OCCUPANCY > 0) &&
-				(INVALID_SPECIAL == 0)),
+				(EST_REGS_OCCUPANCY > 0))
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
 
 		static std::string TypeString()
 		{
@@ -404,6 +432,15 @@ struct SpineTuning
 		};
 	};
 
+	// CONSECUTIVE_SMEM_ASSIST
+	template <typename ParamList>
+	struct Ranges<ParamList, CONSECUTIVE_SMEM_ASSIST> {
+		enum {
+			MIN = 1,
+			MAX = 1
+		};
+	};
+
 	// LOG_SCHEDULE_GRANULARITY
 	template <typename ParamList>
 	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
@@ -414,6 +451,7 @@ struct SpineTuning
 			MAX = MIN
 		};
 	};
+
 };
 
 
@@ -432,6 +470,7 @@ struct DownsweepTuning
 			LOG_THREADS,
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
+			CONSECUTIVE_SMEM_ASSIST,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
 	};
@@ -442,23 +481,39 @@ struct DownsweepTuning
 	template <
 		typename ProblemType,
 		typename ParamList,
-		typename BaseKernelPolicy = consecutive_reduction::downsweep::KernelPolicy <
-			ProblemType,
-			TUNE_ARCH,
-			true,														// CHECK_ALIGNMENT
-			0,															// MIN_CTA_OCCUPANCY,
-			util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
-			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
-			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
-			B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
-			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
+		typename BaseKernelPolicy =
+			consecutive_reduction::downsweep::KernelPolicy <
+				ProblemType,
+				TUNE_ARCH,
+				true,														// CHECK_ALIGNMENT
+				0,															// MIN_CTA_OCCUPANCY,
+				util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
+				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
+				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
+				B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
+				util::io::ld::NONE,											// READ_MODIFIER,
+				util::io::st::NONE,											// WRITE_MODIFIER,
+				util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE,	// LOG_SCHEDULE_GRANULARITY
+				false,														// TWO_PHASE_SCATTER
+				util::Access<ParamList, CONSECUTIVE_SMEM_ASSIST>::VALUE> >	// CONSECUTIVE_SMEM_ASSIST
+
 	struct KernelPolicy : BaseKernelPolicy
 	{
+		typedef typename ProblemType::KeyType 			KeyType;
+		typedef typename ProblemType::ValueType			ValueType;
+		typedef typename ProblemType::SizeT 			SizeT;
+		typedef typename ProblemType::ReductionOp 		ReductionOp;
+		typedef typename ProblemType::EqualityOp		EqualityOp;
+		typedef typename ProblemType::SpineSizeT		SpineSizeT;
+
+		typedef void (*KernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, ReductionOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+
 		// Check if this configuration is worth compiling
 		enum {
-			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
+			REG_MULTIPLIER =
+				((sizeof(KeyType) + 4 - 1) / 4) + 		// Keys
+				((sizeof(ValueType) + 4 - 1) / 4) +		// Values
+				((sizeof(SizeT) + 4 - 1) / 4),			// Ranks
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
@@ -469,13 +524,6 @@ struct DownsweepTuning
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
-
-		typedef typename ProblemType::T T;
-		typedef typename ProblemType::SizeT SizeT;
-		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename ProblemType::IdentityOp IdentityOp;
-
-		typedef void (*KernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
 
 		static std::string TypeString()
 		{
@@ -541,6 +589,15 @@ struct DownsweepTuning
 		};
 	};
 
+	// CONSECUTIVE_SMEM_ASSIST
+	template <typename ParamList>
+	struct Ranges<ParamList, CONSECUTIVE_SMEM_ASSIST> {
+		enum {
+			MIN = 1,
+			MAX = 1
+		};
+	};
+
 	// LOG_SCHEDULE_GRANULARITY
 	template <typename ParamList>
 	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
@@ -548,13 +605,11 @@ struct DownsweepTuning
 			MIN = util::Access<ParamList, LOG_THREADS>::VALUE +
 				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
 				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,
-
 			MAX = Ranges<ParamList, LOG_THREADS>::MAX +
 				Ranges<ParamList, LOG_LOAD_VEC_SIZE>::MAX +
 				Ranges<ParamList, LOG_LOADS_PER_TILE>::MAX
 		};
 	};
-
 };
 
 
@@ -696,15 +751,17 @@ struct Callback
 template <typename ProblemType>
 struct Enactor : public util::EnactorBase
 {
-	typedef typename ProblemType::T T;
-	typedef typename ProblemType::SizeT SizeT;
-	typedef typename ProblemType::ReductionOp ReductionOp;
-	typedef typename ProblemType::IdentityOp IdentityOp;
+	typedef typename ProblemType::KeyType 			KeyType;
+	typedef typename ProblemType::ValueType			ValueType;
+	typedef typename ProblemType::SizeT 			SizeT;
+	typedef typename ProblemType::ReductionOp 		ReductionOp;
+	typedef typename ProblemType::EqualityOp		EqualityOp;
+	typedef typename ProblemType::SpineSizeT		SpineSizeT;
 
 	// Kernel pointer types
-	typedef void (*UpsweepKernelPtr)(T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(T*, T*, SizeT, ReductionOp, IdentityOp);
-	typedef void (*DownsweepKernelPtr)(T*, T*, T*, ReductionOp, IdentityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)(KeyType*, ValueType*, ValueType*, SizeT*, ReductionOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(ValueType*, ValueType*, SizeT*, SizeT*, SpineSizeT, ReductionOp);
+	typedef void (*DownsweepKernelPtr)(KeyType*, KeyType*, ValueType*, ValueType*, ValueType*,  SizeT*, SizeT*, ReductionOp, EqualityOp, util::CtaWorkDistribution<SizeT>);
 
 	typedef std::pair<KernelDetails, UpsweepKernelPtr> 		UpsweepLaunchDetails;
 	typedef std::pair<KernelDetails, SpineKernelPtr> 		SpineLaunchDetails;
@@ -725,45 +782,42 @@ struct Enactor : public util::EnactorBase
 	SpineMap 		spine_configs;
 	DownsweepMap 	downsweep_configs;
 
-	// Temporary device storage needed for reducing partials produced
+	// Temporary device storage needed for scanning value partials produced
 	// by separate CTAs
-	util::Spine spine;
+	util::Spine partial_spine;
 
-	T *d_dest;
-	T *d_src;
-	T *h_data;
-	T *h_reference;
-	SizeT num_elements;
-	ReductionOp reduction_op;
-	IdentityOp identity_op;
+	// Temporary device storage needed for scanning flag partials produced
+	// by separate CTAs
+	util::Spine flag_spine;
+
+	util::PingPongStorage<KeyType, ValueType> 	d_problem_storage;
+	SizeT 										num_elements;
+	ReductionOp 								reduction_op;
+	EqualityOp									equality_op;
+	SizeT										*d_num_compacted;
+
+	util::PingPongStorage<KeyType, ValueType> 	h_problem_storage;	// host problem storage (selector points to input, but output contains reference result)
+	SizeT 										h_num_compacted;		// number of elements in reference result
 
 	/**
 	 * Constructor
 	 */
 	Enactor(
-		SizeT num_elements,
 		ReductionOp reduction_op,
-		IdentityOp identity_op) :
-			d_dest(NULL),
-			d_src(NULL),
-			h_data(NULL),
-			h_reference(NULL),
-			num_elements(num_elements),
+		EqualityOp equality_op) :
 			reduction_op(reduction_op),
-			identity_op(identity_op)
+			equality_op(equality_op),
+			d_num_compacted(NULL)
 	{
-		// Pre-allocate our spine
-		if (spine.Setup<long long>(SmCount() * 8 * 8)) exit(1);
-	}
+		// Pre-allocate our spines
 
+		if (partial_spine.Setup<long long>(SmCount() * 8 * 8)) exit(1);
+		if (flag_spine.Setup<long long>(SmCount() * 8 * 8)) exit(1);
 
-	/**
-	 * Generates all config maps
-	 */
-	void GenerateConfigs()
-	{
+		// Generate all config maps
+
 		Callback<ProblemType, UpsweepTuning, UpsweepMap> 		upsweep_callback(&upsweep_configs);
-		Callback<ProblemType, SpineTuning, SpineMap> 		spine_callback(&spine_configs);
+		Callback<ProblemType, SpineTuning, SpineMap> 			spine_callback(&spine_configs);
 		Callback<ProblemType, DownsweepTuning, DownsweepMap> 	downsweep_callback(&downsweep_configs);
 
 		upsweep_callback.Generate();
@@ -794,7 +848,7 @@ struct Enactor : public util::EnactorBase
 				max_cta_occupancy,
 				upsweep_details.second,
 				upsweep_details.first.threads,
-				upsweep_details.second,
+				downsweep_details.second,
 				downsweep_details.first.threads)) break;
 
 			// Compute sweep grid size
@@ -804,15 +858,16 @@ struct Enactor : public util::EnactorBase
 				max_cta_occupancy,
 				num_elements,
 				g_max_ctas);
-
+/*
 			// Use single-CTA kernel instead of multi-pass if problem is small enough
 			if (num_elements <= spine_details.first.tile_elements * 3) {
 				sweep_grid_size = 1;
 			}
-
+*/
 			// Compute spine elements: one element per CTA, rounded
 			// up to nearest spine tile size
-			int spine_elements = ((sweep_grid_size + spine_details.first.tile_elements - 1) / spine_details.first.tile_elements) * spine_details.first.tile_elements;
+			int spine_elements = ((sweep_grid_size + spine_details.first.tile_elements - 1) / spine_details.first.tile_elements) *
+				spine_details.first.tile_elements;
 
 			// Obtain a CTA work distribution
 			util::CtaWorkDistribution<SizeT> work;
@@ -823,6 +878,11 @@ struct Enactor : public util::EnactorBase
 				work.Print();
 			}
 
+			// If we're to output the compacted sizes to device memory, write out
+			// compacted size to the last element of our flag spine instead
+			d_num_compacted = ((SizeT*) flag_spine()) + spine_elements - 1;
+
+/*
 			if (work.grid_size == 1) {
 
 				if (ENACTOR_DEBUG) {
@@ -840,9 +900,10 @@ struct Enactor : public util::EnactorBase
 				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 			} else {
-
+*/
 				// Make sure our spine is big enough
-				if (retval = spine.Setup<T>(spine_elements)) break;
+				if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
+				if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
 
 				int dynamic_smem[3] = 	{0, 0, 0};
 				int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
@@ -864,37 +925,44 @@ struct Enactor : public util::EnactorBase
 						grid_size[2], downsweep_details.first.threads, dynamic_smem[2]);
 				}
 
-				// Upsweep into spine
+				// Upsweep scan into spine
 				upsweep_details.second<<<grid_size[0], upsweep_details.first.threads, dynamic_smem[0]>>>(
-					d_src,
-					(T*) spine(),
+					d_problem_storage.d_keys[d_problem_storage.selector],
+					d_problem_storage.d_values[d_problem_storage.selector],
+					(ValueType*) partial_spine(),
+					(SizeT*) flag_spine(),
 					reduction_op,
-					identity_op,
+					equality_op,
 					work);
 
 				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 				// Spine scan
 				spine_details.second<<<grid_size[1], spine_details.first.threads, dynamic_smem[1]>>>(
-					(T*) spine(),
-					(T*) spine(),
+					(ValueType*) partial_spine(),
+					(ValueType*) partial_spine(),
+					(SizeT*) flag_spine(),
+					(SizeT*) flag_spine(),
 					spine_elements,
-					reduction_op,
-					identity_op);
+					reduction_op);
 
 				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 				// Downsweep from spine
 				downsweep_details.second<<<grid_size[2], downsweep_details.first.threads, dynamic_smem[2]>>>(
-					d_src,
-					d_dest,
-					(T*) spine(),
+					d_problem_storage.d_keys[d_problem_storage.selector],
+					d_problem_storage.d_keys[d_problem_storage.selector ^ 1],
+					d_problem_storage.d_values[d_problem_storage.selector],
+					d_problem_storage.d_values[d_problem_storage.selector ^ 1],
+					(ValueType*) partial_spine(),
+					(SizeT*) flag_spine(),
+					d_num_compacted,
 					reduction_op,
-					identity_op,
+					equality_op,
 					work);
 
 				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-			}
+//			}
 
 		} while (0);
 
@@ -957,28 +1025,36 @@ struct Enactor : public util::EnactorBase
 		}
 
 		// Display timing information
+		long long bytes = ((num_elements * 2) + h_num_compacted) * (sizeof(KeyType) + sizeof(ValueType));
 		double avg_runtime = elapsed / g_iterations;
 		double throughput =  0.0;
-		if (avg_runtime > 0.0) throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+		double bandwidth =  0.0;
+
+		if (avg_runtime > 0.0) {
+			throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
+			bandwidth = bytes / avg_runtime / 1000.0 / 1000.0;
+		}
+
 		printf(", %f, %f, %f, ",
-			avg_runtime, throughput, throughput * sizeof(T) * 3);
+			avg_runtime, throughput, bandwidth);
 		fflush(stdout);
 
 		if (g_verify) {
-			// Copy out data
-			if (util::B40CPerror(cudaMemcpy(
-				h_data,
-				d_dest,
-				sizeof(T) * num_elements,
-				cudaMemcpyDeviceToHost),
-					"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
 
-			// Verify solution
-			CompareResults(
-				h_data,
-				h_reference,
-				num_elements,
-				true);
+			CompareDeviceResults(
+				h_problem_storage.d_keys[1],
+				d_problem_storage.d_keys[1],
+				h_num_compacted);
+			printf(", ");
+			CompareDeviceResults(
+				h_problem_storage.d_values[1],
+				d_problem_storage.d_values[1],
+				h_num_compacted);
+			printf(", ");
+			CompareDeviceResults(
+				&h_num_compacted,
+				d_num_compacted,
+				1);
 		}
 	}
 
@@ -1062,6 +1138,112 @@ struct Enactor : public util::EnactorBase
 		}
 	}
 
+
+	/**
+	 * Creates an example problem and then dispatches the iterations
+	 * to the GPU for the given number of iterations, displaying runtime information.
+	 */
+	void Test(SizeT num_elements)
+	{
+		this->num_elements = num_elements;
+
+	    // Allocate the consecutive reduction problem on the host
+		h_problem_storage.d_keys[0] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+		h_problem_storage.d_keys[1] = (KeyType*) malloc(num_elements * sizeof(KeyType));
+		h_problem_storage.d_values[0] = (ValueType*) malloc(num_elements * sizeof(ValueType));
+		h_problem_storage.d_values[1] = (ValueType*) malloc(num_elements * sizeof(ValueType));
+
+		if (!h_problem_storage.d_keys[0] || !h_problem_storage.d_keys[1] || !h_problem_storage.d_values[0] || !h_problem_storage.d_values[1]){
+			fprintf(stderr, "Host malloc of problem data failed\n");
+			exit(1);
+		}
+
+		// Initialize problem
+		if (g_verbose) printf("Input problem: \n");
+		for (int i = 0; i < num_elements; i++) {
+			h_problem_storage.d_keys[0][i] = (i / 7) & 1;							// Toggle every 7 elements
+	//		util::RandomBits<T>(h_problem_storage.d_keys[0][i], 1, 1);				// Entropy-reduced random 0|1 values: roughly 26 / 64 elements toggled
+
+			h_problem_storage.d_values[0][i] = 1;
+
+/*
+			if (g_verbose) {
+				printf("(%lld, %lld), ",
+					(long long) h_problem_storage.d_keys[0][i],
+					(long long) h_problem_storage.d_values[0][i]);
+			}
+*/
+		}
+//		if (g_verbose) printf("\n");
+
+
+		// Compute reference solution
+		h_num_compacted = 0;
+		h_problem_storage.d_keys[1][0] = h_problem_storage.d_keys[0][0];
+
+		for (SizeT i = 0; i < num_elements; ++i) {
+
+			if (h_problem_storage.d_keys[1][h_num_compacted] != h_problem_storage.d_keys[0][i]) {
+
+				h_num_compacted++;
+				h_problem_storage.d_keys[1][h_num_compacted] = h_problem_storage.d_keys[0][i];
+				h_problem_storage.d_values[1][h_num_compacted] = h_problem_storage.d_values[0][i];
+
+			} else {
+
+				if (i == 0) {
+					h_problem_storage.d_values[1][h_num_compacted] =
+						h_problem_storage.d_values[0][i];
+				} else {
+					h_problem_storage.d_values[1][h_num_compacted] = reduction_op(
+						h_problem_storage.d_values[1][h_num_compacted],
+						h_problem_storage.d_values[0][i]);
+				}
+			}
+		}
+		h_num_compacted++;
+
+		// Allocate device storage
+		if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_keys[0], sizeof(KeyType) * num_elements),
+			"TimedConsecutiveReduction cudaMalloc d_keys failed: ", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_keys[1], sizeof(KeyType) * num_elements),
+			"TimedConsecutiveReduction cudaMalloc d_keys failed: ", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_values[0], sizeof(ValueType) * num_elements),
+			"TimedConsecutiveReduction cudaMalloc d_values failed: ", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_values[1], sizeof(ValueType) * num_elements),
+			"TimedConsecutiveReduction cudaMalloc d_values failed: ", __FILE__, __LINE__)) exit(1);
+
+		// Move a fresh copy of the problem into device storage
+		if (util::B40CPerror(cudaMemcpy(
+				d_problem_storage.d_keys[0],
+				h_problem_storage.d_keys[0],
+				sizeof(KeyType) * num_elements,
+				cudaMemcpyHostToDevice),
+			"TimedConsecutiveReduction cudaMemcpy d_keys failed: ", __FILE__, __LINE__)) exit(1);
+		if (util::B40CPerror(cudaMemcpy(
+				d_problem_storage.d_values[0],
+				h_problem_storage.d_values[0],
+				sizeof(ValueType) * num_elements,
+				cudaMemcpyHostToDevice),
+			"TimedConsecutiveReduction cudaMemcpy d_values failed: ", __FILE__, __LINE__)) exit(1);
+
+		// Iterate configuration space
+		IterateConfigSpace();
+
+		// Free allocated memory
+	    if (d_problem_storage.d_keys[0]) cudaFree(d_problem_storage.d_keys[0]);
+	    if (d_problem_storage.d_keys[1]) cudaFree(d_problem_storage.d_keys[1]);
+	    if (d_problem_storage.d_values[0]) cudaFree(d_problem_storage.d_values[0]);
+	    if (d_problem_storage.d_values[1]) cudaFree(d_problem_storage.d_values[1]);
+
+		// Free our allocated host memory
+		if (h_problem_storage.d_keys[0]) free(h_problem_storage.d_keys[0]);
+		if (h_problem_storage.d_keys[1]) free(h_problem_storage.d_keys[1]);
+		if (h_problem_storage.d_values[0]) free(h_problem_storage.d_values[0]);
+		if (h_problem_storage.d_values[1]) free(h_problem_storage.d_values[1]);
+	}
+
+
 };
 
 
@@ -1076,66 +1258,34 @@ struct Enactor : public util::EnactorBase
  * Creates an example problem and then dispatches the iterations
  * to the GPU for the given number of iterations, displaying runtime information.
  */
-template<typename T, typename SizeT, typename OpType>
+template<
+	typename KeyType,
+	typename ValueType,
+	typename SizeT,
+	typename ReductionOp,
+	typename EqualityOp>
 void Test(
 	SizeT num_elements,
-	OpType binary_op)
+	ReductionOp reduction_op,
+	EqualityOp equality_op)
 {
-	// Establish the problem types
 	typedef consecutive_reduction::ProblemType<
-		T,
+		KeyType,
+		ValueType,
 		SizeT,
-		OpType,
-		OpType,
-		true,								// EXCLUSIVE,
-		true>								// COMMUTATIVE
-			ProblemType;
+		ReductionOp,
+		EqualityOp> ProblemType;
 
 	// Create enactor
-	Enactor<ProblemType> enactor(num_elements, binary_op, binary_op);
-	enactor.GenerateConfigs();
+	Enactor<ProblemType> enactor(
+		reduction_op,
+		equality_op);
 
-	if (util::B40CPerror(cudaMalloc((void**) &enactor.d_src, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_src failed: ", __FILE__, __LINE__)) exit(1);
-
-	if (util::B40CPerror(cudaMalloc((void**) &enactor.d_dest, sizeof(T) * num_elements),
-		"TimedScan cudaMalloc d_dest failed: ", __FILE__, __LINE__)) exit(1);
-
-	if ((enactor.h_data = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
-		fprintf(stderr, "Host malloc of problem data failed\n");
-		exit(1);
-	}
-	if ((enactor.h_reference = (T*) malloc(sizeof(T) * num_elements)) == NULL) {
-		fprintf(stderr, "Host malloc of problem data failed\n");
-		exit(1);
-	}
-
-	enactor.h_reference[0] = binary_op();
-
-	for (size_t i = 0; i < num_elements; ++i) {
-//		util::RandomBits<T>(h_data[i], 0);
-		enactor.h_data[i] = i;
-
-		enactor.h_reference[i] = (i == 0) ?
-			binary_op() :
-			binary_op(enactor.h_reference[i - 1], enactor.h_data[i - 1]);
-	}
-
-	// Move a fresh copy of the problem into device storage
-	if (util::B40CPerror(cudaMemcpy(enactor.d_src, enactor.h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
-		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
-
-	// Iterate configuration space
-	enactor.IterateConfigSpace();
-
-	// Free allocated memory
-	if (enactor.d_src) cudaFree(enactor.d_src);
-	if (enactor.d_dest) cudaFree(enactor.d_dest);
-
-	// Free our allocated host memory
-	if (enactor.h_data) free(enactor.h_data);
-	if (enactor.h_reference) free(enactor.h_reference);
+	// Run test
+	enactor.Test(num_elements);
 }
+
+
 
 
 /******************************************************************************
@@ -1212,29 +1362,34 @@ int main(int argc, char** argv)
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 1)
 	{
 		typedef unsigned char T;
-		Sum<T> binary_op;
-		Test<T>(num_elements * 4, binary_op);
+		Sum<T> reduction_op;
+		Equality<T> equality_op;
+
+		Test<T, T>(num_elements * 4, reduction_op, equality_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 2)
 	{
 		typedef unsigned short T;
-		Sum<T> binary_op;
-		Test<T>(num_elements * 2, binary_op);
+		Sum<T> reduction_op;
+		Equality<T> equality_op;
+		Test<T, T>(num_elements * 2, reduction_op, equality_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 4)
 	{
-		typedef unsigned int T;
-		Sum<T> binary_op;
-		Test<T>(num_elements, binary_op);
+		typedef unsigned int T, T;
+		Sum<T> reduction_op;
+		Equality<T> equality_op;
+		Test<T, T>(num_elements, reduction_op, equality_op);
 	}
 #endif
 #if (TUNE_SIZE == 0) || (TUNE_SIZE == 8)
 	{
 		typedef unsigned long long T;
-		Sum<T> binary_op;
-		Test<T>(num_elements / 2, binary_op);
+		Sum<T> reduction_op;
+		Equality<T> equality_op;
+		Test<T, T>(num_elements / 2, reduction_op, equality_op);
 	}
 #endif
 

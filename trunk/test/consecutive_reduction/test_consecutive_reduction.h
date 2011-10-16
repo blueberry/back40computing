@@ -53,7 +53,7 @@ template <typename T>
 struct Max
 {
 	// Binary reduction
-	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}

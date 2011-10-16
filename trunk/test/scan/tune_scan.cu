@@ -813,7 +813,7 @@ struct Enactor : public util::EnactorBase
 				max_cta_occupancy,
 				upsweep_details.second,
 				upsweep_details.first.threads,
-				upsweep_details.second,
+				downsweep_details.second,
 				downsweep_details.first.threads)) break;
 
 			// Compute sweep grid size
