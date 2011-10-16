@@ -21,7 +21,7 @@ do
 	for (( N=1024*32; N<=1024*1024*32; N*=4 ))
 	do
 
-		CMD="./bin/tune_scan_4.0_i386_sm${ARCH}_u${WORD}B ${OPTIONS} --n=${N}"
+		CMD="./bin/tune_reduction_4.0_i386_sm${ARCH}_u${WORD}B ${OPTIONS} --n=${N}"
 		echo "$CMD > eval/sm${ARCH}/${ARCH}_${WORD}B_${N}.txt"
 		$CMD > eval/sm${ARCH}/${ARCH}_${WORD}B_${N}.txt
 
