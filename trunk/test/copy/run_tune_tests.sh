@@ -2,15 +2,15 @@
 
 #for i in 200 130 110; do for j in 1 2 4 8; do time make tune tunearch=$i tunesize=$j force64=1; done; done
 
-OPTIONS="--i=4 --device=1"
-
-if [ $# -eq 0 ]
+if [ $# -ne 2 ]
 then
-	echo "Usage: $0 <ARCH>"
+	echo "Usage: $0 <ARCH> <DEVICE>"
 	exit 1
 fi
 
 ARCH=$1
+DEVICE=$2
+OPTIONS="--i=2 --device=${DEVICE}"
 
 mkdir -p eval/sm${ARCH}
 
