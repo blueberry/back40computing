@@ -324,7 +324,7 @@ struct SpineTuning
 			consecutive_reduction::upsweep::KernelPolicy <
 				ProblemType,
 				TUNE_ARCH,
-				true,														// CHECK_ALIGNMENT
+				false,														// CHECK_ALIGNMENT
 				1,															// MIN_CTA_OCCUPANCY,
 				util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
 				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
