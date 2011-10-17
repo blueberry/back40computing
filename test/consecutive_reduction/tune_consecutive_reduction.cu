@@ -863,12 +863,7 @@ struct Enactor : public util::EnactorBase
 				max_cta_occupancy,
 				num_elements,
 				g_max_ctas);
-/*
-			// Use single-CTA kernel instead of multi-pass if problem is small enough
-			if (num_elements <= spine_details.first.tile_elements * 3) {
-				sweep_grid_size = 1;
-			}
-*/
+
 			// Compute spine elements: one element per CTA, rounded
 			// up to nearest spine tile size
 			int spine_elements = ((sweep_grid_size + spine_details.first.tile_elements - 1) / spine_details.first.tile_elements) *
@@ -883,91 +878,71 @@ struct Enactor : public util::EnactorBase
 				work.Print();
 			}
 
+			// Make sure our spine is big enough
+			if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
+			if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
+
 			// If we're to output the compacted sizes to device memory, write out
 			// compacted size to the last element of our flag spine instead
 			d_num_compacted = ((SizeT*) flag_spine()) + spine_elements - 1;
 
-/*
-			if (work.grid_size == 1) {
+			int dynamic_smem[3] = 	{0, 0, 0};
+			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
 
-				if (ENACTOR_DEBUG) {
-					printf("Sweep<<<%d,%d,%d>>>\n", 1, spine_details.first.threads, 0);
-				}
+			// Tuning option: make sure all kernels have the same overall smem allocation
+			if (UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(
+				dynamic_smem,
+				upsweep_details.second,
+				spine_details.second,
+				downsweep_details.second)) break;
 
-				// Single-CTA, single-grid operation
-				spine_details.second<<<1, spine_details.first.threads, 0>>>(
-					d_src,
-					d_dest,
-					work.num_elements,
-					reduction_op,
-					identity_op);
+			// Tuning option: make sure that all kernels launch the same number of CTAs)
+			if (UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
 
-				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SingleKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
+			if (ENACTOR_DEBUG) {
+				printf("Upsweep<<<%d,%d,%d>>> Spine<<<%d,%d,%d>>> Downsweep<<<%d,%d,%d>>>\n",
+					grid_size[0], upsweep_details.first.threads, dynamic_smem[0],
+					grid_size[1], spine_details.first.threads, dynamic_smem[1],
+					grid_size[2], downsweep_details.first.threads, dynamic_smem[2]);
+			}
 
-			} else {
-*/
-				// Make sure our spine is big enough
-				if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
-				if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
+			// Upsweep scan into spine
+			upsweep_details.second<<<grid_size[0], upsweep_details.first.threads, dynamic_smem[0]>>>(
+				d_problem_storage.d_keys[d_problem_storage.selector],
+				d_problem_storage.d_values[d_problem_storage.selector],
+				(ValueType*) partial_spine(),
+				(SizeT*) flag_spine(),
+				reduction_op,
+				equality_op,
+				work);
 
-				int dynamic_smem[3] = 	{0, 0, 0};
-				int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
-				// Tuning option: make sure all kernels have the same overall smem allocation
-				if (UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(
-					dynamic_smem,
-					upsweep_details.second,
-					spine_details.second,
-					downsweep_details.second)) break;
+			// Spine scan
+			spine_details.second<<<grid_size[1], spine_details.first.threads, dynamic_smem[1]>>>(
+				(ValueType*) partial_spine(),
+				(ValueType*) partial_spine(),
+				(SizeT*) flag_spine(),
+				(SizeT*) flag_spine(),
+				spine_elements,
+				reduction_op);
 
-				// Tuning option: make sure that all kernels launch the same number of CTAs)
-				if (UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
-				if (ENACTOR_DEBUG) {
-					printf("Upsweep<<<%d,%d,%d>>> Spine<<<%d,%d,%d>>> Downsweep<<<%d,%d,%d>>>\n",
-						grid_size[0], upsweep_details.first.threads, dynamic_smem[0],
-						grid_size[1], spine_details.first.threads, dynamic_smem[1],
-						grid_size[2], downsweep_details.first.threads, dynamic_smem[2]);
-				}
+			// Downsweep from spine
+			downsweep_details.second<<<grid_size[2], downsweep_details.first.threads, dynamic_smem[2]>>>(
+				d_problem_storage.d_keys[d_problem_storage.selector],
+				d_problem_storage.d_keys[d_problem_storage.selector ^ 1],
+				d_problem_storage.d_values[d_problem_storage.selector],
+				d_problem_storage.d_values[d_problem_storage.selector ^ 1],
+				(ValueType*) partial_spine(),
+				(SizeT*) flag_spine(),
+				d_num_compacted,
+				reduction_op,
+				equality_op,
+				work);
 
-				// Upsweep scan into spine
-				upsweep_details.second<<<grid_size[0], upsweep_details.first.threads, dynamic_smem[0]>>>(
-					d_problem_storage.d_keys[d_problem_storage.selector],
-					d_problem_storage.d_values[d_problem_storage.selector],
-					(ValueType*) partial_spine(),
-					(SizeT*) flag_spine(),
-					reduction_op,
-					equality_op,
-					work);
-
-				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-
-				// Spine scan
-				spine_details.second<<<grid_size[1], spine_details.first.threads, dynamic_smem[1]>>>(
-					(ValueType*) partial_spine(),
-					(ValueType*) partial_spine(),
-					(SizeT*) flag_spine(),
-					(SizeT*) flag_spine(),
-					spine_elements,
-					reduction_op);
-
-				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-
-				// Downsweep from spine
-				downsweep_details.second<<<grid_size[2], downsweep_details.first.threads, dynamic_smem[2]>>>(
-					d_problem_storage.d_keys[d_problem_storage.selector],
-					d_problem_storage.d_keys[d_problem_storage.selector ^ 1],
-					d_problem_storage.d_values[d_problem_storage.selector],
-					d_problem_storage.d_values[d_problem_storage.selector ^ 1],
-					(ValueType*) partial_spine(),
-					(SizeT*) flag_spine(),
-					d_num_compacted,
-					reduction_op,
-					equality_op,
-					work);
-
-				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-//			}
+			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
 		} while (0);
 

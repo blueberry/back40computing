@@ -416,6 +416,10 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			}
 		}
 
+		// Make sure our spine is big enough
+		if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
+		if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
+
 		if (detail.d_num_compacted == NULL) {
 			// If we're to output the compacted sizes to device memory, write out
 			// compacted size to the last element of our flag spine instead
@@ -443,10 +447,6 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 			// Upsweep-downsweep operation
 			typename Policy::SpineKernelPtr SpineKernel = Policy::SpineKernel();
-
-			// Make sure our spine is big enough
-			if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
-			if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
 
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{work.grid_size, 1, work.grid_size};
