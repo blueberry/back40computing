@@ -309,8 +309,8 @@ struct SpineTuning
 			reduction::KernelPolicy <
 				ProblemType,
 				TUNE_ARCH,
-				true,														// CHECK_ALIGNMENT
-				0,															// MIN_CTA_OCCUPANCY,
+				false,														// CHECK_ALIGNMENT
+				1,															// MIN_CTA_OCCUPANCY,
 				util::Access<ParamList, LOG_THREADS>::VALUE, 				// LOG_THREADS,
 				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
 				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
@@ -627,7 +627,7 @@ struct Enactor : public util::EnactorBase
 		UpsweepLaunchDetails upsweep_details,
 		SpineLaunchDetails spine_details)
 	{
-		const bool OVERSUBSCRIBED_GRID_SIZE = true;
+		const bool OVERSUBSCRIBED_GRID_SIZE = !upsweep_details.first.work_stealing;
 		const bool UNIFORM_SMEM_ALLOCATION = false;
 		const bool UNIFORM_GRID_SIZE = false;
 
