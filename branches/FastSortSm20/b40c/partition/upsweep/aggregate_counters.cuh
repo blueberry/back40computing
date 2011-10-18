@@ -80,13 +80,13 @@ struct AggregateCounters
 			Cta *cta,
 			AggregateCounters *aggregate_counters)
 		{
-			int lane				= (WARP_LANE * WARPS) + cta->warp_id;
-			int composite			= (THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__)) + cta->warp_idx;
+			const int LANE_OFFSET = WARP_LANE * WARPS * KernelPolicy::THREADS * 4;
+			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__) * 4;
 
-			aggregate_counters->local_counts[WARP_LANE][0] += cta->smem_storage.composite_counters.counters[lane][composite][0];
-			aggregate_counters->local_counts[WARP_LANE][1] += cta->smem_storage.composite_counters.counters[lane][composite][1];
-			aggregate_counters->local_counts[WARP_LANE][2] += cta->smem_storage.composite_counters.counters[lane][composite][2];
-			aggregate_counters->local_counts[WARP_LANE][3] += cta->smem_storage.composite_counters.counters[lane][composite][3];
+			aggregate_counters->local_counts[WARP_LANE][0] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 0);
+			aggregate_counters->local_counts[WARP_LANE][1] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 1);
+			aggregate_counters->local_counts[WARP_LANE][2] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 2);
+			aggregate_counters->local_counts[WARP_LANE][3] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 3);
 
 			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::ExtractComposites(cta, aggregate_counters);
 		}

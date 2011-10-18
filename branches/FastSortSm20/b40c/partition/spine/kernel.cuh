@@ -35,6 +35,19 @@ namespace spine {
 
 
 /**
+ * Templated texture reference for spine
+ */
+template <typename SizeT>
+struct SpineTex
+{
+	static texture<SizeT, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename SizeT>
+texture<SizeT, cudaTextureType1D, cudaReadModeElementType> SpineTex<SizeT>::ref;
+
+
+
+/**
  * Consecutive removal spine scan kernel entry point
  */
 template <typename KernelPolicy>
