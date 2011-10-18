@@ -139,7 +139,7 @@ struct SerialSoaReduce
 		typename Tuple,
 		typename RakingSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Reduce(
+	static __host__ __device__ __forceinline__ void Reduce(
 		Tuple &retval,
 		RakingSoa raking_partials,
 		ReductionOp reduction_op)
@@ -150,7 +150,6 @@ struct SerialSoaReduce
 
 		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
 			raking_partials, current_partial, reduction_op);
-		return retval;
 	}
 
 	/**
@@ -178,7 +177,7 @@ struct SerialSoaReduce
 		typename Tuple,
 		typename RakingSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Reduce(
+	static __host__ __device__ __forceinline__ void Reduce(
 		Tuple &retval,
 		RakingSoa raking_partials,
 		int row,
@@ -190,7 +189,6 @@ struct SerialSoaReduce
 
 		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
 			raking_partials, current_partial, row, reduction_op);
-		return retval;
 	}
 
 

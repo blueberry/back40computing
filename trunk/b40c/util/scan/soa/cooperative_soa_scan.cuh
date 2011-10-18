@@ -194,6 +194,37 @@ struct CooperativeSoaGridScan<SrtsSoaDetails, NullType>
 {
 	typedef typename SrtsSoaDetails::TileTuple TileTuple;
 
+
+	/**
+	 * Scan in last-level SRTS grid.
+	 */
+	template <typename ReductionOp>
+	static __device__ __forceinline__ void ScanTile(
+		SrtsSoaDetails srts_soa_details,
+		ReductionOp scan_op)
+	{
+		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+
+			// Raking reduction
+			TileTuple inclusive_partial;
+			reduction::soa::SerialSoaReduce<SrtsSoaDetails::PARTIALS_PER_SEG>::Reduce(
+				inclusive_partial,
+				srts_soa_details.raking_segments,
+				scan_op);
+
+			// Exclusive warp scan
+			TileTuple exclusive_partial = WarpSoaScan<SrtsSoaDetails::LOG_RAKING_THREADS>::Scan(
+				inclusive_partial,
+				srts_soa_details.warpscan_partials,
+				scan_op);
+
+			// Exclusive raking scan
+			SerialSoaScan<SrtsSoaDetails::PARTIALS_PER_SEG>::Scan(
+				srts_soa_details.raking_segments, exclusive_partial, scan_op);
+		}
+	}
+
+
 	/**
 	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
 	 */
@@ -254,6 +285,19 @@ struct CooperativeSoaGridScan<SrtsSoaDetails, NullType>
 		}
 	}
 
+};
+
+
+
+/**
+ * Cooperative SOA SRTS grid reduction (specialized for last-level of SRTS grid)
+ */
+template <
+	typename SrtsSoaDetails,
+	typename SecondarySrtsSoaDetails>
+struct CooperativeSoaGridScan
+{
+	typedef typename SrtsSoaDetails::TileTuple TileTuple;
 
 	/**
 	 * Scan in last-level SRTS grid.
@@ -272,18 +316,89 @@ struct CooperativeSoaGridScan<SrtsSoaDetails, NullType>
 				srts_soa_details.raking_segments,
 				scan_op);
 
-			// Exclusive warp scan
-			TileTuple exclusive_partial = WarpSoaScan<SrtsSoaDetails::LOG_RAKING_THREADS>::Scan(
-				inclusive_partial,
-				srts_soa_details.warpscan_partials,
-				scan_op);
+			// Store partial reduction into next SRTS grid
+			srts_soa_details.secondary_details.lane_partials.Set(inclusive_partial, 0, 0);
+		}
+
+		__syncthreads();
+
+
+		// Collectively scan in next grid
+		CooperativeSoaGridScan<SecondarySrtsSoaDetails>::ScanTile(
+			srts_soa_details.secondary_details,
+			scan_op);
+
+		__syncthreads();
+
+		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+
+			// Retrieve partial reduction from next SRTS grid
+			TileTuple exclusive_partial;
+			srts_soa_details.secondary_details.lane_partials.Get(exclusive_partial, 0, 0);
 
 			// Exclusive raking scan
 			SerialSoaScan<SrtsSoaDetails::PARTIALS_PER_SEG>::Scan(
-				srts_soa_details.raking_segments, exclusive_partial, scan_op);
+				srts_soa_details.raking_segments,
+				exclusive_partial,
+				scan_op);
+		}
+
+	}
+
+	/**
+	 * Scan in last-level SRTS grid.  Carry-in/out is updated only in raking threads (homogeneously)
+	 */
+	template <
+		bool REDUCE_INTO_CARRY,
+		typename ReductionOp>
+	static __device__ __forceinline__ void ScanTileWithCarry(
+		SrtsSoaDetails srts_soa_details,
+		TileTuple &carry,
+		ReductionOp scan_op)
+	{
+		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+
+			// Raking reduction
+			TileTuple inclusive_partial;
+			reduction::soa::SerialSoaReduce<SrtsSoaDetails::PARTIALS_PER_SEG>::Reduce(
+				inclusive_partial,
+				srts_soa_details.raking_segments,
+				scan_op);
+
+			// Store partial reduction into next SRTS grid
+			srts_soa_details.secondary_details.lane_partials.Set(inclusive_partial, 0, 0);
+		}
+
+		__syncthreads();
+
+		// Collectively scan in next grid
+		CooperativeSoaGridScan<SecondarySrtsSoaDetails>::template ScanTileWithCarry<REDUCE_INTO_CARRY>(
+			srts_soa_details.secondary_details,
+			carry,
+			scan_op);
+
+		__syncthreads();
+
+		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+
+			// Retrieve partial reduction from next SRTS grid
+			TileTuple exclusive_partial;
+			srts_soa_details.secondary_details.lane_partials.Get(exclusive_partial, 0, 0);
+
+			// Exclusive raking scan
+			SerialSoaScan<SrtsSoaDetails::PARTIALS_PER_SEG>::Scan(
+				srts_soa_details.raking_segments,
+				exclusive_partial,
+				scan_op);
 		}
 	}
+
+
+
 };
+
+
+
 
 
 } // namespace soa
