@@ -591,23 +591,30 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
+		cudaChannelFormatDesc spine_tex_desc = cudaCreateChannelDesc<SizeT>();
+		if (retval = util::B40CPerror(cudaBindTexture(
+				0,
+				partition::spine::SpineTex<SizeT>::ref,
+				(SizeT *) spine(),
+				spine_tex_desc,
+				spine_elements * sizeof(SizeT)),
+			"EnactorTwoPhase cudaBindTexture SpineTex failed", __FILE__, __LINE__)) break;
+
 		// Spine scan
 		SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
 			(SizeT*) spine(), (SizeT*) spine(), spine_elements);
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
-
 		typedef typename util::VecType<KeyType, Downsweep::PACK_SIZE>::Type VectorType;
-		cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<VectorType>();
+		cudaChannelFormatDesc keys_tex_desc = cudaCreateChannelDesc<VectorType>();
 		if (retval = util::B40CPerror(cudaBindTexture(
 				0,
 				partition::downsweep::KeysTex<VectorType>::ref,
 				detail.problem_storage.d_keys[detail.problem_storage.selector],
-				tex_desc,
+				keys_tex_desc,
 				detail.num_elements * sizeof(VectorType)),
 			"EnactorTwoPhase cudaBindTexture KeysTex failed", __FILE__, __LINE__)) break;
-
 
 		// Downsweep scan from spine
 		DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(

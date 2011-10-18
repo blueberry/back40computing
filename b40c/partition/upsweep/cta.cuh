@@ -88,6 +88,8 @@ struct Cta
 	int 								warp_id;
 	int 								warp_idx;
 
+	char *base;
+
 
 	//---------------------------------------------------------------------
 	// Helper Structures
@@ -143,7 +145,9 @@ struct Cta
 			d_spine(d_spine),
 			warp_id(threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),
 			warp_idx(util::LaneId())
-	{}
+	{
+		base = (char *) (smem_storage.composite_counters.words[warp_id] + warp_idx);
+	}
 
 
 	/**
@@ -239,11 +243,9 @@ struct Cta
 		}
 
 		// Unroll single full tiles
-		while (cta_offset + KernelPolicy::TILE_ELEMENTS < work_limits.out_of_bounds) {
+		while (cta_offset < work_limits.guarded_offset) {
 
-			UnrollTiles::template Iterate<1>::ProcessTiles(
-				dispatch,
-				cta_offset);
+			ProcessFullTile(cta_offset);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
 		}
 

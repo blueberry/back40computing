@@ -157,6 +157,11 @@ __device__ __forceinline__ int PRMT(int a, int b, int index)
 	return ret;
 }
 
+__device__ __forceinline__ void BAR(int count)
+{
+	asm volatile("bar.sync 1, %0;" : : "r"(count));
+}
+
 
 /**
  * Expands packed nibbles into packed bytes

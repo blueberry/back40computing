@@ -122,19 +122,61 @@ struct Tile
 
 				const KeyType COUNTER_BYTE_MASK = (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
-				// Decode the bin for this key
-				int bin = tile->DecodeBin(tile->keys[LOAD][VEC], cta);
-
-				// Decode composite-counter lane and sub-counter from bin
-				int lane = bin >> 2;										// extract composite counter lane
-				int sub_counter = bin & COUNTER_BYTE_MASK;					// extract 8-bit counter offset
 
 				if (__B40C_CUDA_ARCH__ >= 200) {
+/*
+					int lane = util::BFE(
+						tile->keys[LOAD][VEC],
+						KernelPolicy::CURRENT_BIT + 2,
+						KernelPolicy::LOG_BINS - 2);
+
+					int bucket = util::BFE(
+						tile->keys[LOAD][VEC],
+						KernelPolicy::CURRENT_BIT,
+						KernelPolicy::LOG_BINS);
+
+					int counter = cta->smem_storage.composite_counters.words[lane][threadIdx.x];
+					int shift;
+					util::BFI(shift, 0, bucket, 3, 2);
+					counter = util::SHL_ADD(1, shift, counter);
+					cta->smem_storage.composite_counters.words[lane][threadIdx.x] = counter;
+*/
+/*
+					int bucket = util::BFE(
+						tile->keys[LOAD][VEC],
+						KernelPolicy::CURRENT_BIT,
+						KernelPolicy::LOG_BINS);
+
+					int index = (KernelPolicy::THREADS / 4) * (~3 & bucket);
+					int counter = *(cta->smem_storage.composite_counters.direct + threadIdx.x + index);
+					int shift;
+					util::BFI(shift, 0, bucket, 3, 2);
+					counter = util::SHL_ADD(1, shift, counter);
+
+					*(cta->smem_storage.composite_counters.direct + threadIdx.x + index) = counter;
+*/
+
+					int sub_counter = util::BFE(
+						tile->keys[LOAD][VEC],
+						KernelPolicy::CURRENT_BIT,
+						2);
+
+					int lane = util::BFE(
+						tile->keys[LOAD][VEC],
+						KernelPolicy::CURRENT_BIT + 2,
+						KernelPolicy::LOG_BINS - 2);
 
 					// Increment sub-field in composite counter
 					cta->smem_storage.composite_counters.counters[lane][threadIdx.x][sub_counter]++;
 
 				} else {
+
+					// Decode the bin for this key
+					int bin = tile->DecodeBin(tile->keys[LOAD][VEC], cta);
+
+					// Decode composite-counter lane and sub-counter from bin
+					int lane = bin >> 2;										// extract composite counter lane
+					int sub_counter = bin & COUNTER_BYTE_MASK;					// extract 8-bit counter offset
 
 					// Increment sub-field in composite counter
 					cta->smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << (sub_counter << 0x3));

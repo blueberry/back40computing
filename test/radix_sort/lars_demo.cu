@@ -39,6 +39,14 @@
 // Test utils
 #include "b40c_test_util.h"
 
+#ifdef _MSC_VER
+#include <random>
+#else
+#include <tr1/random>
+#endif
+
+std::tr1::mt19937 mt19937;
+
 
 /******************************************************************************
  * Problem / Tuning Policy Types
@@ -94,9 +102,9 @@ typedef b40c::radix_sort::Policy<
 		// Policy for upsweep kernel.
 		// 		Reduces/counts all the different digit numerals for a given digit-place
 		//
-		8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+		5,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
+		1,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
 		2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
 
 		// Spine-scan kernel policy
@@ -158,12 +166,22 @@ int main(int argc, char** argv)
 	// Only use RADIX_BITS effective bits (remaining high order bits
 	// are left zero): we only want to perform one sorting pass
 	if (verbose) printf("Original: ");
+
+	std::tr1::uniform_int<unsigned int> r(0, 0xffffffff>> (32 - Policy::RADIX_BITS));
+
 	for (size_t i = 0; i < num_elements; ++i) {
+
+//		h_keys[i] = r(mt19937);
 //		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
 		h_keys[i] = i & ((1 << Policy::RADIX_BITS) - 1);
+
 		h_reference_keys[i] = h_keys[i];
 
-		if (verbose) printf("%d, ", h_keys[i]);
+		if (verbose) {
+			printf("%d, ", h_keys[i]);
+			if ((i & 255) == 255) printf("\n\n");
+		}
+
 	}
 	if (verbose) printf("\n");
 
