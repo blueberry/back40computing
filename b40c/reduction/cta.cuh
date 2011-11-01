@@ -122,8 +122,6 @@ struct Cta
 		} else {
 			carry = reduction_op(carry, tile_partial);
 		}
-
-		__syncthreads();
 	}
 
 
