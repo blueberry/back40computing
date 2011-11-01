@@ -66,7 +66,6 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
-	int UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
@@ -105,7 +104,7 @@ struct Policy : ProblemType
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		WORK_STEALING,
-		UPSWEEP_LOG_SCHEDULE_GRANULARITY>
+		UPSWEEP_LOG_LOADS_PER_TILE + UPSWEEP_LOG_LOAD_VEC_SIZE + UPSWEEP_LOG_THREADS >
 			Upsweep;
 
 	/**
@@ -191,7 +190,6 @@ struct Policy : ProblemType
 		printf("%d, ", UPSWEEP_LOG_THREADS);
 		printf("%d, ", UPSWEEP_LOG_LOAD_VEC_SIZE);
 		printf("%d, ", UPSWEEP_LOG_LOADS_PER_TILE);
-		printf("%d, ", UPSWEEP_LOG_SCHEDULE_GRANULARITY);
 
 		// Spine tunable params
 		printf("%d, ", SPINE_LOG_THREADS);

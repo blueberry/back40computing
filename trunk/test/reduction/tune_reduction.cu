@@ -68,14 +68,17 @@ struct KernelDetails
 	int threads;
 	int tile_elements;
 	int work_stealing;
+	int over_subscribed;
 
 	KernelDetails(
 		int threads,
 		int tile_elements,
-		int work_stealing) :
+		int work_stealing,
+		int over_subscribed) :
 			threads(threads),
 			tile_elements(tile_elements),
-			work_stealing(work_stealing) {}
+			work_stealing(work_stealing),
+			over_subscribed(over_subscribed) {}
 };
 
 
@@ -147,6 +150,7 @@ struct UpsweepTuning
 			LOG_LOAD_VEC_SIZE,
 			LOG_LOADS_PER_TILE,
 			WORK_STEALING,
+			OVERSUBSCRIBED_GRID_SIZE,
 			LOG_SCHEDULE_GRANULARITY,
 		END,
 	};
@@ -181,6 +185,9 @@ struct UpsweepTuning
 
 		// Check if this configuration is worth compiling
 		enum {
+
+			OVERSUBSCRIBED = util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE,
+
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
@@ -196,11 +203,12 @@ struct UpsweepTuning
 		static std::string TypeString()
 		{
 			char buffer[32];
-			sprintf(buffer, "%d, %d, %d, %d",
+			sprintf(buffer, "%d, %d, %d, %d, %d",
 				KernelPolicy::LOG_THREADS,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::WORK_STEALING);
+				KernelPolicy::WORK_STEALING,
+				KernelPolicy::OVERSUBSCRIBED);
 			return buffer;
 		}
 
@@ -263,7 +271,16 @@ struct UpsweepTuning
 	struct Ranges<ParamList, WORK_STEALING> {
 		enum {
 			MIN = 0,
-			MAX = 1
+			MAX = (TUNE_ARCH >= 200) ? 1 : 0
+		};
+	};
+
+	// OVERSUBSCRIBED_GRID_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = (util::Access<ParamList, WORK_STEALING>::VALUE) ? 0 : 1
 		};
 	};
 
@@ -329,6 +346,8 @@ struct SpineTuning
 
 		// Check if this configuration is worth compiling
 		enum {
+			OVERSUBSCRIBED = false,
+
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
@@ -529,7 +548,8 @@ struct Callback
 			KernelDetails(
 				KernelPolicy::THREADS,
 				KernelPolicy::TILE_ELEMENTS,
-				KernelPolicy::WORK_STEALING),
+				KernelPolicy::WORK_STEALING,
+				KernelPolicy::OVERSUBSCRIBED),
 			KernelPolicy::Kernel());
 
 		// Create pairing between granularity and launch-details
@@ -627,7 +647,7 @@ struct Enactor : public util::EnactorBase
 		UpsweepLaunchDetails upsweep_details,
 		SpineLaunchDetails spine_details)
 	{
-		const bool OVERSUBSCRIBED_GRID_SIZE = !upsweep_details.first.work_stealing;
+		const bool OVERSUBSCRIBED_GRID_SIZE = upsweep_details.first.over_subscribed;
 		const bool UNIFORM_SMEM_ALLOCATION = false;
 		const bool UNIFORM_GRID_SIZE = false;
 
@@ -656,7 +676,7 @@ struct Enactor : public util::EnactorBase
 
 			// Compute spine elements: one element per CTA, rounded
 			// up to nearest spine tile size
-			int spine_elements = ((sweep_grid_size + spine_details.first.tile_elements - 1) / spine_details.first.tile_elements) * spine_details.first.tile_elements;
+			int spine_elements = sweep_grid_size; //((sweep_grid_size + spine_details.first.tile_elements - 1) / spine_details.first.tile_elements) * spine_details.first.tile_elements;
 
 			// Obtain a CTA work distribution
 			util::CtaWorkDistribution<SizeT> work;
@@ -984,11 +1004,13 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf(""
+	printf("TuneID, "
+		"UPSWEEP_SCHEDULING_GRANULARITY, "
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "
 		"UPSWEEP_WORK_STEALING, "
+		"UPSWEEP_OVERSUBSCRIBED, "
 
 		"SPINE_LOG_THREADS, "
 		"SPINE_LOG_LOAD_VEC_SIZE, "
