@@ -95,6 +95,8 @@ double TimedReduction(
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	reduction_enactor.ENACTOR_DEBUG = true;
 	reduction_enactor.template Reduce<PROB_SIZE_GENRE>(
@@ -106,6 +108,8 @@ double TimedReduction(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();

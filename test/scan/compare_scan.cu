@@ -102,6 +102,8 @@ double TimedThrustScan(
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 	
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	thrust::device_ptr<T> dev_src(d_src);
 	thrust::device_ptr<T> dev_dest(d_dest);
@@ -116,6 +118,8 @@ double TimedThrustScan(
 
 	double elapsed = 0;
 	for (int i = 0; i < g_iterations; i++) {
+
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();

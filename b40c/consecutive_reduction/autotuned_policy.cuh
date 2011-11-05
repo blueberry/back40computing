@@ -307,9 +307,9 @@ struct AutotunedGenre <ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POIN
 
 	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, false, true,
 		11,
-		0, 8, 2, 1, 5,
-		9, 0, 2, 5,
-		0, 6, 2, 1, 5>
+		0, 7, 2, 2, 5,
+		9, 2, 0, 5,
+		0, 7, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };

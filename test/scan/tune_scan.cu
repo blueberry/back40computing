@@ -27,6 +27,7 @@
 #include <stdio.h> 
 
 #include <map>
+#include <vector>
 
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/cuda_properties.cuh>
@@ -73,6 +74,35 @@ struct KernelDetails
 			threads(threads),
 			tile_elements(tile_elements) {}
 };
+
+struct PassDetails
+{
+	int uniform_smem_allocation;
+	int uniform_grid_size;
+	int over_subscribed;
+
+	// Factory initializer
+	PassDetails (
+		int uniform_smem_allocation,
+		int uniform_grid_size,
+		int over_subscribed) :
+			uniform_smem_allocation(uniform_smem_allocation),
+			uniform_grid_size(uniform_grid_size),
+			over_subscribed(over_subscribed) {}
+
+	// CSV string format
+	std::string TypeString()
+	{
+		char buffer[1024];
+		sprintf(buffer, "%s, %s, %s",
+			uniform_smem_allocation 		? "true" : "false",
+			uniform_grid_size 				? "true" : "false",
+			over_subscribed 				? "true" : "false");
+		return buffer;
+	}
+};
+
+
 
 
 /******************************************************************************
@@ -147,7 +177,7 @@ void Usage()
  * Upsweep Tuning Parameter Enumerations and Ranges
  ******************************************************************************/
 
-struct UpsweepTuning
+struct UpsweepTuningRanges
 {
 	/**
 	 * Tuning params
@@ -161,6 +191,53 @@ struct UpsweepTuning
 			LOG_SCHEDULE_GRANULARITY,
 		END,
 	};
+
+
+	/**
+	 * Ranges for the tuning params
+	 */
+	template <typename ParamList, int PARAM> struct Ranges;
+
+	// LOG_THREADS
+	template <typename ParamList>
+	struct Ranges<ParamList, LOG_THREADS> {
+		enum {
+			MIN = 5,	// 32
+			MAX = 10	// 1024
+		};
+	};
+
+	// LOG_LOAD_VEC_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, LOG_LOAD_VEC_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// LOG_LOADS_PER_TILE
+	template <typename ParamList>
+	struct Ranges<ParamList, LOG_LOADS_PER_TILE> {
+		enum {
+			MIN = 0,
+			MAX = 2
+		};
+	};
+
+	// LOG_SCHEDULE_GRANULARITY
+	template <typename ParamList>
+	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
+		enum {
+			MIN = util::Access<ParamList, LOG_THREADS>::VALUE +
+				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
+				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,
+			MAX = Ranges<ParamList, LOG_THREADS>::MAX +
+				Ranges<ParamList, LOG_LOAD_VEC_SIZE>::MAX +
+				Ranges<ParamList, LOG_LOADS_PER_TILE>::MAX
+		};
+	};
+
 
 	/**
 	 * Policy
@@ -234,6 +311,27 @@ struct UpsweepTuning
 		}
 	};
 
+};
+
+
+/******************************************************************************
+ * Spine Tuning Parameter Enumerations and Ranges
+ ******************************************************************************/
+
+struct SpineTuningRanges
+{
+	/**
+	 * Tuning params
+	 */
+	enum Param
+	{
+		BEGIN,
+			LOG_THREADS,
+			LOG_LOAD_VEC_SIZE,
+			LOG_LOADS_PER_TILE,
+		END,
+	};
+
 
 	/**
 	 * Ranges for the tuning params
@@ -267,39 +365,6 @@ struct UpsweepTuning
 		};
 	};
 
-	// LOG_SCHEDULE_GRANULARITY
-	template <typename ParamList>
-	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
-		enum {
-			MIN = util::Access<ParamList, LOG_THREADS>::VALUE +
-				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
-				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,
-			MAX = Ranges<ParamList, LOG_THREADS>::MAX +
-				Ranges<ParamList, LOG_LOAD_VEC_SIZE>::MAX +
-				Ranges<ParamList, LOG_LOADS_PER_TILE>::MAX
-		};
-	};
-};
-
-
-/******************************************************************************
- * Spine Tuning Parameter Enumerations and Ranges
- ******************************************************************************/
-
-struct SpineTuning
-{
-	/**
-	 * Tuning params
-	 */
-	enum Param
-	{
-		BEGIN,
-			LOG_THREADS,
-			LOG_LOAD_VEC_SIZE,
-			LOG_LOADS_PER_TILE,
-			LOG_SCHEDULE_GRANULARITY,
-		END,
-	};
 
 	/**
 	 * Policy
@@ -318,7 +383,9 @@ struct SpineTuning
 			B40C_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
 			util::io::ld::NONE,											// READ_MODIFIER,
 			util::io::st::NONE,											// WRITE_MODIFIER,
-			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
+			(util::Access<ParamList, LOG_THREADS>::VALUE +
+				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
+				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE) > >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
 		typedef typename ProblemType::T T;
@@ -351,7 +418,7 @@ struct SpineTuning
 
 		static std::string TypeString()
 		{
-			char buffer[32];
+			char buffer[4096];
 			sprintf(buffer, "%d, %d, %d",
 				KernelPolicy::LOG_THREADS,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
@@ -378,6 +445,28 @@ struct SpineTuning
 		static KernelPtr Kernel() {
 			return GenKernel<VALID_COMPILE>::Kernel();
 		}
+	};
+
+};
+
+
+/******************************************************************************
+ * Downsweep Tuning Parameter Enumerations and Ranges
+ ******************************************************************************/
+
+struct DownsweepTuningRanges
+{
+	/**
+	 * Tuning params
+	 */
+	enum Param
+	{
+		BEGIN,
+			LOG_THREADS,
+			LOG_LOAD_VEC_SIZE,
+			LOG_LOADS_PER_TILE,
+			LOG_SCHEDULE_GRANULARITY,
+		END,
 	};
 
 
@@ -420,30 +509,13 @@ struct SpineTuning
 			MIN = util::Access<ParamList, LOG_THREADS>::VALUE +
 				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
 				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,
-			MAX = MIN
+
+			MAX = Ranges<ParamList, LOG_THREADS>::MAX +
+				Ranges<ParamList, LOG_LOAD_VEC_SIZE>::MAX +
+				Ranges<ParamList, LOG_LOADS_PER_TILE>::MAX
 		};
 	};
-};
 
-
-/******************************************************************************
- * Downsweep Tuning Parameter Enumerations and Ranges
- ******************************************************************************/
-
-struct DownsweepTuning
-{
-	/**
-	 * Tuning params
-	 */
-	enum Param
-	{
-		BEGIN,
-			LOG_THREADS,
-			LOG_LOAD_VEC_SIZE,
-			LOG_LOADS_PER_TILE,
-			LOG_SCHEDULE_GRANULARITY,
-		END,
-	};
 
 	/**
 	 * Policy
@@ -523,74 +595,26 @@ struct DownsweepTuning
 			return GenKernel<VALID_COMPILE>::Kernel();
 		}
 	};
-
-
-	/**
-	 * Ranges for the tuning params
-	 */
-	template <typename ParamList, int PARAM> struct Ranges;
-
-	// LOG_THREADS
-	template <typename ParamList>
-	struct Ranges<ParamList, LOG_THREADS> {
-		enum {
-			MIN = 5,	// 32
-			MAX = 10	// 1024
-		};
-	};
-
-	// LOG_LOAD_VEC_SIZE
-	template <typename ParamList>
-	struct Ranges<ParamList, LOG_LOAD_VEC_SIZE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
-
-	// LOG_LOADS_PER_TILE
-	template <typename ParamList>
-	struct Ranges<ParamList, LOG_LOADS_PER_TILE> {
-		enum {
-			MIN = 0,
-			MAX = 2
-		};
-	};
-
-	// LOG_SCHEDULE_GRANULARITY
-	template <typename ParamList>
-	struct Ranges<ParamList, LOG_SCHEDULE_GRANULARITY> {
-		enum {
-			MIN = util::Access<ParamList, LOG_THREADS>::VALUE +
-				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
-				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,
-
-			MAX = Ranges<ParamList, LOG_THREADS>::MAX +
-				Ranges<ParamList, LOG_LOAD_VEC_SIZE>::MAX +
-				Ranges<ParamList, LOG_LOADS_PER_TILE>::MAX
-		};
-	};
-
 };
 
 
 /******************************************************************************
- * General Tuning Parameter Enumerations and Ranges
+ * Pass Tuning Parameter Enumerations and Ranges
  ******************************************************************************/
 
-struct GeneralTuning
+struct PassTuningRanges
 {
 	enum Param
 	{
-		PARAM_BEGIN,
-		PARAM_END,
+		BEGIN,
+			OVERSUBSCRIBED_GRID_SIZE,
+		END,
 
 		// Parameters below here are currently not part of the tuning sweep
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		UNIFORM_SMEM_ALLOCATION,
-		UNIFORM_GRID_SIZE,
-		LOG_SCHEDULE_GRANULARITY,
+		UNIFORM_GRID_SIZE
 	};
 
 
@@ -634,6 +658,26 @@ struct GeneralTuning
 			MAX = 1
 		};
 	};
+
+	// OVERSUBSCRIBED_GRID_SIZE
+	template <typename ParamList>
+	struct Ranges<ParamList, OVERSUBSCRIBED_GRID_SIZE> {
+		enum {
+			MIN = 0,
+			MAX = 1
+		};
+	};
+
+
+	// Return pass details configuration from param tuple
+	template <typename ParamList>
+	static PassDetails Details()
+	{
+		return PassDetails(
+			0,																// UNIFORM_SMEM_ALLOCATION
+			0,																// UNIFORM_GRID_SIZE
+			util::Access<ParamList, OVERSUBSCRIBED_GRID_SIZE>::VALUE);
+	}
 };
 
 
@@ -644,36 +688,40 @@ struct GeneralTuning
 
 
 /**
- * Tuple callback generator
+ * Kernel-policy generator (callback)
  */
 template <
 	typename ProblemType,
-	typename Tuning,
+	typename TuningRanges,
 	typename ConfigMap>
-struct Callback
+struct KernelGen
 {
-	typedef typename ConfigMap::mapped_type 	GrainMap;				// int -> LaunchDetails
-	typedef typename ConfigMap::value_type 		ConfigMapPair;			// (string, GrainMap)
-	typedef typename GrainMap::mapped_type 		LaunchDetails;			// (KernelDetails, kernel function ptr)
-	typedef typename GrainMap::value_type 		GrainLaunchDetails;		// (int, LaunchDetails)
+	typedef typename ConfigMap::mapped_type 	GrainMap;				// map (scheduling-granularity -> LaunchDetails)
+	typedef typename GrainMap::value_type 		GrainLaunchDetails;		// tuple (scheduling-granularity, LaunchDetails)
 
+	typedef typename ConfigMap::value_type 		ConfigMapPair;			// tuple (string, GrainMap)
+	typedef typename GrainMap::mapped_type 		LaunchDetails;			// tuple (KernelDetails, kernel function ptr)
 
+	// Constructed map of kernel tuning configurations
 	ConfigMap *config_map;
 
-	Callback(ConfigMap *config_map) : config_map(config_map) {}
+	// Constructor
+	KernelGen(ConfigMap *config_map) : config_map(config_map) {}
 
+	// Interface
 	void Generate()
 	{
 		util::ParamListSweep<
-			Tuning::BEGIN + 1,
-			Tuning::END,
-			Tuning::template Ranges>::template Invoke<util::EmptyTuple>(*this);
+			TuningRanges::BEGIN + 1,
+			TuningRanges::END,
+			TuningRanges::template Ranges>::template Invoke<util::EmptyTuple>(*this);
 	}
 
+	// Callback
 	template <typename ParamList>
 	void Invoke()
 	{
-		typedef typename Tuning::template KernelPolicy<
+		typedef typename TuningRanges::template KernelPolicy<
 			ProblemType,
 			ParamList> KernelPolicy;
 
@@ -682,7 +730,9 @@ struct Callback
 
 		// Create pairing between kernel-details and kernel-pointer
 		LaunchDetails launch_details(
-			KernelDetails(KernelPolicy::THREADS, KernelPolicy::TILE_ELEMENTS),
+			KernelDetails(
+				KernelPolicy::THREADS,
+				KernelPolicy::TILE_ELEMENTS),
 			KernelPolicy::Kernel());
 
 		// Create pairing between granularity and launch-details
@@ -704,6 +754,40 @@ struct Callback
 			// Add this scheduling granularity to the config list
 			config_map->find(typestring)->second.insert(grain_launch_details);
 		}
+	}
+};
+
+
+/**
+ * Pass policy-generator (callback)
+ */
+template <
+	typename TuningRanges,
+	typename ConfigList>
+struct PassGen
+{
+	// Constructed map of kernel tuning configurations
+	ConfigList *config_list;
+
+	// Constructor
+	PassGen(ConfigList *config_list) : config_list(config_list) {}
+
+	// Interface
+	void Generate()
+	{
+		util::ParamListSweep<
+			TuningRanges::BEGIN + 1,
+			TuningRanges::END,
+			TuningRanges::template Ranges>::template Invoke<util::EmptyTuple>(*this);
+	}
+
+	// Callback
+	template <typename ParamList>
+	void Invoke()
+	{
+		PassDetails pass_details = TuningRanges::template Details<ParamList>();
+
+		config_list->push_back(pass_details);
 	}
 };
 
@@ -746,10 +830,14 @@ struct Enactor : public util::EnactorBase
 	typedef std::map<std::string, SpineGrainMap> 		SpineMap;
 	typedef std::map<std::string, DownsweepGrainMap>	DownsweepMap;
 
+	// Pass config list
+	typedef std::vector<PassDetails> 					PassConfigList;
+
 	// Configuration maps
 	UpsweepMap 		upsweep_configs;
 	SpineMap 		spine_configs;
 	DownsweepMap 	downsweep_configs;
+	PassConfigList	pass_configs;
 
 	// Temporary device storage needed for reducing partials produced
 	// by separate CTAs
@@ -779,14 +867,16 @@ struct Enactor : public util::EnactorBase
 		// Pre-allocate our spine
 		if (spine.Setup<long long>(SmCount() * 8 * 8)) exit(1);
 
-		// Generates all config maps
-		Callback<ProblemType, UpsweepTuning, UpsweepMap> 		upsweep_callback(&upsweep_configs);
-		Callback<SpineProblemType, SpineTuning, SpineMap> 		spine_callback(&spine_configs);
-		Callback<ProblemType, DownsweepTuning, DownsweepMap> 	downsweep_callback(&downsweep_configs);
+		// Generates all kernel config maps
+		KernelGen<ProblemType, UpsweepTuningRanges, UpsweepMap> 		upsweep_gen(&upsweep_configs);
+		KernelGen<SpineProblemType, SpineTuningRanges, SpineMap> 		spine_gen(&spine_configs);
+		KernelGen<ProblemType, DownsweepTuningRanges, DownsweepMap> 	downsweep_gen(&downsweep_configs);
+		PassGen<PassTuningRanges, PassConfigList>						pass_gen(&pass_configs);
 
-		upsweep_callback.Generate();
-		spine_callback.Generate();
-		downsweep_callback.Generate();
+		upsweep_gen.Generate();
+		spine_gen.Generate();
+		downsweep_gen.Generate();
+		pass_gen.Generate();
 	}
 
 
@@ -1042,6 +1132,7 @@ struct Enactor : public util::EnactorBase
 					else if (upsweep_grain_itr->first == downsweep_grain_itr->first)
 					{
 						// Matched grain
+						std::string downsweep_string = downsweep_config_itr->first;
 
 						// Iterate spine configs
 						for (typename SpineMap::iterator spine_config_itr = spine_configs.begin();
@@ -1050,22 +1141,31 @@ struct Enactor : public util::EnactorBase
 						{
 							std::string spine_string = spine_config_itr->first;
 
-							printf("%d, %d, %s, %s, %s",
-								config_id,
-								upsweep_grain_itr->first,
-								upsweep_string.c_str(),
-								spine_string.c_str(),
-								downsweep_string.c_str());
-							config_id++;
+							// Iterate pass configs
+							for (typename PassConfigList::iterator pass_config_itr = pass_configs.begin();
+								pass_config_itr != pass_configs.end();
+								pass_config_itr++)
+							{
+								std::string pass_string = pass_config_itr->TypeString();
 
-							TimeSample(
-								upsweep_grain_itr->first,
-								upsweep_grain_itr->second,
-								spine_config_itr->second.begin()->second,
-								downsweep_grain_itr->second);
+								printf("%d, %s, %d, %s, %s, %s",
+									config_id,
+									pass_string.c_str(),
+									upsweep_grain_itr->first,		// schedule grain
+									upsweep_string.c_str(),
+									spine_string.c_str(),
+									downsweep_string.c_str());
+								config_id++;
 
-							printf("\n");
-							fflush(stdout);
+								TimeSample(
+									upsweep_grain_itr->first,
+									upsweep_grain_itr->second,
+									spine_config_itr->second.begin()->second,
+									downsweep_grain_itr->second);
+
+								printf("\n");
+								fflush(stdout);
+							}
 						}
 
 						break;
@@ -1210,6 +1310,14 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf(""
+		"TuneID, "
+
+		"UNIFORM_SMEM_ALLOCATION, "
+		"UNIFORM_GRID_SIZE, "
+		"OVERSUBSCRIBED_GRID_SIZE, "
+
+		"SCHEDULING_GRANULARITY, "
+
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "

@@ -191,6 +191,8 @@ protected:
 							B40C_SMEM_BYTES(cuda_props.device_sm_version),
 						B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads))));
 
+			if (ENACTOR_DEBUG) printf("Occupancy:\t[sweep occupancy: %d]\n", max_cta_occupancy);
+
 		} while (0);
 
 		return retval;
@@ -211,8 +213,13 @@ protected:
 		do {
 			int upsweep_cta_occupancy, downsweep_cta_occupancy;
 
+			bool old_debug = ENACTOR_DEBUG;
+			ENACTOR_DEBUG = false;
+
 			if (retval = MaxCtaOccupancy(upsweep_cta_occupancy, UpsweepKernel, upsweep_threads)) break;
 			if (retval = MaxCtaOccupancy(downsweep_cta_occupancy, DownsweepKernel, downsweep_threads)) break;
+
+			ENACTOR_DEBUG = old_debug;
 
 			if (ENACTOR_DEBUG) printf("Occupancy:\t[upsweep occupancy: %d, downsweep occupancy %d]\n",
 				upsweep_cta_occupancy, downsweep_cta_occupancy);

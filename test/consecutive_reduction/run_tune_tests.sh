@@ -18,7 +18,7 @@ mkdir -p eval/sm${ARCH}
 for WORD in 1 2 4 8
 do
 	# 32K..32M
-	for (( N=1024*32; N<=1024*1024*32; N*=4 ))
+	for (( N=1000*32; N<=1000*1000*32; N*=4 ))
 	do
 
 		CMD="./bin/tune_consecutive_reduction_4.0_i386_sm${ARCH}_u${WORD}B ${OPTIONS} --n=${N}"
