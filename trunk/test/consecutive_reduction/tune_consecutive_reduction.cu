@@ -1303,6 +1303,9 @@ int main(int argc, char** argv)
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
 	printf(""
+		"TuneID, "
+		"SCHEDULING_GRANULARITY, "
+
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "

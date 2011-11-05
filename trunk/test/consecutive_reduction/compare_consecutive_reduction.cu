@@ -143,6 +143,8 @@ double TimedThrustConsecutiveReduction(
 
 	thrust::pair<thrust::device_ptr<KeyType>, thrust::device_ptr<ValueType> > new_end;
 
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	new_end = thrust::reduce_by_key(
 		d_in_keys,
@@ -156,6 +158,8 @@ double TimedThrustConsecutiveReduction(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();

@@ -135,6 +135,8 @@ double TimedConsecutiveReduction(
 
 	SizeT gpu_num_compacted;
 
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.ENACTOR_DEBUG = true;
@@ -153,6 +155,8 @@ double TimedConsecutiveReduction(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();

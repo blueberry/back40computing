@@ -202,13 +202,17 @@ struct UpsweepTuning
 
 		static std::string TypeString()
 		{
-			char buffer[32];
-			sprintf(buffer, "%d, %d, %d, %d, %d",
+			char buffer[4096];
+			sprintf(buffer, "%s, %s, %s, %s, %d, %d, %d, %d",
+				KernelPolicy::WORK_STEALING ? "true" : "false",
+				"false",
+				"false",
+				KernelPolicy::OVERSUBSCRIBED ? "true" : "false",
+
+				KernelPolicy::MIN_CTA_OCCUPANCY,
 				KernelPolicy::LOG_THREADS,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::WORK_STEALING,
-				KernelPolicy::OVERSUBSCRIBED);
+				KernelPolicy::LOG_LOADS_PER_TILE);
 			return buffer;
 		}
 
@@ -271,7 +275,7 @@ struct UpsweepTuning
 	struct Ranges<ParamList, WORK_STEALING> {
 		enum {
 			MIN = 0,
-			MAX = (TUNE_ARCH >= 200) ? 1 : 0
+			MAX = 1
 		};
 	};
 
@@ -1004,13 +1008,18 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("TuneID, "
-		"UPSWEEP_SCHEDULING_GRANULARITY, "
+	printf(
+		"TuneID, "
+		"SCHEDULING_GRANULARITY, "
+		"WORK_STEALING, "
+		"UNIFORM_SMEM_ALLOCATION, "
+		"UNIFORM_GRID_SIZE, "
+		"OVERSUBSCRIBED_GRID_SIZE, "
+
+		"UPSWEEP_MIN_CTA_OCCUPANCY, "
 		"UPSWEEP_LOG_THREADS, "
 		"UPSWEEP_LOG_LOAD_VEC_SIZE, "
 		"UPSWEEP_LOG_LOADS_PER_TILE, "
-		"UPSWEEP_WORK_STEALING, "
-		"UPSWEEP_OVERSUBSCRIBED, "
 
 		"SPINE_LOG_THREADS, "
 		"SPINE_LOG_LOAD_VEC_SIZE, "

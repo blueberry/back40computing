@@ -103,7 +103,7 @@ struct AutotunedGenre;
 template <int CUDA_ARCH>
 struct ArchClassifier
 {
-	static const ArchGenre GENRE 			=	// (CUDA_ARCH < SM13) ? SM10 :			// Haven't tuned for SM1.0 yet
+	static const ArchGenre GENRE 			=	(CUDA_ARCH < SM13) ? SM10 :			// Haven't tuned for SM1.0 yet
 												(CUDA_ARCH < SM20) ? SM13 : SM20;
 };
 
@@ -161,10 +161,10 @@ struct AutotunedClassifier :
 // Large problems, 1B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 11,
-	  1, 7, 2, 2, 5,
-	  5, 2, 0, 5,
-	  1, 7, 2, 2, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, 11,
+	  0, 7, 2, 2, 5,
+	  7, 0, 2, 5,
+	  0, 7, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -172,10 +172,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, TINY_TYPE, POINT
 // Large problems, 2B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, true, false, 10,
-	  1, 7, 1, 2, 5,
-	  5, 2, 0, 5,
-	  1, 6, 2, 2, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, 10,
+	  0, 6, 2, 2, 5,
+	  6, 2, 2, 5,
+	  0, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -183,10 +183,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, SMALL_TYPE, POIN
 // Large problems, 4B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
-	  3, 9, 2, 0, 5,
-	  5, 2, 0, 5,
-	  3, 9, 1, 1, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, 13,
+	  0, 8, 2, 1, 5,
+	  7, 2, 1, 5,
+	  0, 9, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -194,10 +194,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, MEDIUM_TYPE, POI
 // All other large problems (tuned at 8B)
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  1, 7, 0, 1, 5,
-	  5, 2, 0, 5,
-	  1, 5, 1, 2, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, 10,
+	  0, 8, 1, 1, 5,
+	  6, 1, 1, 5,
+	  0, 9, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -206,10 +206,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM20, LARGE_TYPE, POIN
 // Small problems, 1B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  1, 5, 2, 2, 5,
-	  5, 2, 0, 5,
-	  1, 6, 2, 1, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
+	  0, 7, 2, 2, 5,
+	  6, 0, 0, 5,
+	  0, 7, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -217,10 +217,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, TINY_TYPE, POINT
 // Small problems, 2B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
-	  1, 5, 2, 2, 5,
-	  5, 2, 0, 5,
-	  1, 5, 2, 2, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
+	  0, 6, 2, 2, 5,
+	  6, 0, 0, 5,
+	  0, 6, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -228,10 +228,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, SMALL_TYPE, POIN
 // Small problems, 4B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  1, 5, 2, 1, 5,
-	  5, 2, 0, 5,
-	  1, 5, 2, 1, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, true, 9,
+	  0, 5, 2, 2, 5,
+	  6, 0, 0, 5,
+	  0, 7, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -239,10 +239,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, MEDIUM_TYPE, POI
 // All other small problems (tuned at 8B)
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 7,
-	  1, 5, 1, 1, 5,
-	  5, 2, 0, 5,
-	  1, 5, 0, 2, 5>
+	: Policy<ProblemType, SM20, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
+	  0, 6, 1, 1, 5,
+	  6, 0, 0, 5,
+	  0, 7, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -255,10 +255,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM20, LARGE_TYPE, POIN
 // Large problems, 1B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 12,
-	  1, 8, 2, 2, 5,
-	  6, 2, 0, 5,
-	  1, 8, 2, 1, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, true, 11,
+	  0, 7, 2, 2, 5,
+	  6, 2, 1, 5,
+	  0, 7, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -266,10 +266,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, TINY_TYPE, POINT
 // Large problems, 2B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  1, 7, 1, 1, 5,
-	  6, 2, 0, 5,
-	  1, 6, 2, 2, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, true, 10,
+	  0, 6, 1, 2, 5,
+	  8, 0, 0, 5,
+	  0, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -277,10 +277,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, SMALL_TYPE, POIN
 // Large problems, 4B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  1, 7, 0, 1, 5,
-	  6, 2, 0, 5,
-	  1, 7, 1, 0, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, true, 9,
+	  0, 8, 0, 1, 5,
+	  8, 0, 0, 5,
+	  0, 8, 1, 0, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -288,10 +288,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, MEDIUM_TYPE, POI
 // All other Large problems
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  1, 7, 1, 0, 5,
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, true, 8,
+	  0, 6, 0, 2, 5,
 	  6, 2, 0, 5,
-	  1, 7, 1, 0, 5>
+	  0, 7, 0, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
 };
@@ -302,9 +302,9 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM13, LARGE_TYPE, POIN
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINTER_SIZE_GENRE>
 	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 10,
-	  1, 6, 2, 1, 5,
-	  6, 2, 0, 5,
-	  1, 6, 2, 2, 5>
+	  0, 6, 2, 2, 5,
+	  7, 0, 0, 5,
+	  0, 6, 2, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -312,10 +312,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, TINY_TYPE, POINT
 // Small problems, 2B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, true, false, 9,
-	  1, 6, 1, 2, 5,
-	  6, 2, 0, 5,
-	  1, 5, 2, 2, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
+	  0, 6, 2, 0, 5,
+	  6, 1, 0, 5,
+	  0, 6, 2, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -323,10 +323,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, SMALL_TYPE, POIN
 // Small problems, 4B data
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
-	  1, 5, 2, 0, 5,
-	  6, 2, 0, 5,
-	  1, 6, 1, 1, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
+	  0, 7, 0, 2, 5,
+	  6, 0, 0, 5,
+	  0, 7, 0, 2, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -334,10 +334,10 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, MEDIUM_TYPE, POI
 // All other Small problems
 template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
 struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, LARGE_TYPE, POINTER_SIZE_GENRE>
-	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 6,
-	  1, 5, 0, 1, 5,
-	  6, 2, 0, 5,
-	  1, 5, 1, 0, 5>
+	: Policy<ProblemType, SM13, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
+	  0, 6, 0, 2, 5,
+	  6, 0, 0, 5,
+	  0, 6, 1, 1, 5>
 {
 	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
 };
@@ -347,6 +347,97 @@ struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM13, LARGE_TYPE, POIN
 //-----------------------------------------------------------------------------
 // SM1.0 specializations(s)
 //-----------------------------------------------------------------------------
+
+// Large problems, 1B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, TINY_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, true, 10,
+	  0, 6, 2, 2, 5,
+	  7, 1, 0, 5,
+	  0, 6, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
+};
+
+// Large problems, 2B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, SMALL_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, true, 10,
+	  0, 6, 1, 2, 5,
+	  8, 0, 1, 5,
+	  0, 7, 2, 1, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
+};
+
+// Large problems, 4B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, MEDIUM_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, true, 9,
+	  0, 7, 0, 1, 5,
+	  7, 0, 0, 5,
+	  0, 8, 1, 0, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
+};
+
+// All other Large problems
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, LARGE_SIZE, SM10, LARGE_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, true, 8,
+	  0, 6, 0, 1, 5,
+	  8, 0, 0, 5,
+	  0, 7, 1, 0, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = LARGE_SIZE;
+};
+
+
+
+// Small problems, 1B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, TINY_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
+	  0, 7, 2, 2, 5,
+	  6, 0, 0, 5,
+	  0, 5, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
+};
+
+// Small problems, 2B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, SMALL_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, false, 11,
+	  0, 7, 2, 2, 5,
+	  5, 1, 0, 5,
+	  0, 5, 2, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
+};
+
+// Small problems, 4B data
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, MEDIUM_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, false, 9,
+	  0, 7, 0, 2, 5,
+	  6, 0, 0, 5,
+	  0, 5, 1, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
+};
+
+// All other Small problems
+template <typename ProblemType, int CUDA_ARCH, TypeSizeGenre POINTER_SIZE_GENRE>
+struct AutotunedGenre<ProblemType, CUDA_ARCH, SMALL_SIZE, SM10, LARGE_TYPE, POINTER_SIZE_GENRE>
+	: Policy<ProblemType, SM10, util::io::ld::NONE, util::io::st::NONE, false, false, false, 8,
+	  0, 6, 0, 2, 5,
+	  6, 0, 0, 5,
+	  0, 5, 0, 2, 5>
+{
+	static const ProbSizeGenre PROB_SIZE_GENRE = SMALL_SIZE;
+};
+
 
 
 
