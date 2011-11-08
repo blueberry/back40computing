@@ -95,6 +95,7 @@ double TimedReduction(
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedReduction cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Marker kernel in profiling stream
 	util::FlushKernel<void><<<1,1>>>();
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
@@ -109,6 +110,7 @@ double TimedReduction(
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
 
+		// Marker kernel in profiling stream
 		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record

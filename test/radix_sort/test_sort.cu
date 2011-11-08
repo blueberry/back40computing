@@ -116,6 +116,9 @@ void TimedSort(
 	if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
 		"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single sorting iteration to allocate memory, prime code caches, etc.
 	sorting_enactor.ENACTOR_DEBUG = true;
 	sorting_enactor.template Sort<GENRE>(device_storage, num_elements, g_max_ctas);
@@ -130,6 +133,9 @@ void TimedSort(
 		// Move a fresh copy of the problem into device storage
 		if (util::B40CPerror(cudaMemcpy(device_storage.d_keys[0], h_keys, sizeof(K) * num_elements, cudaMemcpyHostToDevice),
 			"TimedSort cudaMemcpy device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
+
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start cuda timing record
 		timer.Start();
