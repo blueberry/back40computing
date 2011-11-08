@@ -128,6 +128,9 @@ double TimedThrustSegmentedScan(
 	if (util::B40CPerror(cudaMemcpy(d_flag_src, h_flag_data, sizeof(Flag) * num_elements, cudaMemcpyHostToDevice),
 		"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 	
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	thrust::device_ptr<T> dev_src(d_src);
 	thrust::device_ptr<T> dev_dest(d_dest);
@@ -135,21 +138,33 @@ double TimedThrustSegmentedScan(
 	if (EXCLUSIVE) {
 
 		// shift input one to the right and initialize segments with init
+#if CUDA_VERSION >= 4010
+		thrust::detail::uninitialized_array<T, thrust::device_space_tag> temp(num_elements);
+#else
 		thrust::detail::raw_buffer<T, thrust::device_space_tag> temp(num_elements);
+#endif
 		thrust::replace_copy_if(
 			dev_src,
 			dev_src + num_elements - 1,
 			dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), identity_op());
 		temp[0] = identity_op();
 
+#if CUDA_VERSION >= 4010
 		thrust::detail::device::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
+#else
+		thrust::detail::backend::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
+#endif
 											   thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)) + num_elements,
 											   thrust::make_zip_iterator(thrust::make_tuple(dev_dest,     dev_flag_src)),
 								               segmented_scan_functor<T, Flag, thrust::plus<T> >(thrust::plus<T>()));
 
 	} else {
 
+#if CUDA_VERSION >= 4010
 		thrust::detail::device::inclusive_scan
+#else
+		thrust::detail::backend::inclusive_scan
+#endif
             (thrust::make_zip_iterator(thrust::make_tuple(dev_src, dev_flag_src)),
              thrust::make_zip_iterator(thrust::make_tuple(dev_src, dev_flag_src)) + num_elements,
              thrust::make_zip_iterator(thrust::make_tuple(dev_dest, dev_flag_src)),
@@ -166,27 +181,42 @@ double TimedThrustSegmentedScan(
 		if (util::B40CPerror(cudaMemcpy(d_flag_src, h_flag_data, sizeof(Flag) * num_elements, cudaMemcpyHostToDevice),
 			"TimedSegmentedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
+
 		// Start timing record
 		timer.Start();
 
 		if (EXCLUSIVE) {
 
 			// shift input one to the right and initialize segments with init
+#if CUDA_VERSION >= 4010
 			thrust::detail::raw_buffer<T, thrust::device_space_tag> temp(num_elements);
+#else
+			thrust::detail::uninitialized_array<T, thrust::device_space_tag> temp(num_elements);
+#endif
 			thrust::replace_copy_if(
 				dev_src,
 				dev_src + num_elements - 1,
 				dev_flag_src + 1, temp.begin() + 1, thrust::negate<Flag>(), identity_op());
 			temp[0] = identity_op();
 
+#if CUDA_VERSION >= 4010
 			thrust::detail::device::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
+#else
+			thrust::detail::backend::inclusive_scan(thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)),
+#endif
 												   thrust::make_zip_iterator(thrust::make_tuple(temp.begin(), dev_flag_src)) + num_elements,
 												   thrust::make_zip_iterator(thrust::make_tuple(dev_dest,     dev_flag_src)),
 									               segmented_scan_functor<T, Flag, thrust::plus<T> >(thrust::plus<T>()));
 
 		} else {
 
+#if CUDA_VERSION >= 4010
 			thrust::detail::device::inclusive_scan
+#else
+			thrust::detail::backend::inclusive_scan
+#endif
 	            (thrust::make_zip_iterator(thrust::make_tuple(dev_src, dev_flag_src)),
 	             thrust::make_zip_iterator(thrust::make_tuple(dev_src, dev_flag_src)) + num_elements,
 	             thrust::make_zip_iterator(thrust::make_tuple(dev_dest, dev_flag_src)),

@@ -119,6 +119,9 @@ double TimedSegmentedScan(
 	if (util::B40CPerror(cudaMemcpy(d_flag_src, h_flag_data, sizeof(Flag) * num_elements, cudaMemcpyHostToDevice),
 		"TimedSegmentedScan cudaMemcpy d_flag_src failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.ENACTOR_DEBUG = true;
@@ -137,6 +140,9 @@ double TimedSegmentedScan(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();

@@ -135,6 +135,7 @@ double TimedConsecutiveReduction(
 
 	SizeT gpu_num_compacted;
 
+	// Marker kernel in profiling stream
 	util::FlushKernel<void><<<1,1>>>();
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
@@ -156,6 +157,7 @@ double TimedConsecutiveReduction(
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
 
+		// Marker kernel in profiling stream
 		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record

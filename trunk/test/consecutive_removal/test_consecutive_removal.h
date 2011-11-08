@@ -96,6 +96,10 @@ double TimedConsecutiveRemoval(
 	if (util::B40CPerror(cudaMalloc((void**) &d_num_compacted, sizeof(SizeT) * 1),
 		"TimedConsecutiveReduction cudaMalloc d_num_compacted failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Create enactor
+	consecutive_removal::Enactor enactor;
+	SizeT h_num_compacted;
+
 	// Move a fresh copy of the problem into device storage
 	if (util::B40CPerror(cudaMemcpy(
 			d_problem_storage.d_keys[0],
@@ -112,10 +116,8 @@ double TimedConsecutiveRemoval(
 			"TimedConsecutiveReduction cudaMemcpy d_values failed: ", __FILE__, __LINE__)) exit(1);
 	}
 
-	// Create enactor
-	consecutive_removal::Enactor enactor;
-
-	SizeT h_num_compacted;
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
@@ -129,6 +131,9 @@ double TimedConsecutiveRemoval(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();
