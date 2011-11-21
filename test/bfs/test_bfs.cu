@@ -938,7 +938,12 @@ int main( int argc, char** argv)
 		// Matrix-market coordinate-formatted graph file
 		if (graph_args < 1) { Usage(); return 1; }
 		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (builder::BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
+		if (builder::BuildMarketGraph<false>(
+			market_filename,
+			src,
+			csr_graph,
+			g_undirected) != 0)
+		{
 			return 1;
 		}
 
