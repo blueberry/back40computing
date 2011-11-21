@@ -206,7 +206,7 @@ int ReadDimacsStream(
 	printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 	fflush(stdout);
 
-	// Convert sorted COO to CSR
+	// Convert COO to CSR
 	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges, ordered_rows);
 	free(coo);
 
