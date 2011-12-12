@@ -121,7 +121,7 @@ int main(int argc, char** argv)
 	for (int i = 0; i < samples; i++) {
 
 		timer.Start();
-		enactor.Copy<Policy>(d_out, d_in, num_elements, ctas);
+		enactor.Copy<Policy>(d_out, d_in, num_elements, cta_sizes[i]);
 		timer.Stop();
 
 		float throughput = float(num_elements) / timer.ElapsedMillis() / 1000.0 / 1000.0;

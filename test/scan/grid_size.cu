@@ -164,7 +164,7 @@ int main(int argc, char** argv)
 		printf("%d, %d, %d, %f, %f\n",
 			i,
 			num_elements,
-			ctas,
+			cta_sizes[i],
 			timer.ElapsedMillis(),
 			throughput);
 	}
