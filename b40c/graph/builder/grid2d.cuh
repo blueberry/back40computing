@@ -41,15 +41,11 @@ namespace builder {
  * Builds a square 2D grid CSR graph.  Interior nodes have degree 5 (including
  * a self-loop)
  * 
- * If src == -1, then it is assigned to the grid-center.  Otherwise it is 
- * verified to be in range of the constructed graph.
- * 
  * Returns 0 on success, 1 on failure.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildGrid2dGraph(
 	VertexId width,
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 { 
 	if (width < 0) {
@@ -107,16 +103,6 @@ int BuildGrid2dGraph(
 	}
 	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always total
 
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		VertexId half = width / 2;
-		src = half * (width + 1);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
-	
 	return 0;
 }
 

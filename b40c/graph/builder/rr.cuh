@@ -46,7 +46,6 @@ template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildRandomRegularishGraph(
 	SizeT nodes,
 	int degree,
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 {
 	SizeT edges 				= nodes * degree;
@@ -81,16 +80,6 @@ int BuildRandomRegularishGraph(
 	printf("Done selecting (%ds).\n", (int) (mark1 - mark0));
 	fflush(stdout);
 
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
-	
 	return 0;
 }
 

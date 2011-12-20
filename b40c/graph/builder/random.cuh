@@ -41,16 +41,12 @@ namespace builder {
  * a pair of nodes for each edge.  There are possibilities of loops and multiple 
  * edges between pairs of nodes.    
  * 
- * If src == -1, it is assigned a random node.  Otherwise it is verified 
- * to be in range of the constructed graph.
- * 
  * Returns 0 on success, 1 on failure.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildRandomGraph(
 	SizeT nodes,
 	SizeT edges,
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 { 
@@ -91,16 +87,6 @@ int BuildRandomGraph(
 	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges);
 	free(coo);
 
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
-	
 	return 0;
 }
 
