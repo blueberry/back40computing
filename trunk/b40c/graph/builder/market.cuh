@@ -160,14 +160,10 @@ int ReadMarketStream(
 /**
  * Loads a MARKET-formatted CSR graph from the specified file.  If
  * dimacs_filename == NULL, then it is loaded from stdin.
- * 
- * If src == -1, it is assigned a random node.  Otherwise it is verified 
- * to be in range of the constructed graph.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildMarketGraph(
 	char *dimacs_filename, 
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected)
 { 
@@ -194,16 +190,6 @@ int BuildMarketGraph(
 			perror("Unable to open file");
 			return -1;
 		}
-	}
-	
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
 	}
 	
 	return 0;

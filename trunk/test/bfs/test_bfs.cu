@@ -71,6 +71,7 @@ bool g_verbose2;
 bool g_undirected;
 bool g_quick;			// Whether or not to perform CPU traversal as reference
 bool g_uneven;
+bool g_all;				// Whether or not to also run the other (non-hybrid) variants
 
 /******************************************************************************
  * Housekeeping Routines
@@ -86,7 +87,9 @@ void Usage()
 			"[--src=< <source idx> | randomize >] [--queue-size=<queue size>\n"
 			"[--mark-parents]\n"
 			"\n"
-			"graph types and args:\n"
+			"Unless otherwise specified, all graph types use 4-byte vertex-identifiers.\n"
+			"\n"
+			"Graph types and args:\n"
 			"\tgrid2d <width>\n"
 			"\t\t2D square grid lattice with width <width>.  Interior vertices \n"
 			"\t\thave 4 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
@@ -111,6 +114,14 @@ void Usage()
 			"\t\tA random graph generator that adds <d> randomly-chosen edges to each\n"
 			"\t\tof <n> nodes.  There are possibilities of loops and multiple edges\n"
 			"\t\tbetween pairs of nodes. Default source vertex is random.\n"
+			"\tg500 <n> <m>\n"
+			"\t\tAn R-MAT graph generator that adds <m> edges to <n> nodes in accordance with\n"
+			"\t\tthe Graph500 problem specification (8-byte vertex identifiers, A=.57,B=.19,C=.19,D=.05 "
+			"\t\tskewed probability parameterization)\n"
+			"\trmat <n> <m>\n"
+			"\t\tAn R-MAT graph generator that adds <m> edges to <n> nodes in accordance with\n"
+			"\t\tthe GTGraph generator defaults (A=.45,B=.15,C=.15,D=.25 skewed probability "
+			"parameterization)\n"
 			"\n"
 			"--v\tVerbose launch and statistical output is displayed to the console.\n"
 			"\n"
@@ -142,6 +153,9 @@ void Usage()
 			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
 			"\t\tGrid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
 			"\t\tgraphs are directed regardless of this flag.\n"
+			"\n"
+			"--all\tEvaluate traversal performance for all strategy variants (not just\n"
+			"\t\tthe hybrid approach to frontier management).\n"
 			"\n");
 }
 
@@ -674,58 +688,63 @@ void RunTests(
 			printf("\n");
 			fflush(stdout);
 		}
-
+/*
 		if (num_gpus == 1) {
 
-			if ((!csr_problem.uneven) && (!MARK_PARENTS)) {
-				// Perform one-phase expand-contract BFS implementation (single grid launch)
+			if (g_all) {
+
+				if (!csr_problem.uneven) {
+					// ping-pong queues are equal-sized
+
+					// Perform one-phase contract-expand BFS implementation (single grid launch)
+					if (TestGpuBfs<INSTRUMENT>(
+						test_iteration,
+						contract_expand_enactor,
+						csr_problem,
+						src,
+						h_source_path,
+						(g_quick) ? (VertexId*) NULL : reference_source_dist,
+						csr_graph,
+						stats[2],
+						max_grid_size)) exit(1);
+					printf("\n");
+					fflush(stdout);
+
+					if (!MARK_PARENTS) {
+						// Perform one-phase expand-contract BFS implementation (single grid launch)
+						if (TestGpuBfs<INSTRUMENT>(
+							test_iteration,
+							expand_contract_enactor,
+							csr_problem,
+							src,
+							h_source_path,
+							(g_quick) ? (VertexId*) NULL : reference_source_dist,
+							csr_graph,
+							stats[1],
+							max_grid_size)) exit(1);
+						printf("\n");
+						fflush(stdout);
+					}
+				}
+*/
+				// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
 				if (TestGpuBfs<INSTRUMENT>(
 					test_iteration,
-					expand_contract_enactor,
+					two_phase_enactor,
 					csr_problem,
 					src,
 					h_source_path,
 					(g_quick) ? (VertexId*) NULL : reference_source_dist,
 					csr_graph,
-					stats[1],
+					stats[3],
 					max_grid_size)) exit(1);
 				printf("\n");
 				fflush(stdout);
-			}
+/*
+			} else if (!csr_problem.uneven) {
 
-			if (!csr_problem.uneven) {
-				// Perform one-phase contract-expand BFS implementation (single grid launch)
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					contract_expand_enactor,
-					csr_problem,
-					src,
-					h_source_path,
-					(g_quick) ? (VertexId*) NULL : reference_source_dist,
-					csr_graph,
-					stats[2],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
-			// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
-			if (TestGpuBfs<INSTRUMENT>(
-				test_iteration,
-				two_phase_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
-				csr_graph,
-				stats[3],
-				max_grid_size)) exit(1);
-			printf("\n");
-			fflush(stdout);
-
-			if (!csr_problem.uneven) {
-
-				// Perform hybrid-phase out-of-core BFS implementation
+				// Default: perform hybrid-phase out-of-core BFS implementation
+				// ping-pong queues are equal-sized
 				if (TestGpuBfs<INSTRUMENT>(
 					test_iteration,
 					hybrid_enactor,
@@ -744,6 +763,7 @@ void RunTests(
 
 			if (!csr_problem.uneven) {
 				// Perform multi-GPU out-of-core BFS implementation
+				// ping-pong queues are equal-sized
 				if (TestGpuBfs<INSTRUMENT>(
 					test_iteration,
 					multi_gpu_enactor,
@@ -759,7 +779,7 @@ void RunTests(
 			}
 
 		}
-
+*/
 		if (g_verbose2) {
 			printf("Reference solution: ");
 			DisplaySolution(reference_source_dist, csr_graph.nodes);
@@ -794,42 +814,25 @@ void RunTests(
 }
 
 
-/******************************************************************************
- * Main
- ******************************************************************************/
-
-int main( int argc, char** argv)  
+template <
+	typename VertexId,
+	typename Value,
+	typename SizeT>
+void RunTests(
+	CsrGraph<VertexId, Value, SizeT> &csr_graph,
+	CommandLineArgs &args,
+	bool stream_from_host)
 {
-	typedef int VertexId;							// Use as the node identifier type
-	typedef int Value;								// Use as the value type
-	typedef int SizeT;								// Use as the graph size type
-	
 	VertexId 	src 				= -1;			// Use whatever the specified graph-type's default is
 	char* 		src_str				= NULL;
 	bool 		randomized_src		= false;		// Whether or not to select a new random src for each test iteration
 	bool 		instrumented		= false;		// Whether or not to collect instrumentation from kernels
 	bool 		mark_parents		= false;		// Whether or not to mark src-distance vs. parent vertices
-	bool		stream_from_host	= false;		// Whether or not to stream CSR representation from host mem
 	int 		test_iterations 	= 1;
 	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
 	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
 	double 		queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
-
-	CommandLineArgs args(argc, argv);
-	DeviceInit(args);
-	cudaSetDeviceFlags(cudaDeviceMapHost);
-
-	srand(0);									// Presently deterministic
-	//srand(time(NULL));	
-
-	//
-	// Check command line arguments
-	// 
 	
-	if (args.CheckCmdLineFlag("help")) {
-		Usage();
-		return 1;
-	}
 	instrumented = args.CheckCmdLineFlag("instrumented");
 	args.GetCmdLineArgument("src", src_str);
 	if (src_str != NULL) {
@@ -838,12 +841,15 @@ int main( int argc, char** argv)
 		} else {
 			src = atoi(src_str);
 		}
+	} else {
+		// Random source
+		src = builder::RandomNode(csr_graph.nodes);
 	}
 
 	g_undirected = args.CheckCmdLineFlag("undirected");
 	g_quick = args.CheckCmdLineFlag("quick");
+	g_all = args.CheckCmdLineFlag("all");
 	mark_parents = args.CheckCmdLineFlag("mark-parents");
-	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
 	g_uneven = args.CheckCmdLineFlag("uneven");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
@@ -854,8 +860,6 @@ int main( int argc, char** argv)
 	} else {
 		g_verbose = args.CheckCmdLineFlag("v");
 	}
-	int flags = args.ParsedArgc();
-	int graph_args = argc - flags - 1;
 
 	if ((num_gpus > 1) && (__B40C_LP64__ == 0)) {
 		printf("Must be compiled in 64-bit to run multiple GPUs\n");
@@ -882,113 +886,6 @@ int main( int argc, char** argv)
 		}
 	}
 
-
-	//
-	// Obtain CSR search graph
-	//
-
-	CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
-	
-	if (graph_args < 1) {
-		Usage();
-		return 1;
-	}
-	std::string graph_type = argv[1];
-	if (graph_type == "grid2d") {
-		// Two-dimensional regular lattice grid (degree 4)
-		if (graph_args < 2) { Usage(); return 1; }
-		VertexId width = atoi(argv[2]);
-		if (builder::BuildGrid2dGraph<false>(width, src, csr_graph) != 0) {
-			return 1;
-		}
-
-	} else if (graph_type == "grid3d") {
-		// Three-dimensional regular lattice grid (degree 6)
-		if (graph_args < 2) { Usage(); return 1; }
-		VertexId width = atoi(argv[2]);
-		if (builder::BuildGrid3dGraph<false>(width, src, csr_graph) != 0) {
-			return 1;
-		}
-
-	} else if (graph_type == "dimacs") {
-		// DIMACS-formatted graph file
-		if (graph_args < 1) { Usage(); return 1; }
-		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
-		int splice = 0;
-		args.GetCmdLineArgument("splice", splice);
-		if (builder::BuildDimacsGraph<false>(
-			dimacs_filename,
-			src,
-			csr_graph,
-			g_undirected,
-			splice) != 0)
-		{
-			return 1;
-		}
-		
-	} else if (graph_type == "metis") {
-		// METIS-formatted graph file
-		if (graph_args < 1) { Usage(); return 1; }
-		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (builder::BuildMetisGraph<false>(metis_filename, src, csr_graph) != 0) {
-			return 1;
-		}
-		
-	} else if (graph_type == "market") {
-		// Matrix-market coordinate-formatted graph file
-		if (graph_args < 1) { Usage(); return 1; }
-		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (builder::BuildMarketGraph<false>(
-			market_filename,
-			src,
-			csr_graph,
-			g_undirected) != 0)
-		{
-			return 1;
-		}
-
-	} else if (graph_type == "rmat") {
-		// Random graph of n nodes and m edges
-		if (graph_args < 3) { Usage(); return 1; }
-		SizeT nodes = atol(argv[2]);
-		SizeT edges = atol(argv[3]);
-		if (builder::BuildRmatGraph<false>(
-			nodes,
-			edges,
-			src,
-			csr_graph,
-			g_undirected,
-			0.45,
-			0.15,
-			0.15) != 0)
-		{
-			return 1;
-		}
-
-	} else if (graph_type == "random") {
-		// Random graph of n nodes and m edges
-		if (graph_args < 3) { Usage(); return 1; }
-		SizeT nodes = atol(argv[2]);
-		SizeT edges = atol(argv[3]);
-		if (builder::BuildRandomGraph<false>(nodes, edges, src, csr_graph, g_undirected) != 0) {
-			return 1;
-		}
-
-	} else if (graph_type == "rr") {
-		// Random-regular-ish graph of n nodes, each with degree d (allows loops and cycles)
-		if (graph_args < 3) { Usage(); return 1; }
-		SizeT nodes = atol(argv[2]);
-		int degree = atol(argv[3]);
-		if (builder::BuildRandomRegularishGraph<false>(nodes, degree, src, csr_graph) != 0) {
-			return 1;
-		}
-
-	} else {
-		// Unknown graph type
-		fprintf(stderr, "Unspecified graph type\n");
-		return 1;
-	}
-	
 	// Optionally display graph
 	if (g_verbose2) {
 		printf("\n");
@@ -998,6 +895,7 @@ int main( int argc, char** argv)
 	csr_graph.PrintHistogram();
 
 	// Run tests
+/*
 	if (instrumented) {
 
 		// Run instrumented kernel for runtime statistics
@@ -1010,14 +908,255 @@ int main( int argc, char** argv)
 		}
 
 	} else {
-
-		// Run regular kernel 
+*/
+		// Run regular kernel
 		if (mark_parents) {
-			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
+//			RunTests<VertexId, Value, SizeT, false, true>(
+//				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
 		}
+//	}
+}
+
+
+/******************************************************************************
+ * Main
+ ******************************************************************************/
+
+int main( int argc, char** argv)
+{
+	CommandLineArgs args(argc, argv);
+
+	if (args.CheckCmdLineFlag("help")) {
+		Usage();
+		return 1;
 	}
+
+	DeviceInit(args);
+	cudaSetDeviceFlags(cudaDeviceMapHost);
+
+	srand(0);									// Presently deterministic
+	//srand(time(NULL));
+
+	// Whether or not to stream CSR representation from host mem
+	bool stream_from_host = args.CheckCmdLineFlag("stream-from-host");
+
+
+	//
+	// Obtain CSR search graph
+	//
+
+	std::string graph_type = argv[1];
+	int flags = args.ParsedArgc();
+	int graph_args = argc - flags - 1;
+	if (graph_args < 1) {
+		Usage();
+		return 1;
+	}
+
+	if (graph_type == "grid2d") {
+
+		// Two-dimensional regular lattice grid (degree 4)
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 2) { Usage(); return 1; }
+		VertexId width = atoi(argv[2]);
+		if (builder::BuildGrid2dGraph<false>(
+			width,
+			csr_graph) != 0)
+		{
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "grid3d") {
+
+		// Three-dimensional regular lattice grid (degree 6)
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 2) { Usage(); return 1; }
+		VertexId width = atoi(argv[2]);
+		if (builder::BuildGrid3dGraph<false>(
+			width,
+			csr_graph) != 0)
+		{
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "dimacs") {
+
+		// DIMACS-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 1) { Usage(); return 1; }
+		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
+		int splice = 0;
+		args.GetCmdLineArgument("splice", splice);
+		if (builder::BuildDimacsGraph<false>(
+			dimacs_filename,
+			csr_graph,
+			g_undirected,
+			splice) != 0)
+		{
+			return 1;
+		}
+		
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "metis") {
+
+		// METIS-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 1) { Usage(); return 1; }
+		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
+		if (builder::BuildMetisGraph<false>(metis_filename, csr_graph) != 0) {
+			return 1;
+		}
+		
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "market") {
+
+		// Matrix-market coordinate-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 1) { Usage(); return 1; }
+		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
+		if (builder::BuildMarketGraph<false>(market_filename, csr_graph) != 0) {
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "rmat") {
+
+		// GTGraph R-MAT graph of n nodes and m edges (
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 3) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = atol(argv[3]);
+		if (builder::BuildRmatGraph<false>(
+			nodes,
+			edges,
+			csr_graph,
+			g_undirected,
+			0.45,
+			0.15,
+			0.15) != 0)
+		{
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "g500") {
+
+		// Graph500 R-MAT graph of n nodes and m edges
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 3) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = atol(argv[3]);
+		if (builder::BuildRmatGraph<false>(
+			nodes,
+			edges,
+			csr_graph,
+			g_undirected,
+			0.57,
+			0.19,
+			0.19) != 0)
+		{
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "random") {
+
+		// Random graph of n nodes and m edges
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 3) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = atol(argv[3]);
+		if (builder::BuildRandomGraph<false>(nodes, edges, csr_graph, g_undirected) != 0) {
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else if (graph_type == "rr") {
+
+		// Random-regular(ish) graph of n nodes, each with degree d (allows loops and cycles)
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
+
+		if (graph_args < 3) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		int degree = atol(argv[3]);
+		if (builder::BuildRandomRegularishGraph<false>(nodes, degree, csr_graph) != 0) {
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args, stream_from_host);
+
+	} else {
+
+		// Unknown graph type
+		fprintf(stderr, "Unspecified graph type\n");
+		return 1;
+	}
+	
+
+	return 0;
 }
