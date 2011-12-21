@@ -454,7 +454,7 @@ struct CsrProblem
 					// Mask in owning gpu
 					for (int i = 0; i < row_edges; i++) {
 						VertexId *ptr = slice_column_indices[gpu] + slice_row_offsets[gpu][slice_row] + i;
-						int owner = GpuIndex(*ptr);
+						VertexId owner = GpuIndex(*ptr);
 						(*ptr) |= (owner << ProblemType::GPU_MASK_SHIFT);
 					}
 				}

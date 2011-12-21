@@ -105,7 +105,7 @@ struct CsrGraph
 		SizeT coo_edges,
 		bool ordered_rows = false)
 	{
-		printf("  Converting %d vertices, %d edges (%s rows) to CSR format... ",
+		printf("  Converting %d vertices, %d directed edges (%s tuples) to CSR format... ",
 			coo_nodes, coo_edges, ordered_rows ? "ordered" : "unordered");
 		time_t mark1 = time(NULL);
 		fflush(stdout);
