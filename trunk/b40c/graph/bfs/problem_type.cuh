@@ -55,8 +55,8 @@ struct ProblemType : partition::ProblemType<
 	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
 
 	static const bool MARK_PARENTS			= _MARK_PARENTS;
-	static const int LOG_MAX_GPUS			= _LOG_MAX_GPUS;
-	static const int MAX_GPUS				= 1 << LOG_MAX_GPUS;
+	static const _VertexId LOG_MAX_GPUS		= _LOG_MAX_GPUS;
+	static const _VertexId MAX_GPUS			= 1 << LOG_MAX_GPUS;
 
 	static const _VertexId GPU_MASK_SHIFT	= (sizeof(_VertexId) * 8) - LOG_MAX_GPUS;
 	static const _VertexId GPU_MASK			= (MAX_GPUS - 1) << GPU_MASK_SHIFT;			// Bitmask for masking off the lower vertex id bits to reveal owner gpu id
