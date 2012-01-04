@@ -60,7 +60,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 	typedef typename SmemStorage::State::WarpComm 	WarpComm;
@@ -86,8 +86,8 @@ struct Cta
 	VertexId 				*d_out;
 	SizeT 					*d_in_row_lengths;
 	VertexId				*d_column_indices;
-	CollisionMask 			*d_collision_cache;
-	VertexId 				*d_source_path;
+	VisitedMask 			*d_visited_mask;
+	VertexId 				*d_labels;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -110,18 +110,18 @@ struct Cta
 		// Location of mask byte to read
 		SizeT mask_byte_offset = (vertex & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
-		// Read byte from from collision cache bitmask
-		CollisionMask mask_byte = tex1Dfetch(
+		// Read byte from from visited mask (tex)
+		VisitedMask mask_byte = tex1Dfetch(
 			bitmask_tex_ref,
 			mask_byte_offset);
 
 		// Bit in mask byte corresponding to current vertex id
-		CollisionMask mask_bit = 1 << (vertex & 7);
+		VisitedMask mask_bit = 1 << (vertex & 7);
 
 		if ((mask_bit & mask_byte) == 0) {
 
 			util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-				mask_byte, cta->d_collision_cache + mask_byte_offset);
+				mask_byte, cta->d_visited_mask + mask_byte_offset);
 
 			if ((mask_bit & mask_byte) == 0) {
 
@@ -129,13 +129,13 @@ struct Cta
 				mask_byte |= mask_bit;
 				util::io::ModifiedStore<util::io::st::cg>::St(
 					mask_byte,
-					cta->d_collision_cache + mask_byte_offset);
+					cta->d_visited_mask + mask_byte_offset);
 
 				// Load source path of node
 				VertexId source_path;
 				util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 					source_path,
-					cta->d_source_path + vertex);
+					cta->d_labels + vertex);
 
 				vertex = source_path;
 			}
@@ -506,8 +506,8 @@ struct Cta
 		VertexId 				*d_out,
 		SizeT 					*d_in_row_lengths,
 		VertexId 				*d_column_indices,
-		CollisionMask 			*d_collision_cache,
-		VertexId 				*d_source_path,
+		VisitedMask 			*d_visited_mask,
+		VertexId 				*d_labels,
 		util::CtaWorkProgress	&work_progress) :
 
 			iteration(iteration),
@@ -525,8 +525,8 @@ struct Cta
 			d_in_row_lengths(d_in_row_lengths),
 			d_out(d_out),
 			d_column_indices(d_column_indices),
-			d_collision_cache(d_collision_cache),
-			d_source_path(d_source_path),
+			d_visited_mask(d_visited_mask),
+			d_labels(d_labels),
 			work_progress(work_progress) {}
 
 

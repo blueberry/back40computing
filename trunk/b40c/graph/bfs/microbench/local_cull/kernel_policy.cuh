@@ -78,7 +78,7 @@ struct KernelPolicy : ProblemType
 {
 	typedef typename ProblemType::SizeT 			SizeT;
 	typedef typename ProblemType::VertexId 			VertexId;
-	typedef typename ProblemType::CollisionMask 	CollisionMask;
+	typedef typename ProblemType::VisitedMask 	VisitedMask;
 	typedef char									ThreadId;
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;

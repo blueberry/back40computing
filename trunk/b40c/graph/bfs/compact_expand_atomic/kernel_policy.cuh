@@ -223,12 +223,12 @@ struct KernelPolicy : _ProblemType
 												- sizeof(State)
 												- 128,
 
-			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
-													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
+			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PREDECESSORS) ?
+													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and predecessor
 													sizeof(SizeT),								// Just gather offset
 
 			GATHER_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
-			PARENT_ELEMENTS					= (ProblemType::MARK_PARENTS) ?  GATHER_ELEMENTS : 0,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PREDECESSORS) ?  GATHER_ELEMENTS : 0,
 			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
 
 			WARP_HASH_ELEMENTS				= 128,
@@ -244,7 +244,7 @@ struct KernelPolicy : _ProblemType
 			// Scratch elements
 			struct {
 				SizeT 						gather_offsets[GATHER_ELEMENTS];
-				VertexId 					gather_parents[PARENT_ELEMENTS];
+				VertexId 					gather_predecessors[PARENT_ELEMENTS];
 			};
 			volatile VertexId 				warp_hashtable[WARPS][WARP_HASH_ELEMENTS];
 			VertexId 						cta_hashtable[HASH_ELEMENTS];

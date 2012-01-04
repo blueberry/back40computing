@@ -407,7 +407,7 @@ public:
     {
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -445,8 +445,8 @@ public:
 				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						compact_atomic::BitmaskTex<CollisionMask>::ref,
-						csr_problem.graph_slices[i]->d_collision_cache,
+						compact_atomic::BitmaskTex<VisitedMask>::ref,
+						csr_problem.graph_slices[i]->d_visited_mask,
 						bitmask_desc,
 						bytes),
 					"EnactorMultiGpu cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -546,9 +546,9 @@ public:
 					NULL,																		// d_done (not used)
 					slice->frontier_queues.d_keys[control->selector ^ 1],						// in vertices
 					slice->d_multigpu_vqueue,													// out vertices
-					(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],		// in parents
-					slice->d_source_path,
-					slice->d_collision_cache,
+					(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],		// in predecessors
+					slice->d_labels,
+					slice->d_visited_mask,
 					control->work_progress,
 					control->expand_kernel_stats);
 
@@ -584,7 +584,7 @@ public:
 						NULL,														// d_done (not used)
 						slice->d_multigpu_vqueue,									// in vertices
 						slice->frontier_queues.d_keys[control->selector],			// out vertices
-						slice->frontier_queues.d_values[control->selector],			// out parents
+						slice->frontier_queues.d_values[control->selector],			// out predecessors
 						slice->d_column_indices,
 						slice->d_row_offsets,
 						control->work_progress,
@@ -621,7 +621,7 @@ public:
 						slice->frontier_queues.d_keys[control->selector],			// in vertices
 						slice->d_keep,
 						(SizeT *) control->spine.d_spine,
-						slice->d_collision_cache,
+						slice->d_visited_mask,
 						control->work_progress,
 						control->partition_kernel_stats);
 
@@ -662,8 +662,8 @@ public:
 						csr_problem.num_gpus,
 						slice->frontier_queues.d_keys[control->selector],						// in vertices
 						slice->frontier_queues.d_keys[control->selector ^ 1],					// out vertices
-						(VertexId *) slice->frontier_queues.d_values[control->selector],		// in parents
-						(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],	// out parents
+						(VertexId *) slice->frontier_queues.d_values[control->selector],		// in predecessors
+						(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],	// out predecessors
 						slice->d_keep,
 						(SizeT *) control->spine.d_spine,
 						control->work_progress,
@@ -705,7 +705,7 @@ public:
 							spine[control->spine_elements - 1]);
 						printf("Source distance vector on gpu %d:\n", control->gpu);
 						DisplayDeviceResults(
-							slice->d_source_path,
+							slice->d_labels,
 							slice->nodes);
 					}
 				}
@@ -773,8 +773,8 @@ public:
 									csr_problem.num_gpus,
 									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
 									slice->d_multigpu_vqueue,																	// out vertices
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,		// in parents
-									slice->d_source_path,
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,		// in predecessors
+									slice->d_labels,
 									control->work_progress,
 									control->copy_kernel_stats);
 
@@ -795,9 +795,9 @@ public:
 									NULL,																						// d_done (not used)
 									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
 									slice->d_multigpu_vqueue,																	// out vertices
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector ^ 1] + queue_offset,		// in parents
-									slice->d_source_path,
-									slice->d_collision_cache,
+									(VertexId *) peer_slice->frontier_queues.d_values[control->selector ^ 1] + queue_offset,		// in predecessors
+									slice->d_labels,
+									slice->d_visited_mask,
 									control->work_progress,
 									control->expand_kernel_stats);
 							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),

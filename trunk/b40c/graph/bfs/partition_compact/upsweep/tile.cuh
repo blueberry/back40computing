@@ -68,7 +68,7 @@ struct Tile :
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 	typedef typename KernelPolicy::KeyType 			KeyType;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
@@ -109,11 +109,11 @@ struct Tile :
 				SizeT mask_byte_offset = (tile->keys[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 				// Bit in mask byte corresponding to current vertex id
-				CollisionMask mask_bit = 1 << (tile->keys[LOAD][VEC] & 7);
+				VisitedMask mask_bit = 1 << (tile->keys[LOAD][VEC] & 7);
 
-				// Read byte from from collision cache bitmask tex
-				CollisionMask mask_byte = tex1Dfetch(
-					compact_atomic::BitmaskTex<CollisionMask>::ref,
+				// Read byte from from visited mask (tex)
+				VisitedMask mask_byte = tex1Dfetch(
+					compact_atomic::BitmaskTex<VisitedMask>::ref,
 					mask_byte_offset);
 
 				if (mask_bit & mask_byte) {
@@ -124,7 +124,7 @@ struct Tile :
 				} else {
 
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-						mask_byte, cta->d_collision_cache + mask_byte_offset);
+						mask_byte, cta->d_visited_mask + mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
 
@@ -137,7 +137,7 @@ struct Tile :
 						mask_byte |= mask_bit;
 						util::io::ModifiedStore<util::io::st::cg>::St(
 							mask_byte,
-							cta->d_collision_cache + mask_byte_offset);
+							cta->d_visited_mask + mask_byte_offset);
 					}
 				}
 
@@ -263,7 +263,7 @@ struct Tile :
 
 	/**
 	 * Culls vertices based upon whether or not we've set a bit for them
-	 * in the d_collision_cache bitmask
+	 * in the d_visited_mask bitmask
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void BitmaskCull(Cta *cta)
@@ -273,7 +273,7 @@ struct Tile :
 
 	/**
 	 * Culls vertices based upon whether or not we've set a bit for them
-	 * in the d_collision_cache bitmask
+	 * in the d_visited_mask bitmask
 	 */
 	template <typename Cta>
 	__device__ __forceinline__ void LocalCull(Cta *cta)
@@ -333,7 +333,7 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE>::Init(valid, 1);
 
-		// Cull valid flags using global collision bitmask
+		// Cull valid flags using global visited mask
 		BitmaskCull(cta);
 
 		// Cull valid flags using local collision hashing

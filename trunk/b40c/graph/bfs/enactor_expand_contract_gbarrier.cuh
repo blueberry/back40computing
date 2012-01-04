@@ -174,7 +174,7 @@ public:
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -198,8 +198,8 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					expand_compact_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					expand_compact_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorExpandContractGBarrier cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -229,8 +229,8 @@ public:
 
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
-				graph_slice->d_source_path,
-				graph_slice->d_collision_cache,
+				graph_slice->d_labels,
+				graph_slice->d_visited_mask,
 				this->work_progress,
 				this->global_barrier,
 

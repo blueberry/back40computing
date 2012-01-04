@@ -40,21 +40,21 @@ namespace bfs {
 template <
 	typename 	_VertexId,						// Type of signed integer to use as vertex id (e.g., uint32)
 	typename 	_SizeT,							// Type of unsigned integer to use for array indexing (e.g., uint32)
-	typename 	_CollisionMask,					// Type of unsigned integer to use for collision bitmask (e.g., uint8)
+	typename 	_VisitedMask,					// Type of unsigned integer to use for visited mask (e.g., uint8)
 	typename 	_ValidFlag,						// Type of integer to use for compaction validity (e.g., uint8)
-	bool 		_MARK_PARENTS,					// Whether to mark parent-vertices during search vs. distance-from-source
+	bool 		_MARK_PREDECESSORS,				// Whether to mark predecessor-vertices (vs. distance-from-source)
 	int 		_LOG_MAX_GPUS>
 struct ProblemType : partition::ProblemType<
-	_VertexId, 																// KeyType
-	typename util::If<_MARK_PARENTS, _VertexId, util::NullType>::Type,		// ValueType
-	_SizeT>																	// SizeT
+	_VertexId, 																	// KeyType
+	typename util::If<_MARK_PREDECESSORS, _VertexId, util::NullType>::Type,		// ValueType
+	_SizeT>																		// SizeT
 {
 	typedef _VertexId														VertexId;
-	typedef _CollisionMask													CollisionMask;
+	typedef _VisitedMask													VisitedMask;
 	typedef _ValidFlag														ValidFlag;
 	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
 
-	static const bool MARK_PARENTS			= _MARK_PARENTS;
+	static const bool MARK_PREDECESSORS		= _MARK_PREDECESSORS;
 	static const _VertexId LOG_MAX_GPUS		= _LOG_MAX_GPUS;
 	static const _VertexId MAX_GPUS			= 1 << LOG_MAX_GPUS;
 

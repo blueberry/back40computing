@@ -46,15 +46,15 @@ namespace compact_atomic {
 
 
 /**
- * Templated texture reference for collision bitmask
+ * Templated texture reference for visited mask
  */
-template <typename CollisionMask>
+template <typename VisitedMask>
 struct BitmaskTex
 {
-	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> ref;
 };
-template <typename CollisionMask>
-texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
+template <typename VisitedMask>
+texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<VisitedMask>::ref;
 
 
 /**
@@ -69,7 +69,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
@@ -87,9 +87,9 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;					// Incoming vertex ids
 	VertexId 				*d_out;					// Compacted vertex ids
-	VertexId 				*d_parent_in;			// Incoming parent vertex ids (optional)
-	CollisionMask 			*d_collision_cache;
-	VertexId				*d_source_path;
+	VertexId 				*d_predecessor_in;			// Incoming predecessor vertex ids (optional)
+	VisitedMask 			*d_visited_mask;
+	VertexId				*d_labels;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -130,7 +130,7 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Whether or not the corresponding vertex_id is valid for exploring
 		ValidFlag 	flags[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -174,11 +174,11 @@ struct Cta
 					SizeT mask_byte_offset = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
+					VisitedMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
-					// Read byte from from collision cache bitmask tex
-					CollisionMask mask_byte = tex1Dfetch(
-						BitmaskTex<CollisionMask>::ref,
+					// Read byte from from visited mask in tex
+					VisitedMask mask_byte = tex1Dfetch(
+						BitmaskTex<VisitedMask>::ref,
 						mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
@@ -189,7 +189,7 @@ struct Cta
 					} else {
 
 						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-							mask_byte, cta->d_collision_cache + mask_byte_offset);
+							mask_byte, cta->d_visited_mask + mask_byte_offset);
 
 						if (mask_bit & mask_byte) {
 
@@ -202,7 +202,7 @@ struct Cta
 							mask_byte |= mask_bit;
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								mask_byte,
-								cta->d_collision_cache + mask_byte_offset);
+								cta->d_visited_mask + mask_byte_offset);
 						}
 					}
 				}
@@ -227,7 +227,7 @@ struct Cta
 					VertexId source_path;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						source_path,
-						cta->d_source_path + row_id);
+						cta->d_labels + row_id);
 
 
 					if (source_path != -1) {
@@ -239,16 +239,16 @@ struct Cta
 
 						if (KernelPolicy::MARK_PARENTS) {
 
-							// Update source path with parent vertex
+							// Update source path with predecessor vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
-								tile->parent_id[LOAD][VEC],
-								cta->d_source_path + row_id);
+								tile->predecessor_id[LOAD][VEC],
+								cta->d_labels + row_id);
 						} else {
 
 							// Update source path with current iteration
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								cta->iteration,
-								cta->d_source_path + row_id);
+								cta->d_labels + row_id);
 						}
 					}
 				}
@@ -392,7 +392,7 @@ struct Cta
 
 		/**
 		 * Culls vertices based upon whether or not we've set a bit for them
-		 * in the d_collision_cache bitmask
+		 * in the d_visited_mask bitmask
 		 */
 		__device__ __forceinline__ void BitmaskCull(Cta *cta)
 		{
@@ -441,9 +441,9 @@ struct Cta
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_in,
-		VertexId 				*d_source_path,
-		CollisionMask 			*d_collision_cache,
+		VertexId 				*d_predecessor_in,
+		VertexId 				*d_labels,
+		VisitedMask 			*d_visited_mask,
 		util::CtaWorkProgress	&work_progress) :
 
 			iteration(iteration),
@@ -456,9 +456,9 @@ struct Cta
 			smem_storage(smem_storage),
 			d_in(d_in),
 			d_out(d_out),
-			d_parent_in(d_parent_in),
-			d_source_path(d_source_path),
-			d_collision_cache(d_collision_cache),
+			d_predecessor_in(d_predecessor_in),
+			d_labels(d_labels),
+			d_visited_mask(d_visited_mask),
 			work_progress(work_progress)
 
 	{
@@ -493,20 +493,20 @@ struct Cta
 
 		if (KernelPolicy::MARK_PARENTS) {
 
-			// Load parent vertices as well
+			// Load predecessor vertices as well
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
+					tile.predecessor_id,
+					d_predecessor_in,
 					cta_offset,
 					guarded_elements);
 		}
 
-		// Cull using global collision bitmask
+		// Cull using global visited mask
 		tile.BitmaskCull(this);
 
 		// Cull using vertex visitation status

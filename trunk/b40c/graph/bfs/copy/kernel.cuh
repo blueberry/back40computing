@@ -49,8 +49,8 @@ struct SweepPass
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -74,8 +74,8 @@ struct SweepPass
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path);
+			d_predecessor_in,
+			d_labels);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -126,8 +126,8 @@ struct SweepPass <KernelPolicy, true>
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -140,8 +140,8 @@ struct SweepPass <KernelPolicy, true>
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path);
+			d_predecessor_in,
+			d_labels);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -179,8 +179,8 @@ void Kernel(
 	int										num_gpus,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId			*d_source_path,
+	typename KernelPolicy::VertexId 		*d_predecessor_in,
+	typename KernelPolicy::VertexId			*d_labels,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
@@ -220,8 +220,8 @@ void Kernel(
 		num_gpus,
 		d_in,
 		d_out,
-		d_parent_in,
-		d_source_path,
+		d_predecessor_in,
+		d_labels,
 		work_progress,
 		work_decomposition);
 

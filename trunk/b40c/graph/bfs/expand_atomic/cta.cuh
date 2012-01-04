@@ -91,7 +91,7 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_out;
-	VertexId 				*d_parent_out;
+	VertexId 				*d_predecessor_out;
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
 
@@ -232,8 +232,8 @@ struct Cta
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
 						cta->smem_storage.state.warp_comm[0][1] = tile->coarse_row_rank[LOAD][VEC];									// queue rank
 						cta->smem_storage.state.warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
-						if (KernelPolicy::MARK_PARENTS) {
-							cta->smem_storage.state.warp_comm[0][3] = tile->vertex_id[LOAD][VEC];									// parent
+						if (KernelPolicy::MARK_PREDECESSORS) {
+							cta->smem_storage.state.warp_comm[0][3] = tile->vertex_id[LOAD][VEC];									// predecessor
 						}
 
 						// Unset row length
@@ -246,9 +246,9 @@ struct Cta
 					SizeT coop_rank	 	= cta->smem_storage.state.warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[0][2];
 
-					VertexId parent_id;
-					if (KernelPolicy::MARK_PARENTS) {
-						parent_id = cta->smem_storage.state.warp_comm[0][3];
+					VertexId predecessor_id;
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						predecessor_id = cta->smem_storage.state.warp_comm[0][3];
 					}
 
 					VertexId neighbor_id;
@@ -262,10 +262,10 @@ struct Cta
 						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 							neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
-						if (KernelPolicy::MARK_PARENTS) {
-							// Scatter parent
+						if (KernelPolicy::MARK_PREDECESSORS) {
+							// Scatter predecessor
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-								parent_id, cta->d_parent_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+								predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += KernelPolicy::THREADS;
@@ -302,8 +302,8 @@ struct Cta
 							cta->smem_storage.state.warp_comm[warp_id][0] = tile->row_offset[LOAD][VEC];									// start
 							cta->smem_storage.state.warp_comm[warp_id][1] = tile->coarse_row_rank[LOAD][VEC];								// queue rank
 							cta->smem_storage.state.warp_comm[warp_id][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
-							if (KernelPolicy::MARK_PARENTS) {
-								cta->smem_storage.state.warp_comm[warp_id][3] = tile->vertex_id[LOAD][VEC];								// parent
+							if (KernelPolicy::MARK_PREDECESSORS) {
+								cta->smem_storage.state.warp_comm[warp_id][3] = tile->vertex_id[LOAD][VEC];								// predecessor
 							}
 
 							// Unset row length
@@ -314,9 +314,9 @@ struct Cta
 						SizeT coop_rank 	= cta->smem_storage.state.warp_comm[warp_id][1] + lane_id;
 						SizeT coop_oob 		= cta->smem_storage.state.warp_comm[warp_id][2];
 
-						VertexId parent_id;
-						if (KernelPolicy::MARK_PARENTS) {
-							parent_id = cta->smem_storage.state.warp_comm[warp_id][3];
+						VertexId predecessor_id;
+						if (KernelPolicy::MARK_PREDECESSORS) {
+							predecessor_id = cta->smem_storage.state.warp_comm[warp_id][3];
 						}
 
 						VertexId neighbor_id;
@@ -330,10 +330,10 @@ struct Cta
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
-							if (KernelPolicy::MARK_PARENTS) {
-								// Scatter parent
+							if (KernelPolicy::MARK_PREDECESSORS) {
+								// Scatter predecessor
 								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+									predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 							}
 
 							coop_offset += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
@@ -349,10 +349,10 @@ struct Cta
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
-							if (KernelPolicy::MARK_PARENTS) {
-								// Scatter parent
+							if (KernelPolicy::MARK_PREDECESSORS) {
+								// Scatter predecessor
 								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-									parent_id, cta->d_parent_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+									predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 							}
 						}
 					}
@@ -379,9 +379,9 @@ struct Cta
 					// Put gather offset into scratch space
 					cta->smem_storage.gather_offsets[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
-					if (KernelPolicy::MARK_PARENTS) {
-						// Put dequeued vertex as the parent into scratch space
-						cta->smem_storage.gather_parents[scratch_offset] = tile->vertex_id[LOAD][VEC];
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						// Put dequeued vertex as the predecessor into scratch space
+						cta->smem_storage.gather_predecessors[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -534,7 +534,7 @@ struct Cta
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_out,
+		VertexId 				*d_predecessor_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
 		util::CtaWorkProgress	&work_progress) :
@@ -552,7 +552,7 @@ struct Cta
 				TileTuple(0, 0)),
 			d_in(d_in),
 			d_out(d_out),
-			d_parent_out(d_parent_out),
+			d_predecessor_out(d_predecessor_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
 			work_progress(work_progress) {}
@@ -648,12 +648,12 @@ struct Cta
 					neighbor_id,
 					d_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 
-				if (KernelPolicy::MARK_PARENTS) {
-					// Scatter parent it into queue
-					VertexId parent_id = smem_storage.gather_parents[scratch_offset];
+				if (KernelPolicy::MARK_PREDECESSORS) {
+					// Scatter predecessor it into queue
+					VertexId predecessor_id = smem_storage.gather_predecessors[scratch_offset];
 					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-						parent_id,
-						d_parent_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
+						predecessor_id,
+						d_predecessor_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 

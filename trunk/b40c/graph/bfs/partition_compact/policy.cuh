@@ -110,7 +110,7 @@ struct Policy :
 
 	typedef typename ProblemType::VertexId 			VertexId;
 	typedef typename ProblemType::ValidFlag			ValidFlag;
-	typedef typename ProblemType::CollisionMask 	CollisionMask;
+	typedef typename ProblemType::VisitedMask 	VisitedMask;
 	typedef typename ProblemType::SizeT 			SizeT;
 
 	typedef typename ProblemType::KeyType 			KeyType;

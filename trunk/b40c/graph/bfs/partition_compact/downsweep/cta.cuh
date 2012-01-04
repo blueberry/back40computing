@@ -91,8 +91,8 @@ struct Cta :
 		int 			num_gpus,
 		VertexId 		*&d_in,
 		VertexId 		*&d_out,
-		VertexId 		*&d_parent_in,
-		VertexId 		*&d_parent_out,
+		VertexId 		*&d_predecessor_in,
+		VertexId 		*&d_predecessor_out,
 		ValidFlag		*&d_flags_in,
 		SizeT 			*&d_spine,
 		LanePartial		base_composite_counter,
@@ -101,8 +101,8 @@ struct Cta :
 				smem_storage,
 				d_in,							// d_in_keys
 				d_out,							// d_out_keys
-				(ValueType *&) d_parent_in,		// d_in_values
-				(ValueType *&) d_parent_out,	// d_out_values
+				(ValueType *&) d_predecessor_in,		// d_in_values
+				(ValueType *&) d_predecessor_out,	// d_out_values
 				d_spine,
 				base_composite_counter,
 				raking_segment),

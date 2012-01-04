@@ -160,7 +160,7 @@ public:
 	{
 		typedef typename CsrProblem::VertexId					VertexId;
 		typedef typename CsrProblem::SizeT						SizeT;
-		typedef typename CsrProblem::CollisionMask				CollisionMask;
+		typedef typename CsrProblem::VisitedMask				VisitedMask;
 		typedef typename CsrProblem::ValidFlag					ValidFlag;
 
 		cudaError_t retval = cudaSuccess;
@@ -226,7 +226,7 @@ public:
 			// Copy source distance
 			VertexId src_distance = 0;
 			if (retval = util::B40CPerror(cudaMemcpy(
-					graph_slice->d_source_path + src,
+					graph_slice->d_labels + src,
 					&src_distance,
 					sizeof(VertexId) * 1,
 					cudaMemcpyHostToDevice),
@@ -244,7 +244,7 @@ public:
 			if (util::B40CPerror(cudaBindTexture(
 					0,
 					status_lookup::bitmask_tex_ref,
-					graph_slice->d_collision_cache,
+					graph_slice->d_visited_mask,
 					channelDesc,
 					bytes),
 				"EnactorGatherLookup cudaBindTexture failed", __FILE__, __LINE__)) exit(1);
@@ -266,8 +266,8 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
-						graph_slice->d_collision_cache,
-						graph_slice->d_source_path,
+						graph_slice->d_visited_mask,
+						graph_slice->d_labels,
 						this->work_progress,
 						this->expand_kernel_stats);
 
@@ -293,8 +293,8 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
-						(CollisionMask *) graph_slice->d_keep,
-						graph_slice->d_source_path,
+						(VisitedMask *) graph_slice->d_keep,
+						graph_slice->d_labels,
 						this->work_progress);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "neighbor_gather::Kernel failed ", __FILE__, __LINE__))) break;
@@ -322,9 +322,9 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_in
 						graph_slice->frontier_queues.d_keys[selector],			// d_out_row_offsets
 						graph_slice->frontier_queues.d_values[selector],		// d_out_row_lengths
-						graph_slice->d_collision_cache,
+						graph_slice->d_visited_mask,
 						graph_slice->d_row_offsets,
-						graph_slice->d_source_path,
+						graph_slice->d_labels,
 						this->work_progress,
 						this->compact_kernel_stats);
 
@@ -347,9 +347,9 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_in
 						graph_slice->frontier_queues.d_keys[selector],			// d_out_row_offsets
 						graph_slice->frontier_queues.d_values[selector],		// d_out_row_lengths
-						(CollisionMask *) graph_slice->d_keep,
+						(VisitedMask *) graph_slice->d_keep,
 						graph_slice->d_row_offsets,
-						graph_slice->d_source_path,
+						graph_slice->d_labels,
 						this->work_progress);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "status_lookup::Kernel failed ", __FILE__, __LINE__))) break;

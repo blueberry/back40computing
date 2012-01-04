@@ -62,8 +62,8 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_out;
-	VertexId 				*d_parent_in;
-	VertexId				*d_source_path;
+	VertexId 				*d_predecessor_in;
+	VertexId				*d_labels;
 
 	//---------------------------------------------------------------------
 	// Helper Structures
@@ -93,7 +93,7 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 
 		//---------------------------------------------------------------------
@@ -121,7 +121,7 @@ struct Cta
 					VertexId source_path;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						source_path,
-						cta->d_source_path + row_id);
+						cta->d_labels + row_id);
 
 
 					if (source_path != -1) {
@@ -131,18 +131,18 @@ struct Cta
 
 					} else {
 
-						if (KernelPolicy::MARK_PARENTS) {
+						if (KernelPolicy::MARK_PREDECESSORS) {
 
-							// Update source path with parent vertex
+							// Update source path with predecessor vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
-								tile->parent_id[LOAD][VEC],
-								cta->d_source_path + row_id);
+								tile->predecessor_id[LOAD][VEC],
+								cta->d_labels + row_id);
 						} else {
 
 							// Update source path with current iteration
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								cta->iteration,
-								cta->d_source_path + row_id);
+								cta->d_labels + row_id);
 						}
 					}
 				}
@@ -206,14 +206,14 @@ struct Cta
 		int						num_gpus,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_in,
-		VertexId 				*d_source_path) :
+		VertexId 				*d_predecessor_in,
+		VertexId 				*d_labels) :
 			iteration(iteration),
 			num_gpus(num_gpus),
 			d_in(d_in),
 			d_out(d_out),
-			d_parent_in(d_parent_in),
-			d_source_path(d_source_path)
+			d_predecessor_in(d_predecessor_in),
+			d_labels(d_labels)
 	{}
 
 
@@ -242,17 +242,17 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		if (KernelPolicy::MARK_PARENTS) {
+		if (KernelPolicy::MARK_PREDECESSORS) {
 
-			// Load tile of parents
+			// Load tile of predecessors
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
+					tile.predecessor_id,
+					d_predecessor_in,
 					cta_offset,
 					guarded_elements);
 		}

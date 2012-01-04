@@ -46,15 +46,15 @@ namespace expand_compact_atomic {
 
 
 /**
- * Templated texture reference for collision bitmask
+ * Templated texture reference for visited mask
  */
-template <typename CollisionMask>
+template <typename VisitedMask>
 struct BitmaskTex
 {
-	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> ref;
 };
-template <typename CollisionMask>
-texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
+template <typename VisitedMask>
+texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<VisitedMask>::ref;
 
 
 /**
@@ -87,7 +87,7 @@ struct Cta
 	typedef typename KernelPolicy::SmemStorage			SmemStorage;
 	typedef typename KernelPolicy::VertexId 			VertexId;
 	typedef typename KernelPolicy::SizeT 				SizeT;
-	typedef typename KernelPolicy::CollisionMask 		CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 		VisitedMask;
 
 	typedef typename KernelPolicy::SrtsExpandDetails 	SrtsExpandDetails;
 	typedef typename KernelPolicy::SrtsCompactDetails 	SrtsCompactDetails;
@@ -103,12 +103,12 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_out;
-	VertexId 				*d_parent_in;
-	VertexId 				*d_parent_out;
+	VertexId 				*d_predecessor_in;
+	VertexId 				*d_predecessor_out;
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
-	VertexId				*d_source_path;
-	CollisionMask 			*d_collision_cache;
+	VertexId				*d_labels;
+	VisitedMask 			*d_visited_mask;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -136,11 +136,11 @@ struct Cta
 			SizeT mask_byte_offset = (neighbor_id & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 			// Bit in mask byte corresponding to current vertex id
-			CollisionMask mask_bit = 1 << (neighbor_id & 7);
+			VisitedMask mask_bit = 1 << (neighbor_id & 7);
 
-			// Read byte from from collision cache bitmask tex
-			CollisionMask mask_byte = tex1Dfetch(
-				BitmaskTex<CollisionMask>::ref,
+			// Read byte from from visited mask (tex)
+			VisitedMask mask_byte = tex1Dfetch(
+				BitmaskTex<VisitedMask>::ref,
 				mask_byte_offset);
 
 			if (mask_bit & mask_byte) {
@@ -151,7 +151,7 @@ struct Cta
 			} else {
 
 				util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-					mask_byte, d_collision_cache + mask_byte_offset);
+					mask_byte, d_visited_mask + mask_byte_offset);
 
 				if (mask_bit & mask_byte) {
 
@@ -164,7 +164,7 @@ struct Cta
 					mask_byte |= mask_bit;
 					util::io::ModifiedStore<util::io::st::cg>::St(
 						mask_byte,
-						d_collision_cache + mask_byte_offset);
+						d_visited_mask + mask_byte_offset);
 				}
 			}
 		}
@@ -184,7 +184,7 @@ struct Cta
 			VertexId source_path;
 			util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 				source_path,
-				d_source_path + row_id);
+				d_labels + row_id);
 
 			if (source_path != -1) {
 
@@ -193,16 +193,16 @@ struct Cta
 
 			} else {
 
-				if (KernelPolicy::MARK_PARENTS) {
+				if (KernelPolicy::MARK_PREDECESSORS) {
 
-					// MOOCH Update source path with parent vertex
+					// MOOCH Update source path with predecessor vertex
 
 				} else {
 
 					// Update source path with current iteration
 					util::io::ModifiedStore<util::io::st::cg>::St(
 						iteration + 1,
-						d_source_path + row_id);
+						d_labels + row_id);
 				}
 			}
 		}
@@ -312,7 +312,7 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -398,8 +398,8 @@ struct Cta
 						// Got control of the CTA
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
 						cta->smem_storage.state.warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
-						if (KernelPolicy::MARK_PARENTS) {
-							cta->smem_storage.state.warp_comm[0][3] = tile->vertex_id[LOAD][VEC];									// parent
+						if (KernelPolicy::MARK_PREDECESSORS) {
+							cta->smem_storage.state.warp_comm[0][3] = tile->vertex_id[LOAD][VEC];									// predecessor
 						}
 
 						// Unset row length
@@ -411,9 +411,9 @@ struct Cta
 					SizeT coop_offset 	= cta->smem_storage.state.warp_comm[0][0];
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[0][2];
 
-					VertexId parent_id;
-					if (KernelPolicy::MARK_PARENTS) {
-						parent_id = cta->smem_storage.state.warp_comm[0][3];
+					VertexId predecessor_id;
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						predecessor_id = cta->smem_storage.state.warp_comm[0][3];
 					}
 
 					while (coop_offset < coop_oob) {
@@ -451,11 +451,11 @@ struct Cta
 								neighbor_id,
 								cta->d_out + ranks[0][0]);
 
-							if (KernelPolicy::MARK_PARENTS) {
-								// Scatter parent
+							if (KernelPolicy::MARK_PREDECESSORS) {
+								// Scatter predecessor
 								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-									parent_id,
-									cta->d_parent_out + ranks[0][0]);
+									predecessor_id,
+									cta->d_predecessor_out + ranks[0][0]);
 							}
 						}
 
@@ -483,9 +483,9 @@ struct Cta
 					// Put gather offset into scratch space
 					cta->smem_storage.offset_scratch[scratch_offset] = tile->row_offset[LOAD][VEC] + tile->row_progress[LOAD][VEC];
 
-					if (KernelPolicy::MARK_PARENTS) {
-						// Put dequeued vertex as the parent into scratch space
-						cta->smem_storage.parent_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						// Put dequeued vertex as the predecessor into scratch space
+						cta->smem_storage.predecessor_scratch[scratch_offset] = tile->vertex_id[LOAD][VEC];
 					}
 
 					tile->row_progress[LOAD][VEC]++;
@@ -609,12 +609,12 @@ struct Cta
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_in,
-		VertexId 				*d_parent_out,
+		VertexId 				*d_predecessor_in,
+		VertexId 				*d_predecessor_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
-		VertexId 				*d_source_path,
-		CollisionMask 			*d_collision_cache,
+		VertexId 				*d_labels,
+		VisitedMask 			*d_visited_mask,
 		util::CtaWorkProgress	&work_progress) :
 
 			iteration(iteration),
@@ -629,13 +629,13 @@ struct Cta
 				0),
 			smem_storage(smem_storage),
 			d_in(d_in),
-			d_parent_in(d_parent_in),
+			d_predecessor_in(d_predecessor_in),
 			d_out(d_out),
-			d_parent_out(d_parent_out),
+			d_predecessor_out(d_predecessor_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
-			d_source_path(d_source_path),
-			d_collision_cache(d_collision_cache),
+			d_labels(d_labels),
+			d_visited_mask(d_visited_mask),
 			work_progress(work_progress) {}
 
 
@@ -663,8 +663,8 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		// Load tile of parents
-		if (KernelPolicy::MARK_PARENTS) {
+		// Load tile of predecessors
+		if (KernelPolicy::MARK_PREDECESSORS) {
 
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
@@ -672,8 +672,8 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::QUEUE_READ_MODIFIER,
 				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
+					tile.predecessor_id,
+					d_predecessor_in,
 					cta_offset,
 					guarded_elements);
 		}
@@ -759,13 +759,13 @@ struct Cta
 						neighbor_id,
 						d_out + ranks[0][0]);
 
-					if (KernelPolicy::MARK_PARENTS) {
-						// Scatter parent it into queue
-						VertexId parent_id = smem_storage.parent_scratch[scratch_offset + threadIdx.x];
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						// Scatter predecessor it into queue
+						VertexId predecessor_id = smem_storage.predecessor_scratch[scratch_offset + threadIdx.x];
 
 						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-							parent_id,
-							d_parent_out + ranks[0][0]);
+							predecessor_id,
+							d_predecessor_out + ranks[0][0]);
 					}
 				}
 			}

@@ -61,7 +61,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::ThreadId			ThreadId;
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
@@ -81,9 +81,9 @@ struct Cta
 	VertexId 				*d_in;						// Incoming vertex ids
 	SizeT 					*d_out_row_offsets;			// Compacted row offsets
 	SizeT 					*d_out_row_lengths;			// Compacted row lengths
-	CollisionMask 			*d_collision_cache;
+	VisitedMask 			*d_visited_mask;
 	SizeT					*d_row_offsets;
-	VertexId				*d_source_path;
+	VertexId				*d_labels;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -166,18 +166,18 @@ struct Cta
 					// Location of mask byte to read
 					SizeT mask_byte_offset = (tile->vertex_ids[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
-					// Read byte from from collision cache bitmask
-					CollisionMask mask_byte = tex1Dfetch(
+					// Read byte from from visited mask (tex)
+					VisitedMask mask_byte = tex1Dfetch(
 						bitmask_tex_ref,
 						mask_byte_offset);
 
 					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
+					VisitedMask mask_bit = 1 << (tile->vertex_ids[LOAD][VEC] & 7);
 
 					if ((mask_bit & mask_byte) == 0) {
 
 						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-							mask_byte, cta->d_collision_cache + mask_byte_offset);
+							mask_byte, cta->d_visited_mask + mask_byte_offset);
 
 						if ((mask_bit & mask_byte) == 0) {
 
@@ -185,13 +185,13 @@ struct Cta
 							mask_byte |= mask_bit;
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								mask_byte,
-								cta->d_collision_cache + mask_byte_offset);
+								cta->d_visited_mask + mask_byte_offset);
 
 							// Load source path of node
 							VertexId source_path;
 							util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 								source_path,
-								cta->d_source_path + tile->vertex_ids[LOAD][VEC]);
+								cta->d_labels + tile->vertex_ids[LOAD][VEC]);
 
 							cta->smem_storage.gathered = source_path;
 						}
@@ -270,7 +270,7 @@ struct Cta
 				if (tile->flags[LOAD][VEC]) {
 
 					VertexId distance = atomicCAS(
-						cta->d_source_path + tile->vertex_ids[LOAD][VEC],
+						cta->d_labels + tile->vertex_ids[LOAD][VEC],
 						-1,
 						cta->iteration);
 
@@ -369,7 +369,7 @@ struct Cta
 
 		/**
 		 * Culls vertices based upon whether or not we've set a bit for them
-		 * in the d_collision_cache bitmask
+		 * in the d_visited_mask bitmask
 		 */
 		__device__ __forceinline__ void BitmaskCull(Cta *cta)
 		{
@@ -411,9 +411,9 @@ struct Cta
 		VertexId 				*d_in,
 		SizeT 					*d_out_row_offsets,
 		SizeT 					*d_out_row_lengths,
-		CollisionMask 			*d_collision_cache,
+		VisitedMask 			*d_visited_mask,
 		SizeT					*d_row_offsets,
-		VertexId				*d_source_path,
+		VertexId				*d_labels,
 		util::CtaWorkProgress	&work_progress) :
 
 			iteration(iteration),
@@ -426,9 +426,9 @@ struct Cta
 			d_in(d_in),
 			d_out_row_offsets(d_out_row_offsets),
 			d_out_row_lengths(d_out_row_lengths),
-			d_collision_cache(d_collision_cache),
+			d_visited_mask(d_visited_mask),
 			d_row_offsets(d_row_offsets),
-			d_source_path(d_source_path),
+			d_labels(d_labels),
 			work_progress(work_progress)
 
 	{
@@ -464,7 +464,7 @@ struct Cta
 		// Init valid flags
 		tile.InitFlags();
 
-		// Cull using global collision bitmask
+		// Cull using global visited mask
 		tile.BitmaskCull(this);
 
 /* Not needed for micro-benchmarking
