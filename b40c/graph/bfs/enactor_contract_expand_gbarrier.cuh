@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Contract-expand, single-launch breadth-first-search enactor.
+ * Contract-expand, single-kernel BFS enactor
  ******************************************************************************/
 
 #pragma once
@@ -43,12 +43,16 @@ namespace bfs {
 
 
 /**
- * Contract-expand, single-launch breadth-first-search enactor.
+ * Contract-expand, single-kernel BFS enactor.
  *
- * Performs all search iterations with single kernel launch (using
- * software global barriers).  For each BFS iteration, the kernel
- * culls visited vertices and expands neighbor lists in a
- * single tile-processing phase.
+ * For each BFS iteration, visited/duplicate vertices are culled from
+ * the incoming edge-frontier in global memory.  The neighbor lists
+ * of the remaining vertices are expanded to construct the outgoing
+ * edge-frontier in global memory.
+ *
+ * This enactor invokes a single kernel that will itself step through
+ * the necessary BFS iterations.  (The kernel employs software global
+ * barriers between BFS iterations.)
  */
 class EnactorContractExpandGBarrier : public EnactorBase
 {
@@ -174,7 +178,7 @@ public:
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -198,8 +202,8 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					compact_expand_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorContractExpandGBarrier cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -229,8 +233,8 @@ public:
 
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
-				graph_slice->d_source_path,
-				graph_slice->d_collision_cache,
+				graph_slice->d_labels,
+				graph_slice->d_visited_mask,
 				this->work_progress,
 				this->global_barrier,
 

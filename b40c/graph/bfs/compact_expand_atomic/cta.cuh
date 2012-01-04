@@ -48,15 +48,15 @@ namespace compact_expand_atomic {
 
 
 /**
- * Templated texture reference for collision bitmask
+ * Templated texture reference for visited mask
  */
-template <typename CollisionMask>
+template <typename VisitedMask>
 struct BitmaskTex
 {
-	static texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> ref;
 };
-template <typename CollisionMask>
-texture<CollisionMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<CollisionMask>::ref;
+template <typename VisitedMask>
+texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<VisitedMask>::ref;
 
 
 /**
@@ -83,7 +83,7 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
@@ -110,12 +110,12 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;
 	VertexId 				*d_out;
-	VertexId 				*d_parent_in;
-	VertexId 				*d_parent_out;
+	VertexId 				*d_predecessor_in;
+	VertexId 				*d_predecessor_out;
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
-	VertexId				*d_source_path;
-	CollisionMask			*d_collision_cache;
+	VertexId				*d_labels;
+	VisitedMask			*d_visited_mask;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -159,7 +159,7 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	parent_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -224,11 +224,11 @@ struct Cta
 					SizeT mask_byte_offset = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) >> 3;
 
 					// Bit in mask byte corresponding to current vertex id
-					CollisionMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
+					VisitedMask mask_bit = 1 << (tile->vertex_id[LOAD][VEC] & 7);
 
-					// Read byte from from collision cache bitmask tex
-					CollisionMask mask_byte = tex1Dfetch(
-						BitmaskTex<CollisionMask>::ref,
+					// Read byte from from visited mask (tex)
+					VisitedMask mask_byte = tex1Dfetch(
+						BitmaskTex<VisitedMask>::ref,
 						mask_byte_offset);
 
 					if (mask_bit & mask_byte) {
@@ -239,7 +239,7 @@ struct Cta
 					} else {
 
 						util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-							mask_byte, cta->d_collision_cache + mask_byte_offset);
+							mask_byte, cta->d_visited_mask + mask_byte_offset);
 
 						if (mask_bit & mask_byte) {
 
@@ -252,7 +252,7 @@ struct Cta
 							mask_byte |= mask_bit;
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								mask_byte,
-								cta->d_collision_cache + mask_byte_offset);
+								cta->d_visited_mask + mask_byte_offset);
 						}
 					}
 				}
@@ -277,7 +277,7 @@ struct Cta
 					VertexId source_path;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
 						source_path,
-						cta->d_source_path + row_id);
+						cta->d_labels + row_id);
 
 
 					if (source_path != -1) {
@@ -287,18 +287,18 @@ struct Cta
 
 					} else {
 
-						if (KernelPolicy::MARK_PARENTS) {
+						if (KernelPolicy::MARK_PREDECESSORS) {
 
-							// Update source path with parent vertex
+							// Update source path with predecessor vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
-								tile->parent_id[LOAD][VEC],
-								cta->d_source_path + row_id);
+								tile->predecessor_id[LOAD][VEC],
+								cta->d_labels + row_id);
 						} else {
 
 							// Update source path with current iteration
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								cta->iteration,
-								cta->d_source_path + row_id);
+								cta->d_labels + row_id);
 						}
 					}
 				}
@@ -515,7 +515,7 @@ struct Cta
 
 		/**
 		 * Culls vertices based upon whether or not we've set a bit for them
-		 * in the d_collision_cache bitmask
+		 * in the d_visited_mask bitmask
 		 */
 		__device__ __forceinline__ void BitmaskCull(Cta *cta)
 		{
@@ -565,12 +565,12 @@ struct Cta
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_parent_in,
-		VertexId 				*d_parent_out,
+		VertexId 				*d_predecessor_in,
+		VertexId 				*d_predecessor_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
-		VertexId 				*d_source_path,
-		CollisionMask 			*d_collision_cache,
+		VertexId 				*d_labels,
+		VisitedMask 			*d_visited_mask,
 		util::CtaWorkProgress	&work_progress) :
 
 			srts_soa_details(
@@ -587,12 +587,12 @@ struct Cta
 			num_gpus(1),
 			d_in(d_in),
 			d_out(d_out),
-			d_parent_in(d_parent_in),
-			d_parent_out(d_parent_out),
+			d_predecessor_in(d_predecessor_in),
+			d_predecessor_out(d_predecessor_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
-			d_source_path(d_source_path),
-			d_collision_cache(d_collision_cache),
+			d_labels(d_labels),
+			d_visited_mask(d_visited_mask),
 			work_progress(work_progress),
 			bitmask_cull((KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) && (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
 	{}
@@ -624,8 +624,8 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		// Load tile of parents
-		if (KernelPolicy::MARK_PARENTS) {
+		// Load tile of predecessors
+		if (KernelPolicy::MARK_PREDECESSORS) {
 
 			util::io::LoadTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
@@ -633,13 +633,13 @@ struct Cta
 				KernelPolicy::THREADS,
 				KernelPolicy::QUEUE_READ_MODIFIER,
 				false>::LoadValid(
-					tile.parent_id,
-					d_parent_in,
+					tile.predecessor_id,
+					d_predecessor_in,
 					cta_offset,
 					guarded_elements);
 		}
 
-		// Cull using global collision bitmask
+		// Cull using global visited mask
 		if (bitmask_cull) {
 			tile.BitmaskCull(this);
 		}
@@ -713,12 +713,12 @@ struct Cta
 					neighbor_id,
 					d_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 
-				if (KernelPolicy::MARK_PARENTS) {
-					// Scatter parent it into queue
-					VertexId parent_id = smem_storage.gather_parents[scratch_offset];
+				if (KernelPolicy::MARK_PREDECESSORS) {
+					// Scatter predecessor it into queue
+					VertexId predecessor_id = smem_storage.gather_predecessors[scratch_offset];
 					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-						parent_id,
-						d_parent_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
+						predecessor_id,
+						d_predecessor_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 				}
 			}
 

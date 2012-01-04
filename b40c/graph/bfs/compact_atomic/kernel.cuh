@@ -50,9 +50,9 @@ struct SweepPass
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
+		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage		&smem_storage)
@@ -79,9 +79,9 @@ struct SweepPass
 			smem_storage,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path,
-			d_collision_cache,
+			d_predecessor_in,
+			d_labels,
+			d_visited_mask,
 			work_progress);
 
 		// Process full tiles
@@ -134,9 +134,9 @@ struct SweepPass <KernelPolicy, true>
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
+		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage		&smem_storage)
@@ -152,9 +152,9 @@ struct SweepPass <KernelPolicy, true>
 			smem_storage,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path,
-			d_collision_cache,
+			d_predecessor_in,
+			d_labels,
+			d_visited_mask,
 			work_progress);
 
 		// Total number of elements in full tiles
@@ -195,9 +195,9 @@ void Kernel(
 	volatile int							*d_done,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId			*d_source_path,
-	typename KernelPolicy::CollisionMask 	*d_collision_cache,
+	typename KernelPolicy::VertexId 		*d_predecessor_in,
+	typename KernelPolicy::VertexId			*d_labels,
+	typename KernelPolicy::VisitedMask 	*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
@@ -229,10 +229,10 @@ void Kernel(
 					// Enqueue the source for us to subsequently process.
 					util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(src, d_in);
 
-					if (KernelPolicy::MARK_PARENTS) {
-						// Enqueue parent of source
-						typename KernelPolicy::VertexId parent = -2;
-						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(parent, d_parent_in);
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						// Enqueue predecessor of source
+						typename KernelPolicy::VertexId predecessor = -2;
+						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
 					}
 				}
 
@@ -255,9 +255,9 @@ void Kernel(
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path,
-			d_collision_cache,
+			d_predecessor_in,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
@@ -299,9 +299,9 @@ void Kernel(
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path,
-			d_collision_cache,
+			d_predecessor_in,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);

@@ -181,7 +181,7 @@ public:
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -219,8 +219,8 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorTwoPhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -251,9 +251,9 @@ public:
 						d_done,
 						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex in
 						graph_slice->frontier_queues.d_keys[selector],				// vertex out
-						graph_slice->frontier_queues.d_values[selector ^ 1],		// parent in
-						graph_slice->d_source_path,
-						graph_slice->d_collision_cache,
+						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor in
+						graph_slice->d_labels,
+						graph_slice->d_visited_mask,
 						this->work_progress,
 						this->compact_kernel_stats);
 
@@ -292,7 +292,7 @@ public:
 						d_done,
 						graph_slice->frontier_queues.d_keys[selector],				// vertex in
 						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex out
-						graph_slice->frontier_queues.d_values[selector ^ 1],		// parent out
+						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor out
 						graph_slice->d_column_indices,
 						graph_slice->d_row_offsets,
 						this->work_progress,

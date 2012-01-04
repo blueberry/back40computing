@@ -51,12 +51,12 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId 		*&d_predecessor_out,
 		typename KernelPolicy::VertexId			*&d_column_indices,
 		typename KernelPolicy::SizeT			*&d_row_offsets,
-		typename KernelPolicy::VertexId			*&d_source_path,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId			*&d_labels,
+		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
@@ -82,12 +82,12 @@ struct SweepPass
 			smem_storage,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_parent_out,
+			d_predecessor_in,
+			d_predecessor_out,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress);
 
 		// Process full tiles
@@ -140,12 +140,12 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId 		&steal_index,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId 		*&d_parent_out,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId 		*&d_predecessor_out,
 		typename KernelPolicy::VertexId			*&d_column_indices,
 		typename KernelPolicy::SizeT			*&d_row_offsets,
-		typename KernelPolicy::VertexId			*&d_source_path,
-		typename KernelPolicy::CollisionMask 	*&d_collision_cache,
+		typename KernelPolicy::VertexId			*&d_labels,
+		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
@@ -160,12 +160,12 @@ struct SweepPass <KernelPolicy, true>
 			smem_storage,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_parent_out,
+			d_predecessor_in,
+			d_predecessor_out,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress);
 
 		// Total number of elements in full tiles
@@ -203,13 +203,13 @@ void KernelGlobalBarrier(
 	typename KernelPolicy::VertexId 		src,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId 		*d_parent_out,
+	typename KernelPolicy::VertexId 		*d_predecessor_in,
+	typename KernelPolicy::VertexId 		*d_predecessor_out,
 
 	typename KernelPolicy::VertexId			*d_column_indices,
 	typename KernelPolicy::SizeT			*d_row_offsets,
-	typename KernelPolicy::VertexId			*d_source_path,
-	typename KernelPolicy::CollisionMask 	*d_collision_cache,
+	typename KernelPolicy::VertexId			*d_labels,
+	typename KernelPolicy::VisitedMask 	*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::GlobalBarrier						global_barrier,
 
@@ -240,10 +240,10 @@ void KernelGlobalBarrier(
 				// Enqueue the source for us to subsequently process.
 				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
 
-				if (KernelPolicy::MARK_PARENTS) {
-					// Enqueue parent of source
-					typename KernelPolicy::VertexId parent = -2;
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+				if (KernelPolicy::MARK_PREDECESSORS) {
+					// Enqueue predecessor of source
+					typename KernelPolicy::VertexId predecessor = -2;
+					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
 				}
 
 				// Initialize work decomposition in smem
@@ -289,12 +289,12 @@ void KernelGlobalBarrier(
 		steal_index,
 		d_in,
 		d_out,
-		d_parent_in,
-		d_parent_out,
+		d_predecessor_in,
+		d_predecessor_out,
 		d_column_indices,
 		d_row_offsets,
-		d_source_path,
-		d_collision_cache,
+		d_labels,
+		d_visited_mask,
 		work_progress,
 		smem_storage.state.work_decomposition,
 		smem_storage);
@@ -355,12 +355,12 @@ void KernelGlobalBarrier(
 			steal_index,
 			d_out,
 			d_in,
-			d_parent_out,
-			d_parent_in,
+			d_predecessor_out,
+			d_predecessor_in,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
@@ -419,12 +419,12 @@ void KernelGlobalBarrier(
 			steal_index,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_parent_out,
+			d_predecessor_in,
+			d_predecessor_out,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
@@ -467,12 +467,12 @@ void Kernel(
 	typename KernelPolicy::VertexId 		src,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId 		*d_parent_out,
+	typename KernelPolicy::VertexId 		*d_predecessor_in,
+	typename KernelPolicy::VertexId 		*d_predecessor_out,
 	typename KernelPolicy::VertexId			*d_column_indices,
 	typename KernelPolicy::SizeT			*d_row_offsets,
-	typename KernelPolicy::VertexId			*d_source_path,
-	typename KernelPolicy::CollisionMask 	*d_collision_cache,
+	typename KernelPolicy::VertexId			*d_labels,
+	typename KernelPolicy::VisitedMask 	*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
@@ -500,10 +500,10 @@ void Kernel(
 				// Enqueue the source for us to subsequently process.
 				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
 
-				if (KernelPolicy::MARK_PARENTS) {
-					// Enqueue parent of source
-					typename KernelPolicy::VertexId parent = -2;
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(parent, d_parent_in);
+				if (KernelPolicy::MARK_PREDECESSORS) {
+					// Enqueue predecessor of source
+					typename KernelPolicy::VertexId predecessor = -2;
+					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
 				}
 
 				// Initialize work decomposition in smem
@@ -525,12 +525,12 @@ void Kernel(
 			steal_index,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_parent_out,
+			d_predecessor_in,
+			d_predecessor_out,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);
@@ -573,12 +573,12 @@ void Kernel(
 			steal_index,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_parent_out,
+			d_predecessor_in,
+			d_predecessor_out,
 			d_column_indices,
 			d_row_offsets,
-			d_source_path,
-			d_collision_cache,
+			d_labels,
+			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
 			smem_storage);

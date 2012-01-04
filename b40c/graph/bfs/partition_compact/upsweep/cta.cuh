@@ -61,7 +61,7 @@ struct Cta :
 	typedef typename KernelPolicy::SmemStorage 				SmemStorage;
 	typedef typename KernelPolicy::VertexId 				VertexId;
 	typedef typename KernelPolicy::ValidFlag				ValidFlag;
-	typedef typename KernelPolicy::CollisionMask 			CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 			VisitedMask;
 
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
@@ -73,7 +73,7 @@ struct Cta :
 
 	// Input and output device pointers
 	ValidFlag				*d_flags_out;
-	CollisionMask 			*d_collision_cache;
+	VisitedMask 			*d_visited_mask;
 
 	// Smem storage for reduction tree and hashing scratch
 	volatile VertexId 		(*vid_hashtable)[SmemStorage::WARP_HASH_ELEMENTS];
@@ -96,13 +96,13 @@ struct Cta :
 		VertexId 		*d_in,
 		ValidFlag		*d_flags_out,
 		SizeT 			*d_spine,
-		CollisionMask 	*d_collision_cache) :
+		VisitedMask 	*d_visited_mask) :
 			Base(
 				smem_storage,
 				d_in, 				// d_in_keys
 				d_spine),
 			d_flags_out(d_flags_out),
-			d_collision_cache(d_collision_cache),
+			d_visited_mask(d_visited_mask),
 			vid_hashtable(smem_storage.vid_hashtable),
 			history(smem_storage.history),
 			num_gpus(num_gpus)

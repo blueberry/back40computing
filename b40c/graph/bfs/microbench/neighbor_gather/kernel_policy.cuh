@@ -228,7 +228,7 @@ struct KernelPolicy : _ProblemType
 												- 72,
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PARENTS) ?
-													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and parent
+													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and predecessor
 													sizeof(SizeT),								// Just gather offset
 
 			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
@@ -247,7 +247,7 @@ struct KernelPolicy : _ProblemType
 			// Scratch elements
 			struct {
 				volatile SizeT 				offset_scratch[OFFSET_ELEMENTS];
-				volatile VertexId 			parent_scratch[PARENT_ELEMENTS];
+				volatile VertexId 			predecessor_scratch[PARENT_ELEMENTS];
 			};
 		};
 	};

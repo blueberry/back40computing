@@ -49,7 +49,7 @@ __device__ __forceinline__ void UpsweepPass(
 	typename KernelPolicy::VertexId 				*&d_in,
 	typename KernelPolicy::ValidFlag				*&d_out_flag,
 	typename KernelPolicy::SizeT 					*&d_spine,
-	typename KernelPolicy::CollisionMask 			*&d_collision_cache,
+	typename KernelPolicy::VisitedMask 			*&d_visited_mask,
 	typename KernelPolicy::SmemStorage				&smem_storage)
 {
 	typedef Cta<KernelPolicy> 					Cta;
@@ -68,7 +68,7 @@ __device__ __forceinline__ void UpsweepPass(
 		d_in,
 		d_out_flag,
 		d_spine,
-		d_collision_cache);
+		d_visited_mask);
 
 	// Process all tiles
 	cta.ProcessWorkRange(work_limits);
@@ -87,7 +87,7 @@ void Kernel(
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::ValidFlag		*d_out_flag,
 	typename KernelPolicy::SizeT			*d_spine,
-	typename KernelPolicy::CollisionMask 	*d_collision_cache,
+	typename KernelPolicy::VisitedMask 	*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
@@ -120,7 +120,7 @@ void Kernel(
 		d_in,
 		d_out_flag,
 		d_spine,
-		d_collision_cache,
+		d_visited_mask,
 		smem_storage);
 
 	if (KernelPolicy::INSTRUMENT) {

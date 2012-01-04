@@ -174,7 +174,7 @@ public:
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -198,8 +198,8 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorFusedTwoPhase cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -229,8 +229,8 @@ public:
 
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
-				graph_slice->d_source_path,
-				graph_slice->d_collision_cache,
+				graph_slice->d_labels,
+				graph_slice->d_visited_mask,
 				this->work_progress,
 				this->global_barrier,
 
@@ -265,28 +265,6 @@ public:
 		int 							max_grid_size = 0)
 	{
 		if (this->cuda_props.device_sm_version >= 200) {
-/*
-			// Single-grid tuning configuration
-			typedef compact_expand_atomic::KernelPolicy<
-				typename CsrProblem::ProblemType,
-				200,
-				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
-				8,						// CTA_OCCUPANCY
-				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
-				0,						// LOG_LOADS_PER_TILE
-				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-				false,					// WORK_STEALING
-				128,					// WARP_GATHER_THRESHOLD
-				128, 					// CTA_GATHER_THRESHOLD,
-				6> KernelPolicy;		// LOG_SCHEDULE_GRANULARITY
-*/
 
 			// Fused two-phase tuning configuration
 			typedef fused_two_phase::KernelPolicy<

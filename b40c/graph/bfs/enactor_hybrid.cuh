@@ -212,7 +212,7 @@ public:
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
-		typedef typename CsrProblem::CollisionMask 	CollisionMask;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
 		cudaError_t retval = cudaSuccess;
 
@@ -264,8 +264,8 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -283,8 +283,8 @@ public:
 			// Bind bitmask texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::BitmaskTex<CollisionMask>::ref,
-					graph_slice->d_collision_cache,
+					compact_expand_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
 				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
@@ -319,8 +319,8 @@ public:
 
 							graph_slice->d_column_indices,
 							graph_slice->d_row_offsets,
-							graph_slice->d_source_path,
-							graph_slice->d_collision_cache,
+							graph_slice->d_labels,
+							graph_slice->d_visited_mask,
 							work_progress,
 							global_barrier,
 
@@ -372,9 +372,9 @@ public:
 								d_done,
 								graph_slice->frontier_queues.d_keys[selector],			// in vertices
 								graph_slice->frontier_queues.d_keys[selector ^ 1],		// out vertices
-								graph_slice->frontier_queues.d_values[selector],		// in parents
-								graph_slice->d_source_path,
-								graph_slice->d_collision_cache,
+								graph_slice->frontier_queues.d_values[selector],		// in predecessors
+								graph_slice->d_labels,
+								graph_slice->d_visited_mask,
 								work_progress,
 								compact_kernel_stats);
 
@@ -403,7 +403,7 @@ public:
 								d_done,
 								graph_slice->frontier_queues.d_keys[selector ^ 1],		// in vertices
 								graph_slice->frontier_queues.d_keys[selector],			// out vertices
-								graph_slice->frontier_queues.d_values[selector],		// out parents
+								graph_slice->frontier_queues.d_values[selector],		// out predecessors
 								graph_slice->d_column_indices,
 								graph_slice->d_row_offsets,
 								work_progress,

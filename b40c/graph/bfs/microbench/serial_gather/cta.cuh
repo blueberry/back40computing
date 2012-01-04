@@ -61,7 +61,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::SizeT 			SizeT;
-	typedef typename KernelPolicy::CollisionMask 	CollisionMask;
+	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
@@ -81,8 +81,8 @@ struct Cta
 	VertexId 				*d_out;
 	SizeT 					*d_in_row_lengths;
 	VertexId				*d_column_indices;
-	CollisionMask 			*d_collision_cache;
-	VertexId 				*d_source_path;
+	VisitedMask 			*d_visited_mask;
+	VertexId 				*d_labels;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
@@ -221,8 +221,8 @@ struct Cta
 		VertexId 				*d_out,
 		SizeT 					*d_in_row_lengths,
 		VertexId 				*d_column_indices,
-		CollisionMask 			*d_collision_cache,
-		VertexId 				*d_source_path,
+		VisitedMask 			*d_visited_mask,
+		VertexId 				*d_labels,
 		util::CtaWorkProgress	&work_progress) :
 
 			iteration(iteration),
@@ -236,8 +236,8 @@ struct Cta
 			d_in_row_lengths(d_in_row_lengths),
 			d_out(d_out),
 			d_column_indices(d_column_indices),
-			d_collision_cache(d_collision_cache),
-			d_source_path(d_source_path),
+			d_visited_mask(d_visited_mask),
+			d_labels(d_labels),
 			work_progress(work_progress) {}
 
 
