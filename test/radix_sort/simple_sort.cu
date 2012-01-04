@@ -29,7 +29,7 @@
 
 // Sorting includes
 #include <b40c/radix_sort/enactor.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 // Test utils
 #include "b40c_test_util.h"
@@ -88,10 +88,12 @@ int main(int argc, char** argv)
 
 	if (keys_only) {
 
+		//
 		// Keys-only sorting
+		//
 
 		// Create ping-pong storage wrapper.
-		b40c::util::PingPongStorage<int> sort_storage(d_keys);
+		b40c::util::DoubleBuffer<int> sort_storage(d_keys);
 
 		//
 		// Example 1: simple sort.  Uses heuristics to select
@@ -136,7 +138,7 @@ int main(int argc, char** argv)
 		//
 
 		// Create ping-pong storage wrapper.
-		b40c::util::PingPongStorage<int, int> sort_storage(d_keys, d_values);
+		b40c::util::DoubleBuffer<int, int> sort_storage(d_keys, d_values);
 
 		//
 		// Example 1: simple sort.  Uses heuristics to select

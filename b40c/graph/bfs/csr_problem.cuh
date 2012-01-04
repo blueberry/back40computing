@@ -30,7 +30,7 @@
 #include <b40c/util/memset_kernel.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/error_utils.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <b40c/graph/bfs/problem_type.cuh>
 
@@ -42,12 +42,13 @@ namespace bfs {
 
 
 /**
- * Enumeration for out-of-core frontier queue configurations
+ * Enumeration of global frontier queue configurations
  */
 enum FrontierType {
-	VERTEX_FRONTIERS,	// O(n) ping/pong frontiers
-	EDGE_FRONTIERS,		// O(m) ping/pong frontiers
-	MIXED_FRONTIERS,		// O(n) ping frontier, O(m) pong frontier
+	VERTEX_FRONTIERS,		// O(n) ping-pong global vertex frontiers
+	EDGE_FRONTIERS,			// O(m) ping-pong global edge frontiers
+	MIXED_FRONTIERS,		// O(n) global vertex frontier, O(m) global edge frontier
+	MULTI_GPU_FRONTIERS,	// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
 };
 
 
@@ -100,19 +101,17 @@ struct CsrProblem
 		SizeT 			*d_row_offsets;
 		VertexId 		*d_labels;				// Can be used for source distance or predecessor pointer
 
-		// Best-effort (bit) mask for keeping track of which vertices we've seen so far
+		// Best-effort mask for keeping track of which vertices we've seen so far
 		VisitedMask 	*d_visited_mask;
 
-		// Frontier queues (keys track work, values optionally track predecessors)
-		util::PingPongStorage<VertexId, VertexId> 	frontier_queues;
-		SizeT 										ping_elements;
-		SizeT 										pong_elements;
+		// Frontier queues.  Keys track work, values optionally track predecessors.  Only
+		// multi-gpu uses triple buffers (single-GPU only uses ping-pong buffers).
+		util::TripleBuffer<VertexId, VertexId> 		frontier_queues;
+		SizeT 										frontier_elements[3];
+		SizeT 										predecessor_elements[3];
 
-		VertexId		*d_multigpu_vqueue;
-		SizeT 			multigpu_vqueue_elements;
-
-		// Vector of valid flags for elements in the frontier queue
-		ValidFlag 		*d_keep;
+		// Flags for filtering duplicates from the edge-frontier queue when partitioning during multi-GPU BFS.
+		ValidFlag 		*d_filter_mask;
 
 		// Number of nodes and edges in slice
 		VertexId		nodes;
@@ -130,15 +129,17 @@ struct CsrProblem
 			d_row_offsets(NULL),
 			d_labels(NULL),
 			d_visited_mask(NULL),
-			d_keep(NULL),
-			ping_elements(0),
-			pong_elements(0),
-			d_multigpu_vqueue(NULL),
-			multigpu_vqueue_elements(0),
+			d_filter_mask(NULL),
 			nodes(0),
 			edges(0),
 			stream(stream)
-		{}
+		{
+			// Initialize triple-buffer frontier queue lengths
+			for (int i = 0; i < 3; i++) {
+				frontier_elements[i] = 0;
+				predecessor_elements[i] = 0;
+			}
+		}
 
 		/**
 		 * Destructor
@@ -153,14 +154,13 @@ struct CsrProblem
 			if (d_row_offsets) 					util::B40CPerror(cudaFree(d_row_offsets), "GpuSlice cudaFree d_row_offsets failed", __FILE__, __LINE__);
 			if (d_labels) 						util::B40CPerror(cudaFree(d_labels), "GpuSlice cudaFree d_labels failed", __FILE__, __LINE__);
 			if (d_visited_mask) 				util::B40CPerror(cudaFree(d_visited_mask), "GpuSlice cudaFree d_visited_mask failed", __FILE__, __LINE__);
-			if (d_keep) 						util::B40CPerror(cudaFree(d_keep), "GpuSlice cudaFree d_keep failed", __FILE__, __LINE__);
-			if (frontier_queues.d_keys[0]) 		util::B40CPerror(cudaFree(frontier_queues.d_keys[0]), "GpuSlice cudaFree frontier_queues.d_keys[0] failed", __FILE__, __LINE__);
-			if (frontier_queues.d_keys[1]) 		util::B40CPerror(cudaFree(frontier_queues.d_keys[1]), "GpuSlice cudaFree frontier_queues.d_keys[1] failed", __FILE__, __LINE__);
-			if (frontier_queues.d_values[0]) 	util::B40CPerror(cudaFree(frontier_queues.d_values[0]), "GpuSlice cudaFree frontier_queues.d_values[0] failed", __FILE__, __LINE__);
-			if (frontier_queues.d_values[1]) 	util::B40CPerror(cudaFree(frontier_queues.d_values[1]), "GpuSlice cudaFree frontier_queues.d_values[1] failed", __FILE__, __LINE__);
-			if (d_multigpu_vqueue) 				util::B40CPerror(cudaFree(d_multigpu_vqueue), "GpuSlice cudaFree d_multigpu_vqueue failed", __FILE__, __LINE__);
+			if (d_filter_mask) 						util::B40CPerror(cudaFree(d_filter_mask), "GpuSlice cudaFree d_filter_mask failed", __FILE__, __LINE__);
+			for (int i = 0; i < 3; i++) {
+				if (frontier_queues.d_keys[i]) 		util::B40CPerror(cudaFree(frontier_queues.d_keys[i]), "GpuSlice cudaFree frontier_queues.d_keys failed", __FILE__, __LINE__);
+				if (frontier_queues.d_values[i]) 	util::B40CPerror(cudaFree(frontier_queues.d_values[i]), "GpuSlice cudaFree frontier_queues.d_values failed", __FILE__, __LINE__);
+			}
 
-	        // Destroy stream
+			// Destroy stream
 			if (stream) {
 				util::B40CPerror(cudaStreamDestroy(stream), "GpuSlice cudaStreamDestroy failed", __FILE__, __LINE__);
 			}
@@ -193,8 +193,7 @@ struct CsrProblem
 	CsrProblem() :
 		num_gpus(0),
 		nodes(0),
-		edges(0),
-		uneven(false)
+		edges(0)
 	{}
 
 
@@ -322,7 +321,7 @@ struct CsrProblem
 	 * Initialize from host CSR problem
 	 */
 	cudaError_t FromHostProblem(
-		bool		stream_from_host,			// only valid for 1 gpu
+		bool		stream_from_host,			// Only meaningful for single-GPU BFS
 		SizeT 		nodes,
 		SizeT 		edges,
 		VertexId 	*h_column_indices,
@@ -528,7 +527,7 @@ struct CsrProblem
 
 
 			//
-			// Allocate results output if necessary
+			// Allocate output labels if necessary
 			//
 
 			if (!graph_slices[gpu]->d_labels) {
@@ -569,138 +568,124 @@ struct CsrProblem
 			// Allocate frontier queues if necessary
 			//
 
-			// Determine queue sizes
-			SizeT new_ping_elements = double(graph_slices[gpu]->nodes) * queue_sizing;
-			SizeT new_pong_elements = double(graph_slices[gpu]->edges) * queue_sizing;
+			// Determine frontier queue sizes
+			SizeT new_frontier_elements[3] = {0,0,0};
+			SizeT new_predecessor_elements[3] = {0,0,0};
 
 			switch (frontier_type) {
-			case VERTEX_FRONTIERS:
-				new_pong_elements = new_ping_elements;
+			case VERTEX_FRONTIERS :
+				// O(n) ping-pong global vertex frontiers
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[1] = new_frontier_elements[0];
 				break;
-			case EDGE_FRONTIERS:
-				new_ping_elements = new_pong_elements;
-				break;
-			};
 
-			// Free queues if not big enough
-			if (new_ping_elements > graph_slices[gpu]->ping_elements) {
-				if (graph_slices[gpu]->frontier_queues.d_keys[0]) util::B40CPerror(cudaFree(graph_slices[gpu]->frontier_queues.d_keys[0]), "GpuSlice cudaFree frontier_queues.d_keys[0] failed", __FILE__, __LINE__);
-				if (graph_slices[gpu]->frontier_queues.d_values[0]) util::B40CPerror(cudaFree(graph_slices[gpu]->frontier_queues.d_values[0]), "GpuSlice cudaFree frontier_queues.d_values[0] failed", __FILE__, __LINE__);
-				graph_slices[gpu]->frontier_queues.d_keys[0] = NULL;
-				graph_slices[gpu]->frontier_queues.d_values[0] = NULL;
-				graph_slices[gpu]->ping_elements = new_ping_elements;
-			}
-			if (new_pong_elements > graph_slices[gpu]->pong_elements) {
-				if (graph_slices[gpu]->frontier_queues.d_keys[1]) util::B40CPerror(cudaFree(graph_slices[gpu]->frontier_queues.d_keys[1]), "GpuSlice cudaFree frontier_queues.d_keys[1] failed", __FILE__, __LINE__);
-				if (graph_slices[gpu]->frontier_queues.d_values[1]) util::B40CPerror(cudaFree(graph_slices[gpu]->frontier_queues.d_values[1]), "GpuSlice cudaFree frontier_queues.d_values[1] failed", __FILE__, __LINE__);
-				graph_slices[gpu]->frontier_queues.d_keys[1] = NULL;
-				graph_slices[gpu]->frontier_queues.d_values[1] = NULL;
-				graph_slices[gpu]->pong_elements = new_pong_elements;
-			}
-
-			// Allocate ping if necessary
-			if (!graph_slices[gpu]->frontier_queues.d_keys[0]) {
-
-				printf("GPU %d frontier queue (ping): %lld elements (%lld bytes)\n",
-					graph_slices[gpu]->gpu,
-					(unsigned long long) graph_slices[gpu]->ping_elements,
-					(unsigned long long) graph_slices[gpu]->ping_elements * sizeof(VertexId));
-				fflush(stdout);
-
-				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->frontier_queues.d_keys[0],
-						graph_slices[gpu]->vertex_frontier_elements * sizeof(VertexId)),
-					"CsrProblem cudaMalloc frontier_queues.d_keys[0] failed", __FILE__, __LINE__)) break;
-			}
-
-			// Allocate pong if necessary
-			if (!graph_slices[gpu]->frontier_queues.d_keys[1]) {
-
-				printf("GPU %d frontier queue (pong): %lld elements (%lld bytes)\n",
-					graph_slices[gpu]->gpu,
-					(unsigned long long) graph_slices[gpu]->pong_elements,
-					(unsigned long long) graph_slices[gpu]->pong_elements * sizeof(VertexId));
-				fflush(stdout);
-
-				if (retval = util::B40CPerror(cudaMalloc(
-						(void**) &graph_slices[gpu]->frontier_queues.d_keys[1],
-						graph_slices[gpu]->edge_frontier_elements * sizeof(VertexId)),
-					"CsrProblem cudaMalloc frontier_queues.d_keys[1] failed", __FILE__, __LINE__)) break;
-			}
-
-			// Allocate predecessor vertex queues if necessary
-			if (MARK_PREDECESSORS) {
-				// Ping
-				if (!graph_slices[gpu]->frontier_queues.d_values[0]) {
-					printf("GPU %d predecessor queue (ping): %lld elements (%lld bytes)\n",
-						graph_slices[gpu]->gpu,
-						(unsigned long long) graph_slices[gpu]->ping_elements,
-						(unsigned long long) graph_slices[gpu]->ping_elements * sizeof(VertexId));
-					fflush(stdout);
-
-					if (retval = util::B40CPerror(
-							cudaMalloc((void**) &graph_slices[gpu]->frontier_queues.d_values[0],
-							graph_slices[gpu]->vertex_frontier_elements * sizeof(VertexId)),
-						"CsrProblem cudaMalloc frontier_queues.d_values[0] failed", __FILE__, __LINE__)) break;
+			case EDGE_FRONTIERS :
+				// O(m) ping-pong global edge frontiers
+				new_frontier_elements[0] = double(graph_slices[gpu]->edges) * queue_sizing;
+				new_frontier_elements[1] = new_frontier_elements[0];
+				if (MARK_PREDECESSORS) {
+					new_predecessor_elements[0] = new_frontier_elements[0];
+					new_predecessor_elements[1] = new_frontier_elements[1];
 				}
-				// Pong
-				if (!graph_slices[gpu]->frontier_queues.d_values[1]) {
-					printf("GPU %d predecessor queue (pong): %lld elements (%lld bytes)\n",
+				break;
+
+			case MIXED_FRONTIERS :
+				// O(n) global vertex frontier, O(m) global edge frontier
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
+				if (MARK_PREDECESSORS) {
+					new_predecessor_elements[1] = new_frontier_elements[1];
+				}
+				break;
+
+			case MULTI_GPU_FRONTIERS :
+				// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
+				new_frontier_elements[2] = new_frontier_elements[2];
+				if (MARK_PREDECESSORS) {
+					new_predecessor_elements[1] = new_frontier_elements[1];
+					new_predecessor_elements[2] = new_frontier_elements[2];
+				}
+				break;
+			}
+
+			// Iterate through global frontier queue setups
+			for (int i = 0; i < 3; i++) {
+
+				// Allocate frontier queue if not big enough
+				if (graph_slices[gpu]->frontier_elements[i] < new_frontier_elements[i]) {
+
+					// Free if previously allocated
+					if (graph_slices[gpu]->frontier_queues.d_keys[i]) {
+						if (retval = util::B40CPerror(cudaFree(
+							graph_slices[gpu]->frontier_queues.d_keys[i]),
+								"GpuSlice cudaFree frontier_queues.d_keys failed", __FILE__, __LINE__)) break;
+					}
+
+					graph_slices[gpu]->frontier_elements[i] = new_frontier_elements[i];
+
+					printf("GPU %d frontier queue[%d]: %lld elements (%lld bytes)\n",
 						graph_slices[gpu]->gpu,
-						(unsigned long long) graph_slices[gpu]->pong_elements,
-						(unsigned long long) graph_slices[gpu]->pong_elements * sizeof(VertexId));
+						i,
+						(unsigned long long) graph_slices[gpu]->frontier_elements[i],
+						(unsigned long long) graph_slices[gpu]->frontier_elements[i] * sizeof(VertexId));
 					fflush(stdout);
 
 					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->frontier_queues.d_values[1],
-							graph_slices[gpu]->edge_frontier_elements * sizeof(VertexId)),
-						"CsrProblem cudaMalloc frontier_queues.d_values[1] failed", __FILE__, __LINE__)) break;
+						(void**) &graph_slices[gpu]->frontier_queues.d_keys[i],
+						graph_slices[gpu]->frontier_elements[i] * sizeof(VertexId)),
+							"CsrProblem cudaMalloc frontier_queues.d_keys failed", __FILE__, __LINE__)) break;
+				}
+
+
+				// Allocate predecessor queue if not big enough
+				if (graph_slices[gpu]->predecessor_elements[i] < new_predecessor_elements[i]) {
+
+					// Free if previously allocated
+					if (graph_slices[gpu]->frontier_queues.d_values[i]) {
+						if (retval = util::B40CPerror(cudaFree(
+							graph_slices[gpu]->frontier_queues.d_values[i]),
+								"GpuSlice cudaFree frontier_queues.d_values failed", __FILE__, __LINE__)) break;
+					}
+
+					graph_slices[gpu]->predecessor_elements[i] = new_predecessor_elements[i];
+
+					printf("GPU %d predecessor queue[%d]: %lld elements (%lld bytes)\n",
+						graph_slices[gpu]->gpu,
+						i,
+						(unsigned long long) graph_slices[gpu]->predecessor_elements[i],
+						(unsigned long long) graph_slices[gpu]->predecessor_elements[i] * sizeof(VertexId));
+					fflush(stdout);
+
+					if (retval = util::B40CPerror(cudaMalloc(
+						(void**) &graph_slices[gpu]->frontier_queues.d_values[i],
+						graph_slices[gpu]->predecessor_elements[i] * sizeof(VertexId)),
+							"CsrProblem cudaMalloc frontier_queues.d_values failed", __FILE__, __LINE__)) break;
 				}
 			}
 
 
-
 			//
-			// Allocate multi-gpu structures
+			// Allocate duplicate filter mask if necessary (for multi-gpu)
 			//
 
-			if (num_gpus > 1) {
+			if ((num_gpus > 1) && (!graph_slices[gpu]->d_filter_mask)) {
 
-				// Allocate d_keep if necessary
-				if (!graph_slices[gpu]->d_keep) {
+				printf("GPU %d_filter_mask flags: %lld elements (%lld bytes)\n",
+					graph_slices[gpu]->gpu,
+					(unsigned long long) graph_slices[gpu]->edge_frontier_elements,
+					(unsigned long long) graph_slices[gpu]->edge_frontier_elements * sizeof(ValidFlag));
 
-					printf("GPU %d_keep flags: %lld elements (%lld bytes)\n",
-						graph_slices[gpu]->gpu,
-						(unsigned long long) graph_slices[gpu]->edge_frontier_elements,
-						(unsigned long long) graph_slices[gpu]->edge_frontier_elements * sizeof(ValidFlag));
-
-					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->d_keep,
-							graph_slices[gpu]->edge_frontier_elements * sizeof(ValidFlag)),
-						"CsrProblem cudaMalloc d_keep failed", __FILE__, __LINE__)) break;
-				}
-
-				// Allocate d_multigpu_vqueue if necessary
-				if (!graph_slices[gpu]->d_multigpu_vqueue) {
-
-					graph_slices[gpu]->multigpu_vqueue_elements = graph_slices[gpu]->nodes * 2;
-
-					printf("GPU %d_multigpu_vqueue: %lld elements (%lld bytes)\n",
-						graph_slices[gpu]->gpu,
-						(unsigned long long) graph_slices[gpu]->multigpu_vqueue_elements,
-						(unsigned long long) graph_slices[gpu]->multigpu_vqueue_elements * sizeof(VertexId));
-
-					if (retval = util::B40CPerror(cudaMalloc(
-							(void**) &graph_slices[gpu]->d_multigpu_vqueue,
-							graph_slices[gpu]->multigpu_vqueue_elements * sizeof(VertexId)),
-						"CsrProblem cudaMalloc d_multigpu_vqueue failed", __FILE__, __LINE__)) break;
-
-				}
+				if (retval = util::B40CPerror(cudaMalloc(
+						(void**) &graph_slices[gpu]->d_filter_mask,
+						graph_slices[gpu]->edge_frontier_elements * sizeof(ValidFlag)),
+					"CsrProblem cudaMalloc d_filter_mask failed", __FILE__, __LINE__)) break;
 			}
-			printf("\n");
+
 
 			//
-			// Initialize source paths and collision mask cache
+			// Initialize labels and visited mask
 			//
 
 			int memset_block_size 		= 256;

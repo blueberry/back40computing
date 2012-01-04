@@ -29,7 +29,7 @@
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <b40c/consecutive_removal/problem_type.cuh>
 #include <b40c/consecutive_removal/policy.cuh>
@@ -87,7 +87,7 @@ public:
 	 * a heuristic for selecting an autotuning policy based upon problem size.
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
@@ -99,7 +99,7 @@ public:
 	 * 		output storage.  May be NULL.
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
-	 * 		PingPongStorage::KeyType instances, a type instance that
+	 * 		DoubleBuffer::KeyType instances, a type instance that
 	 * 		implements "bool (const &KeyType, const &KeyType)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
@@ -107,11 +107,11 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename PingPongStorage,
+		typename DoubleBuffer,
 		typename SizeT,
 		typename EqualityOp>
 	cudaError_t Trim(
-		PingPongStorage 	&problem_storage,
+		DoubleBuffer 	&problem_storage,
 		SizeT 				num_elements,
 		SizeT				*h_num_compacted,
 		SizeT				*d_num_compacted,
@@ -127,7 +127,7 @@ public:
 	 * kernels for each problem size genre.)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
@@ -139,7 +139,7 @@ public:
 	 * 		output storage.  May be NULL.
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
-	 * 		PingPongStorage::KeyType instances, a type instance that
+	 * 		DoubleBuffer::KeyType instances, a type instance that
 	 * 		implements "bool (const &KeyType, const &KeyType)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
@@ -148,11 +148,11 @@ public:
 	 */
 	template <
 		ProbSizeGenre PROB_SIZE_GENRE,
-		typename PingPongStorage,
+		typename DoubleBuffer,
 		typename SizeT,
 		typename EqualityOp>
 	cudaError_t Trim(
-		PingPongStorage 	&problem_storage,
+		DoubleBuffer 	&problem_storage,
 		SizeT 				num_elements,
 		SizeT				*h_num_compacted,
 		SizeT				*d_num_compacted,
@@ -165,7 +165,7 @@ public:
 	 * kernel configuration policy.  (Useful for auto-tuning.)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to trim.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to trim (starting at offset 0)
@@ -177,7 +177,7 @@ public:
 	 * 		output storage.  May be NULL.
 	 * @param equality_op
 	 * 		The function or functor type for determining equality amongst
-	 * 		PingPongStorage::KeyType instances, a type instance that
+	 * 		DoubleBuffer::KeyType instances, a type instance that
 	 * 		implements "bool (const &KeyType, const &KeyType)"
 	 * @param max_grid_size
 	 * 		Optional upper-bound on the number of CTAs to launch.
@@ -186,7 +186,7 @@ public:
 	 */
 	template <typename Policy>
 	cudaError_t Trim(
-		util::PingPongStorage<
+		util::DoubleBuffer<
 			typename Policy::KeyType,
 			typename Policy::ValueType> 	&problem_storage,
 		typename Policy::SizeT 				num_elements,
@@ -211,13 +211,13 @@ struct Detail : ProblemType
 {
 	typedef typename ProblemType::SizeT 		SizeT;
 	typedef typename ProblemType::EqualityOp 	EqualityOp;
-	typedef util::PingPongStorage<
+	typedef util::DoubleBuffer<
 		typename ProblemType::KeyType,
-		typename ProblemType::ValueType> 		PingPongStorage;
+		typename ProblemType::ValueType> 		DoubleBuffer;
 
 	// Problem data
 	Enactor 			*enactor;
-	PingPongStorage 	&problem_storage;
+	DoubleBuffer 	&problem_storage;
 	SizeT				num_elements;
 	SizeT				*h_num_compacted;
 	SizeT				*d_num_compacted;
@@ -227,7 +227,7 @@ struct Detail : ProblemType
 	// Constructor
 	Detail(
 		Enactor 			*enactor,
-		PingPongStorage 	&problem_storage,
+		DoubleBuffer 	&problem_storage,
 		SizeT 				num_elements,
 		SizeT 				*h_num_compacted,
 		SizeT 				*d_num_compacted,
@@ -484,7 +484,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
  */
 template <typename Policy>
 cudaError_t Enactor::Trim(
-	util::PingPongStorage<
+	util::DoubleBuffer<
 		typename Policy::KeyType,
 		typename Policy::ValueType> 	&problem_storage,
 	typename Policy::SizeT 				num_elements,
@@ -511,11 +511,11 @@ cudaError_t Enactor::Trim(
  */
 template <
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT,
 	typename EqualityOp>
 cudaError_t Enactor::Trim(
-	PingPongStorage 	&problem_storage,
+	DoubleBuffer 	&problem_storage,
 	SizeT 				num_elements,
 	SizeT				*h_num_compacted,
 	SizeT				*d_num_compacted,
@@ -523,8 +523,8 @@ cudaError_t Enactor::Trim(
 	int 				max_grid_size)
 {
 	typedef ProblemType<
-		typename PingPongStorage::KeyType,
-		typename PingPongStorage::ValueType,
+		typename DoubleBuffer::KeyType,
+		typename DoubleBuffer::ValueType,
 		SizeT,
 		EqualityOp> ProblemType;
 
@@ -547,11 +547,11 @@ cudaError_t Enactor::Trim(
  * Enacts a consecutive removal operation on the specified device data.
  */
 template <
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT,
 	typename EqualityOp>
 cudaError_t Enactor::Trim(
-	PingPongStorage 	&problem_storage,
+	DoubleBuffer 	&problem_storage,
 	SizeT 				num_elements,
 	SizeT				*h_num_compacted,
 	SizeT				*d_num_compacted,

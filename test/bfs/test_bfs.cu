@@ -652,12 +652,11 @@ void RunTests(
 	int num_gpus,
 	double queue_sizing)
 {
-/*
 	// Allocate host-side label array (for both reference and gpu-computed results)
 	VertexId* reference_labels 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
-	VertexId* h_labels 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* h_labels 					= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 
-	// Allocate a BFS enactors
+	// Allocate BFS enactors
 	bfs::EnactorExpandContractGBarrier 		expand_contract_enactor(g_verbose);
 	bfs::EnactorExpandContract 				expand_contract_enactor(g_verbose);
 	bfs::EnactorContractExpandGBarrier 		contract_expand_enactor(g_verbose);

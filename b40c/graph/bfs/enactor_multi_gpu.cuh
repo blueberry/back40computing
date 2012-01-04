@@ -205,7 +205,6 @@ protected:
 		long long queue_index;			// Queuing index
 		long long steal_index;			// Work stealing index
 		long long queue_length;			// Current queue size
-		int selector;					// Ping-pong storage selector
 
 		// Kernel duty stats
 		util::KernelRuntimeStatsLifetime compact_kernel_stats;
@@ -232,7 +231,6 @@ protected:
 			partition_grid_size(0),
 			copy_grid_size(0),
 			iteration(0),
-			selector(0),
 			steal_index(0),
 			queue_index(0),
 			queue_length(0)
@@ -300,7 +298,6 @@ protected:
 
 			// Reset statistics
 			iteration = 0;
-			selector = 0;
 			queue_index = 0;
 			steal_index = 0;
 			queue_length = 0;
@@ -539,14 +536,14 @@ public:
 						<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
 					(owns_source) ? src : -1,
 					control->iteration,
-					(owns_source) ? 1 : 0,																			//
+					(owns_source) ? 1 : 0,
 					control->queue_index,
 					control->steal_index,
 					csr_problem.num_gpus,
-					NULL,																		// d_done (not used)
-					slice->frontier_queues.d_keys[control->selector ^ 1],						// in vertices
-					slice->d_multigpu_vqueue,													// out vertices
-					(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],		// in predecessors
+					NULL,										// d_done (not used)
+					slice->frontier_queues.d_keys[1],			// in filtered edge frontier
+					slice->frontier_queues.d_keys[2],			// out vertex frontier
+					slice->frontier_queues.d_values[1],			// in predecessors
 					slice->d_labels,
 					slice->d_visited_mask,
 					control->work_progress,
@@ -581,10 +578,10 @@ public:
 						control->queue_index,
 						control->steal_index,
 						csr_problem.num_gpus,
-						NULL,														// d_done (not used)
-						slice->d_multigpu_vqueue,									// in vertices
-						slice->frontier_queues.d_keys[control->selector],			// out vertices
-						slice->frontier_queues.d_values[control->selector],			// out predecessors
+						NULL,										// d_done (not used)
+						slice->frontier_queues.d_keys[0],			// in local vertex frontier
+						slice->frontier_queues.d_keys[1],			// out local edge frontier
+						slice->frontier_queues.d_values[1],			// out local predecessors
 						slice->d_column_indices,
 						slice->d_row_offsets,
 						control->work_progress,
@@ -618,8 +615,8 @@ public:
 							<<<control->partition_grid_size, PartitionUpsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
-						slice->frontier_queues.d_keys[control->selector],			// in vertices
-						slice->d_keep,
+						slice->frontier_queues.d_keys[1],			// in local edge frontier
+						slice->d_filter_mask,
 						(SizeT *) control->spine.d_spine,
 						slice->d_visited_mask,
 						control->work_progress,
@@ -660,11 +657,11 @@ public:
 							<<<control->partition_grid_size, PartitionDownsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
-						slice->frontier_queues.d_keys[control->selector],						// in vertices
-						slice->frontier_queues.d_keys[control->selector ^ 1],					// out vertices
-						(VertexId *) slice->frontier_queues.d_values[control->selector],		// in predecessors
-						(VertexId *) slice->frontier_queues.d_values[control->selector ^ 1],	// out predecessors
-						slice->d_keep,
+						slice->frontier_queues.d_keys[1],				// in local edge frontier
+						slice->frontier_queues.d_keys[2],				// out local sorted, filtered edge frontier
+						slice->frontier_queues.d_values[1],				// in local predecessors
+						slice->frontier_queues.d_values[2],				// out local sorted, filtered predecessors
+						slice->d_filter_mask,
 						(SizeT *) control->spine.d_spine,
 						control->work_progress,
 						control->partition_kernel_stats);
@@ -701,7 +698,7 @@ public:
 							control->gpu,
 							(long long) spine[control->spine_elements - 1]);
 						DisplayDeviceResults(
-							slice->frontier_queues.d_keys[control->selector],
+							slice->frontier_queues.d_keys[0],
 							spine[control->spine_elements - 1]);
 						printf("Source distance vector on gpu %d:\n", control->gpu);
 						DisplayDeviceResults(
@@ -749,7 +746,7 @@ public:
 								i,
 								num_elements,
 								peer,
-								peer_control->selector,
+								0,
 								queue_offset,
 								bins_per_gpu * i * peer_control->partition_grid_size,
 								queue_oob,
@@ -763,7 +760,7 @@ public:
 							work_decomposition.template Init<CopyPolicy::LOG_SCHEDULE_GRANULARITY>(
 								num_elements, control->copy_grid_size);
 
-							// Simply copy
+							// Simply copy from our own GPU
 							copy::Kernel<CopyPolicy>
 								<<<control->copy_grid_size, CopyPolicy::THREADS, 0, slice->stream>>>(
 									control->iteration,
@@ -771,9 +768,9 @@ public:
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
-									slice->d_multigpu_vqueue,																	// out vertices
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector] + queue_offset,		// in predecessors
+									slice->frontier_queues.d_keys[2] + queue_offset,					// in local sorted, filtered edge frontier
+									slice->frontier_queues.d_keys[0],									// out local vertex frontier
+									slice->frontier_queues.d_values[2] + queue_offset,					// in local sorted, filtered predecessors
 									slice->d_labels,
 									control->work_progress,
 									control->copy_kernel_stats);
@@ -783,19 +780,19 @@ public:
 
 						} else {
 
-							// Compaction
+							// Compaction from peer GPU
 							compact_atomic::Kernel<CompactPolicy>
 								<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
-									-1,														// source (not used)
+									-1,																		// source (not used)
 									control->iteration,
 									num_elements,
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									NULL,																						// d_done (not used)
-									peer_slice->frontier_queues.d_keys[control->selector ^ 1] + queue_offset,					// in vertices
-									slice->d_multigpu_vqueue,																	// out vertices
-									(VertexId *) peer_slice->frontier_queues.d_values[control->selector ^ 1] + queue_offset,		// in predecessors
+									NULL,																	// d_done (not used)
+									peer_slice->frontier_queues.d_keys[2] + queue_offset,					// in remote sorted, filtered edge frontier
+									slice->frontier_queues.d_keys[0],										// out local vertex frontier
+									peer_slice->frontier_queues.d_values[2] + queue_offset,					// in remote sorted, filtered predecessors
 									slice->d_labels,
 									slice->d_visited_mask,
 									control->work_progress,

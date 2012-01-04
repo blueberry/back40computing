@@ -30,7 +30,7 @@
 #include "b40c_test_util.h"
 #include "test_consecutive_reduction.h"
 
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 using namespace b40c;
 
@@ -81,8 +81,8 @@ void TestConsecutiveReduction(
 	ReductionOp scan_op)
 {
     // Allocate the consecutive reduction problem on the host
-	typedef util::PingPongStorage<T, T> PingPongStorage;
-	PingPongStorage h_problem_storage;
+	typedef util::DoubleBuffer<T, T> DoubleBuffer;
+	DoubleBuffer h_problem_storage;
 
 	h_problem_storage.d_keys[0] = (T*) malloc(num_elements * sizeof(T));
 	h_problem_storage.d_keys[1] = (T*) malloc(num_elements * sizeof(T));
@@ -136,7 +136,7 @@ void TestConsecutiveReduction(
 	}
 	num_compacted++;
 
-	Equality<typename PingPongStorage::KeyType> equality_op;
+	Equality<typename DoubleBuffer::KeyType> equality_op;
 
 	// Execute test(s), optionally sweeping problem size downward
 	SizeT orig_num_elements = num_elements;

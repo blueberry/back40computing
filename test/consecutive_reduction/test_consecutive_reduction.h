@@ -81,12 +81,12 @@ struct Equality
  */
 template <
 	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT,
 	typename ReductionOp,
 	typename EqualityOp>
 double TimedConsecutiveReduction(
-	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
+	DoubleBuffer &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
 	ReductionOp scan_op,
@@ -97,11 +97,11 @@ double TimedConsecutiveReduction(
 {
 	using namespace b40c;
 
-	typedef typename PingPongStorage::KeyType 		KeyType;
-	typedef typename PingPongStorage::ValueType 	ValueType;
+	typedef typename DoubleBuffer::KeyType 		KeyType;
+	typedef typename DoubleBuffer::ValueType 	ValueType;
 
 	// Allocate device storage
-	PingPongStorage 	d_problem_storage;
+	DoubleBuffer 	d_problem_storage;
 	SizeT				*d_num_compacted;
 
 	if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_keys[0], sizeof(KeyType) * num_elements),
