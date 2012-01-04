@@ -29,7 +29,7 @@
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <b40c/radix_sort/problem_type.cuh>
 #include <b40c/radix_sort/policy.cuh>
@@ -134,7 +134,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -144,10 +144,10 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		typename PingPongStorage,
+		typename DoubleBuffer,
 		typename SizeT>
 	cudaError_t Sort(
-		PingPongStorage &problem_storage,
+		DoubleBuffer &problem_storage,
 		SizeT num_elements,
 		int max_grid_size = 0);
 
@@ -167,7 +167,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -178,10 +178,10 @@ public:
 	 */
 	template <
 		ProbSizeGenre PROB_SIZE_GENRE,
-		typename PingPongStorage,
+		typename DoubleBuffer,
 		typename SizeT>
 	cudaError_t Sort(
-		PingPongStorage &problem_storage,
+		DoubleBuffer &problem_storage,
 		SizeT num_elements,
 		int max_grid_size = 0);
 
@@ -205,7 +205,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -218,10 +218,10 @@ public:
 		int START_BIT,
 		int NUM_BITS,
 		ProbSizeGenre PROB_SIZE_GENRE,
-		typename PingPongStorage,
+		typename DoubleBuffer,
 		typename SizeT>
 	cudaError_t Sort(
-		PingPongStorage &problem_storage,
+		DoubleBuffer &problem_storage,
 		SizeT num_elements,
 		int max_grid_size = 0);
 
@@ -238,7 +238,7 @@ public:
 	 * the input started in d_keys[0].)
 	 *
 	 * @param problem_storage
-	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
+	 * 		Instance of b40c::util::DoubleBuffer type describing the details of the
 	 * 		problem to sort.
 	 * @param num_elements
 	 * 		The number of elements in problem_storage to sort (starting at offset 0)
@@ -252,7 +252,7 @@ public:
 		int NUM_BITS,
 		typename Policy>
 	cudaError_t Sort(
-		util::PingPongStorage<
+		util::DoubleBuffer<
 			typename Policy::OriginalKeyType,
 			typename Policy::ValueType> &problem_storage,
 		typename Policy::SizeT num_elements,
@@ -283,18 +283,18 @@ struct Detail
 	typedef typename ProblemType::OriginalKeyType								StorageKeyType;
 	typedef typename ProblemType::ValueType										StorageValueType;
 	typedef typename ProblemType::SizeT											SizeT;
-	typedef typename util::PingPongStorage<StorageKeyType, StorageValueType> 	PingPongStorage;
+	typedef typename util::DoubleBuffer<StorageKeyType, StorageValueType> 	DoubleBuffer;
 
 	// Problem data
 	Enactor 			*enactor;
-	PingPongStorage		&problem_storage;
+	DoubleBuffer		&problem_storage;
 	SizeT				num_elements;
 	int			 		max_grid_size;
 
 	// Constructor
 	Detail(
 		Enactor *enactor,
-		PingPongStorage &problem_storage,
+		DoubleBuffer &problem_storage,
 		SizeT num_elements,
 		int max_grid_size = 0) :
 			enactor(enactor),
@@ -749,7 +749,7 @@ template <
 	int NUM_BITS,
 	typename Policy>
 cudaError_t Enactor::Sort(
-	util::PingPongStorage<
+	util::DoubleBuffer<
 		typename Policy::OriginalKeyType,
 		typename Policy::ValueType> &problem_storage,
 	typename Policy::SizeT num_elements,
@@ -771,16 +771,16 @@ template <
 	int START_BIT,
 	int NUM_BITS,
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 cudaError_t Enactor::Sort(
-	PingPongStorage &problem_storage,
+	DoubleBuffer &problem_storage,
 	SizeT num_elements,
 	int max_grid_size)
 {
 	typedef ProblemType<
-		typename PingPongStorage::KeyType,
-		typename PingPongStorage::ValueType,
+		typename DoubleBuffer::KeyType,
+		typename DoubleBuffer::ValueType,
 		SizeT> ProblemType;
 
 	Detail<
@@ -799,14 +799,14 @@ cudaError_t Enactor::Sort(
  */
 template <
 	ProbSizeGenre PROB_SIZE_GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 cudaError_t Enactor::Sort(
-	PingPongStorage &problem_storage,
+	DoubleBuffer &problem_storage,
 	SizeT num_elements,
 	int max_grid_size)
 {
-	return Sort<0, sizeof(typename PingPongStorage::KeyType) * 8, PROB_SIZE_GENRE>(
+	return Sort<0, sizeof(typename DoubleBuffer::KeyType) * 8, PROB_SIZE_GENRE>(
 		problem_storage, num_elements, max_grid_size);
 }
 
@@ -815,10 +815,10 @@ cudaError_t Enactor::Sort(
  * Enacts a sort operation on the specified device data.
  */
 template <
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 cudaError_t Enactor::Sort(
-	PingPongStorage &problem_storage,
+	DoubleBuffer &problem_storage,
 	SizeT num_elements,
 	int max_grid_size)
 {

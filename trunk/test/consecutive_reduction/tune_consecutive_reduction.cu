@@ -34,7 +34,7 @@
 #include <b40c/util/parameter_generation.cuh>
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <b40c/consecutive_reduction/problem_type.cuh>
 #include <b40c/consecutive_reduction/policy.cuh>
@@ -795,13 +795,13 @@ struct Enactor : public util::EnactorBase
 	// by separate CTAs
 	util::Spine flag_spine;
 
-	util::PingPongStorage<KeyType, ValueType> 	d_problem_storage;
+	util::DoubleBuffer<KeyType, ValueType> 	d_problem_storage;
 	SizeT 										num_elements;
 	ReductionOp 								reduction_op;
 	EqualityOp									equality_op;
 	SizeT										*d_num_compacted;
 
-	util::PingPongStorage<KeyType, ValueType> 	h_problem_storage;	// host problem storage (selector points to input, but output contains reference result)
+	util::DoubleBuffer<KeyType, ValueType> 	h_problem_storage;	// host problem storage (selector points to input, but output contains reference result)
 	SizeT 										h_num_compacted;		// number of elements in reference result
 
 	/**

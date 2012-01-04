@@ -30,10 +30,8 @@
 
 #include <b40c/graph/bfs/problem_type.cuh>
 #include <b40c/graph/bfs/enactor_base.cuh>
-#include <b40c/graph/bfs/microbench/serial_gather/kernel.cuh>
-#include <b40c/graph/bfs/microbench/serial_gather/kernel_policy.cuh>
-#include <b40c/graph/bfs/microbench/status_lookup/kernel.cuh>
-#include <b40c/graph/bfs/microbench/status_lookup/kernel_policy.cuh>
+#include <b40c/graph/bfs/microbench/local_cull/kernel.cuh>
+#include <b40c/graph/bfs/microbench/local_cull/kernel_policy.cuh>
 #include <b40c/graph/bfs/microbench/neighbor_gather/kernel.cuh>
 #include <b40c/graph/bfs/microbench/neighbor_gather/kernel_policy.cuh>
 
@@ -47,7 +45,7 @@ namespace microbench {
 /**
  * Microbenchmark enactor
  */
-class EnactorGatherLookup : public EnactorBase
+class EnactorCull : public EnactorBase
 {
 
 protected:
@@ -65,23 +63,26 @@ protected:
 	unsigned long long 		compact_total_lifetimes;
 
 
-	long long 		total_queued;
+	long long 		total_unculled;
 	long long 		search_depth;
+
+	void *d_labels2;
 
 public: 	
 	
 	/**
 	 * Constructor
 	 */
-	EnactorGatherLookup(bool DEBUG = false) :
+	EnactorCull(bool DEBUG = false) :
 		EnactorBase(DEBUG),
 		search_depth(0),
-		total_queued(0),
+		total_unculled(0),
 
 		expand_total_runtimes(0),
 		expand_total_lifetimes(0),
 		compact_total_runtimes(0),
-		compact_total_lifetimes(0)
+		compact_total_lifetimes(0),
+		d_labels2(0)
 	{}
 
 
@@ -99,7 +100,7 @@ public:
 			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
 
 			// Reset statistics
-			total_queued 		= 0;
+			total_unculled 		= 1;
 			search_depth 		= 0;
 
 		} while (0);
@@ -111,7 +112,12 @@ public:
 	/**
 	 * Destructor
 	 */
-	virtual ~EnactorGatherLookup() {}
+	virtual ~EnactorCull()
+	{
+		if (d_labels2) {
+			cudaFree(d_labels2);
+		}
+	}
 
 
     /**
@@ -119,12 +125,12 @@ public:
      */
 	template <typename VertexId>
     void GetStatistics(
-    	long long &total_queued,
+    	long long &total_unculled,
     	VertexId &search_depth,
     	double &expand_duty,
     	double &compact_duty)
     {
-    	total_queued = this->total_queued;
+    	total_unculled = this->total_unculled;
     	search_depth = this->search_depth;
 
     	expand_duty = (expand_total_lifetimes > 0) ?
@@ -144,10 +150,7 @@ public:
 	 */
     template <
     	typename ExpandPolicy,
-    	typename SerialPolicy,
     	typename CompactPolicy,
-    	typename BenchExpandPolicy,
-    	typename BenchSerialPolicy,
     	typename BenchCompactPolicy,
     	bool INSTRUMENT,
     	typename CsrProblem>
@@ -178,8 +181,9 @@ public:
 			if (DEBUG) printf("BFS compact min occupancy %d, level-grid size %d\n",
 				compact_min_occupancy, compact_grid_size);
 
-			printf("Compaction queue, Expansion queue\n");
-			printf("1, ");
+			printf("Iteration, Bitmask cull, Compaction queue, Expansion queue\n");
+			printf("0, 1, 1, ");
+			fflush(stdout);
 
 			SizeT queue_length;
 			VertexId iteration = 0;		// BFS iteration
@@ -192,6 +196,14 @@ public:
 
 			// Setup / lazy initialization
 			if (retval = Setup(expand_grid_size, compact_grid_size)) break;
+
+			// Allocate extra copy of labels
+			if (!d_labels2) {
+				if (retval = util::B40CPerror(
+						cudaMalloc((void**) &d_labels2,
+						graph_slice->nodes * sizeof(VertexId)),
+					"CsrProblem cudaMalloc d_labels2 failed", __FILE__, __LINE__)) break;
+			}
 
 			// Allocate value queues if necessary
 			if (!graph_slice->frontier_queues.d_values[0]) {
@@ -213,7 +225,7 @@ public:
 					&src_offset,
 					sizeof(SizeT) * 1,
 					cudaMemcpyHostToDevice),
-				"EnactorGatherLookup cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
+				"EnactorCull cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
 
 			// Copy source length
 			if (retval = util::B40CPerror(cudaMemcpy(
@@ -221,7 +233,7 @@ public:
 					&src_length,
 					sizeof(SizeT) * 1,
 					cudaMemcpyHostToDevice),
-				"EnactorGatherLookup cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
+				"EnactorCull cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
 
 			// Copy source distance
 			VertexId src_distance = 0;
@@ -230,60 +242,20 @@ public:
 					&src_distance,
 					sizeof(VertexId) * 1,
 					cudaMemcpyHostToDevice),
-				"EnactorGatherLookup cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
+				"EnactorCull cudaMemcpy src_offset failed", __FILE__, __LINE__)) break;
 
-			// Initialize d_keep to reuse as alternate bitmask
+			// Initialize d_filter_mask to reuse as alternate bitmask
 			util::MemsetKernel<ValidFlag><<<128, 128, 0, graph_slice->stream>>>(
-				graph_slice->d_keep,
+				graph_slice->d_filter_mask,
 				0,
 				graph_slice->nodes);
 
-			// Init tex
 			int bytes = (graph_slice->nodes + 8 - 1) / 8;
 			cudaChannelFormatDesc channelDesc = cudaCreateChannelDesc<char>();
-			if (util::B40CPerror(cudaBindTexture(
-					0,
-					status_lookup::bitmask_tex_ref,
-					graph_slice->d_visited_mask,
-					channelDesc,
-					bytes),
-				"EnactorGatherLookup cudaBindTexture failed", __FILE__, __LINE__)) exit(1);
-
-			printf("Go time\n");
-			fflush(stdout);
 
 			while (true) {
 
-				// BenchExpansion
-//				serial_gather::Kernel<BenchSerialPolicy>
-//					<<<expand_grid_size, BenchSerialPolicy::THREADS>>>(
-				neighbor_gather::Kernel<BenchExpandPolicy>
-					<<<expand_grid_size, BenchExpandPolicy::THREADS>>>(
-						iteration,
-						queue_index,
-						steal_index,
-						graph_slice->frontier_queues.d_keys[selector],			// d_in_row_offsets
-						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
-						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
-						graph_slice->d_column_indices,
-						graph_slice->d_visited_mask,
-						graph_slice->d_labels,
-						this->work_progress,
-						this->expand_kernel_stats);
-
-				if (INSTRUMENT) {
-					// Get expand stats (i.e., duty %)
-					if (retval = expand_kernel_stats.Accumulate(
-						expand_grid_size,
-						expand_total_runtimes,
-						expand_total_lifetimes)) break;
-				}
-
-				steal_index++;
-
 				// Expansion
-//				serial_gather::Kernel<SerialPolicy>
-//					<<<expand_grid_size, SerialPolicy::THREADS>>>(
 				neighbor_gather::Kernel<ExpandPolicy>
 					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						iteration,
@@ -293,7 +265,7 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_out
 						graph_slice->frontier_queues.d_values[selector],		// d_in_row_lengths
 						graph_slice->d_column_indices,
-						(VisitedMask *) graph_slice->d_keep,
+						(VisitedMask *) graph_slice->d_filter_mask,
 						graph_slice->d_labels,
 						this->work_progress);
 
@@ -305,7 +277,6 @@ public:
 
 				// Get expansion queue length
 				if (work_progress.GetQueueLength(queue_index, queue_length)) break;
-				total_queued += queue_length;
 				printf("%lld\n", (long long) queue_length);
 
 				if (!queue_length) {
@@ -313,8 +284,24 @@ public:
 					break;
 				}
 
+				// copy source distance
+				if (retval = util::B40CPerror(cudaMemcpy(
+						d_labels2,
+						graph_slice->d_labels,
+						sizeof(VertexId) * graph_slice->nodes,
+						cudaMemcpyDeviceToDevice),
+					"EnactorCull cudaMemcpy d_labels2 failed", __FILE__, __LINE__)) break;
+
+				if (util::B40CPerror(cudaBindTexture(
+						0,
+						local_cull::bitmask_tex_ref,
+						graph_slice->d_visited_mask,
+						channelDesc,
+						bytes),
+					"EnactorCull cudaBindTexture failed", __FILE__, __LINE__)) exit(1);
+
 				// BenchCompaction
-				status_lookup::Kernel<BenchCompactPolicy>
+				local_cull::Kernel<BenchCompactPolicy>
 					<<<compact_grid_size, BenchCompactPolicy::THREADS>>>(
 						iteration,
 						queue_index,
@@ -324,7 +311,7 @@ public:
 						graph_slice->frontier_queues.d_values[selector],		// d_out_row_lengths
 						graph_slice->d_visited_mask,
 						graph_slice->d_row_offsets,
-						graph_slice->d_labels,
+						(VertexId *)d_labels2,
 						this->work_progress,
 						this->compact_kernel_stats);
 
@@ -338,8 +325,24 @@ public:
 
 				steal_index++;
 
+				// Get compaction queue length
+				if (retval = work_progress.GetQueueLength(queue_index + 1, queue_length)) break;
+				printf("%lld, %lld, ", (long long) iteration, (long long) queue_length);
+				total_unculled += queue_length;
+
+				// Reset compaction queue length
+				if (retval = work_progress.SetQueueLength(queue_index + 1, 0)) break;
+
+				if (util::B40CPerror(cudaBindTexture(
+						0,
+						local_cull::bitmask_tex_ref,
+						(VisitedMask *) graph_slice->d_filter_mask,
+						channelDesc,
+						bytes),
+					"EnactorCull cudaBindTexture failed", __FILE__, __LINE__)) exit(1);
+
 				// Compaction
-				status_lookup::Kernel<CompactPolicy>
+				local_cull::Kernel<CompactPolicy>
 					<<<compact_grid_size, CompactPolicy::THREADS>>>(
 						iteration,
 						queue_index,
@@ -347,12 +350,12 @@ public:
 						graph_slice->frontier_queues.d_keys[selector ^ 1],		// d_in
 						graph_slice->frontier_queues.d_keys[selector],			// d_out_row_offsets
 						graph_slice->frontier_queues.d_values[selector],		// d_out_row_lengths
-						(VisitedMask *) graph_slice->d_keep,
+						(VisitedMask *) graph_slice->d_filter_mask,
 						graph_slice->d_row_offsets,
 						graph_slice->d_labels,
 						this->work_progress);
 
-				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "status_lookup::Kernel failed ", __FILE__, __LINE__))) break;
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "local_cull::Kernel failed ", __FILE__, __LINE__))) break;
 
 				queue_index++;
 				steal_index++;
@@ -418,29 +421,8 @@ public:
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> ExpandPolicy;
 
-			// Serial expansion kernel config
-			typedef serial_gather::KernelPolicy<
-				typename CsrProblem::ProblemType,
-				200,
-				false,					// BENCHMARK
-				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
-				true, 					// DEQUEUE_PROBLEM_SIZE
-				8,						// CTA_OCCUPANCY
-				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
-				0,						// LOG_LOADS_PER_TILE
-				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-				true,					// WORK_STEALING
-				6> SerialPolicy;
-
 			// Compaction kernel config
-			typedef status_lookup::KernelPolicy<
+			typedef local_cull::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				false,					// BENCHMARK
@@ -460,52 +442,8 @@ public:
 			// Microbenchmark configs
 			//
 
-			// Expansion kernel config
-			typedef neighbor_gather::KernelPolicy<
-				typename CsrProblem::ProblemType,
-				200,
-				true,					// BENCHMARK
-				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
-				true, 					// DEQUEUE_PROBLEM_SIZE
-				8,						// CTA_OCCUPANCY
-				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
-				0,						// LOG_LOADS_PER_TILE
-				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-				true,					// WORK_STEALING
-				32,						// WARP_GATHER_THRESHOLD
-				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6> BenchExpandPolicy;
-
-			// Serial kernel config
-			typedef serial_gather::KernelPolicy<
-				typename CsrProblem::ProblemType,
-				200,
-				true,					// BENCHMARK
-				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
-				true, 					// DEQUEUE_PROBLEM_SIZE
-				8,						// CTA_OCCUPANCY
-				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
-				0,						// LOG_LOADS_PER_TILE
-				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
-				true,					// WORK_STEALING
-				6> BenchSerialPolicy;
-
 			// Compaction kernel config
-			typedef status_lookup::KernelPolicy<
+			typedef local_cull::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				true,					// BENCHMARK
@@ -524,10 +462,7 @@ public:
 
 			return EnactSearch<
 				ExpandPolicy,
-				SerialPolicy,
 				CompactPolicy,
-				BenchExpandPolicy,
-				BenchSerialPolicy,
 				BenchCompactPolicy,
 				INSTRUMENT>(
 					csr_problem,

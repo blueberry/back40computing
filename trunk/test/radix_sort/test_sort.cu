@@ -35,7 +35,7 @@
 #include <algorithm>
 
 #include <b40c/util/error_utils.cuh>
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <b40c/radix_sort/enactor.cuh>
 
@@ -99,15 +99,15 @@ void Usage()
  */
 template <
 	radix_sort::ProbSizeGenre GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 void TimedSort(
-	PingPongStorage 						&device_storage,
+	DoubleBuffer 						&device_storage,
 	SizeT 									num_elements,
-	typename PingPongStorage::KeyType 		*h_keys,
+	typename DoubleBuffer::KeyType 		*h_keys,
 	int 									g_iterations)
 {
-	typename PingPongStorage::KeyType K;
+	typename DoubleBuffer::KeyType K;
 
 	// Create sorting enactor
 	radix_sort::Enactor sorting_enactor;
@@ -198,7 +198,7 @@ void TestSort(SizeT num_elements)
 		fflush(stdout);
 
 		// Allocate device storage
-		util::PingPongStorage<K> device_storage;
+		util::DoubleBuffer<K> device_storage;
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 
@@ -215,7 +215,7 @@ void TestSort(SizeT num_elements)
 		fflush(stdout);
 
 		// Allocate device storage
-		util::PingPongStorage<K, V> device_storage;
+		util::DoubleBuffer<K, V> device_storage;
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_keys[0], sizeof(K) * num_elements),
 			"TimedSort cudaMalloc device_storage.d_keys[0] failed: ", __FILE__, __LINE__)) exit(1);
 		if (util::B40CPerror(cudaMalloc((void**) &device_storage.d_values[0], sizeof(V) * num_elements),

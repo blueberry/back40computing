@@ -28,7 +28,7 @@
 #include <algorithm>
 
 // Sorting includes
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -183,7 +183,7 @@ int main(int argc, char** argv)
 	enactor.ENACTOR_DEBUG = true;
 
 	// Create ping-pong storage wrapper.
-	b40c::util::PingPongStorage<KeyType, ValueType> sort_storage(d_keys, d_values);
+	b40c::util::DoubleBuffer<KeyType, ValueType> sort_storage(d_keys, d_values);
 
 	//
 	// Perform one sorting pass (starting at bit zero and covering RADIX_BITS bits)

@@ -193,7 +193,7 @@ public:
 			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
 			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
 
-//			if (DEBUG) {
+			if (DEBUG) {
 				printf("BFS expand min occupancy %d, level-grid size %d\n",
 					expand_min_occupancy, expand_grid_size);
 				printf("BFS compact min occupancy %d, level-grid size %d\n",
@@ -202,7 +202,7 @@ public:
 					printf("Compaction queue, Expansion queue\n");
 					printf("1, ");
 				}
-//			}
+			}
 
 			SizeT queue_length;
 			VertexId iteration = 0;		// BFS iteration
@@ -249,8 +249,8 @@ public:
 						queue_index,								// also serves as steal_index
 						1,											// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex in
-						graph_slice->frontier_queues.d_keys[selector],				// vertex out
+						graph_slice->frontier_queues.d_keys[selector ^ 1],			// edge frontier in
+						graph_slice->frontier_queues.d_keys[selector],				// vertex frontier out
 						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor in
 						graph_slice->d_labels,
 						graph_slice->d_visited_mask,
@@ -290,8 +290,8 @@ public:
 						queue_index,								// also serves as steal_index
 						1,											// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[selector],				// vertex in
-						graph_slice->frontier_queues.d_keys[selector ^ 1],			// vertex out
+						graph_slice->frontier_queues.d_keys[selector],				// vertex frontier in
+						graph_slice->frontier_queues.d_keys[selector ^ 1],			// edge frontier out
 						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor out
 						graph_slice->d_column_indices,
 						graph_slice->d_row_offsets,

@@ -30,7 +30,7 @@
 #include "b40c_test_util.h"
 #include "test_consecutive_removal.h"
 
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 using namespace b40c;
 
@@ -73,14 +73,14 @@ void Usage()
  * Tests an example consecutive removal problem
  */
 template<
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 void TestProblem(
 	SizeT num_elements,
 	SizeT num_compacted,
-	PingPongStorage &h_problem_storage)
+	DoubleBuffer &h_problem_storage)
 {
-	Equality<typename PingPongStorage::KeyType> equality_op;
+	Equality<typename DoubleBuffer::KeyType> equality_op;
 
 	// Execute test(s), optionally sweeping problem size downward
 	size_t orig_num_elements = num_elements;
@@ -96,7 +96,7 @@ void TestProblem(
 
 		if (small > large) {
 			printf("%lu-byte keys: Small faster at %lu elements\n",
-				(unsigned long) sizeof(typename PingPongStorage::KeyType),
+				(unsigned long) sizeof(typename DoubleBuffer::KeyType),
 				(unsigned long) num_elements);
 		}
 
@@ -112,7 +112,7 @@ void TestProblem(
 template <typename KeyType, typename SizeT>
 void TestProblemKeysOnly(SizeT num_elements)
 {
-	util::PingPongStorage<KeyType> h_problem_storage;
+	util::DoubleBuffer<KeyType> h_problem_storage;
 
 	// Allocate the consecutive removal problem on the host
 	h_problem_storage.d_keys[0] = (KeyType*) malloc(num_elements * sizeof(KeyType));
@@ -163,7 +163,7 @@ void TestProblemKeysOnly(SizeT num_elements)
 template <typename KeyType, typename ValueType, typename SizeT>
 void TestProblem(SizeT num_elements)
 {
-	util::PingPongStorage<KeyType, ValueType> h_problem_storage;
+	util::DoubleBuffer<KeyType, ValueType> h_problem_storage;
 
     // Allocate the consecutive removal problem on the host
 	h_problem_storage.d_keys[0] = (KeyType*) malloc(num_elements * sizeof(KeyType));

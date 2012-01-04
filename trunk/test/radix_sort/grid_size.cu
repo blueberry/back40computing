@@ -28,7 +28,7 @@
 #include <algorithm>
 
 // Sorting includes
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -155,7 +155,7 @@ int main(int argc, char** argv)
 	cudaMalloc((void**) &d_keys, sizeof(KeyType) * num_elements);
 
 	// Create ping-pong storage wrapper.
-	b40c::util::PingPongStorage<KeyType> sort_storage(d_keys);
+	b40c::util::DoubleBuffer<KeyType> sort_storage(d_keys);
 	cudaMemcpy(
 		sort_storage.d_keys[sort_storage.selector],
 		h_keys,

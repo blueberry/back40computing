@@ -69,7 +69,7 @@ struct KernelPolicy : _ProblemType
 
 	typedef typename ProblemType::VertexId 			VertexId;
 	typedef typename ProblemType::SizeT 			SizeT;
-	typedef typename ProblemType::VisitedMask 	VisitedMask;
+	typedef typename ProblemType::CollisionMask 	CollisionMask;
 
 	typedef compact_atomic::KernelPolicy<
 		_ProblemType,
