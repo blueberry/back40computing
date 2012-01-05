@@ -136,23 +136,6 @@ void CommandLineArgs::GetCmdLineArgument(
     }
 }
 
-template <>
-void CommandLineArgs::GetCmdLineArgument<char*>(
-	const char* arg_name,
-	char* &val)
-{
-	using namespace std;
-	map<string, string>::iterator itr;
-	if ((itr = pairs.find(arg_name)) != pairs.end()) {
-
-		string s = itr->second;
-		val = (char*) malloc(sizeof(char) * (s.length() + 1));
-		strcpy(val, s.c_str());
-
-	} else {
-    	val = NULL;
-	}
-}
 
 template <typename T>
 void CommandLineArgs::GetCmdLineArguments(
@@ -164,6 +147,9 @@ void CommandLineArgs::GetCmdLineArguments(
 	// Recover multi-value string
 	map<string, string>::iterator itr;
 	if ((itr = pairs.find(arg_name)) != pairs.end()) {
+
+		// Clear any default values
+		vals.clear();
 
 		string val_string = itr->second;
 		istringstream str_stream(val_string);
