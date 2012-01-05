@@ -66,16 +66,12 @@ struct CsrProblem
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	static const float DEFAULT_QUEUE_SIZING;
-	static const int LOG_MAX_GPUS				= 2;
-
 	typedef ProblemType<
 		_VertexId,				// VertexId
 		_SizeT,					// SizeT
 		unsigned char,			// VisitedMask
 		unsigned char, 			// ValidFlag
-		MARK_PREDECESSORS,		// MARK_PREDECESSORS
-		LOG_MAX_GPUS>			// LOG_MAX_GPUS
+		MARK_PREDECESSORS>		// MARK_PREDECESSORS
 			ProblemType;
 
 	typedef typename ProblemType::VertexId 			VertexId;
@@ -514,17 +510,18 @@ struct CsrProblem
 	 * prior to each search
 	 */
 	cudaError_t Reset(
-		FrontierType frontier_type,						// The frontier type (i.e., edge/vertex/mixed)
-		double queue_sizing = DEFAULT_QUEUE_SIZING)		// The scaling factor for frontier queue size (e.g., 1.3x edge-count) to accommodate redundant expansion
+		FrontierType frontier_type,			// The frontier type (i.e., edge/vertex/mixed)
+		double max_queue_sizing = nan)		// Maximum size scaling factor for work queues (e.g., 1.0 creates n-element and m-element vertex and edge frontiers, respectively).  0.0 is unspecified.
 	{
 		cudaError_t retval = cudaSuccess;
+
+		if (max_queue_sizing <= nan) max_queue_sizing = 1.3;
 
 		for (int gpu = 0; gpu < num_gpus; gpu++) {
 
 			// Set device
 			if (util::B40CPerror(cudaSetDevice(graph_slices[gpu]->gpu),
 				"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;
-
 
 			//
 			// Allocate output labels if necessary
@@ -575,13 +572,13 @@ struct CsrProblem
 			switch (frontier_type) {
 			case VERTEX_FRONTIERS :
 				// O(n) ping-pong global vertex frontiers
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
 				new_frontier_elements[1] = new_frontier_elements[0];
 				break;
 
 			case EDGE_FRONTIERS :
 				// O(m) ping-pong global edge frontiers
-				new_frontier_elements[0] = double(graph_slices[gpu]->edges) * queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->edges) * max_queue_sizing;
 				new_frontier_elements[1] = new_frontier_elements[0];
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[0] = new_frontier_elements[0];
@@ -591,8 +588,8 @@ struct CsrProblem
 
 			case MIXED_FRONTIERS :
 				// O(n) global vertex frontier, O(m) global edge frontier
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
-				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * max_queue_sizing;
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[1] = new_frontier_elements[1];
 				}
@@ -600,8 +597,8 @@ struct CsrProblem
 
 			case MULTI_GPU_FRONTIERS :
 				// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
-				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * max_queue_sizing;
 				new_frontier_elements[2] = new_frontier_elements[2];
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[1] = new_frontier_elements[1];
@@ -717,11 +714,6 @@ struct CsrProblem
 		return retval;
 	}
 };
-
-
-// Whether to mark predecessors vs mark distance-from-source
-template <typename VertexId, typename SizeT, bool MARK_PREDECESSORS>
-const float CsrProblem<VertexId, SizeT, MARK_PREDECESSORS>::DEFAULT_QUEUE_SIZING = 1.30;
 
 
 } // namespace bfs

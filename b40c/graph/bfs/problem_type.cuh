@@ -42,8 +42,7 @@ template <
 	typename 	_SizeT,							// Type of unsigned integer to use for array indexing (e.g., uint32)
 	typename 	_VisitedMask,					// Type of unsigned integer to use for visited mask (e.g., uint8)
 	typename 	_ValidFlag,						// Type of integer to use for compaction validity (e.g., uint8)
-	bool 		_MARK_PREDECESSORS,				// Whether to mark predecessor-vertices (vs. distance-from-source)
-	int 		_LOG_MAX_GPUS>
+	bool 		_MARK_PREDECESSORS>				// Whether to mark predecessor-vertices (vs. distance-from-source)
 struct ProblemType : partition::ProblemType<
 	_VertexId, 																	// KeyType
 	typename util::If<_MARK_PREDECESSORS, _VertexId, util::NullType>::Type,		// ValueType
@@ -53,6 +52,8 @@ struct ProblemType : partition::ProblemType<
 	typedef _VisitedMask													VisitedMask;
 	typedef _ValidFlag														ValidFlag;
 	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
+
+	static const int LOG_MAX_GPUS			= 2;										// The "problem" type currently only reserves space for 4 gpu identities in upper vertex identifier bits
 
 	static const bool MARK_PREDECESSORS		= _MARK_PREDECESSORS;
 	static const _VertexId LOG_MAX_GPUS		= _LOG_MAX_GPUS;
