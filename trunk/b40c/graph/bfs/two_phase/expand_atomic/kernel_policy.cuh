@@ -37,7 +37,9 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
+namespace two_phase {
 namespace expand_atomic {
+
 
 /**
  * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
@@ -255,6 +257,7 @@ struct KernelPolicy : _ProblemType
 
 
 } // namespace expand_atomic
+} // namespace two_phase
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
