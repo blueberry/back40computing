@@ -41,6 +41,7 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
+namespace two_phase {
 namespace expand_atomic {
 
 
@@ -667,6 +668,7 @@ struct Cta
 
 
 } // namespace expand_atomic
+} // namespace two_phase
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
