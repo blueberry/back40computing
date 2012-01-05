@@ -27,22 +27,24 @@
 </tool>
 <tool id="cdt.managedbuild.tool.gnu.archiver.cygwin.base.1676546655" name="GCC Archiver" superClass="cdt.managedbuild.tool.gnu.archiver.cygwin.base"/>
 <tool id="cdt.managedbuild.tool.gnu.cpp.compiler.cygwin.base.652522784" name="Cygwin C++ Compiler" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.cygwin.base">
-<option id="gnu.cpp.compiler.option.preprocessor.def.745756297" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
+<option id="gnu.cpp.compiler.option.preprocessor.def.745756297" name="Defined symbols (-D)" superClass="gnu.cpp.compiler.option.preprocessor.def" valueType="definedSymbols">
 <listOptionValue builtIn="false" value="__forceinline__"/>
 <listOptionValue builtIn="false" value="__device__"/>
 <listOptionValue builtIn="false" value="__global__"/>
 <listOptionValue builtIn="false" value="__shared__"/>
 <listOptionValue builtIn="false" value="__host__"/>
+<listOptionValue builtIn="false" value="__launch_bounds__(a,b)"/>
 </option>
 <inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.cygwin.1098348915" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input.cygwin"/>
 </tool>
 <tool id="cdt.managedbuild.tool.gnu.c.compiler.cygwin.base.158380621" name="Cygwin C Compiler" superClass="cdt.managedbuild.tool.gnu.c.compiler.cygwin.base">
-<option id="gnu.c.compiler.option.preprocessor.def.symbols.256451465" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
+<option id="gnu.c.compiler.option.preprocessor.def.symbols.256451465" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" valueType="definedSymbols">
 <listOptionValue builtIn="false" value="__forceinline__"/>
 <listOptionValue builtIn="false" value="__device__"/>
 <listOptionValue builtIn="false" value="__global__"/>
 <listOptionValue builtIn="false" value="__shared__"/>
 <listOptionValue builtIn="false" value="__host__"/>
+<listOptionValue builtIn="false" value="__launch_bounds__(a,b)"/>
 </option>
 <inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.cygwin.1945715073" superClass="cdt.managedbuild.tool.gnu.c.compiler.input.cygwin"/>
 </tool>
@@ -308,6 +310,8 @@
 </profile>
 </scannerConfigBuildInfo>
 </storageModule>
+<storageModule moduleId="org.eclipse.cdt.core.language.mapping"/>
+<storageModule moduleId="org.eclipse.cdt.internal.ui.text.commentOwnerProjectMappings"/>
 </cconfiguration>
 </storageModule>
 <storageModule moduleId="cdtBuildSystem" version="4.0.0">
