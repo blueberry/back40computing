@@ -48,14 +48,15 @@
 
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
+#include <b40c/graph/bfs/enactor_contract_expand.cuh>
+/*
 #include <b40c/graph/bfs/enactor_contract_expand_gbarrier.cuh>
 #include <b40c/graph/bfs/enactor_expand_contract_gbarrier.cuh>
-#include <b40c/graph/bfs/enactor_contract_expand.cuh>
 #include <b40c/graph/bfs/enactor_expand_contract.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
-
+*/
 using namespace b40c;
 using namespace graph;
 
@@ -64,11 +65,13 @@ using namespace graph;
  * Defines, constants, globals 
  ******************************************************************************/
 
-enum {
+enum Strategy {
+	HOST = -1,
 	EXPAND_CONTRACT,
 	CONTRACT_EXPAND,
 	TWO_PHASE,
 	HYBRID,
+	MULTI_GPU
 };
 
 
@@ -130,18 +133,18 @@ void Usage()
 			"    the GTGraph generator defaults (A=.45,B=.15,C=.15,D=.25 skew parameters\n"
 			"\n"
 			"--strategy  Specifies the strategies to evaluate when num-gpus specified <= 1.\n"
-			"  Valid strategies are: {0, 1, 2, 3}. Default: 3\n"
-			"      \"0\": expand-contract\n"
+			"  Valid strategies are: {%d, %d, %d, %d}. Default: %d\n"
+			"      \"%d\": expand-contract\n"
 			"        - Two O(n) global ping-pong buffers (out-of-core vertex frontier)\n"
 			"        - single kernel invocation (in-kernel software global barriers between BFS iterations)\n"
 			"        - Predecessor-marking not implemented\n"
-			"      \"1\": contract-expand\n"
+			"      \"%d\": contract-expand\n"
 			"        - Two O(m) global ping-pong buffers (out-of-core edge frontier)\n"
 			"        - Single kernel invocation (in-kernel software global barriers between BFS iterations)\n"
-			"      \"2\": two-phase\n"
+			"      \"%d\": two-phase\n"
 			"        - Uneven O(n) and O(m) global ping-pong buffers (out-of-core vertex and edge frontiers)\n"
 			"        - Two kernel invocations per BFS iteration (pipelined)\n"
-			"      \"3\": hybrid of contract-expand and two-phase strategies\n"
+			"      \"%d\": hybrid of contract-expand and two-phase strategies\n"
 			"        - Uses high-throughput two-phase for BFS iterations with lots of concurrency,\n"
 			"          switching to contract-expand when frontier falls below a certain threshold\n"
 			"        - Two O(m) global ping-pong buffers \n"
@@ -179,7 +182,10 @@ void Usage()
 			"\n"
 			"--all  Evaluate traversal performance for all strategy variants (not just\n"
 			"    the hybrid approach to frontier management).\n"
-			"\n");
+			"\n",
+				EXPAND_CONTRACT, CONTRACT_EXPAND, TWO_PHASE, HYBRID,
+				HYBRID,
+				EXPAND_CONTRACT, CONTRACT_EXPAND, TWO_PHASE, HYBRID);
 }
 
 /**
@@ -197,6 +203,7 @@ void DisplaySolution(VertexId* source_path, SizeT nodes)
 	}
 	printf("]\n");
 }
+
 
 
 /******************************************************************************
@@ -496,27 +503,28 @@ template <
 	typename Value,
 	typename SizeT>
 cudaError_t TestGpuBfs(
-	int 									test_iteration,
 	BfsEnactor 								&enactor,
+	int 									test_iteration,
 	ProblemStorage 							&csr_problem,
 	VertexId 								src,
-	VertexId 								*h_labels,						// place to copy results out to
+	VertexId 								*h_labels,					// place to copy results out to
 	VertexId 								*reference_labels,
-	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
-	Stats									&stats,								// running statistics
-	int 									max_grid_size)
+	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,					// host graph dataset
+	Stats									&stats,						// running statistics
+	int 									max_grid_size,
+	double									max_queue_sizing)
 {
 	cudaError_t retval;
 
 	do {
 
-		// (Re)initialize distances
-		if (retval = csr_problem.Reset()) break;
+		// Prepare
+		if (retval = enactor.Prepare(csr_problem, max_grid_size, max_queue_sizing)) break;
 
 		// Perform BFS
 		GpuTimer gpu_timer;
 		gpu_timer.Start();
-		if (retval = enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size)) break;
+		if (retval = enactor.EnactSearch(csr_problem, src)) break;
 		gpu_timer.Stop();
 		float elapsed = gpu_timer.ElapsedMillis();
 
@@ -650,20 +658,29 @@ void RunTests(
 	int test_iterations,
 	int max_grid_size,
 	int num_gpus,
-	double queue_sizing)
+	double max_queue_sizing,
+	std::vector<Strategy> strategies)
 {
 	// Allocate host-side label array (for both reference and gpu-computed results)
 	VertexId* reference_labels 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* h_labels 					= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* reference_check 			= (g_quick) ? NULL : reference_labels;
 
-	// Allocate BFS enactors
-	bfs::EnactorExpandContractGBarrier 		expand_contract_enactor(g_verbose);
-	bfs::EnactorExpandContract 				expand_contract_enactor(g_verbose);
-	bfs::EnactorContractExpandGBarrier 		contract_expand_enactor(g_verbose);
-	bfs::EnactorContractExpand				contract_expand_enactor(g_verbose);
-	bfs::EnactorTwoPhase					two_phase_enactor(g_verbose);
-	bfs::EnactorHybrid 						hybrid_enactor(g_verbose);
-	bfs::EnactorMultiGpu					multi_gpu_enactor(g_verbose);
+	// Allocate BFS enactor map
+	bfs::EnactorExpandContract<INSTRUMENT, MARK_PREDECESSORS> 	expand_contract(g_verbose);
+	bfs::EnactorContractExpand<INSTRUMENT, MARK_PREDECESSORS>	contract_expand(g_verbose);
+	bfs::EnactorTwoPhase<INSTRUMENT, MARK_PREDECESSORS>			two_phase(g_verbose);
+	bfs::EnactorHybrid<INSTRUMENT, MARK_PREDECESSORS>			hybrid(g_verbose);
+	bfs::EnactorMultiGpu<INSTRUMENT, MARK_PREDECESSORS>			multi_gpu(g_verbose);
+
+	// Allocate Stats map
+	std::map<Strategy, Stats*> stats_map;
+	stats_map[HOST] 				= new Stats("Simple CPU BFS");
+	stats_map[EXPAND_CONTRACT] 		= new Stats("Expand-contract GPU BFS");
+	stats_map[CONTRACT_EXPAND] 		= new Stats("Contract-expand GPU BFS");
+	stats_map[TWO_PHASE] 			= new Stats("Two-phase GPU BFS");
+	stats_map[HYBRID] 				= new Stats("Hybrid contract-expand + two-phase GPU BFS");
+	stats_map[MULTI_GPU] 			= new Stats("Multi-GPU BFS");
 
 	// Allocate problem on GPU
 	bfs::CsrProblem<VertexId, SizeT, MARK_PREDECESSORS> csr_problem;
@@ -673,28 +690,8 @@ void RunTests(
 		csr_graph.edges,
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
-		queue_sizing,
-		g_uneven_queue_sizes,
-		num_gpus))
-	{
-		exit(1);
-	}
+		num_gpus)) exit(1);
 
-	// Initialize statistics
-	Stats stats[7];
-	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("One-phase expand-contract GPU BFS");
-	stats[2] = Stats("One-phase contract-expand GPU BFS");
-	stats[3] = Stats("Two-phase GPU BFS");
-	stats[4] = Stats("Hybrid online-vertex + two-phase GPU BFS");
-	stats[5] = Stats("Multi-GPU BFS");
-	
-	printf("Running %s %s %s tests...\n\n",
-		(INSTRUMENT) ? "instrumented" : "non-instrumented",
-		(MARK_PREDECESSORS) ? "parent-marking" : "distance-marking",
-		(g_stream_from_host) ? "stream-from-host" : "copied-to-device");
-	fflush(stdout);
-	
 	// Perform the specified number of test iterations
 	int test_iteration = -1;
 	while (test_iteration < test_iterations) {
@@ -706,114 +703,60 @@ void RunTests(
 
 		// Compute reference CPU BFS solution for source-distance
 		if (!g_quick) {
-			SimpleReferenceBfs(test_iteration, csr_graph, reference_labels, src, stats[0]);
-			printf("\n");
-			fflush(stdout);
-		}
-
-		if (num_gpus == 1) {
-
-			if (g_all) {
-
-				// Evaluate non-hybrid strategies
-
-				if (!csr_problem.uneven_queue_sizes) {
-
-					// ContractExpand (out-of-core edge frontier, single grid invocation)
-					// (Ping-pong queues must be equal-sized)
-					if (TestGpuBfs<INSTRUMENT>(
-						test_iteration,
-						contract_expand_enactor,
-						csr_problem,
-						src,
-						h_labels,
-						(g_quick) ? (VertexId*) NULL : reference_labels,
-						csr_graph,
-						stats[2],
-						max_grid_size)) exit(1);
-					printf("\n");
-					fflush(stdout);
-
-					if (!MARK_PREDECESSORS) {
-						// ExpandContract (out-of-core vertex frontier, single grid invocation)
-						// (Ping-pong queues must be equal-sized, parent-marking not implemented)
-						if (TestGpuBfs<INSTRUMENT>(
-							test_iteration,
-							expand_contract_enactor,
-							csr_problem,
-							src,
-							h_labels,
-							(g_quick) ? (VertexId*) NULL : reference_labels,
-							csr_graph,
-							stats[1],
-							max_grid_size)) exit(1);
-						printf("\n");
-						fflush(stdout);
-					}
-				}
-
-				// TwoPhase (both frontiers out-of-core, two kernels per BFS iteration)
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					two_phase_enactor,
-					csr_problem,
-					src,
-					h_labels,
-					(g_quick) ? (VertexId*) NULL : reference_labels,
-					csr_graph,
-					stats[3],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
-			if (!csr_problem.uneven_queue_sizes) {
-
-				// By: perform hybrid-phase out-of-core BFS implementation
-				// (Ping-pong queues must be equal-sized)
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					hybrid_enactor,
-					csr_problem,
-					src,
-					h_labels,
-					(g_quick) ? (VertexId*) NULL : reference_labels,
-					csr_graph,
-					stats[4],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
-		} else if (!csr_problem.uneven_queue_sizes) {
-
-			// Perform multi-GPU out-of-core BFS implementation
-			// (Ping-pong queues must be equal-sized)
-			if (TestGpuBfs<INSTRUMENT>(
+			SimpleReferenceBfs(
 				test_iteration,
-				multi_gpu_enactor,
-				csr_problem,
-				src,
-				h_labels,
-				(g_quick) ? (VertexId*) NULL : reference_labels,
 				csr_graph,
-				stats[5],
-				max_grid_size)) exit(1);
+				reference_labels,
+				src,
+				stats_map[HOST]);
 			printf("\n");
+
+			if (g_verbose2) {
+				printf("Reference solution: ");
+				DisplaySolution(reference_labels, csr_graph.nodes);
+				printf("\n");
+			}
 			fflush(stdout);
 		}
 
-		if (g_verbose2) {
-			printf("Reference solution: ");
-			DisplaySolution(reference_labels, csr_graph.nodes);
-			printf("Computed solution (%s): ", (MARK_PREDECESSORS) ? "predecessor" : "source dist");
-			DisplaySolution(h_labels, csr_graph.nodes);
+
+		// Iterate over GPU strategies
+		for (typename std::vector<Strategy>::iterator itr = strategies.begin();
+			itr != strategies.end();
+			++itr)
+		{
+			Strategy strategy = *itr;
+
+			switch (strategy) {
+			case EXPAND_CONTRACT:
+//				if (TestGpuBfs(expand_contract,	test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				break;
+			case CONTRACT_EXPAND:
+				if (TestGpuBfs(contract_expand,	test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				break;
+			case TWO_PHASE:
+//				if (TestGpuBfs(two_phase, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				break;
+			case HYBRID:
+//				if (TestGpuBfs(hybrid, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				break;
+			case MULTI_GPU:
+//				if (TestGpuBfs(multi_gpu, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				break;
+			}
+
 			printf("\n");
+			if (g_verbose2) {
+				printf("Computed solution (%s): ", (MARK_PREDECESSORS) ? "predecessor" : "source dist");
+				DisplaySolution(h_labels, csr_graph.nodes);
+				printf("\n");
+			}
+			fflush(stdout);
 		}
-		
+
+		// Increment test iteration (if we had a valid test)
 		if (randomized_src) {
-			// Valid test_iterations is the maximum of any of the
-			// test-statistic-structure's sample-counts
+			// test_iteration is the maximum of any of the stat-structures' sample-counts
 			test_iteration = 0;
 			for (int i = 0; i < sizeof(stats) / sizeof(Stats); i++) {
 				if (stats[i].rate.count > test_iteration) {
@@ -832,9 +775,10 @@ void RunTests(
 	
 	if (reference_labels) free(reference_labels);
 	if (h_labels) free(h_labels);
+	for (typename std::map<Strategy, bfs::EnactorBase*>::iterator itr = enactor_map.begin(); itr != enactor_map.end(); ++itr) delete itr->second;
+	for (typename std::map<Strategy, Stats*>::iterator itr = stats_map.begin(); itr != stats_map.end(); ++itr) delete itr->second;
 
 	cudaDeviceSynchronize();
-*/
 }
 
 
@@ -847,15 +791,16 @@ void RunTests(
 	CommandLineArgs &args)
 {
 	VertexId 	src 				= -1;			// Use whatever the specified graph-type's default is
-	char* 		src_str				= NULL;
+	std::string	src_str				= NULL;
 	bool 		randomized_src		= false;		// Whether or not to select a new random src for each test iteration
 	bool 		instrumented		= false;		// Whether or not to collect instrumentation from kernels
 	bool 		mark_pred			= false;		// Whether or not to mark src-distance vs. parent vertices
 	int 		test_iterations 	= 1;
 	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
 	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
-	double 		queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
-	
+	double 		max_queue_sizing	= nan;			// Maximum size scaling factor for work queues (e.g., 1.0 creates n and m-element vertex and edge frontiers).
+	std::vector<Strategy> strategies(1, HYBRID);			// Use "hybrid" strategy by default
+
 	instrumented = args.CheckCmdLineFlag("instrumented");
 	args.GetCmdLineArgument("src", src_str);
 	if (src_str != NULL) {
@@ -875,16 +820,21 @@ void RunTests(
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("num-gpus", num_gpus);
-	args.GetCmdLineArgument("queue-sizing", queue_sizing);
+	args.GetCmdLineArgument("queue-sizing", max_queue_sizing);
 	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
 	} else {
 		g_verbose = args.CheckCmdLineFlag("v");
 	}
+	args.GetCmdLineArguments("strategy", strategies);
 
-	if ((num_gpus > 1) && (__B40C_LP64__ == 0)) {
-		printf("Must be compiled in 64-bit to run multiple GPUs\n");
-		exit(1);
+	if (num_gpus > 1) {
+		if (__B40C_LP64__ == 0) {
+			printf("Must be compiled in 64-bit to run multiple GPUs\n");
+			exit(1);
+		}
+		strategies.clear();
+		strategies.push_back(MULTI_GPU);
 	}
 
 	// Enable symmetric peer access between gpus
@@ -922,10 +872,10 @@ void RunTests(
 		// Run instrumented kernel for runtime statistics
 		if (mark_pred) {
 			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		} else {
 			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}
 
 	} else {
@@ -934,11 +884,11 @@ void RunTests(
 		if (mark_pred) {
 /*
 			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 */
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}
 //	}
 }

@@ -608,7 +608,7 @@ void RunTests(
 	int test_iterations,
 	int max_grid_size,
 	int num_gpus,
-	double queue_sizing,
+	double max_queue_sizing,
 	bool stream_from_host)
 {
 	// Allocate host-side source_distance array (for both reference and gpu-computed results)
@@ -626,7 +626,7 @@ void RunTests(
 		csr_graph.edges,
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
-		queue_sizing,
+		max_queue_sizing,
 		g_uneven,
 		num_gpus))
 	{
@@ -728,7 +728,7 @@ int main( int argc, char** argv)
 	int 		test_iterations 	= 1;
 	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
 	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
-	double 		queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
+	double 		max_queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
@@ -762,7 +762,7 @@ int main( int argc, char** argv)
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("num-gpus", num_gpus);
-	args.GetCmdLineArgument("queue-sizing", queue_sizing);
+	args.GetCmdLineArgument("queue-sizing", max_queue_sizing);
 	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
 	} else {
@@ -888,20 +888,20 @@ int main( int argc, char** argv)
 		// Run instrumented kernel for runtime statistics
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, stream_from_host);
 		}
 	} else {
 
 		// Run regular kernel 
 		if (mark_parents) {
 			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, stream_from_host);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, stream_from_host);
 		}
 	}
 }
