@@ -454,7 +454,7 @@ void KernelGlobalBarrier(
 
 
 /**
- * Kernel interface for a single contract-expandBFS iteration
+ * Kernel interface for a single contract-expand BFS iteration
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
@@ -472,7 +472,7 @@ void Kernel(
 	typename KernelPolicy::VertexId			*d_column_indices,
 	typename KernelPolicy::SizeT			*d_row_offsets,
 	typename KernelPolicy::VertexId			*d_labels,
-	typename KernelPolicy::VisitedMask 	*d_visited_mask,
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
