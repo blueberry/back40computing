@@ -36,7 +36,9 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
+namespace two_phase {
 namespace compact_atomic {
+
 
 
 /**
@@ -182,6 +184,7 @@ struct KernelPolicy : _ProblemType
 };
 
 } // namespace compact_atomic
+} // namespace two_phase
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
