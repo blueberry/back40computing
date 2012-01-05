@@ -25,13 +25,13 @@
 
 #pragma once
 
-#include <b40c/graph/bfs/compact_atomic/kernel_policy.cuh>
-#include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace fused_two_phase {
+namespace two_phase {
 
 /**
  *
@@ -69,7 +69,7 @@ struct KernelPolicy : _ProblemType
 
 	typedef typename ProblemType::VertexId 			VertexId;
 	typedef typename ProblemType::SizeT 			SizeT;
-	typedef typename ProblemType::CollisionMask 	CollisionMask;
+	typedef typename ProblemType::VisitedMask 	VisitedMask;
 
 	typedef compact_atomic::KernelPolicy<
 		_ProblemType,
@@ -134,7 +134,7 @@ struct KernelPolicy : _ProblemType
 };
 
 
-} // namespace fused_two_phase
+} // namespace two_phase
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
