@@ -28,7 +28,7 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
-#include <b40c/graph/bfs/expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
