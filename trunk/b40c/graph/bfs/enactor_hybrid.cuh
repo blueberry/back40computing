@@ -30,11 +30,11 @@
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
 
-#include <b40c/graph/bfs/compact_expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/contract_expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
-#include <b40c/graph/bfs/compact_atomic/kernel.cuh>
-#include <b40c/graph/bfs/compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/contract_atomic/kernel.cuh>
+#include <b40c/graph/bfs/contract_atomic/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -63,7 +63,7 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime 	one_phase_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
-	util::KernelRuntimeStatsLifetime 	compact_kernel_stats;
+	util::KernelRuntimeStatsLifetime 	contract_kernel_stats;
 
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
@@ -109,7 +109,7 @@ public:
 	cudaError_t Setup(
 		int one_phase_grid_size,
 		int expand_grid_size,
-		int compact_grid_size)
+		int contract_grid_size)
     {
     	cudaError_t retval = cudaSuccess;
 
@@ -142,7 +142,7 @@ public:
 			// Make sure our runtime stats are good
 			if (retval = one_phase_kernel_stats.Setup(one_phase_grid_size)) break;
 			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
-			if (retval = compact_kernel_stats.Setup(compact_grid_size)) break;
+			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Make sure barriers are initialized
 			if (retval = global_barrier.Setup(one_phase_grid_size)) break;
@@ -228,16 +228,16 @@ public:
 			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-			int compact_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
-			int compact_grid_size 			= MaxGridSize(compact_min_occupancy, max_grid_size);
+			int contract_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
+			int contract_grid_size 			= MaxGridSize(contract_min_occupancy, max_grid_size);
 
 			if (DEBUG) {
 				printf("BFS one_phase min occupancy %d, level-grid size %d\n",
 					one_phase_min_occupancy, one_phase_grid_size);
 				printf("BFS expand min occupancy %d, level-grid size %d\n",
 					expand_min_occupancy, expand_grid_size);
-				printf("BFS compact min occupancy %d, level-grid size %d\n",
-					compact_min_occupancy, compact_grid_size);
+				printf("BFS contract min occupancy %d, level-grid size %d\n",
+					contract_min_occupancy, contract_grid_size);
 				if (INSTRUMENT) {
 					printf("Iteration, Queue Size\n");
 					printf("1, 1\n");
@@ -249,7 +249,7 @@ public:
 			int selector 					= 0;
 
 			// Setup / lazy initialization
-			if (retval = Setup(one_phase_grid_size, expand_grid_size, compact_grid_size)) break;
+			if (retval = Setup(one_phase_grid_size, expand_grid_size, contract_grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -264,7 +264,7 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					contract_atomic::BitmaskTex<VisitedMask>::ref,
 					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
@@ -283,7 +283,7 @@ public:
 			// Bind bitmask texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::BitmaskTex<VisitedMask>::ref,
+					contract_expand_atomic::BitmaskTex<VisitedMask>::ref,
 					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
@@ -292,7 +292,7 @@ public:
 			// Bind row-offsets texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_expand_atomic::RowOffsetTex<SizeT>::ref,
+					contract_expand_atomic::RowOffsetTex<SizeT>::ref,
 					graph_slice->d_row_offsets,
 					row_offsets_desc,
 					(graph_slice->nodes + 1) * sizeof(SizeT)),
@@ -304,8 +304,8 @@ public:
 
 				if (queue_length <= saturation_boundary) {
 
-					// Run one_phase-grid, no-separate-compaction
-					compact_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
+					// Run one_phase-grid, no-separate-contraction
+					contract_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
 						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
 							iteration[0],
 							queue_index,
@@ -361,8 +361,8 @@ public:
 						// Run level-grid
 
 						// Compaction
-						compact_atomic::Kernel<CompactPolicy>
-							<<<compact_grid_size, CompactPolicy::THREADS>>>(
+						contract_atomic::Kernel<CompactPolicy>
+							<<<contract_grid_size, CompactPolicy::THREADS>>>(
 								src,
 								(VertexId) iteration[0],
 								0,														// num_elements (unused: we obtain this from device-side counters instead)
@@ -376,20 +376,20 @@ public:
 								graph_slice->d_labels,
 								graph_slice->d_visited_mask,
 								work_progress,
-								compact_kernel_stats);
+								contract_kernel_stats);
 
-						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "compact_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
 
 						queue_index++;
 
 						if (INSTRUMENT) {
-							// Get compact downsweep stats (i.e., duty %)
+							// Get contract downsweep stats (i.e., duty %)
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 
 							if (DEBUG) printf("%lld, %lld", iteration[0], (long long) queue_length);
 
-							if (compact_kernel_stats.Accumulate(
-								compact_grid_size,
+							if (contract_kernel_stats.Accumulate(
+								contract_grid_size,
 								total_runtimes,
 								total_lifetimes)) break;
 						}
@@ -470,7 +470,7 @@ public:
     	if (cuda_props.device_sm_version >= 200) {
 
 			// Single-grid tuning configuration
-			typedef compact_expand_atomic::KernelPolicy<
+			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -514,7 +514,7 @@ public:
 
 
 			// Compaction kernel config
-			typedef compact_atomic::KernelPolicy<
+			typedef contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -535,7 +535,7 @@ public:
     	} else if (cuda_props.device_sm_version >= 130) {
 /*
 			// Single-grid tuning configuration
-			typedef compact_expand_atomic::KernelPolicy<
+			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT
@@ -579,7 +579,7 @@ public:
 
 
 			// Compaction kernel config
-			typedef compact_atomic::KernelPolicy<
+			typedef contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT

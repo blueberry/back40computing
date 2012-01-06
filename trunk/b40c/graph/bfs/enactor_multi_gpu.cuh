@@ -36,17 +36,17 @@
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
 
-#include <b40c/graph/bfs/compact_atomic/kernel.cuh>
-#include <b40c/graph/bfs/compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/contract_atomic/kernel.cuh>
+#include <b40c/graph/bfs/contract_atomic/kernel_policy.cuh>
 
 #include <b40c/graph/bfs/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
 
-#include <b40c/graph/bfs/partition_compact/policy.cuh>
-#include <b40c/graph/bfs/partition_compact/upsweep/kernel.cuh>
-#include <b40c/graph/bfs/partition_compact/upsweep/kernel_policy.cuh>
-#include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
-#include <b40c/graph/bfs/partition_compact/downsweep/kernel_policy.cuh>
+#include <b40c/graph/bfs/partition_contract/policy.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/kernel_policy.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/kernel_policy.cuh>
 
 #include <b40c/graph/bfs/copy/kernel.cuh>
 #include <b40c/graph/bfs/copy/kernel_policy.cuh>
@@ -83,7 +83,7 @@ public :
 	struct Policy<INSTRUMENT, CsrProblem, 200>
 	{
 		// Compaction kernel config
-		typedef compact_atomic::KernelPolicy<
+		typedef contract_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
@@ -121,7 +121,7 @@ public :
 
 
 		// Make sure we satisfy the tuning constraints in partition::[up|down]sweep::tuning_policy.cuh
-		typedef partition_compact::Policy<
+		typedef partition_contract::Policy<
 			// Problem Type
 			typename CsrProblem::ProblemType,
 			200,
@@ -196,9 +196,9 @@ protected:
 		util::Spine spine;
 		int spine_elements;
 
-		int compact_grid_size;			// Compaction grid size
+		int contract_grid_size;			// Compaction grid size
 		int expand_grid_size;			// Expansion grid size
-		int partition_grid_size;		// Partition/compact grid size
+		int partition_grid_size;		// Partition/contract grid size
 		int copy_grid_size;				// Copy grid size
 
 		long long iteration;			// BFS iteration
@@ -207,7 +207,7 @@ protected:
 		long long queue_length;			// Current queue size
 
 		// Kernel duty stats
-		util::KernelRuntimeStatsLifetime compact_kernel_stats;
+		util::KernelRuntimeStatsLifetime contract_kernel_stats;
 		util::KernelRuntimeStatsLifetime expand_kernel_stats;
 		util::KernelRuntimeStatsLifetime partition_kernel_stats;
 		util::KernelRuntimeStatsLifetime copy_kernel_stats;
@@ -226,7 +226,7 @@ protected:
 			cuda_props(gpu),
 			spine(true),				// Host-mapped spine
 			spine_elements(0),
-			compact_grid_size(0),
+			contract_grid_size(0),
 			expand_grid_size(0),
 			partition_grid_size(0),
 			copy_grid_size(0),
@@ -266,8 +266,8 @@ protected:
 
 			do {
 		    	// Determine grid size(s)
-				int compact_min_occupancy 		= CompactPolicy::CTA_OCCUPANCY;
-				compact_grid_size 				= MaxGridSize(compact_min_occupancy, max_grid_size);
+				int contract_min_occupancy 		= CompactPolicy::CTA_OCCUPANCY;
+				contract_grid_size 				= MaxGridSize(contract_min_occupancy, max_grid_size);
 
 				int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 				expand_grid_size 				= MaxGridSize(expand_min_occupancy, max_grid_size);
@@ -282,8 +282,8 @@ protected:
 				spine_elements = (partition_grid_size * PartitionPolicy::Upsweep::BINS) + 1;
 				if (retval = spine.template Setup<typename PartitionPolicy::SizeT>(spine_elements)) break;
 
-				if (DEBUG) printf("Gpu %d compact  min occupancy %d, grid size %d\n",
-					gpu, compact_min_occupancy, compact_grid_size);
+				if (DEBUG) printf("Gpu %d contract  min occupancy %d, grid size %d\n",
+					gpu, contract_min_occupancy, contract_grid_size);
 				if (DEBUG) printf("Gpu %d expand min occupancy %d, grid size %d\n",
 					gpu, expand_min_occupancy, expand_grid_size);
 				if (DEBUG) printf("Gpu %d partition min occupancy %d, grid size %d, spine elements %d\n",
@@ -442,7 +442,7 @@ public:
 				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						compact_atomic::BitmaskTex<VisitedMask>::ref,
+						contract_atomic::BitmaskTex<VisitedMask>::ref,
 						csr_problem.graph_slices[i]->d_visited_mask,
 						bitmask_desc,
 						bytes),
@@ -532,8 +532,8 @@ public:
 				}
 
 				// Compaction
-				compact_atomic::Kernel<CompactPolicy>
-						<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
+				contract_atomic::Kernel<CompactPolicy>
+						<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
 					(owns_source) ? src : -1,
 					control->iteration,
 					(owns_source) ? 1 : 0,
@@ -598,7 +598,7 @@ public:
 
 
 				//---------------------------------------------------------------------
-				// Partition/compact work queues
+				// Partition/contract work queues
 				//---------------------------------------------------------------------
 
 				for (int i = 0; i < csr_problem.num_gpus; i++) {
@@ -611,7 +611,7 @@ public:
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
 					// Upsweep
-					partition_compact::upsweep::Kernel<PartitionUpsweep>
+					partition_contract::upsweep::Kernel<PartitionUpsweep>
 							<<<control->partition_grid_size, PartitionUpsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
@@ -623,7 +623,7 @@ public:
 						control->partition_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
-						"EnactorMultiGpu partition_compact::upsweep::Kernel failed", __FILE__, __LINE__))) break;
+						"EnactorMultiGpu partition_contract::upsweep::Kernel failed", __FILE__, __LINE__))) break;
 
 					if (DEBUG2) {
 						printf("Presorted spine on gpu %d (%lld elements):\n",
@@ -653,7 +653,7 @@ public:
 					}
 
 					// Downsweep
-					partition_compact::downsweep::Kernel<PartitionDownsweep>
+					partition_contract::downsweep::Kernel<PartitionDownsweep>
 							<<<control->partition_grid_size, PartitionDownsweep::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						csr_problem.num_gpus,
@@ -693,7 +693,7 @@ public:
 					if (spine[control->spine_elements - 1]) done = false;
 
 					if (DEBUG2) {
-						printf("Iteration %lld sort-compacted queue on gpu %d (%lld elements):\n",
+						printf("Iteration %lld sort-contracted queue on gpu %d (%lld elements):\n",
 							(long long) control->iteration,
 							control->gpu,
 							(long long) spine[control->spine_elements - 1]);
@@ -715,7 +715,7 @@ public:
 
 
 				//---------------------------------------------------------------------
-				// Stream-compact work queues
+				// Stream-contract work queues
 				//---------------------------------------------------------------------
 
 				for (int i = 0; i < csr_problem.num_gpus; i++) {
@@ -781,8 +781,8 @@ public:
 						} else {
 
 							// Compaction from peer GPU
-							compact_atomic::Kernel<CompactPolicy>
-								<<<control->compact_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
+							contract_atomic::Kernel<CompactPolicy>
+								<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
 									-1,																		// source (not used)
 									control->iteration,
 									num_elements,
@@ -798,7 +798,7 @@ public:
 									control->work_progress,
 									control->expand_kernel_stats);
 							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
-								"EnactorMultiGpu compact_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+								"EnactorMultiGpu contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
 
 						}
 						control->steal_index++;

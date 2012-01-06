@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding reduction granularity configuration
+ * "Metatype" for guiding BFS expansion granularity configuration
  ******************************************************************************/
 
 #pragma once
@@ -28,6 +28,7 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
+#include <b40c/util/soa_tuple.cuh>
 #include <b40c/util/srts_grid.cuh>
 #include <b40c/util/srts_details.cuh>
 #include <b40c/util/io/modified_load.cuh>
@@ -36,13 +37,10 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace two_phase {
-namespace compact_atomic {
-
-
+namespace expand_contract_atomic {
 
 /**
- * BFS compaction upsweep kernel granularity configuration meta-type.  Parameterizations of this
+ * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -61,7 +59,7 @@ template <
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
-	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
+	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
 
 	// Tunable parameters
 	int _MIN_CTA_OCCUPANCY,
@@ -69,9 +67,15 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,
+	util::io::ld::CacheModifier _COLUMN_READ_MODIFIER,
+	util::io::ld::CacheModifier _ROW_OFFSET_ALIGNED_READ_MODIFIER,
+	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,
 	bool _WORK_STEALING,
+	int _WARP_GATHER_THRESHOLD,
+	int _CTA_GATHER_THRESHOLD,
+	int _BITMASK_CULL_THRESHOLD,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelPolicy : _ProblemType
@@ -80,15 +84,16 @@ struct KernelPolicy : _ProblemType
 	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
-
-	static const bool WORK_STEALING								= _WORK_STEALING;
+	static const util::io::ld::CacheModifier QUEUE_READ_MODIFIER 					= _QUEUE_READ_MODIFIER;
+	static const util::io::ld::CacheModifier COLUMN_READ_MODIFIER 					= _COLUMN_READ_MODIFIER;
+	static const util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER 		= _ROW_OFFSET_ALIGNED_READ_MODIFIER;
+	static const util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER 	= _ROW_OFFSET_UNALIGNED_READ_MODIFIER;
+	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
 
 	enum {
 
 		INSTRUMENT						= _INSTRUMENT,
-		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
+		SATURATION_QUIT					= _SATURATION_QUIT,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
@@ -116,10 +121,15 @@ struct KernelPolicy : _ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		WORK_STEALING					= _WORK_STEALING,
+		WARP_GATHER_THRESHOLD			= _WARP_GATHER_THRESHOLD,
+		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
+		BITMASK_CULL_THRESHOLD 			= _BITMASK_CULL_THRESHOLD,
 	};
 
 
-	// SRTS grid type
+	// Expand SRTS grid type
 	typedef util::SrtsGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type (valid counts)
@@ -127,11 +137,25 @@ struct KernelPolicy : _ProblemType
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
-
+			SrtsExpandGrid;
 
 	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	typedef util::SrtsDetails<SrtsExpandGrid> SrtsExpandDetails;
+
+
+	// Compact SRTS grid type
+	typedef util::SrtsGrid<
+		CUDA_ARCH,
+		SizeT,									// Partial type (valid counts)
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		0,										// 1 lane
+		LOG_RAKING_THREADS,						// Raking threads
+		true>									// There are prefix dependences between lanes
+			SrtsCompactGrid;
+
+	// Operational details type for SRTS grid type
+	typedef util::SrtsDetails<SrtsCompactGrid> SrtsCompactDetails;
+
 
 
 	/**
@@ -139,52 +163,67 @@ struct KernelPolicy : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		enum {
-			WARP_HASH_ELEMENTS					= 128,
-		};
-
 		// Persistent shared state for the CTA
 		struct State {
+			// Type describing four shared memory channels per warp for intra-warp communication
+			typedef SizeT 						WarpComm[WARPS][4];
 
 			// Shared work-processing limits
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
-			// Storage for scanning local ranks
-			SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			// Shared memory channels for intra-warp communication
+			volatile WarpComm					warp_comm;
+			int									cta_comm;
 
-			// General pool for hashing & tree-reduction
-			union {
-				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
-				volatile VertexId 				vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
-			};
+			// Storage for scanning local contract-expand ranks
+			volatile SizeT 						warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								contract_raking_elements[SrtsCompactGrid::TOTAL_RAKING_ELEMENTS];
 
 		} state;
 
-
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES				= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
-													- sizeof(State)
-													- 128,
+			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
+												- sizeof(State)
+												- 128,
 
-			HISTORY_HASH_ELEMENTS				= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
+			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PREDECESSORS) ?
+													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and predecessor
+													sizeof(SizeT),								// Just gather offset
+
+			HASH_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / sizeof(VertexId),
+			WARP_HASH_ELEMENTS				= 128,
+
+			OFFSET_ELEMENTS					= MAX_SCRATCH_BYTES_PER_CTA / SCRATCH_ELEMENT_SIZE,
+			PARENT_ELEMENTS					= (ProblemType::MARK_PREDECESSORS) ?  OFFSET_ELEMENTS : 0,
 		};
 
-		// Fill the remainder of smem with a history-based hash-cache of seen vertex-ids
-		volatile VertexId						history[HISTORY_HASH_ELEMENTS];
+		union {
+			// Raking elements
+			SizeT 							expand_raking_elements[SrtsExpandGrid::TOTAL_RAKING_ELEMENTS];
+
+			// Scratch elements
+			struct {
+				SizeT 						offset_scratch[OFFSET_ELEMENTS];
+				VertexId 					predecessor_scratch[PARENT_ELEMENTS];
+			};
+
+			volatile VertexId 				warp_hashtable[WARPS][WARP_HASH_ELEMENTS];
+			VertexId 						cta_hashtable[HASH_ELEMENTS];
+		};
 	};
 
 	enum {
-		THREAD_OCCUPANCY						= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY							= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-		CTA_OCCUPANCY  							= B40C_MIN(_MIN_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		CTA_OCCUPANCY  					= B40C_MIN(_MIN_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
-		VALID									= (CTA_OCCUPANCY > 0),
+		VALID							= (CTA_OCCUPANCY > 0),
 	};
 };
 
-} // namespace compact_atomic
-} // namespace two_phase
+
+} // namespace expand_contract_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

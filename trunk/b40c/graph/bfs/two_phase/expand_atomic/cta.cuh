@@ -491,6 +491,7 @@ struct Cta
 		 * Inspect dequeued vertices, updating source path if necessary and
 		 * obtaining edge-list details
 		 */
+		template <typename Cta>
 		__device__ __forceinline__ void Inspect(Cta *cta)
 		{
 			Iterate<0, 0>::Inspect(cta, this);
@@ -499,6 +500,7 @@ struct Cta
 		/**
 		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
 		 */
+		template <typename Cta>
 		__device__ __forceinline__ void ExpandByCta(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByCta(cta, this);
@@ -507,6 +509,7 @@ struct Cta
 		/**
 		 * Expands neighbor lists for valid vertices a warp-expansion granularity
 		 */
+		template <typename Cta>
 		__device__ __forceinline__ void ExpandByWarp(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByWarp(cta, this);
@@ -515,6 +518,7 @@ struct Cta
 		/**
 		 * Expands neighbor lists by local scan rank
 		 */
+		template <typename Cta>
 		__device__ __forceinline__ void ExpandByScan(Cta *cta)
 		{
 			Iterate<0, 0>::ExpandByScan(cta, this);

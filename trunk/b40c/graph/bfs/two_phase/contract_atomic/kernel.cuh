@@ -29,13 +29,13 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/two_phase/compact_atomic/cta.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
 namespace two_phase {
-namespace compact_atomic {
+namespace contract_atomic {
 
 
 
@@ -316,7 +316,7 @@ void Kernel(
 }
 
 
-} // namespace compact_atomic
+} // namespace contract_atomic
 } // namespace two_phase
 } // namespace bfs
 } // namespace graph

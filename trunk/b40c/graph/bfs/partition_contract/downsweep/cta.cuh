@@ -31,12 +31,12 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/partition/downsweep/cta.cuh>
 
-#include <b40c/graph/bfs/partition_compact/downsweep/tile.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/tile.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace downsweep {
 
 
@@ -50,7 +50,7 @@ struct Cta :
 	partition::downsweep::Cta<
 		KernelPolicy,
 		Cta<KernelPolicy>,			// This class
-		Tile>						// bfs::partition_compact::downsweep::Tile
+		Tile>						// bfs::partition_contract::downsweep::Tile
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
@@ -113,7 +113,7 @@ struct Cta :
 
 
 } // namespace downsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
