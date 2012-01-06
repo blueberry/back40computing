@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS compaction upsweep kernels
+ * Tile-processing functionality for BFS contraction upsweep kernels
  ******************************************************************************/
 
 #pragma once
@@ -43,7 +43,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace two_phase {
-namespace compact_atomic {
+namespace contract_atomic {
 
 
 /**
@@ -526,7 +526,7 @@ struct Cta
 		__syncthreads();
 
 		// Scan tile of ranks, using an atomic add to reserve
-		// space in the compacted queue, seeding ranks
+		// space in the contracted queue, seeding ranks
 		util::Sum<SizeT> scan_op;
 		util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
 			srts_details,
@@ -537,7 +537,7 @@ struct Cta
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();
 
-		// Scatter directly (without first compacting in smem scratch), predicated
+		// Scatter directly (without first contracting in smem scratch), predicated
 		// on flags
 		util::io::ScatterTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
@@ -552,7 +552,7 @@ struct Cta
 };
 
 
-} // namespace compact_atomic
+} // namespace contract_atomic
 } // namespace two_phase
 } // namespace bfs
 } // namespace graph

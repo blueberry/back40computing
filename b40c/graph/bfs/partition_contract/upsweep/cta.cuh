@@ -30,12 +30,12 @@
 
 #include <b40c/partition/upsweep/cta.cuh>
 
-#include <b40c/graph/bfs/partition_compact/upsweep/tile.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/tile.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace upsweep {
 
 
@@ -118,7 +118,7 @@ struct Cta :
 
 
 } // namespace upsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

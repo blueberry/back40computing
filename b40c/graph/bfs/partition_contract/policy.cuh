@@ -23,7 +23,7 @@
 
 
 /******************************************************************************
- * Unified BFS partition/compaction policy
+ * Unified BFS partition/contraction policy
  ******************************************************************************/
 
 #pragma once
@@ -37,18 +37,18 @@
 #include <b40c/partition/upsweep/tuning_policy.cuh>
 #include <b40c/partition/downsweep/tuning_policy.cuh>
 
-#include <b40c/graph/bfs/partition_compact/upsweep/kernel.cuh>
-#include <b40c/graph/bfs/partition_compact/upsweep/kernel_policy.cuh>
-#include <b40c/graph/bfs/partition_compact/downsweep/kernel.cuh>
-#include <b40c/graph/bfs/partition_compact/downsweep/kernel_policy.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/kernel_policy.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/kernel.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 
 /**
- * Unified partition/compact policy type.
+ * Unified partition/contract policy type.
  *
  * In addition to kernel tuning parameters that guide the kernel compilation for
  * upsweep, spine, and downsweep kernels, this type includes enactor tuning
@@ -158,7 +158,7 @@ struct Policy :
 };
 
 
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

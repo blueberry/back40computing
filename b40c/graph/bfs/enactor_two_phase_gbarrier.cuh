@@ -198,7 +198,7 @@ public:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					contract_atomic::BitmaskTex<VisitedMask>::ref,
 					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),

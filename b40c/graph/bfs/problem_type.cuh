@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS partition-compaction problem type
+ * BFS partition-contraction problem type
  ******************************************************************************/
 
 #pragma once
@@ -41,7 +41,7 @@ template <
 	typename 	_VertexId,						// Type of signed integer to use as vertex id (e.g., uint32)
 	typename 	_SizeT,							// Type of unsigned integer to use for array indexing (e.g., uint32)
 	typename 	_VisitedMask,					// Type of unsigned integer to use for visited mask (e.g., uint8)
-	typename 	_ValidFlag,						// Type of integer to use for compaction validity (e.g., uint8)
+	typename 	_ValidFlag,						// Type of integer to use for contraction validity (e.g., uint8)
 	bool 		_MARK_PREDECESSORS>				// Whether to mark predecessor-vertices (vs. distance-from-source)
 struct ProblemType : partition::ProblemType<
 	_VertexId, 																	// KeyType
@@ -53,10 +53,8 @@ struct ProblemType : partition::ProblemType<
 	typedef _ValidFlag														ValidFlag;
 	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
 
-	static const int LOG_MAX_GPUS			= 2;										// The "problem" type currently only reserves space for 4 gpu identities in upper vertex identifier bits
-
 	static const bool MARK_PREDECESSORS		= _MARK_PREDECESSORS;
-	static const _VertexId LOG_MAX_GPUS		= _LOG_MAX_GPUS;
+	static const _VertexId LOG_MAX_GPUS		= 2;										// The "problem type" currently only reserves space for 4 gpu identities in upper vertex identifier bits
 	static const _VertexId MAX_GPUS			= 1 << LOG_MAX_GPUS;
 
 	static const _VertexId GPU_MASK_SHIFT	= (sizeof(_VertexId) * 8) - LOG_MAX_GPUS;

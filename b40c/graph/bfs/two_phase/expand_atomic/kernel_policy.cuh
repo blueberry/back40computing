@@ -207,7 +207,7 @@ struct KernelPolicy : _ProblemType
 			volatile WarpComm					warp_comm;
 			int 								cta_comm;
 
-			// Storage for scanning local compact-expand ranks
+			// Storage for scanning local contract-expand ranks
 			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 

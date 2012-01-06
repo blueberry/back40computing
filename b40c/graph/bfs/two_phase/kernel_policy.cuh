@@ -20,12 +20,12 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding BFS compact-expand granularity configuration
+ * "Metatype" for guiding BFS contract-expand granularity configuration
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/graph/bfs/two_phase/compact_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
 
 namespace b40c {
@@ -71,7 +71,7 @@ struct KernelPolicy : _ProblemType
 	typedef typename ProblemType::SizeT 			SizeT;
 	typedef typename ProblemType::VisitedMask 	VisitedMask;
 
-	typedef compact_atomic::KernelPolicy<
+	typedef contract_atomic::KernelPolicy<
 		_ProblemType,
 		CUDA_ARCH,
 		_INSTRUMENT,
@@ -117,7 +117,7 @@ struct KernelPolicy : _ProblemType
 	 */
 	union SmemStorage
 	{
-		typename CompactKernelPolicy::SmemStorage 	compact;
+		typename CompactKernelPolicy::SmemStorage 	contract;
 		typename ExpandKernelPolicy::SmemStorage 	expand;
 	};
 

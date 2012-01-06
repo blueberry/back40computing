@@ -41,7 +41,7 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace upsweep {
 
 
@@ -113,7 +113,7 @@ struct Tile :
 
 				// Read byte from from visited mask (tex)
 				VisitedMask mask_byte = tex1Dfetch(
-					compact_atomic::BitmaskTex<VisitedMask>::ref,
+					contract_atomic::BitmaskTex<VisitedMask>::ref,
 					mask_byte_offset);
 
 				if (mask_bit & mask_byte) {
@@ -365,7 +365,7 @@ struct Tile :
 
 
 } // namespace upsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

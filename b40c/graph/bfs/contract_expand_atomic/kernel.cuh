@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS atomic compact-expand kernel
+ * BFS atomic contract-expand kernel
  ******************************************************************************/
 
 #pragma once
@@ -30,16 +30,16 @@
 #include <b40c/util/kernel_runtime_stats.cuh>
 #include <b40c/util/global_barrier.cuh>
 
-#include <b40c/graph/bfs/compact_expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/contract_expand_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace compact_expand_atomic {
+namespace contract_expand_atomic {
 
 
 /**
- * Sweep compact-expand pass (non-workstealing)
+ * Sweep contract-expand pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -56,7 +56,7 @@ struct SweepPass
 		typename KernelPolicy::VertexId			*&d_column_indices,
 		typename KernelPolicy::SizeT			*&d_row_offsets,
 		typename KernelPolicy::VertexId			*&d_labels,
-		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
+		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		SmemStorage								&smem_storage)
@@ -128,7 +128,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep compact-expand pass (workstealing)
+ * Sweep contract-expand pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -209,7 +209,7 @@ void KernelGlobalBarrier(
 	typename KernelPolicy::VertexId			*d_column_indices,
 	typename KernelPolicy::SizeT			*d_row_offsets,
 	typename KernelPolicy::VertexId			*d_labels,
-	typename KernelPolicy::VisitedMask 	*d_visited_mask,
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::GlobalBarrier						global_barrier,
 
@@ -593,7 +593,7 @@ void Kernel(
 
 
 
-} // namespace compact_expand_atomic
+} // namespace contract_expand_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

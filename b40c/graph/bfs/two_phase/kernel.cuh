@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS atomic compact-expand kernel
+ * BFS atomic contract-expand kernel
  ******************************************************************************/
 
 #pragma once
@@ -29,7 +29,7 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/compact_expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/contract_expand_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
@@ -42,7 +42,7 @@ namespace two_phase {
  ******************************************************************************/
 
 /**
- * Sweep compact-expand kernel entry point
+ * Sweep contract-expand kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
@@ -103,7 +103,7 @@ void Kernel(
 
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
-				smem_storage.compact.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
@@ -120,7 +120,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.compact.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -138,7 +138,7 @@ void Kernel(
 	// Don't do workstealing this iteration because without a
 	// global barrier after queue-reset, the queue may be inconsistent
 	// across CTAs
-	compact_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
+	contract_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
 		iteration,
 		queue_index,
 		steal_index,
@@ -149,8 +149,8 @@ void Kernel(
 		d_labels,
 		d_visited_mask,
 		work_progress,
-		smem_storage.compact.state.work_decomposition,
-		smem_storage.compact);
+		smem_storage.contract.state.work_decomposition,
+		smem_storage.contract);
 
 	queue_index++;
 	steal_index++;
@@ -243,7 +243,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.compact.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -257,14 +257,14 @@ void Kernel(
 		__syncthreads();
 
 		// Check if done
-		if ((!smem_storage.compact.state.work_decomposition.num_elements) ||
-			(ExpandKernelPolicy::SATURATION_QUIT && (smem_storage.compact.state.work_decomposition.num_elements > gridDim.x * ExpandKernelPolicy::TILE_ELEMENTS * ExpandKernelPolicy::SATURATION_QUIT)))
+		if ((!smem_storage.contract.state.work_decomposition.num_elements) ||
+			(ExpandKernelPolicy::SATURATION_QUIT && (smem_storage.contract.state.work_decomposition.num_elements > gridDim.x * ExpandKernelPolicy::TILE_ELEMENTS * ExpandKernelPolicy::SATURATION_QUIT)))
 		{
 			break;
 		}
 
-		compact_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
-//		compact_atomic::SweepPass<CompactKernelPolicy, CompactKernelPolicy::WORK_STEALING>::Invoke(
+		contract_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
+//		contract_atomic::SweepPass<CompactKernelPolicy, CompactKernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
 			steal_index,
@@ -275,8 +275,8 @@ void Kernel(
 			d_labels,
 			d_visited_mask,
 			work_progress,
-			smem_storage.compact.state.work_decomposition,
-			smem_storage.compact);
+			smem_storage.contract.state.work_decomposition,
+			smem_storage.contract);
 
 		queue_index++;
 		steal_index++;

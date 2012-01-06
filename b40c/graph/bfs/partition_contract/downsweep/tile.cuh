@@ -38,7 +38,7 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace downsweep {
 
 
@@ -219,7 +219,7 @@ struct Tile :
 
 
 } // namespace downsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

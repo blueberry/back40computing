@@ -42,7 +42,7 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace expand_compact_atomic {
+namespace expand_contract_atomic {
 
 
 /**
@@ -115,7 +115,7 @@ struct Cta
 
 	// Operational details for SRTS scan grid
 	SrtsExpandDetails 		srts_expand_details;
-	SrtsCompactDetails 		srts_compact_details;
+	SrtsCompactDetails 		srts_contract_details;
 
 	// Shared memory
 	SmemStorage 			&smem_storage;
@@ -436,10 +436,10 @@ struct Cta
 						}
 
 						// Scan tile of ranks, using an atomic add to reserve
-						// space in the compacted queue, seeding ranks
+						// space in the contracted queue, seeding ranks
 						util::Sum<SizeT> scan_op;
 						util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
-							cta->srts_compact_details,
+							cta->srts_contract_details,
 							ranks,
 							cta->work_progress.GetQueueCounter<SizeT>(cta->queue_index + 1),
 							scan_op);
@@ -623,8 +623,8 @@ struct Cta
 				smem_storage.expand_raking_elements,
 				smem_storage.state.warpscan,
 				0),
-			srts_compact_details(
-				smem_storage.state.compact_raking_elements,
+			srts_contract_details(
+				smem_storage.state.contract_raking_elements,
 				smem_storage.state.warpscan,
 				0),
 			smem_storage(smem_storage),
@@ -744,10 +744,10 @@ struct Cta
 				}
 
 				// Scan tile of ranks, using an atomic add to reserve
-				// space in the compacted queue, seeding ranks
+				// space in the contracted queue, seeding ranks
 				util::Sum<SizeT> scan_op;
 				util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
-					srts_compact_details,
+					srts_contract_details,
 					ranks,
 					work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 					scan_op);
@@ -779,7 +779,7 @@ struct Cta
 
 
 
-} // namespace expand_compact_atomic
+} // namespace expand_contract_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

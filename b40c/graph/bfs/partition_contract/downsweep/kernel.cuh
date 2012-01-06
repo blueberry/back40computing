@@ -33,17 +33,17 @@
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/device_intrinsics.cuh>
 
-#include <b40c/graph/bfs/partition_compact/downsweep/cta.cuh>
+#include <b40c/graph/bfs/partition_contract/downsweep/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace downsweep {
 
 
 /**
- * Downsweep BFS compaction pass
+ * Downsweep BFS contraction pass
  */
 template <typename KernelPolicy, typename SmemStorage>
 __device__ __forceinline__ void DownsweepPass(
@@ -186,7 +186,7 @@ void Kernel(
 
 
 } // namespace downsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

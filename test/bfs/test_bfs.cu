@@ -49,10 +49,8 @@
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_contract_expand.cuh>
-/*
-#include <b40c/graph/bfs/enactor_contract_expand_gbarrier.cuh>
-#include <b40c/graph/bfs/enactor_expand_contract_gbarrier.cuh>
 #include <b40c/graph/bfs/enactor_expand_contract.cuh>
+/*
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
 #include <b40c/graph/bfs/enactor_multi_gpu.cuh>
@@ -179,9 +177,6 @@ void Usage()
 			"    random graphs, effectively doubling the CSR graph representation size.\n"
 			"    Grid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
 			"    graphs are directed regardless of this flag.\n"
-			"\n"
-			"--all  Evaluate traversal performance for all strategy variants (not just\n"
-			"    the hybrid approach to frontier management).\n"
 			"\n",
 				EXPAND_CONTRACT, CONTRACT_EXPAND, TWO_PHASE, HYBRID,
 				HYBRID,
@@ -214,7 +209,7 @@ struct Statistic
 {
 	double mean;
 	double m2;
-	size_t count;
+	int count;
 	
 	Statistic() : mean(0.0), m2(0.0), count(0) {}
 	
@@ -466,23 +461,21 @@ void DisplayStats(
 		printf("  Summary after %lld test iterations (bias-corrected):\n", (long long) stats.rate.count + 1);
 
 		double search_depth_stddev = sqrt(stats.search_depth.Update((double) search_depth));
-		if (search_depth > 0) printf(			"    [Search depth]:           u: %.1f, s: %.1f, cv: %.4f\n",
+		if (search_depth > 0) printf(		"    [Search depth]:      u: %.1f, s: %.1f, cv: %.4f\n",
 			stats.search_depth.mean, search_depth_stddev, search_depth_stddev / stats.search_depth.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
-		if (redundant_work > 0) printf(	"    [redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
+		if (redundant_work > 0) printf(		"    [redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
 		double duty_stddev = sqrt(stats.duty.Update(avg_duty * 100));
-		if (avg_duty > 0) printf(	"    [Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
+		if (avg_duty > 0) printf(			"    [Duty %%]:           u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.duty.mean, duty_stddev, duty_stddev / stats.duty.mean);
 
-		double time_stddev = sqrt(stats.rate.Update(m_teps));
-		printf(								"    [Time (ms)]:   u: %.3f\n",
-			double(edges_visited) / stats.rate.mean / 1000.0);
-
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
-		printf(								"    [Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n",
+		printf(								"    [Time (ms)]:         u: %.3f\n",
+			double(edges_visited) / stats.rate.mean / 1000.0);
+		printf(								"    [Rate MiEdges/s]:    u: %.3f, s: %.3f, cv: %.4f\n",
 			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);
 	}
 	
@@ -494,69 +487,6 @@ void DisplayStats(
 /******************************************************************************
  * BFS Testing Routines
  ******************************************************************************/
-
-template <
-	bool INSTRUMENT,
-	typename BfsEnactor,
-	typename ProblemStorage,
-	typename VertexId,
-	typename Value,
-	typename SizeT>
-cudaError_t TestGpuBfs(
-	BfsEnactor 								&enactor,
-	int 									test_iteration,
-	ProblemStorage 							&csr_problem,
-	VertexId 								src,
-	VertexId 								*h_labels,					// place to copy results out to
-	VertexId 								*reference_labels,
-	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,					// host graph dataset
-	Stats									&stats,						// running statistics
-	int 									max_grid_size,
-	double									max_queue_sizing)
-{
-	cudaError_t retval;
-
-	do {
-
-		// Prepare
-		if (retval = enactor.Prepare(csr_problem, max_grid_size, max_queue_sizing)) break;
-
-		// Perform BFS
-		GpuTimer gpu_timer;
-		gpu_timer.Start();
-		if (retval = enactor.EnactSearch(csr_problem, src)) break;
-		gpu_timer.Stop();
-		float elapsed = gpu_timer.ElapsedMillis();
-
-		// Copy out results
-		if (retval = csr_problem.ExtractResults(h_labels)) break;
-
-		long long 	total_queued = 0;
-		VertexId	search_depth = 0;
-		double		avg_duty = 0.0;
-
-		if (test_iteration < 0) {
-			printf("Warmup iteration: %.3f ms\n", elapsed);
-
-		} else {
-
-			enactor.GetStatistics(total_queued, search_depth, avg_duty);
-			DisplayStats<ProblemStorage::ProblemType::MARK_PREDECESSORS>(
-				stats,
-				src,
-				h_labels,
-				reference_labels,
-				csr_graph,
-				elapsed,
-				search_depth,
-				total_queued,
-				avg_duty);
-		}
-
-	} while (0);
-	
-	return retval;
-}
 
 
 /**
@@ -659,19 +589,21 @@ void RunTests(
 	int max_grid_size,
 	int num_gpus,
 	double max_queue_sizing,
-	std::vector<Strategy> strategies)
+	std::vector<int> strategies)
 {
+	typedef bfs::CsrProblem<VertexId, SizeT, MARK_PREDECESSORS> CsrProblem;
+
 	// Allocate host-side label array (for both reference and gpu-computed results)
 	VertexId* reference_labels 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* h_labels 					= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
 	VertexId* reference_check 			= (g_quick) ? NULL : reference_labels;
 
 	// Allocate BFS enactor map
-	bfs::EnactorExpandContract<INSTRUMENT, MARK_PREDECESSORS> 	expand_contract(g_verbose);
-	bfs::EnactorContractExpand<INSTRUMENT, MARK_PREDECESSORS>	contract_expand(g_verbose);
-	bfs::EnactorTwoPhase<INSTRUMENT, MARK_PREDECESSORS>			two_phase(g_verbose);
-	bfs::EnactorHybrid<INSTRUMENT, MARK_PREDECESSORS>			hybrid(g_verbose);
-	bfs::EnactorMultiGpu<INSTRUMENT, MARK_PREDECESSORS>			multi_gpu(g_verbose);
+	bfs::EnactorExpandContract<INSTRUMENT> 	expand_contract(g_verbose);
+	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
+//	bfs::EnactorTwoPhase<INSTRUMENT>				two_phase(g_verbose);
+//	bfs::EnactorHybrid<INSTRUMENT>					hybrid(g_verbose);
+//	bfs::EnactorMultiGpu<INSTRUMENT>				multi_gpu(g_verbose);
 
 	// Allocate Stats map
 	std::map<Strategy, Stats*> stats_map;
@@ -683,7 +615,7 @@ void RunTests(
 	stats_map[MULTI_GPU] 			= new Stats("Multi-GPU BFS");
 
 	// Allocate problem on GPU
-	bfs::CsrProblem<VertexId, SizeT, MARK_PREDECESSORS> csr_problem;
+	CsrProblem csr_problem;
 	if (csr_problem.FromHostProblem(
 		g_stream_from_host,
 		csr_graph.nodes,
@@ -701,14 +633,17 @@ void RunTests(
 		
 		printf("---------------------------------------------------------------\n");
 
+		//
 		// Compute reference CPU BFS solution for source-distance
+		//
+
 		if (!g_quick) {
 			SimpleReferenceBfs(
 				test_iteration,
 				csr_graph,
 				reference_labels,
 				src,
-				stats_map[HOST]);
+				*stats_map[HOST]);
 			printf("\n");
 
 			if (g_verbose2) {
@@ -719,30 +654,66 @@ void RunTests(
 			fflush(stdout);
 		}
 
-
+		//
 		// Iterate over GPU strategies
-		for (typename std::vector<Strategy>::iterator itr = strategies.begin();
+		//
+
+		for (typename std::vector<int>::iterator itr = strategies.begin();
 			itr != strategies.end();
 			++itr)
 		{
-			Strategy strategy = *itr;
+			Strategy strategy = (Strategy) *itr;
+			Stats *stats = stats_map[strategy];
+
+			long long 	total_queued = 0;
+			VertexId	search_depth = 0;
+			double		avg_duty = 0.0;
+
+			// Perform BFS
+			GpuTimer gpu_timer;
+			gpu_timer.Start();
 
 			switch (strategy) {
 			case EXPAND_CONTRACT:
-//				if (TestGpuBfs(expand_contract,	test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				if (csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);
+				expand_contract.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
+
 			case CONTRACT_EXPAND:
-				if (TestGpuBfs(contract_expand,	test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
+				if (csr_problem.Reset(contract_expand.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);
+				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
+
 			case TWO_PHASE:
-//				if (TestGpuBfs(two_phase, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
 				break;
 			case HYBRID:
-//				if (TestGpuBfs(hybrid, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
 				break;
 			case MULTI_GPU:
-//				if (TestGpuBfs(multi_gpu, test_iteration, csr_problem, src, h_labels, reference_check, csr_graph, *stats_map[strategy], max_grid_size, max_queue_sizing)) exit(1);
 				break;
+			}
+
+			gpu_timer.Stop();
+			float elapsed = gpu_timer.ElapsedMillis();
+
+			// Copy out results
+			if (csr_problem.ExtractResults(h_labels)) exit(1);
+
+			if (test_iteration < 0) {
+				printf("Warmup iteration: %.3f ms\n", elapsed);
+			} else {
+
+				DisplayStats<CsrProblem::ProblemType::MARK_PREDECESSORS>(
+					*stats,
+					src,
+					h_labels,
+					reference_labels,
+					csr_graph,
+					elapsed,
+					search_depth,
+					total_queued,
+					avg_duty);
 			}
 
 			printf("\n");
@@ -752,18 +723,13 @@ void RunTests(
 				printf("\n");
 			}
 			fflush(stdout);
+
+			if (randomized_src && (test_iteration < stats->rate.count)) {
+				test_iteration = stats->rate.count;
+			}
 		}
 
-		// Increment test iteration (if we had a valid test)
-		if (randomized_src) {
-			// test_iteration is the maximum of any of the stat-structures' sample-counts
-			test_iteration = 0;
-			for (int i = 0; i < sizeof(stats) / sizeof(Stats); i++) {
-				if (stats[i].rate.count > test_iteration) {
-					test_iteration = stats[i].rate.count;
-				}
-			}
-		} else {
+		if (!randomized_src) {
 			test_iteration++;
 		}
 	}
@@ -775,7 +741,6 @@ void RunTests(
 	
 	if (reference_labels) free(reference_labels);
 	if (h_labels) free(h_labels);
-	for (typename std::map<Strategy, bfs::EnactorBase*>::iterator itr = enactor_map.begin(); itr != enactor_map.end(); ++itr) delete itr->second;
 	for (typename std::map<Strategy, Stats*>::iterator itr = stats_map.begin(); itr != stats_map.end(); ++itr) delete itr->second;
 
 	cudaDeviceSynchronize();
@@ -791,31 +756,28 @@ void RunTests(
 	CommandLineArgs &args)
 {
 	VertexId 	src 				= -1;			// Use whatever the specified graph-type's default is
-	std::string	src_str				= NULL;
+	std::string	src_str;
 	bool 		randomized_src		= false;		// Whether or not to select a new random src for each test iteration
 	bool 		instrumented		= false;		// Whether or not to collect instrumentation from kernels
 	bool 		mark_pred			= false;		// Whether or not to mark src-distance vs. parent vertices
 	int 		test_iterations 	= 1;
 	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
 	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
-	double 		max_queue_sizing	= nan;			// Maximum size scaling factor for work queues (e.g., 1.0 creates n and m-element vertex and edge frontiers).
-	std::vector<Strategy> strategies(1, HYBRID);			// Use "hybrid" strategy by default
+	double 		max_queue_sizing	= 1.3;			// Maximum size scaling factor for work queues (e.g., 1.0 creates n and m-element vertex and edge frontiers).
+	std::vector<int> strategies(1, HYBRID);			// Use "hybrid" strategy by default
 
 	instrumented = args.CheckCmdLineFlag("instrumented");
 	args.GetCmdLineArgument("src", src_str);
-	if (src_str != NULL) {
-		if (strcmp(src_str, "randomize") == 0) {
-			randomized_src = true;
-		} else {
-			src = atoi(src_str);
-		}
-	} else {
+	if (src_str.empty()) {
 		// Random source
 		src = builder::RandomNode(csr_graph.nodes);
+	} else if (src_str.compare("randomize") == 0) {
+		randomized_src = true;
+	} else {
+		args.GetCmdLineArgument("src", src);
 	}
 
 	g_quick = args.CheckCmdLineFlag("quick");
-	g_all = args.CheckCmdLineFlag("all");
 	mark_pred = args.CheckCmdLineFlag("mark-pred");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);

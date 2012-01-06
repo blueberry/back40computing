@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding BFS compact-expand granularity configuration
+ * "Metatype" for guiding BFS contract-expand granularity configuration
  ******************************************************************************/
 
 #pragma once
@@ -37,10 +37,10 @@
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace compact_expand_atomic {
+namespace contract_expand_atomic {
 
 /**
- * BFS atomic compact-expand kernel granularity configuration meta-type.  Parameterizations of this
+ * BFS atomic contract-expand kernel granularity configuration meta-type.  Parameterizations of this
  * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
  * the static fields).
  *
@@ -207,7 +207,7 @@ struct KernelPolicy : _ProblemType
 			volatile WarpComm					warp_comm;
 			int 								cta_comm;
 
-			// Storage for scanning local compact-expand ranks
+			// Storage for scanning local contract-expand ranks
 			SizeT 								coarse_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
@@ -264,7 +264,7 @@ struct KernelPolicy : _ProblemType
 };
 
 
-} // namespace compact_expand_atomic
+} // namespace contract_expand_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

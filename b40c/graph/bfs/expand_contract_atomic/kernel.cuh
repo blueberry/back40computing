@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS atomic expand-compact kernel
+ * BFS atomic expand-contract kernel
  ******************************************************************************/
 
 #pragma once
@@ -29,16 +29,16 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/expand_compact_atomic/cta.cuh>
+#include <b40c/graph/bfs/expand_contract_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace expand_compact_atomic {
+namespace expand_contract_atomic {
 
 
 /**
- * Sweep compact-expand pass (non-workstealing)
+ * Sweep contract-expand pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -127,7 +127,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep compact-expand pass (workstealing)
+ * Sweep contract-expand pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -599,7 +599,7 @@ void Kernel(
 	}
 }
 
-} // namespace expand_compact_atomic
+} // namespace expand_contract_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

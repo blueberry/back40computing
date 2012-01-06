@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS compact-expand kernels
+ * Tile-processing functionality for BFS contract-expand kernels
  ******************************************************************************/
 
 #pragma once
@@ -38,13 +38,13 @@
 #include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
 #include <b40c/util/operators.cuh>
 
-#include <b40c/graph/bfs/expand_atomic/cta.cuh>
-#include <b40c/graph/bfs/compact_atomic/cta.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace compact_expand_atomic {
+namespace contract_expand_atomic {
 
 
 /**
@@ -139,7 +139,8 @@ struct Cta
 	template <
 		int LOG_LOADS_PER_TILE,
 		int LOG_LOAD_VEC_SIZE>
-	struct Tile
+	struct Tile :
+		two_phase::expand_atomic::Cta<KernelPolicy>::template Tile<LOG_LOADS_PER_TILE, LOG_LOAD_VEC_SIZE>	// Derive from expand_atomic tile
 	{
 		//---------------------------------------------------------------------
 		// Typedefs and Constants
@@ -157,23 +158,13 @@ struct Cta
 		// Members
 		//---------------------------------------------------------------------
 
-		// Dequeued vertex ids
-		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		// Dequeued predecessors
 		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-		// Edge list details
-		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		row_length[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		coarse_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		fine_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Temporary state for local culling
 		int 		hash[LOADS_PER_TILE][LOAD_VEC_SIZE];			// Hash ids for vertex ids
 		bool 		duplicate[LOADS_PER_TILE][LOAD_VEC_SIZE];		// Status as potential duplicate
 
-		SizeT 		fine_count;
-		SizeT		progress;
 
 		//---------------------------------------------------------------------
 		// Helper Structures
@@ -465,52 +456,12 @@ struct Cta
 		//---------------------------------------------------------------------
 
 		/**
-		 * Initializer
-		 */
-		__device__ __forceinline__ void Init()
-		{
-			expand_atomic::Cta<KernelPolicy>::template Tile<
-				LOG_LOADS_PER_TILE,
-				LOG_LOAD_VEC_SIZE>::template Iterate<0, 0>::Init(this);
-		}
-
-		/**
 		 * Inspect dequeued vertices, updating source path if necessary and
 		 * obtaining edge-list details
 		 */
 		__device__ __forceinline__ void Inspect(Cta *cta)
 		{
 			Iterate<0, 0>::Inspect(cta, this);
-		}
-
-		/**
-		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
-		 */
-		__device__ __forceinline__ void ExpandByCta(Cta *cta)
-		{
-			expand_atomic::Cta<KernelPolicy>::template Tile<
-				LOG_LOADS_PER_TILE,
-				LOG_LOAD_VEC_SIZE>::template Iterate<0, 0>::ExpandByCta(cta, this);
-		}
-
-		/**
-		 * Expands neighbor lists for valid vertices a warp-expansion granularity
-		 */
-		__device__ __forceinline__ void ExpandByWarp(Cta *cta)
-		{
-			expand_atomic::Cta<KernelPolicy>::template Tile<
-				LOG_LOADS_PER_TILE,
-				LOG_LOAD_VEC_SIZE>::template Iterate<0, 0>::ExpandByWarp(cta, this);
-		}
-
-		/**
-		 * Expands neighbor lists by local scan rank
-		 */
-		__device__ __forceinline__ void ExpandByScan(Cta *cta)
-		{
-			expand_atomic::Cta<KernelPolicy>::template Tile<
-				LOG_LOADS_PER_TILE,
-				LOG_LOAD_VEC_SIZE>::template Iterate<0, 0>::ExpandByScan(cta, this);
 		}
 
 		/**
@@ -609,7 +560,6 @@ struct Cta
 		Tile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE> tile;
-		tile.Init();
 
 		// Load tile
 		util::io::LoadTile<
@@ -731,7 +681,7 @@ struct Cta
 
 
 
-} // namespace compact_expand_atomic
+} // namespace contract_expand_atomic
 } // namespace bfs
 } // namespace graph
 } // namespace b40c

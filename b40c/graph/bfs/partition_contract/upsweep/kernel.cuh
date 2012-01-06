@@ -31,17 +31,17 @@
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 
-#include <b40c/graph/bfs/partition_compact/upsweep/cta.cuh>
+#include <b40c/graph/bfs/partition_contract/upsweep/cta.cuh>
 
 namespace b40c {
 namespace graph {
 namespace bfs {
-namespace partition_compact {
+namespace partition_contract {
 namespace upsweep {
 
 
 /**
- * Upsweep compaction pass
+ * Upsweep contraction pass
  */
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
@@ -76,7 +76,7 @@ __device__ __forceinline__ void UpsweepPass(
 
 
 /**
- * Upsweep compaction kernel entry point
+ * Upsweep contraction kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
@@ -132,7 +132,7 @@ void Kernel(
 
 
 } // namespace upsweep
-} // namespace partition_compact
+} // namespace partition_contract
 } // namespace bfs
 } // namespace graph
 } // namespace b40c
