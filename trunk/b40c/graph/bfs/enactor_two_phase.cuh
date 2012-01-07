@@ -30,6 +30,8 @@
 
 #include <b40c/graph/bfs/problem_type.cuh>
 #include <b40c/graph/bfs/enactor_base.cuh>
+#include <b40c/graph/bfs/two_phase/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
@@ -101,12 +103,11 @@ protected:
 	/**
 	 * Prepare enactor for search.  Must be called prior to each search.
 	 */
-	template <
-		typename KernelPolicy,
-		typename CsrProblem>
+	template <typename CsrProblem>
 	cudaError_t Setup(
 		CsrProblem &csr_problem,
-		int grid_size)
+		int expand_grid_size,
+		int contract_grid_size = 0)
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
@@ -148,10 +149,11 @@ protected:
 			}
 
 			// Make sure software global barriers are initialized
-			if (retval = global_barrier.Setup(grid_size)) break;
+			if (retval = global_barrier.Setup(expand_grid_size)) break;
 
 			// Make sure our runtime stats are initialized
-			if (retval = kernel_stats.Setup(grid_size)) break;
+			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Reset statistics
 			iteration[0] 		= 0;
@@ -168,7 +170,7 @@ protected:
 			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					contract_atomic::BitmaskTex<VisitedMask>::ref,
+					two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
 					graph_slice->d_visited_mask,
 					bitmask_desc,
 					bytes),
@@ -178,7 +180,7 @@ protected:
 			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					expand_atomic::RowOffsetTex<SizeT>::ref,
+					two_phase::expand_atomic::RowOffsetTex<SizeT>::ref,
 					graph_slice->d_row_offsets,
 					row_offsets_desc,
 					(graph_slice->nodes + 1) * sizeof(SizeT)),
@@ -223,21 +225,6 @@ public:
 	}
 
 
-	/**
-	 * Destructor
-	 */
-	virtual ~EnactorTwoPhase()
-	{
-		if (done) {
-			util::B40CPerror(cudaFreeHost((void *) done),
-					"EnactorTwoPhase cudaFreeHost done failed", __FILE__, __LINE__);
-
-			util::B40CPerror(cudaEventDestroy(throttle_event),
-				"EnactorTwoPhase cudaEventDestroy throttle_event failed", __FILE__, __LINE__);
-		}
-	}
-
-
     /**
      * Obtain statistics about the last BFS search enacted 
      */
@@ -247,7 +234,9 @@ public:
     	VertexId &search_depth,
     	double &avg_duty)
     {
-    	total_queued = this->total_queued;
+		cudaThreadSynchronize();
+
+		total_queued = this->total_queued;
     	search_depth = this->iteration[0] - 1;
 
     	avg_duty = (total_lifetimes > 0) ?
@@ -262,7 +251,9 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <typename CsrProblem>
+    template <
+		typename KernelPolicy,
+		typename CsrProblem>
 	cudaError_t EnactFusedSearch(
 		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
@@ -287,7 +278,7 @@ public:
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
 			// Lazy initialization
-			if (retval = Setup(grid_size)) break;
+			if (retval = Setup(csr_problem, grid_size)) break;
 
 			// Initiate single-grid kernel
 			two_phase::Kernel<KernelPolicy>
@@ -309,14 +300,14 @@ public:
 				this->work_progress,
 				this->global_barrier,
 
-				this->kernel_stats,
+				this->expand_kernel_stats,
 				(VertexId *) d_iteration);
 
 			if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "EnactorFusedTwoPhase Kernel failed ", __FILE__, __LINE__))) break;
 
 			if (INSTRUMENT) {
 				// Get stats
-				if (retval = kernel_stats.Accumulate(
+				if (retval = expand_kernel_stats.Accumulate(
 					grid_size,
 					total_runtimes,
 					total_lifetimes,
@@ -344,7 +335,7 @@ public:
  		if (this->cuda_props.device_sm_version >= 200) {
 
  			// Fused two-phase tuning configuration
- 			typedef fused_two_phase::KernelPolicy<
+ 			typedef two_phase::KernelPolicy<
  				typename CsrProblem::ProblemType,
  				200,
  				INSTRUMENT, 			// INSTRUMENT
@@ -398,10 +389,10 @@ public:
 
 		do {
 			// Determine grid size(s)
-			int expand_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
+			int expand_occupancy 			= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_occupancy, max_grid_size);
 
-			int contract_occupancy		= CompactPolicy::CTA_OCCUPANCY;
+			int contract_occupancy			= ContractPolicy::CTA_OCCUPANCY;
 			int contract_grid_size 			= MaxGridSize(contract_occupancy, max_grid_size);
 
 			if (DEBUG) {
@@ -412,7 +403,7 @@ public:
 			}
 
 			// Lazy initialization
-			if (retval = Setup(expand_grid_size, contract_grid_size)) break;
+			if (retval = Setup(csr_problem, expand_grid_size, contract_grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -429,9 +420,9 @@ public:
 
 				int selector = queue_index & 1;
 
-				// Compaction
-				two_phase::contract_atomic::Kernel<CompactPolicy>
-					<<<contract_grid_size, CompactPolicy::THREADS>>>(
+				// Contraction
+				two_phase::contract_atomic::Kernel<ContractPolicy>
+					<<<contract_grid_size, ContractPolicy::THREADS>>>(
 						src,
 						iteration[0],
 						0,											// num_elements (unused: we obtain this from device-side counters instead)
@@ -529,7 +520,7 @@ public:
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Expansion kernel config
-			typedef expand_atomic::KernelPolicy<
+			typedef two_phase::expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -549,8 +540,8 @@ public:
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> ExpandPolicy;
 
-			// Compaction kernel config
-			typedef contract_atomic::KernelPolicy<
+			// Contraction kernel config
+			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -563,12 +554,13 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				6> CompactPolicy;
+				6> ContractPolicy;
 
-			return EnactIterativeSearch<ExpandPolicy, CompactPolicy>(
+			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 
-/*
+/* Uncomment to enable GT200 code
+
 		} else if (this->cuda_props.device_sm_version >= 130) {
 			// Expansion kernel config
 			typedef expand_atomic::KernelPolicy<
@@ -591,7 +583,7 @@ public:
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				6> ExpandPolicy;
 
-			// Compaction kernel config
+			// Contraction kernel config
 			typedef contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
@@ -605,9 +597,9 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				6> CompactPolicy;
+				6> ContractPolicy;
 
-			return EnactIterativeSearch<ExpandPolicy, CompactPolicy>(
+			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 */
 		}

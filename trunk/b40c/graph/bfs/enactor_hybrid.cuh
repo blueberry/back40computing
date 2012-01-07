@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Hybrid out-of-core BFS implementation (Hybrid grid launch)
+ * Hybrid BFS enactor
  ******************************************************************************/
 
 #pragma once
@@ -31,10 +31,11 @@
 #include <b40c/graph/bfs/problem_type.cuh>
 
 #include <b40c/graph/bfs/contract_expand_atomic/kernel.cuh>
-#include <b40c/graph/bfs/expand_atomic/kernel.cuh>
-#include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
-#include <b40c/graph/bfs/contract_atomic/kernel.cuh>
-#include <b40c/graph/bfs/contract_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/contract_expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -43,10 +44,14 @@ namespace bfs {
 
 
 /**
- * Hybrid out-of-core BFS implementation (Hybrid grid launch)
+ * Hybrid BFS enactor.
  *  
- * Each iterations is performed by its own kernel-launch.  
+ * Combines functionality of contract-expand and two-phase enactors,
+ * running contract-expand (only global edge frontier) for small-sized
+ * BFS iterations and two-phase (global edge and vertex frontiers) for
+ * large-sized BFS iterations.
  */
+template <bool INSTRUMENT>							// Whether or not to collect statistics
 class EnactorHybrid : public EnactorBase
 {
 
@@ -54,21 +59,20 @@ protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
-	 * a one_phase grid invocation
+	 * a fused grid invocation
 	 */
 	util::GlobalBarrierLifetime global_barrier;
 
 	/**
 	 * CTA duty kernel stats
 	 */
-	util::KernelRuntimeStatsLifetime 	one_phase_kernel_stats;
+	util::KernelRuntimeStatsLifetime 	fused_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	contract_kernel_stats;
 
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 					total_queued;
-	unsigned long long 					search_depth;
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration
@@ -86,33 +90,24 @@ protected:
 	 */
 	volatile long long 	*iteration;
 	long long 			*d_iteration;
-
-public: 	
 	
-	/**
-	 * Constructor
-	 */
-	EnactorHybrid(bool DEBUG = false) :
-		EnactorBase(DEBUG),
-		iteration(NULL),
-		d_iteration(NULL),
-		search_depth(0),
-		total_queued(0),
-		done(NULL),
-		d_done(NULL)
-	{}
-
+protected:
 
 	/**
-	 * Search setup / lazy initialization
+	 * Prepare enactor for search.  Must be called prior to each search.
 	 */
+	template <typename CsrProblem>
 	cudaError_t Setup(
-		int one_phase_grid_size,
+		CsrProblem &csr_problem,
+		int fused_grid_size,
 		int expand_grid_size,
 		int contract_grid_size)
     {
-    	cudaError_t retval = cudaSuccess;
+		typedef typename CsrProblem::SizeT 			SizeT;
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::VisitedMask 	VisitedMask;
 
+		cudaError_t retval = cudaSuccess;
 		do {
 
 			if (!done) {
@@ -140,12 +135,12 @@ public:
 			}
 
 			// Make sure our runtime stats are good
-			if (retval = one_phase_kernel_stats.Setup(one_phase_grid_size)) break;
+			if (retval = fused_kernel_stats.Setup(fused_grid_size)) break;
 			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
 			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Make sure barriers are initialized
-			if (retval = global_barrier.Setup(one_phase_grid_size)) break;
+			if (retval = global_barrier.Setup(fused_grid_size)) break;
 
 			// Reset statistics
 			iteration[0]		= 0;
@@ -153,13 +148,68 @@ public:
 			total_runtimes 		= 0;
 			total_lifetimes 	= 0;
 			total_queued 		= 0;
-			search_depth 		= 0;
+
+			// Single-gpu graph slice
+			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
+
+			// Bind bitmask texture
+			int bytes = (graph_slice->nodes + 8 - 1) / 8;
+			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
+					bitmask_desc,
+					bytes),
+				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
+			// Bind row-offsets texture
+			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					two_phase::expand_atomic::RowOffsetTex<SizeT>::ref,
+					graph_slice->d_row_offsets,
+					row_offsets_desc,
+					(graph_slice->nodes + 1) * sizeof(SizeT)),
+				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+
+			// Bind bitmask texture
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					contract_expand_atomic::BitmaskTex<VisitedMask>::ref,
+					graph_slice->d_visited_mask,
+					bitmask_desc,
+					bytes),
+				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
+
+			// Bind row-offsets texture
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					contract_expand_atomic::RowOffsetTex<SizeT>::ref,
+					graph_slice->d_row_offsets,
+					row_offsets_desc,
+					(graph_slice->nodes + 1) * sizeof(SizeT)),
+				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+
 
 		} while (0);
 
 		return retval;
 	}
 
+public:
+
+	/**
+	 * Constructor
+	 */
+	EnactorHybrid(bool DEBUG = false) :
+		EnactorBase(EDGE_FRONTIERS, DEBUG),
+		iteration(NULL),
+		d_iteration(NULL),
+		total_queued(0),
+		done(NULL),
+		d_done(NULL)
+	{}
 
 
 	/**
@@ -185,8 +235,10 @@ public:
     	VertexId &search_depth,
     	double &avg_duty)
     {
-    	total_queued = this->total_queued;
-    	search_depth = this->search_depth;
+		cudaThreadSynchronize();
+
+		total_queued = this->total_queued;
+    	search_depth = iteration[0] - 1;
 
     	avg_duty = (total_lifetimes > 0) ?
     		double(total_runtimes) / total_lifetimes :
@@ -203,7 +255,6 @@ public:
     	typename OnePhasePolicy,
     	typename ExpandPolicy,
     	typename CompactPolicy,
-    	bool INSTRUMENT,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
 		CsrProblem 						&csr_problem,
@@ -218,12 +269,9 @@ public:
 
 		do {
 
-			//
 			// Determine grid size(s)
-			//
-
-			int one_phase_min_occupancy 	= OnePhasePolicy::CTA_OCCUPANCY;
-			int one_phase_grid_size 		= MaxGridSize(one_phase_min_occupancy, max_grid_size);
+			int fused_min_occupancy 	= OnePhasePolicy::CTA_OCCUPANCY;
+			int fused_grid_size 		= MaxGridSize(fused_min_occupancy, max_grid_size);
 
 			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
@@ -232,8 +280,8 @@ public:
 			int contract_grid_size 			= MaxGridSize(contract_min_occupancy, max_grid_size);
 
 			if (DEBUG) {
-				printf("BFS one_phase min occupancy %d, level-grid size %d\n",
-					one_phase_min_occupancy, one_phase_grid_size);
+				printf("BFS fused min occupancy %d, level-grid size %d\n",
+					fused_min_occupancy, fused_grid_size);
 				printf("BFS expand min occupancy %d, level-grid size %d\n",
 					expand_min_occupancy, expand_grid_size);
 				printf("BFS contract min occupancy %d, level-grid size %d\n",
@@ -244,59 +292,25 @@ public:
 				}
 			}
 
-			VertexId queue_index 			= 0;	// Work stealing/queue index
-			SizeT queue_length 				= 0;
-			int selector 					= 0;
-
-			// Setup / lazy initialization
-			if (retval = Setup(one_phase_grid_size, expand_grid_size, contract_grid_size)) break;
+			// Lazy initialization
+			if (retval = Setup(
+				csr_problem,
+				fused_grid_size,
+				expand_grid_size,
+				contract_grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
 			// Saturation boundary between one-phase and two-phase operation
-			int saturation_boundary = one_phase_grid_size *
-					OnePhasePolicy::TILE_ELEMENTS *
-					OnePhasePolicy::SATURATION_QUIT;
+			int saturation_boundary =
+				fused_grid_size *
+				OnePhasePolicy::TILE_ELEMENTS *
+				OnePhasePolicy::SATURATION_QUIT;
 
-			// Bind bitmask texture
-			int bytes = (graph_slice->nodes + 8 - 1) / 8;
-			cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					contract_atomic::BitmaskTex<VisitedMask>::ref,
-					graph_slice->d_visited_mask,
-					bitmask_desc,
-					bytes),
-				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
-
-			// Bind row-offsets texture
-			cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					expand_atomic::RowOffsetTex<SizeT>::ref,
-					graph_slice->d_row_offsets,
-					row_offsets_desc,
-					(graph_slice->nodes + 1) * sizeof(SizeT)),
-				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
-
-			// Bind bitmask texture
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					contract_expand_atomic::BitmaskTex<VisitedMask>::ref,
-					graph_slice->d_visited_mask,
-					bitmask_desc,
-					bytes),
-				"EnactorHybrid cudaBindTexture bitmask_tex_ref failed", __FILE__, __LINE__)) break;
-
-			// Bind row-offsets texture
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					contract_expand_atomic::RowOffsetTex<SizeT>::ref,
-					graph_slice->d_row_offsets,
-					row_offsets_desc,
-					(graph_slice->nodes + 1) * sizeof(SizeT)),
-				"EnactorHybrid cudaBindTexture row_offset_tex_ref failed", __FILE__, __LINE__)) break;
+			VertexId queue_index 			= 0;	// Work stealing/queue index
+			SizeT queue_length 				= 0;
+			int selector 					= 0;
 
 			do {
 
@@ -304,9 +318,9 @@ public:
 
 				if (queue_length <= saturation_boundary) {
 
-					// Run one_phase-grid, no-separate-contraction
+					// Run fused-grid, no-separate-contraction
 					contract_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
-						<<<one_phase_grid_size, OnePhasePolicy::THREADS>>>(
+						<<<fused_grid_size, OnePhasePolicy::THREADS>>>(
 							iteration[0],
 							queue_index,
 							queue_index,												// also serves as steal_index
@@ -324,7 +338,7 @@ public:
 							work_progress,
 							global_barrier,
 
-							one_phase_kernel_stats,
+							fused_kernel_stats,
 							(VertexId *) d_iteration);
 
 					// Synchronize to make sure we have a coherent iteration;
@@ -344,8 +358,8 @@ public:
 					if (INSTRUMENT) {
 
 						// Get stats
-						if (retval = one_phase_kernel_stats.Accumulate(
-							one_phase_grid_size,
+						if (retval = fused_kernel_stats.Accumulate(
+							fused_grid_size,
 							total_runtimes,
 							total_lifetimes,
 							total_queued)) break;
@@ -361,7 +375,7 @@ public:
 						// Run level-grid
 
 						// Compaction
-						contract_atomic::Kernel<CompactPolicy>
+						two_phase::contract_atomic::Kernel<CompactPolicy>
 							<<<contract_grid_size, CompactPolicy::THREADS>>>(
 								src,
 								(VertexId) iteration[0],
@@ -395,7 +409,7 @@ public:
 						}
 
 						// Expansion
-						expand_atomic::Kernel<ExpandPolicy>
+						two_phase::expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 								queue_index,
 								queue_index,											// also serves as steal_index
@@ -444,8 +458,6 @@ public:
 			} while (queue_length > 0);
 			if (retval) break;
 
-			search_depth = iteration[0] - 1;
-
 		} while (0);
 
 		return retval;
@@ -457,13 +469,13 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename CsrProblem>
+    template <typename CsrProblem>
 	cudaError_t EnactSearch(
 		CsrProblem 						&csr_problem,
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-    	// Multiplier of (one_phase_grid_size * OnePhasePolicy::TILE_SIZE) above which
+    	// Multiplier of (fused_grid_size * OnePhasePolicy::TILE_SIZE) above which
     	// we transition from from one-phase to two-phase
     	const int SATURATION_QUIT = 4;
 
@@ -492,7 +504,7 @@ public:
 				6> OnePhasePolicy;
 
 			// Expansion kernel config
-			typedef expand_atomic::KernelPolicy<
+			typedef two_phase::expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -514,7 +526,7 @@ public:
 
 
 			// Compaction kernel config
-			typedef contract_atomic::KernelPolicy<
+			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
@@ -529,11 +541,12 @@ public:
 				false,					// WORK_STEALING
 				10> CompactPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy>(
 				csr_problem, src, max_grid_size);
 
+/* Uncomment to enable GT200 code
+
     	} else if (cuda_props.device_sm_version >= 130) {
-/*
 			// Single-grid tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -557,7 +570,7 @@ public:
 				6> OnePhasePolicy;
 
 			// Expansion kernel config
-			typedef expand_atomic::KernelPolicy<
+			typedef two_phase::expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT
@@ -579,7 +592,7 @@ public:
 
 
 			// Compaction kernel config
-			typedef contract_atomic::KernelPolicy<
+			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT

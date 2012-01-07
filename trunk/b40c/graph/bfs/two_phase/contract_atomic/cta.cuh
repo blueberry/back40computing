@@ -238,7 +238,7 @@ struct Cta
 
 					} else {
 
-						if (KernelPolicy::MARK_PARENTS) {
+						if (KernelPolicy::MARK_PREDECESSORS) {
 
 							// Update source path with predecessor vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
@@ -492,7 +492,7 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		if (KernelPolicy::MARK_PARENTS) {
+		if (KernelPolicy::MARK_PREDECESSORS) {
 
 			// Load predecessor vertices as well
 			util::io::LoadTile<
