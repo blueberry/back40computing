@@ -99,9 +99,7 @@ protected:
 	/**
 	 * Prepare enactor for search.  Must be called prior to each search.
 	 */
-	template <
-		typename KernelPolicy,
-		typename CsrProblem>
+	template <typename CsrProblem>
 	cudaError_t Setup(
 		CsrProblem &csr_problem,
 		int grid_size)
@@ -230,7 +228,9 @@ public:
     	VertexId &search_depth,
     	double &avg_duty)
     {
-    	total_queued = this->total_queued;
+		cudaThreadSynchronize();
+
+		total_queued = this->total_queued;
     	search_depth = iteration[0] - 1;
 
     	avg_duty = (total_lifetimes > 0) ?
@@ -266,7 +266,7 @@ public:
 
 
 			// Lazy initialization
-			if (retval = Setup<KernelPolicy>(csr_problem, grid_size)) break;
+			if (retval = Setup(csr_problem, grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];

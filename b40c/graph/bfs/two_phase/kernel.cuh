@@ -20,7 +20,12 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS atomic contract-expand kernel
+ * BFS two-phase kernel.
+ *
+ * Both contraction and expansion phases are fused within the same kernel,
+ * separated by software global barriers.  The kernel itself also steps through
+ * BFS iterations (without iterative kernel invocations) using software global
+ * barriers.
  ******************************************************************************/
 
 #pragma once
@@ -29,7 +34,8 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/kernel_runtime_stats.cuh>
 
-#include <b40c/graph/bfs/contract_expand_atomic/cta.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
 
 namespace b40c {
 namespace graph {
@@ -38,7 +44,7 @@ namespace two_phase {
 
 
 /******************************************************************************
- * Sweep Kernel Entrypoint
+ * Kernel entrypoint
  ******************************************************************************/
 
 /**
@@ -201,8 +207,7 @@ void Kernel(
 			break;
 		}
 
-		expand_atomic::SweepPass<ExpandKernelPolicy, true>::Invoke(
-//		expand_atomic::SweepPass<ExpandKernelPolicy, ExpandKernelPolicy::WORK_STEALING>::Invoke(
+		expand_atomic::SweepPass<ExpandKernelPolicy, ExpandKernelPolicy::WORK_STEALING>::Invoke(
 			queue_index,
 			steal_index,
 			num_gpus,
@@ -263,8 +268,7 @@ void Kernel(
 			break;
 		}
 
-		contract_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
-//		contract_atomic::SweepPass<CompactKernelPolicy, CompactKernelPolicy::WORK_STEALING>::Invoke(
+		contract_atomic::SweepPass<CompactKernelPolicy, CompactKernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
 			steal_index,

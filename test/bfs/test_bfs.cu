@@ -50,11 +50,10 @@
 #include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_contract_expand.cuh>
 #include <b40c/graph/bfs/enactor_expand_contract.cuh>
-/*
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
-#include <b40c/graph/bfs/enactor_multi_gpu.cuh>
-*/
+//#include <b40c/graph/bfs/enactor_multi_gpu.cuh>
+
 using namespace b40c;
 using namespace graph;
 
@@ -601,8 +600,8 @@ void RunTests(
 	// Allocate BFS enactor map
 	bfs::EnactorExpandContract<INSTRUMENT> 	expand_contract(g_verbose);
 	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
-//	bfs::EnactorTwoPhase<INSTRUMENT>				two_phase(g_verbose);
-//	bfs::EnactorHybrid<INSTRUMENT>					hybrid(g_verbose);
+	bfs::EnactorTwoPhase<INSTRUMENT>		two_phase(g_verbose);
+	bfs::EnactorHybrid<INSTRUMENT>			hybrid(g_verbose);
 //	bfs::EnactorMultiGpu<INSTRUMENT>				multi_gpu(g_verbose);
 
 	// Allocate Stats map
@@ -671,30 +670,45 @@ void RunTests(
 
 			// Perform BFS
 			GpuTimer gpu_timer;
-			gpu_timer.Start();
 
 			switch (strategy) {
 			case EXPAND_CONTRACT:
 				if (csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) exit(1);
-				if (expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);
+				gpu_timer.Start();
+				if (expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);				// Fused variant
+				gpu_timer.Stop();
 				expand_contract.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
 			case CONTRACT_EXPAND:
 				if (csr_problem.Reset(contract_expand.GetFrontierType(), max_queue_sizing)) exit(1);
-				if (contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);
+				gpu_timer.Start();
+				if (contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);				// Fused variant
+				gpu_timer.Stop();
 				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
 			case TWO_PHASE:
+				if (csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) exit(1);
+				gpu_timer.Start();
+				if (two_phase.EnactIterativeSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				gpu_timer.Stop();
+				two_phase.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
+
 			case HYBRID:
+				if (csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) exit(1);
+				gpu_timer.Start();
+				if (hybrid.EnactSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				gpu_timer.Stop();
+				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
+				break;
+
 			case MULTI_GPU:
 				break;
 			}
 
-			gpu_timer.Stop();
 			float elapsed = gpu_timer.ElapsedMillis();
 
 			// Copy out results
@@ -708,7 +722,7 @@ void RunTests(
 					*stats,
 					src,
 					h_labels,
-					reference_labels,
+					reference_check,
 					csr_graph,
 					elapsed,
 					search_depth,
