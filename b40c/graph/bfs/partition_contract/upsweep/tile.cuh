@@ -36,6 +36,8 @@
 
 #include <b40c/partition/upsweep/tile.cuh>
 
+#include <b40c/graph/bfs/two_phase/contract_atomic/cta.cuh>
+
 #include <b40c/radix_sort/sort_utils.cuh>
 
 namespace b40c {
@@ -113,7 +115,7 @@ struct Tile :
 
 				// Read byte from from visited mask (tex)
 				VisitedMask mask_byte = tex1Dfetch(
-					contract_atomic::BitmaskTex<VisitedMask>::ref,
+					two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
 					mask_byte_offset);
 
 				if (mask_bit & mask_byte) {

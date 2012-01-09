@@ -52,7 +52,7 @@
 #include <b40c/graph/bfs/enactor_expand_contract.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
 #include <b40c/graph/bfs/enactor_hybrid.cuh>
-//#include <b40c/graph/bfs/enactor_multi_gpu.cuh>
+#include <b40c/graph/bfs/enactor_multi_gpu.cuh>
 
 using namespace b40c;
 using namespace graph;
@@ -602,7 +602,7 @@ void RunTests(
 	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
 	bfs::EnactorTwoPhase<INSTRUMENT>		two_phase(g_verbose);
 	bfs::EnactorHybrid<INSTRUMENT>			hybrid(g_verbose);
-//	bfs::EnactorMultiGpu<INSTRUMENT>				multi_gpu(g_verbose);
+	bfs::EnactorMultiGpu<INSTRUMENT>		multi_gpu(g_verbose);
 
 	// Allocate Stats map
 	std::map<Strategy, Stats*> stats_map;
@@ -672,6 +672,7 @@ void RunTests(
 			GpuTimer gpu_timer;
 
 			switch (strategy) {
+
 			case EXPAND_CONTRACT:
 				if (csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) exit(1);
 				gpu_timer.Start();
@@ -703,9 +704,13 @@ void RunTests(
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-				break;
 
 			case MULTI_GPU:
+				if (csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) exit(1);
+				gpu_timer.Start();
+				if (multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				gpu_timer.Stop();
+				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 			}
 
