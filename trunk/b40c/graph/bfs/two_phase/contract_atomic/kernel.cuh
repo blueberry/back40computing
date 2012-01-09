@@ -54,7 +54,7 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		*&d_out,
 		typename KernelPolicy::VertexId 		*&d_predecessor_in,
 		typename KernelPolicy::VertexId			*&d_labels,
-		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
+		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage		&smem_storage)
@@ -199,7 +199,7 @@ void Kernel(
 	typename KernelPolicy::VertexId 		*d_out,
 	typename KernelPolicy::VertexId 		*d_predecessor_in,
 	typename KernelPolicy::VertexId			*d_labels,
-	typename KernelPolicy::VisitedMask 	*d_visited_mask,
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {

@@ -33,14 +33,15 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/operators.cuh>
 
+#include <b40c/graph/bfs/csr_problem.cuh>
 #include <b40c/graph/bfs/enactor_base.cuh>
 #include <b40c/graph/bfs/problem_type.cuh>
 
-#include <b40c/graph/bfs/contract_atomic/kernel.cuh>
-#include <b40c/graph/bfs/contract_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 
-#include <b40c/graph/bfs/expand_atomic/kernel.cuh>
-#include <b40c/graph/bfs/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
 
 #include <b40c/graph/bfs/partition_contract/policy.cuh>
 #include <b40c/graph/bfs/partition_contract/upsweep/kernel.cuh>
@@ -65,6 +66,7 @@ namespace bfs {
  *
  * All GPUs must be of the same SM architectural version (e.g., SM2.0).
  */
+template <bool INSTRUMENT>							// Whether or not to collect statistics
 class EnactorMultiGpu : public EnactorBase
 {
 public :
@@ -73,17 +75,17 @@ public :
 	// Policy Structures
 	//---------------------------------------------------------------------
 
-	template <bool INSTRUMENT, typename CsrProblem, int SM_ARCH>
+	template <typename CsrProblem, int SM_ARCH>
 	struct Policy;
 
 	/**
 	 * SM2.0 policy
 	 */
-	template <bool INSTRUMENT, typename CsrProblem>
-	struct Policy<INSTRUMENT, CsrProblem, 200>
+	template <typename CsrProblem>
+	struct Policy<CsrProblem, 200>
 	{
-		// Compaction kernel config
-		typedef contract_atomic::KernelPolicy<
+		// Contraction kernel config
+		typedef two_phase::contract_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
@@ -99,7 +101,7 @@ public :
 			9> CompactPolicy;		// LOG_SCHEDULE_GRANULARITY
 
 		// Expansion kernel config
-		typedef expand_atomic::KernelPolicy<
+		typedef two_phase::expand_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
@@ -126,7 +128,7 @@ public :
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
-			CsrProblem::LOG_MAX_GPUS,	// LOG_BINS
+			CsrProblem::ProblemType::LOG_MAX_GPUS,		// LOG_BINS
 			9,						// LOG_SCHEDULE_GRANULARITY
 			util::io::ld::NONE,		// CACHE_MODIFIER
 			util::io::st::NONE,		// CACHE_MODIFIER
@@ -196,7 +198,7 @@ protected:
 		util::Spine spine;
 		int spine_elements;
 
-		int contract_grid_size;			// Compaction grid size
+		int contract_grid_size;			// Contraction grid size
 		int expand_grid_size;			// Expansion grid size
 		int partition_grid_size;		// Partition/contract grid size
 		int copy_grid_size;				// Copy grid size
@@ -342,7 +344,7 @@ public:
 	 * Constructor
 	 */
 	EnactorMultiGpu(bool DEBUG = false) :
-		EnactorBase(DEBUG),
+		EnactorBase(MULTI_GPU_FRONTIERS, DEBUG),
 		DEBUG2(false)
 	{}
 
@@ -442,7 +444,7 @@ public:
 				cudaChannelFormatDesc bitmask_desc = cudaCreateChannelDesc<char>();
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						contract_atomic::BitmaskTex<VisitedMask>::ref,
+						two_phase::contract_atomic::BitmaskTex<VisitedMask>::ref,
 						csr_problem.graph_slices[i]->d_visited_mask,
 						bitmask_desc,
 						bytes),
@@ -452,7 +454,7 @@ public:
 				cudaChannelFormatDesc row_offsets_desc = cudaCreateChannelDesc<SizeT>();
 				if (retval = util::B40CPerror(cudaBindTexture(
 						0,
-						expand_atomic::RowOffsetTex<SizeT>::ref,
+						two_phase::expand_atomic::RowOffsetTex<SizeT>::ref,
 						csr_problem.graph_slices[i]->d_row_offsets,
 						row_offsets_desc,
 						(csr_problem.graph_slices[i]->nodes + 1) * sizeof(SizeT)),
@@ -478,7 +480,6 @@ public:
     	typename ExpandPolicy,
     	typename PartitionPolicy,
     	typename CopyPolicy,
-    	bool INSTRUMENT,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
 		CsrProblem 							&csr_problem,
@@ -509,7 +510,7 @@ public:
 				csr_problem, max_grid_size)) break;
 
 			// Mask in owner gpu of source;
-			int src_owner = csr_problem.GpuIndex(src);
+			VertexId src_owner = csr_problem.GpuIndex(src);
 			src |= (src_owner << CsrProblem::ProblemType::GPU_MASK_SHIFT);
 
 
@@ -531,8 +532,8 @@ public:
 					printf("GPU %d owns source 0x%X\n", control->gpu, src);
 				}
 
-				// Compaction
-				contract_atomic::Kernel<CompactPolicy>
+				// Contraction
+				two_phase::contract_atomic::Kernel<CompactPolicy>
 						<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
 					(owns_source) ? src : -1,
 					control->iteration,
@@ -541,9 +542,9 @@ public:
 					control->steal_index,
 					csr_problem.num_gpus,
 					NULL,										// d_done (not used)
-					slice->frontier_queues.d_keys[1],			// in filtered edge frontier
-					slice->frontier_queues.d_keys[2],			// out vertex frontier
-					slice->frontier_queues.d_values[1],			// in predecessors
+					slice->frontier_queues.d_keys[2],			// in filtered edge frontier
+					slice->frontier_queues.d_keys[0],			// out vertex frontier
+					slice->frontier_queues.d_values[2],			// in predecessors
 					slice->d_labels,
 					slice->d_visited_mask,
 					control->work_progress,
@@ -554,6 +555,14 @@ public:
 
 				control->queue_index++;
 				control->steal_index++;
+
+				if (DEBUG2){
+					// Get contraction queue length
+					if (retval = control->template UpdateQueueLength<SizeT>()) break;
+					printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);
+					fflush(stdout);
+				}
+
 			}
 			if (retval) break;
 
@@ -573,7 +582,7 @@ public:
 					if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
 						"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-					expand_atomic::Kernel<ExpandPolicy>
+					two_phase::expand_atomic::Kernel<ExpandPolicy>
 							<<<control->expand_grid_size, ExpandPolicy::THREADS, 0, slice->stream>>>(
 						control->queue_index,
 						control->steal_index,
@@ -593,6 +602,13 @@ public:
 					control->queue_index++;
 					control->steal_index++;
 					control->iteration++;
+
+					if (DEBUG2) {
+						// Get expansion queue length
+						if (retval = control->template UpdateQueueLength<SizeT>()) break;
+						printf("Gpu %d expansion queue length: %lld\n", i, (long long) control->queue_length);
+						fflush(stdout);
+					}
 				}
 				if (retval) break;
 
@@ -780,8 +796,8 @@ public:
 
 						} else {
 
-							// Compaction from peer GPU
-							contract_atomic::Kernel<CompactPolicy>
+							// Contraction from peer GPU
+							two_phase::contract_atomic::Kernel<CompactPolicy>
 								<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
 									-1,																		// source (not used)
 									control->iteration,
@@ -805,6 +821,13 @@ public:
 					}
 
 					control->queue_index++;
+
+					if (DEBUG2){
+						// Get contraction queue length
+						if (retval = control->template UpdateQueueLength<SizeT>()) break;
+						printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);
+						fflush(stdout);
+					}
 				}
 				if (retval) break;
 			}
@@ -820,7 +843,7 @@ public:
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
-    template <bool INSTRUMENT, typename CsrProblem>
+    template <typename CsrProblem>
 	cudaError_t EnactSearch(
 		CsrProblem 							&csr_problem,
 		typename CsrProblem::VertexId 		src,
@@ -831,19 +854,17 @@ public:
 
 		if (this->cuda_props.device_sm_version >= 200) {
 
-			typedef Policy<INSTRUMENT, CsrProblem, 200> CsrPolicy;
+			typedef Policy<CsrProblem, 200> CsrPolicy;
 
 			return EnactSearch<
 				typename CsrPolicy::CompactPolicy,
 				typename CsrPolicy::ExpandPolicy,
 				typename CsrPolicy::PartitionPolicy,
-				typename CsrPolicy::CopyPolicy,
-				INSTRUMENT>(csr_problem, src, max_grid_size);
-
-		} else {
-			printf("Not yet tuned for this architecture\n");
-			return cudaErrorInvalidConfiguration;
+				typename CsrPolicy::CopyPolicy>(csr_problem, src, max_grid_size);
 		}
+
+		printf("Not yet tuned for this architecture\n");
+		return cudaErrorInvalidConfiguration;
 	}
 
     

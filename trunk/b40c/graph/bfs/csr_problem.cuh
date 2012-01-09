@@ -687,7 +687,7 @@ struct CsrProblem
 			// Allocate duplicate filter mask if necessary (for multi-gpu)
 			//
 
-			if ((num_gpus > 1) && (!graph_slices[gpu]->d_filter_mask)) {
+			if ((frontier_type == MULTI_GPU_FRONTIERS) && (!graph_slices[gpu]->d_filter_mask)) {
 
 				printf("GPU %d_filter_mask flags: %lld elements (%lld bytes)\n",
 					graph_slices[gpu]->gpu,
