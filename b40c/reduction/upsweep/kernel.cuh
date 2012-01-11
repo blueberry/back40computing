@@ -36,7 +36,7 @@ namespace upsweep {
 
 
 /**
- * Atomically steals work from a global work progress construct
+ * Atomically steal work from a global work progress construct
  */
 template <typename SizeT>
 __device__ __forceinline__ SizeT StealWork(

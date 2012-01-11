@@ -70,7 +70,7 @@ struct Cta
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
 	typedef typename KernelPolicy::ValidFlag		ValidFlag;
-	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
+	typedef typename KernelPolicy::VisitedMask 		VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
@@ -80,20 +80,19 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Current BFS queue index
-	VertexId 				iteration;
-	VertexId 				queue_index;
-	int 					num_gpus;
-
 	// Input and output device pointers
-	VertexId 				*d_in;					// Incoming vertex ids
-	VertexId 				*d_out;					// Compacted vertex ids
+	VertexId 				*d_in;						// Incoming edge frontier
+	VertexId 				*d_out;						// Outgoing vertex frontier
 	VertexId 				*d_predecessor_in;			// Incoming predecessor vertex ids (optional)
-	VisitedMask 			*d_visited_mask;
-	VertexId				*d_labels;
+	VertexId				*d_labels;					// BFS labels to set
+	VisitedMask 			*d_visited_mask;			// Mask for detecting visited status
 
 	// Work progress
-	util::CtaWorkProgress	&work_progress;
+	VertexId 				iteration;					// Current BFS iteration
+	VertexId 				queue_index;				// Current frontier queue counter index
+	util::CtaWorkProgress	&work_progress;				// Atomic workstealing and queueing counters
+	SizeT					max_vertex_frontier;		// Maximum size (in elements) of outgoing vertex frontier
+	int 					num_gpus;					// Number of GPUs
 
 	// Operational details for SRTS scan grid
 	SrtsDetails 			srts_details;
@@ -108,7 +107,7 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	/**
-	 * Tile
+	 * Tile of incoming edge frontier to process
 	 */
 	template <
 		int LOG_LOADS_PER_TILE,
@@ -136,7 +135,7 @@ struct Cta
 		// Whether or not the corresponding vertex_id is valid for exploring
 		ValidFlag 	flags[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		// Tile of local scatter offsets
+		// Global scatter offsets
 		SizeT 		ranks[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		//---------------------------------------------------------------------
@@ -222,6 +221,7 @@ struct Cta
 			{
 				if (tile->vertex_id[LOAD][VEC] != -1) {
 
+					// Row index on our GPU (vertex ids are striped across GPUs)
 					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
 
 					// Load source path of node
@@ -445,7 +445,8 @@ struct Cta
 		VertexId 				*d_predecessor_in,
 		VertexId 				*d_labels,
 		VisitedMask 			*d_visited_mask,
-		util::CtaWorkProgress	&work_progress) :
+		util::CtaWorkProgress	&work_progress,
+		SizeT					max_vertex_frontier) :
 
 			iteration(iteration),
 			queue_index(queue_index),
@@ -460,7 +461,8 @@ struct Cta
 			d_predecessor_in(d_predecessor_in),
 			d_labels(d_labels),
 			d_visited_mask(d_visited_mask),
-			work_progress(work_progress)
+			work_progress(work_progress),
+			max_vertex_frontier(max_vertex_frontier)
 
 	{
 		// Initialize history duplicate-filter
@@ -507,16 +509,16 @@ struct Cta
 					guarded_elements);
 		}
 
-		// Cull using global visited mask
+		// Cull previously-visited using global visited mask
 		tile.BitmaskCull(this);
 
-		// Cull using vertex visitation status
+		// Cull previously-visited using vertex visitation status
 		tile.VertexCull(this);
 
-		// Cull using local CTA collision hashing
+		// Cull duplicates using local CTA collision hashing
 		tile.HistoryCull(this);
 
-		// Cull using local warp collision hashing
+		// Cull duplicates using local warp collision hashing
 		tile.WarpCull(this);
 
 		// Init valid flags and ranks
@@ -533,6 +535,11 @@ struct Cta
 			tile.ranks,
 			work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 			scan_op);
+
+		// Check scatter offsets of last elements for queue overflow
+		if (tile.ranks[KernelPolicy::LOADS_PER_TILE - 1][KernelPolicy::LOAD_VEC_SIZE - 1] >= max_vertex_frontier) {
+			work_progress.SetOverflow<SizeT>();
+		}
 
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();

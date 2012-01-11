@@ -38,7 +38,7 @@ namespace copy {
 
 
 /**
- * Sweep expansion pass (non-workstealing)
+ * Expansion pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -115,7 +115,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep expansion pass (workstealing)
+ * Expansion pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -162,7 +162,7 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Sweep Copy Kernel Entrypoint
+ * Copy Kernel Entrypoint
  ******************************************************************************/
 
 /**

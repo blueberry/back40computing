@@ -374,7 +374,7 @@ public:
 
 						// Run level-grid
 
-						// Compaction
+						// Contraction
 						two_phase::contract_atomic::Kernel<CompactPolicy>
 							<<<contract_grid_size, CompactPolicy::THREADS>>>(
 								src,
@@ -390,6 +390,7 @@ public:
 								graph_slice->d_labels,
 								graph_slice->d_visited_mask,
 								work_progress,
+								graph_slice->frontier_elements[selector ^ 1],			// max out vertices
 								contract_kernel_stats);
 
 						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
@@ -421,6 +422,7 @@ public:
 								graph_slice->d_column_indices,
 								graph_slice->d_row_offsets,
 								work_progress,
+								graph_slice->frontier_elements[selector],				// max out vertices
 								expand_kernel_stats);
 
 						if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
@@ -525,7 +527,7 @@ public:
 				7> ExpandPolicy;
 
 
-			// Compaction kernel config
+			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
@@ -591,7 +593,7 @@ public:
 				7> ExpandPolicy;
 
 
-			// Compaction kernel config
+			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,

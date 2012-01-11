@@ -39,7 +39,7 @@ namespace contract_expand_atomic {
 
 
 /**
- * Sweep contract-expand pass (non-workstealing)
+ * Contract-expand pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -128,7 +128,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep contract-expand pass (workstealing)
+ * Contract-expand pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -187,7 +187,7 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Sweep Kernel Entrypoint
+ * Kernel Entrypoint
  ******************************************************************************/
 
 /**

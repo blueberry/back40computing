@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Upsweep BFS Compaction kernel
+ * Upsweep BFS Contraction kernel
  ******************************************************************************/
 
 #pragma once
@@ -40,7 +40,7 @@ namespace contract_atomic {
 
 
 /**
- * Sweep expansion pass (non-workstealing)
+ * Contraction pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -50,13 +50,14 @@ struct SweepPass
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		int 									&num_gpus,
-		typename KernelPolicy::VertexId 		*&d_in,
-		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId 		*&d_edge_frontier,
+		typename KernelPolicy::VertexId 		*&d_vertex_frontier,
+		typename KernelPolicy::VertexId 		*&d_predecessor,
 		typename KernelPolicy::VertexId			*&d_labels,
 		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
+		typename KernelPolicy::SizeT			max_vertex_frontier,
 		typename KernelPolicy::SmemStorage		&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
@@ -79,12 +80,13 @@ struct SweepPass
 			queue_index,
 			num_gpus,
 			smem_storage,
-			d_in,
-			d_out,
-			d_predecessor_in,
+			d_edge_frontier,
+			d_vertex_frontier,
+			d_predecessor,
 			d_labels,
 			d_visited_mask,
-			work_progress);
+			work_progress,
+			max_vertex_frontier);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -103,6 +105,9 @@ struct SweepPass
 };
 
 
+/**
+ * Atomically steal work from a global work progress construct
+ */
 template <typename SizeT, typename StealIndex>
 __device__ __forceinline__ SizeT StealWork(
 	util::CtaWorkProgress &work_progress,
@@ -122,9 +127,8 @@ __device__ __forceinline__ SizeT StealWork(
 }
 
 
-
 /**
- * Sweep expansion pass (workstealing)
+ * Contraction pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -134,13 +138,14 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VertexId 		&queue_index,
 		typename KernelPolicy::VertexId 		&steal_index,
 		int 									&num_gpus,
-		typename KernelPolicy::VertexId 		*&d_in,
-		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId 		*&d_edge_frontier,
+		typename KernelPolicy::VertexId 		*&d_vertex_frontier,
+		typename KernelPolicy::VertexId 		*&d_predecessor,
 		typename KernelPolicy::VertexId			*&d_labels,
-		typename KernelPolicy::VisitedMask 	*&d_visited_mask,
+		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
+		typename KernelPolicy::SizeT			max_vertex_frontier,
 		typename KernelPolicy::SmemStorage		&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
@@ -152,12 +157,13 @@ struct SweepPass <KernelPolicy, true>
 			queue_index,
 			num_gpus,
 			smem_storage,
-			d_in,
-			d_out,
-			d_predecessor_in,
+			d_edge_frontier,
+			d_vertex_frontier,
+			d_predecessor,
 			d_labels,
 			d_visited_mask,
-			work_progress);
+			work_progress,
+			max_vertex_frontier);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -178,30 +184,31 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Sweep Compaction Kernel Entrypoint
+ * Contraction Kernel Entrypoint
  ******************************************************************************/
 
 /**
- * Compaction kernel entry point
+ * Contraction kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::VertexId 		src,
-	typename KernelPolicy::VertexId 		iteration,
-	typename KernelPolicy::SizeT			num_elements,
-	typename KernelPolicy::VertexId			queue_index,
-	typename KernelPolicy::VertexId			steal_index,
-	int										num_gpus,
-	volatile int							*d_done,
-	typename KernelPolicy::VertexId 		*d_in,
-	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_predecessor_in,
-	typename KernelPolicy::VertexId			*d_labels,
-	typename KernelPolicy::VisitedMask 		*d_visited_mask,
-	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats)
+	typename KernelPolicy::VertexId 		src,						// Source vertex (may be -1 if iteration != 0)
+	typename KernelPolicy::VertexId 		iteration,					// Current BFS iteration
+	typename KernelPolicy::SizeT			num_elements,				// Number of elements in incoming edge frontier (used when !KernelPolicy::DEQUEUE_PROBLEM_SIZE)
+	typename KernelPolicy::VertexId			queue_index,				// Current frontier queue counter index
+	typename KernelPolicy::VertexId			steal_index,				// Current workstealing counter index
+	int										num_gpus,					// Number of GPUs
+	volatile int							*d_done,					// Flag to set when we detect incoming edge frontier is empty
+	typename KernelPolicy::VertexId 		*d_edge_frontier,						// Incoming edge frontier
+	typename KernelPolicy::VertexId 		*d_vertex_frontier,						// Outgoing vertex frontier
+	typename KernelPolicy::VertexId 		*d_predecessor,			// Incoming predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	typename KernelPolicy::VertexId			*d_labels,					// BFS labels to set
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,			// Mask for detecting visited status
+	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
+	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
+	util::KernelRuntimeStats				kernel_stats)				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 
@@ -229,12 +236,12 @@ void Kernel(
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(src, d_in);
+					util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(src, d_edge_frontier);
 
 					if (KernelPolicy::MARK_PREDECESSORS) {
 						// Enqueue predecessor of source
 						typename KernelPolicy::VertexId predecessor = -2;
-						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
+						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(predecessor, d_predecessor);
 					}
 				}
 
@@ -255,13 +262,14 @@ void Kernel(
 			queue_index,
 			steal_index,
 			num_gpus,
-			d_in,
-			d_out,
-			d_predecessor_in,
+			d_edge_frontier,
+			d_vertex_frontier,
+			d_predecessor,
 			d_labels,
 			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
+			max_vertex_frontier,
 			smem_storage);
 
 	} else {
@@ -299,13 +307,14 @@ void Kernel(
 			queue_index,
 			steal_index,
 			num_gpus,
-			d_in,
-			d_out,
-			d_predecessor_in,
+			d_edge_frontier,
+			d_vertex_frontier,
+			d_predecessor,
 			d_labels,
 			d_visited_mask,
 			work_progress,
 			smem_storage.state.work_decomposition,
+			max_vertex_frontier,
 			smem_storage);
 	}
 
