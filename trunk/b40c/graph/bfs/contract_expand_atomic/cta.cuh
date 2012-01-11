@@ -83,7 +83,7 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	typedef typename KernelPolicy::VertexId 		VertexId;
-	typedef typename KernelPolicy::VisitedMask 	VisitedMask;
+	typedef typename KernelPolicy::VisitedMask 		VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
@@ -115,7 +115,7 @@ struct Cta
 	VertexId				*d_column_indices;
 	SizeT					*d_row_offsets;
 	VertexId				*d_labels;
-	VisitedMask			*d_visited_mask;
+	VisitedMask				*d_visited_mask;
 
 	// Work progress
 	util::CtaWorkProgress	&work_progress;

@@ -548,6 +548,7 @@ public:
 					slice->d_labels,
 					slice->d_visited_mask,
 					control->work_progress,
+					slice->frontier_elements[0],				// max vertex frontier vertices
 					control->expand_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
@@ -594,6 +595,7 @@ public:
 						slice->d_column_indices,
 						slice->d_row_offsets,
 						control->work_progress,
+						slice->frontier_elements[1],				// max edge frontier vertices
 						control->expand_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
@@ -784,9 +786,9 @@ public:
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									slice->frontier_queues.d_keys[2] + queue_offset,					// in local sorted, filtered edge frontier
-									slice->frontier_queues.d_keys[0],									// out local vertex frontier
-									slice->frontier_queues.d_values[2] + queue_offset,					// in local sorted, filtered predecessors
+									slice->frontier_queues.d_keys[2] + queue_offset,			// in local sorted, filtered edge frontier
+									slice->frontier_queues.d_keys[0],							// out local vertex frontier
+									slice->frontier_queues.d_values[2] + queue_offset,			// in local sorted, filtered predecessors
 									slice->d_labels,
 									control->work_progress,
 									control->copy_kernel_stats);
@@ -799,19 +801,20 @@ public:
 							// Contraction from peer GPU
 							two_phase::contract_atomic::Kernel<CompactPolicy>
 								<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
-									-1,																		// source (not used)
+									-1,															// source (not used)
 									control->iteration,
 									num_elements,
 									control->queue_index,
 									control->steal_index,
 									csr_problem.num_gpus,
-									NULL,																	// d_done (not used)
-									peer_slice->frontier_queues.d_keys[2] + queue_offset,					// in remote sorted, filtered edge frontier
-									slice->frontier_queues.d_keys[0],										// out local vertex frontier
-									peer_slice->frontier_queues.d_values[2] + queue_offset,					// in remote sorted, filtered predecessors
+									NULL,														// d_done (not used)
+									peer_slice->frontier_queues.d_keys[2] + queue_offset,		// in remote sorted, filtered edge frontier
+									slice->frontier_queues.d_keys[0],							// out local vertex frontier
+									peer_slice->frontier_queues.d_values[2] + queue_offset,		// in remote sorted, filtered predecessors
 									slice->d_labels,
 									slice->d_visited_mask,
 									control->work_progress,
+									slice->frontier_elements[0],								// max vertex frontier vertices
 									control->expand_kernel_stats);
 							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),
 								"EnactorMultiGpu contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;

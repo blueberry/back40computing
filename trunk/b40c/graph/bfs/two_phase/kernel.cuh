@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS two-phase kernel.
+ * BFS two-phase kernel (fused).
  *
  * Both contraction and expansion phases are fused within the same kernel,
  * separated by software global barriers.  The kernel itself also steps through
@@ -48,30 +48,29 @@ namespace two_phase {
  ******************************************************************************/
 
 /**
- * Sweep contract-expand kernel entry point
+ * Contract-expand kernel entry point
  */
 template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::VertexId			iteration,
-	typename KernelPolicy::VertexId			queue_index,
-	typename KernelPolicy::VertexId			steal_index,
-	typename KernelPolicy::VertexId 		src,
-	typename KernelPolicy::VertexId 		*d_in,
-	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_predecessor_in,
-	typename KernelPolicy::VertexId 		*d_predecessor_out,
-
-	typename KernelPolicy::VertexId			*d_column_indices,
-	typename KernelPolicy::SizeT			*d_row_offsets,
-	typename KernelPolicy::VertexId			*d_labels,
-	typename KernelPolicy::VisitedMask 	*d_visited_mask,
-	util::CtaWorkProgress 					work_progress,
-	util::GlobalBarrier						global_barrier,
-
-	util::KernelRuntimeStats				kernel_stats,
-	typename KernelPolicy::VertexId			*d_iteration)
+	typename KernelPolicy::VertexId 		iteration,					// Current BFS iteration
+	typename KernelPolicy::VertexId			queue_index,				// Current frontier queue counter index
+	typename KernelPolicy::VertexId			steal_index,				// Current workstealing counter index
+	typename KernelPolicy::VertexId 		src,						// Source vertex (may be -1 if iteration != 0)
+	typename KernelPolicy::VertexId 		*d_edge_frontier,			// Edge frontier
+	typename KernelPolicy::VertexId 		*d_vertex_frontier,			// Vertex frontier
+	typename KernelPolicy::VertexId 		*d_predecessor,				// Predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	typename KernelPolicy::VertexId			*d_column_indices,			// CSR column-indices array
+	typename KernelPolicy::SizeT			*d_row_offsets,				// CSR row-offsets array
+	typename KernelPolicy::VertexId			*d_labels,					// BFS labels to set
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,			// Mask for detecting visited status
+	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
+	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
+	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
+	util::GlobalBarrier						global_barrier,				// Software global barrier
+	util::KernelRuntimeStats				kernel_stats,				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
+	typename KernelPolicy::VertexId			*d_iteration)				// Place to write final BFS iteration count
 {
 	typedef typename KernelPolicy::CompactKernelPolicy 	CompactKernelPolicy;
 	typedef typename KernelPolicy::ExpandKernelPolicy 	ExpandKernelPolicy;
@@ -99,12 +98,12 @@ void Kernel(
 
 				// We'll be the only block with active work this iteration.
 				// Enqueue the source for us to subsequently process.
-				util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+				util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
 
 				if (ExpandKernelPolicy::MARK_PREDECESSORS) {
 					// Enqueue predecessor of source
 					VertexId predecessor = -2;
-					util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
+					util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
 				}
 
 				// Initialize work decomposition in smem
@@ -149,13 +148,14 @@ void Kernel(
 		queue_index,
 		steal_index,
 		num_gpus,
-		d_in,
-		d_out,
-		d_predecessor_in,
+		d_edge_frontier,
+		d_vertex_frontier,
+		d_predecessor,
 		d_labels,
 		d_visited_mask,
 		work_progress,
 		smem_storage.contract.state.work_decomposition,
+		max_vertex_frontier,
 		smem_storage.contract);
 
 	queue_index++;
@@ -211,13 +211,14 @@ void Kernel(
 			queue_index,
 			steal_index,
 			num_gpus,
-			d_out,
-			d_in,
-			d_predecessor_out,
+			d_vertex_frontier,
+			d_edge_frontier,
+			d_predecessor,
 			d_column_indices,
 			d_row_offsets,
 			work_progress,
 			smem_storage.expand.state.work_decomposition,
+			max_edge_frontier,
 			smem_storage.expand);
 
 		iteration++;
@@ -273,13 +274,14 @@ void Kernel(
 			queue_index,
 			steal_index,
 			num_gpus,
-			d_in,
-			d_out,
-			d_predecessor_in,
+			d_edge_frontier,
+			d_vertex_frontier,
+			d_predecessor,
 			d_labels,
 			d_visited_mask,
 			work_progress,
 			smem_storage.contract.state.work_decomposition,
+			max_vertex_frontier,
 			smem_storage.contract);
 
 		queue_index++;

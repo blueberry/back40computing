@@ -288,16 +288,17 @@ public:
 				0,												// steal_index
 				src,
 
-				graph_slice->frontier_queues.d_keys[0],
-				graph_slice->frontier_queues.d_keys[1],
-				graph_slice->frontier_queues.d_values[0],
-				graph_slice->frontier_queues.d_values[1],
+				graph_slice->frontier_queues.d_keys[1],			// edge frontier
+				graph_slice->frontier_queues.d_keys[0],			// vertex frontier
+				graph_slice->frontier_queues.d_values[1],		// predecessor edge frontier
 
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
 				graph_slice->d_labels,
 				graph_slice->d_visited_mask,
 				this->work_progress,
+				graph_slice->frontier_elements[1],				// max edge frontier vertices
+				graph_slice->frontier_elements[0],				// max vertex frontier vertices
 				this->global_barrier,
 
 				this->expand_kernel_stats,
@@ -418,8 +419,6 @@ public:
 
 			while (true) {
 
-				int selector = queue_index & 1;
-
 				// Contraction
 				two_phase::contract_atomic::Kernel<ContractPolicy>
 					<<<contract_grid_size, ContractPolicy::THREADS>>>(
@@ -430,12 +429,13 @@ public:
 						queue_index,								// also serves as steal_index
 						1,											// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[selector ^ 1],			// edge frontier in
-						graph_slice->frontier_queues.d_keys[selector],				// vertex frontier out
-						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor in
+						graph_slice->frontier_queues.d_keys[1],			// edge frontier in
+						graph_slice->frontier_queues.d_keys[0],			// vertex frontier out
+						graph_slice->frontier_queues.d_values[1],		// predecessor in
 						graph_slice->d_labels,
 						graph_slice->d_visited_mask,
 						this->work_progress,
+						graph_slice->frontier_elements[0],				// max vertex frontier vertices
 						this->contract_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
@@ -471,12 +471,13 @@ public:
 						queue_index,								// also serves as steal_index
 						1,											// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[selector],				// vertex frontier in
-						graph_slice->frontier_queues.d_keys[selector ^ 1],			// edge frontier out
-						graph_slice->frontier_queues.d_values[selector ^ 1],		// predecessor out
+						graph_slice->frontier_queues.d_keys[0],			// vertex frontier in
+						graph_slice->frontier_queues.d_keys[1],			// edge frontier out
+						graph_slice->frontier_queues.d_values[1],		// predecessor out
 						graph_slice->d_column_indices,
 						graph_slice->d_row_offsets,
 						this->work_progress,
+						graph_slice->frontier_elements[1],				// max edge frontier vertices
 						this->expand_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;

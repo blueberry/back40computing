@@ -85,19 +85,18 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Current BFS iteration
-	VertexId 				queue_index;
-	int 					num_gpus;
-
 	// Input and output device pointers
-	VertexId 				*d_in;
-	VertexId 				*d_out;
-	VertexId 				*d_predecessor_out;
-	VertexId				*d_column_indices;
-	SizeT					*d_row_offsets;
+	VertexId 				*d_in;						// Incoming vertex frontier
+	VertexId 				*d_out;						// Outgoing edge frontier
+	VertexId 				*d_predecessor_out;			// Outgoing predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	VertexId				*d_column_indices;			// CSR column-indices array
+	SizeT					*d_row_offsets;				// CSR row-offsets array
 
 	// Work progress
-	util::CtaWorkProgress	&work_progress;
+	VertexId 				queue_index;				// Current frontier queue counter index
+	util::CtaWorkProgress	&work_progress;				// Atomic workstealing and queueing counters
+	SizeT					max_edge_frontier;			// Maximum size (in elements) of outgoing edge frontier
+	int 					num_gpus;					// Number of GPUs
 
 	// Operational details for SRTS grid
 	SrtsSoaDetails 			srts_soa_details;
@@ -112,7 +111,7 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	/**
-	 * Tile
+	 * Tile of incoming vertex frontier to process
 	 */
 	template <
 		int LOG_LOADS_PER_TILE,
@@ -141,11 +140,14 @@ struct Cta
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		row_length[LOADS_PER_TILE][LOAD_VEC_SIZE];
+
+		// Global scatter offsets.  Coarse for CTA/warp-based scatters, fine for scan-based scatters
+		SizeT 		fine_count;
 		SizeT		coarse_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		fine_row_rank[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		SizeT 		fine_count;
+		// Progress for expanding scan-based gather offsets
+		SizeT		row_progress[LOADS_PER_TILE][LOAD_VEC_SIZE];
 		SizeT		progress;
 
 		//---------------------------------------------------------------------
@@ -261,12 +263,14 @@ struct Cta
 
 						// Scatter neighbor
 						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-							neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+							neighbor_id,
+							cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
 						if (KernelPolicy::MARK_PREDECESSORS) {
 							// Scatter predecessor
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-								predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
+								predecessor_id,
+								cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
 
 						coop_offset += KernelPolicy::THREADS;
@@ -542,7 +546,8 @@ struct Cta
 		VertexId 				*d_predecessor_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
-		util::CtaWorkProgress	&work_progress) :
+		util::CtaWorkProgress	&work_progress,
+		SizeT					max_edge_frontier) :
 
 			queue_index(queue_index),
 			num_gpus(num_gpus),
@@ -560,7 +565,8 @@ struct Cta
 			d_predecessor_out(d_predecessor_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
-			work_progress(work_progress) {}
+			work_progress(work_progress),
+			max_edge_frontier(max_edge_frontier) {}
 
 
 	/**
@@ -606,12 +612,16 @@ struct Cta
 		// Use a single atomic add to reserve room in the queue
 		if (threadIdx.x == 0) {
 
-			smem_storage.state.coarse_enqueue_offset = work_progress.Enqueue(
-				coarse_count + tile.fine_count,
-				queue_index + 1);
+			SizeT enqueue_amt = coarse_count + tile.fine_count;
+			SizeT enqueue_offset = work_progress.Enqueue(enqueue_amt, queue_index + 1);
 
-			smem_storage.state.fine_enqueue_offset =
-				smem_storage.state.coarse_enqueue_offset + coarse_count;
+			smem_storage.state.coarse_enqueue_offset = enqueue_offset;
+			smem_storage.state.fine_enqueue_offset = enqueue_offset + coarse_count;
+
+			// Check for queue overflow
+			if (enqueue_offset + enqueue_amt >= max_edge_frontier) {
+				work_progress.SetOverflow<SizeT>();
+			}
 		}
 
 		// Enqueue valid edge lists into outgoing queue
