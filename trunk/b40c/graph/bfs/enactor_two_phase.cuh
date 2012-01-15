@@ -52,7 +52,7 @@ namespace bfs {
  * vertices are read back in and expanded to construct the outgoing
  * edge-frontier in global memory.
  */
-template <bool INSTRUMENT>							// Whether or not to collect statistics
+template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-count statistics
 class EnactorTwoPhase : public EnactorBase
 {
 
@@ -315,6 +315,15 @@ public:
 					total_queued)) break;
 			}
 
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed;
+			cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+			if (overflow_retval) {
+				retval = overflow_retval;
+			} else if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+			}
+
 		} while (0);
 
 		return retval;
@@ -424,10 +433,10 @@ public:
 					<<<contract_grid_size, ContractPolicy::THREADS>>>(
 						src,
 						iteration[0],
-						0,											// num_elements (unused: we obtain this from device-side counters instead)
+						0,												// num_elements (unused: we obtain this from device-side counters instead)
 						queue_index,
-						queue_index,								// also serves as steal_index
-						1,											// number of GPUs
+						queue_index,									// also serves as steal_index
+						1,												// number of GPUs
 						d_done,
 						graph_slice->frontier_queues.d_keys[1],			// edge frontier in
 						graph_slice->frontier_queues.d_keys[0],			// vertex frontier out
@@ -435,6 +444,7 @@ public:
 						graph_slice->d_labels,
 						graph_slice->d_visited_mask,
 						this->work_progress,
+						graph_slice->frontier_elements[1],				// max edge frontier vertices
 						graph_slice->frontier_elements[0],				// max vertex frontier vertices
 						this->contract_kernel_stats);
 
@@ -468,8 +478,8 @@ public:
 				two_phase::expand_atomic::Kernel<ExpandPolicy>
 					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
 						queue_index,
-						queue_index,								// also serves as steal_index
-						1,											// number of GPUs
+						queue_index,									// also serves as steal_index
+						1,												// number of GPUs
 						d_done,
 						graph_slice->frontier_queues.d_keys[0],			// vertex frontier in
 						graph_slice->frontier_queues.d_keys[1],			// edge frontier out
@@ -477,6 +487,7 @@ public:
 						graph_slice->d_column_indices,
 						graph_slice->d_row_offsets,
 						this->work_progress,
+						graph_slice->frontier_elements[0],				// max vertex frontier vertices
 						graph_slice->frontier_elements[1],				// max edge frontier vertices
 						this->expand_kernel_stats);
 
@@ -501,6 +512,16 @@ public:
 			if (retval) break;
 
 		} while(0);
+
+		// Check if any of the frontiers overflowed due to redundant expansion
+		bool overflowed = false;
+		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+		printf("overflow: %d\n", overflowed);
+		if (overflow_retval) {
+			retval = overflow_retval;
+		} else if (overflowed) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}

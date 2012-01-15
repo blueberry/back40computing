@@ -48,7 +48,7 @@ namespace bfs {
  * ones are updated and enqueued into the outgoing
  * vertex-frontier in global memory.
  */
-template <bool INSTRUMENT>							// Whether or not to collect statistics
+template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-count statistics
 class EnactorExpandContract : public EnactorBase
 {
 

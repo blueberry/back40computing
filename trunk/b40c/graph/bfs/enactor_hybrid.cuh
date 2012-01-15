@@ -51,7 +51,7 @@ namespace bfs {
  * BFS iterations and two-phase (global edge and vertex frontiers) for
  * large-sized BFS iterations.
  */
-template <bool INSTRUMENT>							// Whether or not to collect statistics
+template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-count statistics
 class EnactorHybrid : public EnactorBase
 {
 

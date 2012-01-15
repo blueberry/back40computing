@@ -197,8 +197,12 @@ struct KernelPolicy : _ProblemType
 	{
 		// Persistent shared state for the CTA
 		struct State {
+
 			// Type describing four shared memory channels per warp for intra-warp communication
 			typedef SizeT 						WarpComm[WARPS][4];
+
+			// Whether or not we overflowed our outgoing frontier
+			bool								overflowed;
 
 			// Shared work-processing limits
 			util::CtaWorkDistribution<SizeT>	work_decomposition;

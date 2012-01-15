@@ -201,6 +201,7 @@ void Kernel(
 	typename KernelPolicy::VertexId			*d_column_indices,			// CSR column-indices array
 	typename KernelPolicy::SizeT			*d_row_offsets,				// CSR row-offsets array
 	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
+	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
 	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
 	util::KernelRuntimeStats				kernel_stats)				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
 {
@@ -218,6 +219,11 @@ void Kernel(
 
 		// Obtain problem size
 		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+
+		// Check if we previously overflowed
+		if (num_elements >= max_vertex_frontier) {
+			num_elements = 0;
+		}
 
 		// Signal to host that we're done
 		if ((num_elements == 0) ||

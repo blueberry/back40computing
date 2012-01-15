@@ -50,7 +50,7 @@ namespace bfs {
  * of the remaining vertices are expanded to construct the outgoing
  * edge-frontier in global memory.
  */
-template <bool INSTRUMENT>							// Whether or not to collect statistics
+template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-count statistics
 class EnactorContractExpand : public EnactorBase
 {
 

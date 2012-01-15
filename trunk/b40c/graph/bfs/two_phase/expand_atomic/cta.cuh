@@ -212,26 +212,23 @@ struct Cta
 				// CTA-based expansion/loading
 				while (true) {
 
-					if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
-						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;
-					}
-
-					__syncthreads();
-
+					// Vie
 					if (tile->row_length[LOAD][VEC] >= KernelPolicy::CTA_GATHER_THRESHOLD) {
 						cta->smem_storage.state.cta_comm = threadIdx.x;
 					}
 
 					__syncthreads();
 
+					// Check
 					int owner = cta->smem_storage.state.cta_comm;
 					if (owner == KernelPolicy::THREADS) {
+						// No contenders
 						break;
 					}
 
 					if (owner == threadIdx.x) {
 
-						// Got control of the CTA
+						// Got control of the CTA: command it
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
 						cta->smem_storage.state.warp_comm[0][1] = tile->coarse_row_rank[LOAD][VEC];									// queue rank
 						cta->smem_storage.state.warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
@@ -241,10 +238,14 @@ struct Cta
 
 						// Unset row length
 						tile->row_length[LOAD][VEC] = 0;
+
+						// Unset my command
+						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;	// invalid
 					}
 
 					__syncthreads();
 
+					// Read commands
 					SizeT coop_offset 	= cta->smem_storage.state.warp_comm[0][0] + threadIdx.x;
 					SizeT coop_rank	 	= cta->smem_storage.state.warp_comm[0][1] + threadIdx.x;
 					SizeT coop_oob 		= cta->smem_storage.state.warp_comm[0][2];
@@ -566,7 +567,13 @@ struct Cta
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
 			work_progress(work_progress),
-			max_edge_frontier(max_edge_frontier) {}
+			max_edge_frontier(max_edge_frontier)
+	{
+		if (threadIdx.x == 0) {
+			smem_storage.state.cta_comm = KernelPolicy::THREADS;	// invalid
+			smem_storage.state.overflowed = false;						// valid
+		}
+	}
 
 
 	/**
@@ -618,10 +625,19 @@ struct Cta
 			smem_storage.state.coarse_enqueue_offset = enqueue_offset;
 			smem_storage.state.fine_enqueue_offset = enqueue_offset + coarse_count;
 
-			// Check for queue overflow
+			// Check for queue overflow due to redundant expansion
 			if (enqueue_offset + enqueue_amt >= max_edge_frontier) {
+				smem_storage.state.overflowed = true;
 				work_progress.SetOverflow<SizeT>();
 			}
+		}
+
+		// Protect overflowed flag
+		__syncthreads();
+
+		// Quit if overflow
+		if (smem_storage.state.overflowed) {
+			util::ThreadExit();
 		}
 
 		// Enqueue valid edge lists into outgoing queue

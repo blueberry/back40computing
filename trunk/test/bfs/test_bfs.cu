@@ -700,7 +700,7 @@ void RunTests(
 			case HYBRID:
 				if (csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) exit(1);
 				gpu_timer.Start();
-				if (hybrid.EnactSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				if (hybrid.EnactSearch(csr_problem, src, max_grid_size)) exit(1);
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
@@ -708,10 +708,11 @@ void RunTests(
 			case MULTI_GPU:
 				if (csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) exit(1);
 				gpu_timer.Start();
-				if (multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				if (multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) exit(1);
 				gpu_timer.Stop();
 				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
+
 			}
 
 			float elapsed = gpu_timer.ElapsedMillis();

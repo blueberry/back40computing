@@ -201,12 +201,13 @@ void Kernel(
 	typename KernelPolicy::VertexId			steal_index,				// Current workstealing counter index
 	int										num_gpus,					// Number of GPUs
 	volatile int							*d_done,					// Flag to set when we detect incoming edge frontier is empty
-	typename KernelPolicy::VertexId 		*d_edge_frontier,						// Incoming edge frontier
-	typename KernelPolicy::VertexId 		*d_vertex_frontier,						// Outgoing vertex frontier
-	typename KernelPolicy::VertexId 		*d_predecessor,			// Incoming predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	typename KernelPolicy::VertexId 		*d_edge_frontier,			// Incoming edge frontier
+	typename KernelPolicy::VertexId 		*d_vertex_frontier,			// Outgoing vertex frontier
+	typename KernelPolicy::VertexId 		*d_predecessor,				// Incoming predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
 	typename KernelPolicy::VertexId			*d_labels,					// BFS labels to set
 	typename KernelPolicy::VisitedMask 		*d_visited_mask,			// Mask for detecting visited status
 	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
+	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
 	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
 	util::KernelRuntimeStats				kernel_stats)				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
 {
@@ -280,6 +281,11 @@ void Kernel(
 			// Obtain problem size
 			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
 				num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+			}
+
+			// Check if we previously overflowed
+			if (num_elements >= max_edge_frontier) {
+				num_elements = 0;
 			}
 
 			// Signal to host that we're done
