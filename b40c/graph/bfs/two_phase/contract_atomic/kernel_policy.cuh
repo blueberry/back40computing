@@ -146,6 +146,9 @@ struct KernelPolicy : _ProblemType
 		// Persistent shared state for the CTA
 		struct State {
 
+			// Whether or not we overflowed our outgoing frontier
+			bool								overflowed;
+
 			// Shared work-processing limits
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 

@@ -533,7 +533,7 @@ struct CsrProblem
 	 */
 	cudaError_t Reset(
 		FrontierType frontier_type,			// The frontier type (i.e., edge/vertex/mixed)
-		double max_queue_sizing)			// Maximum size scaling factor for work queues (e.g., 1.0 creates n-element and m-element vertex and edge frontiers, respectively).  0.0 is unspecified.
+		double queue_sizing)			// Size scaling factor for work queue allocation (e.g., 1.0 creates n-element and m-element vertex and edge frontiers, respectively).  0.0 is unspecified.
 	{
 		cudaError_t retval = cudaSuccess;
 
@@ -592,13 +592,13 @@ struct CsrProblem
 			switch (frontier_type) {
 			case VERTEX_FRONTIERS :
 				// O(n) ping-pong global vertex frontiers
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
 				new_frontier_elements[1] = new_frontier_elements[0];
 				break;
 
 			case EDGE_FRONTIERS :
 				// O(m) ping-pong global edge frontiers
-				new_frontier_elements[0] = double(graph_slices[gpu]->edges) * max_queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->edges) * queue_sizing;
 				new_frontier_elements[1] = new_frontier_elements[0];
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[0] = new_frontier_elements[0];
@@ -608,8 +608,8 @@ struct CsrProblem
 
 			case MIXED_FRONTIERS :
 				// O(n) global vertex frontier, O(m) global edge frontier
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
-				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * max_queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[1] = new_frontier_elements[1];
 				}
@@ -617,8 +617,8 @@ struct CsrProblem
 
 			case MULTI_GPU_FRONTIERS :
 				// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * max_queue_sizing;
-				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * max_queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
 				new_frontier_elements[2] = new_frontier_elements[1];
 				if (MARK_PREDECESSORS) {
 					new_predecessor_elements[1] = new_frontier_elements[1];
@@ -642,9 +642,10 @@ struct CsrProblem
 
 					graph_slices[gpu]->frontier_elements[i] = new_frontier_elements[i];
 
-					printf("GPU %d frontier queue[%d]: %lld elements (%lld bytes)\n",
+					printf("GPU %d frontier queue[%d] (queue-sizing factor %.2fx): %lld elements (%lld bytes)\n",
 						graph_slices[gpu]->gpu,
 						i,
+						queue_sizing,
 						(unsigned long long) graph_slices[gpu]->frontier_elements[i],
 						(unsigned long long) graph_slices[gpu]->frontier_elements[i] * sizeof(VertexId));
 					fflush(stdout);
@@ -668,9 +669,10 @@ struct CsrProblem
 
 					graph_slices[gpu]->predecessor_elements[i] = new_predecessor_elements[i];
 
-					printf("GPU %d predecessor queue[%d]: %lld elements (%lld bytes)\n",
+					printf("GPU %d predecessor queue[%d] (queue-sizing factor %.2fx): %lld elements (%lld bytes)\n",
 						graph_slices[gpu]->gpu,
 						i,
+						queue_sizing,
 						(unsigned long long) graph_slices[gpu]->predecessor_elements[i],
 						(unsigned long long) graph_slices[gpu]->predecessor_elements[i] * sizeof(VertexId));
 					fflush(stdout);

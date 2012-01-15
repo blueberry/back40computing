@@ -66,7 +66,7 @@ namespace bfs {
  *
  * All GPUs must be of the same SM architectural version (e.g., SM2.0).
  */
-template <bool INSTRUMENT>							// Whether or not to collect statistics
+template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-count statistics
 class EnactorMultiGpu : public EnactorBase
 {
 public :
@@ -548,6 +548,7 @@ public:
 					slice->d_labels,
 					slice->d_visited_mask,
 					control->work_progress,
+					slice->frontier_elements[2],				// max edge frontier vertices
 					slice->frontier_elements[0],				// max vertex frontier vertices
 					control->expand_kernel_stats);
 
@@ -595,6 +596,7 @@ public:
 						slice->d_column_indices,
 						slice->d_row_offsets,
 						control->work_progress,
+						slice->frontier_elements[0],				// max vertex frontier vertices
 						slice->frontier_elements[1],				// max edge frontier vertices
 						control->expand_kernel_stats);
 
@@ -814,6 +816,7 @@ public:
 									slice->d_labels,
 									slice->d_visited_mask,
 									control->work_progress,
+									slice->frontier_elements[2],								// max edge frontier vertices
 									slice->frontier_elements[0],								// max vertex frontier vertices
 									control->expand_kernel_stats);
 							if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(),

@@ -469,6 +469,11 @@ struct Cta
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
 			smem_storage.history[offset] = -1;
 		}
+
+		// Initialize overflowed
+		if (threadIdx.x == 0) {
+			smem_storage.state.overflowed = false;
+		}
 	}
 
 
@@ -536,13 +541,19 @@ struct Cta
 			work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 			scan_op);
 
-		// Check scatter offsets of last elements for queue overflow
+		// Check scatter offsets of last elements for queue overflow due to redundant expansion
 		if (tile.ranks[KernelPolicy::LOADS_PER_TILE - 1][KernelPolicy::LOAD_VEC_SIZE - 1] >= max_vertex_frontier) {
+			smem_storage.state.overflowed = true;
 			work_progress.SetOverflow<SizeT>();
 		}
 
 		// Protect repurposable storage that backs both raking lanes and local cull scratch
 		__syncthreads();
+
+		// Quit if overflow
+		if (smem_storage.state.overflowed) {
+			util::ThreadExit();
+		}
 
 		// Scatter directly (without first contracting in smem scratch), predicated
 		// on flags
