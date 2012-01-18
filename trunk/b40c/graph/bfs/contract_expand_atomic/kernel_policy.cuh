@@ -200,6 +200,9 @@ struct KernelPolicy : _ProblemType
 			// Type describing four shared memory channels per warp for intra-warp communication
 			typedef SizeT 						WarpComm[WARPS][4];
 
+			// Whether or not we overflowed our outgoing frontier
+			bool								overflowed;
+
 			// Shared work-processing limits
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 

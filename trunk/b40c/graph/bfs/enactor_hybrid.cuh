@@ -336,6 +336,7 @@ public:
 							graph_slice->d_labels,
 							graph_slice->d_visited_mask,
 							work_progress,
+							graph_slice->frontier_elements[0],							// max frontier vertices (all queues should be the same size)
 							global_barrier,
 
 							fused_kernel_stats,
@@ -343,7 +344,7 @@ public:
 
 					// Synchronize to make sure we have a coherent iteration;
 					if (retval = util::B40CPerror(cudaThreadSynchronize(),
-						"expand_atomic::Kernel failed ", __FILE__, __LINE__)) break;
+						"contract_expand_atomic::KernelGlobalBarrier failed ", __FILE__, __LINE__)) break;
 
 					if ((iteration[0] - phase_iteration) & 1) {
 						// An odd number of iterations passed: update selector
@@ -354,7 +355,7 @@ public:
 
 					// Get queue length
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-
+/*
 					if (INSTRUMENT) {
 
 						// Get stats
@@ -363,9 +364,9 @@ public:
 							total_runtimes,
 							total_lifetimes,
 							total_queued)) break;
-
+*/
 						if (DEBUG) printf("%lld, %lld\n", iteration[0], (long long) queue_length);
-					}
+//					}
 
 				} else {
 
@@ -390,6 +391,7 @@ public:
 								graph_slice->d_labels,
 								graph_slice->d_visited_mask,
 								work_progress,
+								graph_slice->frontier_elements[selector],				// max in vertices
 								graph_slice->frontier_elements[selector ^ 1],			// max out vertices
 								contract_kernel_stats);
 
@@ -397,18 +399,18 @@ public:
 
 						queue_index++;
 
-						if (INSTRUMENT) {
+//						if (INSTRUMENT) {
 							// Get contract downsweep stats (i.e., duty %)
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 
 							if (DEBUG) printf("%lld, %lld", iteration[0], (long long) queue_length);
-
+/*
 							if (contract_kernel_stats.Accumulate(
 								contract_grid_size,
 								total_runtimes,
 								total_lifetimes)) break;
 						}
-
+*/
 						// Expansion
 						two_phase::expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
@@ -422,6 +424,7 @@ public:
 								graph_slice->d_column_indices,
 								graph_slice->d_row_offsets,
 								work_progress,
+								graph_slice->frontier_elements[selector ^ 1],			// max in vertices
 								graph_slice->frontier_elements[selector],				// max out vertices
 								expand_kernel_stats);
 
@@ -429,19 +432,19 @@ public:
 
 						queue_index++;
 						iteration[0]++;
-
+/*
 						if (INSTRUMENT) {
 							// Get expand stats (i.e., duty %)
 							expand_kernel_stats.Accumulate(
 								expand_grid_size,
 								total_runtimes,
 								total_lifetimes);
-
+*/
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 							total_queued += queue_length;
 
 							if (DEBUG) printf(", %lld\n", (long long) queue_length);
-						}
+//						}
 
 						// Throttle
 						if ((iteration[0] - phase_iteration) & 1) {
@@ -461,6 +464,15 @@ public:
 			if (retval) break;
 
 		} while (0);
+
+		// Check if any of the frontiers overflowed due to redundant expansion
+		bool overflowed;
+		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+		if (overflow_retval) {
+			retval = overflow_retval;
+		} else if (overflowed) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}

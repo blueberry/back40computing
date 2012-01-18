@@ -50,6 +50,7 @@ template <typename SrtsGrid>
 struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 {
 	enum {
+		QUEUE_RSVN_THREAD 	= 0,
 		CUMULATIVE_THREAD 	= SrtsGrid::RAKING_THREADS - 1,
 		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
 	};
@@ -143,6 +144,15 @@ struct SrtsDetails<SrtsGrid, NullType> : SrtsGrid
 	__device__ __forceinline__ T CumulativePartial() const
 	{
 		return warpscan[1][CUMULATIVE_THREAD];
+	}
+
+
+	/**
+	 * Return the queue reservation in the first warpscan cell
+	 */
+	__device__ __forceinline__ T QueueReservation() const
+	{
+		return warpscan[1][QUEUE_RSVN_THREAD];
 	}
 
 
@@ -250,6 +260,14 @@ struct SrtsDetails : SrtsGrid
 	__device__ __forceinline__ T CumulativePartial() const
 	{
 		return secondary_details.CumulativePartial();
+	}
+
+	/**
+	 * Return the queue reservation in the first warpscan cell
+	 */
+	__device__ __forceinline__ T QueueReservation() const
+	{
+		return secondary_details.QueueReservation();
 	}
 
 	/**

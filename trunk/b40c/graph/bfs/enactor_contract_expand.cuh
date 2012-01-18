@@ -289,6 +289,7 @@ public:
 				graph_slice->d_labels,
 				graph_slice->d_visited_mask,
 				this->work_progress,
+				graph_slice->frontier_elements[0],				// max frontier vertices (all queues should be the same size)
 				this->global_barrier,
 				this->kernel_stats,
 				(VertexId *) d_iteration);
@@ -304,6 +305,15 @@ public:
 					total_queued)) break;
 			}
 		} while (0);
+
+		// Check if any of the frontiers overflowed due to redundant expansion
+		bool overflowed;
+		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+		if (overflow_retval) {
+			retval = overflow_retval;
+		} else if (overflowed) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}
@@ -443,6 +453,7 @@ public:
 					graph_slice->d_labels,
 					graph_slice->d_visited_mask,
 					this->work_progress,
+					graph_slice->frontier_elements[0],				// max frontier vertices (all queues should be the same size)
 					this->kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
@@ -476,6 +487,15 @@ public:
 			if (retval) break;
 
 		} while (0);
+
+		// Check if any of the frontiers overflowed due to redundant expansion
+		bool overflowed;
+		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+		if (overflow_retval) {
+			retval = overflow_retval;
+		} else if (overflowed) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}

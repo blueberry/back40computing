@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS expansion kernels
+ * Tile-processing functionality for BFS expand-contract kernels
  ******************************************************************************/
 
 #pragma once
@@ -87,7 +87,7 @@ struct Cta
 	typedef typename KernelPolicy::SmemStorage			SmemStorage;
 	typedef typename KernelPolicy::VertexId 			VertexId;
 	typedef typename KernelPolicy::SizeT 				SizeT;
-	typedef typename KernelPolicy::VisitedMask 		VisitedMask;
+	typedef typename KernelPolicy::VisitedMask 			VisitedMask;
 
 	typedef typename KernelPolicy::SrtsExpandDetails 	SrtsExpandDetails;
 	typedef typename KernelPolicy::SrtsCompactDetails 	SrtsCompactDetails;
@@ -96,22 +96,19 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Current BFS iteration
-	VertexId 				iteration;
-	VertexId 				queue_index;
-
 	// Input and output device pointers
-	VertexId 				*d_in;
-	VertexId 				*d_out;
-	VertexId 				*d_predecessor_in;
-	VertexId 				*d_predecessor_out;
-	VertexId				*d_column_indices;
-	SizeT					*d_row_offsets;
-	VertexId				*d_labels;
-	VisitedMask 			*d_visited_mask;
+	VertexId 				*d_in;						// Incoming vertex frontier
+	VertexId 				*d_out;						// Outgoing vertex frontier
+	VertexId				*d_column_indices;			// CSR column-indices array
+	SizeT					*d_row_offsets;				// CSR row-offsets array
+	VertexId				*d_labels;					// BFS labels to set
+	VisitedMask 			*d_visited_mask;			// Mask for detecting visited status
 
 	// Work progress
-	util::CtaWorkProgress	&work_progress;
+	VertexId 				iteration;					// Current BFS iteration
+	VertexId 				queue_index;				// Current frontier queue counter index
+	util::CtaWorkProgress	&work_progress;				// Atomic workstealing and queueing counters
+	SizeT					max_vertex_frontier;		// Maximum size (in elements) of vertex frontiers
 
 	// Operational details for SRTS scan grid
 	SrtsExpandDetails 		srts_expand_details;
@@ -120,6 +117,8 @@ struct Cta
 	// Shared memory
 	SmemStorage 			&smem_storage;
 
+	// Whether or not to perform bitmask culling (incurs extra latency on small frontiers)
+	bool 					bitmask_cull;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -174,7 +173,9 @@ struct Cta
 	/**
 	 * VertexCull
 	 */
-	__device__ __forceinline__ void VertexCull(VertexId &neighbor_id)
+	__device__ __forceinline__ void VertexCull(
+		VertexId &neighbor_id, 			// vertex ID to check.  Set -1 if previously visited.
+		VertexId predecessor_id)
 	{
 		if (neighbor_id != -1) {
 
@@ -195,7 +196,10 @@ struct Cta
 
 				if (KernelPolicy::MARK_PREDECESSORS) {
 
-					// MOOCH Update source path with predecessor vertex
+					// Update source path with predecessor vertex
+					util::io::ModifiedStore<util::io::st::cg>::St(
+						predecessor_id,
+						d_labels + row_id);
 
 				} else {
 
@@ -312,7 +316,6 @@ struct Cta
 
 		// Dequeued vertex ids
 		VertexId 	vertex_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
-		VertexId 	predecessor_id[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Edge list details
 		SizeT		row_offset[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -370,32 +373,29 @@ struct Cta
 
 
 			/**
-			 * Expand by CTA
+			 * Expand by CTA.  Return true if overflow outgoing queue
 			 */
-			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
+			static __device__ __forceinline__ bool ExpandByCta(Cta *cta, Tile *tile)
 			{
 				// CTA-based expansion/loading
 				while (true) {
 
-					if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
-						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;
-					}
-
-					__syncthreads();
-
+					// Vie
 					if (tile->row_length[LOAD][VEC] >= KernelPolicy::CTA_GATHER_THRESHOLD) {
 						cta->smem_storage.state.cta_comm = threadIdx.x;
 					}
 
 					__syncthreads();
 
+					// Check
 					int owner = cta->smem_storage.state.cta_comm;
 					if (owner == KernelPolicy::THREADS) {
 						break;
 					}
 
 					if (owner == threadIdx.x) {
-						// Got control of the CTA
+
+						// Got control of the CTA: command it
 						cta->smem_storage.state.warp_comm[0][0] = tile->row_offset[LOAD][VEC];										// start
 						cta->smem_storage.state.warp_comm[0][2] = tile->row_offset[LOAD][VEC] + tile->row_length[LOAD][VEC];		// oob
 						if (KernelPolicy::MARK_PREDECESSORS) {
@@ -404,6 +404,9 @@ struct Cta
 
 						// Unset row length
 						tile->row_length[LOAD][VEC] = 0;
+
+						// Unset my command
+						cta->smem_storage.state.cta_comm = KernelPolicy::THREADS;	// invalid
 					}
 
 					__syncthreads();
@@ -416,21 +419,22 @@ struct Cta
 						predecessor_id = cta->smem_storage.state.warp_comm[0][3];
 					}
 
+					// Repeatedly throw the whole CTA at the adjacency list
 					while (coop_offset < coop_oob) {
 
 						// Gather
 						VertexId neighbor_id = -1;
-						SizeT ranks[1][1] = { {0} };
+						SizeT ranks[1][1] = { {0} };						// mooch
 						if (coop_offset + threadIdx.x < coop_oob) {
 
 							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
 								neighbor_id, cta->d_column_indices + coop_offset + threadIdx.x);
 
-							// Check
-							if (cta->smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * gridDim.x) {
-								cta->BitmaskCull(neighbor_id);
+							// Cull visited vertices and update discovered vertices
+							if (cta->bitmask_cull) {
+								cta->BitmaskCull(neighbor_id);					// using global visited mask
 							}
-							cta->VertexCull(neighbor_id);
+							cta->VertexCull(neighbor_id, predecessor_id);		// using vertex visitation status (update discovered vertices)
 
 							if (neighbor_id != -1) ranks[0][0] = 1;
 						}
@@ -438,25 +442,23 @@ struct Cta
 						// Scan tile of ranks, using an atomic add to reserve
 						// space in the contracted queue, seeding ranks
 						util::Sum<SizeT> scan_op;
-						util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
+						SizeT new_queue_offset = util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
 							cta->srts_contract_details,
 							ranks,
 							cta->work_progress.GetQueueCounter<SizeT>(cta->queue_index + 1),
 							scan_op);
 
-						if (neighbor_id != -1) {
+						// Check updated queue offset for overflow due to redundant expansion
+						if (new_queue_offset >= cta->max_vertex_frontier) {
+							cta->work_progress.SetOverflow<SizeT>();
+							return true;
+						}
 
-							// Scatter neighbor
+						// Scatter neighbor if valid
+						if (neighbor_id != -1) {
 							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 								neighbor_id,
 								cta->d_out + ranks[0][0]);
-
-							if (KernelPolicy::MARK_PREDECESSORS) {
-								// Scatter predecessor
-								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-									predecessor_id,
-									cta->d_predecessor_out + ranks[0][0]);
-							}
 						}
 
 						coop_offset += KernelPolicy::THREADS;
@@ -464,7 +466,7 @@ struct Cta
 				}
 
 				// Next vector element
-				Iterate<LOAD, VEC + 1>::ExpandByCta(cta, tile);
+				return Iterate<LOAD, VEC + 1>::ExpandByCta(cta, tile);
 			}
 
 
@@ -523,9 +525,9 @@ struct Cta
 			/**
 			 * Expand by CTA
 			 */
-			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile)
+			static __device__ __forceinline__ bool ExpandByCta(Cta *cta, Tile *tile)
 			{
-				Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
+				return Iterate<LOAD + 1, 0>::ExpandByCta(cta, tile);
 			}
 
 			/**
@@ -550,7 +552,10 @@ struct Cta
 			static __device__ __forceinline__ void Inspect(Cta *cta, Tile *tile) {}
 
 			// ExpandByCta
-			static __device__ __forceinline__ void ExpandByCta(Cta *cta, Tile *tile) {}
+			static __device__ __forceinline__ bool ExpandByCta(Cta *cta, Tile *tile)
+			{
+				return false;
+			}
 
 			// ExpandByScan
 			static __device__ __forceinline__ void ExpandByScan(Cta *cta, Tile *tile) {}
@@ -579,11 +584,12 @@ struct Cta
 		}
 
 		/**
-		 * Expands neighbor lists for valid vertices at CTA-expansion granularity
+		 * Expands neighbor lists for valid vertices at CTA-expansion
+		 * granularity.  Return true if overflowed outgoing queue.
 		 */
-		__device__ __forceinline__ void ExpandByCta(Cta *cta)
+		__device__ __forceinline__ bool ExpandByCta(Cta *cta)
 		{
-			Iterate<0, 0>::ExpandByCta(cta, this);
+			return Iterate<0, 0>::ExpandByCta(cta, this);
 		}
 
 		/**
@@ -609,13 +615,12 @@ struct Cta
 		SmemStorage 			&smem_storage,
 		VertexId 				*d_in,
 		VertexId 				*d_out,
-		VertexId 				*d_predecessor_in,
-		VertexId 				*d_predecessor_out,
 		VertexId 				*d_column_indices,
 		SizeT 					*d_row_offsets,
 		VertexId 				*d_labels,
 		VisitedMask 			*d_visited_mask,
-		util::CtaWorkProgress	&work_progress) :
+		util::CtaWorkProgress	&work_progress,
+		SizeT					max_vertex_frontier) :
 
 			iteration(iteration),
 			queue_index(queue_index),
@@ -629,14 +634,19 @@ struct Cta
 				0),
 			smem_storage(smem_storage),
 			d_in(d_in),
-			d_predecessor_in(d_predecessor_in),
 			d_out(d_out),
-			d_predecessor_out(d_predecessor_out),
 			d_column_indices(d_column_indices),
 			d_row_offsets(d_row_offsets),
 			d_labels(d_labels),
 			d_visited_mask(d_visited_mask),
-			work_progress(work_progress) {}
+			work_progress(work_progress),
+			max_vertex_frontier(max_vertex_frontier),
+			bitmask_cull((KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) && (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
+	{
+		if (threadIdx.x == 0) {
+			smem_storage.state.cta_comm = KernelPolicy::THREADS;		// invalid
+		}
+	}
 
 
 	/**
@@ -663,30 +673,18 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		// Load tile of predecessors
-		if (KernelPolicy::MARK_PREDECESSORS) {
-
-			util::io::LoadTile<
-				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE,
-				KernelPolicy::THREADS,
-				KernelPolicy::QUEUE_READ_MODIFIER,
-				false>::LoadValid(
-					tile.predecessor_id,
-					d_predecessor_in,
-					cta_offset,
-					guarded_elements);
-		}
-
+		// Cull nearby duplicates from the incoming frontier using collision-hashing
 //		CtaCull(tile.vertex_id[0][0]);
 		WarpCull(tile.vertex_id[0][0]);
-
 
 		// Inspect dequeued vertices, obtaining edge-list details
 		tile.Inspect(this);
 
 		// Enqueue valid edge lists into outgoing queue
-		tile.ExpandByCta(this);
+		if (tile.ExpandByCta(this)) {
+			// overflowed
+			return;
+		}
 
 		// Copy lengths into ranks
 		util::io::InitializeTile<
@@ -734,11 +732,16 @@ struct Cta
 						neighbor_id,
 						d_column_indices + smem_storage.offset_scratch[scratch_offset + threadIdx.x]);
 
-					// Check
-					if (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * gridDim.x) {
-						BitmaskCull(neighbor_id);
+					VertexId predecessor_id;
+					if (KernelPolicy::MARK_PREDECESSORS) {
+						predecessor_id = smem_storage.predecessor_scratch[scratch_offset + threadIdx.x];
 					}
-					VertexCull(neighbor_id);
+
+					// Cull visited vertices and update discovered vertices
+					if (bitmask_cull) {
+						BitmaskCull(neighbor_id);					// using global visited mask
+					}
+					VertexCull(neighbor_id, predecessor_id);		// using vertex visitation status (update discovered vertices)
 
 					if (neighbor_id != -1) ranks[0][0] = 1;
 				}
@@ -746,11 +749,17 @@ struct Cta
 				// Scan tile of ranks, using an atomic add to reserve
 				// space in the contracted queue, seeding ranks
 				util::Sum<SizeT> scan_op;
-				util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
+				SizeT new_queue_offset = util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
 					srts_contract_details,
 					ranks,
 					work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 					scan_op);
+
+				// Check updated queue offset for overflow due to redundant expansion
+				if (new_queue_offset >= max_vertex_frontier) {
+					work_progress.SetOverflow<SizeT>();
+					return;
+				}
 
 				if (neighbor_id != -1) {
 
@@ -758,15 +767,6 @@ struct Cta
 					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
 						neighbor_id,
 						d_out + ranks[0][0]);
-
-					if (KernelPolicy::MARK_PREDECESSORS) {
-						// Scatter predecessor it into queue
-						VertexId predecessor_id = smem_storage.predecessor_scratch[scratch_offset + threadIdx.x];
-
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
-							predecessor_id,
-							d_predecessor_out + ranks[0][0]);
-					}
 				}
 			}
 
