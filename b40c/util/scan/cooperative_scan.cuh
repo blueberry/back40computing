@@ -160,12 +160,12 @@ struct CooperativeTileScan
 
 
 	/**
-	 * Scan a single tile with atomic enqueue.
+	 * Scan a single tile with atomic enqueue.  Returns updated queue offset.
 	 *
 	 * No post-synchronization needed before grid reuse.
 	 */
 	template <typename SrtsDetails, typename ReductionOp>
-	static __device__ __forceinline__ void ScanTileWithEnqueue(
+	static __device__ __forceinline__ typename SrtsDetails::T ScanTileWithEnqueue(
 		SrtsDetails srts_details,
 		typename SrtsDetails::T data[SrtsDetails::SCAN_LANES][VEC_SIZE],
 		typename SrtsDetails::T* d_enqueue_counter,
@@ -185,12 +185,14 @@ struct CooperativeTileScan
 		// Scan each vector-load, seeded with the resulting partial from its SRTS grid lane,
 		ScanLane<0, SrtsDetails::SCAN_LANES>::Invoke(
 			srts_details, data, scan_op);
+
+		return scan_op(srts_details.QueueReservation(), srts_details.CumulativePartial());
 	}
 
 
 	/**
-	 * Scan a single tile with atomic enqueue.  Total aggregate is computed and
-	 * returned in all threads.
+	 * Scan a single tile with atomic enqueue.  Local aggregate is computed and
+	 * returned in all threads.  Enqueue offset is returned in all threads.
 	 *
 	 * No post-synchronization needed before grid reuse.
 	 */

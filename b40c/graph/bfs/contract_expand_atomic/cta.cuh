@@ -102,23 +102,22 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Current BFS iteration
-	VertexId 				iteration;
-	VertexId 				queue_index;
-	int 					num_gpus;
-
 	// Input and output device pointers
-	VertexId 				*d_in;
-	VertexId 				*d_out;
-	VertexId 				*d_predecessor_in;
-	VertexId 				*d_predecessor_out;
-	VertexId				*d_column_indices;
-	SizeT					*d_row_offsets;
-	VertexId				*d_labels;
-	VisitedMask				*d_visited_mask;
+	VertexId 				*d_in;						// Incoming edge frontier
+	VertexId 				*d_out;						// Outgoing edge frontier
+	VertexId 				*d_predecessor_in;			// Incoming predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	VertexId 				*d_predecessor_out;			// Outgoing predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
+	VertexId				*d_column_indices;			// CSR column-indices array
+	SizeT					*d_row_offsets;				// CSR row-offsets array
+	VertexId				*d_labels;					// BFS labels to set
+	VisitedMask 			*d_visited_mask;			// Mask for detecting visited status
 
 	// Work progress
-	util::CtaWorkProgress	&work_progress;
+	VertexId 				iteration;					// Current BFS iteration
+	VertexId 				queue_index;				// Current frontier queue counter index
+	util::CtaWorkProgress	&work_progress;				// Atomic workstealing and queueing counters
+	SizeT					max_edge_frontier;			// Maximum size (in elements) of edge frontiers
+	int 					num_gpus;					// Number of GPUs
 
 	// Operational details for SRTS grid
 	SrtsSoaDetails 			srts_soa_details;
@@ -126,6 +125,7 @@ struct Cta
 	// Shared memory for the CTA
 	SmemStorage				&smem_storage;
 
+	// Whether or not to perform bitmask culling (incurs extra latency on small frontiers)
 	bool 					bitmask_cull;
 
 
@@ -522,7 +522,8 @@ struct Cta
 		SizeT 					*d_row_offsets,
 		VertexId 				*d_labels,
 		VisitedMask 			*d_visited_mask,
-		util::CtaWorkProgress	&work_progress) :
+		util::CtaWorkProgress	&work_progress,
+		SizeT					max_edge_frontier) :
 
 			srts_soa_details(
 				typename SrtsSoaDetails::GridStorageSoa(
@@ -545,8 +546,14 @@ struct Cta
 			d_labels(d_labels),
 			d_visited_mask(d_visited_mask),
 			work_progress(work_progress),
+			max_edge_frontier(max_edge_frontier),
 			bitmask_cull((KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) && (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
-	{}
+	{
+		if (threadIdx.x == 0) {
+			smem_storage.state.cta_comm = KernelPolicy::THREADS;		// invalid
+			smem_storage.state.overflowed = false;						// valid
+		}
+	}
 
 
 
@@ -589,17 +596,15 @@ struct Cta
 					guarded_elements);
 		}
 
-		// Cull using global visited mask
+		// Cull visited vertices and update discovered vertices
 		if (bitmask_cull) {
-			tile.BitmaskCull(this);
+			tile.BitmaskCull(this);		// using global visited mask
 		}
+		tile.VertexCull(this);			// using vertex visitation status (update discovered vertices)
 
-		// Cull using vertex visitation status
-		tile.VertexCull(this);
-
-		// Cull valid flags using local collision hashing
-		tile.WarpCull(this);
+		// Cull nearby duplicates from the incoming frontier using collision-hashing
 //		tile.CtaCull(this);
+		tile.WarpCull(this);
 
 		// Inspect dequeued vertices, updating source path and obtaining
 		// edge-list details
@@ -618,10 +623,25 @@ struct Cta
 		tile.fine_count = totals.t1;
 
 		if (threadIdx.x == 0) {
-			smem_storage.state.coarse_enqueue_offset = work_progress.Enqueue(
-				coarse_count + tile.fine_count,
-				queue_index + 1);
-			smem_storage.state.fine_enqueue_offset = smem_storage.state.coarse_enqueue_offset + coarse_count;
+			SizeT enqueue_amt = coarse_count + tile.fine_count;
+			SizeT enqueue_offset = work_progress.Enqueue(enqueue_amt, queue_index + 1);
+
+			smem_storage.state.coarse_enqueue_offset = enqueue_offset;
+			smem_storage.state.fine_enqueue_offset = enqueue_offset + coarse_count;
+
+			// Check for queue overflow due to redundant expansion
+			if (enqueue_offset + enqueue_amt >= max_edge_frontier) {
+				smem_storage.state.overflowed = true;
+				work_progress.SetOverflow<SizeT>();
+			}
+		}
+
+		// Protect overflowed flag
+		__syncthreads();
+
+		// Quit if overflow
+		if (smem_storage.state.overflowed) {
+			return;
 		}
 
 		// Enqueue valid edge lists into outgoing queue (includes barrier)

@@ -651,6 +651,10 @@ void RunTests(
 				printf("\n");
 			}
 			fflush(stdout);
+
+			if (randomized_src && (test_iteration < stats_map[HOST]->rate.count)) {
+				test_iteration = stats_map[HOST]->rate.count;
+			}
 		}
 
 		//

@@ -203,7 +203,7 @@ void Kernel(
 	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
 	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
 	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
-	util::KernelRuntimeStats				kernel_stats)				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
+	util::KernelRuntimeStats				kernel_stats)				// Per-CTA clock timing statistics (used when KernelPolicy::INSTRUMENT)
 {
 	typedef typename KernelPolicy::SizeT SizeT;
 

@@ -315,16 +315,16 @@ public:
 					total_queued)) break;
 			}
 
-			// Check if any of the frontiers overflowed due to redundant expansion
-			bool overflowed;
-			cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-			if (overflow_retval) {
-				retval = overflow_retval;
-			} else if (overflowed) {
-				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-			}
-
 		} while (0);
+
+		// Check if any of the frontiers overflowed due to redundant expansion
+		bool overflowed;
+		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
+		if (overflow_retval) {
+			retval = overflow_retval;
+		} else if (overflowed) {
+			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+		}
 
 		return retval;
 	}
@@ -516,7 +516,6 @@ public:
 		// Check if any of the frontiers overflowed due to redundant expansion
 		bool overflowed = false;
 		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		printf("overflow: %d\n", overflowed);
 		if (overflow_retval) {
 			retval = overflow_retval;
 		} else if (overflowed) {

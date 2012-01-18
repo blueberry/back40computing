@@ -570,7 +570,7 @@ struct Cta
 			max_edge_frontier(max_edge_frontier)
 	{
 		if (threadIdx.x == 0) {
-			smem_storage.state.cta_comm = KernelPolicy::THREADS;	// invalid
+			smem_storage.state.cta_comm = KernelPolicy::THREADS;		// invalid
 			smem_storage.state.overflowed = false;						// valid
 		}
 	}

@@ -83,7 +83,7 @@ struct Cta
 	// Input and output device pointers
 	VertexId 				*d_in;						// Incoming edge frontier
 	VertexId 				*d_out;						// Outgoing vertex frontier
-	VertexId 				*d_predecessor_in;			// Incoming predecessor vertex ids (optional)
+	VertexId 				*d_predecessor_in;			// Incoming predecessor edge frontier (used when KernelPolicy::MARK_PREDECESSORS)
 	VertexId				*d_labels;					// BFS labels to set
 	VisitedMask 			*d_visited_mask;			// Mask for detecting visited status
 
@@ -469,11 +469,6 @@ struct Cta
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
 			smem_storage.history[offset] = -1;
 		}
-
-		// Initialize overflowed
-		if (threadIdx.x == 0) {
-			smem_storage.state.overflowed = false;
-		}
 	}
 
 
@@ -535,23 +530,15 @@ struct Cta
 		// Scan tile of ranks, using an atomic add to reserve
 		// space in the contracted queue, seeding ranks
 		util::Sum<SizeT> scan_op;
-		util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
+		SizeT new_queue_offset = util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
 			srts_details,
 			tile.ranks,
 			work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 			scan_op);
 
-		// Check scatter offsets of last elements for queue overflow due to redundant expansion
-		if (tile.ranks[KernelPolicy::LOADS_PER_TILE - 1][KernelPolicy::LOAD_VEC_SIZE - 1] >= max_vertex_frontier) {
-			smem_storage.state.overflowed = true;
+		// Check updated queue offset for overflow due to redundant expansion
+		if (new_queue_offset >= max_vertex_frontier) {
 			work_progress.SetOverflow<SizeT>();
-		}
-
-		// Protect repurposable storage that backs both raking lanes and local cull scratch
-		__syncthreads();
-
-		// Quit if overflow
-		if (smem_storage.state.overflowed) {
 			util::ThreadExit();
 		}
 
