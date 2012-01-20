@@ -208,7 +208,7 @@ struct RakingGrid
 		raking_segment = (RakingSegment) (
 			lane_storage +													// base
 			(tid << LOG_PARTIALS_PER_SEG) +									// logical segment offset
-			((threadIdx.x >> LOG_SEGS_PER_ROW)* BANK_PADDING_PARTIALS));	// padding
+			((threadIdx.x >> LOG_SEGS_PER_ROW) * BANK_PADDING_PARTIALS));	// padding
 	}
 
 
