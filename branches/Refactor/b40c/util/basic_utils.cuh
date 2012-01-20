@@ -180,14 +180,21 @@ struct If<false, ThenType, ElseType>
 template <typename A, typename B>
 struct Equals
 {
-	enum { VALUE = 0 };
+	enum {
+		VALUE = 0,
+		NEGATE = 1
+	};
 };
 
 template <typename A>
 struct Equals <A, A>
 {
-	enum { VALUE = 1 };
+	enum {
+		VALUE = 1,
+		NEGATE = 0
+	};
 };
+
 
 
 /**

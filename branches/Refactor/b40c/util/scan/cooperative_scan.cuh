@@ -38,45 +38,43 @@ namespace b40c {
 namespace util {
 namespace scan {
 
+
 /**
  *
  */
 template <
 	int CUDA_ARCH,						// CUDA SM architecture to generate code for
-	typename T,							// Data type of scan partials
 	int LOG_THREADS,
-	int LOG_RAKING_THREADS,
 	int LOG_LOAD_VEC_SIZE,
 	int LOG_LOADS_PER_TILE,
-	bool EXCLUSIVE,
-	typename IdentityOp> 				// Functor for producing scan identities (may be NullType if no identity exists)
-
+	typename T,							// Data type of scan partials
+	typename ReductionOp,				// Binary associative reduction functor for pairs of elements of type T
+	typename IdentityOp = NullType>		// An associative identity functor for the scan operation vastly improves performance.  (The identity_op may be an instance of NullType if no such identity exists)
 struct CooperativeTileScan
 {
 	//---------------------------------------------------------------------
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
+	// Warpscan type
+	typedef WarpScan<
+		T,
+		ReductionOp,
+		IdentityOp> WarpScan;
+
 	// Constants
 	enum {
-		RAKING_THREADS 			= 1 << LOG_RAKING_THREADS,
+		LOG_RAKING_THREADS		= Warpscan::LOG_WARPSCAN_THREADS,
+		RAKING_THREADS			= 1 << LOG_RAKING_THREADS,
+
 		LOAD_VEC_SIZE 			= 1 << LOG_LOAD_VEC_SIZE,
 		LOADS_PER_TILE			= 1 << LOG_LOADS_PER_TILE,
 
 		LOG_SCAN_LANES			= LOG_LOADS_PER_TILE,
 		SCAN_LANES				= 1 << LOG_SCAN_LANES,
 
-		EXCLUSIVE				= EXCLUSIVE,
+		HAS_IDENTITY			= Equals<IdentityOp, NullType>::NEGATE,
 	};
-
-
-	// Data type of warpscan partials.  (Using volatile storage for built-in
-	// types allows us to omit thread-fence operations during warp-synchronous code.)
-	typedef typename util::If<(util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER),
-		T,							// regular
-		volatile T					// volatile
-			>::Type WarpscanT;
-
 
 	// Raking grid type (having LOADS_PER_TILE lanes)
 	typedef RakingGrid<
@@ -87,14 +85,15 @@ struct CooperativeTileScan
 		LOG_SCAN_LANES> RakingGrid;
 
 
+
 	//---------------------------------------------------------------------
-	// Shared storage types
+	// Opaque shared storage types needed to construct CooperativeTileScan
 	//---------------------------------------------------------------------
 
-	// Warpscan storage type
-	typedef WarpscanT WarpscanStorage[2][RAKING_THREADS];
+	// Warpscan storage type.  Should not be re-purposed.
+	typedef typename WarpScan::WarpscanStorage WarpscanStorage;
 
-	// Lane storage type
+	// Lane storage type.  Can be re-purposed.
 	typedef typename RakingGrid::LaneStorage LaneStorage;
 
 
@@ -102,48 +101,12 @@ struct CooperativeTileScan
 	// Members
 	//---------------------------------------------------------------------
 
-	// Shared warpscan storage
-	WarpScanStorage &warpscan_storage;
-
-	// Raking grid
-	RakingGrid raking_grid;
-
+	WarpScan				warp_scan;				// Warpscan utility
+	RakingGrid 				raking_grid;			// Raking grid utility
 
 	//---------------------------------------------------------------------
 	// Helper structures
 	//---------------------------------------------------------------------
-
-	/**
-	 * Initialize warpscan storage (with valid identity)
-	 */
-	template <typename IdentityOp, int RAKING_THREADS>
-	struct InitWarpscanStorage
-	{
-		template <typename WarpscanStorage>
-		static __device__ __forceinline__ void Invoke(
-			WarpscanStorage &warpscan_storage,
-			IdentityOp identity_op)
-		{
-			if (threadIdx.x < RAKING_THREADS) {
-				warpscan_storage[0][threadIdx.x] = identity_op();
-			}
-		}
-	};
-
-
-	/**
-	 * Initialize warpscan storage (without valid identity)
-	 */
-	template <int RAKING_THREADS>
-	struct InitWarpscanStorage<NullType, RAKING_THREADS>
-	{
-		template <typename WarpscanStorage>
-		static __device__ __forceinline__ void Invoke(
-			WarpscanStorage &warpscan_storage,
-			NullType identity_op)
-		{}
-	};
-
 
 	/**
 	 * Iterate over loads (next load)
@@ -152,17 +115,13 @@ struct CooperativeTileScan
 	struct IterateLoad
 	{
 		// Serial upsweep reduction
-		template <
-			typename T,
-			typename ReductionOp,
-			typename CooperativeTileScan>
 		static __device__ __forceinline__ void UpsweepReduction(
-			T data[CooperativeTileScan::LOADS_PER_TILE][CooperativeTileScan::LOAD_VEC_SIZE],
+			T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
 			ReductionOp scan_op,
 			CooperativeTileScan *tile_scan)
 		{
 			// Reduce the partials in this lane/load
-			T partial_reduction = SerialReduce<CooperativeTileScan::LOAD_VEC_SIZE>::Invoke(
+			T partial_reduction = SerialReduce<LOAD_VEC_SIZE>::Invoke(
 				data[LOAD],
 				reduction_op);
 
@@ -177,12 +136,8 @@ struct CooperativeTileScan
 		}
 
 		// Sequential downsweep scan
-		template <
-			typename T,
-			typename ReductionOp,
-			typename CooperativeTileScan>
 		static __device__ __forceinline__ void DownsweepScan(
-			T data[CooperativeTileScan::LOADS_PER_TILE][CooperativeTileScan::LOAD_VEC_SIZE],
+			T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
 			ReductionOp scan_op,
 			CooperativeTileScan *tile_scan)
 		{
@@ -190,7 +145,7 @@ struct CooperativeTileScan
 			T exclusive_partial = tile_scan->raking_grid.my_lane_partial[LOAD][0];
 
 			// Serial scan the partials in this lane/load
-			SerialScan<CooperativeTileScan::LOAD_VEC_SIZE, CooperativeTileScan::EXCLUSIVE>::Invoke(
+			SerialScan<LOAD_VEC_SIZE, EXCLUSIVE_SCAN>::Invoke(
 				data[LOAD],
 				exclusive_partial,
 				scan_op);
@@ -209,16 +164,14 @@ struct CooperativeTileScan
 	struct IterateLoad<TOTAL_LOADS, TOTAL_LOADS>
 	{
 		// Serial upsweep reduction
-		template <typename T, typename ReductionOp, typename CooperativeTileScan>
 		static __device__ __forceinline__ void UpsweepReduction(
-			T data[CooperativeTileScan::LOADS_PER_TILE][CooperativeTileScan::LOAD_VEC_SIZE],
+			T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
 			ReductionOp scan_op,
 			CooperativeTileScan *tile_scan) {}
 
 		// Sequential downsweep scan
-		template <typename T, typename ReductionOp, typename CooperativeTileScan>
 		static __device__ __forceinline__ void DownsweepScan(
-			T data[CooperativeTileScan::LOADS_PER_TILE][CooperativeTileScan::LOAD_VEC_SIZE],
+			T data[LOADS_PER_TILE][LOAD_VEC_SIZE],
 			ReductionOp scan_op,
 			CooperativeTileScan *tile_scan) {}
 	};
@@ -229,18 +182,66 @@ struct CooperativeTileScan
 	//---------------------------------------------------------------------
 
 	/**
-	 * Constructor
+	 * Constructor.
+	 *
+	 * Specifying an associative identity functor for the scan operation vastly
+	 * improves performance.  (The identity_op may be an instance of NullType
+	 * if no such identity exists)
 	 */
 	__device__ __forceinline__ CooperativeTileScan(
-		WarpScanStorage &warpscan_storage,
-		LaneStorage &lane_storage,
-		IdentityOp identity_op = IdentityOp()) :
+		WarpscanStorage 	&warpscan_storage,
+		LaneStorage 		&lane_storage,
+		ReductionOp 		reduction_op,
+		IdentityOp 			identity_op = NullType()) :
+			// Initializers
 			warpscan_storage(warpscan_storage),
-			raking_grid(lane_storage)
+			raking_grid(lane_storage),
+			reduction_op(reduction_op),
+			identity_op(identity_op)
 	{
 		InitWarpscanStorage<IdentityOp, RAKING_THREADS>::Init(
 			warpscan_storage,
 			identity_op);
+	}
+
+
+	/**
+	 * Inclusive prefix scan a CTA tile of data.
+	 * Returns the total aggregate in all threads.
+	 *
+	 * No synchronization needed before storage reuse.
+	 */
+	__device__ __forceinline__ T InclusivePrefixScan(
+		T data[LOADS_PER_TILE][LOAD_VEC_SIZE])
+	{
+		// Reduce partials in each load, placing resulting partials in raking grid lanes
+		IterateLoad<0, SCAN_LANES>::UpsweepReduction(data, scan_op, this);
+
+		__syncthreads();
+
+		if (threadIdx.x < RAKING_THREADS) {
+
+			// Inclusive raking scan
+			SerialScan<RakingGrid::PARTIALS_PER_SEG, false>::Invoke(
+				raking_grid.my_raking_segment,
+				exclusive_partial,
+				scan_op);
+
+			// Exclusive warp scan
+			T exclusive_partial = WarpScan<LOG_RAKING_THREADS>::Invoke(
+				inclusive_partial,
+				warpscan_storage,
+				scan_op);
+
+		}
+
+		__syncthreads();
+
+		// Scan each load, seeded with the resulting partial its raking lane
+		IterateLoad<0, SCAN_LANES>::DownsweepScan(data, scan_op, this);
+
+		// Return total aggregate from warpscan
+		return warpscan_storage[1][RAKING_THREADS - 1];
 	}
 
 
