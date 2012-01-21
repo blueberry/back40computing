@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS expand-contract kernels
+ * CTA tile-processing abstraction for BFS frontier expansion+contraction
  ******************************************************************************/
 
 #pragma once
@@ -71,7 +71,7 @@ texture<SizeT, cudaTextureType1D, cudaReadModeElementType> RowOffsetTex<SizeT>::
 
 
 /**
- * Derivation of KernelPolicy that encapsulates tile-processing routines
+ * CTA tile-processing abstraction for BFS frontier expansion+contraction
  */
 template <typename KernelPolicy>
 struct Cta
@@ -89,8 +89,8 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 				SizeT;
 	typedef typename KernelPolicy::VisitedMask 			VisitedMask;
 
-	typedef typename KernelPolicy::SrtsExpandDetails 	SrtsExpandDetails;
-	typedef typename KernelPolicy::SrtsCompactDetails 	SrtsCompactDetails;
+	typedef typename KernelPolicy::RakingExpandDetails 	RakingExpandDetails;
+	typedef typename KernelPolicy::RakingContractDetails 	RakingContractDetails;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -110,9 +110,9 @@ struct Cta
 	util::CtaWorkProgress	&work_progress;				// Atomic workstealing and queueing counters
 	SizeT					max_vertex_frontier;		// Maximum size (in elements) of vertex frontiers
 
-	// Operational details for SRTS scan grid
-	SrtsExpandDetails 		srts_expand_details;
-	SrtsCompactDetails 		srts_contract_details;
+	// Operational details for raking scan grids
+	RakingExpandDetails 		raking_expand_details;
+	RakingContractDetails 		raking_contract_details;
 
 	// Shared memory
 	SmemStorage 			&smem_storage;
@@ -424,7 +424,7 @@ struct Cta
 
 						// Gather
 						VertexId neighbor_id = -1;
-						SizeT ranks[1][1] = { {0} };						// mooch
+						SizeT ranks[1][1] = { {0} };
 						if (coop_offset + threadIdx.x < coop_oob) {
 
 							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
@@ -443,7 +443,7 @@ struct Cta
 						// space in the contracted queue, seeding ranks
 						util::Sum<SizeT> scan_op;
 						SizeT new_queue_offset = util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
-							cta->srts_contract_details,
+							cta->raking_contract_details,
 							ranks,
 							cta->work_progress.GetQueueCounter<SizeT>(cta->queue_index + 1),
 							scan_op);
@@ -624,11 +624,11 @@ struct Cta
 
 			iteration(iteration),
 			queue_index(queue_index),
-			srts_expand_details(
+			raking_expand_details(
 				smem_storage.expand_raking_elements,
 				smem_storage.state.warpscan,
 				0),
-			srts_contract_details(
+			raking_contract_details(
 				smem_storage.state.contract_raking_elements,
 				smem_storage.state.warpscan,
 				0),
@@ -694,7 +694,7 @@ struct Cta
 		// Scan tile of local ranks
 		util::Sum<SizeT> scan_op;
 		tile.fine_count = util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
-			srts_expand_details,
+			raking_expand_details,
 			tile.local_ranks,
 			scan_op);
 
@@ -750,7 +750,7 @@ struct Cta
 				// space in the contracted queue, seeding ranks
 				util::Sum<SizeT> scan_op;
 				SizeT new_queue_offset = util::scan::CooperativeTileScan<1>::ScanTileWithEnqueue(
-					srts_contract_details,
+					raking_contract_details,
 					ranks,
 					work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 					scan_op);

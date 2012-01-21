@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ __device__ __forceinline__ void DownsweepPass(
 		return;
 	}
 
-	// Location of base composite counter in SRTS grid
+	// Location of base composite counter in raking grid
 	LanePartial base_composite_counter =
 		KernelPolicy::Grid::MyLanePartial(smem_storage.raking_lanes);
 
@@ -124,7 +124,7 @@ void Kernel(
 		}
 	}
 
-	// SRTS grid raking pointer
+	// Raking grid raking pointer
 	int *raking_segment = NULL;
 
 	if (threadIdx.x < KernelPolicy::Grid::RAKING_THREADS) {

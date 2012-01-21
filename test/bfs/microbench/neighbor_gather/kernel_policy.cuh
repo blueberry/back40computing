@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -132,8 +132,8 @@ struct KernelPolicy : _ProblemType
 		BENCHMARK						= _BENCHMARK,
 	};
 
-	// SRTS grid type for coarse
-	typedef util::SrtsGrid<
+	// Raking grid type for coarse
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
@@ -142,8 +142,8 @@ struct KernelPolicy : _ProblemType
 		true>									// There are prefix dependences between lanes
 			CoarseGrid;
 
-	// SRTS grid type for fine
-	typedef util::SrtsGrid<
+	// Raking grid type for fine
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
@@ -182,16 +182,16 @@ struct KernelPolicy : _ProblemType
 	};
 
 
-	// Tuple type of SRTS grid types
+	// Tuple type of raking grid types
 	typedef util::Tuple<
 		CoarseGrid,
-		FineGrid> SrtsGridTuple;
+		FineGrid> RakingGridTuple;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
+	// Operational details type for raking grid type
+	typedef util::RakingSoaDetails<
 		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
+		RakingGridTuple> RakingSoaDetails;
 
 
 	/**

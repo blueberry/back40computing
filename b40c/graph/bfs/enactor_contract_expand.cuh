@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Contract-expand BFS enactor
+ * Contract+expand BFS enactor
  ******************************************************************************/
 
 #pragma once
@@ -43,7 +43,7 @@ namespace bfs {
 
 
 /**
- * Contract-expand BFS enactor.
+ * Contract+expand BFS enactor.
  *
  * For each BFS iteration, visited/duplicate vertices are culled from
  * the incoming edge-frontier in global memory.  The neighbor lists
@@ -54,20 +54,19 @@ template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-coun
 class EnactorContractExpand : public EnactorBase
 {
 
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+
 protected:
 
 	/**
-	 * CTA duty kernel stats
+	 * Per-CTA clock-count and related statistics
 	 */
 	util::KernelRuntimeStatsLifetime 	kernel_stats;
-
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 					total_queued;
-
-
-// State for iterative kernel invocation variant
-protected:
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration
@@ -78,9 +77,6 @@ protected:
 	volatile int 	*done;
 	int 			*d_done;
 	cudaEvent_t		throttle_event;
-
-// State for global-barrier (single kernel invocation) variant
-protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
@@ -95,6 +91,10 @@ protected:
 	volatile long long 					*iteration;
 	long long 							*d_iteration;
 
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 protected:
 
@@ -274,16 +274,17 @@ public:
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
+			// Contract+expand kernel
 			contract_expand_atomic::KernelGlobalBarrier<KernelPolicy>
 					<<<grid_size, KernelPolicy::THREADS>>>(
 				0,												// start iteration
 				0,												// queue_index
 				0,												// steal_index
 				src,
-				graph_slice->frontier_queues.d_keys[0],
-				graph_slice->frontier_queues.d_keys[1],
-				graph_slice->frontier_queues.d_values[0],
-				graph_slice->frontier_queues.d_values[1],
+				graph_slice->frontier_queues.d_keys[0],			// edge frontier (ping)
+				graph_slice->frontier_queues.d_keys[1],			// edge frontier (pong)
+				graph_slice->frontier_queues.d_values[0],		// in predecessors
+				graph_slice->frontier_queues.d_values[1],		// out predecessors
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
 				graph_slice->d_labels,
@@ -304,16 +305,16 @@ public:
 					total_lifetimes,
 					total_queued)) break;
 			}
-		} while (0);
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
+
+		} while (0);
 
 		return retval;
 	}
@@ -336,7 +337,7 @@ public:
 			// GF100 tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				200,
+				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				8,						// CTA_OCCUPANCY
@@ -360,10 +361,11 @@ public:
 
 /*
 		} else if (this->cuda_props.device_sm_version >= 130) {
+
 			// GT200 tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				130,
+				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				1,						// CTA_OCCUPANCY
@@ -387,13 +389,14 @@ public:
 */
 		}
 
-		printf("Contract-expand not yet tuned for this architecture\n");
+		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidConfiguration;
 	}
 
 
     /**
-	 * Enacts a breadth-first-search on the specified graph problem.
+	 * Enacts a breadth-first-search on the specified graph problem. Invokes
+	 * a new grid kernel for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -432,22 +435,23 @@ public:
 				printf("1\n");
 			}
 
+			// Step through BFS iterations
 			while (true) {
 
 				int selector = queue_index & 1;
 
-				// Initiate single-grid kernel
+				// Contract+expand
 				contract_expand_atomic::Kernel<KernelPolicy>
 						<<<grid_size, KernelPolicy::THREADS>>>(
-					iteration[0],									// iteration
-					queue_index,									// queue_index
-					queue_index,									// steal_index
+					iteration[0],											// iteration
+					queue_index,											// queue_index
+					queue_index,											// steal_index
 					d_done,
 					src,
-					graph_slice->frontier_queues.d_keys[selector],
-					graph_slice->frontier_queues.d_keys[selector ^ 1],
-					graph_slice->frontier_queues.d_values[selector],
-					graph_slice->frontier_queues.d_values[selector ^ 1],
+					graph_slice->frontier_queues.d_keys[selector],			// in edge frontier
+					graph_slice->frontier_queues.d_keys[selector ^ 1],		// out edge frontier
+					graph_slice->frontier_queues.d_values[selector],		// in predecessors
+					graph_slice->frontier_queues.d_values[selector ^ 1],	// out predecessors
 					graph_slice->d_column_indices,
 					graph_slice->d_row_offsets,
 					graph_slice->d_labels,
@@ -486,23 +490,23 @@ public:
 			}
 			if (retval) break;
 
-		} while (0);
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+		} while (0);
 
 		return retval;
 	}
 
 
     /**
-	 * Enacts a breadth-first-search on the specified graph problem.
+	 * Enacts a breadth-first-search on the specified graph problem.  Invokes
+	 * a new grid kernel for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -517,7 +521,7 @@ public:
 			// GF100 tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				200,
+				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				8,						// CTA_OCCUPANCY
@@ -545,7 +549,7 @@ public:
 			// GT200 tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				130,
+				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				1,						// CTA_OCCUPANCY

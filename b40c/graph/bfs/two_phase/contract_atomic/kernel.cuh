@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -237,12 +237,12 @@ void Kernel(
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(src, d_edge_frontier);
+					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
 
 					if (KernelPolicy::MARK_PREDECESSORS) {
 						// Enqueue predecessor of source
 						typename KernelPolicy::VertexId predecessor = -2;
-						util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(predecessor, d_predecessor);
+						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
 					}
 				}
 

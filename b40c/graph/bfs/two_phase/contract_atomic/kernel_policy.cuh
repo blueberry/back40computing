@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding reduction granularity configuration
+ * Kernel configuration policy for BFS frontier contraction kernels
  ******************************************************************************/
 
 #pragma once
@@ -42,9 +42,10 @@ namespace contract_atomic {
 
 
 /**
- * BFS contraction upsweep kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * Kernel configuration policy for BFS frontier contraction kernels.
+ *
+ * Parameterizations of this type encapsulate our kernel-tuning parameters
+ * (i.e., they are reflected via the static fields).
  *
  * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
  * them with different performance-tuned parameterizations of this type.  By
@@ -54,36 +55,40 @@ namespace contract_atomic {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename _ProblemType,								// BFS problem type (e.g., b40c::graph::bfs::ProblemType)
 
 	// Machine parameters
-	int CUDA_ARCH,
+	int CUDA_ARCH,										// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
-	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
-	bool _DEQUEUE_PROBLEM_SIZE,			// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
+	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
+	bool _DEQUEUE_PROBLEM_SIZE,							// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
-	int _MIN_CTA_OCCUPANCY,
-	int _LOG_THREADS,
-	int _LOG_LOAD_VEC_SIZE,
-	int _LOG_LOADS_PER_TILE,
-	int _LOG_RAKING_THREADS,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
-	bool _WORK_STEALING,
-	int _LOG_SCHEDULE_GRANULARITY>
+	int _MIN_CTA_OCCUPANCY,								// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
+	int _LOG_THREADS,									// Number of threads per CTA (log)
+	int _LOG_LOAD_VEC_SIZE,								// Number of incoming frontier vertex-ids to dequeue in a single load (log)
+	int _LOG_LOADS_PER_TILE,							// Number of such loads that constitute a tile of incoming frontier vertex-ids (log)
+	int _LOG_RAKING_THREADS,							// Number of raking threads to use for prefix sum (log), range [5, LOG_THREADS]
+	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,	// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::ld::cg for fused kernel implementations incorporating software global barriers.
+	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,	// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::st::cg for fused kernel implementations incorporating software global barriers.
+	bool _WORK_STEALING,								// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
+	int _BITMASK_CULL_THRESHOLD,						//Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size * TILE_SIZE).  (Can be -1 to never perform bitmask filtering)
+	int _LOG_SCHEDULE_GRANULARITY>						// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
 {
+	//---------------------------------------------------------------------
+	// Constants and typedefs
+	//---------------------------------------------------------------------
+
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
-
-	static const bool WORK_STEALING								= _WORK_STEALING;
+	static const util::io::ld::CacheModifier QUEUE_READ_MODIFIER 	= _QUEUE_READ_MODIFIER;
+	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 	= _QUEUE_WRITE_MODIFIER;
+	static const bool WORK_STEALING									= _WORK_STEALING;
 
 	enum {
 
@@ -116,31 +121,33 @@ struct KernelPolicy : _ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
+
+		BITMASK_CULL_THRESHOLD			= _BITMASK_CULL_THRESHOLD,
 	};
 
 
-	// SRTS grid type
-	typedef util::SrtsGrid<
+	// Prefix sum raking grid for contraction allocations
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type (valid counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
+			RakingGrid;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	// Operational details type for raking grid type
+	typedef util::RakingDetails<RakingGrid> RakingDetails;
 
 
 	/**
-	 * Shared memory structure
+	 * Shared memory storage type for the CTA
 	 */
 	struct SmemStorage
 	{
 		enum {
-			WARP_HASH_ELEMENTS					= 128,
+			WARP_HASH_ELEMENTS					= 128,			// Collision hash table size (per warp)
 		};
 
 		// Persistent shared state for the CTA
@@ -154,7 +161,7 @@ struct KernelPolicy : _ProblemType
 
 			// General pool for hashing & tree-reduction
 			union {
-				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT							raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];
 				volatile VertexId 				vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
 			};
 
@@ -165,7 +172,7 @@ struct KernelPolicy : _ProblemType
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			FULL_OCCUPANCY_BYTES				= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
 													- sizeof(State)
-													- 128,
+													- 128,												// Fudge-factor to guarantee occupancy
 
 			HISTORY_HASH_ELEMENTS				= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
 		};
@@ -175,11 +182,10 @@ struct KernelPolicy : _ProblemType
 	};
 
 	enum {
-		THREAD_OCCUPANCY						= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY							= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-		CTA_OCCUPANCY  							= B40C_MIN(_MIN_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
-
-		VALID									= (CTA_OCCUPANCY > 0),
+		THREAD_OCCUPANCY	= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY		= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		CTA_OCCUPANCY  		= B40C_MIN(_MIN_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+		VALID				= (CTA_OCCUPANCY > 0),
 	};
 };
 

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -119,25 +119,25 @@ struct KernelPolicy : ProblemType
 	// scan into smem rows for further scan
 	//
 
-	// SRTS grid type for value partials
-	typedef util::SrtsGrid<
+	// Raking grid type for value partials
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		ValueType,						// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			PartialsSrtsGrid;
+			PartialsRakingGrid;
 
-	// SRTS grid type for flags
-	typedef util::SrtsGrid<
+	// Raking grid type for flags
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,							// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			FlagsSrtsGrid;
+			FlagsRakingGrid;
 
 
 	/**
@@ -148,8 +148,8 @@ struct KernelPolicy : ProblemType
 		ValueType	partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		SizeT 		flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
-		ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
-		SizeT 		flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+		ValueType	partials_raking_elements[PartialsRakingGrid::TOTAL_RAKING_ELEMENTS];
+		SizeT 		flags_raking_elements[FlagsRakingGrid::TOTAL_RAKING_ELEMENTS];
 
 		KeyType		assist_scratch[THREADS+ 1];
 	};
@@ -166,16 +166,16 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// Tuple type of SRTS grid types
+	// Tuple type of raking grid types
 	typedef util::Tuple<
-		PartialsSrtsGrid,
-		FlagsSrtsGrid> SrtsGridTuple;
+		PartialsRakingGrid,
+		FlagsRakingGrid> RakingGridTuple;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
+	// Operational details type for raking grid type
+	typedef util::RakingSoaDetails<
 		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
+		RakingGridTuple> RakingSoaDetails;
 
 };
 

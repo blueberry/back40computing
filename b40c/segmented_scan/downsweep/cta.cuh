@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ struct Cta
 	typedef typename KernelPolicy::Flag 			Flag;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 	RakingSoaDetails;
 	typedef typename KernelPolicy::TileTuple 		TileTuple;
 	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
@@ -69,8 +69,8 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 		srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 		raking_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
 	TileTuple 			carry;
@@ -220,7 +220,7 @@ struct Cta
 			util::scan::soa::CooperativeSoaTileScan<
 				KernelPolicy::LOAD_VEC_SIZE,
 				KERNEL_EXCLUSIVE>::template ScanTileWithCarry<true>(
-					cta->srts_soa_details,
+					cta->raking_soa_details,
 					TileSoa(partials, flags),
 					cta->carry,
 					cta->soa_scan_op);
@@ -258,11 +258,11 @@ struct Cta
 		T 					*d_partials_out,
 		SoaScanOperator		soa_scan_op) :
 
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.flags_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
 				soa_scan_op()),
@@ -286,11 +286,11 @@ struct Cta
 		SoaScanOperator		soa_scan_op,
 		T 					spine_partial) :
 
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.flags_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
 				soa_scan_op()),

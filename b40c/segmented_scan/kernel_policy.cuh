@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,7 +74,7 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::ReductionOp 		ReductionOp;
 	typedef typename ProblemType::IdentityOp 		IdentityOp;
 
-	typedef util::Tuple<T, Flag> 					TileTuple;			// Structure-of-array "slice" tuple for local SRTS scanning
+	typedef util::Tuple<T, Flag> 					TileTuple;			// Structure-of-array "slice" tuple for local raking scanning
 
 	typedef SoaScanOperator<
 		ReductionOp,
@@ -123,25 +123,25 @@ struct KernelPolicy : ProblemType
 	// scan into smem rows for further scan
 	//
 
-	// SRTS grid type for partials
-	typedef util::SrtsGrid<
+	// Raking grid type for partials
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			PartialsSrtsGrid;
+			PartialsRakingGrid;
 
-	// SRTS grid type for flags
-	typedef util::SrtsGrid<
+	// Raking grid type for flags
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		Flag,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			FlagsSrtsGrid;
+			FlagsRakingGrid;
 
 
 	/**
@@ -150,10 +150,10 @@ struct KernelPolicy : ProblemType
 	struct SmemStorage
 	{
 		T 		partials_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		T 		partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+		T 		partials_raking_elements[PartialsRakingGrid::TOTAL_RAKING_ELEMENTS];
 
 		Flag 	flags_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
-		Flag 	flags_raking_elements[FlagsSrtsGrid::TOTAL_RAKING_ELEMENTS];
+		Flag 	flags_raking_elements[FlagsRakingGrid::TOTAL_RAKING_ELEMENTS];
 	};
 
 
@@ -168,15 +168,15 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// Tuple type of SRTS grid types
+	// Tuple type of raking grid types
 	typedef util::Tuple<
-		PartialsSrtsGrid,
-		FlagsSrtsGrid> SrtsGridTuple;
+		PartialsRakingGrid,
+		FlagsRakingGrid> RakingGridTuple;
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
+	// Operational details type for raking grid type
+	typedef util::RakingSoaDetails<
 		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
+		RakingGridTuple> RakingSoaDetails;
 };
 
 

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ struct Cta
 	typedef typename SmemStorage::State::WarpComm 	WarpComm;
 
 	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 	RakingSoaDetails;
 	typedef typename KernelPolicy::TileTuple 		TileTuple;
 
 	typedef util::Tuple<
@@ -92,8 +92,8 @@ struct Cta
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 			srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 			raking_soa_details;
 
 	// Smem storage
 	SmemStorage 			&smem_storage;
@@ -513,11 +513,11 @@ struct Cta
 			iteration(iteration),
 			smem_storage(smem_storage),
 			queue_index(queue_index),
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.coarse_raking_elements,
 					smem_storage.fine_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.state.coarse_warpscan,
 					smem_storage.state.fine_warpscan),
 				TileTuple(0, 0)),
@@ -575,7 +575,7 @@ struct Cta
 		TileTuple totals;
 		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
 			totals,
-			srts_soa_details,
+			raking_soa_details,
 			RankSoa(tile.coarse_row_rank, tile.fine_row_rank),
 			scan_op);
 

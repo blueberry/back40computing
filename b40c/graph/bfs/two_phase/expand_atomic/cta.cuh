@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS expansion kernels
+ * CTA tile-processing abstraction for BFS frontier expansion
  ******************************************************************************/
 
 #pragma once
@@ -46,7 +46,7 @@ namespace expand_atomic {
 
 
 /**
- * Templated texture reference for row-offsets
+ * CTA tile-processing abstraction for BFS frontier expansion
  */
 template <typename SizeT>
 struct RowOffsetTex
@@ -68,18 +68,18 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::VertexId 		VertexId;
-	typedef typename KernelPolicy::SizeT 			SizeT;
+	typedef typename KernelPolicy::VertexId 			VertexId;
+	typedef typename KernelPolicy::SizeT 				SizeT;
 
-	typedef typename KernelPolicy::SmemStorage		SmemStorage;
+	typedef typename KernelPolicy::SmemStorage			SmemStorage;
 
-	typedef typename KernelPolicy::SoaScanOp		SoaScanOp;
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
-	typedef typename KernelPolicy::TileTuple 		TileTuple;
+	typedef typename KernelPolicy::SoaScanOp			SoaScanOp;
+	typedef typename KernelPolicy::RakingSoaDetails 	RakingSoaDetails;
+	typedef typename KernelPolicy::TileTuple 			TileTuple;
 
 	typedef util::Tuple<
 		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE],
-		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 	RankSoa;
+		SizeT (*)[KernelPolicy::LOAD_VEC_SIZE]> 		RankSoa;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -98,8 +98,8 @@ struct Cta
 	SizeT					max_edge_frontier;			// Maximum size (in elements) of outgoing edge frontier
 	int 					num_gpus;					// Number of GPUs
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 			srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 		raking_soa_details;
 
 	// Shared memory for the CTA
 	SmemStorage				&smem_storage;
@@ -553,11 +553,11 @@ struct Cta
 			queue_index(queue_index),
 			num_gpus(num_gpus),
 			smem_storage(smem_storage),
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.coarse_raking_elements,
 					smem_storage.fine_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.state.coarse_warpscan,
 					smem_storage.state.fine_warpscan),
 				TileTuple(0, 0)),
@@ -609,7 +609,7 @@ struct Cta
 		TileTuple totals;
 		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
 			totals,
-			srts_soa_details,
+			raking_soa_details,
 			RankSoa(tile.coarse_row_rank, tile.fine_row_rank),
 			scan_op);
 

@@ -142,7 +142,7 @@ struct RakingGrid
 											PARTIALS_PER_LANE :
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
-		// Number of elements needed to back this level of the SRTS grid
+		// Number of elements needed to back this level of the raking grid
 		RAKING_ELEMENTS					= ROWS * PADDED_PARTIALS_PER_ROW,
 	};
 

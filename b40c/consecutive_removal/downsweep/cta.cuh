@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,9 +57,9 @@ struct Cta
 	typedef typename KernelPolicy::EqualityOp		EqualityOp;
 
 	typedef typename KernelPolicy::LocalFlag		LocalFlag;			// Type for noting local discontinuities
-	typedef typename KernelPolicy::RankType			RankType;			// Type for local SRTS prefix sum
+	typedef typename KernelPolicy::RankType			RankType;			// Type for local raking prefix sum
 
-	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
+	typedef typename KernelPolicy::RakingDetails 		RakingDetails;
 
 	typedef typename KernelPolicy::SmemStorage 		SmemStorage;
 
@@ -82,8 +82,8 @@ struct Cta
 	// Shared memory storage for the CTA
 	SmemStorage		&smem_storage;
 
-	// Operational details for SRTS scan grid
-	SrtsDetails 	srts_details;
+	// Operational details for raking scan grid
+	RakingDetails 	raking_details;
 
 	// Equality operator
 	EqualityOp		equality_op;
@@ -151,7 +151,7 @@ struct Cta
 			util::Sum<RankType> scan_op;
 			RankType unique_elements =
 				util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTile(
-					cta->srts_details,
+					cta->raking_details,
 					ranks,
 					scan_op);
 
@@ -270,7 +270,7 @@ struct Cta
 			// Scan tile of ranks, seed with carry (maintain carry in raking threads)
 			util::Sum<RankType> scan_op;
 			util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithCarry(
-				cta->srts_details,
+				cta->raking_details,
 				ranks,
 				cta->carry,
 				scan_op);
@@ -332,7 +332,7 @@ struct Cta
 		EqualityOp		equality_op,
 		SizeT			spine_partial = 0) :
 
-			srts_details(
+			raking_details(
 				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				0),

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -72,10 +72,10 @@ void Kernel(
 	util::KernelRuntimeStats				kernel_stats,				// Kernel timing statistics (used when KernelPolicy::INSTRUMENT)
 	typename KernelPolicy::VertexId			*d_iteration)				// Place to write final BFS iteration count
 {
-	typedef typename KernelPolicy::CompactKernelPolicy 	CompactKernelPolicy;
-	typedef typename KernelPolicy::ExpandKernelPolicy 	ExpandKernelPolicy;
-	typedef typename KernelPolicy::VertexId 			VertexId;
-	typedef typename KernelPolicy::SizeT 				SizeT;
+	typedef typename KernelPolicy::ContractKernelPolicy 	ContractKernelPolicy;
+	typedef typename KernelPolicy::ExpandKernelPolicy 		ExpandKernelPolicy;
+	typedef typename KernelPolicy::VertexId 				VertexId;
+	typedef typename KernelPolicy::SizeT 					SizeT;
 
 	int num_gpus = 1;
 
@@ -108,7 +108,7 @@ void Kernel(
 
 				// Initialize work decomposition in smem
 				SizeT num_elements = 1;
-				smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+				smem_storage.contract.state.work_decomposition.template Init<ContractKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 					num_elements, gridDim.x);
 			}
 		}
@@ -125,7 +125,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.contract.state.work_decomposition.template Init<ContractKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -143,7 +143,7 @@ void Kernel(
 	// Don't do workstealing this iteration because without a
 	// global barrier after queue-reset, the queue may be inconsistent
 	// across CTAs
-	contract_atomic::SweepPass<CompactKernelPolicy, false>::Invoke(
+	contract_atomic::SweepPass<ContractKernelPolicy, false>::Invoke(
 		iteration,
 		queue_index,
 		steal_index,
@@ -249,7 +249,7 @@ void Kernel(
 			}
 
 			// Initialize work decomposition in smem
-			smem_storage.contract.state.work_decomposition.template Init<CompactKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+			smem_storage.contract.state.work_decomposition.template Init<ContractKernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 				num_elements, gridDim.x);
 
 			// Reset our next outgoing queue counter to zero
@@ -269,7 +269,7 @@ void Kernel(
 			break;
 		}
 
-		contract_atomic::SweepPass<CompactKernelPolicy, CompactKernelPolicy::WORK_STEALING>::Invoke(
+		contract_atomic::SweepPass<ContractKernelPolicy, ContractKernelPolicy::WORK_STEALING>::Invoke(
 			iteration,
 			queue_index,
 			steal_index,

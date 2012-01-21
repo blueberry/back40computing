@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ struct Cta
 
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
-	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
+	typedef typename KernelPolicy::RakingDetails 		RakingDetails;
 
 
 	//---------------------------------------------------------------------
@@ -87,8 +87,8 @@ struct Cta
 	// Work progress
 	util::CtaWorkProgress	&work_progress;
 
-	// Operational details for SRTS grid
-	SrtsDetails 			srts_details;
+	// Operational details for raking grid
+	RakingDetails 			raking_details;
 
 	// Smem storage
 	SmemStorage 			&smem_storage;
@@ -228,7 +228,7 @@ struct Cta
 			iteration(iteration),
 			smem_storage(smem_storage),
 			queue_index(queue_index),
-			srts_details(
+			raking_details(
 				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				0),
@@ -288,7 +288,7 @@ struct Cta
 			// space in the compacted queue, seeding ranks
 			util::Sum<SizeT> scan_op;
 			util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
-				srts_details,
+				raking_details,
 				tile.rank,
 				work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 				scan_op);

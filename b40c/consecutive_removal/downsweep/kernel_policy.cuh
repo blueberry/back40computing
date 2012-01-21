@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -76,7 +76,7 @@ struct KernelPolicy : ProblemType
 	typedef typename util::If<
 		_TWO_PHASE_SCATTER,
 		LocalFlag,
-		SizeT>::Type 								RankType;		// Type for local SRTS prefix sum
+		SizeT>::Type 								RankType;		// Type for local raking prefix sum
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
@@ -115,19 +115,19 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// SRTS grid type
-	typedef util::SrtsGrid<
+	// Raking grid type
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		RankType,								// Partial type (discontinuity counts / ranks)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
+			RakingGrid;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	// Operational details type for raking grid type
+	typedef util::RakingDetails<RakingGrid> RakingDetails;
 
 
 	/**
@@ -137,7 +137,7 @@ struct KernelPolicy : ProblemType
 	{
 		RankType	 		warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 		union {
-			RankType		raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+			RankType		raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];
 			KeyType			key_exchange[TILE_ELEMENTS];							// Key-swap exchange arena for two-phase scatter
 			ValueType		value_exchange[TILE_ELEMENTS];							// Value-swap exchange arena for two-phase scatter
 		};

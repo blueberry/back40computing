@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,6 +56,10 @@ template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-coun
 class EnactorTwoPhase : public EnactorBase
 {
 
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+
 protected:
 
 	/**
@@ -63,13 +67,9 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime contract_kernel_stats;
-
 	unsigned long long 		total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 		total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 		total_queued;
-
-// State for iterative kernel invocation variant
-protected:
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration
@@ -80,9 +80,6 @@ protected:
 	volatile int 	*done;
 	int 			*d_done;
 	cudaEvent_t		throttle_event;
-
-// State for global-barrier (single kernel invocation) variant
-protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
@@ -97,6 +94,10 @@ protected:
 	volatile long long 					*iteration;
 	long long 							*d_iteration;
 
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 protected:
 
@@ -315,16 +316,15 @@ public:
 					total_queued)) break;
 			}
 
-		} while (0);
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+		} while (0);
 
 		return retval;
 	}
@@ -347,24 +347,35 @@ public:
  			// Fused two-phase tuning configuration
  			typedef two_phase::KernelPolicy<
  				typename CsrProblem::ProblemType,
- 				200,
+ 				200,					// CUDA_ARCH
  				INSTRUMENT, 			// INSTRUMENT
  				0, 						// SATURATION_QUIT
- 				8,						// CTA_OCCUPANCY
+
+ 				// Tunable parameters (generic)
+ 				8,						// MIN_CTA_OCCUPANCY
  				7,						// LOG_THREADS
- 				0,						// LOG_LOAD_VEC_SIZE
- 				0,						// LOG_LOADS_PER_TILE
- 				5,						// LOG_RAKING_THREADS
  				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
  				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
  				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
  				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
  				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
- 				false,					// WORK_STEALING
- 				128,					// WARP_GATHER_THRESHOLD
- 				128, 					// CTA_GATHER_THRESHOLD,
- 				6> KernelPolicy;		// LOG_SCHEDULE_GRANULARITY
 
+ 				// Tunable parameters (contract)
+ 				0,						// CONTRACT_LOG_LOAD_VEC_SIZE
+ 				2,						// CONTRACT_LOG_LOADS_PER_TILE
+ 				5,						// CONTRACT_LOG_RAKING_THREADS
+ 				false,					// CONTRACT_WORK_STEALING
+				3,						// CONTRACT_BITMASK_CULL_THRESHOLD
+				6, 						// CONTRACT_LOG_SCHEDULE_GRANULARITY
+
+ 				0,						// EXPAND_LOG_LOAD_VEC_SIZE
+ 				0,						// EXPAND_LOG_LOADS_PER_TILE
+ 				5,						// EXPAND_LOG_RAKING_THREADS
+ 				true,					// EXPAND_WORK_STEALING
+ 				32,						// EXPAND_WARP_GATHER_THRESHOLD
+ 				128 * 4, 				// EXPAND_CTA_GATHER_THRESHOLD,
+ 				6> 						// EXPAND_LOG_SCHEDULE_GRANULARITY
+					KernelPolicy;
 
  			return EnactFusedSearch<KernelPolicy, CsrProblem>(
  				csr_problem, src, max_grid_size);
@@ -377,8 +388,8 @@ public:
 
 
     /**
-	 * Enacts a breadth-first-search on the specified graph problem. Iteratively
-	 * invokes multiple grid kernels.
+	 * Enacts a breadth-first-search on the specified graph problem. Invokes
+	 * new expansion and contraction grid kernels for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -511,24 +522,23 @@ public:
 			}
 			if (retval) break;
 
-		} while(0);
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed = false;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+		} while(0);
 
 		return retval;
 	}
 
 
     /**
-	 * Enacts a breadth-first-search on the specified graph problem.  Iteratively
-	 * invokes multiple grid kernels.
+	 * Enacts a breadth-first-search on the specified graph problem. Invokes
+	 * new expansion and contraction grid kernels for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -543,7 +553,7 @@ public:
 			// Expansion kernel config
 			typedef two_phase::expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				200,
+				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				8,						// CTA_OCCUPANCY
@@ -559,12 +569,13 @@ public:
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6> ExpandPolicy;
+				6>						// LOG_SCHEDULE_GRANULARITY
+					ExpandPolicy;
 
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				200,
+				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
@@ -575,7 +586,9 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				6> ContractPolicy;
+				3,						// BITMASK_CULL_THRESHOLD
+				6> 						// LOG_SCHEDULE_GRANULARITY
+					ContractPolicy;
 
 			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
@@ -583,10 +596,11 @@ public:
 /* Uncomment to enable GT200 code
 
 		} else if (this->cuda_props.device_sm_version >= 130) {
+
 			// Expansion kernel config
 			typedef expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				130,
+				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
 				1,						// CTA_OCCUPANCY
@@ -602,12 +616,13 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6> ExpandPolicy;
+				6>						// LOG_SCHEDULE_GRANULARITY
+					ExpandPolicy;
 
 			// Contraction kernel config
 			typedef contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
-				130,
+				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				1,						// CTA_OCCUPANCY
@@ -618,7 +633,8 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				6> ContractPolicy;
+				6>						// LOG_SCHEDULE_GRANULARITY
+					ContractPolicy;
 
 			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
