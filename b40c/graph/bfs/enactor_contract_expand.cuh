@@ -156,7 +156,7 @@ protected:
 			total_runtimes 		= 0;
 			total_lifetimes 	= 0;
 			total_queued 		= 0;
-			done[0] 			= 0;
+			done[0] 			= -1;
 
 	    	// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -436,7 +436,7 @@ public:
 			}
 
 			// Step through BFS iterations
-			while (true) {
+			while (done[0] < 0) {
 
 				int selector = queue_index & 1;
 
@@ -485,7 +485,6 @@ public:
 					if (retval = util::B40CPerror(cudaEventSynchronize(throttle_event),
 						"EnactorContractExpand cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
 				};
-				if (done[0]) break;
 
 			}
 			if (retval) break;

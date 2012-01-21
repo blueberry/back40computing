@@ -62,6 +62,7 @@ template <
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
+	int _SATURATION_QUIT,								// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
 	bool _DEQUEUE_PROBLEM_SIZE,							// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
@@ -93,6 +94,7 @@ struct KernelPolicy : _ProblemType
 	enum {
 
 		INSTRUMENT						= _INSTRUMENT,
+		SATURATION_QUIT					= _SATURATION_QUIT,
 		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
 
 		LOG_THREADS 					= _LOG_THREADS,

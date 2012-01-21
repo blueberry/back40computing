@@ -868,10 +868,10 @@ void RunTests(
 */
 		// Run regular kernel
 		if (mark_pred) {
-/*
+
 			RunTests<VertexId, Value, SizeT, false, true>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
-*/
+
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
