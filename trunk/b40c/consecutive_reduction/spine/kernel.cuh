@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ __device__ __forceinline__ void SpinePass(
 {
 	typedef Cta<KernelPolicy> Cta;
 	typedef typename KernelPolicy::SpineSizeT 			SpineSizeT;
-	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 		RakingSoaDetails;
 	typedef typename KernelPolicy::SoaScanOperator		SoaScanOperator;
 
 	// Exit if we're not the first CTA

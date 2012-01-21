@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 			SizeT;
 	typedef typename KernelPolicy::SpineSizeT 		SpineSizeT;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 	SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 	RakingSoaDetails;
 	typedef typename KernelPolicy::TileTuple 		TileTuple;
 	typedef typename KernelPolicy::SoaScanOperator	SoaScanOperator;
 
@@ -66,8 +66,8 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 		srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 		raking_soa_details;
 
 	// The tuple value we will accumulate (in raking threads only)
 	TileTuple 			carry;
@@ -101,11 +101,11 @@ struct Cta
 		SizeT				*d_out_flags,
 		SoaScanOperator		soa_scan_op) :
 
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.flags_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
 				soa_scan_op()),
@@ -159,7 +159,7 @@ struct Cta
 		// SOA-scan tile of tuple pairs
 		util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
 			ScanTileWithCarry<!FIRST_TILE>(
-				srts_soa_details,
+				raking_soa_details,
 				TileSoa(partials, flags),
 				carry,							// Seed with carry, maintain carry in raking threads
 				soa_scan_op);

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-processing functionality for BFS contraction upsweep kernels
+ * CTA tile-processing abstraction for BFS frontier contraction
  ******************************************************************************/
 
 #pragma once
@@ -59,7 +59,7 @@ texture<VisitedMask, cudaTextureType1D, cudaReadModeElementType> BitmaskTex<Visi
 
 
 /**
- * CTA
+ * CTA tile-processing abstraction for BFS frontier contraction
  */
 template <typename KernelPolicy>
 struct Cta
@@ -73,7 +73,7 @@ struct Cta
 	typedef typename KernelPolicy::VisitedMask 		VisitedMask;
 	typedef typename KernelPolicy::SizeT 			SizeT;
 
-	typedef typename KernelPolicy::SrtsDetails 		SrtsDetails;
+	typedef typename KernelPolicy::RakingDetails 	RakingDetails;
 	typedef typename KernelPolicy::SmemStorage		SmemStorage;
 
 	//---------------------------------------------------------------------
@@ -94,11 +94,14 @@ struct Cta
 	SizeT					max_vertex_frontier;		// Maximum size (in elements) of outgoing vertex frontier
 	int 					num_gpus;					// Number of GPUs
 
-	// Operational details for SRTS scan grid
-	SrtsDetails 			srts_details;
+	// Operational details for raking scan grid
+	RakingDetails 			raking_details;
 
 	// Shared memory for the CTA
 	SmemStorage				&smem_storage;
+
+	// Whether or not to perform bitmask culling (incurs extra latency on small frontiers)
+	bool 					bitmask_cull;
 
 
 
@@ -451,7 +454,7 @@ struct Cta
 			iteration(iteration),
 			queue_index(queue_index),
 			num_gpus(num_gpus),
-			srts_details(
+			raking_details(
 				smem_storage.state.raking_elements,
 				smem_storage.state.warpscan,
 				0),
@@ -462,8 +465,8 @@ struct Cta
 			d_labels(d_labels),
 			d_visited_mask(d_visited_mask),
 			work_progress(work_progress),
-			max_vertex_frontier(max_vertex_frontier)
-
+			max_vertex_frontier(max_vertex_frontier),
+			bitmask_cull((KernelPolicy::BITMASK_CULL_THRESHOLD >= 0) && (smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
 	{
 		// Initialize history duplicate-filter
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {
@@ -486,7 +489,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::QUEUE_READ_MODIFIER,
 			false>::LoadValid(
 				tile.vertex_id,
 				d_in,
@@ -501,7 +504,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::QUEUE_READ_MODIFIER,
 				false>::LoadValid(
 					tile.predecessor_id,
 					d_predecessor_in,
@@ -509,11 +512,11 @@ struct Cta
 					guarded_elements);
 		}
 
-		// Cull previously-visited using global visited mask
-		tile.BitmaskCull(this);
-
-		// Cull previously-visited using vertex visitation status
-		tile.VertexCull(this);
+		// Cull visited vertices and update discovered vertices
+		if (bitmask_cull) {
+			tile.BitmaskCull(this);		// using global visited mask
+		}
+		tile.VertexCull(this);			// using vertex visitation status (update discovered vertices)
 
 		// Cull duplicates using local CTA collision hashing
 		tile.HistoryCull(this);
@@ -531,7 +534,7 @@ struct Cta
 		// space in the contracted queue, seeding ranks
 		util::Sum<SizeT> scan_op;
 		SizeT new_queue_offset = util::scan::CooperativeTileScan<KernelPolicy::LOAD_VEC_SIZE>::ScanTileWithEnqueue(
-			srts_details,
+			raking_details,
 			tile.ranks,
 			work_progress.GetQueueCounter<SizeT>(queue_index + 1),
 			scan_op);
@@ -548,7 +551,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Scatter(
+			KernelPolicy::QUEUE_WRITE_MODIFIER>::Scatter(
 				d_out,
 				tile.vertex_id,
 				tile.flags,

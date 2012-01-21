@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,8 @@
 
 
 /******************************************************************************
- * Downsweep CTA processing abstraction
+ * CTA tile-processing abstraction for multi-GPU BFS frontier
+ * contraction+binning (downsweep scan+scatter)
  ******************************************************************************/
 
 #pragma once
@@ -41,7 +42,8 @@ namespace downsweep {
 
 
 /**
- * CTA
+ * CTA tile-processing abstraction for multi-GPU BFS frontier
+ * contraction+binning (downsweep scan+scatter)
  *
  * Derives from partition::downsweep::Cta
  */

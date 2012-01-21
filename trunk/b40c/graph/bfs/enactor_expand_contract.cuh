@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,20 +52,20 @@ template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-coun
 class EnactorExpandContract : public EnactorBase
 {
 
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+
 protected:
 
 	/**
-	 * CTA duty kernel stats
+	 * Per-CTA clock-count and related statistics
 	 */
 	util::KernelRuntimeStatsLifetime 	kernel_stats;
 
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 					total_queued;
-
-
-// State for iterative kernel invocation variant
-protected:
 
 	/**
 	 * Throttle state.  We want the host to have an additional BFS iteration
@@ -76,9 +76,6 @@ protected:
 	volatile int 	*done;
 	int 			*d_done;
 	cudaEvent_t		throttle_event;
-
-// State for global-barrier (single kernel invocation) variant
-protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
@@ -93,6 +90,10 @@ protected:
 	volatile long long 					*iteration;
 	long long 							*d_iteration;
 
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 protected:
 
@@ -240,7 +241,8 @@ public:
 
 
 	/**
-	 * Enacts a breadth-first-search on the specified graph problem.
+	 * Enacts a breadth-first-search on the specified graph problem. Invokes
+	 * a single grid kernel that itself steps over BFS iterations.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -278,8 +280,8 @@ public:
 				0,												// queue_index
 				0,												// steal_index
 				src,
-				graph_slice->frontier_queues.d_keys[0],
-				graph_slice->frontier_queues.d_keys[1],
+				graph_slice->frontier_queues.d_keys[0],			// vertex frontier (ping)
+				graph_slice->frontier_queues.d_keys[1],			// vertex frontier (pong)
 				graph_slice->d_column_indices,
 				graph_slice->d_row_offsets,
 				graph_slice->d_labels,
@@ -301,18 +303,15 @@ public:
 					total_queued)) break;
 			}
 
-			if (retval) break;
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
 		} while(0);
-
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
 
 		return retval;
 	}
@@ -352,21 +351,22 @@ public:
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
 				1,						// BITMASK_CULL_THRESHOLD
-				6> KernelPolicy;
+				6>						// LOG_SCHEDULE_GRANULARITY
+					KernelPolicy;
 
 			return EnactFusedSearch<KernelPolicy>(
 				csr_problem, src, max_grid_size);
 
 		}
 
-		printf("Expand-contract not yet tuned for this architecture\n");
+		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidConfiguration;
 	}
 
 
 	/**
-	 * Enacts a breadth-first-search on the specified graph problem. Iteratively
-	 * invokes multiple grid kernels.
+	 * Enacts a breadth-first-search on the specified graph problem. Invokes
+	 * a new grid kernel for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -404,6 +404,7 @@ public:
 				printf("1\n");
 			}
 
+			// Step through BFS iterations
 			while (true) {
 
 				int selector = queue_index & 1;
@@ -416,8 +417,8 @@ public:
 					queue_index,									// steal_index
 					d_done,
 					src,
-					graph_slice->frontier_queues.d_keys[selector],
-					graph_slice->frontier_queues.d_keys[selector ^ 1],
+					graph_slice->frontier_queues.d_keys[selector],			// in vertex frontier
+					graph_slice->frontier_queues.d_keys[selector ^ 1],		// out vertex frontier
 					graph_slice->d_column_indices,
 					graph_slice->d_row_offsets,
 					graph_slice->d_labels,
@@ -455,24 +456,23 @@ public:
 			}
 			if (retval) break;
 
-		} while(0);
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+		} while(0);
 
 		return retval;
 	}
 
 
     /**
-	 * Enacts a breadth-first-search on the specified graph problem.  Iteratively
-	 * invokes multiple grid kernels.
+	 * Enacts a breadth-first-search on the specified graph problem.  Invokes
+	 * a new grid kernel for each BFS iteration.
 	 *
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
@@ -504,13 +504,14 @@ public:
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
 				1,						// BITMASK_CULL_THRESHOLD
-				6> KernelPolicy;
+				6> 						// LOG_SCHEDULE_GRANULARITY
+					KernelPolicy;
 
 			return EnactIterativeSearch<KernelPolicy>(
 				csr_problem, src, max_grid_size);
 		}
 
-		printf("Expand-contract not yet tuned for this architecture\n");
+		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidConfiguration;
 	}
 

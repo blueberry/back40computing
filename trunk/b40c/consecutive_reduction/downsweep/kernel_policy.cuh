@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -82,9 +82,9 @@ struct KernelPolicy : ProblemType
 	typedef typename util::If<
 		_TWO_PHASE_SCATTER,
 		LocalFlag,
-		SizeT>::Type 										RankType;			// Type for local SRTS prefix sum
+		SizeT>::Type 										RankType;			// Type for local raking prefix sum
 
-	typedef util::Tuple<ValueType, RankType> 				TileTuple;			// Structure-of-array "slice" tuple for local SRTS scanning
+	typedef util::Tuple<ValueType, RankType> 				TileTuple;			// Structure-of-array "slice" tuple for local raking scanning
 	typedef util::Tuple<ValueType, SizeT> 					SpineSoaTuple;		// Structure-of-array "slice" tuple for spine scan
 	typedef SoaScanOperator<ReductionOp, TileTuple> 		SoaScanOperator;	// Structure-of-array scan operator
 
@@ -131,25 +131,25 @@ struct KernelPolicy : ProblemType
 	// scan into smem rows for further scan
 	//
 
-	// SRTS grid type for value partials
-	typedef util::SrtsGrid<
+	// Raking grid type for value partials
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		ValueType,								// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			PartialsSrtsGrid;
+			PartialsRakingGrid;
 
-	// SRTS grid type for ranks
-	typedef util::SrtsGrid<
+	// Raking grid type for ranks
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		RankType,								// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			RanksSrtsGrid;
+			RanksRakingGrid;
 
 
 	/**
@@ -162,8 +162,8 @@ struct KernelPolicy : ProblemType
 
 		union {
 			struct {
-				ValueType	partials_raking_elements[PartialsSrtsGrid::TOTAL_RAKING_ELEMENTS];
-				RankType 	ranks_raking_elements[RanksSrtsGrid::TOTAL_RAKING_ELEMENTS];
+				ValueType	partials_raking_elements[PartialsRakingGrid::TOTAL_RAKING_ELEMENTS];
+				RankType 	ranks_raking_elements[RanksRakingGrid::TOTAL_RAKING_ELEMENTS];
 			};
 /*
 			// Swap exchange arenas for two-phase scatter
@@ -191,16 +191,16 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// Tuple type of SRTS grid types
+	// Tuple type of raking grid types
 	typedef util::Tuple<
-		PartialsSrtsGrid,
-		RanksSrtsGrid> SrtsGridTuple;
+		PartialsRakingGrid,
+		RanksRakingGrid> RakingGridTuple;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
+	// Operational details type for raking grid type
+	typedef util::RakingSoaDetails<
 		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
+		RakingGridTuple> RakingSoaDetails;
 
 };
 

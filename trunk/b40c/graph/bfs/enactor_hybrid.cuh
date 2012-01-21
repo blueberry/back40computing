@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -55,6 +55,10 @@ template <bool INSTRUMENT>							// Whether or not to collect per-CTA clock-coun
 class EnactorHybrid : public EnactorBase
 {
 
+	//---------------------------------------------------------------------
+	// Members
+	//---------------------------------------------------------------------
+
 protected:
 
 	/**
@@ -69,7 +73,6 @@ protected:
 	util::KernelRuntimeStatsLifetime 	fused_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	contract_kernel_stats;
-
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 					total_queued;
@@ -90,7 +93,12 @@ protected:
 	 */
 	volatile long long 	*iteration;
 	long long 			*d_iteration;
+
 	
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
+
 protected:
 
 	/**
@@ -254,7 +262,7 @@ public:
     template <
     	typename OnePhasePolicy,
     	typename ExpandPolicy,
-    	typename CompactPolicy,
+    	typename ContractPolicy,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
 		CsrProblem 						&csr_problem,
@@ -276,7 +284,7 @@ public:
 			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
 
-			int contract_min_occupancy		= CompactPolicy::CTA_OCCUPANCY;
+			int contract_min_occupancy		= ContractPolicy::CTA_OCCUPANCY;
 			int contract_grid_size 			= MaxGridSize(contract_min_occupancy, max_grid_size);
 
 			if (DEBUG) {
@@ -325,12 +333,10 @@ public:
 							queue_index,
 							queue_index,												// also serves as steal_index
 							src,
-
-							graph_slice->frontier_queues.d_keys[selector],
-							graph_slice->frontier_queues.d_keys[selector ^ 1],
-							graph_slice->frontier_queues.d_values[selector],
-							graph_slice->frontier_queues.d_values[selector ^ 1],
-
+							graph_slice->frontier_queues.d_keys[selector],				// in edge frontier
+							graph_slice->frontier_queues.d_keys[selector ^ 1],			// out edge frontier
+							graph_slice->frontier_queues.d_values[selector],			// in predecessors
+							graph_slice->frontier_queues.d_values[selector ^ 1],		// out predecessors
 							graph_slice->d_column_indices,
 							graph_slice->d_row_offsets,
 							graph_slice->d_labels,
@@ -338,7 +344,6 @@ public:
 							work_progress,
 							graph_slice->frontier_elements[0],							// max frontier vertices (all queues should be the same size)
 							global_barrier,
-
 							fused_kernel_stats,
 							(VertexId *) d_iteration);
 
@@ -355,7 +360,7 @@ public:
 
 					// Get queue length
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-/*
+
 					if (INSTRUMENT) {
 
 						// Get stats
@@ -364,9 +369,9 @@ public:
 							total_runtimes,
 							total_lifetimes,
 							total_queued)) break;
-*/
+
 						if (DEBUG) printf("%lld, %lld\n", iteration[0], (long long) queue_length);
-//					}
+					}
 
 				} else {
 
@@ -376,8 +381,8 @@ public:
 						// Run level-grid
 
 						// Contraction
-						two_phase::contract_atomic::Kernel<CompactPolicy>
-							<<<contract_grid_size, CompactPolicy::THREADS>>>(
+						two_phase::contract_atomic::Kernel<ContractPolicy>
+							<<<contract_grid_size, ContractPolicy::THREADS>>>(
 								src,
 								(VertexId) iteration[0],
 								0,														// num_elements (unused: we obtain this from device-side counters instead)
@@ -385,8 +390,8 @@ public:
 								queue_index,											// also serves as steal_index
 								1,														// number of GPUs
 								d_done,
-								graph_slice->frontier_queues.d_keys[selector],			// in vertices
-								graph_slice->frontier_queues.d_keys[selector ^ 1],		// out vertices
+								graph_slice->frontier_queues.d_keys[selector],			// in edge frontier
+								graph_slice->frontier_queues.d_keys[selector ^ 1],		// out vertex frontier
 								graph_slice->frontier_queues.d_values[selector],		// in predecessors
 								graph_slice->d_labels,
 								graph_slice->d_visited_mask,
@@ -399,18 +404,18 @@ public:
 
 						queue_index++;
 
-//						if (INSTRUMENT) {
+						if (INSTRUMENT) {
 							// Get contract downsweep stats (i.e., duty %)
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 
 							if (DEBUG) printf("%lld, %lld", iteration[0], (long long) queue_length);
-/*
+
 							if (contract_kernel_stats.Accumulate(
 								contract_grid_size,
 								total_runtimes,
 								total_lifetimes)) break;
 						}
-*/
+
 						// Expansion
 						two_phase::expand_atomic::Kernel<ExpandPolicy>
 							<<<expand_grid_size, ExpandPolicy::THREADS>>>(
@@ -418,8 +423,8 @@ public:
 								queue_index,											// also serves as steal_index
 								1,														// number of GPUs
 								d_done,
-								graph_slice->frontier_queues.d_keys[selector ^ 1],		// in vertices
-								graph_slice->frontier_queues.d_keys[selector],			// out vertices
+								graph_slice->frontier_queues.d_keys[selector ^ 1],		// in vertex frontier
+								graph_slice->frontier_queues.d_keys[selector],			// out edge frontier
 								graph_slice->frontier_queues.d_values[selector],		// out predecessors
 								graph_slice->d_column_indices,
 								graph_slice->d_row_offsets,
@@ -432,19 +437,19 @@ public:
 
 						queue_index++;
 						iteration[0]++;
-/*
+
 						if (INSTRUMENT) {
 							// Get expand stats (i.e., duty %)
 							expand_kernel_stats.Accumulate(
 								expand_grid_size,
 								total_runtimes,
 								total_lifetimes);
-*/
+
 							if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 							total_queued += queue_length;
 
 							if (DEBUG) printf(", %lld\n", (long long) queue_length);
-//						}
+						}
 
 						// Throttle
 						if ((iteration[0] - phase_iteration) & 1) {
@@ -463,16 +468,15 @@ public:
 			} while (queue_length > 0);
 			if (retval) break;
 
-		} while (0);
+			// Check if any of the frontiers overflowed due to redundant expansion
+			bool overflowed = false;
+			if (retval = work_progress.CheckOverflow<SizeT>(overflowed)) break;
+			if (overflowed) {
+				retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+				break;
+			}
 
-		// Check if any of the frontiers overflowed due to redundant expansion
-		bool overflowed;
-		cudaError_t overflow_retval = work_progress.CheckOverflow<SizeT>(overflowed);
-		if (overflow_retval) {
-			retval = overflow_retval;
-		} else if (overflowed) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-		}
+		} while (0);
 
 		return retval;
 	}
@@ -515,7 +519,8 @@ public:
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				-1,						// BITMASK_CULL_THRESHOLD
-				6> OnePhasePolicy;
+				6> 						// LOG_SCHEDULE_GRANULARITY
+					OnePhasePolicy;
 
 			// Expansion kernel config
 			typedef two_phase::expand_atomic::KernelPolicy<
@@ -536,7 +541,8 @@ public:
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				7> ExpandPolicy;
+				7> 						// LOG_SCHEDULE_GRANULARITY
+					ExpandPolicy;
 
 
 			// Contraction kernel config
@@ -553,14 +559,17 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				10> CompactPolicy;
+				3,						// BITMASK_CULL_THRESHOLD
+				10> 					// LOG_SCHEDULE_GRANULARITY
+					ContractPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 
 /* Uncomment to enable GT200 code
 
     	} else if (cuda_props.device_sm_version >= 130) {
+
 			// Single-grid tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -581,7 +590,8 @@ public:
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
 				-1,						// BITMASK_CULL_THRESHOLD
-				6> OnePhasePolicy;
+				6> 						// LOG_SCHEDULE_GRANULARITY
+					OnePhasePolicy;
 
 			// Expansion kernel config
 			typedef two_phase::expand_atomic::KernelPolicy<
@@ -602,8 +612,8 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				7> ExpandPolicy;
-
+				7> 						// LOG_SCHEDULE_GRANULARITY
+					ExpandPolicy;
 
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
@@ -619,9 +629,11 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				10> CompactPolicy;
+				3,						// BITMASK_CULL_THRESHOLD
+				10> 					// LOG_SCHEDULE_GRANULARITY
+					ContractPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, CompactPolicy, INSTRUMENT>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy, INSTRUMENT>(
 				csr_problem, src, max_grid_size);
 */
 	    }

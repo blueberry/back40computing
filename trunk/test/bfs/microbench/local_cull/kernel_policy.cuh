@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -122,19 +122,19 @@ struct KernelPolicy : ProblemType
 	};
 
 
-	// SRTS grid type
-	typedef util::SrtsGrid<
+	// Raking grid type
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type (valid counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_RAKING_THREADS,						// Raking threads
 		true>									// There are prefix dependences between lanes
-			SrtsGrid;
+			RakingGrid;
 
 
-	// Operational details type for SRTS grid type
-	typedef util::SrtsDetails<SrtsGrid> SrtsDetails;
+	// Operational details type for raking grid type
+	typedef util::RakingDetails<RakingGrid> RakingDetails;
 
 
 	/**
@@ -157,7 +157,7 @@ struct KernelPolicy : ProblemType
 
 			// General pool for hashing & tree-reduction
 			union {
-				SizeT							raking_elements[SrtsGrid::TOTAL_RAKING_ELEMENTS];
+				SizeT							raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];
 				volatile VertexId 				vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
 			};
 

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -51,7 +51,7 @@ struct Cta
 	typedef typename KernelPolicy::ReductionOp 			ReductionOp;
 	typedef typename KernelPolicy::IdentityOp 			IdentityOp;
 
-	typedef typename KernelPolicy::SrtsDetails 			SrtsDetails;
+	typedef typename KernelPolicy::RakingDetails 			RakingDetails;
 	typedef typename KernelPolicy::SmemStorage			SmemStorage;
 
 	//---------------------------------------------------------------------
@@ -69,8 +69,8 @@ struct Cta
 	// Scan operator
 	ReductionOp scan_op;
 
-	// Operational details for SRTS scan grid
-	SrtsDetails srts_details;
+	// Operational details for raking scan grid
+	RakingDetails raking_details;
 
 
 
@@ -89,7 +89,7 @@ struct Cta
 		ReductionOp 		scan_op,
 		IdentityOp 			identity_op) :
 
-			srts_details(
+			raking_details(
 				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				identity_op()),
@@ -124,13 +124,13 @@ struct Cta
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::CooperativeTileReduction<
-			KernelPolicy::LOAD_VEC_SIZE>::template ReduceTileWithCarry<true>(		// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
-				srts_details,
+			KernelPolicy::LOAD_VEC_SIZE>::template ReduceTileWithCarry<true>(		// Maintain carry in thread RakingSoaDetails::CUMULATIVE_THREAD
+				raking_details,
 				partials,
 				carry,																// Seed with carry
 				scan_op);
 
-		// Barrier to protect srts_details before next tile
+		// Barrier to protect raking_details before next tile
 		__syncthreads();
 	}
 
@@ -141,7 +141,7 @@ struct Cta
 	__device__ __forceinline__ void OutputToSpine()
 	{
 		// Write output
-		if (threadIdx.x == SrtsDetails::CUMULATIVE_THREAD) {
+		if (threadIdx.x == RakingDetails::CUMULATIVE_THREAD) {
 
 			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);

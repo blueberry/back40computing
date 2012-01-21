@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -81,9 +81,9 @@ struct KernelPolicy : TuningPolicy
 	};
 
 
-	// Smem SRTS grid type for reducing and scanning a cycle of 
+	// Smem raking grid type for reducing and scanning a cycle of 
 	// (bins/4) lanes of composite 8-bit bin counters
-	typedef util::SrtsGrid<
+	typedef util::RakingGrid<
 		TuningPolicy::CUDA_ARCH,
 		int,									// Partial type
 		TuningPolicy::LOG_THREADS,				// Depositing threads (the CTA size)

@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,6 +84,29 @@ public :
 	template <typename CsrProblem>
 	struct Policy<CsrProblem, 200>
 	{
+		// Expansion kernel config
+		typedef two_phase::expand_atomic::KernelPolicy<
+			typename CsrProblem::ProblemType,
+			200,
+			INSTRUMENT, 			// INSTRUMENT
+			0, 						// SATURATION_QUIT
+			8,						// CTA_OCCUPANCY
+			7,						// LOG_THREADS
+			0,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOADS_PER_TILE
+			5,						// LOG_RAKING_THREADS
+			util::io::ld::cg,		// QUEUE_READ_MODIFIER,
+			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
+			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
+			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
+			util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+			true,					// WORK_STEALING
+			32,						// WARP_GATHER_THRESHOLD
+			128 * 4, 				// CTA_GATHER_THRESHOLD,
+			6>				 		// LOG_SCHEDULE_GRANULARITY
+				ExpandPolicy;
+
+
 		// Contraction kernel config
 		typedef two_phase::contract_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
@@ -98,31 +121,12 @@ public :
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 			false,					// WORK_STEALING
-			9> CompactPolicy;		// LOG_SCHEDULE_GRANULARITY
-
-		// Expansion kernel config
-		typedef two_phase::expand_atomic::KernelPolicy<
-			typename CsrProblem::ProblemType,
-			200,
-			INSTRUMENT, 			// INSTRUMENT
-			0, 						// SATURATION_QUIT
-			8,						// CTA_OCCUPANCY
-			7,						// LOG_THREADS
-			0,						// LOG_LOAD_VEC_SIZE
-			0,						// LOG_LOADS_PER_TILE
-			5,						// LOG_RAKING_THREADS
-			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
-			util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-			util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-			util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-			true,					// WORK_STEALING
-			32,						// WARP_GATHER_THRESHOLD
-			128 * 4, 				// CTA_GATHER_THRESHOLD,
-			6> ExpandPolicy;		// LOG_SCHEDULE_GRANULARITY
+			3,						// BITMASK_CULL_THRESHOLD
+			6> 						// LOG_SCHEDULE_GRANULARITY
+				ContractPolicy;
 
 
-		// Make sure we satisfy the tuning constraints in partition::[up|down]sweep::tuning_policy.cuh
+		// Partition kernel config (make sure we satisfy the tuning constraints in partition::[up|down]sweep::tuning_policy.cuh)
 		typedef partition_contract::Policy<
 			// Problem Type
 			typename CsrProblem::ProblemType,
@@ -149,7 +153,8 @@ public :
 			1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
 			1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
 			0,						// DOWNSWEEP_LOG_CYCLES_PER_TILE
-			6> PartitionPolicy;		// DOWNSWEEP_LOG_RAKING_THREADS
+			6> 						// DOWNSWEEP_LOG_RAKING_THREADS
+				PartitionPolicy;
 
 		// Copy kernel config
 		typedef copy::KernelPolicy<
@@ -164,7 +169,8 @@ public :
 			0,						// LOG_LOADS_PER_TILE
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
-			false> CopyPolicy;		// WORK_STEALING
+			false> 					// WORK_STEALING
+				CopyPolicy;
 	};
 
 
@@ -258,7 +264,7 @@ protected:
 		 * Setup / lazy initialization
 		 */
 	    template <
-	    	typename CompactPolicy,
+	    	typename ContractPolicy,
 	    	typename ExpandPolicy,
 	    	typename PartitionPolicy,
 	    	typename CopyPolicy>
@@ -268,7 +274,7 @@ protected:
 
 			do {
 		    	// Determine grid size(s)
-				int contract_min_occupancy 		= CompactPolicy::CTA_OCCUPANCY;
+				int contract_min_occupancy 		= ContractPolicy::CTA_OCCUPANCY;
 				contract_grid_size 				= MaxGridSize(contract_min_occupancy, max_grid_size);
 
 				int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
@@ -395,7 +401,7 @@ public:
 	 * Search setup / lazy initialization
 	 */
     template <
-    	typename CompactPolicy,
+    	typename ContractPolicy,
     	typename ExpandPolicy,
     	typename PartitionPolicy,
     	typename CopyPolicy,
@@ -436,7 +442,7 @@ public:
 				if (retval = util::B40CPerror(cudaSetDevice(csr_problem.graph_slices[i]->gpu),
 					"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
 
-				if (retval = control_blocks[i]->template Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
+				if (retval = control_blocks[i]->template Setup<ContractPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
 					max_grid_size, csr_problem.num_gpus)) break;
 
 				// Bind bitmask textures
@@ -476,7 +482,7 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
     template <
-    	typename CompactPolicy,
+    	typename ContractPolicy,
     	typename ExpandPolicy,
     	typename PartitionPolicy,
     	typename CopyPolicy,
@@ -506,7 +512,7 @@ public:
 			printf("Partition bins per GPU: %d\n", bins_per_gpu);
 
 			// Search setup / lazy initialization
-			if (retval = Setup<CompactPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
+			if (retval = Setup<ContractPolicy, ExpandPolicy, PartitionPolicy, CopyPolicy>(
 				csr_problem, max_grid_size)) break;
 
 			// Mask in owner gpu of source;
@@ -515,7 +521,7 @@ public:
 
 
 			//---------------------------------------------------------------------
-			// Compact work queues (first iteration)
+			// Contract work queues (first iteration)
 			//---------------------------------------------------------------------
 
 			for (int i = 0; i < csr_problem.num_gpus; i++) {
@@ -533,8 +539,8 @@ public:
 				}
 
 				// Contraction
-				two_phase::contract_atomic::Kernel<CompactPolicy>
-						<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
+				two_phase::contract_atomic::Kernel<ContractPolicy>
+						<<<control->contract_grid_size, ContractPolicy::THREADS, 0, slice->stream>>>(
 					(owns_source) ? src : -1,
 					control->iteration,
 					(owns_source) ? 1 : 0,
@@ -558,7 +564,7 @@ public:
 				control->queue_index++;
 				control->steal_index++;
 
-				if (DEBUG2){
+				if (INSTRUMENT){
 					// Get contraction queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 					printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);
@@ -607,7 +613,7 @@ public:
 					control->steal_index++;
 					control->iteration++;
 
-					if (DEBUG2) {
+					if (INSTRUMENT) {
 						// Get expansion queue length
 						if (retval = control->template UpdateQueueLength<SizeT>()) break;
 						printf("Gpu %d expansion queue length: %lld\n", i, (long long) control->queue_length);
@@ -645,13 +651,12 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu partition_contract::upsweep::Kernel failed", __FILE__, __LINE__))) break;
 
-					if (DEBUG2) {
-						printf("Presorted spine on gpu %d (%lld elements):\n",
+					if (INSTRUMENT) {
+						printf("Presorted spine on gpu %d (%lld elements)\n",
 							control->gpu,
 							(long long) control->spine_elements);
-						DisplayDeviceResults(
-							(SizeT *) control->spine.d_spine,
-							control->spine_elements);
+
+						if (DEBUG2) DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
 					}
 
 					// Spine
@@ -663,13 +668,12 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu SpineKernel failed", __FILE__, __LINE__))) break;
 
-					if (DEBUG2) {
-						printf("Postsorted spine on gpu %d (%lld elements):\n",
+					if (INSTRUMENT) {
+						printf("Postsorted spine on gpu %d (%lld elements)\n",
 							control->gpu,
 							(long long) control->spine_elements);
-						DisplayDeviceResults(
-							(SizeT *) control->spine.d_spine,
-							control->spine_elements);
+
+						if (DEBUG2) DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
 					}
 
 					// Downsweep
@@ -712,18 +716,17 @@ public:
 					SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
 
-					if (DEBUG2) {
-						printf("Iteration %lld sort-contracted queue on gpu %d (%lld elements):\n",
+					if (INSTRUMENT) {
+						printf("Iteration %lld sort-contracted queue on gpu %d (%lld elements)\n",
 							(long long) control->iteration,
 							control->gpu,
 							(long long) spine[control->spine_elements - 1]);
-						DisplayDeviceResults(
-							slice->frontier_queues.d_keys[0],
-							spine[control->spine_elements - 1]);
-						printf("Source distance vector on gpu %d:\n", control->gpu);
-						DisplayDeviceResults(
-							slice->d_labels,
-							slice->nodes);
+
+						if (DEBUG2) {
+							DisplayDeviceResults(slice->frontier_queues.d_keys[0], spine[control->spine_elements - 1]);
+							printf("Source distance vector on gpu %d\n", control->gpu);
+							DisplayDeviceResults(slice->d_labels, slice->nodes);
+						}
 					}
 				}
 				if (retval) break;
@@ -761,7 +764,7 @@ public:
 						SizeT queue_oob 	= peer_spine[bins_per_gpu * (i + 1) * peer_control->partition_grid_size];
 						SizeT num_elements	= queue_oob - queue_offset;
 
-						if (DEBUG2) {
+						if (INSTRUMENT) {
 							printf("Gpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
 								i,
 								num_elements,
@@ -774,6 +777,12 @@ public:
 							fflush(stdout);
 						}
 
+						// Check for vertex frontier overflow
+						if (num_elements > slice->frontier_elements[0]) {
+							retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+						}
+
+						// Copy / copy+contract from peer
 						if (slice->gpu == peer_slice->gpu) {
 
 							util::CtaWorkDistribution<SizeT> work_decomposition;
@@ -801,8 +810,8 @@ public:
 						} else {
 
 							// Contraction from peer GPU
-							two_phase::contract_atomic::Kernel<CompactPolicy>
-								<<<control->contract_grid_size, CompactPolicy::THREADS, 0, slice->stream>>>(
+							two_phase::contract_atomic::Kernel<ContractPolicy>
+								<<<control->contract_grid_size, ContractPolicy::THREADS, 0, slice->stream>>>(
 									-1,															// source (not used)
 									control->iteration,
 									num_elements,
@@ -828,7 +837,7 @@ public:
 
 					control->queue_index++;
 
-					if (DEBUG2){
+					if (INSTRUMENT){
 						// Get contraction queue length
 						if (retval = control->template UpdateQueueLength<SizeT>()) break;
 						printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);
@@ -836,7 +845,29 @@ public:
 					}
 				}
 				if (retval) break;
+
 			}
+			if (retval) break;
+
+
+			// Check if any of the frontiers overflowed due to redundant expansion
+			for (int i = 0; i < csr_problem.num_gpus; i++) {
+
+				GpuControlBlock *control = control_blocks[i];
+
+				// Set device
+				if (retval = util::B40CPerror(cudaSetDevice(control->gpu),
+					"EnactorMultiGpu cudaSetDevice failed", __FILE__, __LINE__)) break;
+
+				bool overflowed = false;
+				if (retval = control->work_progress.template CheckOverflow<SizeT>(overflowed)) break;
+				if (overflowed) {
+					retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+					break;
+				}
+			}
+			if (retval) break;
+
 
 		} while (0);
 
@@ -863,7 +894,7 @@ public:
 			typedef Policy<CsrProblem, 200> CsrPolicy;
 
 			return EnactSearch<
-				typename CsrPolicy::CompactPolicy,
+				typename CsrPolicy::ContractPolicy,
 				typename CsrPolicy::ExpandPolicy,
 				typename CsrPolicy::PartitionPolicy,
 				typename CsrPolicy::CopyPolicy>(csr_problem, src, max_grid_size);

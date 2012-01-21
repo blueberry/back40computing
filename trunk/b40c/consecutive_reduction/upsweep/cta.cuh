@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::EqualityOp				EqualityOp;
 
-	typedef typename KernelPolicy::SrtsSoaDetails 			SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 			RakingSoaDetails;
 	typedef typename KernelPolicy::TileTuple 				TileTuple;
 	typedef typename KernelPolicy::SoaScanOperator			SoaScanOperator;
 
@@ -69,8 +69,8 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 		srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 		raking_soa_details;
 
 	// The spine value-flag tuple value we will accumulate (in raking threads only)
 	TileTuple 			carry;
@@ -105,11 +105,11 @@ struct Cta
 		EqualityOp			equality_op) :
 
 			smem_storage(smem_storage),
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.flags_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.flags_warpscan),
 				soa_scan_op()),
@@ -166,13 +166,13 @@ struct Cta
 
 		// SOA-reduce tile of tuple pairs
 		util::reduction::soa::CooperativeSoaTileReduction<KernelPolicy::LOAD_VEC_SIZE>::template
-			ReduceTileWithCarry<!FIRST_TILE>(				// Maintain carry in thread SrtsSoaDetails::CUMULATIVE_THREAD
-				srts_soa_details,
+			ReduceTileWithCarry<!FIRST_TILE>(				// Maintain carry in thread RakingSoaDetails::CUMULATIVE_THREAD
+				raking_soa_details,
 				TileSoa(values, ranks),
 				carry,
 				soa_scan_op);								// Seed with carry
 
-		// Barrier to protect srts_soa_details before next tile
+		// Barrier to protect raking_soa_details before next tile
 		__syncthreads();
 	}
 
@@ -183,7 +183,7 @@ struct Cta
 	__device__ __forceinline__ void OutputToSpine()
 	{
 		// Write output
-		if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
+		if (threadIdx.x == RakingSoaDetails::CUMULATIVE_THREAD) {
 
 			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				carry.t0,

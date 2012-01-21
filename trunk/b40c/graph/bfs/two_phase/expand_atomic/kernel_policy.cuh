@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Metatype" for guiding BFS expansion granularity configuration
+ * Kernel configuration policy for BFS frontier expansion kernels.
  ******************************************************************************/
 
 #pragma once
@@ -42,9 +42,10 @@ namespace expand_atomic {
 
 
 /**
- * BFS atomic expansion kernel granularity configuration meta-type.  Parameterizations of this
- * type encapsulate our kernel-tuning parameters (i.e., they are reflected via
- * the static fields).
+ * Kernel configuration policy for BFS frontier contraction kernels.
+ *
+ * Parameterizations of this type encapsulate our kernel-tuning parameters
+ * (i.e., they are reflected via the static fields).
  *
  * Kernels can be specialized for problem-type, SM-version, etc. by parameterizing
  * them with different performance-tuned parameterizations of this type.  By
@@ -54,33 +55,37 @@ namespace expand_atomic {
  */
 template <
 	// ProblemType type parameters
-	typename _ProblemType,
+	typename _ProblemType,				// BFS problem type (e.g., b40c::graph::bfs::ProblemType)
 
 	// Machine parameters
-	int CUDA_ARCH,
+	int CUDA_ARCH,						// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
 	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
 
 	// Tunable parameters
-	int _MIN_CTA_OCCUPANCY,
-	int _LOG_THREADS,
-	int _LOG_LOAD_VEC_SIZE,
-	int _LOG_LOADS_PER_TILE,
-	int _LOG_RAKING_THREADS,
-	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,
-	util::io::ld::CacheModifier _COLUMN_READ_MODIFIER,
-	util::io::ld::CacheModifier _ROW_OFFSET_ALIGNED_READ_MODIFIER,
-	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,
-	bool _WORK_STEALING,
-	int _WARP_GATHER_THRESHOLD,
-	int _CTA_GATHER_THRESHOLD,
-	int _LOG_SCHEDULE_GRANULARITY>
+	int _MIN_CTA_OCCUPANCY,												// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
+	int _LOG_THREADS,													// Number of threads per CTA (log)
+	int _LOG_LOAD_VEC_SIZE,												// Number of incoming frontier vertex-ids to dequeue in a single load (log)
+	int _LOG_LOADS_PER_TILE,											// Number of such loads that constitute a tile of incoming frontier vertex-ids (log)
+	int _LOG_RAKING_THREADS,											// Number of raking threads to use for prefix sum (log), range [5, LOG_THREADS]
+	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::ld::cg for fused kernel implementations incorporating software global barriers.
+	util::io::ld::CacheModifier _COLUMN_READ_MODIFIER,					// Load instruction cache-modifier for reading CSR column-indices
+	util::io::ld::CacheModifier _ROW_OFFSET_ALIGNED_READ_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 8-byte aligned)
+	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,	// Load instruction cache-modifier for reading CSR row-offsets (when 4-byte aligned)
+	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,					// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::st::cg for fused kernel implementations incorporating software global barriers.
+	bool _WORK_STEALING,												// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
+	int _WARP_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarser-grained warp-based cooperative expansion (below which we perform fine-grained scan-based expansion)
+	int _CTA_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarsest-grained CTA-based cooperative expansion (below which we perform warp-based expansion)
+	int _LOG_SCHEDULE_GRANULARITY>										// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
 {
+	//---------------------------------------------------------------------
+	// Constants and typedefs
+	//---------------------------------------------------------------------
+
 	typedef _ProblemType 					ProblemType;
 	typedef typename ProblemType::VertexId 	VertexId;
 	typedef typename ProblemType::SizeT 	SizeT;
@@ -128,8 +133,9 @@ struct KernelPolicy : _ProblemType
 		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
 	};
 
-	// SRTS grid type for coarse
-	typedef util::SrtsGrid<
+
+	// Prefix sum raking grid for coarse-grained expansion allocations
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
@@ -138,8 +144,9 @@ struct KernelPolicy : _ProblemType
 		true>									// There are prefix dependences between lanes
 			CoarseGrid;
 
-	// SRTS grid type for fine
-	typedef util::SrtsGrid<
+
+	// Prefix sum raking grid for fine-grained expansion allocations
+	typedef util::RakingGrid<
 		CUDA_ARCH,
 		SizeT,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
@@ -149,13 +156,23 @@ struct KernelPolicy : _ProblemType
 			FineGrid;
 
 
-	// Tuple of partial-flag type
+	// Type for (coarse-partial, fine-partial) tuples
 	typedef util::Tuple<SizeT, SizeT> TileTuple;
 
 
-	/**
-	 * SOA scan operator
-	 */
+	// Structure-of-array (SOA) prefix sum raking grid type (CoarseGrid, FineGrid)
+	typedef util::Tuple<
+		CoarseGrid,
+		FineGrid> RakingGridTuple;
+
+
+	// Operational details type for SOA raking grid
+	typedef util::RakingSoaDetails<
+		TileTuple,
+		RakingGridTuple> RakingSoaDetails;
+
+
+	// Prefix sum tuple operator for SOA raking grid
 	struct SoaScanOp
 	{
 		enum {
@@ -178,20 +195,8 @@ struct KernelPolicy : _ProblemType
 	};
 
 
-	// Tuple type of SRTS grid types
-	typedef util::Tuple<
-		CoarseGrid,
-		FineGrid> SrtsGridTuple;
-
-
-	// Operational details type for SRTS grid type
-	typedef util::SrtsSoaDetails<
-		TileTuple,
-		SrtsGridTuple> SrtsSoaDetails;
-
-
 	/**
-	 * Shared memory structure
+	 * Shared memory storage type for the CTA
 	 */
 	struct SmemStorage
 	{
@@ -216,8 +221,8 @@ struct KernelPolicy : _ProblemType
 			SizeT 								fine_warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
 			// Enqueue offset for neighbors of the current tile
-			SizeT								fine_enqueue_offset;
 			SizeT								coarse_enqueue_offset;
+			SizeT								fine_enqueue_offset;
 
 		} state;
 
@@ -225,7 +230,7 @@ struct KernelPolicy : _ProblemType
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
 												- sizeof(State)
-												- 128,
+												- 128,											// Fudge-factor to guarantee occupancy
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PREDECESSORS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and predecessor

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -60,9 +60,9 @@ struct Cta
 	typedef typename KernelPolicy::SpineSoaTuple 		SpineSoaTuple;
 
 	typedef typename KernelPolicy::LocalFlag			LocalFlag;			// Type for noting local discontinuities
-	typedef typename KernelPolicy::RankType				RankType;			// Type for local SRTS prefix sum
+	typedef typename KernelPolicy::RankType				RankType;			// Type for local raking prefix sum
 
-	typedef typename KernelPolicy::SrtsSoaDetails 		SrtsSoaDetails;
+	typedef typename KernelPolicy::RakingSoaDetails 		RakingSoaDetails;
 	typedef typename KernelPolicy::TileTuple 			TileTuple;
 	typedef typename KernelPolicy::SoaScanOperator		SoaScanOperator;
 
@@ -76,8 +76,8 @@ struct Cta
 	// Members
 	//---------------------------------------------------------------------
 
-	// Operational details for SRTS grid
-	SrtsSoaDetails 		srts_soa_details;
+	// Operational details for raking grid
+	RakingSoaDetails 		raking_soa_details;
 
 	// The spine value-flag tuple value we will accumulate (in raking threads only)
 	SpineSoaTuple 		carry;
@@ -201,7 +201,7 @@ struct Cta
 				// spine element is invalid)
 				util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
 					ScanTileWithCarry<false>(				// Assign carry
-						cta->srts_soa_details,
+						cta->raking_soa_details,
 						TileSoa(values, ranks),
 						cta->carry,							// maintain carry in raking threads
 						cta->soa_scan_op);
@@ -210,7 +210,7 @@ struct Cta
 				// Seed the soa scan with carry
 				util::scan::soa::CooperativeSoaTileScan<KernelPolicy::LOAD_VEC_SIZE>::template
 					ScanTileWithCarry<true>(				// Update carry
-						cta->srts_soa_details,
+						cta->raking_soa_details,
 						TileSoa(values, ranks),
 						cta->carry,							// Seed with carry, maintain carry in raking threads
 						cta->soa_scan_op);
@@ -271,11 +271,11 @@ struct Cta
 		EqualityOp		equality_op) :
 
 			smem_storage(smem_storage),
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.ranks_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.ranks_warpscan),
 				soa_scan_op()),
@@ -304,11 +304,11 @@ struct Cta
 		SpineSoaTuple		spine_partial) :
 
 			smem_storage(smem_storage),
-			srts_soa_details(
-				typename SrtsSoaDetails::GridStorageSoa(
+			raking_soa_details(
+				typename RakingSoaDetails::GridStorageSoa(
 					smem_storage.partials_raking_elements,
 					smem_storage.ranks_raking_elements),
-				typename SrtsSoaDetails::WarpscanSoa(
+				typename RakingSoaDetails::WarpscanSoa(
 					smem_storage.partials_warpscan,
 					smem_storage.ranks_warpscan),
 				soa_scan_op()),
@@ -353,12 +353,12 @@ struct Cta
 				work_limits.guarded_elements);
 
 			// Output the number of compacted items
-			if (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD) {
+			if (threadIdx.x == RakingSoaDetails::CUMULATIVE_THREAD) {
 				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 					carry.t1 - 1, d_num_compacted);
 			}
 
-		} else if ((work_limits.last_block) && (threadIdx.x == SrtsSoaDetails::CUMULATIVE_THREAD)) {
+		} else if ((work_limits.last_block) && (threadIdx.x == RakingSoaDetails::CUMULATIVE_THREAD)) {
 
 			// Partial-tile processing outputs the final reduced value.  If there is
 			// no partial work for the last CTA, it must instead write the final reduced value
