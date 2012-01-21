@@ -161,7 +161,7 @@ protected:
 			total_runtimes 		= 0;
 			total_lifetimes 	= 0;
 			total_queued 		= 0;
-			done[0] 			= 0;
+			done[0] 			= -1;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -437,7 +437,7 @@ public:
 				printf("1, ");
 			}
 
-			while (true) {
+			while (done[0] < 0) {
 
 				// Contraction
 				two_phase::contract_atomic::Kernel<ContractPolicy>
@@ -483,7 +483,9 @@ public:
 					if (retval = util::B40CPerror(cudaEventSynchronize(throttle_event),
 						"EnactorTwoPhase cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
 				};
-				if (done[0]) break;
+
+				// Check if done
+				if (done[0] == 0) break;
 
 				// Expansion
 				two_phase::expand_atomic::Kernel<ExpandPolicy>
@@ -555,7 +557,6 @@ public:
 				typename CsrProblem::ProblemType,
 				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
@@ -577,6 +578,7 @@ public:
 				typename CsrProblem::ProblemType,
 				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
@@ -602,7 +604,6 @@ public:
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
-				0, 						// SATURATION_QUIT
 				1,						// CTA_OCCUPANCY
 				8,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
@@ -624,6 +625,7 @@ public:
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				1,						// CTA_OCCUPANCY
 				8,						// LOG_THREADS

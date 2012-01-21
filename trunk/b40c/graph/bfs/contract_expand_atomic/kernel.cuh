@@ -357,9 +357,12 @@ void KernelGlobalBarrier(
 		// Barrier to protect work decomposition
 		__syncthreads();
 
-		if ((!smem_storage.state.work_decomposition.num_elements) ||
-			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		if (!smem_storage.state.work_decomposition.num_elements) {
+			break;
+		}
+		if (KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::SATURATION_QUIT))
 		{
+			iteration *= -1;
 			break;
 		}
 
@@ -427,9 +430,12 @@ void KernelGlobalBarrier(
 		__syncthreads();
 
 		// Check if done
-		if ((!smem_storage.state.work_decomposition.num_elements) ||
-			(KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+		if (!smem_storage.state.work_decomposition.num_elements) {
+			break;
+		}
+		if (KernelPolicy::SATURATION_QUIT && (smem_storage.state.work_decomposition.num_elements > gridDim.x * KernelPolicy::SATURATION_QUIT))
 		{
+			iteration *= -1;
 			break;
 		}
 
@@ -576,9 +582,9 @@ void Kernel(
 
 			// Signal to host that we're done
 			if ((num_elements == 0) ||
-				(KernelPolicy::SATURATION_QUIT && (num_elements > gridDim.x * KernelPolicy::TILE_ELEMENTS * KernelPolicy::SATURATION_QUIT)))
+				(KernelPolicy::SATURATION_QUIT && (num_elements > gridDim.x * KernelPolicy::SATURATION_QUIT)))
 			{
-				if (d_done) d_done[0] = 1;
+				if (d_done) d_done[0] = num_elements;
 			}
 
 			// Initialize work decomposition in smem

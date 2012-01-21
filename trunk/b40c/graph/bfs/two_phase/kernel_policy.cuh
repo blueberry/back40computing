@@ -98,6 +98,7 @@ struct KernelPolicy : _ProblemType
 		_ProblemType,
 		CUDA_ARCH,
 		INSTRUMENT,
+		SATURATION_QUIT,
 		true,										// DEQUEUE_PROBLEM_SIZE
 		MIN_CTA_OCCUPANCY,
 		LOG_THREADS,
@@ -115,7 +116,6 @@ struct KernelPolicy : _ProblemType
 		_ProblemType,
 		CUDA_ARCH,
 		INSTRUMENT,
-		SATURATION_QUIT,
 		MIN_CTA_OCCUPANCY,
 		LOG_THREADS,
 		EXPAND_LOG_LOAD_VEC_SIZE,

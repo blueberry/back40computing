@@ -62,7 +62,6 @@ template <
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
-	int _SATURATION_QUIT,				// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
 
 	// Tunable parameters
 	int _MIN_CTA_OCCUPANCY,												// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
@@ -99,7 +98,6 @@ struct KernelPolicy : _ProblemType
 	enum {
 
 		INSTRUMENT						= _INSTRUMENT,
-		SATURATION_QUIT					= _SATURATION_QUIT,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,

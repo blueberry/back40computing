@@ -89,7 +89,6 @@ public :
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
-			0, 						// SATURATION_QUIT
 			8,						// CTA_OCCUPANCY
 			7,						// LOG_THREADS
 			0,						// LOG_LOAD_VEC_SIZE
@@ -112,6 +111,7 @@ public :
 			typename CsrProblem::ProblemType,
 			200,
 			INSTRUMENT, 			// INSTRUMENT
+			0, 						// SATURATION_QUIT
 			false, 					// DEQUEUE_PROBLEM_SIZE
 			8,						// CTA_OCCUPANCY
 			7,						// LOG_THREADS

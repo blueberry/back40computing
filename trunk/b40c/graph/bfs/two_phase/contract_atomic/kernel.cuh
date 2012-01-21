@@ -289,8 +289,10 @@ void Kernel(
 			}
 
 			// Signal to host that we're done
-			if (num_elements == 0) {
-				if (d_done) d_done[0] = 1;
+			if ((num_elements == 0) ||
+				(KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::SATURATION_QUIT)))
+			{
+				if (d_done) d_done[0] = num_elements;
 			}
 
 			// Initialize work decomposition in smem
