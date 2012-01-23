@@ -53,12 +53,12 @@ template <
 	int CUDA_ARCH,										// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
-	bool INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
+	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
 	int SATURATION_QUIT,								// Early-exit threshold factor for the incoming frontier, i.e., quit when: frontier_size < SATURATION_QUIT * grid_size * TILE_SIZE.  (Can be -1 to never perform bitmask filtering)
 
 	// Tunable parameters (generic)
 	int MIN_CTA_OCCUPANCY,												// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
-	int LOG_THREADS,													// Number of threads per CTA (log)
+	int _LOG_THREADS,													// Number of threads per CTA (log)
 	util::io::ld::CacheModifier QUEUE_READ_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::ld::cg for fused kernel implementations incorporating software global barriers.
 	util::io::ld::CacheModifier COLUMN_READ_MODIFIER,					// Load instruction cache-modifier for reading CSR column-indices
 	util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 8-byte aligned)
@@ -97,11 +97,11 @@ struct KernelPolicy : _ProblemType
 	typedef contract_atomic::KernelPolicy<
 		_ProblemType,
 		CUDA_ARCH,
-		INSTRUMENT,
+		_INSTRUMENT,
 		SATURATION_QUIT,
 		true,										// DEQUEUE_PROBLEM_SIZE
 		MIN_CTA_OCCUPANCY,
-		LOG_THREADS,
+		_LOG_THREADS,
 		CONTRACT_LOG_LOAD_VEC_SIZE,
 		CONTRACT_LOG_LOADS_PER_TILE,
 		CONTRACT_LOG_RAKING_THREADS,
@@ -115,9 +115,9 @@ struct KernelPolicy : _ProblemType
 	typedef expand_atomic::KernelPolicy<
 		_ProblemType,
 		CUDA_ARCH,
-		INSTRUMENT,
+		_INSTRUMENT,
 		MIN_CTA_OCCUPANCY,
-		LOG_THREADS,
+		_LOG_THREADS,
 		EXPAND_LOG_LOAD_VEC_SIZE,
 		EXPAND_LOG_LOADS_PER_TILE,
 		EXPAND_LOG_RAKING_THREADS,
@@ -150,7 +150,7 @@ struct KernelPolicy : _ProblemType
 		// Total number of smem quads needed by this kernel
 		SMEM_QUADS						= B40C_QUADS(sizeof(SmemStorage)),
 
-		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> _LOG_THREADS,
+		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
 		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / (SMEM_QUADS * sizeof(uint4)),
 		CTA_OCCUPANCY  					= B40C_MIN(MIN_CTA_OCCUPANCY, B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 
