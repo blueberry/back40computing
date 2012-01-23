@@ -535,7 +535,7 @@ public:
 
 				bool owns_source = (control->gpu == src_owner);
 				if (owns_source) {
-					printf("GPU %d owns source 0x%X\n", control->gpu, src);
+					printf("GPU %d owns source 0x%llX\n", control->gpu, (long long) src);
 				}
 
 				// Contraction

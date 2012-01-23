@@ -320,8 +320,8 @@ void Histogram(
 			std::unique(frontier[distance].begin(), frontier[distance].end()) -
 			frontier[distance].begin();
 
-		printf("%d, %d, %d, %d\n",
-			distance,
+		printf("%lld, %d, %d, %d\n",
+			(long long) distance,
 			histogram[distance].expanded,
 			histogram[distance].unique_expanded,
 			histogram[distance].discovered);
@@ -677,7 +677,7 @@ void RunTests(
 			GpuTimer gpu_timer;
 
 			switch (strategy) {
-/*
+
 			case EXPAND_CONTRACT:
 				if (retval = csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -709,7 +709,7 @@ void RunTests(
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-*/
+
 			case MULTI_GPU:
 				if (retval = csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -856,15 +856,20 @@ void RunTests(
 	}
 	csr_graph.PrintHistogram();
 
+	//
 	// Run tests
-/* commented out for compilation speed
+	//
+
+/* CTA-instrumented timing tests commented out for compilation speed
 	if (instrumented) {
 
 		// Run instrumented kernel for runtime statistics
 		if (mark_pred) {
+			// label predecessor
 			RunTests<VertexId, Value, SizeT, true, true>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		} else {
+			// label distance
 			RunTests<VertexId, Value, SizeT, true, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}
@@ -873,9 +878,11 @@ void RunTests(
 */
 		// Run regular kernel
 		if (mark_pred) {
-//			RunTests<VertexId, Value, SizeT, false, true>(
-//				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+			// label predecessor
+			RunTests<VertexId, Value, SizeT, false, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		} else {
+			// label distance
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}

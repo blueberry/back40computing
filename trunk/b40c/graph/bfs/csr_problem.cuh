@@ -424,8 +424,8 @@ struct CsrProblem
 				VertexId **slice_column_indices 	= new VertexId*[num_gpus];
 				for (int gpu = 0; gpu < num_gpus; gpu++) {
 
-					printf("GPU %d gets %d vertices and %d edges\n",
-						gpu, graph_slices[gpu]->nodes, graph_slices[gpu]->edges);
+					printf("GPU %d gets %lld vertices and %lld edges\n",
+						gpu, (long long) graph_slices[gpu]->nodes, (long long) graph_slices[gpu]->edges);
 					fflush(stdout);
 
 					slice_row_offsets[gpu] = new SizeT[graph_slices[gpu]->nodes + 1];

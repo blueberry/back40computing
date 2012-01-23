@@ -117,7 +117,7 @@ struct DoubleBuffer : MultipleBuffer<2, KeyType, ValueType>
 		KeyType* keys) : ParentType()
 
 	{
-		d_keys[0] = keys;
+		this->d_keys[0] = keys;
 	}
 
 	// Constructor
@@ -125,8 +125,8 @@ struct DoubleBuffer : MultipleBuffer<2, KeyType, ValueType>
 		KeyType* keys,
 		ValueType* values) : ParentType()
 	{
-		d_keys[0] = keys;
-		d_values[0] = values;
+		this->d_keys[0] = keys;
+		this->d_values[0] = values;
 	}
 
 	// Constructor
@@ -136,10 +136,10 @@ struct DoubleBuffer : MultipleBuffer<2, KeyType, ValueType>
 		ValueType* values0,
 		ValueType* values1) : ParentType()
 	{
-		d_keys[0] = keys0;
-		d_keys[1] = keys1;
-		d_values[0] = values0;
-		d_values[1] = values1;
+		this->d_keys[0] = keys0;
+		this->d_keys[1] = keys1;
+		this->d_values[0] = values0;
+		this->d_values[1] = values1;
 	}
 };
 
