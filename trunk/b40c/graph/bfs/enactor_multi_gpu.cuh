@@ -646,6 +646,7 @@ public:
 						(SizeT *) control->spine.d_spine,
 						slice->d_visited_mask,
 						control->work_progress,
+						slice->frontier_elements[1],					// max local edge frontier vertices
 						control->partition_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
@@ -688,6 +689,7 @@ public:
 						slice->d_filter_mask,
 						(SizeT *) control->spine.d_spine,
 						control->work_progress,
+						slice->frontier_elements[1],					// max local edge frontier vertices
 						control->partition_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),

@@ -46,7 +46,7 @@ namespace upsweep {
 template <typename KernelPolicy>
 __device__ __forceinline__ void UpsweepPass(
 	int												&num_gpus,
-	typename KernelPolicy::VertexId 				*&d_in,
+	typename KernelPolicy::VertexId 				*&d_edge_frontier,
 	typename KernelPolicy::ValidFlag				*&d_out_flag,
 	typename KernelPolicy::SizeT 					*&d_spine,
 	typename KernelPolicy::VisitedMask 			*&d_visited_mask,
@@ -65,7 +65,7 @@ __device__ __forceinline__ void UpsweepPass(
 	Cta cta(
 		smem_storage,
 		num_gpus,
-		d_in,
+		d_edge_frontier,
 		d_out_flag,
 		d_spine,
 		d_visited_mask);
@@ -82,14 +82,15 @@ template <typename KernelPolicy>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
-	typename KernelPolicy::VertexId			queue_index,
-	int 									num_gpus,
-	typename KernelPolicy::VertexId 		*d_in,
-	typename KernelPolicy::ValidFlag		*d_out_flag,
-	typename KernelPolicy::SizeT			*d_spine,
-	typename KernelPolicy::VisitedMask 	*d_visited_mask,
-	util::CtaWorkProgress 					work_progress,
-	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
+	typename KernelPolicy::VertexId			queue_index,				// Current frontier queue counter index
+	int 									num_gpus,					// Number of GPUs
+	typename KernelPolicy::VertexId 		*d_edge_frontier,			// Incoming edge frontier
+	typename KernelPolicy::ValidFlag		*d_out_flag,				// Outgoing validity flags
+	typename KernelPolicy::SizeT			*d_spine,					// Partitioning spine (histograms)
+	typename KernelPolicy::VisitedMask 		*d_visited_mask,			// Mask for detecting visited status
+	util::CtaWorkProgress 					work_progress,				// Atomic workstealing and queueing counters
+	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
+	util::KernelRuntimeStats				kernel_stats)				// Per-CTA clock timing statistics (used when KernelPolicy::INSTRUMENT)
 {
 #if __B40C_CUDA_ARCH__ >= 200
 
@@ -109,6 +110,11 @@ void Kernel(
 		// Obtain problem size
 		SizeT num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
 
+		// Check if we previously overflowed
+		if (num_elements >= max_edge_frontier) {
+			num_elements = 0;
+		}
+
 		// Initialize work decomposition in smem
 		smem_storage.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
 			num_elements, gridDim.x);
@@ -119,7 +125,7 @@ void Kernel(
 
 	UpsweepPass<KernelPolicy>(
 		num_gpus,
-		d_in,
+		d_edge_frontier,
 		d_out_flag,
 		d_spine,
 		d_visited_mask,
