@@ -58,11 +58,11 @@ template <
 	typename _ProblemType,								// BFS problem type (e.g., b40c::graph::bfs::ProblemType)
 
 	// Machine parameters
-	int CUDA_ARCH,										// CUDA SM architecture to generate code for
+	int _CUDA_ARCH,										// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
-	int _SATURATION_QUIT,								// If positive, signal that we're done with two-phase iterations if problem size drops below (SATURATION_QUIT * grid_size * TILE_SIZE)
+	int _SATURATION_QUIT,								// If positive, signal that we're done with two-phase iterations if frontier size drops below (SATURATION_QUIT * grid_size)
 	bool _DEQUEUE_PROBLEM_SIZE,							// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
@@ -74,7 +74,7 @@ template <
 	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,	// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::ld::cg for fused kernel implementations incorporating software global barriers.
 	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,	// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::st::cg for fused kernel implementations incorporating software global barriers.
 	bool _WORK_STEALING,								// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
-	int _BITMASK_CULL_THRESHOLD,						//Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size * TILE_SIZE).  (Can be -1 to never perform bitmask filtering)
+	int _BITMASK_CULL_THRESHOLD,										// Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size).  (Alternatively 0 to always perform bitmask filtering, -1 to never perform bitmask filtering)
 	int _LOG_SCHEDULE_GRANULARITY>						// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
@@ -92,7 +92,7 @@ struct KernelPolicy : _ProblemType
 	static const bool WORK_STEALING									= _WORK_STEALING;
 
 	enum {
-
+		CUDA_ARCH						= _CUDA_ARCH,
 		INSTRUMENT						= _INSTRUMENT,
 		SATURATION_QUIT					= _SATURATION_QUIT,
 		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,

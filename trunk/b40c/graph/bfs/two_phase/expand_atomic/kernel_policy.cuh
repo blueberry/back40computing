@@ -58,7 +58,7 @@ template <
 	typename _ProblemType,				// BFS problem type (e.g., b40c::graph::bfs::ProblemType)
 
 	// Machine parameters
-	int CUDA_ARCH,						// CUDA SM architecture to generate code for
+	int _CUDA_ARCH,						// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,					// Whether or not we want instrumentation logic generated
@@ -97,6 +97,7 @@ struct KernelPolicy : _ProblemType
 
 	enum {
 
+		CUDA_ARCH						= _CUDA_ARCH,
 		INSTRUMENT						= _INSTRUMENT,
 
 		LOG_THREADS 					= _LOG_THREADS,

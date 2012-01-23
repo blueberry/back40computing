@@ -332,9 +332,10 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int								max_grid_size = 0)
 	{
+    	// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
-			// GF100 tuning configuration
+			// Contract+expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,					// CUDA_ARCH
@@ -353,16 +354,17 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				3,						// BITMASK_CULL_THRESHOLD
+				128 * 3,				// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
 			return EnactFusedSearch<KernelPolicy>(csr_problem, src, max_grid_size);
+		}
 
-/*
-		} else if (this->cuda_props.device_sm_version >= 130) {
+		// GT200
+		if (this->cuda_props.device_sm_version >= 130) {
 
-			// GT200 tuning configuration
+			// Contract+expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
@@ -381,12 +383,11 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				3,						// BITMASK_CULL_THRESHOLD
+				256 * 3,				// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
 			return EnactFusedSearch<KernelPolicy>(csr_problem, src, max_grid_size);
-*/
 		}
 
 		printf("Not yet tuned for this architecture\n");
@@ -515,9 +516,10 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int								max_grid_size = 0)
 	{
+    	// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
-			// GF100 tuning configuration
+			// Contract+expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,					// CUDA_ARCH
@@ -536,16 +538,17 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				3,						// BITMASK_CULL_THRESHOLD
+				128 * 3,				// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
 			return EnactIterativeSearch<KernelPolicy>(csr_problem, src, max_grid_size);
+		}
 
-/* Uncomment to enable GT200 code
+		// GT200
+		if (this->cuda_props.device_sm_version >= 130) {
 
-		} else if (this->cuda_props.device_sm_version >= 130) {
-			// GT200 tuning configuration
+			// Contract+expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
@@ -564,16 +567,15 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				3,						// BITMASK_CULL_THRESHOLD
+				256 * 3,				// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
 			return EnactIterativeSearch<KernelPolicy>(csr_problem, src, max_grid_size);
-*/
 		}
 
 		printf("Contract-expand not yet tuned for this architecture\n");
-		return cudaErrorInvalidConfiguration;
+		return cudaErrorInvalidDeviceFunction;
 	}
 
 };

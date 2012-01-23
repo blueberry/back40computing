@@ -243,7 +243,7 @@ struct CsrProblem
 	 * Extract into a single host vector the BFS results disseminated across
 	 * all GPUs
 	 */
-	cudaError_t ExtractResults(VertexId *h_source_path)
+	cudaError_t ExtractResults(VertexId *h_label)
 	{
 		cudaError_t retval = cudaSuccess;
 
@@ -257,7 +257,7 @@ struct CsrProblem
 				// Special case for only one GPU, which may be set as with
 				// an ordinal other than 0.
 				if (retval = util::B40CPerror(cudaMemcpy(
-						h_source_path,
+						h_label,
 						graph_slices[0]->d_labels,
 						sizeof(VertexId) * graph_slices[0]->nodes,
 						cudaMemcpyDeviceToHost),
@@ -265,7 +265,7 @@ struct CsrProblem
 
 			} else {
 
-				VertexId **gpu_source_paths = new VertexId*[num_gpus];
+				VertexId **gpu_labels = new VertexId*[num_gpus];
 
 				// Copy out
 				for (int gpu = 0; gpu < num_gpus; gpu++) {
@@ -275,10 +275,10 @@ struct CsrProblem
 						"CsrProblem cudaSetDevice failed", __FILE__, __LINE__)) break;;
 
 					// Allocate and copy out
-					gpu_source_paths[gpu] = new VertexId[graph_slices[gpu]->nodes];
+					gpu_labels[gpu] = new VertexId[graph_slices[gpu]->nodes];
 
 					if (retval = util::B40CPerror(cudaMemcpy(
-							gpu_source_paths[gpu],
+							gpu_labels[gpu],
 							graph_slices[gpu]->d_labels,
 							sizeof(VertexId) * graph_slices[gpu]->nodes,
 							cudaMemcpyDeviceToHost),
@@ -290,22 +290,22 @@ struct CsrProblem
 				for (VertexId node = 0; node < nodes; node++) {
 					int gpu = GpuIndex(node);
 					VertexId slice_row = GraphSliceRow(node);
-					h_source_path[node] = gpu_source_paths[gpu][slice_row];
+					h_label[node] = gpu_labels[gpu][slice_row];
 
-					switch (h_source_path[node]) {
+					switch (h_label[node]) {
 					case -1:
 					case -2:
 						break;
 					default:
-						h_source_path[node] &= ProblemType::VERTEX_ID_MASK;
+						h_label[node] &= ProblemType::VERTEX_ID_MASK;
 					};
 				}
 
 				// Clean up
 				for (int gpu = 0; gpu < num_gpus; gpu++) {
-					if (gpu_source_paths[gpu]) delete gpu_source_paths[gpu];
+					if (gpu_labels[gpu]) delete gpu_labels[gpu];
 				}
-				delete gpu_source_paths;
+				delete gpu_labels;
 			}
 		} while(0);
 

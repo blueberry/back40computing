@@ -375,6 +375,7 @@ public:
 
 				// Run two-phase until done is not -1
 				done[0] = -1;
+
 				while (done[0] < 0) {
 
 					// Contraction
@@ -487,13 +488,13 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-    	// Multiplier of (fused_grid_size * OnePhasePolicy::TILE_SIZE) above which
-    	// we transition from from one-phase to two-phase
-    	const int SATURATION_QUIT = 4 * 128;
 
+    	// GF100
     	if (cuda_props.device_sm_version >= 200) {
 
-			// Single-grid tuning configuration
+        	const int SATURATION_QUIT = 4 * 128;
+
+        	// Fused-grid tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
@@ -512,7 +513,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				-1,						// BITMASK_CULL_THRESHOLD
+				0,						// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					OnePhasePolicy;
 
@@ -534,9 +535,8 @@ public:
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6> 						// LOG_SCHEDULE_GRANULARITY
+				7> 						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
-
 
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
@@ -547,24 +547,26 @@ public:
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOAD_VEC_SIZE
 				2,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
 				0,						// BITMASK_CULL_THRESHOLD
-				6> 						// LOG_SCHEDULE_GRANULARITY
+				10> 					// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
+    	}
 
-/* Uncomment to enable GT200 code
+    	// GT200
+    	if (cuda_props.device_sm_version >= 130) {
 
-    	} else if (cuda_props.device_sm_version >= 130) {
+        	const int SATURATION_QUIT = 4 * 128;
 
-			// Single-grid tuning configuration
+        	// Single-grid tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
@@ -592,7 +594,6 @@ public:
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT
-				SATURATION_QUIT, 		// SATURATION_QUIT
 				1,						// CTA_OCCUPANCY
 				8,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
@@ -614,6 +615,7 @@ public:
 				typename CsrProblem::ProblemType,
 				130,
 				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT, 		// SATURATION_QUIT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				1,						// CTA_OCCUPANCY
 				8,						// LOG_THREADS
@@ -623,17 +625,16 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				3,						// BITMASK_CULL_THRESHOLD
+				0,						// BITMASK_CULL_THRESHOLD
 				10> 					// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy, INSTRUMENT>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
-*/
 	    }
 
 		printf("Not yet tuned for this architecture\n");
-		return cudaErrorInvalidConfiguration;
+		return cudaErrorInvalidDeviceFunction;
 	}
 
 };

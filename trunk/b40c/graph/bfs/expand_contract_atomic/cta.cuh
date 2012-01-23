@@ -181,13 +181,13 @@ struct Cta
 
 			VertexId row_id = neighbor_id & KernelPolicy::VERTEX_ID_MASK;
 
-			// Load source path of node
-			VertexId source_path;
+			// Load label of node
+			VertexId label;
 			util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-				source_path,
+				label,
 				d_labels + row_id);
 
-			if (source_path != -1) {
+			if (label != -1) {
 
 				// Seen it
 				neighbor_id = -1;
@@ -196,14 +196,14 @@ struct Cta
 
 				if (KernelPolicy::MARK_PREDECESSORS) {
 
-					// Update source path with predecessor vertex
+					// Update label with predecessor vertex
 					util::io::ModifiedStore<util::io::st::cg>::St(
 						predecessor_id,
 						d_labels + row_id);
 
 				} else {
 
-					// Update source path with current iteration
+					// Update label with current iteration
 					util::io::ModifiedStore<util::io::st::cg>::St(
 						iteration + 1,
 						d_labels + row_id);
@@ -575,7 +575,7 @@ struct Cta
 		}
 
 		/**
-		 * Inspect dequeued vertices, updating source path if necessary and
+		 * Inspect dequeued vertices, updating label if necessary and
 		 * obtaining edge-list details
 		 */
 		__device__ __forceinline__ void Inspect(Cta *cta)
@@ -646,7 +646,7 @@ struct Cta
 					false : 												// never bitmask cull
 					(KernelPolicy::BITMASK_CULL_THRESHOLD == 0) ?
 						true : 												// always bitmask cull
-						(smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
+						(smem_storage.state.work_decomposition.num_elements > KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
 	{
 		if (threadIdx.x == 0) {
 			smem_storage.state.cta_comm = KernelPolicy::THREADS;		// invalid

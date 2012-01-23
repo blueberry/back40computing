@@ -350,7 +350,7 @@ public:
 				true,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
-				1,						// BITMASK_CULL_THRESHOLD
+				128 * 1,				// BITMASK_CULL_THRESHOLD
 				6>						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -502,7 +502,7 @@ public:
 				true,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
-				1,						// BITMASK_CULL_THRESHOLD
+				128 * 1,				// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -511,7 +511,7 @@ public:
 		}
 
 		printf("Not yet tuned for this architecture\n");
-		return cudaErrorInvalidConfiguration;
+		return cudaErrorInvalidDeviceFunction;
 	}
 
 };

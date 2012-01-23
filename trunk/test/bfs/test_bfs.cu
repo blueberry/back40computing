@@ -668,55 +668,60 @@ void RunTests(
 			Strategy strategy = (Strategy) *itr;
 			Stats *stats = stats_map[strategy];
 
-			long long 	total_queued = 0;
-			VertexId	search_depth = 0;
-			double		avg_duty = 0.0;
+			long long 		total_queued = 0;
+			VertexId		search_depth = 0;
+			double			avg_duty = 0.0;
+			cudaError_t		retval = cudaSuccess;
 
 			// Perform BFS
 			GpuTimer gpu_timer;
 
 			switch (strategy) {
-
+/*
 			case EXPAND_CONTRACT:
-				if (csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (retval = csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
-				if (expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);				// Fused variant
+				if (retval = expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) break;				// Fused variant
 				gpu_timer.Stop();
 				expand_contract.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
 			case CONTRACT_EXPAND:
-				if (csr_problem.Reset(contract_expand.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (retval = csr_problem.Reset(contract_expand.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
-				if (contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) exit(1);				// Fused variant
+				if (retval = contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) break;				// Fused variant
 				gpu_timer.Stop();
 				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
 			case TWO_PHASE:
-				if (csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (retval = csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
-				if (two_phase.EnactIterativeSearch(csr_problem, src, max_grid_size)) exit(1);				// Iterative variant
+				if (retval = two_phase.EnactIterativeSearch(csr_problem, src, max_grid_size)) break;				// Iterative variant
 				gpu_timer.Stop();
 				two_phase.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
 			case HYBRID:
-				if (csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (retval = csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
-				if (hybrid.EnactSearch(csr_problem, src, max_grid_size)) exit(1);
+				if (retval = hybrid.EnactSearch(csr_problem, src, max_grid_size)) break;
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-
+*/
 			case MULTI_GPU:
-				if (csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) exit(1);
+				if (retval = csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
-				if (multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) exit(1);
+				if (retval = multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) break;
 				gpu_timer.Stop();
 				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
 
+			}
+
+			if (retval && (retval != cudaErrorInvalidDeviceFunction)) {
+				exit(1);
 			}
 
 			float elapsed = gpu_timer.ElapsedMillis();
@@ -852,7 +857,7 @@ void RunTests(
 	csr_graph.PrintHistogram();
 
 	// Run tests
-/*
+/* commented out for compilation speed
 	if (instrumented) {
 
 		// Run instrumented kernel for runtime statistics
@@ -868,10 +873,8 @@ void RunTests(
 */
 		// Run regular kernel
 		if (mark_pred) {
-
-			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
-
+//			RunTests<VertexId, Value, SizeT, false, true>(
+//				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		} else {
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);

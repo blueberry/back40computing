@@ -57,7 +57,7 @@ struct SweepPass
 		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-		typename KernelPolicy::SizeT			max_vertex_frontier,
+		typename KernelPolicy::SizeT			&max_vertex_frontier,
 		typename KernelPolicy::SmemStorage		&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
@@ -145,7 +145,7 @@ struct SweepPass <KernelPolicy, true>
 		typename KernelPolicy::VisitedMask 		*&d_visited_mask,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-		typename KernelPolicy::SizeT			max_vertex_frontier,
+		typename KernelPolicy::SizeT			&max_vertex_frontier,
 		typename KernelPolicy::SmemStorage		&smem_storage)
 	{
 		typedef Cta<KernelPolicy> 					Cta;
@@ -184,6 +184,197 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
+ * Arch dispatch
+ ******************************************************************************/
+
+/**
+ * Not valid for this arch (default)
+ */
+template <typename KernelPolicy, int CUDA_ARCH = KernelPolicy::CUDA_ARCH>
+struct Dispatch
+{
+	typedef typename KernelPolicy::VertexId VertexId;
+	typedef typename KernelPolicy::SizeT SizeT;
+	typedef typename KernelPolicy::VisitedMask VisitedMask;
+
+	static __device__ __forceinline__ void Kernel(
+		VertexId 					&src,
+		VertexId 					&iteration,
+		SizeT						&num_elements,
+		VertexId					&queue_index,
+		VertexId					&steal_index,
+		int							&num_gpus,
+		volatile int				*&d_done,
+		VertexId 					*&d_edge_frontier,
+		VertexId 					*&d_vertex_frontier,
+		VertexId 					*&d_predecessor,
+		VertexId					*&d_labels,
+		VisitedMask 				*&d_visited_mask,
+		util::CtaWorkProgress 		&work_progress,
+		SizeT						&max_edge_frontier,
+		SizeT						&max_vertex_frontier,
+		util::KernelRuntimeStats	&kernel_stats)
+	{
+		// empty
+	}
+};
+
+
+/**
+ * Valid for this arch (policy matches compiler-inserted macro)
+ */
+template <typename KernelPolicy>
+struct Dispatch<KernelPolicy, __B40C_CUDA_ARCH__>
+{
+	typedef typename KernelPolicy::VertexId VertexId;
+	typedef typename KernelPolicy::SizeT SizeT;
+	typedef typename KernelPolicy::VisitedMask VisitedMask;
+
+	static __device__ __forceinline__ void Kernel(
+		VertexId 					&src,
+		VertexId 					&iteration,
+		SizeT						&num_elements,
+		VertexId					&queue_index,
+		VertexId					&steal_index,
+		int							&num_gpus,
+		volatile int				*&d_done,
+		VertexId 					*&d_edge_frontier,
+		VertexId 					*&d_vertex_frontier,
+		VertexId 					*&d_predecessor,
+		VertexId					*&d_labels,
+		VisitedMask 				*&d_visited_mask,
+		util::CtaWorkProgress 		&work_progress,
+		SizeT						&max_edge_frontier,
+		SizeT						&max_vertex_frontier,
+		util::KernelRuntimeStats	&kernel_stats)
+	{
+
+		// Shared storage for the kernel
+		__shared__ typename KernelPolicy::SmemStorage smem_storage;
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStart();
+		}
+
+		if (iteration == 0) {
+
+			if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
+
+				// Reset all counters
+				work_progress.template Reset<SizeT>();
+
+				// Determine work decomposition for first iteration
+				if (threadIdx.x == 0) {
+
+					SizeT num_elements = 0;
+					if (src != -1) {
+
+						num_elements = 1;
+
+						// We'll be the only block with active work this iteration.
+						// Enqueue the source for us to subsequently process.
+						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
+
+						if (KernelPolicy::MARK_PREDECESSORS) {
+							// Enqueue predecessor of source
+							typename KernelPolicy::VertexId predecessor = -2;
+							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
+						}
+					}
+
+					// Initialize work decomposition in smem
+					smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+						num_elements, gridDim.x);
+				}
+			}
+
+			// Barrier to protect work decomposition
+			__syncthreads();
+
+			// Don't do workstealing this iteration because without a
+			// global barrier after queue-reset, the queue may be inconsistent
+			// across CTAs
+			SweepPass<KernelPolicy, false>::Invoke(
+				iteration,
+				queue_index,
+				steal_index,
+				num_gpus,
+				d_edge_frontier,
+				d_vertex_frontier,
+				d_predecessor,
+				d_labels,
+				d_visited_mask,
+				work_progress,
+				smem_storage.state.work_decomposition,
+				max_vertex_frontier,
+				smem_storage);
+
+		} else {
+
+			// Determine work decomposition
+			if (threadIdx.x == 0) {
+
+				// Obtain problem size
+				if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
+					num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
+				}
+
+				// Check if we previously overflowed
+				if (num_elements >= max_edge_frontier) {
+					num_elements = 0;
+				}
+
+				// Signal to host that we're done
+				if ((num_elements == 0) ||
+					(KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::SATURATION_QUIT)))
+				{
+					if (d_done) d_done[0] = num_elements;
+				}
+
+				// Initialize work decomposition in smem
+				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
+					num_elements, gridDim.x);
+
+				// Reset our next outgoing queue counter to zero
+				work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
+
+				// Reset our next workstealing counter to zero
+				work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
+
+			}
+
+			// Barrier to protect work decomposition
+			__syncthreads();
+
+			SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
+				iteration,
+				queue_index,
+				steal_index,
+				num_gpus,
+				d_edge_frontier,
+				d_vertex_frontier,
+				d_predecessor,
+				d_labels,
+				d_visited_mask,
+				work_progress,
+				smem_storage.state.work_decomposition,
+				max_vertex_frontier,
+				smem_storage);
+		}
+
+		if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
+			kernel_stats.MarkStop();
+			kernel_stats.Flush();
+		}
+	}
+
+
+
+};
+
+
+
+/******************************************************************************
  * Contraction Kernel Entrypoint
  ******************************************************************************/
 
@@ -211,125 +402,23 @@ void Kernel(
 	typename KernelPolicy::SizeT			max_vertex_frontier, 		// Maximum number of elements we can place into the outgoing vertex frontier
 	util::KernelRuntimeStats				kernel_stats)				// Per-CTA clock timing statistics (used when KernelPolicy::INSTRUMENT)
 {
-	typedef typename KernelPolicy::SizeT SizeT;
-
-	// Shared storage for the kernel
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
-
-	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
-		kernel_stats.MarkStart();
-	}
-
-	if (iteration == 0) {
-
-		if (threadIdx.x < util::CtaWorkProgress::COUNTERS) {
-
-			// Reset all counters
-			work_progress.template Reset<SizeT>();
-
-			// Determine work decomposition for first iteration
-			if (threadIdx.x == 0) {
-
-				SizeT num_elements = 0;
-				if (src != -1) {
-
-					num_elements = 1;
-
-					// We'll be the only block with active work this iteration.
-					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
-
-					if (KernelPolicy::MARK_PREDECESSORS) {
-						// Enqueue predecessor of source
-						typename KernelPolicy::VertexId predecessor = -2;
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
-					}
-				}
-
-				// Initialize work decomposition in smem
-				smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
-					num_elements, gridDim.x);
-			}
-		}
-
-		// Barrier to protect work decomposition
-		__syncthreads();
-
-		// Don't do workstealing this iteration because without a
-		// global barrier after queue-reset, the queue may be inconsistent
-		// across CTAs
-		SweepPass<KernelPolicy, false>::Invoke(
-			iteration,
-			queue_index,
-			steal_index,
-			num_gpus,
-			d_edge_frontier,
-			d_vertex_frontier,
-			d_predecessor,
-			d_labels,
-			d_visited_mask,
-			work_progress,
-			smem_storage.state.work_decomposition,
-			max_vertex_frontier,
-			smem_storage);
-
-	} else {
-
-		// Determine work decomposition
-		if (threadIdx.x == 0) {
-
-			// Obtain problem size
-			if (KernelPolicy::DEQUEUE_PROBLEM_SIZE) {
-				num_elements = work_progress.template LoadQueueLength<SizeT>(queue_index);
-			}
-
-			// Check if we previously overflowed
-			if (num_elements >= max_edge_frontier) {
-				num_elements = 0;
-			}
-
-			// Signal to host that we're done
-			if ((num_elements == 0) ||
-				(KernelPolicy::SATURATION_QUIT && (num_elements <= gridDim.x * KernelPolicy::SATURATION_QUIT)))
-			{
-				if (d_done) d_done[0] = num_elements;
-			}
-
-			// Initialize work decomposition in smem
-			smem_storage.state.work_decomposition.template Init<KernelPolicy::LOG_SCHEDULE_GRANULARITY>(
-				num_elements, gridDim.x);
-
-			// Reset our next outgoing queue counter to zero
-			work_progress.template StoreQueueLength<SizeT>(0, queue_index + 2);
-
-			// Reset our next workstealing counter to zero
-			work_progress.template PrepResetSteal<SizeT>(steal_index + 1);
-
-		}
-
-		// Barrier to protect work decomposition
-		__syncthreads();
-
-		SweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
-			iteration,
-			queue_index,
-			steal_index,
-			num_gpus,
-			d_edge_frontier,
-			d_vertex_frontier,
-			d_predecessor,
-			d_labels,
-			d_visited_mask,
-			work_progress,
-			smem_storage.state.work_decomposition,
-			max_vertex_frontier,
-			smem_storage);
-	}
-
-	if (KernelPolicy::INSTRUMENT && (threadIdx.x == 0)) {
-		kernel_stats.MarkStop();
-		kernel_stats.Flush();
-	}
+	Dispatch<KernelPolicy>::Kernel(
+		src,
+		iteration,
+		num_elements,
+		queue_index,
+		steal_index,
+		num_gpus,
+		d_done,
+		d_edge_frontier,
+		d_vertex_frontier,
+		d_predecessor,
+		d_labels,
+		d_visited_mask,
+		work_progress,
+		max_edge_frontier,
+		max_vertex_frontier,
+		kernel_stats);
 }
 
 

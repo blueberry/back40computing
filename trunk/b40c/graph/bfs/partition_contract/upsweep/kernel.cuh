@@ -91,6 +91,8 @@ void Kernel(
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats = util::KernelRuntimeStats())
 {
+#if __B40C_CUDA_ARCH__ >= 200
+
 	typedef typename KernelPolicy::SizeT SizeT;
 
 	// Shared storage for CTA processing
@@ -128,6 +130,8 @@ void Kernel(
 			kernel_stats.MarkStop();
 		}
 	}
+
+#endif
 }
 
 

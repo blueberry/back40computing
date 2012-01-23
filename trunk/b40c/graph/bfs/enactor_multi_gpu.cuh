@@ -901,7 +901,7 @@ public:
 		}
 
 		printf("Not yet tuned for this architecture\n");
-		return cudaErrorInvalidConfiguration;
+		return cudaErrorInvalidDeviceFunction;
 	}
 
     
