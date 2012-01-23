@@ -227,14 +227,14 @@ struct Cta
 					// Row index on our GPU (vertex ids are striped across GPUs)
 					VertexId row_id = (tile->vertex_id[LOAD][VEC] & KernelPolicy::VERTEX_ID_MASK) / cta->num_gpus;
 
-					// Load source path of node
-					VertexId source_path;
+					// Load label of node
+					VertexId label;
 					util::io::ModifiedLoad<util::io::ld::cg>::Ld(
-						source_path,
+						label,
 						cta->d_labels + row_id);
 
 
-					if (source_path != -1) {
+					if (label != -1) {
 
 						// Seen it
 						tile->vertex_id[LOAD][VEC] = -1;
@@ -243,13 +243,13 @@ struct Cta
 
 						if (KernelPolicy::MARK_PREDECESSORS) {
 
-							// Update source path with predecessor vertex
+							// Update label with predecessor vertex
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								tile->predecessor_id[LOAD][VEC],
 								cta->d_labels + row_id);
 						} else {
 
-							// Update source path with current iteration
+							// Update label with current iteration
 							util::io::ModifiedStore<util::io::st::cg>::St(
 								cta->iteration,
 								cta->d_labels + row_id);
@@ -471,7 +471,7 @@ struct Cta
 					false : 												// never bitmask cull
 					(KernelPolicy::BITMASK_CULL_THRESHOLD == 0) ?
 						true : 												// always bitmask cull
-						(smem_storage.state.work_decomposition.num_elements > KernelPolicy::TILE_ELEMENTS * KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
+						(smem_storage.state.work_decomposition.num_elements > KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
 	{
 		// Initialize history duplicate-filter
 		for (int offset = threadIdx.x; offset < SmemStorage::HISTORY_HASH_ELEMENTS; offset += KernelPolicy::THREADS) {

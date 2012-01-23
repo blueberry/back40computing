@@ -493,7 +493,7 @@ struct Cta
 		}
 
 		/**
-		 * Inspect dequeued vertices, updating source path if necessary and
+		 * Inspect dequeued vertices, updating label if necessary and
 		 * obtaining edge-list details
 		 */
 		template <typename Cta>
@@ -600,7 +600,7 @@ struct Cta
 				guarded_elements,
 				(VertexId) -1);
 
-		// Inspect dequeued vertices, updating source path and obtaining
+		// Inspect dequeued vertices, updating label and obtaining
 		// edge-list details
 		tile.Inspect(this);
 

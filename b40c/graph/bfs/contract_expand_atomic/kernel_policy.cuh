@@ -56,11 +56,11 @@ template <
 	typename _ProblemType,								// BFS problem type (e.g., b40c::graph::bfs::ProblemType)
 
 	// Machine parameters
-	int CUDA_ARCH,										// CUDA SM architecture to generate code for
+	int _CUDA_ARCH,										// CUDA SM architecture to generate code for
 
 	// Behavioral control parameters
 	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
-	int _SATURATION_QUIT,								// Early-exit threshold factor for the incoming frontier, i.e., quit when: frontier_size < (SATURATION_QUIT * grid_size * TILE_SIZE).  (Can be -1 to never perform bitmask filtering)
+	int _SATURATION_QUIT,								// If positive, signal that we're done with fused iterations if frontier size rises above (SATURATION_QUIT * grid_size)
 
 	// Tunable parameters
 	int _MIN_CTA_OCCUPANCY,												// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
@@ -76,7 +76,7 @@ template <
 	bool _WORK_STEALING,												// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
 	int _WARP_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarser-grained warp-based cooperative expansion (below which we perform fine-grained scan-based expansion)
 	int _CTA_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarsest-grained CTA-based cooperative expansion (below which we perform warp-based expansion)
-	int _BITMASK_CULL_THRESHOLD,										// Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size * TILE_SIZE).  (Can be -1 to never perform bitmask filtering)
+	int _BITMASK_CULL_THRESHOLD,										// Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size).  (Alternatively 0 to always perform bitmask filtering, -1 to never perform bitmask filtering)
 	int _LOG_SCHEDULE_GRANULARITY>										// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
@@ -96,6 +96,7 @@ struct KernelPolicy : _ProblemType
 	static const util::io::st::CacheModifier QUEUE_WRITE_MODIFIER 					= _QUEUE_WRITE_MODIFIER;
 
 	enum {
+		CUDA_ARCH						= _CUDA_ARCH,
 		INSTRUMENT						= _INSTRUMENT,
 		SATURATION_QUIT					= _SATURATION_QUIT,
 
@@ -228,7 +229,7 @@ struct KernelPolicy : _ProblemType
 			// Amount of storage we can use for hashing scratch space under target occupancy
 			MAX_SCRATCH_BYTES_PER_CTA		= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
 												- sizeof(State)
-												- 128,											// Fudge-factor to guarantee occupancy
+												- 140,											// Fudge-factor to guarantee occupancy
 
 			SCRATCH_ELEMENT_SIZE 			= (ProblemType::MARK_PREDECESSORS) ?
 													sizeof(SizeT) + sizeof(VertexId) :			// Need both gather offset and predecessor

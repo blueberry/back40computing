@@ -184,6 +184,8 @@ void Kernel(
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
+#if __B40C_CUDA_ARCH__ >= 200
+
 	typedef typename KernelPolicy::SizeT SizeT;
 
 	__shared__ util::CtaWorkDistribution<SizeT> work_decomposition;
@@ -235,6 +237,8 @@ void Kernel(
 		kernel_stats.MarkStop();
 		kernel_stats.Flush();
 	}
+
+#endif
 }
 
 

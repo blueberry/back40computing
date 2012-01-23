@@ -550,6 +550,7 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
+    	// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Expansion kernel config
@@ -582,25 +583,25 @@ public:
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOAD_VEC_SIZE
 				2,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				3,						// BITMASK_CULL_THRESHOLD
+				0,						// BITMASK_CULL_THRESHOLD
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
 			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
+		}
 
-/* Uncomment to enable GT200 code
-
-		} else if (this->cuda_props.device_sm_version >= 130) {
+		// GT200
+		if (this->cuda_props.device_sm_version >= 130) {
 
 			// Expansion kernel config
-			typedef expand_atomic::KernelPolicy<
+			typedef two_phase::expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
@@ -621,7 +622,7 @@ public:
 					ExpandPolicy;
 
 			// Contraction kernel config
-			typedef contract_atomic::KernelPolicy<
+			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
@@ -635,16 +636,17 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
+				0,						// BITMASK_CULL_THRESHOLD
 				6>						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
 			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
-*/
+
 		}
 
 		printf("Not yet tuned for this architecture\n");
-		return cudaErrorInvalidConfiguration;
+		return cudaErrorInvalidDeviceFunction;
 	}
 };
 
