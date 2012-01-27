@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel configuration policy for BFS frontier filter-contraction kernels
+ * Kernel configuration policy for BFS edge-frontier filtering kernels
  ******************************************************************************/
 
 #pragma once

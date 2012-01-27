@@ -701,7 +701,7 @@ void RunTests(
 				gpu_timer.Stop();
 				two_phase.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-/*
+
 			case HYBRID:
 				if (retval = csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -709,7 +709,7 @@ void RunTests(
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-
+/*
 			case MULTI_GPU:
 				if (retval = csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();

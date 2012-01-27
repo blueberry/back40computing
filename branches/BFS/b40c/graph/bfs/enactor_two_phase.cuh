@@ -37,10 +37,10 @@
 
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
-#include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
-#include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/filter_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/filter_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 
 namespace b40c {
 namespace graph {
@@ -71,8 +71,8 @@ protected:
 	 * CTA duty kernel stats
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
-	util::KernelRuntimeStatsLifetime contract_kernel_stats;
 	util::KernelRuntimeStatsLifetime filter_kernel_stats;
+	util::KernelRuntimeStatsLifetime contract_kernel_stats;
 
 	unsigned long long 		total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 		total_lifetimes;		// Total time elapsed by each cta
@@ -115,7 +115,8 @@ protected:
 	cudaError_t Setup(
 		CsrProblem &csr_problem,
 		int expand_grid_size,
-		int contract_grid_size = 0)
+		int contract_grid_size,
+		int filter_grid_size)
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
@@ -161,6 +162,7 @@ protected:
 
 			// Make sure our runtime stats are initialized
 			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = filter_kernel_stats.Setup(filter_grid_size)) break;
 			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Reset statistics
@@ -436,12 +438,12 @@ public:
 					filter_occupancy, filter_grid_size);
 				printf("BFS contract occupancy %d, level-grid size %d\n",
 					contract_occupancy, contract_grid_size);
-				printf("Contraction queue, Expansion queue\n");
-				printf("1, 1, ");
+				printf("Iteration, Filter queue, Contraction queue, Expansion queue\n");
+				printf("0, 0");
 			}
 
 			// Lazy initialization
-			if (retval = Setup(csr_problem, expand_grid_size, contract_grid_size)) break;
+			if (retval = Setup(csr_problem, expand_grid_size, filter_grid_size, contract_grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -482,9 +484,8 @@ public:
 				selector ^= 1;
 
 				if (DEBUG) {
-					// Get contraction queue length
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-					printf("%lld, ", (long long) queue_length);
+					printf(", %lld", (long long) queue_length);
 				}
 				if (INSTRUMENT) {
 					if (retval = contract_kernel_stats.Accumulate(
@@ -531,18 +532,19 @@ public:
 				selector ^= 1;
 				iteration[0]++;
 
-				if (DEBUG) {
-					// Get expansion queue length
+				if (INSTRUMENT || DEBUG) {
 					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 					total_queued += queue_length;
-					printf("%lld\n", (long long) queue_length);
+					if (DEBUG) printf(", %lld", (long long) queue_length);
+					if (INSTRUMENT) {
+						if (retval = expand_kernel_stats.Accumulate(
+							expand_grid_size,
+							total_runtimes,
+							total_lifetimes)) break;
+					}
 				}
-				if (INSTRUMENT) {
-					if (retval = expand_kernel_stats.Accumulate(
-						expand_grid_size,
-						total_runtimes,
-						total_lifetimes)) break;
-				}
+
+				if (DEBUG) printf("\n%lld", (long long) iteration[0]);
 
 				// Check if done
 				if (done[0] == 0) break;
@@ -572,9 +574,8 @@ public:
 				selector ^= 1;
 
 				if (DEBUG) {
-					// Get filtered queue length
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-					printf("%lld, ", (long long) queue_length);
+					printf(", %lld", (long long) queue_length);
 				}
 				if (INSTRUMENT) {
 					if (retval = filter_kernel_stats.Accumulate(
@@ -595,6 +596,8 @@ public:
 			}
 
 		} while(0);
+
+		if (DEBUG) printf("\n");
 
 		return retval;
 	}
@@ -653,7 +656,7 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				9> 					// LOG_SCHEDULE_GRANULARITY
+				9> 						// LOG_SCHEDULE_GRANULARITY
 					FilterPolicy;
 
 			// Contraction kernel config

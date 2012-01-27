@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA tile-processing abstraction for BFS frontier filter-contraction
+ * CTA tile-processing abstraction for BFS edge-frontier filtering
  ******************************************************************************/
 
 #pragma once
@@ -47,7 +47,7 @@ namespace filter_atomic {
 
 
 /**
- * CTA tile-processing abstraction for BFS frontier contraction
+ * CTA tile-processing abstraction for BFS edge-frontier filtering
  */
 template <typename KernelPolicy>
 struct Cta
