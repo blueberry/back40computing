@@ -366,6 +366,20 @@ struct Cta
 				tile.vertex_id,
 				tile.flags,
 				tile.ranks);
+
+		if (KernelPolicy::MARK_PREDECESSORS) {
+
+			util::io::ScatterTile<
+				KernelPolicy::LOG_LOADS_PER_TILE,
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::QUEUE_WRITE_MODIFIER>::Scatter(
+					d_predecessor_out,
+					tile.predecessor_id,
+					tile.flags,
+					tile.ranks);
+		}
+
 	}
 };
 
