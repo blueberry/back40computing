@@ -677,7 +677,7 @@ void RunTests(
 			GpuTimer gpu_timer;
 
 			switch (strategy) {
-/*
+
 			case EXPAND_CONTRACT:
 				if (retval = csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -693,7 +693,7 @@ void RunTests(
 				gpu_timer.Stop();
 				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-*/
+
 			case TWO_PHASE:
 				if (retval = csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -709,7 +709,7 @@ void RunTests(
 				gpu_timer.Stop();
 				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-/*
+
 			case MULTI_GPU:
 				if (retval = csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) break;
 				gpu_timer.Start();
@@ -717,7 +717,7 @@ void RunTests(
 				gpu_timer.Stop();
 				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
 				break;
-*/
+
 			}
 
 			if (retval && (retval != cudaErrorInvalidDeviceFunction)) {
@@ -863,7 +863,7 @@ void RunTests(
 /* CTA-instrumented timing tests commented out for compilation speed
 	if (instrumented) {
 
-		// Run instrumented kernel for runtime statistics
+		// Run instrumented kernel for per-CTA clock cycle timings
 		if (mark_pred) {
 			// label predecessor
 			RunTests<VertexId, Value, SizeT, true, true>(
@@ -879,8 +879,8 @@ void RunTests(
 		// Run regular kernel
 		if (mark_pred) {
 			// label predecessor
-//			RunTests<VertexId, Value, SizeT, false, true>(
-//				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+			RunTests<VertexId, Value, SizeT, false, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		} else {
 			// label distance
 			RunTests<VertexId, Value, SizeT, false, false>(

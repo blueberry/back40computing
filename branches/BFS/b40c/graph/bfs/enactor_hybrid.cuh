@@ -323,7 +323,9 @@ public:
 
 			while (done[0] != 0) {
 
-				VertexId phase_iteration = iteration;
+				printf("One phase\n");
+
+				VertexId one_phase_iteration = iteration;
 
 				// Run fused contract-expand kernel
 				contract_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
@@ -364,12 +366,12 @@ public:
 					break;						// done
 				}
 
-				if ((iteration - phase_iteration) & 1) {
+				if ((iteration - one_phase_iteration) & 1) {
 					// An odd number of iterations passed: update selector
 					selector ^= 1;
 				}
 				// Update queue index by the number of elapsed iterations
-				queue_index += (iteration - phase_iteration);
+				queue_index += (iteration - one_phase_iteration);
 
 				if (DEBUG) {
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
@@ -383,8 +385,10 @@ public:
 						total_queued)) break;
 				}
 
-				// Run two-phase until done is not -1
+				printf("Two phase\n");
 
+				// Run two-phase until done is not -1
+				VertexId two_phase_iteration = iteration;
 				while (done[0] < 0) {
 
 					if (DEBUG) printf("\n%lld", (long long) iteration);
@@ -409,6 +413,7 @@ public:
 							this->filter_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "filter_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibiltiy to GPU updates
 
 					queue_index++;
 					selector ^= 1;
@@ -451,6 +456,7 @@ public:
 							contract_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibiltiy to GPU updates
 
 					queue_index++;
 					selector ^= 1;
@@ -467,12 +473,12 @@ public:
 					}
 
 					// Throttle
-					if ((iteration - phase_iteration) & 1) {
-						if (util::B40CPerror(cudaEventRecord(throttle_event),
-							"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
-					} else {
+					if ((iteration - two_phase_iteration) & 1) {
 						if (util::B40CPerror(cudaEventSynchronize(throttle_event),
 							"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
+					} else {
+						if (util::B40CPerror(cudaEventRecord(throttle_event),
+							"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
 					}
 					// Check if done
 					if (done[0] == 0) break;
@@ -498,6 +504,7 @@ public:
 							expand_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibiltiy to GPU updates
 
 					queue_index++;
 					selector ^= 1;
@@ -551,7 +558,7 @@ public:
     	// GF100
     	if (cuda_props.device_sm_version >= 200) {
 
-        	const int SATURATION_QUIT = 4 * 128;
+        	const int SATURATION_QUIT = 3 * 128;
 
         	// Fused-grid tuning configuration
 			typedef contract_expand_atomic::KernelPolicy<
@@ -572,8 +579,8 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				0,						// BITMASK_CULL_THRESHOLD
-				7> 						// LOG_SCHEDULE_GRANULARITY
+				128 * 1,				// BITMASK_CULL_THRESHOLD
+				6> 						// LOG_SCHEDULE_GRANULARITY
 					OnePhasePolicy;
 
 			// Expansion kernel config
@@ -636,7 +643,7 @@ public:
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
     	}
-/*
+
     	// GT200
     	if (cuda_props.device_sm_version >= 130) {
 
@@ -694,13 +701,13 @@ public:
 				0, 						// SATURATION_QUIT
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
-				0,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				9> 						// LOG_SCHEDULE_GRANULARITY
+				8> 						// LOG_SCHEDULE_GRANULARITY
 					FilterPolicy;
 
 			// Contraction kernel config
@@ -725,7 +732,7 @@ public:
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 	    }
-*/
+
 		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidDeviceFunction;
 	}

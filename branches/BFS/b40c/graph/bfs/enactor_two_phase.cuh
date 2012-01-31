@@ -479,6 +479,7 @@ public:
 						this->contract_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+				cudaEventQuery(throttle_event);	// give host memory mapped visibiltiy to GPU updates
 
 				queue_index++;
 				selector ^= 1;
@@ -527,6 +528,7 @@ public:
 						this->expand_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+				cudaEventQuery(throttle_event);	// give host memory mapped visibiltiy to GPU updates
 
 				queue_index++;
 				selector ^= 1;
@@ -681,7 +683,7 @@ public:
 			return EnactIterativeSearch<ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 		}
-/*
+
 		// GT200
 		if (this->cuda_props.device_sm_version >= 130) {
 
@@ -706,6 +708,23 @@ public:
 				6>						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
 
+			// Filter kernel config
+			typedef two_phase::filter_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,					// CUDA_ARCH
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				8> 						// LOG_SCHEDULE_GRANULARITY
+					FilterPolicy;
+
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -725,11 +744,11 @@ public:
 				6>						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
+			return EnactIterativeSearch<ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 
 		}
-*/
+
 		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidDeviceFunction;
 	}
