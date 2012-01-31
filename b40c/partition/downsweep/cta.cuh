@@ -79,6 +79,8 @@ struct Cta
 	// Operational details for scan grids
 	ByteGridDetails 					byte_grid_details;
 
+	SizeT								my_bin_carry;
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -100,23 +102,17 @@ struct Cta
 			d_out_values(d_out_values),
 			byte_grid_details(smem_storage.byte_raking_lanes)
 	{
+		if (threadIdx.x < KernelPolicy::BINS) {
+
+			// Read bin_carry in parallel
+			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+
+			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
+		}
+
 		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
-
-			if (threadIdx.x < KernelPolicy::BINS) {
-
-				// Read bin_carry in parallel
-				SizeT my_bin_carry;
-				int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
-					my_bin_carry,
-					d_spine + spine_bin_offset);
-
-				smem_storage.bin_carry[threadIdx.x] = my_bin_carry;
-			}
-
-			smem_storage.bin_zeros[threadIdx.x] = 0;
-			smem_storage.warpscan[0][0][threadIdx.x] = 0;
-			smem_storage.warpscan[1][0][threadIdx.x] = 0;
+			smem_storage.warpscan[0][threadIdx.x] = 0;
+			smem_storage.warpscan[1][threadIdx.x] = 0;
 		}
 	}
 
