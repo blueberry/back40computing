@@ -88,7 +88,7 @@ typedef b40c::radix_sort::Policy<
 
 		// Common
 		200,						// SM ARCH
-		3,							// RADIX_BITS
+		6,							// RADIX_BITS
 
 		// Launch tuning policy
 		11,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
@@ -124,7 +124,7 @@ typedef b40c::radix_sort::Policy<
 		7,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
 		3,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
 		0,							// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-		5>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+		6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 	Policy;
 
 
@@ -145,16 +145,18 @@ int main(int argc, char** argv)
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
-    	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] [--max-ctas=<max-thread-blocks>]\n");
+    	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] [--max-ctas=<max-thread-blocks>] [--i=<iterations>]\n");
     	return 0;
     }
 
     // Parse commandline args
     SizeT 			num_elements = 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas = 0;							// default: let the enactor decide how many CTAs to launch based upon device properties
+    int 			iterations = 0;
 
     bool verbose = args.CheckCmdLineFlag("v");
     args.GetCmdLineArgument("n", num_elements);
+    args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
 
 	// Allocate and initialize host problem data and host reference solution
@@ -217,6 +219,7 @@ int main(int argc, char** argv)
 		sizeof(ValueType) * num_elements,
 		cudaMemcpyHostToDevice);
 
+	// Sort
 	enactor.Sort<
 		0,
 		Policy::RADIX_BITS,
@@ -233,6 +236,29 @@ int main(int argc, char** argv)
 		num_elements,
 		true,
 		verbose); printf("\n");
+
+	enactor.ENACTOR_DEBUG = false;
+	cudaThreadSynchronize();
+
+	b40c::GpuTimer gpu_timer;
+	gpu_timer.Start();
+	for (int i = 0; i < iterations; i++) {
+
+		sort_storage.selector = 0;
+		enactor.Sort<
+			0,
+			Policy::RADIX_BITS,
+			Policy>(sort_storage, num_elements, max_ctas);
+	}
+	gpu_timer.Stop();
+
+	if (iterations > 0) {
+		float avg_elapsed = gpu_timer.ElapsedMillis() / float(iterations);
+		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %f.1 Mkeys/s\n",
+			gpu_timer.ElapsedMillis(),
+			avg_elapsed,
+			float(num_elements) / avg_elapsed / 1000.f);
+	}
 
 	// Cleanup any "pong" storage allocated by the enactor
 	if (sort_storage.d_keys[1]) cudaFree(sort_storage.d_keys[1]);

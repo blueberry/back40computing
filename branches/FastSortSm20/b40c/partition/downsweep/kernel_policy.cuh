@@ -63,7 +63,10 @@ struct KernelPolicy : TuningPolicy
 		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_THREADS + LOG_TILE_ELEMENTS_PER_THREAD,
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 	
-		LOG_SCAN_LANES_PER_TILE			= B40C_MAX((TuningPolicy::LOG_BINS - 2), 0),		// Always at least one lane per load
+		LOG_SCAN_BINS					= (TuningPolicy::LOG_BINS > 3) ? 3 : TuningPolicy::LOG_BINS,
+		SCAN_BINS						= 1 << LOG_SCAN_BINS,
+
+		LOG_SCAN_LANES_PER_TILE			= B40C_MAX((LOG_SCAN_BINS - 1), 0),		// Always at least one lane per load
 		SCAN_LANES_PER_TILE				= 1 << LOG_SCAN_LANES_PER_TILE,
 
 		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_TILE,
@@ -95,22 +98,19 @@ struct KernelPolicy : TuningPolicy
 
 		SizeT							bin_carry[BINS];
 
-		union {
-			volatile int				bin_inclusive[2][BINS];
-			int							bin_zeros[B40C_WARP_THREADS(CUDA_ARCH)];
-		};
-
 		// Storage for scanning local ranks
-		volatile int 					warpscan[2][2][B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile int 					warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
 
 		union {
 			struct {
+				union {
+					int 					int_counters[SCAN_LANES_PER_TILE][THREADS];
+					short 					short_counters[SCAN_LANES_PER_TILE][THREADS][2];
+				};
 				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
-				int						short_prefixes[2][ByteGrid::RAKING_THREADS];
 			};
 
-			KeyType 					key_exchange[TILE_ELEMENTS + 1];			// Last index is for invalid elements to be culled (if any)
-			ValueType 					value_exchange[TILE_ELEMENTS + 1];
+			KeyType 					key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)
 		};
 	};
 
