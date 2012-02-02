@@ -70,14 +70,11 @@ struct Cta
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
 	// Input and output device pointers
-	KeyType								*&d_in_keys;
-	KeyType								*&d_out_keys;
+	KeyType								*d_in_keys;
+	KeyType								*d_out_keys;
 
-	ValueType							*&d_in_values;
-	ValueType							*&d_out_values;
-
-	// Operational details for scan grids
-	RakingGridDetails 					raking_grid_details;
+	ValueType							*d_in_values;
+	ValueType							*d_out_values;
 
 	SizeT								my_bin_carry;
 
@@ -90,17 +87,16 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*&d_in_keys,
-		KeyType 		*&d_out_keys,
-		ValueType 		*&d_in_values,
-		ValueType 		*&d_out_values,
-		SizeT 			*&d_spine) :
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT 			*d_spine) :
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
-			d_out_values(d_out_values),
-			raking_grid_details(smem_storage.raking_lanes)
+			d_out_values(d_out_values)
 	{
 /*
 		if (threadIdx.x < KernelPolicy::BINS) {
@@ -113,8 +109,8 @@ struct Cta
 */
 		// Initialize warpscan identity regions
 		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
-			smem_storage.warpscan[0][threadIdx.x] = 0;
-			smem_storage.warpscan[1][threadIdx.x] = 0;
+			smem_storage.warpscan[0][0][threadIdx.x] = 0;
+			smem_storage.warpscan[1][0][threadIdx.x] = 0;
 		}
 	}
 

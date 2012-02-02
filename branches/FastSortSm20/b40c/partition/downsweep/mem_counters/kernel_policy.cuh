@@ -99,20 +99,11 @@ struct KernelPolicy : TuningPolicy
 		SizeT							bin_carry[BINS];
 
 		// Storage for scanning local ranks
-		int 							warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
+		volatile int 					warpscan[2][2][B40C_WARP_THREADS(CUDA_ARCH)];
 
-		union {
-			struct {
-				union {
-					int 					int_counters[SCAN_LANES_PER_TILE][THREADS];
-					short 					short_counters[SCAN_LANES_PER_TILE][THREADS][2];
-				};
-				int 					raking_lanes[RakingGrid::RAKING_ELEMENTS];
-				int 					raking_prefixes[RakingGrid::RAKING_THREADS];
-			};
+			int 						raking_lanes[RakingGrid::RAKING_ELEMENTS];
 
 			KeyType 					key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)
-		};
 	};
 
 	enum {
