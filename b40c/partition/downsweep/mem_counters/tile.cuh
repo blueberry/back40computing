@@ -110,6 +110,7 @@ struct Tile
 	// Members
 	//---------------------------------------------------------------------
 
+	typedef typename KernelPolicy::RakingGrid::LanePartial LanePartial;
 
 	// The keys (and values) this thread will read this tile
 	KeyType 	keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -117,9 +118,6 @@ struct Tile
 
 	short 		prefix[LOADS_PER_TILE][LOAD_VEC_SIZE];
 	short*		counter[LOADS_PER_TILE][LOAD_VEC_SIZE];
-
-
-
 
 	//---------------------------------------------------------------------
 	// IterateTileElements Structures
@@ -133,7 +131,7 @@ struct Tile
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void DecodeKeys(Cta *cta,	Tile *tile)
+		static __device__ __forceinline__ void DecodeKeys(Cta *cta,	Tile *tile, LanePartial lane_partial)
 		{
 
 			int sub_counter = util::BFE(
@@ -146,20 +144,20 @@ struct Tile
 				CURRENT_BIT,
 				KernelPolicy::LOG_SCAN_BINS - 1);
 
-			tile->counter[LOAD][VEC] = ((short *) cta->raking_grid_details.lane_partial[lane]) + sub_counter;
+			tile->counter[LOAD][VEC] = ((short *) lane_partial[lane]) + sub_counter;
 
 			// Load thread-exclusive prefix
 			tile->prefix[LOAD][VEC] = *tile->counter[LOAD][VEC];
 
 			// Store inclusive prefix
-			*tile->counter[LOAD][VEC] = tile->prefix[LOAD][VEC] + 1;
+			*tile->counter[LOAD][VEC] = tile->prefix[LOAD][VEC] + 4;
 
 			// Next vector element
 			IterateTileElements<
 				CURRENT_BIT,
 				PADDED_EXCHANGE,
 				LOAD,
-				VEC + 1>::DecodeKeys(cta, tile);
+				VEC + 1>::DecodeKeys(cta, tile, lane_partial);
 		}
 
 		// ComputeRanks
@@ -170,7 +168,7 @@ struct Tile
 			tile->prefix[LOAD][VEC] += *tile->counter[LOAD][VEC];
 
 			if (PADDED_EXCHANGE) {
-				tile->prefix[LOAD][VEC] = util::SHR_ADD(tile->prefix[LOAD][VEC], 5, tile->prefix[LOAD][VEC]);
+				tile->prefix[LOAD][VEC] += (tile->prefix[LOAD][VEC] >> 7) << 2;
 			}
 /*
 			printf("Thread(%d) key(%d) bin(%d) prefix(%d)\n",
@@ -198,14 +196,14 @@ struct Tile
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile)
+		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile, LanePartial lane_partial)
 		{
 			// First vector element, next load
 			IterateTileElements<
 				CURRENT_BIT,
 				PADDED_EXCHANGE,
 				LOAD + 1,
-				0>::DecodeKeys(cta, tile);
+				0>::DecodeKeys(cta, tile, lane_partial);
 		}
 
 		template <typename Cta, typename Tile>
@@ -229,7 +227,7 @@ struct Tile
 	{
 		// DecodeKeys
 		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile) {}
+		static __device__ __forceinline__ void DecodeKeys(Cta *cta, Tile *tile, LanePartial lane_partial) {}
 
 		// ExtractRanks
 		template <typename Cta, typename Tile>
@@ -249,72 +247,71 @@ struct Tile
 	template <int CURRENT_BIT, int PADDED_EXCHANGE, typename Cta>
 	__device__ __forceinline__ void ScanTile(Cta *cta)
 	{
+		LanePartial lane_partial = (LanePartial)
+			(cta->smem_storage.raking_lanes + threadIdx.x + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_ROW));
+
 		// Initialize lanes
 		#pragma unroll
 		for (int LANE = 0; LANE < SCAN_LANES; LANE++) {
-			cta->raking_grid_details.lane_partial[LANE][0] = 0;
+			lane_partial[LANE][0] = 0;
 		}
 
 		// Decode bins and place keys into grid
-		IterateTileElements<CURRENT_BIT, PADDED_EXCHANGE, 0, 0>::DecodeKeys(cta, this);
-/*
-		// Place partials into raking lanes
-		#pragma unroll
-		for (int LANE = 0; LANE < SCAN_LANES; LANE++) {
-			cta->raking_grid_details.lane_partial[LANE][0] =
-				cta->smem_storage.int_counters[LANE][threadIdx.x];
-		}
-*/
+		IterateTileElements<CURRENT_BIT, PADDED_EXCHANGE, 0, 0>::DecodeKeys(cta, this, lane_partial);
+
 		__syncthreads();
 
 		// Raking multi-scan
 
-		if (threadIdx.x < RAKING_THREADS) {
+		int tid = threadIdx.x & 31;
+		int warp = threadIdx.x >> 5;
+		int other_warp = warp ^ 1;
+		volatile int *warpscan = cta->smem_storage.warpscan[warp][1];
+		volatile int *other_warpscan = cta->smem_storage.warpscan[other_warp][1];
 
-			int tid = threadIdx.x & 31;
-			int warp = threadIdx.x >> 5;
-			int other_warp = warp ^ 1;
-			volatile int *warpscan = cta->smem_storage.warpscan[warp];
+		int *raking_segment =
+			cta->smem_storage.raking_lanes +
+			(threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) +
+			(threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW);
+
+		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
 			// Upsweep scan
 			int raking_partial = util::reduction::SerialReduce<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
-				cta->raking_grid_details.raking_segment);
+				raking_segment);
 
 			// Warpscan
 			int partial = raking_partial;
-			warpscan[16 + tid] = partial;
+			warpscan[tid] = partial;
 
-			warpscan[16 + tid] = partial =
-				partial + warpscan[16 + tid - 1];
-			warpscan[16 + tid] = partial =
-				partial + warpscan[16 + tid - 2];
-			warpscan[16 + tid] = partial =
-				partial + warpscan[16 + tid - 4];
-			warpscan[16 + tid] = partial =
-				partial + warpscan[16 + tid - 8];
-			warpscan[16 + tid] = partial =
-				partial + warpscan[16 + tid - 16];
+			warpscan[tid] = partial =
+				partial + warpscan[tid - 1];
+			warpscan[tid] = partial =
+				partial + warpscan[tid - 2];
+			warpscan[tid] = partial =
+				partial + warpscan[tid - 4];
+			warpscan[tid] = partial =
+				partial + warpscan[tid - 8];
+			warpscan[tid] = partial =
+				partial + warpscan[tid - 16];
 
 			// Restricted barrier
 			util::BAR(RAKING_THREADS);
 
 			// grab own total
-			int total = cta->smem_storage.warpscan[warp][16 + B40C_WARP_THREADS(CUDA_ARCH) - 1];
+			int total = warpscan[B40C_WARP_THREADS(CUDA_ARCH) - 1];
 
 			// Add lower into upper
 			partial = util::SHL_ADD_C(total, 16, partial);
 
 			// Grab other warp's total
-			int other_total = cta->smem_storage.warpscan[other_warp][16 + B40C_WARP_THREADS(CUDA_ARCH) - 1];
+			int other_total = other_warpscan[B40C_WARP_THREADS(CUDA_ARCH) - 1];
 			int shifted_other_total = other_total << 16;
 			if (warp) shifted_other_total += other_total;
 			partial += shifted_other_total;
 
-			// Store exclusive into raking prefixes
-			cta->smem_storage.raking_prefixes[threadIdx.x] = partial - raking_partial;
-
 			util::scan::SerialScan<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
-				cta->raking_grid_details.raking_segment,
+				raking_segment,
 				partial - raking_partial);
 
 		}
@@ -343,9 +340,8 @@ struct Tile
 		{
 			KeyType *linear_keys = (KeyType *) tile->keys;
 
-			linear_keys[ELEMENT] = cta->smem_storage.key_exchange[(ELEMENT * KernelPolicy::THREADS) + threadIdx.x];
+			linear_keys[ELEMENT] = *(cta->smem_storage.key_exchange + (ELEMENT * KernelPolicy::THREADS) + threadIdx.x);
 
-			cta->d_out_keys[(ELEMENT * KernelPolicy::THREADS) + threadIdx.x] = linear_keys[ELEMENT];
 
 /*
 			printf("Thread(%d) key(%d)\n",
@@ -385,24 +381,26 @@ struct Tile
 			const SizeT &guarded_elements)
 		{
 			KeyType *linear_keys = (KeyType *) tile->keys;
+			*(cta->d_out_keys + (ELEMENT * KernelPolicy::THREADS) + threadIdx.x) = linear_keys[ELEMENT];
 
+/*
 			int bin_carry = cta->smem_storage.bin_carry[tile->bins[ELEMENT]];
 			int tile_element = threadIdx.x + (ELEMENT * KernelPolicy::THREADS);
-/*
+
 			printf("\tTid %d scattering key[%d](%d) with bin_carry(%d) to offset %d\n",
 				threadIdx.x,
 				ELEMENT,
 				linear_keys[ELEMENT],
 				bin_carry,
 				threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + bin_carry);
-*/
+
 			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
 				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 					linear_keys[ELEMENT],
 					cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + bin_carry);
 			}
-
+*/
 			IterateElements<ELEMENT + 1>::ScatterKeysToGlobal(cta, tile, guarded_elements);
 		}
 	};
@@ -464,50 +462,48 @@ struct Tile
 			// Scan tile (computing padded exchange offsets)
 			tile->template ScanTile<KernelPolicy::CURRENT_BIT, true>(cta);
 
-			__syncthreads();
-
 			// Scatter keys to smem by local rank (strided)
+			char *exchange = (char *) cta->smem_storage.key_exchange;
+
 			#pragma unroll
 			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
 				#pragma unroll
 				for (int VEC = 0; VEC < LOAD_VEC_SIZE; VEC++) {
-					cta->smem_storage.key_exchange[tile->prefix[LOAD][VEC]] = tile->keys[LOAD][VEC];
+					KeyType* loc = (KeyType*)(exchange + tile->prefix[LOAD][VEC]);
+					*loc = tile->keys[LOAD][VEC];
 				}
 			}
 
 			__syncthreads();
+
+			int gather_base = (threadIdx.x * LOAD_VEC_SIZE) +
+				((threadIdx.x * LOAD_VEC_SIZE) >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE));
 
 			// Gather keys from smem (strided)
 			#pragma unroll
 			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
 
+				const int LOAD_IDX = LOAD * LOAD_VEC_SIZE * KernelPolicy::THREADS;
+				const int LOAD_OFFSET = LOAD_IDX + (LOAD_IDX >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE));
+
 				#pragma unroll
 				for (int VEC = 0; VEC < LOAD_VEC_SIZE; VEC++) {
 
-					const int LOAD_IDX = LOAD * LOAD_VEC_SIZE * KernelPolicy::THREADS;
-					const int LOAD_OFFSET = LOAD_IDX + (LOAD_IDX >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE));
-
-					tile->keys[LOAD][VEC] = cta->smem_storage.key_exchange[
-						(threadIdx.x * LOAD_VEC_SIZE) +
-						((threadIdx.x * LOAD_VEC_SIZE) >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE)) +
-						LOAD_OFFSET +
-						VEC];
+					tile->keys[LOAD][VEC] = *(cta->smem_storage.key_exchange +
+						LOAD_OFFSET + VEC + gather_base);
 				}
 			}
 
-			__syncthreads();
-
 			// Scan tile (no padded exchange offsets)
 			tile->template ScanTile<KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS, false>(cta);
-
-			__syncthreads();
 
 			// Scatter keys to smem by local rank (strided)
 			#pragma unroll
 			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
 				#pragma unroll
 				for (int VEC = 0; VEC < LOAD_VEC_SIZE; VEC++) {
-					cta->smem_storage.key_exchange[tile->prefix[LOAD][VEC]] = tile->keys[LOAD][VEC];
+					KeyType* loc = (KeyType*)(exchange + tile->prefix[LOAD][VEC]);
+					*loc = tile->keys[LOAD][VEC];
 				}
 			}
 
@@ -515,7 +511,6 @@ struct Tile
 
 			// Gather keys linearly from smem (also saves off bin in/exclusives)
 			IterateElements<0>::GatherDecodeKeys(cta, tile);
-
 /*
 			__syncthreads();
 
@@ -542,10 +537,10 @@ struct Tile
 			}
 
 			__syncthreads();
-
+*/
 			// Scatter keys to global bin partitions
 			IterateElements<0>::ScatterKeysToGlobal(cta, tile, guarded_elements);
-*/
+
 		}
 	};
 
