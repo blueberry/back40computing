@@ -102,6 +102,7 @@ struct Cta
 			d_out_values(d_out_values),
 			raking_grid_details(smem_storage.raking_lanes)
 	{
+/*
 		if (threadIdx.x < KernelPolicy::BINS) {
 
 			// Read bin_carry in parallel
@@ -109,7 +110,7 @@ struct Cta
 
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
 		}
-
+*/
 		// Initialize warpscan identity regions
 		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
 			smem_storage.warpscan[0][threadIdx.x] = 0;
@@ -144,11 +145,11 @@ struct Cta
 		SizeT pack_offset = smem_storage.packed_offset;
 
 		// Process full tiles of tile_elements
-		while (pack_offset < smem_storage.packed_offset_limit) {
+//		while (pack_offset < smem_storage.packed_offset_limit) {
 
 			ProcessTile(pack_offset);
 			pack_offset += (KernelPolicy::TILE_ELEMENTS / KernelPolicy::PACK_SIZE);
-		}
+//		}
 
 /*
 		// Clean up last partial tile with guarded-io

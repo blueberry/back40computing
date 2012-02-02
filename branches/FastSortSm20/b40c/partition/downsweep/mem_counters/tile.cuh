@@ -85,6 +85,11 @@ struct Tile
 		LOG_SCAN_LANES				= KernelPolicy::LOG_SCAN_LANES_PER_TILE,
 		SCAN_LANES					= KernelPolicy::SCAN_LANES_PER_TILE,
 
+		LOG_SUB_COUNTERS			= KernelPolicy::LOG_SCAN_BINS - LOG_SCAN_LANES,
+		SUB_COUNTERS				= 1 << LOG_SUB_COUNTERS,
+
+		LOG_SIZEOF_SUB_COUNTER		= util::Log2<sizeof(int) / sizeof(short)>::VALUE,		// two bytes per sub-counter
+
 		LOG_PACKS_PER_LOAD			= KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE,
 		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
@@ -111,8 +116,7 @@ struct Tile
 	ValueType 	values[TILE_ELEMENTS_PER_THREAD];
 
 	short 		prefix[LOADS_PER_TILE][LOAD_VEC_SIZE];
-	int		 	sub_counter[LOADS_PER_TILE][LOAD_VEC_SIZE];
-	int		 	lane[LOADS_PER_TILE][LOAD_VEC_SIZE];
+	short*		counter[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 
 
@@ -131,31 +135,24 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta,	Tile *tile)
 		{
-			tile->sub_counter[LOAD][VEC] = util::BFE(
+
+			int sub_counter = util::BFE(
 				tile->keys[LOAD][VEC],
 				CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS - 1,
 				1);
 
-			tile->lane[LOAD][VEC] = util::BFE(
+			int lane = util::BFE(
 				tile->keys[LOAD][VEC],
 				CURRENT_BIT,
 				KernelPolicy::LOG_SCAN_BINS - 1);
 
+			tile->counter[LOAD][VEC] = ((short *) cta->raking_grid_details.lane_partial[lane]) + sub_counter;
+
 			// Load thread-exclusive prefix
-			tile->prefix[LOAD][VEC] =
-				cta->smem_storage.short_counters[tile->lane[LOAD][VEC]][threadIdx.x][tile->sub_counter[LOAD][VEC]];
-/*
-			printf("Thread(%d) key(%d) bin(%d) sub_counter(%d) lane(%d) prefix(%d)\n",
-				threadIdx.x,
-				tile->keys[LOAD][VEC],
-				util::BFE(tile->keys[LOAD][VEC], CURRENT_BIT, KernelPolicy::LOG_SCAN_BINS),
-				tile->sub_counter[LOAD][VEC],
-				tile->lane[LOAD][VEC],
-				tile->prefix[LOAD][VEC]);
-*/
+			tile->prefix[LOAD][VEC] = *tile->counter[LOAD][VEC];
+
 			// Store inclusive prefix
-			cta->smem_storage.short_counters[tile->lane[LOAD][VEC]][threadIdx.x][tile->sub_counter[LOAD][VEC]] =
-				tile->prefix[LOAD][VEC] + 1;
+			*tile->counter[LOAD][VEC] = tile->prefix[LOAD][VEC] + 1;
 
 			// Next vector element
 			IterateTileElements<
@@ -170,8 +167,7 @@ struct Tile
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile)
 		{
 			// Add in CTA exclusive prefix
-			tile->prefix[LOAD][VEC] +=
-				cta->smem_storage.short_counters[tile->lane[LOAD][VEC]][threadIdx.x][tile->sub_counter[LOAD][VEC]];
+			tile->prefix[LOAD][VEC] += *tile->counter[LOAD][VEC];
 
 			if (PADDED_EXCHANGE) {
 				tile->prefix[LOAD][VEC] = util::SHR_ADD(tile->prefix[LOAD][VEC], 5, tile->prefix[LOAD][VEC]);
@@ -256,19 +252,19 @@ struct Tile
 		// Initialize lanes
 		#pragma unroll
 		for (int LANE = 0; LANE < SCAN_LANES; LANE++) {
-			cta->smem_storage.int_counters[LANE][threadIdx.x] = 0;
+			cta->raking_grid_details.lane_partial[LANE][0] = 0;
 		}
 
 		// Decode bins and place keys into grid
 		IterateTileElements<CURRENT_BIT, PADDED_EXCHANGE, 0, 0>::DecodeKeys(cta, this);
-
+/*
 		// Place partials into raking lanes
 		#pragma unroll
 		for (int LANE = 0; LANE < SCAN_LANES; LANE++) {
 			cta->raking_grid_details.lane_partial[LANE][0] =
 				cta->smem_storage.int_counters[LANE][threadIdx.x];
 		}
-
+*/
 		__syncthreads();
 
 		// Raking multi-scan
@@ -281,9 +277,8 @@ struct Tile
 			volatile int *warpscan = cta->smem_storage.warpscan[warp];
 
 			// Upsweep scan
-			int raking_partial = util::scan::SerialScan<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
-				cta->raking_grid_details.raking_segment,
-				0);
+			int raking_partial = util::reduction::SerialReduce<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
+				cta->raking_grid_details.raking_segment);
 
 			// Warpscan
 			int partial = raking_partial;
@@ -317,23 +312,14 @@ struct Tile
 
 			// Store exclusive into raking prefixes
 			cta->smem_storage.raking_prefixes[threadIdx.x] = partial - raking_partial;
+
+			util::scan::SerialScan<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
+				cta->raking_grid_details.raking_segment,
+				partial - raking_partial);
+
 		}
 
 		__syncthreads();
-
-		// Extract aggregates from lanes
-		int base_raking_idx = threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG;
-
-		#pragma unroll
-		for (int LANE = 0; LANE < SCAN_LANES; LANE++) {
-
-			int raking_idx = (LANE * KernelPolicy::RakingGrid::RAKING_THREADS_PER_LANE) + base_raking_idx;
-
-			cta->smem_storage.int_counters[LANE][threadIdx.x] =
-				cta->raking_grid_details.lane_partial[LANE][0] +
-				cta->smem_storage.raking_prefixes[raking_idx];
-
-		}
 
 		// Extract the local ranks of each key
 		IterateTileElements<CURRENT_BIT, PADDED_EXCHANGE, 0, 0>::ComputeRanks(cta, this);
@@ -357,17 +343,15 @@ struct Tile
 		{
 			KeyType *linear_keys = (KeyType *) tile->keys;
 
-			KeyType *gather = cta->smem_storage.key_exchange + (ELEMENT * KernelPolicy::THREADS) + threadIdx.x;
+			linear_keys[ELEMENT] = cta->smem_storage.key_exchange[(ELEMENT * KernelPolicy::THREADS) + threadIdx.x];
 
-			linear_keys[ELEMENT] = *(gather);
+			cta->d_out_keys[(ELEMENT * KernelPolicy::THREADS) + threadIdx.x] = linear_keys[ELEMENT];
 
 /*
 			printf("Thread(%d) key(%d)\n",
 				threadIdx.x,
 				linear_keys[ELEMENT]);
 */
-
-			cta->d_out_keys[(ELEMENT * KernelPolicy::THREADS) + threadIdx.x] = linear_keys[ELEMENT];
 
 /*
 			KeyType next_key = *(gather + 1);
