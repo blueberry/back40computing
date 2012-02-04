@@ -537,6 +537,29 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 		typename Policy::DownsweepKernelPtr		DownsweepKernel = Policy::template DownsweepKernel<PassPolicy>();
 
 		// Max CTA occupancy for the actual target device
+		int upsweep_cta_occupancy, downsweep_cta_occupancy;
+		if (retval = MaxCtaOccupancy(
+			upsweep_cta_occupancy,
+			UpsweepKernel,
+			Upsweep::THREADS)) break;
+		if (retval = MaxCtaOccupancy(
+			downsweep_cta_occupancy,
+			DownsweepKernel,
+			Downsweep::THREADS)) break;
+
+		if (ENACTOR_DEBUG) printf("Upsweep occupancy %d, downsweep occupancy %d\n", upsweep_cta_occupancy, downsweep_cta_occupancy);
+
+		int sweep_grid_size = upsweep_cta_occupancy * downsweep_cta_occupancy * cuda_props.device_props.multiProcessorCount;
+		int grains = (detail.num_elements + Upsweep::SCHEDULE_GRANULARITY - 1) / Upsweep::SCHEDULE_GRANULARITY;
+		if (sweep_grid_size > grains) {
+			sweep_grid_size = grains;
+		}
+
+		if ((detail.max_grid_size > 0) && (sweep_grid_size > detail.max_grid_size)) {
+			sweep_grid_size = detail.max_grid_size;
+		}
+
+/*
 		int max_cta_occupancy;
 		if (retval = MaxCtaOccupancy(
 			max_cta_occupancy,
@@ -552,6 +575,10 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 			max_cta_occupancy,
 			detail.num_elements,
 			detail.max_grid_size);
+*/
+
+
+
 
 		// Compute spine elements: BIN elements per CTA, rounded
 		// up to nearest spine tile size
