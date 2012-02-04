@@ -181,10 +181,13 @@ protected:
 			if (retval = util::B40CPerror(cudaFuncGetAttributes(&kernel_attrs, Kernel),
 				"EnactorBase cudaFuncGetAttributes kernel_attrs failed", __FILE__, __LINE__)) break;
 
+			// 128B aligned sections
+			int shared = ((kernel_attrs.sharedSizeBytes + 128 - 1) / 128) * 128;
+
 			max_cta_occupancy = B40C_MIN(
 				B40C_SM_CTAS(cuda_props.device_sm_version),
 				B40C_MIN(
-					B40C_SMEM_BYTES(cuda_props.device_sm_version) / (kernel_attrs.sharedSizeBytes + 1),
+					B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared,
 					B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads)));
 
 		} while (0);
