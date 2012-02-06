@@ -155,6 +155,8 @@ int main(int argc, char** argv)
     int 			iterations = 0;
 
     bool verbose = args.CheckCmdLineFlag("v");
+    bool random = args.CheckCmdLineFlag("random");
+    bool zeros = args.CheckCmdLineFlag("zeros");
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
@@ -173,9 +175,13 @@ int main(int argc, char** argv)
 
 	for (size_t i = 0; i < num_elements; ++i) {
 
-//		h_keys[i] = r(mt19937);
-//		b40c::util::RandomBits(h_keys[i], 0, Policy::RADIX_BITS);
-		h_keys[i] = i & ((1 << Policy::RADIX_BITS) - 1);
+
+		h_keys[i] = (random) ?
+			r(mt19937) :
+			(zeros) ?
+				0 :
+				i & ((1 << Policy::RADIX_BITS) - 1);
+
 
 		h_reference_keys[i] = h_keys[i];
 

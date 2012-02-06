@@ -187,7 +187,7 @@ struct Tile
 					0,
 					0x4140);
 
-			if (shift_bytes) packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
+			packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
 			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
@@ -204,7 +204,7 @@ struct Tile
 					0,
 					0x4342);
 
-			if (shift_bytes) packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
+			packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
 			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
@@ -254,7 +254,7 @@ struct Tile
 					0,
 					0x4140);
 
-			if (shift_bytes) packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
+			packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
 			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 0] = packed_scatter & 0x0000ffff;
@@ -271,7 +271,7 @@ struct Tile
 					0,
 					0x4342);
 
-			if (shift_bytes) packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
+			packed_scatter = util::SHR_ADD(0xffe0ffe0 & packed_scatter, 5, packed_scatter);
 			packed_scatter <<= 2;
 
 			tile->local_ranks[LOAD][VEC + 2] = packed_scatter & 0x0000ffff;
@@ -638,12 +638,12 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void GatherDecodeKeys(Cta *cta, Tile *tile)
 		{
+			const int LOAD_OFFSET = (ELEMENT * KernelPolicy::THREADS) + ((ELEMENT * KernelPolicy::THREADS) >> 5);
+
 			KeyType *linear_keys = (KeyType *) tile->keys;
 
-			KeyType *gather = cta->smem_storage.key_exchange + threadIdx.x + (ELEMENT * KernelPolicy::THREADS);
-
-			linear_keys[ELEMENT] = *(gather);
-			KeyType next_key = *(gather + 1);
+			linear_keys[ELEMENT] = cta->offset[LOAD_OFFSET];
+			KeyType next_key = cta->next_offset[LOAD_OFFSET];
 
 			tile->bins[ELEMENT] = util::BFE(
 				linear_keys[ELEMENT],
@@ -757,7 +757,7 @@ struct Tile
 
 			__syncthreads();
 
-			// Scatter keys to smem by local rank (strided)
+			// Scatter keys to smem by local rank
 			#pragma unroll
 			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
 
@@ -770,7 +770,7 @@ struct Tile
 					*ptr_key = tile->keys[LOAD][VEC];
 				}
 			}
-
+/*
 			__syncthreads();
 
 			// Gather keys from smem (strided)
@@ -794,11 +794,11 @@ struct Tile
 			__syncthreads();
 
 			// Scan tile
-			tile->ScanTile(cta, KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS, false);
+			tile->ScanTile(cta, KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS, true);
 
 			__syncthreads();
 
-			// Scatter keys to smem by local rank (strided)
+			// Scatter keys to smem by local rank
 			#pragma unroll
 			for (int LOAD = 0; LOAD < KernelPolicy::LOADS_PER_TILE; LOAD++) {
 
@@ -811,7 +811,7 @@ struct Tile
 					*ptr_key = tile->keys[LOAD][VEC];
 				}
 			}
-
+*/
 			__syncthreads();
 
 			// Gather keys linearly from smem (also saves off bin in/exclusives)

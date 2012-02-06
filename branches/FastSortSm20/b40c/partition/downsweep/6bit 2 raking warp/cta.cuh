@@ -70,16 +70,19 @@ struct Cta
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
 	// Input and output device pointers
-	KeyType								*&d_in_keys;
-	KeyType								*&d_out_keys;
+	KeyType								*d_in_keys;
+	KeyType								*d_out_keys;
 
-	ValueType							*&d_in_values;
-	ValueType							*&d_out_values;
+	ValueType							*d_in_values;
+	ValueType							*d_out_values;
 
 	// Operational details for scan grids
 	ByteGridDetails 					byte_grid_details;
 
 	SizeT								my_bin_carry;
+
+	KeyType 							*offset;
+	KeyType 							*next_offset;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -90,18 +93,21 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*&d_in_keys,
-		KeyType 		*&d_out_keys,
-		ValueType 		*&d_in_values,
-		ValueType 		*&d_out_values,
-		SizeT 			*&d_spine) :
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT 			*d_spine) :
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
-			byte_grid_details(smem_storage.byte_raking_lanes)
+			byte_grid_details(smem_storage.byte_raking_lanes),
+			offset(smem_storage.key_exchange + threadIdx.x + (threadIdx.x >> 5)),
+			next_offset(smem_storage.key_exchange + (threadIdx.x + 1) + ((threadIdx.x + 1) >> 5))
 	{
+
 		if (threadIdx.x < KernelPolicy::BINS) {
 
 			// Read bin_carry in parallel
