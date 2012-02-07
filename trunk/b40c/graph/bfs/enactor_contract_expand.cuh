@@ -332,6 +332,9 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int								max_grid_size = 0)
 	{
+    	typedef typename CsrProblem::VertexId 	VertexId;
+    	typedef typename CsrProblem::SizeT 		SizeT;
+
     	// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
@@ -341,7 +344,7 @@ public:
 				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
-				8,						// CTA_OCCUPANCY
+				(sizeof(VertexId) > 4) ? 7 : 8,		// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
@@ -354,7 +357,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				128 * 3,				// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull))
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -383,7 +386,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				256 * 3,				// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull))
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -516,6 +519,9 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int								max_grid_size = 0)
 	{
+    	typedef typename CsrProblem::VertexId 	VertexId;
+    	typedef typename CsrProblem::SizeT 		SizeT;
+
     	// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
@@ -525,7 +531,7 @@ public:
 				200,					// CUDA_ARCH
 				INSTRUMENT, 			// INSTRUMENT
 				0, 						// SATURATION_QUIT
-				8,						// CTA_OCCUPANCY
+				(sizeof(VertexId) > 4) ? 7 : 8,		// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
@@ -538,7 +544,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				128 * 3,				// BITMASK_CULL_THRESHOLD
+				128 * 3,				// END_BITMASK_CULL
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -567,7 +573,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				256 * 3,				// BITMASK_CULL_THRESHOLD
+				256 * 3,				// END_BITMASK_CULL
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 

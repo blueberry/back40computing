@@ -206,7 +206,7 @@ struct Dispatch
 	typedef typename KernelPolicy::VisitedMask VisitedMask;
 
 	/**
-	 * Fused kernel functionality
+	 * fused-iteration functionality
 	 */
 	static __device__ __forceinline__ void KernelGlobalBarrier(
 		VertexId 					&iteration,
@@ -267,7 +267,7 @@ struct Dispatch<KernelPolicy, __B40C_CUDA_ARCH__>
 	typedef typename KernelPolicy::VisitedMask VisitedMask;
 
 	/**
-	 * Fused kernel functionality
+	 * fused-iteration functionality
 	 */
 	static __device__ __forceinline__ void KernelGlobalBarrier(
 		VertexId 					&iteration,

@@ -30,10 +30,15 @@
 
 #include <b40c/graph/bfs/problem_type.cuh>
 #include <b40c/graph/bfs/enactor_base.cuh>
+
 #include <b40c/graph/bfs/two_phase/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
+
+#include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/filter_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/filter_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 
@@ -66,7 +71,9 @@ protected:
 	 * CTA duty kernel stats
 	 */
 	util::KernelRuntimeStatsLifetime expand_kernel_stats;
+	util::KernelRuntimeStatsLifetime filter_kernel_stats;
 	util::KernelRuntimeStatsLifetime contract_kernel_stats;
+
 	unsigned long long 		total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 		total_lifetimes;		// Total time elapsed by each cta
 	unsigned long long 		total_queued;
@@ -108,7 +115,8 @@ protected:
 	cudaError_t Setup(
 		CsrProblem &csr_problem,
 		int expand_grid_size,
-		int contract_grid_size = 0)
+		int contract_grid_size,
+		int filter_grid_size)
 	{
 		typedef typename CsrProblem::SizeT 			SizeT;
 		typedef typename CsrProblem::VertexId 		VertexId;
@@ -154,6 +162,7 @@ protected:
 
 			// Make sure our runtime stats are initialized
 			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = filter_kernel_stats.Setup(filter_grid_size)) break;
 			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Reset statistics
@@ -199,7 +208,7 @@ public:
 	 * Constructor
 	 */
 	EnactorTwoPhase(bool DEBUG = false) :
-		EnactorBase(MIXED_FRONTIERS, DEBUG),
+		EnactorBase(EDGE_FRONTIERS, DEBUG),
 		iteration(NULL),
 		d_iteration(NULL),
 		total_queued(0),
@@ -272,8 +281,10 @@ public:
 			int occupancy = KernelPolicy::CTA_OCCUPANCY;
 			int grid_size = MaxGridSize(occupancy, max_grid_size);
 
-			if (DEBUG) printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
-			fflush(stdout);
+			if (DEBUG) {
+				printf("DEBUG: BFS occupancy %d, grid size %d\n", occupancy, grid_size);
+				fflush(stdout);
+			}
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
@@ -344,7 +355,7 @@ public:
  	{
  		if (this->cuda_props.device_sm_version >= 200) {
 
- 			// Fused two-phase tuning configuration
+ 			// Fused-iteration two-phase tuning configuration
  			typedef two_phase::KernelPolicy<
  				typename CsrProblem::ProblemType,
  				200,					// CUDA_ARCH
@@ -365,7 +376,7 @@ public:
  				2,						// CONTRACT_LOG_LOADS_PER_TILE
  				5,						// CONTRACT_LOG_RAKING_THREADS
  				false,					// CONTRACT_WORK_STEALING
-				3,						// CONTRACT_BITMASK_CULL_THRESHOLD
+				3,						// CONTRACT_END_BITMASK_CULL
 				6, 						// CONTRACT_LOG_SCHEDULE_GRANULARITY
 
  				0,						// EXPAND_LOG_LOAD_VEC_SIZE
@@ -395,6 +406,7 @@ public:
 	 */
     template <
 		typename ExpandPolicy,
+		typename FilterPolicy,
 		typename ContractPolicy,
 		typename CsrProblem>
 	cudaError_t EnactIterativeSearch(
@@ -413,62 +425,70 @@ public:
 			int expand_occupancy 			= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_occupancy, max_grid_size);
 
+			int filter_occupancy			= FilterPolicy::CTA_OCCUPANCY;
+			int filter_grid_size 			= MaxGridSize(filter_occupancy, max_grid_size);
+
 			int contract_occupancy			= ContractPolicy::CTA_OCCUPANCY;
 			int contract_grid_size 			= MaxGridSize(contract_occupancy, max_grid_size);
 
 			if (DEBUG) {
 				printf("BFS expand occupancy %d, level-grid size %d\n",
 					expand_occupancy, expand_grid_size);
+				printf("BFS filter occupancy %d, level-grid size %d\n",
+					filter_occupancy, filter_grid_size);
 				printf("BFS contract occupancy %d, level-grid size %d\n",
 					contract_occupancy, contract_grid_size);
+				printf("Iteration, Filter queue, Contraction queue, Expansion queue\n");
+				printf("0, 0");
 			}
 
 			// Lazy initialization
-			if (retval = Setup(csr_problem, expand_grid_size, contract_grid_size)) break;
+			if (retval = Setup(csr_problem, expand_grid_size, filter_grid_size, contract_grid_size)) break;
 
 			// Single-gpu graph slice
 			typename CsrProblem::GraphSlice *graph_slice = csr_problem.graph_slices[0];
 
 			SizeT queue_length;
-			VertexId queue_index = 0;	// Work stealing/queue index
+			VertexId queue_index 		= 0;					// Work stealing/queue index
+			int selector 				= 0;
 
-			if (INSTRUMENT && DEBUG) {
-				printf("Contraction queue, Expansion queue\n");
-				printf("1, ");
-			}
-
+			// Step through BFS iterations
 			while (done[0] < 0) {
 
+				//
 				// Contraction
+				//
+
 				two_phase::contract_atomic::Kernel<ContractPolicy>
 					<<<contract_grid_size, ContractPolicy::THREADS>>>(
 						src,
 						iteration[0],
-						0,												// num_elements (unused: we obtain this from device-side counters instead)
-						queue_index,
-						queue_index,									// also serves as steal_index
-						1,												// number of GPUs
+						0,														// num_elements (unused: we obtain this from device-side counters instead)
+						queue_index,											// queue counter index
+						queue_index,											// steal counter index
+						1,														// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[1],			// edge frontier in
-						graph_slice->frontier_queues.d_keys[0],			// vertex frontier out
-						graph_slice->frontier_queues.d_values[1],		// predecessor in
+						graph_slice->frontier_queues.d_keys[selector ^ 1],		// filtered edge frontier in
+						graph_slice->frontier_queues.d_keys[selector],			// vertex frontier out
+						graph_slice->frontier_queues.d_values[selector ^ 1],	// predecessor in
 						graph_slice->d_labels,
 						graph_slice->d_visited_mask,
 						this->work_progress,
-						graph_slice->frontier_elements[1],				// max edge frontier vertices
-						graph_slice->frontier_elements[0],				// max vertex frontier vertices
+						graph_slice->frontier_elements[selector ^ 1],			// max filtered edge frontier vertices
+						graph_slice->frontier_elements[selector],				// max vertex frontier vertices
 						this->contract_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+				cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
 
 				queue_index++;
+				selector ^= 1;
 
-				if (INSTRUMENT) {
-					// Get contraction queue length
+				if (DEBUG) {
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-					if (DEBUG) printf("%lld, ", (long long) queue_length);
-
-					// Get contract downsweep stats (i.e., duty %)
+					printf(", %lld", (long long) queue_length);
+				}
+				if (INSTRUMENT) {
 					if (retval = contract_kernel_stats.Accumulate(
 						contract_grid_size,
 						total_runtimes,
@@ -487,40 +507,85 @@ public:
 				// Check if done
 				if (done[0] == 0) break;
 
+				//
 				// Expansion
+				//
+
 				two_phase::expand_atomic::Kernel<ExpandPolicy>
 					<<<expand_grid_size, ExpandPolicy::THREADS>>>(
-						queue_index,
-						queue_index,									// also serves as steal_index
-						1,												// number of GPUs
+						queue_index,											// queue counter index
+						queue_index,											// steal counter index
+						1,														// number of GPUs
 						d_done,
-						graph_slice->frontier_queues.d_keys[0],			// vertex frontier in
-						graph_slice->frontier_queues.d_keys[1],			// edge frontier out
-						graph_slice->frontier_queues.d_values[1],		// predecessor out
+						graph_slice->frontier_queues.d_keys[selector ^ 1],		// vertex frontier in
+						graph_slice->frontier_queues.d_keys[selector],			// edge frontier out
+						graph_slice->frontier_queues.d_values[selector],		// predecessor out
 						graph_slice->d_column_indices,
 						graph_slice->d_row_offsets,
 						this->work_progress,
-						graph_slice->frontier_elements[0],				// max vertex frontier vertices
-						graph_slice->frontier_elements[1],				// max edge frontier vertices
+						graph_slice->frontier_elements[selector ^ 1],			// max vertex frontier vertices
+						graph_slice->frontier_elements[selector],				// max edge frontier vertices
 						this->expand_kernel_stats);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+				cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
 
 				queue_index++;
+				selector ^= 1;
 				iteration[0]++;
 
-				if (INSTRUMENT) {
-					// Get expansion queue length
+				if (INSTRUMENT || DEBUG) {
 					if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 					total_queued += queue_length;
-					if (DEBUG) printf("%lld\n", (long long) queue_length);
+					if (DEBUG) printf(", %lld", (long long) queue_length);
+					if (INSTRUMENT) {
+						if (retval = expand_kernel_stats.Accumulate(
+							expand_grid_size,
+							total_runtimes,
+							total_lifetimes)) break;
+					}
+				}
 
-					// Get expand stats (i.e., duty %)
-					if (retval = expand_kernel_stats.Accumulate(
-						expand_grid_size,
+				if (DEBUG) printf("\n%lld", (long long) iteration[0]);
+
+				// Check if done
+				if (done[0] == 0) break;
+
+				//
+				// Filter
+				//
+
+				two_phase::filter_atomic::Kernel<FilterPolicy>
+					<<<filter_grid_size, FilterPolicy::THREADS>>>(
+						queue_index,											// queue counter index
+						queue_index,											// steal counter index
+						d_done,
+						graph_slice->frontier_queues.d_keys[selector ^ 1],		// edge frontier in
+						graph_slice->frontier_queues.d_keys[selector],			// vertex frontier out
+						graph_slice->frontier_queues.d_values[selector ^ 1],	// predecessor in
+						graph_slice->frontier_queues.d_values[selector],		// predecessor out
+						graph_slice->d_visited_mask,
+						this->work_progress,
+						graph_slice->frontier_elements[selector ^ 1],			// max edge frontier vertices
+						graph_slice->frontier_elements[selector],				// max vertex frontier vertices
+						this->filter_kernel_stats);
+
+				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "filter_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+
+				queue_index++;
+				selector ^= 1;
+
+				if (DEBUG) {
+					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
+					printf(", %lld", (long long) queue_length);
+				}
+				if (INSTRUMENT) {
+					if (retval = filter_kernel_stats.Accumulate(
+						filter_grid_size,
 						total_runtimes,
 						total_lifetimes)) break;
 				}
+
 			}
 			if (retval) break;
 
@@ -533,6 +598,8 @@ public:
 			}
 
 		} while(0);
+
+		if (DEBUG) printf("\n");
 
 		return retval;
 	}
@@ -550,7 +617,10 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
-    	// GF100
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::SizeT 			SizeT;
+
+		// GF100
 		if (this->cuda_props.device_sm_version >= 200) {
 
 			// Expansion kernel config
@@ -571,8 +641,25 @@ public:
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				6>						// LOG_SCHEDULE_GRANULARITY
+				7>						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
+
+			// Filter kernel config
+			typedef two_phase::filter_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,					// CUDA_ARCH
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				9> 						// LOG_SCHEDULE_GRANULARITY
+					FilterPolicy;
 
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
@@ -584,16 +671,16 @@ public:
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				1,						// LOG_LOAD_VEC_SIZE
-				2,						// LOG_LOADS_PER_TILE
+				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				0,						// BITMASK_CULL_THRESHOLD
-				6> 						// LOG_SCHEDULE_GRANULARITY
+				0,						// END_BITMASK_CULL (never cull b/c filter does the bitmask culling)
+				8> 						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
+			return EnactIterativeSearch<ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 		}
 
@@ -621,6 +708,23 @@ public:
 				6>						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
 
+			// Filter kernel config
+			typedef two_phase::filter_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,					// CUDA_ARCH
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				8> 						// LOG_SCHEDULE_GRANULARITY
+					FilterPolicy;
+
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -636,11 +740,11 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				0,						// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull b/c filter does the bitmask culling)
 				6>						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactIterativeSearch<ExpandPolicy, ContractPolicy>(
+			return EnactIterativeSearch<ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 
 		}

@@ -34,6 +34,8 @@
 #include <b40c/graph/bfs/contract_expand_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/expand_atomic/kernel_policy.cuh>
+#include <b40c/graph/bfs/two_phase/filter_atomic/kernel.cuh>
+#include <b40c/graph/bfs/two_phase/filter_atomic/kernel_policy.cuh>
 #include <b40c/graph/bfs/two_phase/contract_atomic/kernel.cuh>
 #include <b40c/graph/bfs/two_phase/contract_atomic/kernel_policy.cuh>
 
@@ -63,7 +65,7 @@ protected:
 
 	/**
 	 * Mechanism for implementing software global barriers from within
-	 * a fused grid invocation
+	 * a fused-iteration kernel invocation
 	 */
 	util::GlobalBarrierLifetime global_barrier;
 
@@ -72,6 +74,7 @@ protected:
 	 */
 	util::KernelRuntimeStatsLifetime 	fused_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	expand_kernel_stats;
+	util::KernelRuntimeStatsLifetime 	filter_kernel_stats;
 	util::KernelRuntimeStatsLifetime 	contract_kernel_stats;
 	unsigned long long 					total_runtimes;			// Total time "worked" by each cta
 	unsigned long long 					total_lifetimes;		// Total time elapsed by each cta
@@ -88,7 +91,7 @@ protected:
 	cudaEvent_t			throttle_event;
 
 	/**
-	 * Iteration output (from fused kernels)
+	 * Iteration output (from fused-iterations)
 	 */
 	long long 			*d_iteration;
 	long long 			h_iteration;
@@ -108,6 +111,7 @@ protected:
 		CsrProblem &csr_problem,
 		int fused_grid_size,
 		int expand_grid_size,
+		int filter_grid_size,
 		int contract_grid_size)
     {
 		typedef typename CsrProblem::SizeT 			SizeT;
@@ -140,6 +144,7 @@ protected:
 			// Make sure our runtime stats are good
 			if (retval = fused_kernel_stats.Setup(fused_grid_size)) break;
 			if (retval = expand_kernel_stats.Setup(expand_grid_size)) break;
+			if (retval = filter_kernel_stats.Setup(filter_grid_size)) break;
 			if (retval = contract_kernel_stats.Setup(contract_grid_size)) break;
 
 			// Make sure barriers are initialized
@@ -257,6 +262,7 @@ public:
     template <
     	typename OnePhasePolicy,
     	typename ExpandPolicy,
+    	typename FilterPolicy,
     	typename ContractPolicy,
     	typename CsrProblem>
 	cudaError_t EnactSearch(
@@ -279,6 +285,9 @@ public:
 			int expand_min_occupancy 		= ExpandPolicy::CTA_OCCUPANCY;
 			int expand_grid_size 			= MaxGridSize(expand_min_occupancy, max_grid_size);
 
+			int filter_occupancy			= FilterPolicy::CTA_OCCUPANCY;
+			int filter_grid_size 			= MaxGridSize(filter_occupancy, max_grid_size);
+
 			int contract_min_occupancy		= ContractPolicy::CTA_OCCUPANCY;
 			int contract_grid_size 			= MaxGridSize(contract_min_occupancy, max_grid_size);
 
@@ -287,12 +296,13 @@ public:
 					fused_min_occupancy, fused_grid_size);
 				printf("BFS expand min occupancy %d, level-grid size %d\n",
 					expand_min_occupancy, expand_grid_size);
+				printf("BFS filter occupancy %d, level-grid size %d\n",
+					filter_occupancy, filter_grid_size);
 				printf("BFS contract min occupancy %d, level-grid size %d\n",
 					contract_min_occupancy, contract_grid_size);
-				if (INSTRUMENT) {
-					printf("Iteration, Queue Size\n");
-					printf("1, 1\n");
-				}
+
+				printf("Iteration, Filter queue, Contraction queue, Expansion queue\n");
+				printf("0, 0, 0, 1\n");
 			}
 
 			// Lazy initialization
@@ -300,6 +310,7 @@ public:
 				csr_problem,
 				fused_grid_size,
 				expand_grid_size,
+				filter_grid_size,
 				contract_grid_size)) break;
 
 			// Single-gpu graph slice
@@ -312,7 +323,7 @@ public:
 
 			while (done[0] != 0) {
 
-				VertexId phase_iteration = iteration;
+				VertexId one_phase_iteration = iteration;
 
 				// Run fused contract-expand kernel
 				contract_expand_atomic::KernelGlobalBarrier<OnePhasePolicy>
@@ -336,6 +347,7 @@ public:
 						(VertexId *) d_iteration);
 
 				if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_expand_atomic::KernelGlobalBarrier failed ", __FILE__, __LINE__))) break;
+				cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
 
 				// Retrieve output iteration
 				if (retval = util::B40CPerror(cudaMemcpy(
@@ -348,37 +360,79 @@ public:
 				// Check if done or just saturated
 				if (iteration < 0) {
 					iteration *= -1;			// saturated
+					done[0] = -1;
 				} else {
 					break;						// done
 				}
 
-				if ((iteration - phase_iteration) & 1) {
+				if ((iteration - one_phase_iteration) & 1) {
 					// An odd number of iterations passed: update selector
 					selector ^= 1;
 				}
 				// Update queue index by the number of elapsed iterations
-				queue_index += (iteration - phase_iteration);
+				queue_index += (iteration - one_phase_iteration);
 
-				if (INSTRUMENT) {
-					// Get queue length
+				if (DEBUG) {
 					if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
-
-					// Get stats
+					printf("\n%lld, , , %lld", (long long) iteration, (long long) queue_length);
+				}
+				if (INSTRUMENT) {
 					if (retval = fused_kernel_stats.Accumulate(
 						fused_grid_size,
 						total_runtimes,
 						total_lifetimes,
 						total_queued)) break;
-
-					if (DEBUG) printf("%lld, %lld\n", (long long) iteration, (long long) queue_length);
 				}
 
 				// Run two-phase until done is not -1
-				done[0] = -1;
-
+				VertexId two_phase_iteration = iteration;
 				while (done[0] < 0) {
 
+					if (DEBUG) printf("\n%lld", (long long) iteration);
+
+					//
+					// Filter
+					//
+
+					two_phase::filter_atomic::Kernel<FilterPolicy>
+						<<<filter_grid_size, FilterPolicy::THREADS>>>(
+							queue_index,											// queue counter index
+							queue_index,											// steal counter index
+							d_done,
+							graph_slice->frontier_queues.d_keys[selector],			// edge frontier in
+							graph_slice->frontier_queues.d_keys[selector ^ 1],		// vertex frontier out
+							graph_slice->frontier_queues.d_values[selector],		// predecessor in
+							graph_slice->frontier_queues.d_values[selector ^ 1],	// predecessor out
+							graph_slice->d_visited_mask,
+							this->work_progress,
+							graph_slice->frontier_elements[selector],				// max edge frontier vertices
+							graph_slice->frontier_elements[selector ^ 1],			// max vertex frontier vertices
+							this->filter_kernel_stats);
+
+					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "filter_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
+
+					queue_index++;
+					selector ^= 1;
+
+					if (DEBUG) {
+						if (retval = work_progress.GetQueueLength(queue_index, queue_length)) break;
+						printf(", %lld", (long long) queue_length);
+					}
+					if (INSTRUMENT) {
+						if (retval = filter_kernel_stats.Accumulate(
+							filter_grid_size,
+							total_runtimes,
+							total_lifetimes)) break;
+					}
+
+					// Check if done
+					if (done[0] == 0) break;
+
+					//
 					// Contraction
+					//
+
 					two_phase::contract_atomic::Kernel<ContractPolicy>
 						<<<contract_grid_size, ContractPolicy::THREADS>>>(
 							src,
@@ -399,63 +453,70 @@ public:
 							contract_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "contract_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
 
 					queue_index++;
+					selector ^= 1;
 
-					if (INSTRUMENT) {
-						// Get contract downsweep stats (i.e., duty %)
+					if (DEBUG) {
 						if (work_progress.GetQueueLength(queue_index, queue_length)) break;
-
-						if (DEBUG) printf("%lld, %lld", (long long) iteration, (long long) queue_length);
-
+						printf(", %lld", (long long) queue_length);
+					}
+					if (INSTRUMENT) {
 						if (contract_kernel_stats.Accumulate(
 							contract_grid_size,
 							total_runtimes,
 							total_lifetimes)) break;
 					}
 
+					// Throttle
+					if ((iteration - two_phase_iteration) & 1) {
+						if (util::B40CPerror(cudaEventSynchronize(throttle_event),
+							"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
+					} else {
+						if (util::B40CPerror(cudaEventRecord(throttle_event),
+							"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
+					}
+					// Check if done
+					if (done[0] == 0) break;
+
+					//
 					// Expansion
+					//
+
 					two_phase::expand_atomic::Kernel<ExpandPolicy>
 						<<<expand_grid_size, ExpandPolicy::THREADS>>>(
-							queue_index,
-							queue_index,											// also serves as steal_index
+							queue_index,											// queue counter index
+							queue_index,											// steal counter index
 							1,														// number of GPUs
 							d_done,
-							graph_slice->frontier_queues.d_keys[selector ^ 1],		// in vertex frontier
-							graph_slice->frontier_queues.d_keys[selector],			// out edge frontier
-							graph_slice->frontier_queues.d_values[selector],		// out predecessors
+							graph_slice->frontier_queues.d_keys[selector],			// in vertex frontier
+							graph_slice->frontier_queues.d_keys[selector ^ 1],		// out edge frontier
+							graph_slice->frontier_queues.d_values[selector ^ 1],	// out predecessors
 							graph_slice->d_column_indices,
 							graph_slice->d_row_offsets,
 							work_progress,
-							graph_slice->frontier_elements[selector ^ 1],			// max in vertices
-							graph_slice->frontier_elements[selector],				// max out vertices
+							graph_slice->frontier_elements[selector],			// max in vertices
+							graph_slice->frontier_elements[selector ^ 1],		// max out vertices
 							expand_kernel_stats);
 
 					if (DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "expand_atomic::Kernel failed ", __FILE__, __LINE__))) break;
+					cudaEventQuery(throttle_event);	// give host memory mapped visibility to GPU updates
 
 					queue_index++;
+					selector ^= 1;
 					iteration++;
 
-					if (INSTRUMENT) {
-						// Get expand stats (i.e., duty %)
-						expand_kernel_stats.Accumulate(
-							expand_grid_size,
-							total_runtimes,
-							total_lifetimes);
-
+					if (INSTRUMENT || DEBUG) {
 						if (work_progress.GetQueueLength(queue_index, queue_length)) break;
 						total_queued += queue_length;
-
-						if (DEBUG) printf(", %lld\n", (long long) queue_length);
-					}
-
-					// Throttle
-					if ((iteration - phase_iteration) & 1) {
-						if (util::B40CPerror(cudaEventRecord(throttle_event),
-							"LevelGridBfsEnactor cudaEventRecord throttle_event failed", __FILE__, __LINE__)) break;
-					} else {
-						if (util::B40CPerror(cudaEventSynchronize(throttle_event),
-							"LevelGridBfsEnactor cudaEventSynchronize throttle_event failed", __FILE__, __LINE__)) break;
+						if (DEBUG) printf(", %lld", (long long) queue_length);
+						if (INSTRUMENT) {
+							expand_kernel_stats.Accumulate(
+								expand_grid_size,
+								total_runtimes,
+								total_lifetimes);
+						}
 					}
 				}
 			}
@@ -473,6 +534,8 @@ public:
 
 		} while (0);
 
+		if (DEBUG) printf("\n");
+
 		return retval;
 	}
     
@@ -488,19 +551,21 @@ public:
 		typename CsrProblem::VertexId 	src,
 		int 							max_grid_size = 0)
 	{
+    	typedef typename CsrProblem::VertexId 	VertexId;
+    	typedef typename CsrProblem::SizeT 		SizeT;
 
     	// GF100
     	if (cuda_props.device_sm_version >= 200) {
 
         	const int SATURATION_QUIT = 4 * 128;
 
-        	// Fused-grid tuning configuration
+        	// Fused-iteration contract-expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
 				SATURATION_QUIT,		// SATURATION_QUIT
-				8,						// CTA_OCCUPANCY
+				(sizeof(VertexId) > 4) ? 7 : 8,		// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
@@ -513,7 +578,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				0,						// BITMASK_CULL_THRESHOLD
+				5,						// END_BITMASK_CULL
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					OnePhasePolicy;
 
@@ -538,26 +603,43 @@ public:
 				7> 						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
 
+			// Filter kernel config
+			typedef two_phase::filter_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				200,					// CUDA_ARCH
+				INSTRUMENT, 			// INSTRUMENT
+				SATURATION_QUIT, 		// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				1,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				9> 						// LOG_SCHEDULE_GRANULARITY
+					FilterPolicy;
+
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				200,
 				INSTRUMENT, 			// INSTRUMENT
-				SATURATION_QUIT, 		// SATURATION_QUIT
+				0, 						// SATURATION_QUIT
 				true, 					// DEQUEUE_PROBLEM_SIZE
 				8,						// CTA_OCCUPANCY
 				7,						// LOG_THREADS
 				1,						// LOG_LOAD_VEC_SIZE
-				2,						// LOG_LOADS_PER_TILE
+				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				0,						// BITMASK_CULL_THRESHOLD
-				10> 					// LOG_SCHEDULE_GRANULARITY
+				0,						// END_BITMASK_CULL (never cull b/c filter does the bitmask culling)
+				8> 						// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
     	}
 
@@ -566,7 +648,7 @@ public:
 
         	const int SATURATION_QUIT = 4 * 128;
 
-        	// Single-grid tuning configuration
+        	// Fused-iteration contract-expand kernel config
 			typedef contract_expand_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
 				130,
@@ -585,7 +667,7 @@ public:
 				false,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
-				-1,						// BITMASK_CULL_THRESHOLD
+				5,						// END_BITMASK_CULL
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					OnePhasePolicy;
 
@@ -610,6 +692,23 @@ public:
 				7> 						// LOG_SCHEDULE_GRANULARITY
 					ExpandPolicy;
 
+			// Filter kernel config
+			typedef two_phase::filter_atomic::KernelPolicy<
+				typename CsrProblem::ProblemType,
+				130,					// CUDA_ARCH
+				INSTRUMENT, 			// INSTRUMENT
+				0, 						// SATURATION_QUIT
+				8,						// CTA_OCCUPANCY
+				7,						// LOG_THREADS
+				1,						// LOG_LOAD_VEC_SIZE
+				0,						// LOG_LOADS_PER_TILE
+				5,						// LOG_RAKING_THREADS
+				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
+				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				false,					// WORK_STEALING
+				8> 						// LOG_SCHEDULE_GRANULARITY
+					FilterPolicy;
+
 			// Contraction kernel config
 			typedef two_phase::contract_atomic::KernelPolicy<
 				typename CsrProblem::ProblemType,
@@ -625,11 +724,11 @@ public:
 				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 				false,					// WORK_STEALING
-				0,						// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull b/c filter does the bitmask culling)
 				10> 					// LOG_SCHEDULE_GRANULARITY
 					ContractPolicy;
 
-			return EnactSearch<OnePhasePolicy, ExpandPolicy, ContractPolicy>(
+			return EnactSearch<OnePhasePolicy, ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 	    }
 

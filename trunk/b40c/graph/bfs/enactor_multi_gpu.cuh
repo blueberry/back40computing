@@ -84,10 +84,13 @@ public :
 	template <typename CsrProblem>
 	struct Policy<CsrProblem, 200>
 	{
+		typedef typename CsrProblem::VertexId 		VertexId;
+		typedef typename CsrProblem::SizeT 			SizeT;
+
 		// Expansion kernel config
 		typedef two_phase::expand_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
-			200,
+			200,					// CUDA_ARCH
 			INSTRUMENT, 			// INSTRUMENT
 			8,						// CTA_OCCUPANCY
 			7,						// LOG_THREADS
@@ -109,19 +112,19 @@ public :
 		// Contraction kernel config
 		typedef two_phase::contract_atomic::KernelPolicy<
 			typename CsrProblem::ProblemType,
-			200,
+			200,					// CUDA_ARCH
 			INSTRUMENT, 			// INSTRUMENT
 			0, 						// SATURATION_QUIT
 			false, 					// DEQUEUE_PROBLEM_SIZE
 			8,						// CTA_OCCUPANCY
 			7,						// LOG_THREADS
-			0,						// LOG_LOAD_VEC_SIZE
-			2,						// LOG_LOADS_PER_TILE
+			(sizeof(VertexId) > 4) ? 0 : 1,						// LOG_LOAD_VEC_SIZE
+			(sizeof(VertexId) > 4) ? 0 : 2,						// LOG_LOADS_PER_TILE
 			5,						// LOG_RAKING_THREADS
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
 			false,					// WORK_STEALING
-			3,						// BITMASK_CULL_THRESHOLD
+			-1,						// END_BITMASK_CULL (always cull)
 			6> 						// LOG_SCHEDULE_GRANULARITY
 				ContractPolicy;
 
@@ -151,7 +154,7 @@ public :
 			8,						// DOWNSWEEP_CTA_OCCUPANCY
 			7,						// DOWNSWEEP_LOG_THREADS
 			1,						// DOWNSWEEP_LOG_LOAD_VEC_SIZE
-			1,						// DOWNSWEEP_LOG_LOADS_PER_CYCLE
+			(sizeof(VertexId) > 4) ? 0 : 1,		// DOWNSWEEP_LOG_LOADS_PER_CYCLE
 			0,						// DOWNSWEEP_LOG_CYCLES_PER_TILE
 			6> 						// DOWNSWEEP_LOG_RAKING_THREADS
 				PartitionPolicy;
@@ -564,7 +567,7 @@ public:
 				control->queue_index++;
 				control->steal_index++;
 
-				if (INSTRUMENT){
+				if (DEBUG){
 					// Get contraction queue length
 					if (retval = control->template UpdateQueueLength<SizeT>()) break;
 					printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);
@@ -613,7 +616,7 @@ public:
 					control->steal_index++;
 					control->iteration++;
 
-					if (INSTRUMENT) {
+					if (DEBUG) {
 						// Get expansion queue length
 						if (retval = control->template UpdateQueueLength<SizeT>()) break;
 						printf("Gpu %d expansion queue length: %lld\n", i, (long long) control->queue_length);
@@ -652,12 +655,11 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu partition_contract::upsweep::Kernel failed", __FILE__, __LINE__))) break;
 
-					if (INSTRUMENT) {
+					if (DEBUG2) {
 						printf("Presorted spine on gpu %d (%lld elements)\n",
 							control->gpu,
 							(long long) control->spine_elements);
-
-						if (DEBUG2) DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
+						DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
 					}
 
 					// Spine
@@ -669,12 +671,12 @@ public:
 					if (DEBUG && (retval = util::B40CPerror(cudaDeviceSynchronize(),
 						"EnactorMultiGpu SpineKernel failed", __FILE__, __LINE__))) break;
 
-					if (INSTRUMENT) {
+					if (DEBUG2) {
 						printf("Postsorted spine on gpu %d (%lld elements)\n",
 							control->gpu,
 							(long long) control->spine_elements);
 
-						if (DEBUG2) DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
+						DisplayDeviceResults((SizeT *) control->spine.d_spine, control->spine_elements);
 					}
 
 					// Downsweep
@@ -718,7 +720,7 @@ public:
 					SizeT *spine = (SizeT *) control->spine.h_spine;
 					if (spine[control->spine_elements - 1]) done = false;
 
-					if (INSTRUMENT) {
+					if (DEBUG) {
 						printf("Iteration %lld sort-contracted queue on gpu %d (%lld elements)\n",
 							(long long) control->iteration,
 							control->gpu,
@@ -766,7 +768,7 @@ public:
 						SizeT queue_oob 	= peer_spine[bins_per_gpu * (i + 1) * peer_control->partition_grid_size];
 						SizeT num_elements	= queue_oob - queue_offset;
 
-						if (INSTRUMENT) {
+						if (DEBUG2) {
 							printf("Gpu %d getting %d from gpu %d selector %d, queue_offset: %d @ %d, queue_oob: %d @ %d\n",
 								i,
 								num_elements,
@@ -839,7 +841,7 @@ public:
 
 					control->queue_index++;
 
-					if (INSTRUMENT){
+					if (DEBUG){
 						// Get contraction queue length
 						if (retval = control->template UpdateQueueLength<SizeT>()) break;
 						printf("Gpu %d contracted queue length: %lld\n", i, (long long) control->queue_length);

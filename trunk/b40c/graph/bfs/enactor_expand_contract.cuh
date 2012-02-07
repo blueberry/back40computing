@@ -350,7 +350,7 @@ public:
 				true,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
-				128 * 1,				// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull))
 				6>						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
@@ -502,7 +502,7 @@ public:
 				true,					// WORK_STEALING
 				128,					// WARP_GATHER_THRESHOLD
 				128, 					// CTA_GATHER_THRESHOLD,
-				128 * 1,				// BITMASK_CULL_THRESHOLD
+				0,						// END_BITMASK_CULL (never cull))
 				6> 						// LOG_SCHEDULE_GRANULARITY
 					KernelPolicy;
 
