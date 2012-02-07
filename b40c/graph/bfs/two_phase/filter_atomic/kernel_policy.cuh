@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel configuration policy for BFS frontier contraction kernels
+ * Kernel configuration policy for BFS edge-frontier filtering kernels
  ******************************************************************************/
 
 #pragma once
@@ -37,7 +37,7 @@ namespace b40c {
 namespace graph {
 namespace bfs {
 namespace two_phase {
-namespace contract_atomic {
+namespace filter_atomic {
 
 
 
@@ -63,7 +63,6 @@ template <
 	// Behavioral control parameters
 	bool _INSTRUMENT,									// Whether or not to record per-CTA clock timing statistics (for detecting load imbalance)
 	int _SATURATION_QUIT,								// If positive, signal that we're done with two-phase iterations if frontier size drops below (SATURATION_QUIT * grid_size)
-	bool _DEQUEUE_PROBLEM_SIZE,							// Whether we obtain problem size from device-side queue counters (true), or use the formal parameter (false)
 
 	// Tunable parameters
 	int _MIN_CTA_OCCUPANCY,								// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
@@ -74,7 +73,6 @@ template <
 	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,	// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where util::io::ld::cg is req'd for fused-iteration implementations incorporating software global barriers.
 	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,	// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where util::io::st::cg is req'd for fused-iteration implementations incorporating software global barriers.
 	bool _WORK_STEALING,								// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
-	int _END_BITMASK_CULL,								// BFS Iteration after which to skip bitmask filtering (Alternatively 0 to never perform bitmask filtering, -1 to always perform bitmask filtering)
 	int _LOG_SCHEDULE_GRANULARITY>						// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
@@ -95,7 +93,6 @@ struct KernelPolicy : _ProblemType
 		CUDA_ARCH						= _CUDA_ARCH,
 		INSTRUMENT						= _INSTRUMENT,
 		SATURATION_QUIT					= _SATURATION_QUIT,
-		DEQUEUE_PROBLEM_SIZE			= _DEQUEUE_PROBLEM_SIZE,
 
 		LOG_THREADS 					= _LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
@@ -123,8 +120,6 @@ struct KernelPolicy : _ProblemType
 
 		LOG_SCHEDULE_GRANULARITY		= _LOG_SCHEDULE_GRANULARITY,
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
-
-		END_BITMASK_CULL			= _END_BITMASK_CULL,
 	};
 
 
@@ -148,10 +143,6 @@ struct KernelPolicy : _ProblemType
 	 */
 	struct SmemStorage
 	{
-		enum {
-			WARP_HASH_ELEMENTS					= 128,			// Collision hash table size (per warp)
-		};
-
 		// Persistent shared state for the CTA
 		struct State {
 
@@ -161,26 +152,11 @@ struct KernelPolicy : _ProblemType
 			// Storage for scanning local ranks
 			SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
 
-			// General pool for hashing & prefix sum
-			union {
-				SizeT							raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];
-				volatile VertexId 				vid_hashtable[WARPS][WARP_HASH_ELEMENTS];
-			};
+			// Prefix sum raking lanes
+			SizeT								raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];
 
 		} state;
 
-
-		enum {
-			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES				= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
-													- sizeof(State)
-													- 128,												// Fudge-factor to guarantee occupancy
-
-			HISTORY_HASH_ELEMENTS				= FULL_OCCUPANCY_BYTES / sizeof(VertexId),
-		};
-
-		// Fill the remainder of smem with a history-based hash-cache of seen vertex-ids
-		volatile VertexId						history[HISTORY_HASH_ELEMENTS];
 	};
 
 	enum {
@@ -191,7 +167,7 @@ struct KernelPolicy : _ProblemType
 	};
 };
 
-} // namespace contract_atomic
+} // namespace filter_atomic
 } // namespace two_phase
 } // namespace bfs
 } // namespace graph

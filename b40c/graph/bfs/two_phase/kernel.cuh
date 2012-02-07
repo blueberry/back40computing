@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS two-phase kernel (fused).
+ * BFS two-phase kernel (fused BFS iterations).
  *
  * Both contraction and expansion phases are fused within the same kernel,
  * separated by software global barriers.  The kernel itself also steps through

@@ -642,11 +642,11 @@ struct Cta
 			work_progress(work_progress),
 			max_vertex_frontier(max_vertex_frontier),
 			bitmask_cull(
-				(KernelPolicy::BITMASK_CULL_THRESHOLD < 0) ?
-					false : 												// never bitmask cull
-					(KernelPolicy::BITMASK_CULL_THRESHOLD == 0) ?
-						true : 												// always bitmask cull
-						(smem_storage.state.work_decomposition.num_elements > KernelPolicy::BITMASK_CULL_THRESHOLD * ((SizeT) gridDim.x)))
+				(KernelPolicy::END_BITMASK_CULL < 0) ?
+					true : 														// always bitmask cull
+					(KernelPolicy::END_BITMASK_CULL == 0) ?
+						false : 												// never bitmask cull
+						(iteration < KernelPolicy::END_BITMASK_CULL))
 	{
 		if (threadIdx.x == 0) {
 			smem_storage.state.cta_comm = KernelPolicy::THREADS;		// invalid

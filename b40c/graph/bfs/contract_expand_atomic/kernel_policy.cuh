@@ -68,15 +68,15 @@ template <
 	int _LOG_LOAD_VEC_SIZE,												// Number of incoming frontier vertex-ids to dequeue in a single load (log)
 	int _LOG_LOADS_PER_TILE,											// Number of such loads that constitute a tile of incoming frontier vertex-ids (log)
 	int _LOG_RAKING_THREADS,											// Number of raking threads to use for prefix sum (log), range [5, LOG_THREADS]
-	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::ld::cg for fused kernel implementations incorporating software global barriers.
+	util::io::ld::CacheModifier _QUEUE_READ_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where util::io::ld::cg is req'd for fused-iteration implementations incorporating software global barriers.
 	util::io::ld::CacheModifier _COLUMN_READ_MODIFIER,					// Load instruction cache-modifier for reading CSR column-indices
 	util::io::ld::CacheModifier _ROW_OFFSET_ALIGNED_READ_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 8-byte aligned)
 	util::io::ld::CacheModifier _ROW_OFFSET_UNALIGNED_READ_MODIFIER,	// Load instruction cache-modifier for reading CSR row-offsets (when 4-byte aligned)
-	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,					// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where it util::io::st::cg for fused kernel implementations incorporating software global barriers.
+	util::io::st::CacheModifier _QUEUE_WRITE_MODIFIER,					// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where util::io::st::cg is req'd for fused-iteration implementations incorporating software global barriers.
 	bool _WORK_STEALING,												// Whether or not incoming frontier tiles are distributed via work-stealing or by even-share.
 	int _WARP_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarser-grained warp-based cooperative expansion (below which we perform fine-grained scan-based expansion)
 	int _CTA_GATHER_THRESHOLD,											// Adjacency-list length above which we expand an that list using coarsest-grained CTA-based cooperative expansion (below which we perform warp-based expansion)
-	int _BITMASK_CULL_THRESHOLD,										// Threshold factor for incoming frontier queue length above which we perform bitmask-based culling prior to regular label-checking, i.e., bitmask filter when: frontier_size < (SATURATION_QUIT * grid_size).  (Alternatively 0 to always perform bitmask filtering, -1 to never perform bitmask filtering)
+	int _END_BITMASK_CULL,												// BFS Iteration after which to skip bitmask filtering (Alternatively 0 to never perform bitmask filtering, -1 to always perform bitmask filtering)
 	int _LOG_SCHEDULE_GRANULARITY>										// The scheduling granularity of incoming frontier tiles (for even-share work distribution only) (log)
 
 struct KernelPolicy : _ProblemType
@@ -130,7 +130,7 @@ struct KernelPolicy : _ProblemType
 		WORK_STEALING					= _WORK_STEALING,
 		WARP_GATHER_THRESHOLD			= _WARP_GATHER_THRESHOLD,
 		CTA_GATHER_THRESHOLD			= _CTA_GATHER_THRESHOLD,
-		BITMASK_CULL_THRESHOLD 			= _BITMASK_CULL_THRESHOLD,
+		END_BITMASK_CULL 			= _END_BITMASK_CULL,
 	};
 
 

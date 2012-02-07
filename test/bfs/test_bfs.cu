@@ -860,10 +860,9 @@ void RunTests(
 	// Run tests
 	//
 
-/* CTA-instrumented timing tests commented out for compilation speed
-	if (instrumented) {
-
-		// Run instrumented kernel for runtime statistics
+ 	if (instrumented) {
+/* Commented out for compilation speed
+		// Run instrumented kernel for per-CTA clock cycle timings
 		if (mark_pred) {
 			// label predecessor
 			RunTests<VertexId, Value, SizeT, true, true>(
@@ -873,9 +872,9 @@ void RunTests(
 			RunTests<VertexId, Value, SizeT, true, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}
-
-	} else {
 */
+	} else {
+
 		// Run regular kernel
 		if (mark_pred) {
 			// label predecessor
@@ -886,7 +885,7 @@ void RunTests(
 			RunTests<VertexId, Value, SizeT, false, false>(
 				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
 		}
-//	}
+	}
 }
 
 
@@ -1134,6 +1133,7 @@ int main( int argc, char** argv)
 		// Unknown graph type
 		fprintf(stderr, "Unspecified graph type\n");
 		return 1;
+
 	}
 	
 
