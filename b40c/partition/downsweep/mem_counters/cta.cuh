@@ -62,6 +62,10 @@ struct Cta
 
 	typedef DerivedCta Dispatch;
 
+	enum {
+		WARP_THREADS 		= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
+	};
+
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
@@ -76,10 +80,12 @@ struct Cta
 	ValueType							*d_in_values;
 	ValueType							*d_out_values;
 
-	SizeT								my_bin_carry;
-
 	LanePartial							lane_partial;
 	int									*raking_segment;
+
+	int 								*counters;
+
+	SizeT								my_bin_carry;
 
 
 	//---------------------------------------------------------------------
@@ -102,19 +108,20 @@ struct Cta
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
 			lane_partial((LanePartial) (smem_storage.raking_lanes + threadIdx.x + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_ROW))),
-			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW))
+			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW)),
+			counters(&smem_storage.packed_counters_32[0][threadIdx.x])
 	{
 		if (threadIdx.x < KernelPolicy::BINS) {
 
 			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
+
 			smem_storage.bin_prefixes[threadIdx.x] = 0;
 		}
 
 		// Initialize warpscan identity regions
-		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
+		if (threadIdx.x < WARP_THREADS) {
 			smem_storage.warpscan[0][threadIdx.x] = 0;
 			smem_storage.warpscan[1][threadIdx.x] = 0;
 		}
