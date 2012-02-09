@@ -86,6 +86,8 @@ struct Tile
 		LOG_RAKING_THREADS 			= KernelPolicy::RakingGrid::LOG_RAKING_THREADS,
 		RAKING_THREADS 				= 1 << LOG_RAKING_THREADS,
 
+		RAKING_LANES				= KernelPolicy::RAKING_LANES,
+
 		WARP_THREADS				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
 	};
 
@@ -116,7 +118,6 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta,	Tile *tile)
 		{
-
 			int sub_counter = util::BFE(
 				tile->keys[VEC],
 				KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS - 1,
@@ -127,7 +128,7 @@ struct Tile
 				KernelPolicy::CURRENT_BIT,
 				KernelPolicy::LOG_SCAN_BINS - 1);
 
-			tile->counters[VEC] = &cta->smem_storage.packed_counters_16[lane][threadIdx.x][sub_counter];
+			tile->counters[VEC] = ((short *) cta->counters) + (lane * KernelPolicy::THREADS * 2) + sub_counter;
 
 			// Load thread-exclusive prefix
 			tile->prefixes[VEC] = *tile->counters[VEC];
@@ -197,7 +198,7 @@ struct Tile
 
 				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 					key,
-					cta->d_out_keys + tile_element + bin_carry);
+					cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * VEC) + bin_carry);
 			}
 
 			// Next vector element
@@ -231,6 +232,51 @@ struct Tile
 	};
 
 
+	//---------------------------------------------------------------------
+	// Iterate raking lanes
+	//---------------------------------------------------------------------
+
+	/**
+	 * Iterate next vector element
+	 */
+	template <int LANE, int DUMMY = 0>
+	struct IterateRakingLanes
+	{
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpsweepLanes(Cta *cta, Tile *tile)
+		{
+			*cta->lane_partial[LANE] = util::reduction::SerialReduce<4>::Invoke(
+				cta->smem_storage.paired_counters_32[LANE][threadIdx.x]);
+
+			// Next lane
+			IterateRakingLanes<LANE + 1>::UpsweepLanes(cta, tile);
+		}
+
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void DownsweepLanes(Cta *cta, Tile *tile)
+		{
+			util::scan::SerialScan<4>::Invoke(
+				cta->smem_storage.paired_counters_32[LANE][threadIdx.x],
+				*cta->lane_partial[LANE]);
+
+			if (LANE < RAKING_LANES - 1) __threadfence_block();
+
+			// Next lane
+			IterateRakingLanes<LANE + 1>::DownsweepLanes(cta, tile);
+		}
+
+	};
+
+	template <int DUMMY>
+	struct IterateRakingLanes<RAKING_LANES, DUMMY>
+	{
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void UpsweepLanes(Cta *cta, Tile *tile) {}
+
+		template <typename Cta, typename Tile>
+		static __device__ __forceinline__ void DownsweepLanes(Cta *cta, Tile *tile) {}
+	};
+
 
 	//---------------------------------------------------------------------
 	// Tile Internal Methods
@@ -240,13 +286,10 @@ struct Tile
 	template <typename Cta>
 	__device__ __forceinline__ void RakingScan64(Cta *cta)
 	{
+
 		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
-			int tid = threadIdx.x & 31;
-			int warp = threadIdx.x >> 5;
-			int other_warp = warp ^ 1;
-			volatile int *warpscan = cta->smem_storage.warpscan[warp] + (WARP_THREADS / 2);
-			volatile int *other_warpscan = cta->smem_storage.warpscan[other_warp] + (WARP_THREADS / 2);
+			volatile int * warpscan(cta->smem_storage.warpscan[threadIdx.x >> 5] + (WARP_THREADS / 2) + (threadIdx.x & 31));
 
 			// Upsweep reduce
 			int raking_partial = util::reduction::SerialReduce<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
@@ -254,33 +297,33 @@ struct Tile
 
 			// Warpscan
 			int partial = raking_partial;
-			warpscan[tid] = partial;
+			warpscan[0] = partial;
 
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 1];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 2];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 4];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 8];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 16];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 1];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 2];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 4];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 8];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 16];
 
 			// Restricted barrier
 			util::BAR(RAKING_THREADS);
 
-			// grab own total
-			int total = warpscan[B40C_WARP_THREADS(CUDA_ARCH) - 1];
+			int lower_total = cta->smem_storage.warpscan[0][(WARP_THREADS * 3 / 2) - 1];
+			int upper_total = cta->smem_storage.warpscan[1][(WARP_THREADS * 3 / 2) - 1];
+
+			// Add lower's lower into upper
+			partial = util::SHL_ADD(lower_total, 16, partial);
+
+			// Add upper's lower into upper
+			partial = util::SHL_ADD(upper_total, 16, partial);
 
 			// Add lower into upper
-			partial = util::SHL_ADD_C(total, 16, partial);
-
-			// Grab other warp's total
-			int other_total = other_warpscan[B40C_WARP_THREADS(CUDA_ARCH) - 1];
-			int shifted_other_total = other_total << 16;
-			if (warp) shifted_other_total += other_total;
-			partial += shifted_other_total;
+			if (threadIdx.x >> 5) partial += lower_total;
 
 			// Downsweep scan with exclusive partial
 			util::scan::SerialScan<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
@@ -293,9 +336,9 @@ struct Tile
 			// Store off bin inclusives
 			const int LOG_RAKING_THREADS_PER_COUNTER_LANE = LOG_RAKING_THREADS - KernelPolicy::LOG_SCAN_LANES;
 			const int BIN_MASK = (1 << LOG_RAKING_THREADS_PER_COUNTER_LANE) - 1;
+			int low_bin = threadIdx.x >> LOG_RAKING_THREADS_PER_COUNTER_LANE;
 
 			if (threadIdx.x & BIN_MASK) {
-				int low_bin = threadIdx.x >> LOG_RAKING_THREADS_PER_COUNTER_LANE;
 				cta->smem_storage.bin_prefixes[1 + low_bin] = partial & 0x0000ffff;
 				cta->smem_storage.bin_prefixes[1 + (KernelPolicy::BINS / 2) + low_bin] = partial >> 16;
 			}
@@ -307,42 +350,36 @@ struct Tile
 	{
 		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
-			int tid = threadIdx.x;
-			volatile int *warpscan = cta->smem_storage.warpscan[0] + (WARP_THREADS / 2);
-
-			int *raking_segment =
-				cta->smem_storage.raking_lanes +
-				(threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) +
-				(threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW);
+			volatile int *warpscan(cta->smem_storage.warpscan[0] + (WARP_THREADS / 2) + threadIdx.x);
 
 			// Upsweep reduce
 			int raking_partial = util::reduction::SerialReduce<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
-				raking_segment);
+				cta->raking_segment);
 
 			// Warpscan
 			int partial = raking_partial;
-			warpscan[tid] = partial;
+			warpscan[0] = partial;
 
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 1];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 2];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 4];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 8];
-			warpscan[tid] = partial =
-				partial + warpscan[tid - 16];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 1];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 2];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 4];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 8];
+			warpscan[0] = partial =
+				partial + warpscan[0 - 16];
 
 			// grab own total
-			int total = warpscan[B40C_WARP_THREADS(CUDA_ARCH) - 1];
+			int total = cta->smem_storage.warpscan[0][WARP_THREADS - 1];
 
 			// Add lower total into upper
-			partial = util::SHL_ADD_C(total, 16, partial);
+			partial = util::SHL_ADD(total, 16, partial);
 
 			// Downsweep scan with exclusive partial
 			util::scan::SerialScan<KernelPolicy::RakingGrid::PARTIALS_PER_SEG>::Invoke(
-				raking_segment,
+				cta->raking_segment,
 				partial - raking_partial);
 
 			// take out byte-multiplier
@@ -351,9 +388,9 @@ struct Tile
 			// Store off bin inclusives
 			const int LOG_RAKING_THREADS_PER_COUNTER_LANE = LOG_RAKING_THREADS - KernelPolicy::LOG_SCAN_LANES;
 			const int BIN_MASK = (1 << LOG_RAKING_THREADS_PER_COUNTER_LANE) - 1;
+			int low_bin = threadIdx.x >> LOG_RAKING_THREADS_PER_COUNTER_LANE;
 
 			if (threadIdx.x & BIN_MASK) {
-				int low_bin = threadIdx.x >> LOG_RAKING_THREADS_PER_COUNTER_LANE;
 				cta->smem_storage.bin_prefixes[1 + low_bin] = partial & 0x0000ffff;
 				cta->smem_storage.bin_prefixes[1 + (KernelPolicy::BINS / 2) + low_bin] = partial >> 16;
 			}
@@ -370,7 +407,7 @@ struct Tile
 		// Initialize lanes
 		#pragma unroll
 		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES; LANE++) {
-			cta->smem_storage.packed_counters_32[LANE][threadIdx.x] = 0;
+			cta->counters[LANE * KernelPolicy::THREADS] = 0;
 		}
 
 		// Decode bins and place keys into grid
@@ -378,12 +415,8 @@ struct Tile
 
 		__syncthreads();
 
-		// Downsweep reduce counter lanes into raking lanes
-		#pragma unroll
-		for (int LANE = 0; LANE < KernelPolicy::RAKING_LANES; LANE++) {
-			int2 counter_pair = cta->smem_storage.paired_counters_64[LANE][threadIdx.x];
-			*cta->lane_partial[LANE] = counter_pair.x + counter_pair.y;
-		}
+		// Upsweep reduce
+		IterateRakingLanes<0>::UpsweepLanes(cta, this);
 
 		__syncthreads();
 
@@ -403,17 +436,8 @@ struct Tile
 			cta->my_bin_carry += bin_inclusive;
 		}
 
-		#pragma unroll
-		for (int LANE = 0; LANE < KernelPolicy::RAKING_LANES; LANE++) {
-
-			// get seed
-			int seed = *cta->lane_partial[LANE];
-
-			int2 counter_pair;
-			counter_pair.x = seed;
-			counter_pair.y = cta->smem_storage.paired_counters_32[LANE][threadIdx.x][0] + seed;
-			cta->smem_storage.paired_counters_64[LANE][threadIdx.x] = counter_pair;
-		}
+		// Downsweep scan
+		IterateRakingLanes<0>::DownsweepLanes(cta, this);
 
 		__syncthreads();
 

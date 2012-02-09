@@ -65,7 +65,7 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - 1), 0),				// Always at least one lane
 		SCAN_LANES						= 1 << LOG_SCAN_LANES,
 
-		LOG_RAKING_LANES				= B40C_MAX((LOG_SCAN_LANES - 1), 0),	// Always at least one lane
+		LOG_RAKING_LANES				= B40C_MAX((LOG_SCAN_LANES - 2), 0),	// Always at least one lane
 		RAKING_LANES					= 1 << LOG_RAKING_LANES,
 
 		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS,
@@ -95,8 +95,8 @@ struct KernelPolicy : TuningPolicy
 		bool 							non_trivial_pass;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		SizeT							bin_carry[BINS];
-		volatile int 					bin_prefixes[BINS + 1];
+		SizeT 							bin_carry[BINS];
+		int 							bin_prefixes[BINS + 1];
 
 		// Storage for scanning local ranks
 		volatile int 					warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
@@ -107,8 +107,8 @@ struct KernelPolicy : TuningPolicy
 					int 				packed_counters_32[SCAN_LANES][THREADS];
 					short 				packed_counters_16[SCAN_LANES][THREADS][2];
 
-					int2 				paired_counters_64[RAKING_LANES][THREADS];
-					int 				paired_counters_32[RAKING_LANES][THREADS][2];
+					int4 				paired_counters_128[RAKING_LANES][THREADS];
+					int 				paired_counters_32[RAKING_LANES][THREADS][4];
 				};
 				int 					raking_lanes[RakingGrid::RAKING_ELEMENTS];
 			};
