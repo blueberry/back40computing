@@ -372,7 +372,7 @@ struct Tile
 				partial + warpscan[0 - 16];
 
 			// grab own total
-			int total = cta->smem_storage.warpscan[0][WARP_THREADS - 1];
+			int total = cta->smem_storage.warpscan[0][(WARP_THREADS * 3 / 2) - 1];
 
 			// Add lower total into upper
 			partial = util::SHL_ADD(total, 16, partial);
