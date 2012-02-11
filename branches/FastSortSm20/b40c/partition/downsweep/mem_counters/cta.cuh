@@ -87,7 +87,6 @@ struct Cta
 
 	SizeT								my_bin_carry;
 
-
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -111,9 +110,9 @@ struct Cta
 			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW)),
 			counters(&smem_storage.packed_counters_32[0][threadIdx.x])
 	{
+		// Read bin_carry in parallel
 		if (threadIdx.x < KernelPolicy::BINS) {
 
-			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
 
@@ -121,9 +120,10 @@ struct Cta
 		}
 
 		// Initialize warpscan identity regions
-		if (threadIdx.x < WARP_THREADS) {
-			smem_storage.warpscan[0][threadIdx.x] = 0;
-			smem_storage.warpscan[1][threadIdx.x] = 0;
+		if ((KernelPolicy::THREADS == KernelPolicy::RAKING_THREADS) || (threadIdx.x < KernelPolicy::RAKING_THREADS)) {
+
+		int tid = threadIdx.x + (threadIdx.x & (~31));
+			smem_storage.warpscan[tid] = 0;
 		}
 	}
 
@@ -160,14 +160,13 @@ struct Cta
 			pack_offset += (KernelPolicy::TILE_ELEMENTS / KernelPolicy::PACK_SIZE);
 		}
 
-/*
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
+
 			ProcessTile(
 				pack_offset,
 				work_limits.guarded_elements);
 		}
-*/
 	}
 };
 

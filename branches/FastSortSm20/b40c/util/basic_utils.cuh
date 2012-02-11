@@ -72,44 +72,40 @@ void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
 	b = temp;
 }
 
+/**
+ *
+ */
+template <int VAL>
+struct IsPositive
+{
+	enum {
+		VALUE = (VAL > 0) ? 1 : 0
+	};
+};
 
-template <typename K, int magnitude, bool shift_left> struct MagnitudeShiftOp;
 
 /**
  * MagnitudeShift().  Allows you to shift left for positive magnitude values, 
  * right for negative.   
- * 
- * N.B. This code is a little strange; we are using this meta-programming 
- * pattern of partial template specialization for structures in order to 
- * decide whether to shift left or right.  Normally we would just use a 
- * conditional to decide if something was negative or not and then shift 
- * accordingly, knowing that the compiler will elide the untaken branch, 
- * i.e., the out-of-bounds shift during dead code elimination. However, 
- * the pass for bounds-checking shifts seems to happen before the DCE 
- * phase, which results in a an unsightly number of compiler warnings, so 
- * we force the issue earlier using structural template specialization.
  */
-template <typename K, int magnitude> 
-__device__ __forceinline__ K MagnitudeShift(K key)
+template <int MAGNITUDE, int shift_left = IsPositive<MAGNITUDE>::VALUE >
+struct MagnitudeShift
 {
-	return MagnitudeShiftOp<K, (magnitude > 0) ? magnitude : magnitude * -1, (magnitude > 0)>::Shift(key);
-}
-
-template <typename K, int magnitude>
-struct MagnitudeShiftOp<K, magnitude, true>
-{
+	template <typename K>
 	__device__ __forceinline__ static K Shift(K key)
 	{
-		return key << magnitude;
+		return key << MAGNITUDE;
 	}
 };
 
-template <typename K, int magnitude>
-struct MagnitudeShiftOp<K, magnitude, false>
+
+template <int MAGNITUDE>
+struct MagnitudeShift<MAGNITUDE, 0>
 {
+	template <typename K>
 	__device__ __forceinline__ static K Shift(K key)
 	{
-		return key >> magnitude;
+		return key >> (MAGNITUDE * -1);
 	}
 };
 

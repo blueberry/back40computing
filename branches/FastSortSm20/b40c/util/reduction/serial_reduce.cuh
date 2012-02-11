@@ -33,6 +33,44 @@ namespace b40c {
 namespace util {
 namespace reduction {
 
+//---------------------------------------------------------------------
+// Helper functions for vectorizing reduction operations
+//---------------------------------------------------------------------
+
+template <typename T, typename ReductionOp>
+__device__ __forceinline__ T VectorReduce(
+	T a,
+	T b,
+	T c,
+	ReductionOp reduction_op)
+{
+	return reduction_op(a, reduction_op(b, c));
+}
+
+template <>
+__device__ __forceinline__ int VectorReduce<int, Sum<int> >(
+	int a,
+	int b,
+	int c,
+	Sum<int> reduction_op)
+{
+	asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
+	return a;
+};
+
+template <>
+__device__ __forceinline__ unsigned int VectorReduce<unsigned int, Sum<unsigned int> >(
+	unsigned int a,
+	unsigned int b,
+	unsigned int c,
+	Sum<unsigned int> reduction_op)
+{
+	asm("vadd.u32.u32.u32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
+	return a;
+};
+
+
+
 /**
  * Have each thread perform a serial reduction over its specified segment
  */
@@ -54,9 +92,7 @@ struct SerialReduce
 			T b = partials[TOTAL - COUNT];
 			T c = partials[TOTAL - (COUNT - 1)];
 
-			// TODO: consider specializing with a video 3-op instructions on SM2.0+,
-			// e.g., asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-			return reduction_op(a, reduction_op(b, c));
+			return VectorReduce(a, b, c, reduction_op);
 		}
 	};
 

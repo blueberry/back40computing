@@ -54,35 +54,40 @@ struct KernelPolicy : TuningPolicy
 		LOG_WARPS						= TuningPolicy::LOG_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
+		LOG_RAKING_THREADS				= TuningPolicy::LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
+		LOG_RAKING_WARPS				= LOG_RAKING_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
+		RAKING_WARPS					= 1 << LOG_RAKING_WARPS,
+
 		LOAD_VEC_SIZE					= 1 << TuningPolicy::LOG_LOAD_VEC_SIZE,
-		LOADS_PER_TILE					= 1 << TuningPolicy::LOG_LOADS_PER_TILE,
 
-		LOG_TILE_ELEMENTS_PER_THREAD	= TuningPolicy::LOG_LOAD_VEC_SIZE + TuningPolicy::LOG_LOADS_PER_TILE,
-		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
-
-		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_THREADS + LOG_TILE_ELEMENTS_PER_THREAD,
+		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOAD_VEC_SIZE,
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 	
-		LOG_SCAN_BINS					= (TuningPolicy::LOG_BINS > 3) ? 3 : TuningPolicy::LOG_BINS,
+		LOG_SCAN_BINS					= TuningPolicy::LOG_BINS,
 		SCAN_BINS						= 1 << LOG_SCAN_BINS,
 
-		LOG_SCAN_LANES_PER_TILE			= B40C_MAX((LOG_SCAN_BINS - 1), 0),		// Always at least one lane per load
-		SCAN_LANES_PER_TILE				= 1 << LOG_SCAN_LANES_PER_TILE,
+		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - 1), 0),				// Always at least one lane
+		SCAN_LANES						= 1 << LOG_SCAN_LANES,
 
-		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_TILE,
+		LOG_RAKING_LANES				= B40C_MAX((LOG_SCAN_LANES - 2), 0),	// Always at least one lane
+		RAKING_LANES					= 1 << LOG_RAKING_LANES,
+
+		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS,
 	};
 
 
 	// Smem SRTS grid type for reducing and scanning a tile of
-	// (bins/4) lanes of composite 8-bit bin counters
+	// (bins/2) lanes of composite 16-bit bin counters
 	typedef util::SrtsGrid<
 		TuningPolicy::CUDA_ARCH,
 		int,											// Partial type
 		LOG_DEPOSITS_PER_LANE,							// Deposits per lane
-		LOG_SCAN_LANES_PER_TILE,						// Lanes (the number of composite digits)
+		LOG_RAKING_LANES,						// Lanes (the number of composite digits)
 		TuningPolicy::LOG_RAKING_THREADS,				// Raking threads
 		false>											// Any prefix dependences between lanes are explicitly managed
-			ByteGrid;
+			RakingGrid;
 
 	
 	/**
@@ -96,18 +101,22 @@ struct KernelPolicy : TuningPolicy
 		bool 							non_trivial_pass;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		SizeT							bin_carry[BINS];
+		SizeT 							bin_carry[BINS];
+		int 							bin_prefixes[BINS + 1];
 
 		// Storage for scanning local ranks
-		volatile int 					warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
+		volatile int 					warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
 
 		union {
 			struct {
 				union {
-					int 					int_counters[SCAN_LANES_PER_TILE][THREADS];
-					short 					short_counters[SCAN_LANES_PER_TILE][THREADS][2];
+					int 				packed_counters_32[SCAN_LANES][THREADS];
+					unsigned short 		packed_counters_16[SCAN_LANES][THREADS][2];
+
+					int4 				paired_counters_128[RAKING_LANES][THREADS];
+					int 				paired_counters_32[RAKING_LANES][THREADS][4];
 				};
-				int 					byte_raking_lanes[ByteGrid::RAKING_ELEMENTS];
+				int 					raking_lanes[RakingGrid::RAKING_ELEMENTS];
 			};
 
 			KeyType 					key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)

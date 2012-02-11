@@ -55,12 +55,16 @@ struct Cta
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
-	typedef typename KernelPolicy::ByteGrid::LanePartial	LanePartial;
+	typedef typename KernelPolicy::RakingGrid::LanePartial	LanePartial;
 
 	// Operational details type for short grid
-	typedef util::SrtsDetails<typename KernelPolicy::ByteGrid> 		ByteGridDetails;
+	typedef util::SrtsDetails<typename KernelPolicy::RakingGrid> 		RakingGridDetails;
 
 	typedef DerivedCta Dispatch;
+
+	enum {
+		WARP_THREADS 		= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
+	};
 
 	//---------------------------------------------------------------------
 	// Members
@@ -70,14 +74,16 @@ struct Cta
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
 	// Input and output device pointers
-	KeyType								*&d_in_keys;
-	KeyType								*&d_out_keys;
+	KeyType								*d_in_keys;
+	KeyType								*d_out_keys;
 
-	ValueType							*&d_in_values;
-	ValueType							*&d_out_values;
+	ValueType							*d_in_values;
+	ValueType							*d_out_values;
 
-	// Operational details for scan grids
-	ByteGridDetails 					byte_grid_details;
+	LanePartial							lane_partial;
+	int									*raking_segment;
+
+	int 								*counters;
 
 	SizeT								my_bin_carry;
 
@@ -90,29 +96,34 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*&d_in_keys,
-		KeyType 		*&d_out_keys,
-		ValueType 		*&d_in_values,
-		ValueType 		*&d_out_values,
-		SizeT 			*&d_spine) :
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT 			*d_spine) :
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_out_keys(d_out_keys),
 			d_in_values(d_in_values),
 			d_out_values(d_out_values),
-			byte_grid_details(smem_storage.byte_raking_lanes)
+			lane_partial((LanePartial) (smem_storage.raking_lanes + threadIdx.x + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_ROW))),
+			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW)),
+			counters(&smem_storage.packed_counters_32[0][threadIdx.x])
 	{
+		// Read bin_carry in parallel
 		if (threadIdx.x < KernelPolicy::BINS) {
 
-			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
+
+			smem_storage.bin_prefixes[threadIdx.x] = 0;
 		}
 
-		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
-			smem_storage.warpscan[0][threadIdx.x] = 0;
-			smem_storage.warpscan[1][threadIdx.x] = 0;
+		// Initialize warpscan identity regions
+		if ((KernelPolicy::THREADS == KernelPolicy::RAKING_THREADS) || (threadIdx.x < KernelPolicy::RAKING_THREADS)) {
+
+		int tid = threadIdx.x + (threadIdx.x & (~31));
+			smem_storage.warpscan[tid] = 0;
 		}
 	}
 
@@ -149,14 +160,13 @@ struct Cta
 			pack_offset += (KernelPolicy::TILE_ELEMENTS / KernelPolicy::PACK_SIZE);
 		}
 
-/*
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
+
 			ProcessTile(
 				pack_offset,
 				work_limits.guarded_elements);
 		}
-*/
 	}
 };
 
