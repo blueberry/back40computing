@@ -88,7 +88,7 @@ typedef b40c::radix_sort::Policy<
 
 		// Common
 		200,						// SM ARCH
-		6,							// RADIX_BITS
+		5,							// RADIX_BITS
 
 		// Launch tuning policy
 		11,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
@@ -102,7 +102,7 @@ typedef b40c::radix_sort::Policy<
 		// Policy for upsweep kernel.
 		// 		Reduces/counts all the different digit numerals for a given digit-place
 		//
-		5,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+		8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 		1,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
 		2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
@@ -110,9 +110,9 @@ typedef b40c::radix_sort::Policy<
 		// Spine-scan kernel policy
 		//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
 		//
-		7,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
+		8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-		0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
+		2,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
 		5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
 
 		// Policy for downsweep kernel
@@ -121,8 +121,8 @@ typedef b40c::radix_sort::Policy<
 		//
 		b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
 		8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-		7,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-		3,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
+		6,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+		4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
 		0,							// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
 		6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 	Policy;
@@ -153,6 +153,7 @@ int main(int argc, char** argv)
     SizeT 			num_elements = 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas = 0;							// default: let the enactor decide how many CTAs to launch based upon device properties
     int 			iterations = 0;
+    int				entropy_reduction = 0;
 
     bool verbose = args.CheckCmdLineFlag("v");
     bool random = args.CheckCmdLineFlag("random");
@@ -160,6 +161,11 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
+    args.GetCmdLineArgument("ered", entropy_reduction);
+
+    if (zeros) printf("Zeros\n");
+    else if (random) printf("Random\n");
+    else printf("mod-%d\n", 1 << Policy::RADIX_BITS);
 
 	// Allocate and initialize host problem data and host reference solution
 	KeyType *h_keys 				= new KeyType[num_elements];
@@ -182,6 +188,9 @@ int main(int argc, char** argv)
 				0 :
 				i & ((1 << Policy::RADIX_BITS) - 1);
 
+		for (int j = 0; j < entropy_reduction; j++) {
+			h_keys[i] &= r(mt19937);
+		}
 
 		h_reference_keys[i] = h_keys[i];
 

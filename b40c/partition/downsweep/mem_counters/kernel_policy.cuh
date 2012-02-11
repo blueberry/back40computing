@@ -54,6 +54,12 @@ struct KernelPolicy : TuningPolicy
 		LOG_WARPS						= TuningPolicy::LOG_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
+		LOG_RAKING_THREADS				= TuningPolicy::LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
+		LOG_RAKING_WARPS				= LOG_RAKING_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
+		RAKING_WARPS					= 1 << LOG_RAKING_WARPS,
+
 		LOAD_VEC_SIZE					= 1 << TuningPolicy::LOG_LOAD_VEC_SIZE,
 
 		LOG_TILE_ELEMENTS				= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOAD_VEC_SIZE,
@@ -99,13 +105,13 @@ struct KernelPolicy : TuningPolicy
 		int 							bin_prefixes[BINS + 1];
 
 		// Storage for scanning local ranks
-		volatile int 					warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
+		volatile int 					warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
 
 		union {
 			struct {
 				union {
 					int 				packed_counters_32[SCAN_LANES][THREADS];
-					short 				packed_counters_16[SCAN_LANES][THREADS][2];
+					unsigned short 		packed_counters_16[SCAN_LANES][THREADS][2];
 
 					int4 				paired_counters_128[RAKING_LANES][THREADS];
 					int 				paired_counters_32[RAKING_LANES][THREADS][4];

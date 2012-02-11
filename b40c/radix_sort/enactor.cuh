@@ -549,7 +549,8 @@ cudaError_t Enactor::EnactPass(Detail &detail)
 
 		if (ENACTOR_DEBUG) printf("Upsweep occupancy %d, downsweep occupancy %d\n", upsweep_cta_occupancy, downsweep_cta_occupancy);
 
-		int sweep_grid_size = upsweep_cta_occupancy * downsweep_cta_occupancy * cuda_props.device_props.multiProcessorCount;
+		int sweep_grid_size = (upsweep_cta_occupancy * downsweep_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1;
+
 		int grains = (detail.num_elements + Upsweep::SCHEDULE_GRANULARITY - 1) / Upsweep::SCHEDULE_GRANULARITY;
 		if (sweep_grid_size > grains) {
 			sweep_grid_size = grains;

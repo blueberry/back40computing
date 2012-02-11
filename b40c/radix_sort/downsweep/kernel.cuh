@@ -42,12 +42,12 @@ template <typename KernelPolicy, bool EARLY_EXIT = KernelPolicy::EARLY_EXIT>
 struct DownsweepPass
 {
 	static __device__ __forceinline__ void Invoke(
-		int 								*&d_selectors,
-		typename KernelPolicy::SizeT 		*&d_spine,
-		typename KernelPolicy::KeyType 		*&d_keys0,
-		typename KernelPolicy::KeyType 		*&d_keys1,
-		typename KernelPolicy::ValueType 	*&d_values0,
-		typename KernelPolicy::ValueType 	*&d_values1,
+		int 								*d_selectors,
+		typename KernelPolicy::SizeT 		*d_spine,
+		typename KernelPolicy::KeyType 		*d_keys0,
+		typename KernelPolicy::KeyType 		*d_keys1,
+		typename KernelPolicy::ValueType 	*d_values0,
+		typename KernelPolicy::ValueType 	*d_values1,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage	&smem_storage)
 	{
@@ -124,12 +124,12 @@ template <typename KernelPolicy>
 struct DownsweepPass<KernelPolicy, false>
 {
 	static __device__ __forceinline__ void Invoke(
-		int 								*&d_selectors,
-		typename KernelPolicy::SizeT 		*&d_spine,
-		typename KernelPolicy::KeyType 		*&d_keys0,
-		typename KernelPolicy::KeyType 		*&d_keys1,
-		typename KernelPolicy::ValueType 	*&d_values0,
-		typename KernelPolicy::ValueType 	*&d_values1,
+		int 								*d_selectors,
+		typename KernelPolicy::SizeT 		*d_spine,
+		typename KernelPolicy::KeyType 		*d_keys0,
+		typename KernelPolicy::KeyType 		*d_keys1,
+		typename KernelPolicy::ValueType 	*d_values0,
+		typename KernelPolicy::ValueType 	*d_values1,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
 		typename KernelPolicy::SmemStorage	&smem_storage)
 	{
@@ -137,11 +137,6 @@ struct DownsweepPass<KernelPolicy, false>
 		typedef typename KernelPolicy::ValueType 				ValueType;
 		typedef typename KernelPolicy::SizeT 					SizeT;
 		typedef Cta<KernelPolicy> 								Cta;
-
-		util::CtaWorkLimits<SizeT> work_limits;
-		work_decomposition.template GetCtaWorkLimits<
-			KernelPolicy::LOG_TILE_ELEMENTS,
-			KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
 
 		if (threadIdx.x == 0) {
 
@@ -156,7 +151,7 @@ struct DownsweepPass<KernelPolicy, false>
 
 		// Sync to acquire work limits
 		__syncthreads();
-
+/*
 		if (KernelPolicy::CURRENT_PASS & 0x1) {
 
 			// d_keys1 --> d_keys0
@@ -171,7 +166,7 @@ struct DownsweepPass<KernelPolicy, false>
 			cta.ProcessWorkRange(smem_storage.work_limits);
 
 		} else {
-
+*/
 			// d_keys0 --> d_keys1
 			Cta cta(
 				smem_storage,
@@ -182,7 +177,7 @@ struct DownsweepPass<KernelPolicy, false>
 				d_spine);
 
 			cta.ProcessWorkRange(smem_storage.work_limits);
-		}
+//		}
 	}
 };
 
