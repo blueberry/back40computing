@@ -104,6 +104,7 @@ struct Policy : ProblemType
 	// Kernel function pointer retrieval
 	//---------------------------------------------------------------------
 
+	template <typename PassPolicy>
 	static SpineKernelPtr SpineKernel() {
 		return partition::spine::Kernel<Spine>;
 	}

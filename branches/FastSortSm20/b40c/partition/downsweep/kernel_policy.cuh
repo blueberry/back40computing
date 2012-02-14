@@ -74,6 +74,9 @@ struct KernelPolicy : TuningPolicy
 		LOG_RAKING_LANES				= B40C_MAX((LOG_SCAN_LANES - 2), 0),	// Always at least one lane
 		RAKING_LANES					= 1 << LOG_RAKING_LANES,
 
+		LOG_OUTER_SCAN_STEPS			= LOG_SCAN_LANES - LOG_RAKING_LANES,
+		OUTER_SCAN_STEPS				= 1 << LOG_OUTER_SCAN_STEPS,
+
 		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS,
 	};
 
@@ -109,12 +112,11 @@ struct KernelPolicy : TuningPolicy
 
 		union {
 			struct {
+				int4					padding;
 				union {
 					int 				packed_counters_32[SCAN_LANES][THREADS];
 					unsigned short 		packed_counters_16[SCAN_LANES][THREADS][2];
-
-					int4 				paired_counters_128[RAKING_LANES][THREADS];
-					int 				paired_counters_32[RAKING_LANES][THREADS][4];
+					int 				paired_counters_32[RAKING_LANES][THREADS][OUTER_SCAN_STEPS];
 				};
 				int 					raking_lanes[RakingGrid::RAKING_ELEMENTS];
 			};

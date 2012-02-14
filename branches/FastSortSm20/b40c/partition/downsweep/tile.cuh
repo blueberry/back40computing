@@ -44,16 +44,22 @@ namespace partition {
 namespace downsweep {
 
 
+
 /**
  * Templated texture reference for keys
  */
-template <typename KeyType>
+
+template <typename KeyVectorType>
 struct KeysTex
 {
-	static texture<KeyType, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<KeyVectorType, cudaTextureType1D, cudaReadModeElementType> ref0;
+	static texture<KeyVectorType, cudaTextureType1D, cudaReadModeElementType> ref1;
 };
-template <typename KeyType>
-texture<KeyType, cudaTextureType1D, cudaReadModeElementType> KeysTex<KeyType>::ref;
+
+template <typename KeyVectorType>
+texture<KeyVectorType, cudaTextureType1D, cudaReadModeElementType> KeysTex<KeyVectorType>::ref0;
+template <typename KeyVectorType>
+texture<KeyVectorType, cudaTextureType1D, cudaReadModeElementType> KeysTex<KeyVectorType>::ref1;
 
 
 
@@ -74,6 +80,9 @@ struct Tile
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
+	typedef typename util::VecType<
+		KeyType,
+		KernelPolicy::PACK_SIZE>::Type 						KeyVectorType;
 
 	typedef DerivedTile Dispatch;
 
@@ -194,9 +203,13 @@ struct Tile
 
 			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
+				KeyType *d_out = (Cta::FLOP_TURN) ?
+						cta->d_keys0 :
+						cta->d_keys1;
+
 				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 					key,
-					cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * VEC) + bin_carry);
+					d_out + threadIdx.x + (KernelPolicy::THREADS * VEC) + bin_carry);
 			}
 
 			// Next vector element
@@ -243,7 +256,7 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void UpsweepLanes(Cta *cta, Tile *tile)
 		{
-			*cta->lane_partial[LANE] = util::reduction::SerialReduce<4>::Invoke(
+			*cta->lane_partial[LANE] = util::reduction::SerialReduce<KernelPolicy::OUTER_SCAN_STEPS>::Invoke(
 				cta->smem_storage.paired_counters_32[LANE][threadIdx.x]);
 
 			// Next lane
@@ -253,11 +266,14 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DownsweepLanes(Cta *cta, Tile *tile)
 		{
-			util::scan::SerialScan<4>::Invoke(
+			util::scan::SerialScan<KernelPolicy::OUTER_SCAN_STEPS>::Invoke(
 				cta->smem_storage.paired_counters_32[LANE][threadIdx.x],
 				*cta->lane_partial[LANE]);
 
-			if (LANE < RAKING_LANES - 1) __threadfence_block();
+			// Tuning drains
+			if ((KernelPolicy::OUTER_SCAN_STEPS > 2) && (LANE < RAKING_LANES - 1)) {
+				__threadfence_block();
+			}
 
 			// Next lane
 			IterateRakingLanes<LANE + 1>::DownsweepLanes(cta, tile);
@@ -440,16 +456,18 @@ struct Tile
 			const bool PADDED_EXCHANGE = false;
 
 			// Load keys
-			typedef typename util::VecType<KeyType, KernelPolicy::PACK_SIZE>::Type VectorType;
-			VectorType *vectors = (VectorType *) tile->keys;
+			KeyVectorType *vectors = (KeyVectorType *) tile->keys;
 
 			if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
 
 				// Unguarded loads through tex
 				#pragma unroll
 				for (int PACK = 0; PACK < PACKS_PER_LOAD; PACK++) {
+
 					vectors[PACK] = tex1Dfetch(
-						KeysTex<VectorType>::ref,
+						(Cta::FLOP_TURN) ?
+							KeysTex<KeyVectorType>::ref1 :
+							KeysTex<KeyVectorType>::ref0,
 						pack_offset + (threadIdx.x * PACKS_PER_LOAD) + PACK);
 				}
 
@@ -463,7 +481,9 @@ struct Tile
 					KernelPolicy::READ_MODIFIER,
 					KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 						(KeyType (*)[LOAD_VEC_SIZE]) tile->keys,
-						cta->d_in_keys,
+						(Cta::FLOP_TURN) ?
+							cta->d_keys1 :
+							cta->d_keys0,
 						(pack_offset * KernelPolicy::PACK_SIZE),
 						guarded_elements,
 						KeyType(-1));

@@ -41,6 +41,7 @@ namespace downsweep {
 template <typename KernelPolicy, bool EARLY_EXIT = KernelPolicy::EARLY_EXIT>
 struct DownsweepPass
 {
+/*
 	static __device__ __forceinline__ void Invoke(
 		int 								*d_selectors,
 		typename KernelPolicy::SizeT 		*d_spine,
@@ -114,6 +115,7 @@ struct DownsweepPass
 
 		cta.ProcessWorkRange(smem_storage.work_limits);
 	}
+*/
 };
 
 
@@ -136,7 +138,11 @@ struct DownsweepPass<KernelPolicy, false>
 		typedef typename KernelPolicy::KeyType 					KeyType;
 		typedef typename KernelPolicy::ValueType 				ValueType;
 		typedef typename KernelPolicy::SizeT 					SizeT;
-		typedef Cta<KernelPolicy> 								Cta;
+
+		typedef typename util::If<(KernelPolicy::CURRENT_PASS & 0x1),
+			Cta<KernelPolicy, true>,		// d_keys1 --> d_keys0
+			Cta<KernelPolicy, false>		// d_keys0 --> d_keys1
+				>::Type Cta;
 
 		if (threadIdx.x == 0) {
 
@@ -151,33 +157,16 @@ struct DownsweepPass<KernelPolicy, false>
 
 		// Sync to acquire work limits
 		__syncthreads();
-/*
-		if (KernelPolicy::CURRENT_PASS & 0x1) {
 
-			// d_keys1 --> d_keys0
-			Cta cta(
-				smem_storage,
-				d_keys1,
-				d_keys0,
-				d_values1,
-				d_values0,
-				d_spine);
+		Cta cta(
+			smem_storage,
+			d_keys0,
+			d_keys1,
+			d_values0,
+			d_values1,
+			d_spine);
 
-			cta.ProcessWorkRange(smem_storage.work_limits);
-
-		} else {
-*/
-			// d_keys0 --> d_keys1
-			Cta cta(
-				smem_storage,
-				d_keys0,
-				d_keys1,
-				d_values0,
-				d_values1,
-				d_spine);
-
-			cta.ProcessWorkRange(smem_storage.work_limits);
-//		}
+		cta.ProcessWorkRange(smem_storage.work_limits);
 	}
 };
 
