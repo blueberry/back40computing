@@ -43,8 +43,9 @@ namespace downsweep {
  */
 template <
 	typename KernelPolicy,
+	bool _FLOP_TURN,
 	typename DerivedCta,									// Derived CTA class
-	template <typename Policy> class Tile>			// Derived Tile class to use
+	template <typename Policy> class Tile>					// Derived Tile class to use
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -64,6 +65,7 @@ struct Cta
 
 	enum {
 		WARP_THREADS 		= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
+		FLOP_TURN			= _FLOP_TURN,
 	};
 
 	//---------------------------------------------------------------------
@@ -73,12 +75,11 @@ struct Cta
 	// Shared storage for this CTA
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
-	// Input and output device pointers
-	KeyType								*d_in_keys;
-	KeyType								*d_out_keys;
+	KeyType								*d_keys0;
+	KeyType								*d_keys1;
 
-	ValueType							*d_in_values;
-	ValueType							*d_out_values;
+	ValueType							*d_values0;
+	ValueType							*d_values1;
 
 	LanePartial							lane_partial;
 	int									*raking_segment;
@@ -96,16 +97,16 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		KeyType 		*d_out_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_out_values,
+		KeyType 		*d_keys0,
+		KeyType 		*d_keys1,
+		ValueType 		*d_values0,
+		ValueType 		*d_values1,
 		SizeT 			*d_spine) :
 			smem_storage(smem_storage),
-			d_in_keys(d_in_keys),
-			d_out_keys(d_out_keys),
-			d_in_values(d_in_values),
-			d_out_values(d_out_values),
+			d_keys0(d_keys0),
+			d_keys1(d_keys1),
+			d_values0(d_values0),
+			d_values1(d_values1),
 			lane_partial((LanePartial) (smem_storage.raking_lanes + threadIdx.x + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_ROW))),
 			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW)),
 			counters(&smem_storage.packed_counters_32[0][threadIdx.x])
@@ -122,7 +123,7 @@ struct Cta
 		// Initialize warpscan identity regions
 		if ((KernelPolicy::THREADS == KernelPolicy::RAKING_THREADS) || (threadIdx.x < KernelPolicy::RAKING_THREADS)) {
 
-		int tid = threadIdx.x + (threadIdx.x & (~31));
+			int tid = threadIdx.x + (threadIdx.x & (~31));
 			smem_storage.warpscan[tid] = 0;
 		}
 	}

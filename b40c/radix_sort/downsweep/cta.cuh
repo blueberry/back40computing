@@ -39,19 +39,22 @@ namespace downsweep {
  *
  * Derives from partition::downsweep::Cta
  */
-template <typename KernelPolicy>
+template <
+	typename KernelPolicy,
+	bool FLOP_TURN>
 struct Cta :
 	partition::downsweep::Cta<
 		KernelPolicy,
-		Cta<KernelPolicy>,			// This class
-		Tile>						// radix_sort::downsweep::Tile
+		FLOP_TURN,
+		Cta<KernelPolicy, FLOP_TURN>,		// This class
+		Tile>								// radix_sort::downsweep::Tile
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
 	//---------------------------------------------------------------------
 
 	// Base class type
-	typedef partition::downsweep::Cta<KernelPolicy, Cta, Tile> Base;
+	typedef partition::downsweep::Cta<KernelPolicy, FLOP_TURN, Cta, Tile> Base;
 
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::ValueType 				ValueType;
@@ -68,17 +71,17 @@ struct Cta :
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		KeyType 		*d_out_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_out_values,
+		KeyType 		*d_keys0,
+		KeyType 		*d_keys1,
+		ValueType 		*d_values0,
+		ValueType 		*d_values1,
 		SizeT 			*d_spine) :
 			Base(
 				smem_storage,
-				d_in_keys,
-				d_out_keys,
-				d_in_values,
-				d_out_values,
+				d_keys0,
+				d_keys1,
+				d_values0,
+				d_values1,
 				d_spine)
 	{}
 };
