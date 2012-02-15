@@ -222,7 +222,6 @@ int main(int argc, char** argv)
 
 	for (size_t i = 0; i < num_elements; ++i) {
 
-
 		h_keys[i] = (random) ?
 			r(mt19937) :
 			(zeros) ?
@@ -269,11 +268,13 @@ int main(int argc, char** argv)
 		h_keys,
 		sizeof(KeyType) * num_elements,
 		cudaMemcpyHostToDevice);
-	cudaMemcpy(
-		sort_storage.d_values[sort_storage.selector],
-		h_values,
-		sizeof(ValueType) * num_elements,
-		cudaMemcpyHostToDevice);
+	if (!ProblemType::KEYS_ONLY) {
+		cudaMemcpy(
+			sort_storage.d_values[sort_storage.selector],
+			h_values,
+			sizeof(ValueType) * num_elements,
+			cudaMemcpyHostToDevice);
+	}
 
 	printf("Incoming selector: %d\n", sort_storage.selector);
 
@@ -285,7 +286,7 @@ int main(int argc, char** argv)
 
 	printf("Outgoing selector: %d\n", sort_storage.selector);
 
-	if (b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE) {
+	if (ProblemType::KEYS_ONLY) {
 		printf("Restricted-range keys-only sort: ");
 	} else {
 		printf("Restricted-range key-value sort: ");
@@ -303,20 +304,36 @@ int main(int argc, char** argv)
 	if (iterations > 0) {
 
 		b40c::GpuTimer gpu_timer;
-		gpu_timer.Start();
+		float elapsed = 0;
 		for (int i = 0; i < iterations; i++) {
 
 			sort_storage.selector = 0;
+			cudaMemcpy(
+				sort_storage.d_keys[sort_storage.selector],
+				h_keys,
+				sizeof(KeyType) * num_elements,
+				cudaMemcpyHostToDevice);
+			if (!ProblemType::KEYS_ONLY) {
+				cudaMemcpy(
+					sort_storage.d_values[sort_storage.selector],
+					h_values,
+					sizeof(ValueType) * num_elements,
+					cudaMemcpyHostToDevice);
+			}
+
+			gpu_timer.Start();
 			enactor.Sort<
 				0,
 				KEY_BITS,
 				Policy>(sort_storage, num_elements, max_ctas);
-		}
-		gpu_timer.Stop();
+			gpu_timer.Stop();
 
-		float avg_elapsed = gpu_timer.ElapsedMillis() / float(iterations);
+			elapsed += gpu_timer.ElapsedMillis();
+		}
+
+		float avg_elapsed = elapsed / float(iterations);
 		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %f.1 Mkeys/s\n",
-			gpu_timer.ElapsedMillis(),
+			elapsed,
 			avg_elapsed,
 			float(num_elements) / avg_elapsed / 1000.f);
 	}
