@@ -48,7 +48,9 @@ enum FrontierType {
 	VERTEX_FRONTIERS,		// O(n) ping-pong global vertex frontiers
 	EDGE_FRONTIERS,			// O(m) ping-pong global edge frontiers
 	MIXED_FRONTIERS,		// O(n) global vertex frontier, O(m) global edge frontier
-	MULTI_GPU_FRONTIERS,	// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
+	MULTI_GPU_FRONTIERS,	// O(MULTI_GPU_VERTEX_FRONTIER_SCALE * n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
+
+	MULTI_GPU_VERTEX_FRONTIER_SCALE = 2,
 };
 
 
@@ -437,7 +439,7 @@ struct CsrProblem
 					graph_slices[gpu]->edges = 0;
 				}
 
-				printf("Done allocating gpu data structures\n");
+				printf("Done allocating gpu data structures on host\n");
 				fflush(stdout);
 
 				// Construct data structures for gpus on host
@@ -456,14 +458,14 @@ struct CsrProblem
 					slice_row_offsets[gpu][slice_row + 1] = graph_slices[gpu]->edges;
 
 					// Mask in owning gpu
-					for (int gpu = 0; gpu < row_edges; gpu++) {
-						VertexId *ptr = slice_column_indices[gpu] + slice_row_offsets[gpu][slice_row] + gpu;
+					for (int edge = 0; edge < row_edges; edge++) {
+						VertexId *ptr = slice_column_indices[gpu] + slice_row_offsets[gpu][slice_row] + edge;
 						VertexId owner = GpuIndex(*ptr);
 						(*ptr) |= (owner << ProblemType::GPU_MASK_SHIFT);
 					}
 				}
 
-				printf("Done constructing gpu data structures\n");
+				printf("Done constructing gpu data structures on host\n");
 				fflush(stdout);
 
 				// Initialize data structures on GPU
@@ -516,6 +518,10 @@ struct CsrProblem
 					if (slice_column_indices[gpu]) delete slice_column_indices[gpu];
 				}
 				if (retval) break;
+
+				printf("Done initializing gpu data structures on gpus\n");
+				fflush(stdout);
+
 
 				if (slice_row_offsets) delete slice_row_offsets;
 				if (slice_column_indices) delete slice_column_indices;
@@ -617,7 +623,7 @@ struct CsrProblem
 
 			case MULTI_GPU_FRONTIERS :
 				// O(n) global vertex frontier, O(m) global edge frontier, O(m) global sorted, filtered edge frontier
-				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * queue_sizing;
+				new_frontier_elements[0] = double(graph_slices[gpu]->nodes) * MULTI_GPU_VERTEX_FRONTIER_SCALE * queue_sizing;
 				new_frontier_elements[1] = double(graph_slices[gpu]->edges) * queue_sizing;
 				new_frontier_elements[2] = new_frontier_elements[1];
 				if (MARK_PREDECESSORS) {

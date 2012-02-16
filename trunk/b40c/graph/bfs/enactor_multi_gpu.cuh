@@ -118,7 +118,7 @@ public :
 			false, 					// DEQUEUE_PROBLEM_SIZE
 			8,						// CTA_OCCUPANCY
 			7,						// LOG_THREADS
-			(sizeof(VertexId) > 4) ? 0 : 1,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOAD_VEC_SIZE (must be vec-1 since we may be unaligned)
 			(sizeof(VertexId) > 4) ? 0 : 2,						// LOG_LOADS_PER_TILE
 			5,						// LOG_RAKING_THREADS
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
@@ -168,7 +168,7 @@ public :
 			6,						// LOG_SCHEDULE_GRANULARITY
 			8,						// CTA_OCCUPANCY
 			6,						// LOG_THREADS
-			0,						// LOG_LOAD_VEC_SIZE
+			0,						// LOG_LOAD_VEC_SIZE (must be vec-1 since we may be unaligned)
 			0,						// LOG_LOADS_PER_TILE
 			util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
 			util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
@@ -781,13 +781,13 @@ public:
 							fflush(stdout);
 						}
 
-						// Check for vertex frontier overflow
-						if (num_elements > slice->frontier_elements[0]) {
-							retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
-						}
-
 						// Copy / copy+contract from peer
 						if (slice->gpu == peer_slice->gpu) {
+
+							// Check for vertex frontier overflow
+							if (num_elements > slice->frontier_elements[0]) {
+								retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Frontier queue overflow.  Please increase queue-sizing factor. ", __FILE__, __LINE__);
+							}
 
 							util::CtaWorkDistribution<SizeT> work_decomposition;
 							work_decomposition.template Init<CopyPolicy::LOG_SCHEDULE_GRANULARITY>(
