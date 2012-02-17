@@ -100,7 +100,6 @@ struct TuningPolicy : ProblemType
 };
 
 
-
 } // namespace downsweep
 } // namespace partition
 } // namespace b40c
