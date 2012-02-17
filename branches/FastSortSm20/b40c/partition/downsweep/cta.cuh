@@ -56,10 +56,6 @@ struct Cta
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
-	typedef typename KernelPolicy::RakingGrid::LanePartial	LanePartial;
-
-	// Operational details type for short grid
-	typedef util::SrtsDetails<typename KernelPolicy::RakingGrid> 		RakingGridDetails;
 
 	typedef DerivedCta Dispatch;
 
@@ -81,10 +77,9 @@ struct Cta
 	ValueType							*d_values0;
 	ValueType							*d_values1;
 
-	LanePartial							lane_partial;
 	int									*raking_segment;
-
-	int 								*counters;
+	unsigned short						*counters;
+	unsigned short						*bin_counter;
 
 	SizeT								my_bin_carry;
 
@@ -107,17 +102,18 @@ struct Cta
 			d_keys1(d_keys1),
 			d_values0(d_values0),
 			d_values1(d_values1),
-			lane_partial((LanePartial) (smem_storage.raking_lanes + threadIdx.x + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_PARTIALS_PER_ROW))),
-			raking_segment(smem_storage.raking_lanes + (threadIdx.x << KernelPolicy::RakingGrid::LOG_PARTIALS_PER_SEG) + (threadIdx.x >> KernelPolicy::RakingGrid::LOG_SEGS_PER_ROW)),
-			counters(&smem_storage.packed_counters_32[0][threadIdx.x])
+			raking_segment(smem_storage.raking_grid[threadIdx.x]),
+			counters(smem_storage.packed_counters[0][threadIdx.x])
 	{
-		// Read bin_carry in parallel
-		if (threadIdx.x < KernelPolicy::BINS) {
+		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
+		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_BINS - 1);
+		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
 
+		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
+
+			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
-
-			smem_storage.bin_prefixes[threadIdx.x] = 0;
 		}
 
 		// Initialize warpscan identity regions

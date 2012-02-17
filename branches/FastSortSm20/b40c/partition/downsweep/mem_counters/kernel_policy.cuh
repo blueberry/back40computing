@@ -48,8 +48,11 @@ struct KernelPolicy : TuningPolicy
 
 	enum {
 
-		BINS 							= 1 << TuningPolicy::LOG_BINS,
-		THREADS							= 1 << TuningPolicy::LOG_THREADS,
+		LOG_BINS						= TuningPolicy::LOG_BINS,
+		BINS 							= 1 << LOG_BINS,
+
+		LOG_THREADS						= TuningPolicy::LOG_THREADS,
+		THREADS							= 1 << LOG_THREADS,
 
 		LOG_WARPS						= TuningPolicy::LOG_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
@@ -71,23 +74,13 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - 1), 0),				// Always at least one lane
 		SCAN_LANES						= 1 << LOG_SCAN_LANES,
 
-		LOG_RAKING_LANES				= B40C_MAX((LOG_SCAN_LANES - 2), 0),	// Always at least one lane
-		RAKING_LANES					= 1 << LOG_RAKING_LANES,
+		LOG_SCAN_ELEMENTS				= LOG_SCAN_LANES + LOG_THREADS,
+		SCAN_ELEMENTS					= 1 << LOG_SCAN_ELEMENTS,
 
-		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS,
+		LOG_BASE_RAKING_SEG				= LOG_SCAN_ELEMENTS - LOG_RAKING_THREADS,
+		PADDED_RAKING_SEG				= (1 << LOG_BASE_RAKING_SEG) + 1,
 	};
 
-
-	// Smem SRTS grid type for reducing and scanning a tile of
-	// (bins/2) lanes of composite 16-bit bin counters
-	typedef util::SrtsGrid<
-		TuningPolicy::CUDA_ARCH,
-		int,											// Partial type
-		LOG_DEPOSITS_PER_LANE,							// Deposits per lane
-		LOG_RAKING_LANES,						// Lanes (the number of composite digits)
-		TuningPolicy::LOG_RAKING_THREADS,				// Raking threads
-		false>											// Any prefix dependences between lanes are explicitly managed
-			RakingGrid;
 
 	
 	/**
@@ -102,24 +95,17 @@ struct KernelPolicy : TuningPolicy
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
 		SizeT 							bin_carry[BINS];
-		int 							bin_prefixes[BINS + 1];
 
 		// Storage for scanning local ranks
 		volatile int 					warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
 
-		union {
-			struct {
-				union {
-					int 				packed_counters_32[SCAN_LANES][THREADS];
-					unsigned short 		packed_counters_16[SCAN_LANES][THREADS][2];
-
-					int4 				paired_counters_128[RAKING_LANES][THREADS];
-					int 				paired_counters_32[RAKING_LANES][THREADS][4];
-				};
-				int 					raking_lanes[RakingGrid::RAKING_ELEMENTS];
+		struct {
+			int4						align_padding;
+			union {
+				unsigned short			packed_counters[SCAN_LANES][THREADS][2];
+				int						raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
+				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)
 			};
-
-			KeyType 					key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)
 		};
 	};
 
