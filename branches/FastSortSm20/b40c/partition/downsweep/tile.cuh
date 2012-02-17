@@ -139,7 +139,7 @@ struct Tile
 			tile->prefixes[VEC] = *tile->counters[VEC];
 
 			// Store inclusive prefix
-			*tile->counters[VEC] = tile->prefixes[VEC] + sizeof(KeyType);
+			*tile->counters[VEC] = tile->prefixes[VEC] + 1;
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::DecodeKeys(cta, tile);
@@ -154,7 +154,7 @@ struct Tile
 			tile->prefixes[VEC] += *tile->counters[VEC];
 
 			// Add in padding
-			if (BANK_PADDING) tile->prefixes[VEC] += (tile->prefixes[VEC] >> 7) << 2;
+			if (BANK_PADDING) tile->prefixes[VEC] += (tile->prefixes[VEC] >> 5);
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::template ComputeRanks<BANK_PADDING>(cta, tile);
@@ -165,8 +165,7 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ScatterRanked(Cta *cta, Tile *tile)
 		{
-			KeyType *dest = (KeyType *) ((char *) cta->smem_storage.key_exchange + tile->prefixes[VEC]);
-			*dest = tile->keys[VEC];
+			cta->smem_storage.key_exchange[tile->prefixes[VEC]] = tile->keys[VEC];
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::ScatterRanked(cta, tile);
@@ -184,7 +183,7 @@ struct Tile
 			KeyType *base_gather_offset = cta->smem_storage.key_exchange + threadIdx.x;
 
 			// Add padding
-			if (BANK_PADDING) base_gather_offset += threadIdx.x >> 5;
+			if (BANK_PADDING) base_gather_offset += (threadIdx.x >> 5);
 
 			tile->keys[VEC] = base_gather_offset[LOAD_OFFSET];
 
@@ -318,21 +317,62 @@ struct Tile
 
 
 	/**
+	 * Load tile of keys
+	 */
+	template <typename Cta>
+	__device__ __forceinline__ void LoadKeys(
+		SizeT pack_offset,
+		const SizeT &guarded_elements,
+		Cta *cta)
+	{
+		// Load keys
+		KeyVectorType *vectors = (KeyVectorType *) keys;
+
+		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
+
+			// Unguarded loads through tex
+			#pragma unroll
+			for (int PACK = 0; PACK < PACKS_PER_LOAD; PACK++) {
+
+				vectors[PACK] = tex1Dfetch(
+					(Cta::FLOP_TURN) ?
+						KeysTex<KeyVectorType>::ref1 :
+						KeysTex<KeyVectorType>::ref0,
+					pack_offset + (threadIdx.x * PACKS_PER_LOAD) + PACK);
+			}
+
+		} else {
+
+			// Guarded loads with default assignment of -1 to out-of-bound keys
+			util::io::LoadTile<
+				0,									// log loads per tile
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS,
+				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
+					(KeyType (*)[LOAD_VEC_SIZE]) keys,
+					(Cta::FLOP_TURN) ?
+						cta->d_keys1 :
+						cta->d_keys0,
+					(pack_offset * KernelPolicy::PACK_SIZE),
+					guarded_elements,
+					KeyType(-1));
+		}
+	}
+
+
+	/**
 	 * Scan Tile
 	 */
 	template <int CURRENT_BIT, int PADDED_EXCHANGE, typename Cta>
 	__device__ __forceinline__ void ScanTile(Cta *cta)
 	{
 		// Initialize raking lanes
-		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
-
-			#pragma unroll
-			for (int ELEMENT = 0; ELEMENT < KernelPolicy::PADDED_RAKING_SEG; ELEMENT++) {
-				cta->raking_segment[ELEMENT] = 0;
-			}
+		#pragma unroll
+		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES + 1; LANE++) {
+			int *counter = (int *) cta->counters;
+			counter[LANE * KernelPolicy::THREADS] = 0;
 		}
-
-		__syncthreads();
 
 		// Decode bins and update counters
 		IterateTileElements<0>::DecodeKeys(cta, this);
@@ -350,10 +390,6 @@ struct Tile
 			unsigned short bin_exclusive = cta->bin_counter[0];
 			unsigned short bin_inclusive = cta->bin_counter[KernelPolicy::THREADS * 2];
 
-			// Undo byte shift
-			bin_exclusive >>= util::Log2<sizeof(KeyType)>::VALUE;
-			bin_inclusive >>= util::Log2<sizeof(KeyType)>::VALUE;
-
 			cta->my_bin_carry -= bin_exclusive;
 			cta->smem_storage.bin_carry[threadIdx.x] = cta->my_bin_carry;
 			cta->my_bin_carry += bin_inclusive;
@@ -362,84 +398,6 @@ struct Tile
 		// Extract the local ranks of each key
 		IterateTileElements<0>::template ComputeRanks<PADDED_EXCHANGE>(cta, this);
 	}
-
-
-	//---------------------------------------------------------------------
-	// Partition/scattering specializations
-	//---------------------------------------------------------------------
-
-	/**
-	 * Specialized for two-phase scatter, keys-only
-	 */
-	template <ScatterStrategy SCATTER_STRATEGY>
-	struct PartitionTile
-	{
-		template <typename Cta, typename Tile>
-		static __device__ __forceinline__ void Invoke(
-			SizeT pack_offset,
-			const SizeT &guarded_elements,
-			Cta *cta,
-			Tile *tile)
-		{
-			// Whether or not to insert padding for exchanging keys
-			const bool PADDED_EXCHANGE = false;
-
-			// Load keys
-			KeyVectorType *vectors = (KeyVectorType *) tile->keys;
-
-			if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
-
-				// Unguarded loads through tex
-				#pragma unroll
-				for (int PACK = 0; PACK < PACKS_PER_LOAD; PACK++) {
-
-					vectors[PACK] = tex1Dfetch(
-						(Cta::FLOP_TURN) ?
-							KeysTex<KeyVectorType>::ref1 :
-							KeysTex<KeyVectorType>::ref0,
-						pack_offset + (threadIdx.x * PACKS_PER_LOAD) + PACK);
-				}
-
-			} else {
-
-				// Guarded loads with default assignment of -1 to out-of-bound keys
-				util::io::LoadTile<
-					0,									// log loads per tile
-					KernelPolicy::LOG_LOAD_VEC_SIZE,
-					KernelPolicy::THREADS,
-					KernelPolicy::READ_MODIFIER,
-					KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
-						(KeyType (*)[LOAD_VEC_SIZE]) tile->keys,
-						(Cta::FLOP_TURN) ?
-							cta->d_keys1 :
-							cta->d_keys0,
-						(pack_offset * KernelPolicy::PACK_SIZE),
-						guarded_elements,
-						KeyType(-1));
-			}
-
-			// Scan tile (computing padded exchange offsets)
-			tile->template ScanTile<KernelPolicy::CURRENT_BIT, PADDED_EXCHANGE>(cta);
-
-			__syncthreads();
-
-			// Scatter keys shared
-			IterateTileElements<0>::ScatterRanked(cta, tile);
-
-			__syncthreads();
-
-			// Gather keys
-			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile);
-
-			// Scatter to global
-			IterateTileElements<0>::ScatterGlobal(cta, tile, guarded_elements);
-
-			__syncthreads();
-		}
-	};
-
-
-
 
 
 	//---------------------------------------------------------------------
@@ -455,12 +413,29 @@ struct Tile
 		const SizeT &guarded_elements,
 		Cta *cta)
 	{
-		PartitionTile<KernelPolicy::SCATTER_STRATEGY>::Invoke(
-			pack_offset,
-			guarded_elements,
-			cta,
-			(Dispatch *) this);
+		// Whether or not to insert padding for exchanging keys
+		const bool PADDED_EXCHANGE = true;
 
+		// Load tile of keys
+		LoadKeys(pack_offset, guarded_elements, cta);
+
+		__syncthreads();
+
+		// Scan tile (computing padded exchange offsets)
+		ScanTile<KernelPolicy::CURRENT_BIT, PADDED_EXCHANGE>(cta);
+
+		__syncthreads();
+
+		// Scatter keys shared
+		IterateTileElements<0>::ScatterRanked(cta, this);
+
+		__syncthreads();
+
+		// Gather keys
+		IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, this);
+
+		// Scatter to global
+		IterateTileElements<0>::ScatterGlobal(cta, this, guarded_elements);
 	}
 
 };
