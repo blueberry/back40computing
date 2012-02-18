@@ -57,6 +57,7 @@ std::tr1::mt19937 mt19937;
  */
 typedef b40c::radix_sort::ProblemType<
 		unsigned int,						// Key type
+//		unsigned int,						// Value type
 		b40c::util::NullType,				// Value type (alternatively, use b40c::util::NullType for keys-only sorting)
 		int> 								// SizeT (what type to use for counting)
 	ProblemType;
@@ -75,7 +76,7 @@ struct Policy : ProblemType
 				B40C_MIN(BITS, 5),			// RADIX_BITS
 
 				// Launch tuning policy
-				11,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
+				12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
 				b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
 				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
@@ -103,12 +104,12 @@ struct Policy : ProblemType
 				//		Given prefix counts, scans/scatters keys into appropriate bins
 				// 		Note: a "cycle" is a tile sub-segment up to 256 keys
 				//
-				b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				8,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-				6,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-				4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-				0,							// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-				6>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+				b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+				ProblemType::KEYS_ONLY ? 4 : 2,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				ProblemType::KEYS_ONLY ? 7 : 8,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+				ProblemType::KEYS_ONLY ? 4 : 4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
+				0,														// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				ProblemType::KEYS_ONLY ? 7 : 8>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 			Policy;
 	};
 
@@ -123,7 +124,7 @@ struct Policy : ProblemType
 				4,							// RADIX_BITS
 
 				// Launch tuning policy
-				11,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
+				12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
 				b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
 				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
@@ -134,7 +135,7 @@ struct Policy : ProblemType
 				// Policy for upsweep kernel.
 				// 		Reduces/counts all the different digit numerals for a given digit-place
 				//
-				7,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 				7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 				1,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
 				2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
@@ -152,11 +153,11 @@ struct Policy : ProblemType
 				// 		Note: a "cycle" is a tile sub-segment up to 256 keys
 				//
 				b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				4,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-				7,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-				4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-				0,							// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-				7>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+				ProblemType::KEYS_ONLY ? 8 : 2,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				ProblemType::KEYS_ONLY ? 6 : 8,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+				ProblemType::KEYS_ONLY ? 4 : 4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
+				0,														// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				ProblemType::KEYS_ONLY ? 6 : 8>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
 			Policy;
 	};
 };
@@ -183,7 +184,9 @@ int main(int argc, char** argv)
 
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
-    	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] [--max-ctas=<max-thread-blocks>] [--i=<iterations>]\n");
+    	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] "
+    			"[--max-ctas=<max-thread-blocks>] [--i=<iterations>] "
+    			"[--zeros | --regular] [--entropy-reduction=<random &'ing rounds>\n");
     	return 0;
     }
 
@@ -195,18 +198,17 @@ int main(int argc, char** argv)
     int 			effective_bits = KEY_BITS;
 
     bool verbose = args.CheckCmdLineFlag("v");
-    bool random = args.CheckCmdLineFlag("random");
     bool zeros = args.CheckCmdLineFlag("zeros");
+    bool regular = args.CheckCmdLineFlag("regular");
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
-    args.GetCmdLineArgument("ered", entropy_reduction);
+    args.GetCmdLineArgument("entropy-reduction", entropy_reduction);
     args.GetCmdLineArgument("bits", effective_bits);
 
-
     if (zeros) printf("Zeros\n");
-    else if (random) printf("Random\n");
-    else printf("mod-%llu\n", 1ull << effective_bits);
+    else if (regular) printf("%d-bit mod-%llu\n", 1ull << effective_bits, KEY_BITS);
+    else printf("%d-bit random\n", KEY_BITS);
 
 	// Allocate and initialize host problem data and host reference solution
 	KeyType *h_keys 				= new KeyType[num_elements];
@@ -222,11 +224,11 @@ int main(int argc, char** argv)
 
 	for (size_t i = 0; i < num_elements; ++i) {
 
-		h_keys[i] = (random) ?
-			r(mt19937) :
+		h_keys[i] = (regular) ?
+			i & ((1ull << effective_bits) - 1) :
 			(zeros) ?
 				0 :
-				i & ((1ull << effective_bits) - 1);
+				r(mt19937);
 
 		for (int j = 0; j < entropy_reduction; j++) {
 			h_keys[i] &= r(mt19937);

@@ -45,7 +45,9 @@ enum Representation
 template <Representation R>
 struct BaseTraits
 {
-	static const Representation REPRESENTATION = R;
+	enum {
+		REPRESENTATION = R
+	};
 };
 
 

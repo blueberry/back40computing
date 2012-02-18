@@ -79,6 +79,8 @@ struct KernelPolicy : TuningPolicy
 
 		LOG_BASE_RAKING_SEG				= LOG_SCAN_ELEMENTS - LOG_RAKING_THREADS,
 		PADDED_RAKING_SEG				= (1 << LOG_BASE_RAKING_SEG) + 1,
+
+		LOG_MEM_BANKS					= B40C_LOG_MEM_BANKS(TuningPolicy::CUDA_ARCH)
 	};
 
 
@@ -102,9 +104,10 @@ struct KernelPolicy : TuningPolicy
 		struct {
 			int4						align_padding;
 			union {
-				unsigned short			packed_counters[SCAN_LANES + 1][THREADS][2];
+				unsigned short			packed_counters[SCAN_LANES][THREADS][2];
 				int						raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
-				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS / 32)];			// Last index is for invalid elements to be culled (if any)
+				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
+				ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 			};
 		};
 	};
