@@ -89,8 +89,8 @@ struct Policy : ProblemType
 				//
 				8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 				7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-				1,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-				2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				2,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
+				1,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
 
 				// Spine-scan kernel policy
 				//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
@@ -113,53 +113,6 @@ struct Policy : ProblemType
 			Policy;
 	};
 
-	template <int DUMMY>
-	struct BitPolicy<4, DUMMY>
-	{
-		typedef b40c::radix_sort::Policy<
-				ProblemType,				// Problem type
-
-				// Common
-				200,						// SM ARCH
-				4,							// RADIX_BITS
-
-				// Launch tuning policy
-				12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
-				b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
-				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
-				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				false,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
-				true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
-				true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
-
-				// Policy for upsweep kernel.
-				// 		Reduces/counts all the different digit numerals for a given digit-place
-				//
-				8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-				7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-				1,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-				2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-
-				// Spine-scan kernel policy
-				//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
-				//
-				8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-				2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-				1,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
-				5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
-
-				// Policy for downsweep kernel
-				//		Given prefix counts, scans/scatters keys into appropriate bins
-				// 		Note: a "cycle" is a tile sub-segment up to 256 keys
-				//
-				b40c::partition::downsweep::SCATTER_TWO_PHASE,						// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				ProblemType::KEYS_ONLY ? 8 : 2,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-				ProblemType::KEYS_ONLY ? 6 : 8,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-				ProblemType::KEYS_ONLY ? 4 : 4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-				0,														// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-				ProblemType::KEYS_ONLY ? 6 : 8>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
-			Policy;
-	};
 };
 
 
@@ -207,7 +160,7 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("bits", effective_bits);
 
     if (zeros) printf("Zeros\n");
-    else if (regular) printf("%d-bit mod-%llu\n", 1ull << effective_bits, KEY_BITS);
+    else if (regular) printf("%d-bit mod-%llu\n", KEY_BITS, 1ull << effective_bits);
     else printf("%d-bit random\n", KEY_BITS);
 
 	// Allocate and initialize host problem data and host reference solution

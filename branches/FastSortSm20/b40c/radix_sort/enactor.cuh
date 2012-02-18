@@ -414,7 +414,11 @@ protected:
 
 		enum {
 			BITS_LEFT 				= LAST_BIT - CURRENT_BIT,
-			BIT_SELECT 				= ((BITS_LEFT % 5 == 0) || (BITS_LEFT > 12)) ? 5 : 4,
+			BIT_SELECT 				= (BITS_LEFT > 12) ?
+											5 :
+											(BITS_LEFT > 3) ?
+												4 :
+												BITS_LEFT
 		};
 
 		typedef typename Policy::template BitPolicy<BIT_SELECT>::Policy BitPolicy;
