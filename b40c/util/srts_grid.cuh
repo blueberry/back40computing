@@ -77,7 +77,7 @@ struct SrtsGrid
 	// Warpscan type (using volatile storage for built-in types allows us to omit thread-fence
 	// operations during warp-synchronous code)
 	typedef typename util::If<
-		(util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER),
+		(util::NumericTraits<T>::REPRESENTATION == int(util::NOT_A_NUMBER)),
 		T,
 		volatile T>::Type WarpscanT;
 
