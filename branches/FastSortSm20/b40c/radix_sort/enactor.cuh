@@ -30,6 +30,7 @@
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/numeric_traits.cuh>
 
 #include <b40c/radix_sort/problem_type.cuh>
 #include <b40c/radix_sort/policy.cuh>
@@ -146,6 +147,62 @@ protected:
 	}
 
 
+	/**
+	 * Bind value textures (specialized for primitive types)
+	 */
+	template <
+		typename BitPolicy,
+		typename ValueType,
+		int REPRESENTATION = util::NumericTraits<ValueType>::REPRESENTATION>
+	struct BindValueTextures
+	{
+		template <typename Detail>
+		static cudaError_t Bind(Detail &detail)
+		{
+			typedef typename util::VecType<ValueType, BitPolicy::Downsweep::PACK_SIZE>::Type ValueVectorType;
+			cudaChannelFormatDesc values_tex_desc = cudaCreateChannelDesc<ValueVectorType>();
+
+			cudaError_t retval = cudaSuccess;
+			do {
+				if (retval = util::B40CPerror(cudaBindTexture(
+						0,
+						partition::downsweep::ValuesTex<ValueVectorType>::ref0,
+						detail.problem_storage.d_values[detail.problem_storage.selector],
+						values_tex_desc,
+						detail.num_elements * sizeof(ValueVectorType)),
+					"EnactorTwoPhase cudaBindTexture ValuesTex failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaBindTexture(
+						0,
+						partition::downsweep::ValuesTex<ValueVectorType>::ref1,
+						detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
+						values_tex_desc,
+						detail.num_elements * sizeof(ValueVectorType)),
+					"EnactorTwoPhase cudaBindTexture ValuesTex failed", __FILE__, __LINE__)) break;
+
+			} while(0);
+
+			return retval;
+		}
+
+	};
+
+
+	/**
+	 * Bind value textures (specialized for non-primitive types)
+	 */
+	template <
+		typename BitPolicy,
+		typename ValueType>
+	struct BindValueTextures<BitPolicy, ValueType, util::NOT_A_NUMBER>
+	{
+		template <typename Detail>
+		static cudaError_t Bind(Detail &detail)
+		{
+			// do nothing
+			return cudaSuccess;
+		}
+	};
+
 
 	/**
 	 * Performs a radix sorting pass
@@ -160,6 +217,7 @@ protected:
 
 		// Data types
 		typedef typename BitPolicy::KeyType 					KeyType;	// Converted key type
+		typedef typename BitPolicy::ValueType 					ValueType;
 		typedef typename BitPolicy::SizeT 						SizeT;
 
 		cudaError_t retval = cudaSuccess;
@@ -237,6 +295,9 @@ protected:
 					keys_tex_desc,
 					detail.num_elements * sizeof(KeyVectorType)),
 				"EnactorTwoPhase cudaBindTexture KeysTex failed", __FILE__, __LINE__)) break;
+
+			// Bind value textures
+			if (retval = BindValueTextures<BitPolicy, ValueType>::Bind(detail)) break;
 
 			// Obtain a CTA work distribution
 			util::CtaWorkDistribution<SizeT> work;
