@@ -287,7 +287,7 @@ int main(int argc, char** argv)
 		}
 
 		float avg_elapsed = elapsed / float(iterations);
-		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %f.1 Mkeys/s\n",
+		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %.2f Mkeys/s\n",
 			elapsed,
 			avg_elapsed,
 			float(num_elements) / avg_elapsed / 1000.f);
