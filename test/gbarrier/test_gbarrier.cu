@@ -1,13 +1,37 @@
+/******************************************************************************
+ *
+ * Copyright 2010-2012 Duane Merrill
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * For more information, see our Google Code project site:
+ * http://code.google.com/p/back40computing/
+ *
+ ******************************************************************************/
+
+/******************************************************************************
+ * Test evaluation for software global barrier throughput
+ ******************************************************************************/
+
 
 #include <stdio.h>
 
-
-// Test utils
 #include "b40c_test_util.h"
 #include <b40c/util/global_barrier.cuh>
 
+
 /**
- * Kernel
+ * Kernel that iterates through the specified number of software global barriers
  */
 __global__ void Kernel(
 	b40c::util::GlobalBarrier global_barrier,
@@ -19,28 +43,14 @@ __global__ void Kernel(
 }
 
 
-
-
-/**
- * Simple computation of SM occupancy given cta size and ptx version
- */
-int Occupancy(int cta_size, int ptx_version)
-{
-	return B40C_MIN(
-		(B40C_SM_THREADS(ptx_version) / cta_size),
-		B40C_SM_CTAS(ptx_version));
-}
-
-
 /**
  * Main
  */
 int main(int argc, char** argv)
 {
+	// Initialize device
     b40c::CommandLineArgs args(argc, argv);
     b40c::DeviceInit(args);
-
-    b40c::util::CudaProperties cuda_props;
 
     // Defaults
     int iterations = 10000;
@@ -52,13 +62,20 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("grid-size", grid_size);
     args.GetCmdLineArgument("cta-size", cta_size);
 
+    // Print usage
     if (args.CheckCmdLineFlag("help")) {
     	printf("--device=<device-id> --i=<iterations> --grid-size<grid-size> --cta-size<cta-size>\n");
     	exit(0);
     }
 
-    // Compute grid size / occupancy
-    int occupancy = Occupancy(cta_size, cuda_props.kernel_ptx_version);
+    // Initialize CUDA device properties
+    b40c::util::CudaProperties cuda_props;
+
+    // Compute grid size and occupancy
+    int occupancy = B40C_MIN(
+    	(B40C_SM_THREADS(cuda_props.kernel_ptx_version) / cta_size),
+    	B40C_SM_CTAS(cuda_props.kernel_ptx_version));
+
     if (grid_size == -1) {
     	grid_size = occupancy * cuda_props.device_props.multiProcessorCount;
     } else {
@@ -78,6 +95,7 @@ int main(int argc, char** argv)
 	Kernel<<<grid_size, cta_size>>>(global_barrier, iterations);
 	gpu_timer.Stop();
 
+	// Output timing results
 	float avg_elapsed = gpu_timer.ElapsedMillis() / float(iterations);
 	printf("%d iterations, %f total elapsed millis, %f avg elapsed millis\n",
 		iterations,
