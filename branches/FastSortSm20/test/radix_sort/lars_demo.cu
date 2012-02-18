@@ -39,15 +39,6 @@
 // Test utils
 #include "b40c_test_util.h"
 
-#ifdef _MSC_VER
-#include <random>
-#else
-#include <tr1/random>
-#endif
-
-std::tr1::mt19937 mt19937;
-
-
 /******************************************************************************
  * Problem / Tuning Policy Types
  ******************************************************************************/
@@ -162,6 +153,7 @@ int main(int argc, char** argv)
     if (zeros) printf("Zeros\n");
     else if (regular) printf("%d-bit mod-%llu\n", KEY_BITS, 1ull << effective_bits);
     else printf("%d-bit random\n", KEY_BITS);
+    fflush(stdout);
 
 	// Allocate and initialize host problem data and host reference solution
 	KeyType *h_keys 				= new KeyType[num_elements];
@@ -173,18 +165,14 @@ int main(int argc, char** argv)
 	// are left zero): we only want to perform one sorting pass
 	if (verbose) printf("Original: ");
 
-	std::tr1::uniform_int<unsigned int> r(0, 0xffffffff >> (32 - effective_bits));
-
 	for (size_t i = 0; i < num_elements; ++i) {
 
-		h_keys[i] = (regular) ?
-			i & ((1ull << effective_bits) - 1) :
-			(zeros) ?
-				0 :
-				r(mt19937);
-
-		for (int j = 0; j < entropy_reduction; j++) {
-			h_keys[i] &= r(mt19937);
+		if (regular) {
+			h_keys[i] = i & ((1ull << effective_bits) - 1);
+		} else if (zeros) {
+			h_keys[i] = 0;
+		} else {
+			b40c::util::RandomBits<KeyType>(h_keys[i], entropy_reduction, KEY_BITS);
 		}
 
 		h_reference_keys[i] = h_keys[i];
