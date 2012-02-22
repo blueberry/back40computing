@@ -83,6 +83,10 @@ struct Cta
 
 	SizeT								my_bin_carry;
 
+	int 								warp_id;
+	volatile int 						*warpscan;
+
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -108,6 +112,9 @@ struct Cta
 		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
 		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_BINS - 1);
 		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
+
+		warp_id = (threadIdx.x & (~31));
+		warpscan = smem_storage.warpscan + 32 + threadIdx.x + warp_id;
 
 		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
 
