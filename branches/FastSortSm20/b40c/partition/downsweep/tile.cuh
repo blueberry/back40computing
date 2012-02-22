@@ -243,7 +243,7 @@ struct Tile
 			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
 				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-					tile->keys[VEC],
+					items[VEC],
 					d_out + threadIdx.x + (KernelPolicy::THREADS * VEC) + tile->bin_offsets[VEC]);
 			}
 
@@ -303,22 +303,20 @@ struct Tile
 				cta->raking_segment);
 
 			// Warpscan
-			int warp_id = (threadIdx.x & (~31));
-			volatile int *warpscan = cta->smem_storage.warpscan + 32 + threadIdx.x + warp_id;
 
 			int partial = raking_partial;
-			warpscan[0] = partial;
+			cta->warpscan[0] = partial;
 
-			warpscan[0] = partial =
-				partial + warpscan[0 - 1];
-			warpscan[0] = partial =
-				partial + warpscan[0 - 2];
-			warpscan[0] = partial =
-				partial + warpscan[0 - 4];
-			warpscan[0] = partial =
-				partial + warpscan[0 - 8];
-			warpscan[0] = partial =
-				partial + warpscan[0 - 16];
+			cta->warpscan[0] = partial =
+				partial + cta->warpscan[0 - 1];
+			cta->warpscan[0] = partial =
+				partial + cta->warpscan[0 - 2];
+			cta->warpscan[0] = partial =
+				partial + cta->warpscan[0 - 4];
+			cta->warpscan[0] = partial =
+				partial + cta->warpscan[0 - 8];
+			cta->warpscan[0] = partial =
+				partial + cta->warpscan[0 - 16];
 
 			// Restricted barrier
 			if (KernelPolicy::RAKING_WARPS > 1) util::BAR(RAKING_THREADS);
@@ -331,7 +329,7 @@ struct Tile
 
 				// Add totals from all previous warpscans into our partial
 				int warpscan_total = cta->smem_storage.warpscan[((WARP + 1) * (WARP_THREADS * 2)) - 1];
-				if (warp_id == (WARP * 32)) {
+				if (cta->warp_id == (WARP * 32)) {
 					partial += warpscan_totals;
 				}
 
@@ -445,7 +443,7 @@ struct Tile
 		const SizeT &guarded_elements,
 		Cta *cta)
 	{
-		ValueVectorType *vectors = (ValueVectorType *) keys;
+		ValueVectorType *vectors = (ValueVectorType *) values;
 
 		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
 
@@ -462,14 +460,14 @@ struct Tile
 
 		} else {
 
-			// Guarded loads with default assignment of -1 to out-of-bound keys
+			// Guarded loads with default assignment of -1 to out-of-bound values
 			util::io::LoadTile<
 				0,									// log loads per tile
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
 				KernelPolicy::READ_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
-					(KeyType (*)[LOAD_VEC_SIZE]) keys,
+					(KeyType (*)[LOAD_VEC_SIZE]) values,
 					(Cta::FLOP_TURN) ?
 						cta->d_values1 :
 						cta->d_values0,
@@ -522,18 +520,18 @@ struct Tile
 			__syncthreads();
 
 			// Scatter values shared
-			IterateTileElements<0>::template ScatterRanked<PADDED_EXCHANGE>(cta, tile, tile->keys);
+			IterateTileElements<0>::template ScatterRanked<PADDED_EXCHANGE>(cta, tile, tile->values);
 
 			__syncthreads();
 
 			// Gather values shared
-			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile, tile->keys);
+			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile, tile->values);
 
 			// Scatter to global
 			IterateTileElements<0>::ScatterGlobal(
 				cta,
 				tile,
-				tile->keys,
+				tile->values,
 				(Cta::FLOP_TURN) ?
 					cta->d_values0 :
 					cta->d_values1,

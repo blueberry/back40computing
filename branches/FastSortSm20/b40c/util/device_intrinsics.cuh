@@ -38,7 +38,7 @@ namespace util {
  * BFE (bitfield extract).   Extracts a bit field from source and places the
  * zero or sign-extended result in extract
  */
-__device__ __forceinline__ static void BFE(int &bits, int source, int bit_start, int num_bits)
+__device__ __forceinline__ static void BFE(unsigned int &bits, unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
 #if __CUDA_ARCH__ >= 200
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
@@ -48,13 +48,13 @@ __device__ __forceinline__ static void BFE(int &bits, int source, int bit_start,
 #endif
 }
 
-__device__ __forceinline__ static int BFE(int source, int bit_start, int num_bits)
+__device__ __forceinline__ static int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
-	int bits;
+	unsigned int bits;
 #if __CUDA_ARCH__ >= 200
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
 #else
-	const int MASK = (1 << num_bits) - 1;
+	const unsigned int MASK = (1 << num_bits) - 1;
 	bits = (source >> bit_start) & MASK;
 #endif
 	return bits;
@@ -64,7 +64,7 @@ __device__ __forceinline__ static int BFE(int source, int bit_start, int num_bit
 /**
  * BFI (bitfield insert).  Inserts the first num_bits of y into x starting at bit_start
  */
-__device__ __forceinline__ void BFI(int &ret, int x, int y, int bit_start, int num_bits)
+__device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned int y, unsigned int bit_start, unsigned int num_bits)
 {
 #if __CUDA_ARCH__ >= 200
 	asm("bfi.b32 %0, %1, %2, %3, %4;" :
@@ -78,7 +78,7 @@ __device__ __forceinline__ void BFI(int &ret, int x, int y, int bit_start, int n
 /**
  * SHR_ADD (shift-right then add)
  */
-__device__ __forceinline__ void SHR_ADD(int &ret, int x, int shift, int addend)
+__device__ __forceinline__ void SHR_ADD(unsigned int &ret, unsigned int x, unsigned int shift, unsigned int addend)
 {
 #if __CUDA_ARCH__ >= 200
 	asm("vshr.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
@@ -87,9 +87,9 @@ __device__ __forceinline__ void SHR_ADD(int &ret, int x, int shift, int addend)
 	ret = (x >> shift) + addend;
 #endif
 }
-__device__ __forceinline__ int SHR_ADD(int x, int shift, int addend)
+__device__ __forceinline__ unsigned int SHR_ADD(unsigned int x, unsigned int shift, unsigned int addend)
 {
-	int ret;
+	unsigned int ret;
 #if __CUDA_ARCH__ >= 200
 	asm("vshr.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
 		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
@@ -103,7 +103,7 @@ __device__ __forceinline__ int SHR_ADD(int x, int shift, int addend)
 /**
  * SHL_ADD (shift-left then add)
  */
-__device__ __forceinline__ void SHL_ADD(int &ret, int x, int shift, int addend)
+__device__ __forceinline__ void SHL_ADD(unsigned int &ret, unsigned int x, unsigned int shift, unsigned int addend)
 {
 #if __CUDA_ARCH__ >= 200
 	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
@@ -112,9 +112,9 @@ __device__ __forceinline__ void SHL_ADD(int &ret, int x, int shift, int addend)
 	ret = (x << shift) + addend;
 #endif
 }
-__device__ __forceinline__ int SHL_ADD(int x, int shift, int addend)
+__device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shift, unsigned int addend)
 {
-	int ret;
+	unsigned int ret;
 #if __CUDA_ARCH__ >= 200
 	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
 		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
@@ -127,9 +127,9 @@ __device__ __forceinline__ int SHL_ADD(int x, int shift, int addend)
 /**
  * SHL_ADD_C (shift-left then add)
  */
-__device__ __forceinline__ int SHL_ADD_C(int x, int shift, int addend)
+__device__ __forceinline__ int SHL_ADD_C(unsigned int x, unsigned int shift, unsigned int addend)
 {
-	int ret;
+	unsigned int ret;
 /*
 #if __CUDA_ARCH__ >= 200
 	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
@@ -146,11 +146,11 @@ __device__ __forceinline__ int SHL_ADD_C(int x, int shift, int addend)
  * PMT (byte permute).  Pick four arbitrary bytes from two 32-bit registers, and
  * reassemble them into a 32-bit destination register
  */
-__device__ __forceinline__ void PRMT(int &ret, int a, int b, int index)
+__device__ __forceinline__ void PRMT(unsigned int &ret, unsigned int a, unsigned int b, unsigned int index)
 {
 	asm("prmt.b32 %0, %1, %2, %3;" : "=r"(ret) : "r"(a), "r"(b), "r"(index));
 }
-__device__ __forceinline__ int PRMT(int a, int b, int index)
+__device__ __forceinline__ int PRMT(unsigned int a, unsigned int b, unsigned int index)
 {
 	int ret;
 	asm("prmt.b32 %0, %1, %2, %3;" : "=r"(ret) : "r"(a), "r"(b), "r"(index));
@@ -167,11 +167,11 @@ __device__ __forceinline__ void BAR(int count)
  * Expands packed nibbles into packed bytes
  */
 __device__ __forceinline__ static void NibblesToBytes(
-	int &int_byte0,
-	int &int_byte1,
-	int int_nibbles)
+	unsigned int &int_byte0,
+	unsigned int &int_byte1,
+	unsigned int int_nibbles)
 {
-	int nib_shifted = int_nibbles >> 4;
+	unsigned int nib_shifted = int_nibbles >> 4;
 
 	PRMT(int_byte0, int_nibbles, nib_shifted, 0x5140);
 	int_byte0 &= 0x0f0f0f0f;
@@ -185,7 +185,8 @@ __device__ __forceinline__ static void NibblesToBytes(
  * Expands packed nibbles into packed bytes
  */
 __device__ __forceinline__ static void BytesToHalves(
-	int int_halves[2], int int_bytes)
+	unsigned int int_halves[2],
+	unsigned int int_bytes)
 {
 	PRMT(int_halves[0], int_bytes, 0, 0x4140);
 	PRMT(int_halves[1], int_bytes, 0, 0x4342);

@@ -46,6 +46,7 @@ namespace st {
 		cg,				// cache global
 		wb,				// write back all levels
 		cs, 			// cache streaming
+		wt, 			// cache streaming
 
 		LIMIT
 	};
@@ -142,6 +143,7 @@ struct ModifiedStore
 	#define B40C_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)		\
 		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cg)		\
 		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, wb)		\
+		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, wt)		\
 		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cs)
 
 
@@ -153,10 +155,12 @@ struct ModifiedStore
 																										\
 		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cg)						\
 		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wb)						\
+		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wt)						\
 		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cs)						\
 																										\
 		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cg)								\
 		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wb)								\
+		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wt)								\
 		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cs)
 
 
@@ -168,6 +172,7 @@ struct ModifiedStore
 																											\
 		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cg)									\
 		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wb)									\
+		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wt)									\
 		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 

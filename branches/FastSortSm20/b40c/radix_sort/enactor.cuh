@@ -414,9 +414,9 @@ protected:
 
 		enum {
 			BITS_LEFT 				= LAST_BIT - CURRENT_BIT,
-			BIT_SELECT 				= (BITS_LEFT > 12) ?
+			BIT_SELECT 				= ((BITS_LEFT > 12) || (BITS_LEFT % 5 == 0)) ?
 											5 :
-											(BITS_LEFT > 3) ?
+											((BITS_LEFT > 3) || (BITS_LEFT % 4 == 0)) ?
 												4 :
 												BITS_LEFT
 		};
