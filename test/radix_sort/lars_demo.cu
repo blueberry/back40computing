@@ -310,9 +310,7 @@ int main(int argc, char** argv)
 
 	// Allocate and initialize host problem data and host reference solution
 	KeyType *h_keys 				= new KeyType[num_elements];
-	ValueType *h_values 			= new ValueType[num_elements];
 	KeyType *h_reference_keys 		= new KeyType[num_elements];
-	ValueType *h_reference_values 	= new ValueType[num_elements];
 
 	// Only use RADIX_BITS effective bits (remaining high order bits
 	// are left zero): we only want to perform one sorting pass
@@ -364,13 +362,6 @@ int main(int argc, char** argv)
 		h_keys,
 		sizeof(KeyType) * num_elements,
 		cudaMemcpyHostToDevice);
-	if (!ProblemType::KEYS_ONLY) {
-		cudaMemcpy(
-			sort_storage.d_values[sort_storage.selector],
-			h_values,
-			sizeof(ValueType) * num_elements,
-			cudaMemcpyHostToDevice);
-	}
 
 	printf("Incoming selector: %d\n", sort_storage.selector);
 
@@ -387,6 +378,7 @@ int main(int argc, char** argv)
 	} else {
 		printf("Restricted-range key-value sort: ");
 	}
+	fflush(stdout);
 	b40c::CompareDeviceResults(
 		h_reference_keys,
 		sort_storage.d_keys[sort_storage.selector],
@@ -415,13 +407,6 @@ int main(int argc, char** argv)
 			h_keys,
 			sizeof(KeyType) * num_elements,
 			cudaMemcpyHostToDevice);
-		if (!ProblemType::KEYS_ONLY) {
-			cudaMemcpy(
-				sort_storage.d_values[sort_storage.selector],
-				h_values,
-				sizeof(ValueType) * num_elements,
-				cudaMemcpyHostToDevice);
-		}
 
 		if (schmoo) {
 
@@ -478,8 +463,6 @@ int main(int argc, char** argv)
 	// Cleanup other
 	delete h_keys;
 	delete h_reference_keys;
-	delete h_values;
-	delete h_reference_values;
 
 	return 0;
 }
