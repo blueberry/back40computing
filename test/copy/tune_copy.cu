@@ -388,7 +388,6 @@ void TestCopy(SizeT num_elements)
 
 	// Run the timing tests
 	util::ParamListSweep<
-		Detail,
 		PARAM_BEGIN + 1,
 		PARAM_END,
 		Detail::template Ranges>::template Invoke<util::EmptyTuple>(detail);
