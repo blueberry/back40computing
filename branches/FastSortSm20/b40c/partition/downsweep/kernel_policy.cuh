@@ -104,7 +104,7 @@ struct KernelPolicy : TuningPolicy
 		struct {
 			int4						align_padding;
 			union {
-				unsigned short			packed_counters[SCAN_LANES][THREADS][2];
+				unsigned short			packed_counters[SCAN_LANES + 1][THREADS][2];
 				int						raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
 				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 				ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];

@@ -76,6 +76,21 @@ __device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned 
 
 
 /**
+ * IADD3
+ */
+__device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
+{
+#if __CUDA_ARCH__ >= 200
+	asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(x) : "r"(x), "r"(y), "r"(z));
+#else
+	x = x + y + z;
+#endif
+	return x;
+}
+
+
+
+/**
  * SHR_ADD (shift-right then add)
  */
 __device__ __forceinline__ void SHR_ADD(unsigned int &ret, unsigned int x, unsigned int shift, unsigned int addend)
