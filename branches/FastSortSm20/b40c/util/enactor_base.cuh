@@ -293,47 +293,45 @@ protected:
 			// Start with with full downsweep occupancy of all SMs
 			grid_size = cuda_props.device_props.multiProcessorCount * min_cta_occupancy;
 
-			// Increase by default every 64 million key-values
-			int step = 1024 * 1024 * 64;
-			grid_size *= (num_elements + step - 1) / step;
-
-			double multiplier1 = 4.0;
-			double multiplier2 = 16.0;
-
-			double delta1 = 0.068;
-			double delta2 = 0.1285;
-
-			int dividend = (num_elements + 512 - 1) / 512;
-
 			int bumps = 0;
-			while(true) {
+			double cutoff = 0.005;
 
-				if (grid_size <= cuda_props.device_props.multiProcessorCount) {
-					break;
-				}
+			while (true) {
 
-				double quotient = ((double) dividend) / (multiplier1 * grid_size);
-				quotient -= (int) quotient;
+				double quotient = double(num_elements) /
+					grid_size /
+					schedule_granularity;
+				int log = log2(quotient) + 0.5;
+				int primary = (1 << log) *
+					grid_size *
+					schedule_granularity;
 
-				if ((quotient > delta1) && (quotient < 1 - delta1)) {
-
-					quotient = ((double) dividend) / (multiplier2 * grid_size / 3.0);
-					quotient -= (int) quotient;
-
-					if ((quotient > delta2) && (quotient < 1 - delta2)) {
-						break;
+				double ratio = double(num_elements) / primary;
+/*
+				printf("log %d, num_elements %d, primary %d, ratio %f\n",
+					log,
+					num_elements,
+					primary,
+					ratio);
+*/
+				if (((ratio < 1.00 + cutoff) && (ratio > 1.00 - cutoff)) ||
+					((ratio < 0.75 + cutoff) && (ratio > 0.75 - cutoff)) ||
+					((ratio < 0.50 + cutoff) && (ratio > 0.50 - cutoff)) ||
+					((ratio < 0.25 + cutoff) && (ratio > 0.25 - cutoff)))
+				{
+					if (bumps == 3) {
+						// Bump it up by 33
+						grid_size += 33;
+						bumps = 0;
+					} else {
+						// Bump it down by 1
+						grid_size--;
+						bumps++;
 					}
+					continue;
 				}
 
-				if (bumps == 3) {
-					// Bump it down by 27
-					grid_size -= 27;
-					bumps = 0;
-				} else {
-					// Bump it down by 1
-					grid_size--;
-					bumps++;
-				}
+				break;
 			}
 
 			grid_size = B40C_MIN(
