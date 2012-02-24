@@ -53,8 +53,14 @@ typedef b40c::radix_sort::ProblemType<
 		int> 								// SizeT (what type to use for counting)
 	ProblemType;
 
+template <int CUDA_ARCH>
+struct SortingPolicy;
 
-struct Policy : ProblemType
+/**
+ * SM20
+ */
+template <>
+struct SortingPolicy<200> : ProblemType
 {
 	template <int BITS, int DUMMY = 0>
 	struct BitPolicy
@@ -104,19 +110,104 @@ struct Policy : ProblemType
 			Policy;
 	};
 
+};
 
-	template <int DUMMY>
-	struct BitPolicy<4, DUMMY>
+
+/**
+ * SM13
+ */
+template <>
+struct SortingPolicy<130> : ProblemType
+{
+	template <int BITS, int DUMMY = 0>
+	struct BitPolicy
 	{
+		enum
+		{
+			KEY_BITS = B40C_MIN(BITS, 5)
+		};
+
 		typedef b40c::radix_sort::Policy<
 				ProblemType,				// Problem type
 
 				// Common
-				200,						// SM ARCH
-				4,							// RADIX_BITS
+				130,						// SM ARCH
+				KEY_BITS,					// RADIX_BITS
 
 				// Launch tuning policy
-				12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
+				10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
+				b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
+				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				true,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
+				false, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
+				true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
+
+				// Policy for upsweep kernel.
+				// 		Reduces/counts all the different digit numerals for a given digit-place
+				//
+				(KEY_BITS > 4) ?			// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+					3 :							// 5bit
+					6,							// 4bit
+				7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
+				0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
+				2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+
+				// Spine-scan kernel policy
+				//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
+				//
+				8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
+				2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
+				0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
+				5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
+
+				// Policy for downsweep kernel
+				//		Given prefix counts, scans/scatters keys into appropriate bins
+				// 		Note: a "cycle" is a tile sub-segment up to 256 keys
+				//
+				b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+					3 :
+					2,
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+					6 :
+					6,
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
+					4 :
+					4,
+				0,								// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+					6 :
+					6>
+			Policy;
+	};
+
+};
+
+
+/**
+ * SM11
+ */
+template <>
+struct SortingPolicy<110> : ProblemType
+{
+	template <int BITS, int DUMMY = 0>
+	struct BitPolicy
+	{
+		enum
+		{
+			KEY_BITS = B40C_MIN(BITS, 5)
+		};
+
+		typedef b40c::radix_sort::Policy<
+				ProblemType,				// Problem type
+
+				// Common
+				110,						// SM ARCH
+				KEY_BITS,					// RADIX_BITS
+
+				// Launch tuning policy
+				10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
 				b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
 				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
@@ -127,17 +218,19 @@ struct Policy : ProblemType
 				// Policy for upsweep kernel.
 				// 		Reduces/counts all the different digit numerals for a given digit-place
 				//
-				8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				(KEY_BITS > 4) ?			// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+					2 :							// 5bit
+					2,							// 4bit
 				7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-				2,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-				1,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
+				0,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
 
 				// Spine-scan kernel policy
 				//		Prefix sum of upsweep histograms counted by each CTA.  Relatively insignificant in the grand scheme, not really worth tuning for large problems)
 				//
-				8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
+				7,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
 				2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-				2,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
+				0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
 				5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
 
 				// Policy for downsweep kernel
@@ -145,11 +238,19 @@ struct Policy : ProblemType
 				// 		Note: a "cycle" is a tile sub-segment up to 256 keys
 				//
 				b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				ProblemType::KEYS_ONLY ? 4 : 2,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-				ProblemType::KEYS_ONLY ? 7 : 8,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-				ProblemType::KEYS_ONLY ? 4 : 4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-				0,														// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-				ProblemType::KEYS_ONLY ? 7 : 8>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+					2 :
+					2,
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
+					6 :
+					6,
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
+					4 :
+					4,
+				0,								// DOWNSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
+				ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
+					6 :
+					6>
 			Policy;
 	};
 
@@ -165,6 +266,8 @@ struct Policy : ProblemType
 
 int main(int argc, char** argv)
 {
+	typedef SortingPolicy<200> 						Policy;
+
     typedef typename ProblemType::OriginalKeyType 	KeyType;
     typedef typename Policy::ValueType 				ValueType;
     typedef typename Policy::SizeT 					SizeT;
@@ -193,6 +296,7 @@ int main(int argc, char** argv)
     bool verbose = args.CheckCmdLineFlag("v");
     bool zeros = args.CheckCmdLineFlag("zeros");
     bool regular = args.CheckCmdLineFlag("regular");
+    bool schmoo = args.CheckCmdLineFlag("schmoo");
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
@@ -221,7 +325,7 @@ int main(int argc, char** argv)
 		} else if (zeros) {
 			h_keys[i] = 0;
 		} else {
-			b40c::util::RandomBits<KeyType>(h_keys[i], entropy_reduction, KEY_BITS);
+			b40c::util::RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
 		}
 
 		h_reference_keys[i] = h_keys[i];
@@ -293,26 +397,58 @@ int main(int argc, char** argv)
 	enactor.ENACTOR_DEBUG = false;
 	cudaThreadSynchronize();
 
-	if (iterations > 0) {
+	if (schmoo) {
+		printf("iteration, elements, elapsed (ms), throughput (MKeys/s)\n");
+	}
 
-		b40c::GpuTimer gpu_timer;
-		float elapsed = 0;
-		for (int i = 0; i < iterations; i++) {
+	b40c::GpuTimer gpu_timer;
+	double max_exponent 		= log2(double(num_elements)) - 5.0;
+	unsigned int max_int 		= (unsigned int) -1;
+	float elapsed 				= 0;
 
-			sort_storage.selector = 0;
+	for (int i = 0; i < iterations; i++) {
+
+		// Reset problem
+		sort_storage.selector = 0;
+		cudaMemcpy(
+			sort_storage.d_keys[sort_storage.selector],
+			h_keys,
+			sizeof(KeyType) * num_elements,
+			cudaMemcpyHostToDevice);
+		if (!ProblemType::KEYS_ONLY) {
 			cudaMemcpy(
-				sort_storage.d_keys[sort_storage.selector],
-				h_keys,
-				sizeof(KeyType) * num_elements,
+				sort_storage.d_values[sort_storage.selector],
+				h_values,
+				sizeof(ValueType) * num_elements,
 				cudaMemcpyHostToDevice);
-			if (!ProblemType::KEYS_ONLY) {
-				cudaMemcpy(
-					sort_storage.d_values[sort_storage.selector],
-					h_values,
-					sizeof(ValueType) * num_elements,
-					cudaMemcpyHostToDevice);
-			}
+		}
 
+		if (schmoo) {
+
+			// Sample a problem size (log scale bias)
+			unsigned int sample;
+			b40c::util::RandomBits(sample);
+			double exponent = (double(sample) / max_int) * max_exponent;
+			SizeT elements = (SizeT) pow(2.0, exponent + 5.0);
+
+			gpu_timer.Start();
+			enactor.Sort<
+				0,
+				KEY_BITS,
+				Policy>(sort_storage, elements, max_ctas);
+			gpu_timer.Stop();
+
+			float millis = gpu_timer.ElapsedMillis();
+			printf("%d, %d, %.3f, %.2f\n",
+				i,
+				elements,
+				millis,
+				float(elements) / millis / 1000.f);
+			fflush(stdout);
+
+		} else {
+
+			// Regular iteration
 			gpu_timer.Start();
 			enactor.Sort<
 				0,
@@ -322,7 +458,10 @@ int main(int argc, char** argv)
 
 			elapsed += gpu_timer.ElapsedMillis();
 		}
+	}
 
+	// Display output
+	if ((!schmoo) && (iterations > 0)) {
 		float avg_elapsed = elapsed / float(iterations);
 		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %.2f Mkeys/s\n",
 			elapsed,

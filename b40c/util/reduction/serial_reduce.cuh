@@ -28,6 +28,7 @@
 #pragma once
 
 #include <b40c/util/operators.cuh>
+#include <b40c/util/device_intrinsics.cuh>
 
 namespace b40c {
 namespace util {
@@ -54,8 +55,7 @@ __device__ __forceinline__ int VectorReduce<int, Sum<int> >(
 	int c,
 	Sum<int> reduction_op)
 {
-	asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-	return a;
+	return util::IADD3(a, b, c);
 };
 
 template <>
@@ -65,8 +65,7 @@ __device__ __forceinline__ unsigned int VectorReduce<unsigned int, Sum<unsigned 
 	unsigned int c,
 	Sum<unsigned int> reduction_op)
 {
-	asm("vadd.u32.u32.u32.add %0, %1, %2, %3;" : "=r"(a) : "r"(a), "r"(b), "r"(c));
-	return a;
+	return util::IADD3(a, b, c);
 };
 
 

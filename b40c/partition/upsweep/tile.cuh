@@ -161,10 +161,12 @@ struct Tile
 						KernelPolicy::CURRENT_BIT,
 						2);
 
-					int lane = util::BFE(
-						tile->keys[LOAD][VEC],
-						KernelPolicy::CURRENT_BIT + 2,
-						KernelPolicy::LOG_BINS - 2);
+					int lane = (KernelPolicy::LOG_BINS <= 2) ?
+						0 :
+						util::BFE(
+							tile->keys[LOAD][VEC],
+							KernelPolicy::CURRENT_BIT + 2,
+							KernelPolicy::LOG_BINS - 2);
 
 					// Increment sub-field in composite counter
 					cta->smem_storage.composite_counters.counters[lane][threadIdx.x][sub_counter]++;

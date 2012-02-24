@@ -248,15 +248,23 @@ protected:
 
 			if (ENACTOR_DEBUG) printf("Upsweep occupancy %d, downsweep occupancy %d\n", upsweep_cta_occupancy, downsweep_cta_occupancy);
 
-			int sweep_grid_size = (upsweep_cta_occupancy * downsweep_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1;
+			int sweep_grid_size;
+			if (cuda_props.device_sm_version < 200) {
 
-			int grains = (detail.num_elements + Upsweep::SCHEDULE_GRANULARITY - 1) / Upsweep::SCHEDULE_GRANULARITY;
-			if (sweep_grid_size > grains) {
-				sweep_grid_size = grains;
-			}
+				sweep_grid_size = OversubscribedGridSize(
+					Upsweep::SCHEDULE_GRANULARITY,
+					B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy),
+					detail.num_elements,
+					detail.max_grid_size);
 
-			if ((detail.max_grid_size > 0) && (sweep_grid_size > detail.max_grid_size)) {
-				sweep_grid_size = detail.max_grid_size;
+			} else {
+
+				int grains = (detail.num_elements + Upsweep::SCHEDULE_GRANULARITY - 1) / Upsweep::SCHEDULE_GRANULARITY;
+				sweep_grid_size = B40C_MIN(
+					grains,
+					((detail.max_grid_size > 0) ?
+						detail.max_grid_size :
+						(upsweep_cta_occupancy * downsweep_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1));
 			}
 
 			// Compute spine elements: BIN elements per CTA, rounded

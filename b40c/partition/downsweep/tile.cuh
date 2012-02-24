@@ -104,7 +104,7 @@ struct Tile
 	enum {
 		LOAD_VEC_SIZE 				= KernelPolicy::LOAD_VEC_SIZE,
 
-		LOG_PACKS_PER_LOAD			= KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE,
+		LOG_PACKS_PER_LOAD			= B40C_MAX(0, KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE),
 		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
 		LOG_RAKING_THREADS 			= KernelPolicy::LOG_RAKING_THREADS,
@@ -112,7 +112,14 @@ struct Tile
 
 		WARP_THREADS				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
 
-		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH)
+		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
+		MEM_BANKS					= 1 << LOG_MEM_BANKS,
+
+		DIGITS_PER_SCATTER_PASS 	= KernelPolicy::THREADS / MEM_BANKS,
+		SCATTER_PASSES 				= KernelPolicy::BINS / DIGITS_PER_SCATTER_PASS,
+
+		LOG_STORE_TXN_THREADS 		= LOG_MEM_BANKS,
+		STORE_TXN_THREADS 			= 1 << LOG_STORE_TXN_THREADS,
 	};
 
 	//---------------------------------------------------------------------
@@ -296,15 +303,17 @@ struct Tile
 	__device__ __forceinline__ void RakingScan(Cta *cta)
 	{
 
+		int partial, raking_partial;
+
 		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
 			// Upsweep reduce
-			int raking_partial = util::reduction::SerialReduce<KernelPolicy::PADDED_RAKING_SEG>::Invoke(
+			raking_partial = util::reduction::SerialReduce<KernelPolicy::PADDED_RAKING_SEG>::Invoke(
 				cta->raking_segment);
 
 			// Warpscan
 
-			int partial = raking_partial;
+			partial = raking_partial;
 			cta->warpscan[0] = partial;
 
 			cta->warpscan[0] = partial =
@@ -318,8 +327,14 @@ struct Tile
 			cta->warpscan[0] = partial =
 				partial + cta->warpscan[0 - 16];
 
-			// Restricted barrier
+			// Barrier
+#if (__B40C_CUDA_ARCH__ > 130)
 			if (KernelPolicy::RAKING_WARPS > 1) util::BAR(RAKING_THREADS);
+#else
+		}
+		__syncthreads();
+		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
+#endif
 
 			// Scan across warpscan totals
 			int warpscan_totals = 0;
@@ -354,6 +369,7 @@ struct Tile
 	template <int CURRENT_BIT, typename Cta>
 	__device__ __forceinline__ void ScanTile(Cta *cta)
 	{
+/*
 		// Initialize raking lanes
 		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
@@ -362,8 +378,12 @@ struct Tile
 				cta->raking_segment[ELEMENT] = 0;
 			}
 		}
-
-		__syncthreads();
+*/
+		// Initialize counters
+		#pragma unroll
+		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES + 1; LANE++) {
+			((int*) cta->counters)[LANE * KernelPolicy::THREADS] = 0;
+		}
 
 		// Decode bins and update counters
 		IterateTileElements<0>::DecodeKeys(cta, this);
@@ -378,8 +398,9 @@ struct Tile
 		// Update carry
 		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
 
-			unsigned short bin_exclusive = cta->bin_counter[0];
 			unsigned short bin_inclusive = cta->bin_counter[KernelPolicy::THREADS * 2];
+			cta->smem_storage.warpscan[32 + threadIdx.x] = bin_inclusive;
+			int bin_exclusive = cta->smem_storage.warpscan[32 + threadIdx.x - 1];
 
 			cta->my_bin_carry -= bin_exclusive;
 			cta->smem_storage.bin_carry[threadIdx.x] = cta->my_bin_carry;
@@ -402,7 +423,7 @@ struct Tile
 	{
 		KeyVectorType *vectors = (KeyVectorType *) keys;
 
-		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
+		if ((KernelPolicy::LOG_LOAD_VEC_SIZE > 1) && (guarded_elements >= KernelPolicy::TILE_ELEMENTS)) {
 
 			// Unguarded loads through tex
 			#pragma unroll
@@ -445,7 +466,7 @@ struct Tile
 	{
 		ValueVectorType *vectors = (ValueVectorType *) values;
 
-		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
+		if ((KernelPolicy::LOG_LOAD_VEC_SIZE > 1) && (guarded_elements >= KernelPolicy::TILE_ELEMENTS)) {
 
 			// Unguarded loads through tex
 			#pragma unroll
@@ -475,6 +496,65 @@ struct Tile
 					guarded_elements);
 		}
 	}
+
+	/**
+	 * Warp based scattering that does not cross alignment boundaries, e.g., for SM1.0-1.1
+	 * coalescing rules
+	 */
+	template <int PASS, int SCATTER_PASSES>
+	struct WarpScatter
+	{
+		template <typename T, typename Cta>
+		static __device__ __forceinline__ void ScatterPass(
+			Cta *cta,
+			T *exchange,
+			T *d_out,
+			const SizeT &valid_elements)
+		{
+			int store_txn_idx = threadIdx.x & (STORE_TXN_THREADS - 1);
+			int store_txn_digit = threadIdx.x >> LOG_STORE_TXN_THREADS;
+
+			int my_digit = (PASS * DIGITS_PER_SCATTER_PASS) + store_txn_digit;
+
+			if (my_digit < KernelPolicy::BINS) {
+
+				int my_exclusive_scan = cta->smem_storage.warpscan[32 + my_digit - 1];
+				int my_inclusive_scan = cta->smem_storage.warpscan[32 + my_digit];
+				int my_digit_count = my_inclusive_scan - my_exclusive_scan;
+
+				int my_carry = cta->smem_storage.bin_carry[my_digit] + my_exclusive_scan;
+				int my_aligned_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
+
+				while (my_aligned_offset < my_digit_count) {
+
+					if ((my_aligned_offset >= 0) && (my_exclusive_scan + my_aligned_offset < valid_elements)) {
+
+						T datum = exchange[my_exclusive_scan + my_aligned_offset];
+						d_out[my_carry + my_aligned_offset] = datum;
+					}
+					my_aligned_offset += STORE_TXN_THREADS;
+				}
+			}
+
+			WarpScatter<PASS + 1, SCATTER_PASSES>::ScatterPass(
+				cta,
+				exchange,
+				d_out,
+				valid_elements);
+		}
+	};
+
+	// Terminate
+	template <int SCATTER_PASSES>
+	struct WarpScatter<SCATTER_PASSES, SCATTER_PASSES>
+	{
+		template <typename T, typename Cta>
+		static __device__ __forceinline__ void ScatterPass(
+			Cta *cta,
+			T *exchange,
+			T *d_out,
+			const SizeT &valid_elements) {}
+	};
 
 
 	/**
@@ -524,18 +604,31 @@ struct Tile
 
 			__syncthreads();
 
-			// Gather values shared
-			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile, tile->values);
+			if (KernelPolicy::CUDA_ARCH < 130) {
 
-			// Scatter to global
-			IterateTileElements<0>::ScatterGlobal(
-				cta,
-				tile,
-				tile->values,
-				(Cta::FLOP_TURN) ?
-					cta->d_values0 :
-					cta->d_values1,
-				guarded_elements);
+				WarpScatter<0, SCATTER_PASSES>::ScatterPass(
+					cta,
+					cta->smem_storage.value_exchange,
+					(Cta::FLOP_TURN) ?
+						cta->d_values0 :
+						cta->d_values1,
+						guarded_elements);
+
+			} else {
+
+				// Gather values shared
+				IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile, tile->values);
+
+				// Scatter to global
+				IterateTileElements<0>::ScatterGlobal(
+					cta,
+					tile,
+					tile->values,
+					(Cta::FLOP_TURN) ?
+						cta->d_values0 :
+						cta->d_values1,
+					guarded_elements);
+			}
 		}
 	};
 
@@ -555,10 +648,12 @@ struct Tile
 		Cta *cta)
 	{
 		// Whether or not to insert padding for exchanging keys
-		const bool PADDED_EXCHANGE = true;
+		const bool PADDED_EXCHANGE = false;
 
 		// Load tile of keys
 		LoadKeys(pack_offset, guarded_elements, cta);
+
+		__syncthreads();
 
 		// Scan tile (computing padded exchange offsets)
 		ScanTile<KernelPolicy::CURRENT_BIT>(cta);
@@ -570,21 +665,34 @@ struct Tile
 
 		__syncthreads();
 
-		// Gather keys
-		IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, this, keys);
+		if (KernelPolicy::CUDA_ARCH < 130) {
 
-		// Decode global scatter offsets
-		IterateTileElements<0>::DecodeBinOffsets(cta, this);
+			WarpScatter<0, SCATTER_PASSES>::ScatterPass(
+				cta,
+				cta->smem_storage.key_exchange,
+				(Cta::FLOP_TURN) ?
+					cta->d_keys0 :
+					cta->d_keys1,
+					guarded_elements);
 
-		// Scatter to global
-		IterateTileElements<0>::ScatterGlobal(
-			cta,
-			this,
-			keys,
-			(Cta::FLOP_TURN) ?
-				cta->d_keys0 :
-				cta->d_keys1,
-			guarded_elements);
+		} else {
+
+			// Gather keys
+			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, this, keys);
+
+			// Decode global scatter offsets
+			IterateTileElements<0>::DecodeBinOffsets(cta, this);
+
+			// Scatter to global
+			IterateTileElements<0>::ScatterGlobal(
+				cta,
+				this,
+				keys,
+				(Cta::FLOP_TURN) ?
+					cta->d_keys0 :
+					cta->d_keys1,
+				guarded_elements);
+		}
 
 		TruckValues<ValueType, PADDED_EXCHANGE>::Invoke(
 			pack_offset,
