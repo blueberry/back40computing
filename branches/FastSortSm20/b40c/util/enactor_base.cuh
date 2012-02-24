@@ -268,128 +268,93 @@ protected:
 	 * Useful for kernels that evenly divide up the work amongst threadblocks.
 	 */
 	int OversubscribedGridSize(
-		int schedule_granularity,
-		int max_cta_occupancy,
 		int num_elements,
-		int max_grid_size)
+		int max_grid_size,
+		int schedule_granularity,
+		int upsweep_occupancy,
+		int downsweep_occupancy = -1)
 	{
 		int grid_size;
+		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
+		if (downsweep_occupancy == -1) downsweep_occupancy = upsweep_occupancy;
+		int min_cta_occupancy = B40C_MIN(upsweep_occupancy, downsweep_occupancy);
 
-		if (max_grid_size > 0) {
+		if (cuda_props.device_sm_version < 120) {
 
-			grid_size = max_grid_size;
+			// G80/G90: double CTA occupancy times SM count
+			grid_size = (max_grid_size > 0) ?
+				max_grid_size :
+				cuda_props.device_props.multiProcessorCount * min_cta_occupancy * 2;
+
+		} else if (cuda_props.device_sm_version < 200) {
+
+			// GT200: Special sauce
+
+			// Start with with full downsweep occupancy of all SMs
+			grid_size = cuda_props.device_props.multiProcessorCount * min_cta_occupancy;
+
+			// Increase by default every 64 million key-values
+			int step = 1024 * 1024 * 64;
+			grid_size *= (num_elements + step - 1) / step;
+
+			double multiplier1 = 4.0;
+			double multiplier2 = 16.0;
+
+			double delta1 = 0.068;
+			double delta2 = 0.1285;
+
+			int dividend = (num_elements + 512 - 1) / 512;
+
+			int bumps = 0;
+			while(true) {
+
+				if (grid_size <= cuda_props.device_props.multiProcessorCount) {
+					break;
+				}
+
+				double quotient = ((double) dividend) / (multiplier1 * grid_size);
+				quotient -= (int) quotient;
+
+				if ((quotient > delta1) && (quotient < 1 - delta1)) {
+
+					quotient = ((double) dividend) / (multiplier2 * grid_size / 3.0);
+					quotient -= (int) quotient;
+
+					if ((quotient > delta2) && (quotient < 1 - delta2)) {
+						break;
+					}
+				}
+
+				if (bumps == 3) {
+					// Bump it down by 27
+					grid_size -= 27;
+					bumps = 0;
+				} else {
+					// Bump it down by 1
+					grid_size--;
+					bumps++;
+				}
+			}
+
+			grid_size = B40C_MIN(
+				grains,
+				((max_grid_size > 0) ?
+					max_grid_size :
+					grid_size));
 
 		} else {
 
-			if (cuda_props.device_sm_version < 120) {
-
-				// G80/G90: double CTA occupancy times SM count
-				grid_size = cuda_props.device_props.multiProcessorCount * max_cta_occupancy * 2;
-
-			} else if (cuda_props.device_sm_version < 200) {
-
-				// GT200: Special sauce
-
-				// Start with with full downsweep occupancy of all SMs
-				grid_size =
-					cuda_props.device_props.multiProcessorCount * max_cta_occupancy;
-
-				// Increase by default every 64 million key-values
-				int step = 1024 * 1024 * 64;
-				grid_size *= (num_elements + step - 1) / step;
-
-				double multiplier1 = 4.0;
-				double multiplier2 = 16.0;
-
-				double delta1 = 0.068;
-				double delta2 = 0.1285;
-
-				int dividend = (num_elements + 512 - 1) / 512;
-
-				int bumps = 0;
-				while(true) {
-
-					if (grid_size <= cuda_props.device_props.multiProcessorCount) {
-						break;
-					}
-
-					double quotient = ((double) dividend) / (multiplier1 * grid_size);
-					quotient -= (int) quotient;
-
-					if ((quotient > delta1) && (quotient < 1 - delta1)) {
-
-						quotient = ((double) dividend) / (multiplier2 * grid_size / 3.0);
-						quotient -= (int) quotient;
-
-						if ((quotient > delta2) && (quotient < 1 - delta2)) {
-							break;
-						}
-					}
-
-					if (bumps == 3) {
-						// Bump it down by 27
-						grid_size -= 27;
-						bumps = 0;
-					} else {
-						// Bump it down by 1
-						grid_size--;
-						bumps++;
-					}
-				}
-
-				// Reduce if we have less work than we can divide up among this
-				// many CTAs
-				int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
-				if (grid_size > grains) {
-					grid_size = grains;
-				}
-
-			} else {
-
-				// GF10x
-				if (cuda_props.device_sm_version == 210) {
-					// GF110
-					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * max_cta_occupancy);
-				} else {
-					// Anything but GF110
-					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * max_cta_occupancy) - 2;
-				}
-
-				// Reduce if we have less work than we can divide up among this
-				// many CTAs
-				int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
-				if (grid_size > grains) {
-					grid_size = grains;
-				}
-			}
+			// GF10x
+			grid_size = B40C_MIN(
+				grains,
+				((max_grid_size > 0) ?
+					max_grid_size :
+					(upsweep_occupancy * downsweep_occupancy * cuda_props.device_props.multiProcessorCount) - 1));
 		}
 
 		return grid_size;
 	}
 
-
-	/**
-	 * Returns the number of threadblocks to launch for the given problem size.
-	 */
-	int GridSize(
-		bool oversubscribed,
-		int schedule_granularity,
-		int max_cta_occupancy,
-		int num_elements,
-		int max_grid_size)
-	{
-		return (oversubscribed) ?
-			OversubscribedGridSize(
-				schedule_granularity,
-				max_cta_occupancy,
-				num_elements,
-				max_grid_size) :
-			OccupiedGridSize(
-				schedule_granularity,
-				max_cta_occupancy,
-				num_elements,
-				max_grid_size);
-	}
 
 	//-----------------------------------------------------------------------------
 	// Debug Utility Routines
