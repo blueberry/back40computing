@@ -337,6 +337,13 @@ protected:
 					}
 				}
 
+				// Reduce if we have less work than we can divide up among this
+				// many CTAs
+				int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
+				if (grid_size > grains) {
+					grid_size = grains;
+				}
+
 			} else {
 
 				// GF10x
@@ -347,15 +354,14 @@ protected:
 					// Anything but GF110
 					grid_size = 4 * (cuda_props.device_props.multiProcessorCount * max_cta_occupancy) - 2;
 				}
+
+				// Reduce if we have less work than we can divide up among this
+				// many CTAs
+				int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
+				if (grid_size > grains) {
+					grid_size = grains;
+				}
 			}
-		}
-
-
-		// Reduce if we have less work than we can divide up among this
-		// many CTAs
-		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
-		if (grid_size > grains) {
-			grid_size = grains;
 		}
 
 		return grid_size;

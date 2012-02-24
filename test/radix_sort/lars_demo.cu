@@ -425,11 +425,13 @@ int main(int argc, char** argv)
 
 		if (schmoo) {
 
-			// Sample a problem size (log scale bias)
+			// Sample a problem size
 			unsigned int sample;
 			b40c::util::RandomBits(sample);
-			double exponent = (double(sample) / max_int) * max_exponent;
-			SizeT elements = (SizeT) pow(2.0, exponent + 5.0);
+			double scale = double(sample) / max_int;
+			SizeT elements = (i < iterations / 2) ?
+				(SizeT) pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
+				elements = scale * num_elements;						// uniform bias
 
 			gpu_timer.Start();
 			enactor.Sort<
