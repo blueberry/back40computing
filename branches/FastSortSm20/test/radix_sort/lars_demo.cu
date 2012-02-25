@@ -140,7 +140,7 @@ struct SortingPolicy<130> : ProblemType
 				b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 				true,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
-				false, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
+				true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
 				true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
 
 				// Policy for upsweep kernel.
