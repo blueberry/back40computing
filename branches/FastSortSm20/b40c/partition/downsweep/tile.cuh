@@ -184,41 +184,37 @@ struct Tile
 
 
 		// ScatterRanked
-		template <bool BANK_PADDING, typename Cta, typename Tile, typename T>
+		template <typename Cta, typename Tile, typename T>
 		static __device__ __forceinline__ void ScatterRanked(
 			Cta *cta,
 			Tile *tile,
 			T items[LOAD_VEC_SIZE])
 		{
-			int offset = (BANK_PADDING) ?
+			int offset = (Cta::BANK_PADDING) ?
 				util::SHR_ADD(tile->prefixes[VEC], LOG_MEM_BANKS, tile->prefixes[VEC]) :
 				tile->prefixes[VEC];
 
 			((T*) cta->smem_storage.key_exchange)[offset] = items[VEC];
 
 			// Next vector element
-			IterateTileElements<VEC + 1>::template ScatterRanked<BANK_PADDING>(cta, tile, items);
+			IterateTileElements<VEC + 1>::ScatterRanked(cta, tile, items);
 		}
 
 		// GatherShared
-		template <bool BANK_PADDING, typename Cta, typename Tile, typename T>
+		template <typename Cta, typename Tile, typename T>
 		static __device__ __forceinline__ void GatherShared(
 			Cta *cta,
 			Tile *tile,
 			T items[LOAD_VEC_SIZE])
 		{
-			const int LOAD_OFFSET = (BANK_PADDING) ?
+			const int LOAD_OFFSET = (Cta::BANK_PADDING) ?
 				(VEC * KernelPolicy::THREADS) + ((VEC * KernelPolicy::THREADS) >> LOG_MEM_BANKS) :
 				(VEC * KernelPolicy::THREADS);
 
-			KeyType *base_gather_offset = (BANK_PADDING) ?
-				((T*) cta->smem_storage.key_exchange) + threadIdx.x + (threadIdx.x >> LOG_MEM_BANKS) :
-				((T*) cta->smem_storage.key_exchange) + threadIdx.x;
-
-			items[VEC] = base_gather_offset[LOAD_OFFSET];
+			items[VEC] = cta->base_gather_offset[LOAD_OFFSET];
 
 			// Next vector element
-			IterateTileElements<VEC + 1>::template GatherShared<BANK_PADDING>(cta, tile, items);
+			IterateTileElements<VEC + 1>::GatherShared(cta, tile, items);
 		}
 
 		// DecodeBinOffsets
@@ -257,8 +253,6 @@ struct Tile
 			// Next vector element
 			IterateTileElements<VEC + 1>::ScatterGlobal(cta, tile, items, d_out, guarded_elements);
 		}
-
-
 	};
 
 
@@ -277,11 +271,11 @@ struct Tile
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile) {}
 
 		// ScatterRanked
-		template <bool BANK_PADDING, typename Cta, typename Tile, typename T>
+		template <typename Cta, typename Tile, typename T>
 		static __device__ __forceinline__ void ScatterRanked(Cta *cta, Tile *tile, T items[LOAD_VEC_SIZE]) {}
 
 		// GatherShared
-		template <bool BANK_PADDING, typename Cta, typename Tile, typename T>
+		template <typename Cta, typename Tile, typename T>
 		static __device__ __forceinline__ void GatherShared(Cta *cta, Tile *tile, T items[LOAD_VEC_SIZE]) {}
 
 		// DecodeBinOffsets
@@ -369,16 +363,6 @@ struct Tile
 	template <int CURRENT_BIT, typename Cta>
 	__device__ __forceinline__ void ScanTile(Cta *cta)
 	{
-/*
-		// Initialize raking lanes
-		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
-
-			#pragma unroll
-			for (int ELEMENT = 0; ELEMENT < KernelPolicy::PADDED_RAKING_SEG; ELEMENT++) {
-				cta->raking_segment[ELEMENT] = 0;
-			}
-		}
-*/
 		// Initialize counters
 		#pragma unroll
 		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES + 1; LANE++) {
@@ -563,7 +547,6 @@ struct Tile
 	 */
 	template <
 		typename ValueType,
-		bool PADDED_EXCHANGE,
 		bool TRUCK = KernelPolicy::KEYS_ONLY>
 	struct TruckValues
 	{
@@ -583,9 +566,8 @@ struct Tile
 	 * passes.)
 	 */
 	template <
-		typename ValueType,
-		bool PADDED_EXCHANGE>
-	struct TruckValues<ValueType, PADDED_EXCHANGE, false>
+		typename ValueType>
+	struct TruckValues<ValueType, false>
 	{
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void Invoke(
@@ -600,7 +582,7 @@ struct Tile
 			__syncthreads();
 
 			// Scatter values shared
-			IterateTileElements<0>::template ScatterRanked<PADDED_EXCHANGE>(cta, tile, tile->values);
+			IterateTileElements<0>::ScatterRanked(cta, tile, tile->values);
 
 			__syncthreads();
 
@@ -617,7 +599,7 @@ struct Tile
 			} else {
 
 				// Gather values shared
-				IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, tile, tile->values);
+				IterateTileElements<0>::GatherShared(cta, tile, tile->values);
 
 				// Scatter to global
 				IterateTileElements<0>::ScatterGlobal(
@@ -647,9 +629,6 @@ struct Tile
 		const SizeT &guarded_elements,
 		Cta *cta)
 	{
-		// Whether or not to insert padding for exchanging keys
-		const bool PADDED_EXCHANGE = false;
-
 		// Load tile of keys
 		LoadKeys(pack_offset, guarded_elements, cta);
 
@@ -661,7 +640,7 @@ struct Tile
 		__syncthreads();
 
 		// Scatter keys shared
-		IterateTileElements<0>::template ScatterRanked<PADDED_EXCHANGE>(cta, this, keys);
+		IterateTileElements<0>::ScatterRanked(cta, this, keys);
 
 		__syncthreads();
 
@@ -678,7 +657,7 @@ struct Tile
 		} else {
 
 			// Gather keys
-			IterateTileElements<0>::template GatherShared<PADDED_EXCHANGE>(cta, this, keys);
+			IterateTileElements<0>::GatherShared(cta, this, keys);
 
 			// Decode global scatter offsets
 			IterateTileElements<0>::DecodeBinOffsets(cta, this);
@@ -694,7 +673,7 @@ struct Tile
 				guarded_elements);
 		}
 
-		TruckValues<ValueType, PADDED_EXCHANGE>::Invoke(
+		TruckValues<ValueType>::Invoke(
 			pack_offset,
 			guarded_elements,
 			cta,
