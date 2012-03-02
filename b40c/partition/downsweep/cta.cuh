@@ -60,8 +60,13 @@ struct Cta
 	typedef DerivedCta Dispatch;
 
 	enum {
-		WARP_THREADS 		= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
-		FLOP_TURN			= _FLOP_TURN,
+		WARP_THREADS 				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
+		FLOP_TURN					= _FLOP_TURN,
+
+		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
+		MEM_BANKS					= 1 << LOG_MEM_BANKS,
+
+		BANK_PADDING 				= 1,				// Whether or not to insert padding for exchanging keys
 	};
 
 	//---------------------------------------------------------------------
@@ -86,6 +91,8 @@ struct Cta
 	int 								warp_id;
 	volatile int 						*warpscan;
 
+	KeyType 							*base_gather_offset;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -107,7 +114,8 @@ struct Cta
 			d_values0(d_values0),
 			d_values1(d_values1),
 			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			counters(smem_storage.packed_counters[0][threadIdx.x])
+			counters(smem_storage.packed_counters[0][threadIdx.x]),
+			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
 	{
 		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
 		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_BINS - 1);
