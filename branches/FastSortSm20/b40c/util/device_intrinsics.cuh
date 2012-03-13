@@ -38,7 +38,7 @@ namespace util {
  * BFE (bitfield extract).   Extracts a bit field from source and places the
  * zero or sign-extended result in extract
  */
-__device__ __forceinline__ static void BFE(unsigned int &bits, unsigned int source, unsigned int bit_start, unsigned int num_bits)
+__device__ __forceinline__ void BFE(unsigned int &bits, unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
 #if __CUDA_ARCH__ >= 200
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
@@ -48,7 +48,7 @@ __device__ __forceinline__ static void BFE(unsigned int &bits, unsigned int sour
 #endif
 }
 
-__device__ __forceinline__ static int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
+__device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
 	unsigned int bits;
 #if __CUDA_ARCH__ >= 200
@@ -181,7 +181,7 @@ __device__ __forceinline__ void BAR(int count)
 /**
  * Expands packed nibbles into packed bytes
  */
-__device__ __forceinline__ static void NibblesToBytes(
+__device__ __forceinline__ void NibblesToBytes(
 	unsigned int &int_byte0,
 	unsigned int &int_byte1,
 	unsigned int int_nibbles)
@@ -199,7 +199,7 @@ __device__ __forceinline__ static void NibblesToBytes(
 /**
  * Expands packed nibbles into packed bytes
  */
-__device__ __forceinline__ static void BytesToHalves(
+__device__ __forceinline__ void BytesToHalves(
 	unsigned int int_halves[2],
 	unsigned int int_bytes)
 {
