@@ -83,7 +83,6 @@ struct Cta
 	ValueType							*d_values1;
 
 	int									*raking_segment;
-	unsigned short						*counters;
 	unsigned short						*bin_counter;
 
 	SizeT								my_bin_carry;
@@ -114,7 +113,6 @@ struct Cta
 			d_values0(d_values0),
 			d_values1(d_values1),
 			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			counters(smem_storage.packed_counters[0][threadIdx.x]),
 			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
 	{
 		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
