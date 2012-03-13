@@ -129,8 +129,9 @@ struct Tile
 	// The keys (and values) this thread will read this tile
 	KeyType 			keys[LOAD_VEC_SIZE];
 	ValueType 			values[LOAD_VEC_SIZE];
-	unsigned short		prefixes[LOAD_VEC_SIZE];
-	int					counter_offsets[LOAD_VEC_SIZE];
+	unsigned short		thread_prefixes[LOAD_VEC_SIZE];
+	int 				ranks[LOAD_VEC_SIZE];
+	unsigned short 		*counter_offsets[LOAD_VEC_SIZE];
 	SizeT				bin_offsets[LOAD_VEC_SIZE];
 
 
@@ -158,13 +159,13 @@ struct Tile
 				KernelPolicy::CURRENT_BIT,
 				KernelPolicy::LOG_SCAN_BINS - 1);
 
-			tile->counter_offsets[VEC] = (lane * KernelPolicy::THREADS * 2) + sub_counter;
+			tile->counter_offsets[VEC] = &cta->smem_storage.packed_counters[lane][threadIdx.x][sub_counter];
 
 			// Load thread-exclusive prefix
-			tile->prefixes[VEC] = cta->counters[tile->counter_offsets[VEC]];
+			tile->thread_prefixes[VEC] = *tile->counter_offsets[VEC];
 
 			// Store inclusive prefix
-			cta->counters[tile->counter_offsets[VEC]] = tile->prefixes[VEC] + 1;
+			*tile->counter_offsets[VEC] = tile->thread_prefixes[VEC] + 1;
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::DecodeKeys(cta, tile);
@@ -176,7 +177,7 @@ struct Tile
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile)
 		{
 			// Add in CTA exclusive prefix
-			tile->prefixes[VEC] += cta->counters[tile->counter_offsets[VEC]];
+			tile->ranks[VEC] = tile->thread_prefixes[VEC] + *tile->counter_offsets[VEC];
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::ComputeRanks(cta, tile);
@@ -191,8 +192,8 @@ struct Tile
 			T items[LOAD_VEC_SIZE])
 		{
 			int offset = (Cta::BANK_PADDING) ?
-				util::SHR_ADD(tile->prefixes[VEC], LOG_MEM_BANKS, tile->prefixes[VEC]) :
-				tile->prefixes[VEC];
+				util::SHR_ADD(tile->ranks[VEC], LOG_MEM_BANKS, tile->ranks[VEC]) :
+				tile->ranks[VEC];
 
 			((T*) cta->smem_storage.key_exchange)[offset] = items[VEC];
 
@@ -366,7 +367,7 @@ struct Tile
 		// Initialize counters
 		#pragma unroll
 		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES + 1; LANE++) {
-			((int*) cta->counters)[LANE * KernelPolicy::THREADS] = 0;
+			*((int*) cta->smem_storage.packed_counters[LANE][threadIdx.x]) = 0;
 		}
 
 		// Decode bins and update counters
