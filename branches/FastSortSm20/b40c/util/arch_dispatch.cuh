@@ -77,6 +77,8 @@ struct ArchDispatch<0, Dispatch>
 			return Dispatch::template Enact<200, Detail>(detail);
 		case 210:
 			return Dispatch::template Enact<210, Detail>(detail);
+		case 300:
+			return Dispatch::template Enact<300, Detail>(detail);
 		default:
 			// We were compiled for something new: treat it as we would SM2.0
 			return Dispatch::template Enact<200, Detail>(detail);
