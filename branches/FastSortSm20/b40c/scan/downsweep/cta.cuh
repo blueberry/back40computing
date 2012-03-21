@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -52,7 +52,7 @@ struct Cta
 	typedef typename KernelPolicy::ReductionOp 	ReductionOp;
 	typedef typename KernelPolicy::IdentityOp 	IdentityOp;
 
-	typedef typename KernelPolicy::SrtsDetails 	SrtsDetails;
+	typedef typename KernelPolicy::RakingDetails 	RakingDetails;
 	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 
 	//---------------------------------------------------------------------
@@ -70,8 +70,8 @@ struct Cta
 	// Scan operator
 	ReductionOp scan_op;
 
-	// Operational details for SRTS scan grid
-	SrtsDetails srts_details;
+	// Operational details for raking scan grid
+	RakingDetails raking_details;
 
 
 	//---------------------------------------------------------------------
@@ -88,7 +88,7 @@ struct Cta
 		ReductionOp 		scan_op,
 		IdentityOp 			identity_op) :
 
-			srts_details(
+			raking_details(
 				smem_storage.RakingElements(),
 				smem_storage.warpscan,
 				identity_op()),
@@ -108,7 +108,7 @@ struct Cta
 		IdentityOp 			identity_op,
 		T 					spine_partial) :
 
-			srts_details(
+			raking_details(
 				smem_storage.RakingElements(),
 				smem_storage.warpscan,
 				identity_op()),
@@ -144,7 +144,7 @@ struct Cta
 		util::scan::CooperativeTileScan<
 			KernelPolicy::LOAD_VEC_SIZE,
 			KernelPolicy::EXCLUSIVE>::ScanTileWithCarry(
-				srts_details,
+				raking_details,
 				partials,
 				carry,
 				scan_op);

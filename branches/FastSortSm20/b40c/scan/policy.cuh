@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -213,8 +213,8 @@ struct Policy : ProblemType
 		printf("%d, ", CUDA_ARCH);
 
 		// Common tunable params
-		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
-		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", CacheModifierToString(READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(WRITE_MODIFIER));
 		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
 		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");
 		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");

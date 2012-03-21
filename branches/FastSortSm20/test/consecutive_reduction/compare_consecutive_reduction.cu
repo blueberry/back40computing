@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@
 #include "b40c_test_util.h"
 #include "test_consecutive_reduction.h"
 
-#include <b40c/util/ping_pong_storage.cuh>
+#include <b40c/util/multiple_buffering.cuh>
 
 #include <thrust/device_vector.h>
 #include <thrust/reduce.h>
@@ -95,10 +95,10 @@ struct segmented_scan_functor
  * number of iterations, displaying runtime information.
  */
 template <
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT>
 double TimedThrustConsecutiveReduction(
-	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
+	DoubleBuffer &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
 	int max_ctas,
@@ -107,11 +107,11 @@ double TimedThrustConsecutiveReduction(
 {
 	using namespace b40c;
 
-	typedef typename PingPongStorage::KeyType 		KeyType;
-	typedef typename PingPongStorage::ValueType 	ValueType;
+	typedef typename DoubleBuffer::KeyType 		KeyType;
+	typedef typename DoubleBuffer::ValueType 	ValueType;
 
 	// Allocate device storage
-	PingPongStorage 	d_problem_storage;
+	DoubleBuffer 	d_problem_storage;
 
 	if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_keys[0], sizeof(KeyType) * num_elements),
 		"TimedConsecutiveReduction cudaMalloc d_keys failed: ", __FILE__, __LINE__)) exit(1);
@@ -143,6 +143,9 @@ double TimedThrustConsecutiveReduction(
 
 	thrust::pair<thrust::device_ptr<KeyType>, thrust::device_ptr<ValueType> > new_end;
 
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	new_end = thrust::reduce_by_key(
 		d_in_keys,
@@ -156,6 +159,9 @@ double TimedThrustConsecutiveReduction(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();
@@ -221,8 +227,8 @@ void TestConsecutiveReduction(
 	ReductionOp scan_op)
 {
     // Allocate the consecutive reduction problem on the host and fill the keys with random bytes
-	typedef util::PingPongStorage<T, T> PingPongStorage;
-	PingPongStorage h_problem_storage;
+	typedef util::DoubleBuffer<T, T> DoubleBuffer;
+	DoubleBuffer h_problem_storage;
 
 	h_problem_storage.d_keys[0] = (T*) malloc(num_elements * sizeof(T));
 	h_problem_storage.d_keys[1] = (T*) malloc(num_elements * sizeof(T));
@@ -276,7 +282,7 @@ void TestConsecutiveReduction(
 	}
 	num_compacted++;
 
-	Equality<typename PingPongStorage::KeyType> equality_op;
+	Equality<typename DoubleBuffer::KeyType> equality_op;
 
 	//
     // Run the timing test(s)

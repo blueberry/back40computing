@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * BFS partition-compaction problem type
+ * BFS partition-contraction problem type
  ******************************************************************************/
 
 #pragma once
@@ -40,23 +40,22 @@ namespace bfs {
 template <
 	typename 	_VertexId,						// Type of signed integer to use as vertex id (e.g., uint32)
 	typename 	_SizeT,							// Type of unsigned integer to use for array indexing (e.g., uint32)
-	typename 	_CollisionMask,					// Type of unsigned integer to use for collision bitmask (e.g., uint8)
-	typename 	_ValidFlag,						// Type of integer to use for compaction validity (e.g., uint8)
-	bool 		_MARK_PARENTS,					// Whether to mark parent-vertices during search vs. distance-from-source
-	int 		_LOG_MAX_GPUS>
+	typename 	_VisitedMask,					// Type of unsigned integer to use for visited mask (e.g., uint8)
+	typename 	_ValidFlag,						// Type of integer to use for contraction validity (e.g., uint8)
+	bool 		_MARK_PREDECESSORS>				// Whether to mark predecessor-vertices (vs. distance-from-source)
 struct ProblemType : partition::ProblemType<
-	_VertexId, 																// KeyType
-	typename util::If<_MARK_PARENTS, _VertexId, util::NullType>::Type,		// ValueType
-	_SizeT>																	// SizeT
+	_VertexId, 																	// KeyType
+	typename util::If<_MARK_PREDECESSORS, _VertexId, util::NullType>::Type,		// ValueType
+	_SizeT>																		// SizeT
 {
 	typedef _VertexId														VertexId;
-	typedef _CollisionMask													CollisionMask;
+	typedef _VisitedMask													VisitedMask;
 	typedef _ValidFlag														ValidFlag;
 	typedef typename radix_sort::KeyTraits<VertexId>::ConvertedKeyType		UnsignedBits;		// Unsigned type corresponding to VertexId
 
-	static const bool MARK_PARENTS			= _MARK_PARENTS;
-	static const int LOG_MAX_GPUS			= _LOG_MAX_GPUS;
-	static const int MAX_GPUS				= 1 << LOG_MAX_GPUS;
+	static const bool MARK_PREDECESSORS		= _MARK_PREDECESSORS;
+	static const _VertexId LOG_MAX_GPUS		= 2;										// The "problem type" currently only reserves space for 4 gpu identities in upper vertex identifier bits
+	static const _VertexId MAX_GPUS			= 1 << LOG_MAX_GPUS;
 
 	static const _VertexId GPU_MASK_SHIFT	= (sizeof(_VertexId) * 8) - LOG_MAX_GPUS;
 	static const _VertexId GPU_MASK			= (MAX_GPUS - 1) << GPU_MASK_SHIFT;			// Bitmask for masking off the lower vertex id bits to reveal owner gpu id

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,11 +66,12 @@ class CtaWorkProgress
 protected :
 
 	enum {
-		QUEUE_COUNTERS = 4,
-		STEAL_COUNTERS = 2,
+		QUEUE_COUNTERS 		= 4,
+		STEAL_COUNTERS 		= 2,
+		OVERFLOW_COUNTERS 	= 1,
 	};
 
-	// Six pointer-sized counters in global device memory (we may not use
+	// Seven pointer-sized counters in global device memory (we may not use
 	// all of them, or may only use 32-bit versions of them)
 	size_t *d_counters;
 
@@ -80,7 +81,7 @@ protected :
 public:
 
 	enum {
-		COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS
+		COUNTERS = QUEUE_COUNTERS + STEAL_COUNTERS + OVERFLOW_COUNTERS
 	};
 
 	/**
@@ -205,6 +206,15 @@ public:
 			count);
 	}
 
+	/**
+	 * Sets the overflow counter to non-zero
+	 */
+	template <typename SizeT>
+	__device__ __forceinline__ void SetOverflow ()
+	{
+		((SizeT*) d_counters)[QUEUE_COUNTERS + STEAL_COUNTERS] = 1;
+	}
+
 };
 
 
@@ -305,6 +315,32 @@ public:
 
 			// Update our progress counter selector to index the next progress counter
 			progress_selector ^= 1;
+
+		} while (0);
+
+		return retval;
+	}
+
+
+	/**
+	 * Checks if overflow counter is set
+	 */
+	template <typename SizeT>
+	cudaError_t CheckOverflow(bool &overflow)	// out param
+	{
+		cudaError_t retval = cudaSuccess;
+
+		do {
+			SizeT counter;
+
+			if (retval = util::B40CPerror(cudaMemcpy(
+					&counter,
+					((SizeT*) d_counters) + QUEUE_COUNTERS + STEAL_COUNTERS,
+					1 * sizeof(SizeT),
+					cudaMemcpyDeviceToHost),
+				"CtaWorkProgress cudaMemcpy d_counters failed", __FILE__, __LINE__)) break;
+
+			overflow = counter;
 
 		} while (0);
 

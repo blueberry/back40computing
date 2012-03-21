@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,38 +23,49 @@
 
 /******************************************************************************
  * Operational details for threads working in an SOA (structure of arrays)
- * SRTS grid
+ * raking grid
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/basic_utils.cuh>
 
 namespace b40c {
 namespace util {
 
 
 /**
- * Operational details for threads working in an SRTS grid
+ * Operational details for threads working in an raking grid
  */
 template <
 	typename TileTuple,
-	typename SrtsGridTuple,
-	int Grids = SrtsGridTuple::NUM_FIELDS>
-struct SrtsSoaDetails;
+	typename RakingGridTuple,
+	int Grids = RakingGridTuple::NUM_FIELDS,
+	typename SecondaryRakingGridTuple = typename If<
+		Equals<NullType, typename RakingGridTuple::T0::SecondaryGrid>::VALUE,
+		NullType,
+		Tuple<
+			typename RakingGridTuple::T0::SecondaryGrid,
+			typename RakingGridTuple::T1::SecondaryGrid> >::Type>
+struct RakingSoaDetails;
 
 
 /**
- * Two-field SRTS details
+ * Two-field raking details
  */
 template <
 	typename _TileTuple,
-	typename SrtsGridTuple>
-struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
+	typename RakingGridTuple>
+struct RakingSoaDetails<
+	_TileTuple,
+	RakingGridTuple,
+	2,
+	NullType> : RakingGridTuple::T0
 {
 	enum {
-		CUMULATIVE_THREAD 	= SrtsSoaDetails::RAKING_THREADS - 1,
-		WARP_THREADS 		= B40C_WARP_THREADS(SrtsSoaDetails::CUDA_ARCH)
+		CUMULATIVE_THREAD 	= RakingSoaDetails::RAKING_THREADS - 1,
+		WARP_THREADS 		= B40C_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
 	};
 
 	// Simple SOA tuple "slice" type
@@ -67,27 +78,20 @@ struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 
 	// SOA type of warpscan storage
 	typedef Tuple<
-		typename SrtsGridTuple::T0::WarpscanT (*)[WARP_THREADS],
-		typename SrtsGridTuple::T1::WarpscanT (*)[WARP_THREADS]> WarpscanSoa;
+		typename RakingGridTuple::T0::WarpscanT (*)[WARP_THREADS],
+		typename RakingGridTuple::T1::WarpscanT (*)[WARP_THREADS]> WarpscanSoa;
 
 	// SOA type of partial-insertion pointers
 	typedef Tuple<
-		typename SrtsGridTuple::T0::LanePartial,
-		typename SrtsGridTuple::T1::LanePartial> LaneSoa;
+		typename RakingGridTuple::T0::LanePartial,
+		typename RakingGridTuple::T1::LanePartial> LaneSoa;
 
 	// SOA type of raking segments
 	typedef Tuple<
-		typename SrtsGridTuple::T0::RakingSegment,
-		typename SrtsGridTuple::T1::RakingSegment> RakingSoa;
+		typename RakingGridTuple::T0::RakingSegment,
+		typename RakingGridTuple::T1::RakingSegment> RakingSoa;
 
-	// SOA type of secondary grids
-	typedef Tuple<
-		typename SrtsGridTuple::T0::SecondaryGrid,
-		typename SrtsGridTuple::T1::SecondaryGrid> SecondarySrtsGridTuple;
-
-	typedef typename If<Equals<NullType, typename SecondarySrtsGridTuple::T0>::VALUE,
-		NullType,
-		SrtsSoaDetails<TileTuple, SecondarySrtsGridTuple> >::Type SecondarySrtsSoaDetails;
+	typedef NullType SecondaryRakingSoaDetails;
 
 	/**
 	 * Warpscan storages
@@ -108,21 +112,21 @@ struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	/**
 	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ SrtsSoaDetails(
+	__host__ __device__ __forceinline__ RakingSoaDetails(
 		GridStorageSoa smem_pools,
 		WarpscanSoa warpscan_partials) :
 
 			warpscan_partials(warpscan_partials),
 			lane_partials(												// set lane partial pointer
-				SrtsGridTuple::T0::MyLanePartial(smem_pools.t0),
-				SrtsGridTuple::T1::MyLanePartial(smem_pools.t1))
+				RakingGridTuple::T0::MyLanePartial(smem_pools.t0),
+				RakingGridTuple::T1::MyLanePartial(smem_pools.t1))
 	{
-		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+		if (threadIdx.x < RakingSoaDetails::RAKING_THREADS) {
 
 			// Set raking segment pointers
 			raking_segments = RakingSoa(
-				SrtsGridTuple::T0::MyRakingSegment(smem_pools.t0),
-				SrtsGridTuple::T1::MyRakingSegment(smem_pools.t1));
+				RakingGridTuple::T0::MyRakingSegment(smem_pools.t0),
+				RakingGridTuple::T1::MyRakingSegment(smem_pools.t1));
 		}
 	}
 
@@ -130,22 +134,22 @@ struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	/**
 	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ SrtsSoaDetails(
+	__host__ __device__ __forceinline__ RakingSoaDetails(
 		GridStorageSoa smem_pools,
 		WarpscanSoa warpscan_partials,
 		TileTuple soa_tuple_identity) :
 
 			warpscan_partials(warpscan_partials),
 			lane_partials(												// set lane partial pointer
-				SrtsGridTuple::T0::MyLanePartial(smem_pools.t0),
-				SrtsGridTuple::T1::MyLanePartial(smem_pools.t1))
+				RakingGridTuple::T0::MyLanePartial(smem_pools.t0),
+				RakingGridTuple::T1::MyLanePartial(smem_pools.t1))
 	{
-		if (threadIdx.x < SrtsSoaDetails::RAKING_THREADS) {
+		if (threadIdx.x < RakingSoaDetails::RAKING_THREADS) {
 
 			// Set raking segment pointers
 			raking_segments = RakingSoa(
-				SrtsGridTuple::T0::MyRakingSegment(smem_pools.t0),
-				SrtsGridTuple::T1::MyRakingSegment(smem_pools.t1));
+				RakingGridTuple::T0::MyRakingSegment(smem_pools.t0),
+				RakingGridTuple::T1::MyRakingSegment(smem_pools.t1));
 
 			// Initialize first half of warpscan storages to identity
 			warpscan_partials.Set(soa_tuple_identity, 0, threadIdx.x);
@@ -164,6 +168,129 @@ struct SrtsSoaDetails<_TileTuple, SrtsGridTuple, 2> : SrtsGridTuple::T0
 	}
 };
 
+
+
+/**
+ * Two-field raking details
+ */
+template <
+	typename _TileTuple,
+	typename RakingGridTuple,
+	typename SecondaryRakingGridTuple>
+struct RakingSoaDetails<
+	_TileTuple,
+	RakingGridTuple,
+	2,
+	SecondaryRakingGridTuple> : RakingGridTuple::T0
+{
+	enum {
+		CUMULATIVE_THREAD 	= RakingSoaDetails::RAKING_THREADS - 1,
+		WARP_THREADS 		= B40C_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
+	};
+
+	// Simple SOA tuple "slice" type
+	typedef _TileTuple TileTuple;
+
+	// SOA type of raking lanes
+	typedef Tuple<
+		typename TileTuple::T0*,
+		typename TileTuple::T1*> GridStorageSoa;
+
+	// SOA type of warpscan storage
+	typedef Tuple<
+		typename RakingGridTuple::T0::WarpscanT (*)[WARP_THREADS],
+		typename RakingGridTuple::T1::WarpscanT (*)[WARP_THREADS]> WarpscanSoa;
+
+	// SOA type of partial-insertion pointers
+	typedef Tuple<
+		typename RakingGridTuple::T0::LanePartial,
+		typename RakingGridTuple::T1::LanePartial> LaneSoa;
+
+	// SOA type of raking segments
+	typedef Tuple<
+		typename RakingGridTuple::T0::RakingSegment,
+		typename RakingGridTuple::T1::RakingSegment> RakingSoa;
+
+	// SOA type of secondary details
+	typedef RakingSoaDetails<TileTuple, SecondaryRakingGridTuple> SecondaryRakingSoaDetails;
+
+	/**
+	 * Lane insertion/extraction pointers.
+	 */
+	LaneSoa lane_partials;
+
+	/**
+	 * Raking pointers
+	 */
+	RakingSoa raking_segments;
+
+	/**
+	 * Secondary-level grid details
+	 */
+	SecondaryRakingSoaDetails secondary_details;
+
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ RakingSoaDetails(
+		GridStorageSoa smem_pools,
+		WarpscanSoa warpscan_partials) :
+
+			lane_partials(												// set lane partial pointer
+				RakingGridTuple::T0::MyLanePartial(smem_pools.t0),
+				RakingGridTuple::T1::MyLanePartial(smem_pools.t1)),
+			secondary_details(
+				GridStorageSoa(
+					smem_pools.t0 + RakingGridTuple::T0::RAKING_ELEMENTS,
+					smem_pools.t1 + RakingGridTuple::T1::RAKING_ELEMENTS),
+				warpscan_partials)
+	{
+		if (threadIdx.x < RakingSoaDetails::RAKING_THREADS) {
+
+			// Set raking segment pointers
+			raking_segments = RakingSoa(
+				RakingGridTuple::T0::MyRakingSegment(smem_pools.t0),
+				RakingGridTuple::T1::MyRakingSegment(smem_pools.t1));
+		}
+	}
+
+
+	/**
+	 * Constructor
+	 */
+	__host__ __device__ __forceinline__ RakingSoaDetails(
+		GridStorageSoa smem_pools,
+		WarpscanSoa warpscan_partials,
+		TileTuple soa_tuple_identity) :
+
+			lane_partials(												// set lane partial pointer
+				RakingGridTuple::T0::MyLanePartial(smem_pools.t0),
+				RakingGridTuple::T1::MyLanePartial(smem_pools.t1)),
+			secondary_details(
+				GridStorageSoa(
+					smem_pools.t0 + RakingGridTuple::T0::RAKING_ELEMENTS,
+					smem_pools.t1 + RakingGridTuple::T1::RAKING_ELEMENTS),
+				warpscan_partials)
+	{
+		if (threadIdx.x < RakingSoaDetails::RAKING_THREADS) {
+
+			// Set raking segment pointers
+			raking_segments = RakingSoa(
+				RakingGridTuple::T0::MyRakingSegment(smem_pools.t0),
+				RakingGridTuple::T1::MyRakingSegment(smem_pools.t1));
+		}
+	}
+
+
+	/**
+	 * Return the cumulative partial left in the final warpscan cell
+	 */
+	__device__ __forceinline__ TileTuple CumulativePartial()
+	{
+		return secondary_details.CumulativePartial();
+	}
+};
 
 
 

@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * SRTS Grid Description
+ * raking Grid Description
  ******************************************************************************/
 
 #pragma once
@@ -36,7 +36,7 @@ namespace util {
 
 
 /**
- * Description of a (typically) conflict-free serial-reduce-then-scan (SRTS) 
+ * Description of a (typically) conflict-free serial-reduce-then-scan (raking) 
  * shared-memory grid.
  *
  * A "lane" for reduction/scan consists of one value (i.e., "partial") per
@@ -55,7 +55,7 @@ namespace util {
  * raking thread for each lane).
  *
  * If (there are prefix dependences between lanes) AND (more than one warp
- * of raking threads is specified), a secondary SRTS grid will
+ * of raking threads is specified), a secondary raking grid will
  * be typed-out in order to facilitate communication between warps of raking
  * threads.
  *
@@ -69,7 +69,7 @@ template <
 	int _LOG_RAKING_THREADS, 						// Number of threads used for raking (typically 1 warp)
 	bool _DEPENDENT_LANES>							// If there are prefix dependences between lanes (i.e., downsweeping will incorporate aggregates from previous lanes)
 
-struct SrtsGrid
+struct RakingGrid
 {
 	// Type of items we will be reducing/scanning
 	typedef _T T;
@@ -155,15 +155,15 @@ struct SrtsGrid
 											PARTIALS_PER_LANE :
 											ROWS_PER_LANE * PADDED_PARTIALS_PER_ROW,
 
-		// Number of elements needed to back this level of the SRTS grid
+		// Number of elements needed to back this level of the raking grid
 		RAKING_ELEMENTS					= ROWS * PADDED_PARTIALS_PER_ROW,
 	};
 
-	// If there are prefix dependences between lanes, a secondary SRTS grid
+	// If there are prefix dependences between lanes, a secondary raking grid
 	// type will be needed in the event we have more than one warp of raking threads
 
 	typedef typename If<_DEPENDENT_LANES && (LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),
-		SrtsGrid<										// Yes secondary grid
+		RakingGrid<										// Yes secondary grid
 			CUDA_ARCH,
 			T,													// Partial type
 			LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
@@ -175,13 +175,13 @@ struct SrtsGrid
 
 
 	/**
-	 * Utility class for totaling the SMEM elements needed for an SRTS grid hierarchy
+	 * Utility class for totaling the SMEM elements needed for an raking grid hierarchy
 	 */
-	template <typename SrtsGrid, int __dummy = 0>
+	template <typename RakingGrid, int __dummy = 0>
 	struct TotalRakingElements
 	{
 		// Recurse
-		enum { VALUE = SrtsGrid::RAKING_ELEMENTS + TotalRakingElements<typename SrtsGrid::SecondaryGrid>::VALUE };
+		enum { VALUE = RakingGrid::RAKING_ELEMENTS + TotalRakingElements<typename RakingGrid::SecondaryGrid>::VALUE };
 	};
 	template <int __dummy>
 	struct TotalRakingElements<NullType, __dummy>
@@ -193,8 +193,8 @@ struct SrtsGrid
 
 	enum {
 		// Total number of smem raking elements needed back this hierarchy
-		// of SRTS grids (may be reused for other purposes)
-		TOTAL_RAKING_ELEMENTS = TotalRakingElements<SrtsGrid>::VALUE,
+		// of raking grids (may be reused for other purposes)
+		TOTAL_RAKING_ELEMENTS = TotalRakingElements<RakingGrid>::VALUE,
 	};
 
 

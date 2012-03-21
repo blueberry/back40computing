@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -115,16 +115,12 @@ void VaryParams(double* a, double* b, double* c, double* d)
  * a pair of nodes for each edge.  There are possibilities of loops and multiple 
  * edges between pairs of nodes.    
  * 
- * If src == -1, it is assigned a random node.  Otherwise it is verified 
- * to be in range of the constructed graph.
- * 
  * Returns 0 on success, 1 on failure.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildRmatGraph(
 	SizeT nodes,
 	SizeT edges,
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected,
 	double a0,
@@ -139,8 +135,13 @@ int BuildRmatGraph(
 	}
 
 	time_t mark0 = time(NULL);
-	printf("  Selecting %llu %s RMAT edges in COO format... ",
-		(unsigned long long) edges, (undirected) ? "undirected" : "directed");
+	printf("  Selecting %llu %s RMAT edges in COO format (a:%f,b:%f,c:%f,d:%f)... ",
+		(unsigned long long) edges,
+		(undirected) ? "undirected" : "directed",
+		a0,
+		b0,
+		c0,
+		1.0 - (a0 + b0 + c0));
 	fflush(stdout);
 
 	// Construct COO graph
@@ -193,16 +194,6 @@ int BuildRmatGraph(
 	// Convert sorted COO to CSR
 	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges);
 	free(coo);
-
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
 	
 	return 0;
 }

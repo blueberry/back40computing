@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -127,7 +127,6 @@ struct Access<EmptyTuple, SEARCH_PARAM>
  * the enumeration to establish an upper bound on raking threads.)
  */
 template <
-	typename TuneProblemDetail,
 	int PARAM,
 	int MAX_PARAM,
 	template <typename, int> class Ranges>
@@ -137,12 +136,11 @@ struct ParamListSweep
 	template <int COUNT, int MAX>
 	struct Sweep
 	{
-		template <typename ParamList>
+		template <typename ParamList, typename TuneProblemDetail>
 		static void Invoke(TuneProblemDetail &detail)
 		{
 			// Sweep subsequent parameter
 			ParamListSweep<
-				TuneProblemDetail,
 				PARAM + 1,
 				MAX_PARAM,
 				Ranges>::template Invoke<ParamTuple<ParamList, COUNT, PARAM> >(detail);
@@ -156,12 +154,12 @@ struct ParamListSweep
 	template <int MAX>
 	struct Sweep<MAX, MAX>
 	{
-		template <typename ParamList>
+		template <typename ParamList, typename TuneProblemDetail>
 		static void Invoke(TuneProblemDetail &detail) {}
 	};
 
 	// Interface
-	template <typename ParamList>
+	template <typename ParamList, typename TuneProblemDetail>
 	static void Invoke(TuneProblemDetail &detail)
 	{
 		// Sweep current parameter
@@ -174,12 +172,11 @@ struct ParamListSweep
 
 // End of currently-generated list
 template <
-	typename TuneProblemDetail,
 	int MAX_PARAM,
 	template <typename, int> class Ranges>
-struct ParamListSweep <TuneProblemDetail, MAX_PARAM, MAX_PARAM, Ranges>
+struct ParamListSweep <MAX_PARAM, MAX_PARAM, Ranges>
 {
-	template <typename ParamList>
+	template <typename ParamList, typename TuneProblemDetail>
 	static void Invoke(TuneProblemDetail &detail)
 	{
 		// Invoke callback

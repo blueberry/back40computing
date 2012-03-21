@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -116,11 +116,19 @@ double TimedScan(
 	if (util::B40CPerror(cudaMemcpy(d_src, h_data, sizeof(T) * num_elements, cudaMemcpyHostToDevice),
 		"TimedScan cudaMemcpy d_src failed: ", __FILE__, __LINE__)) exit(1);
 
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	scan_enactor.ENACTOR_DEBUG = true;
 	scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
+		d_dest,
+		d_src,
+		num_elements,
+		scan_op,
+		identity_op,
+		max_ctas);
 	scan_enactor.ENACTOR_DEBUG = false;
 
 	// Perform the timed number of iterations
@@ -129,12 +137,20 @@ double TimedScan(
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
 
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
+
 		// Start timing record
 		timer.Start();
 
 		// Call the scan API routine
 		scan_enactor.template Scan<EXCLUSIVE, ReductionOp::IS_COMMUTATIVE, PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements, scan_op, identity_op, max_ctas);
+			d_dest,
+			d_src,
+			num_elements,
+			scan_op,
+			identity_op,
+			max_ctas);
 
 		// End timing record
 		timer.Stop();

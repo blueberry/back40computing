@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -112,7 +112,7 @@ struct SweepPass <KernelPolicy, true>
 		Cta cta(d_in, d_out);
 
 		// The offset at which this CTA performs tile processing
-		__shared__ SizeT offset;
+		__shared__ SizeT s_offset;
 
 		// First CTA resets the work progress for the next pass
 		if ((blockIdx.x == 0) && (threadIdx.x == 0)) {
@@ -125,11 +125,12 @@ struct SweepPass <KernelPolicy, true>
 
 			// Thread zero atomically steals work from the progress counter
 			if (threadIdx.x == 0) {
-				offset = work_progress.template Steal<SizeT>(KernelPolicy::TILE_ELEMENTS);
+				s_offset = work_progress.template Steal<SizeT>(KernelPolicy::TILE_ELEMENTS);
 			}
 
 			__syncthreads();		// Protect offset
 
+			SizeT offset = s_offset;
 			if (offset >= unguarded_elements) {
 				// All done
 				break;

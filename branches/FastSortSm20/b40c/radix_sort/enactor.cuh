@@ -248,12 +248,12 @@ protected:
 
 			if (ENACTOR_DEBUG) printf("Upsweep occupancy %d, downsweep occupancy %d\n", upsweep_cta_occupancy, downsweep_cta_occupancy);
 
-			int sweep_grid_size = OversubscribedGridSize(
-				detail.num_elements,
-				detail.max_grid_size,
+			int sweep_grid_size = GridSize(
+				true, 										// oversubscribed
 				Upsweep::SCHEDULE_GRANULARITY,
-				upsweep_cta_occupancy,
-				downsweep_cta_occupancy);
+				B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy),
+				detail.num_elements,
+				detail.max_grid_size);
 
 			// Compute spine elements: BIN elements per CTA, rounded
 			// up to nearest spine tile size

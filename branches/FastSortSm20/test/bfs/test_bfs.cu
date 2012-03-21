@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -48,8 +48,6 @@
 
 // BFS includes
 #include <b40c/graph/bfs/csr_problem.cuh>
-#include <b40c/graph/bfs/enactor_contract_expand_gbarrier.cuh>
-#include <b40c/graph/bfs/enactor_expand_contract_gbarrier.cuh>
 #include <b40c/graph/bfs/enactor_contract_expand.cuh>
 #include <b40c/graph/bfs/enactor_expand_contract.cuh>
 #include <b40c/graph/bfs/enactor_two_phase.cuh>
@@ -64,13 +62,23 @@ using namespace graph;
  * Defines, constants, globals 
  ******************************************************************************/
 
+enum Strategy {
+	HOST = -1,
+	EXPAND_CONTRACT,
+	CONTRACT_EXPAND,
+	TWO_PHASE,
+	HYBRID,
+	MULTI_GPU
+};
+
+
 //#define __B40C_ERROR_CHECKING__		 
 
 bool g_verbose;
 bool g_verbose2;
-bool g_undirected;
-bool g_quick;			// Whether or not to perform CPU traversal as reference
-bool g_uneven;
+bool g_undirected;			// Whether to add a "backedge" for every edge parsed/generated
+bool g_quick;				// Whether or not to perform CPU traversal as reference
+bool g_stream_from_host;	// Whether or not to stream CSR representation from host mem
 
 /******************************************************************************
  * Housekeeping Routines
@@ -83,66 +91,95 @@ void Usage()
 {
 	printf("\ntest_bfs <graph type> <graph type args> [--device=<device index>] "
 			"[--v] [--instrumented] [--i=<num-iterations>] [--undirected]"
-			"[--src=< <source idx> | randomize >] [--queue-size=<queue size>\n"
-			"[--mark-parents]\n"
+			"[--src=< <source idx> | randomize >] [--queue-sizing=<sizing factor>\n"
+			"[--mark-pred] [--strategy=<strategy>[,<strategy>]*]\n"
 			"\n"
-			"graph types and args:\n"
-			"\tgrid2d <width>\n"
-			"\t\t2D square grid lattice with width <width>.  Interior vertices \n"
-			"\t\thave 4 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
-			"\tgrid3d <side-length>\n"
-			"\t\t3D square grid lattice with width <width>.  Interior vertices \n"
-			"\t\thave 6 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
-			"\tdimacs [<file>]\n"
-			"\t\tReads a DIMACS-formatted graph of directed edges from stdin (or \n"
-			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
-			"\tmetis [<file>]\n"
-			"\t\tReads a METIS-formatted graph of directed edges from stdin (or \n"
-			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n" 
-			"\tmarket [<file>]\n"
-			"\t\tReads a Matrix-Market coordinate-formatted graph of directed edges from stdin (or \n"
-			"\t\tfrom the optionally-specified file).  Default source vertex is random.\n"
-			"\trandom <n> <m>\n"			
-			"\t\tA random graph generator that adds <m> edges to <n> nodes by randomly \n"
-			"\t\tchoosing a pair of nodes for each edge.  There are possibilities of \n"
-			"\t\tloops and multiple edges between pairs of nodes. Default source vertex \n"
-			"\t\tis random.\n"
-			"\trr <n> <d>\n"			
-			"\t\tA random graph generator that adds <d> randomly-chosen edges to each\n"
-			"\t\tof <n> nodes.  There are possibilities of loops and multiple edges\n"
-			"\t\tbetween pairs of nodes. Default source vertex is random.\n"
+			"Unless otherwise specified, all graph types use 4-byte vertex-identifiers.\n"
 			"\n"
-			"--v\tVerbose launch and statistical output is displayed to the console.\n"
+			"Graph types and args:\n"
+			"  grid2d <width>\n"
+			"    2D square grid lattice having width <width>.  Interior vertices \n"
+			"    have 4 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
+			"  grid3d <side-length>\n"
+			"    3D square grid lattice having width <width>.  Interior vertices \n"
+			"    have 6 neighbors and 1 self-loop.  Default source vertex is the grid-center.\n"
+			"  dimacs [<file>]\n"
+			"    Reads a DIMACS-formatted graph of directed edges from stdin (or \n"
+			"    from the optionally-specified file).  Default source vertex is random.\n"
+			"  metis [<file>]\n"
+			"    Reads a METIS-formatted graph of directed edges from stdin (or \n"
+			"    from the optionally-specified file).  Default source vertex is random.\n"
+			"  market [<file>]\n"
+			"    Reads a Matrix-Market coordinate-formatted graph of directed edges from stdin (or \n"
+			"    from the optionally-specified file).  Default source vertex is random.\n"
+			"  random <n> <m>\n"
+			"    A random graph generator that adds <m> edges to <n> nodes by randomly \n"
+			"    choosing a pair of nodes for each edge.  There are possibilities of \n"
+			"    loops and multiple edges between pairs of nodes. Default source vertex \n"
+			"    is random.\n"
+			"  rr <n> <d>\n"
+			"    A random graph generator that adds <d> randomly-chosen edges to each\n"
+			"    of <n> nodes.  There are possibilities of loops and multiple edges\n"
+			"    between pairs of nodes. Default source vertex is random.\n"
+			"  g500 <n>\n"
+			"    An R-MAT graph generator that adds 16n undirected edges to <n> nodes in accordance with\n"
+			"    the Graph500 problem specification (8-byte vertex identifiers, A=.57,B=.19,C=.19,D=.05 "
+			"    skew parameters).\n"
+			"  rmat <n> <m>\n"
+			"    An R-MAT graph generator that adds <m> edges to <n> nodes in accordance with\n"
+			"    the GTGraph generator defaults (A=.45,B=.15,C=.15,D=.25 skew parameters\n"
 			"\n"
-			"--v2\tSame as --v, but also displays the input graph to the console.\n"
+			"--strategy  Specifies the strategies to evaluate when num-gpus specified <= 1.\n"
+			"  Valid strategies are: {%d, %d, %d, %d}. Default: %d\n"
+			"      \"%d\": expand-contract\n"
+			"        - Two O(n) global ping-pong buffers (out-of-core vertex frontier)\n"
+			"        - single kernel invocation (in-kernel software global barriers between BFS iterations)\n"
+			"        - Predecessor-marking not implemented\n"
+			"      \"%d\": contract-expand\n"
+			"        - Two O(m) global ping-pong buffers (out-of-core edge frontier)\n"
+			"        - Single kernel invocation (in-kernel software global barriers between BFS iterations)\n"
+			"      \"%d\": two-phase\n"
+			"        - Uneven O(n) and O(m) global ping-pong buffers (out-of-core vertex and edge frontiers)\n"
+			"        - Two kernel invocations per BFS iteration (pipelined)\n"
+			"      \"%d\": hybrid of contract-expand and two-phase strategies\n"
+			"        - Uses high-throughput two-phase for BFS iterations with lots of concurrency,\n"
+			"          switching to contract-expand when frontier falls below a certain threshold\n"
+			"        - Two O(m) global ping-pong buffers \n"
 			"\n"
-			"--instrumented\tKernels keep track of queue-search_depth, redundant work (i.e., the \n"
-			"\t\toverhead of duplicates in the frontier), and average barrier duty (a \n"
-			"\t\trelative indicator of load imbalance.)\n"
+			"--v  Verbose launch and statistical output is displayed to the console.\n"
 			"\n"
-			"--i\tPerforms <num-iterations> test-iterations of BFS traversals.\n"
-			"\t\tDefault = 1\n"
+			"--v2  Same as --v, but also displays the input graph to the console.\n"
 			"\n"
-			"--src\tBegins BFS from the vertex <source idx>. Default is specific to \n"
-			"\t\tgraph-type.  If alternatively specified as \"randomize\", each \n"
-			"\t\ttest-iteration will begin with a newly-chosen random source vertex.\n"
+			"--instrumented  Kernels keep track of queue-search_depth, redundant work (i.e., the \n"
+			"    overhead of duplicates in the frontier), and average barrier duty (a \n"
+			"    relative indicator of load imbalance.)\n"
 			"\n"
-			"--queue-sizing\tAllocates a frontier queue sized at (graph-edges * <queue-sizing>).  Default\n"
-			"\t\tis 1.15.\n"
+			"--i  Performs <num-iterations> test-iterations of BFS traversals.\n"
+			"    Default = 1\n"
 			"\n"
-			"--mark-parents\tParent vertices are marked instead of source distances, i.e., it\n"
-			"\t\tcreates an ancestor tree rooted at the source vertex.\n"
+			"--src  Begins BFS from the vertex <source idx>. Default is specific to \n"
+			"    graph-type.  If alternatively specified as \"randomize\", each \n"
+			"    test-iteration will begin with a newly-chosen random source vertex.\n"
 			"\n"
-			"--stream-from-host\tKeeps the graph data (column indices, row offsets) on the host,\n"
-			"\t\tusing zero-copy access to traverse it.\n"
+			"--queue-sizing  Allocates a frontier queue sized at (graph-edges * <queue-sizing>).  Default\n"
+			"    is 1.15.\n"
 			"\n"
-			"--num-gpus\tNumber of GPUs to use\n"
+			"--mark-pred  Parent vertices are marked instead of source distances, i.e., it\n"
+			"    creates an ancestor tree rooted at the source vertex.\n"
 			"\n"
-			"--undirected\tEdges are undirected.  Reverse edges are added to DIMACS and\n"
-			"\t\trandom graphs, effectively doubling the CSR graph representation size.\n"
-			"\t\tGrid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
-			"\t\tgraphs are directed regardless of this flag.\n"
-			"\n");
+			"--stream-from-host  Keeps the graph data (column indices, row offsets) on the host,\n"
+			"    using zero-copy access to traverse it.\n"
+			"\n"
+			"--num-gpus  Number of GPUs to use\n"
+			"\n"
+			"--undirected  Edges are undirected.  Reverse edges are added to DIMACS and\n"
+			"    random graphs, effectively doubling the CSR graph representation size.\n"
+			"    Grid2d/grid3d graphs are undirected regardless of this flag, and rr \n"
+			"    graphs are directed regardless of this flag.\n"
+			"\n",
+				EXPAND_CONTRACT, CONTRACT_EXPAND, TWO_PHASE, HYBRID,
+				HYBRID,
+				EXPAND_CONTRACT, CONTRACT_EXPAND, TWO_PHASE, HYBRID);
 }
 
 /**
@@ -162,6 +199,7 @@ void DisplaySolution(VertexId* source_path, SizeT nodes)
 }
 
 
+
 /******************************************************************************
  * Performance/Evaluation Statistics
  ******************************************************************************/
@@ -170,7 +208,7 @@ struct Statistic
 {
 	double mean;
 	double m2;
-	size_t count;
+	int count;
 	
 	Statistic() : mean(0.0), m2(0.0), count(0) {}
 	
@@ -222,7 +260,7 @@ template <
 	typename SizeT>
 void Histogram(
 	VertexId 								src,
-	VertexId 								*reference_source_dist,					// reference answer
+	VertexId 								*reference_labels,					// reference answer
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	VertexId								search_depth)
 {
@@ -235,7 +273,7 @@ void Histogram(
 
 	for (VertexId vertex = 0; vertex < csr_graph.nodes; vertex++) {
 
-		VertexId distance = reference_source_dist[vertex];
+		VertexId distance = reference_labels[vertex];
 		if (distance >= 0) {
 
 			SizeT row_offset 	= csr_graph.row_offsets[vertex];
@@ -255,7 +293,7 @@ void Histogram(
 	// Construct frontiers
 	for (VertexId vertex = 0; vertex < csr_graph.nodes; vertex++) {
 
-		VertexId distance = reference_source_dist[vertex];
+		VertexId distance = reference_labels[vertex];
 		if (distance >= 0) {
 
 			SizeT row_offset 	= csr_graph.row_offsets[vertex];
@@ -282,8 +320,8 @@ void Histogram(
 			std::unique(frontier[distance].begin(), frontier[distance].end()) -
 			frontier[distance].begin();
 
-		printf("%d, %d, %d, %d\n",
-			distance,
+		printf("%lld, %d, %d, %d\n",
+			(long long) distance,
 			histogram[distance].expanded,
 			histogram[distance].unique_expanded,
 			histogram[distance].discovered);
@@ -296,15 +334,15 @@ void Histogram(
  * Displays timing and correctness statistics 
  */
 template <
-	bool MARK_PARENTS,
+	bool MARK_PREDECESSORS,
 	typename VertexId,
 	typename Value,
 	typename SizeT>
 void DisplayStats(
 	Stats 									&stats,
 	VertexId 								src,
-	VertexId 								*h_source_path,							// computed answer
-	VertexId 								*reference_source_dist,					// reference answer
+	VertexId 								*h_labels,							// computed answer
+	VertexId 								*reference_labels,					// reference answer
 	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,	// reference host graph
 	double 									elapsed,
 	VertexId								search_depth,
@@ -315,7 +353,7 @@ void DisplayStats(
 	SizeT edges_visited = 0;
 	SizeT nodes_visited = 0;
 	for (VertexId i = 0; i < csr_graph.nodes; i++) {
-		if (h_source_path[i] > -1) {
+		if (h_labels[i] > -1) {
 			nodes_visited++;
 			edges_visited += csr_graph.row_offsets[i + 1] - csr_graph.row_offsets[i];
 		}
@@ -331,13 +369,13 @@ void DisplayStats(
 	printf("[%s] finished. ", stats.name);
 
 	// Display correctness
-	if (reference_source_dist != NULL) {
+	if (reference_labels != NULL) {
 		printf("Validity: ");
 		fflush(stdout);
-		if (!MARK_PARENTS) {
+		if (!MARK_PREDECESSORS) {
 
 			// Simply compare with the reference source-distance
-			CompareResults(h_source_path, reference_source_dist, csr_graph.nodes, true);
+			CompareResults(h_labels, reference_labels, csr_graph.nodes, true);
 
 		} else {
 
@@ -345,12 +383,12 @@ void DisplayStats(
 			bool correct = true;
 
 			for (VertexId node = 0; node < csr_graph.nodes; node++) {
-				VertexId parent = h_source_path[node];
+				VertexId parent = h_labels[node];
 
 				// Check that parentless nodes have zero or unvisited source distance
-				VertexId node_dist = reference_source_dist[node];
+				VertexId node_dist = reference_labels[node];
 				if (parent < 0) {
-					if (reference_source_dist[node] > 0) {
+					if (reference_labels[node] > 0) {
 						printf("INCORRECT: parentless node %lld (parent %lld) has positive distance distance %lld",
 							(long long) node, (long long) parent, (long long) node_dist);
 						correct = false;
@@ -360,7 +398,7 @@ void DisplayStats(
 				}
 
 				// Check that parent has iteration one less than node
-				VertexId parent_dist = reference_source_dist[parent];
+				VertexId parent_dist = reference_labels[parent];
 				if (parent_dist + 1 != node_dist) {
 					printf("INCORRECT: parent %lld has distance %lld, node %lld has distance %lld",
 						(long long) parent, (long long) parent_dist, (long long) node, (long long) node_dist);
@@ -403,12 +441,12 @@ void DisplayStats(
 		
 		// Display the specific sample statistics
 		double m_teps = (double) edges_visited / (elapsed * 1000.0); 
-		printf("\telapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
+		printf("  elapsed: %.3f ms, rate: %.3f MiEdges/s", elapsed, m_teps);
 		if (search_depth != 0) printf(", search_depth: %lld", (long long) search_depth);
 		if (avg_duty != 0) {
-			printf("\n\tavg cta duty: %.2f%%", avg_duty * 100);
+			printf("\n  avg cta duty: %.2f%%", avg_duty * 100);
 		}
-		printf("\n\tsrc: %lld, nodes visited: %lld, edges visited: %lld",
+		printf("\n  src: %lld, nodes visited: %lld, edges visited: %lld",
 			(long long) src, (long long) nodes_visited, (long long) edges_visited);
 		if (total_queued > 0) {
 			printf(", total queued: %lld", total_queued);
@@ -419,26 +457,24 @@ void DisplayStats(
 		printf("\n");
 
 		// Display the aggregate sample statistics
-		printf("\tSummary after %lld test iterations (bias-corrected):\n", (long long) stats.rate.count + 1);
+		printf("  Summary after %lld test iterations (bias-corrected):\n", (long long) stats.rate.count + 1);
 
 		double search_depth_stddev = sqrt(stats.search_depth.Update((double) search_depth));
-		if (search_depth > 0) printf(			"\t\t[Search depth]:           u: %.1f, s: %.1f, cv: %.4f\n",
+		if (search_depth > 0) printf(		"    [Search depth]:      u: %.1f, s: %.1f, cv: %.4f\n",
 			stats.search_depth.mean, search_depth_stddev, search_depth_stddev / stats.search_depth.mean);
 
 		double redundant_work_stddev = sqrt(stats.redundant_work.Update(redundant_work));
-		if (redundant_work > 0) printf(	"\t\t[redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
+		if (redundant_work > 0) printf(		"    [redundant work %%]: u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.redundant_work.mean, redundant_work_stddev, redundant_work_stddev / stats.redundant_work.mean);
 
 		double duty_stddev = sqrt(stats.duty.Update(avg_duty * 100));
-		if (avg_duty > 0) printf(	"\t\t[Duty %%]:        u: %.2f, s: %.2f, cv: %.4f\n",
+		if (avg_duty > 0) printf(			"    [Duty %%]:           u: %.2f, s: %.2f, cv: %.4f\n",
 			stats.duty.mean, duty_stddev, duty_stddev / stats.duty.mean);
 
-		double time_stddev = sqrt(stats.rate.Update(m_teps));
-		printf(								"\t\t[Time (ms)]:   u: %.3f\n",
-			double(edges_visited) / stats.rate.mean / 1000.0);
-
 		double rate_stddev = sqrt(stats.rate.Update(m_teps));
-		printf(								"\t\t[Rate MiEdges/s]:   u: %.3f, s: %.3f, cv: %.4f\n", 
+		printf(								"    [Time (ms)]:         u: %.3f\n",
+			double(edges_visited) / stats.rate.mean / 1000.0);
+		printf(								"    [Rate MiEdges/s]:    u: %.3f, s: %.3f, cv: %.4f\n",
 			stats.rate.mean, rate_stddev, rate_stddev / stats.rate.mean);
 	}
 	
@@ -450,68 +486,6 @@ void DisplayStats(
 /******************************************************************************
  * BFS Testing Routines
  ******************************************************************************/
-
-template <
-	bool INSTRUMENT,
-	typename BfsEnactor,
-	typename ProblemStorage,
-	typename VertexId,
-	typename Value,
-	typename SizeT>
-cudaError_t TestGpuBfs(
-	int 									test_iteration,
-	BfsEnactor 								&enactor,
-	ProblemStorage 							&csr_problem,
-	VertexId 								src,
-	VertexId 								*h_source_path,						// place to copy results out to
-	VertexId 								*reference_source_dist,
-	const CsrGraph<VertexId, Value, SizeT> 	&csr_graph,							// reference host graph
-	Stats									&stats,								// running statistics
-	int 									max_grid_size)
-{
-	cudaError_t retval;
-
-	do {
-
-		// (Re)initialize distances
-		if (retval = csr_problem.Reset()) break;
-
-		// Perform BFS
-		GpuTimer gpu_timer;
-		gpu_timer.Start();
-		if (retval = enactor.template EnactSearch<INSTRUMENT>(csr_problem, src, max_grid_size)) break;
-		gpu_timer.Stop();
-		float elapsed = gpu_timer.ElapsedMillis();
-
-		// Copy out results
-		if (retval = csr_problem.ExtractResults(h_source_path)) break;
-
-		long long 	total_queued = 0;
-		VertexId	search_depth = 0;
-		double		avg_duty = 0.0;
-
-		if (test_iteration < 0) {
-			printf("Warmup iteration: %.3f ms\n", elapsed);
-
-		} else {
-
-			enactor.GetStatistics(total_queued, search_depth, avg_duty);
-			DisplayStats<ProblemStorage::ProblemType::MARK_PARENTS>(
-				stats,
-				src,
-				h_source_path,
-				reference_source_dist,
-				csr_graph,
-				elapsed,
-				search_depth,
-				total_queued,
-				avg_duty);
-		}
-
-	} while (0);
-	
-	return retval;
-}
 
 
 /**
@@ -605,7 +579,7 @@ template <
 	typename Value,
 	typename SizeT,
 	bool INSTRUMENT,
-	bool MARK_PARENTS>
+	bool MARK_PREDECESSORS>
 void RunTests(
 	const CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	VertexId src,
@@ -613,52 +587,42 @@ void RunTests(
 	int test_iterations,
 	int max_grid_size,
 	int num_gpus,
-	double queue_sizing,
-	bool stream_from_host)
+	double max_queue_sizing,
+	std::vector<int> strategies)
 {
-	// Allocate host-side source_distance array (for both reference and gpu-computed results)
-	VertexId* reference_source_dist 	= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
-	VertexId* h_source_path 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	typedef bfs::CsrProblem<VertexId, SizeT, MARK_PREDECESSORS> CsrProblem;
 
-	// Allocate a BFS enactor (with maximum frontier-queue size the size of the edge-list)
-//	bfs::EnactorExpandContractGBarrier 		expand_contract_enactor(g_verbose);
-	bfs::EnactorExpandContract 				expand_contract_enactor(g_verbose);
-//	bfs::EnactorContractExpandGBarrier 		contract_expand_enactor(g_verbose);
-	bfs::EnactorContractExpand				contract_expand_enactor(g_verbose);
-	bfs::EnactorTwoPhase					two_phase_enactor(g_verbose);
-	bfs::EnactorHybrid 						hybrid_enactor(g_verbose);
-	bfs::EnactorMultiGpu					multi_gpu_enactor(g_verbose);
+	// Allocate host-side label array (for both reference and gpu-computed results)
+	VertexId* reference_labels 			= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* h_labels 					= (VertexId*) malloc(sizeof(VertexId) * csr_graph.nodes);
+	VertexId* reference_check 			= (g_quick) ? NULL : reference_labels;
+
+	// Allocate BFS enactor map
+	bfs::EnactorExpandContract<INSTRUMENT> 	expand_contract(g_verbose);
+	bfs::EnactorContractExpand<INSTRUMENT>	contract_expand(g_verbose);
+	bfs::EnactorTwoPhase<INSTRUMENT>		two_phase(g_verbose);
+	bfs::EnactorHybrid<INSTRUMENT>			hybrid(g_verbose);
+	bfs::EnactorMultiGpu<INSTRUMENT>		multi_gpu(g_verbose);
+
+	// Allocate Stats map
+	std::map<Strategy, Stats*> stats_map;
+	stats_map[HOST] 				= new Stats("Simple CPU BFS");
+	stats_map[EXPAND_CONTRACT] 		= new Stats("Expand-contract GPU BFS");
+	stats_map[CONTRACT_EXPAND] 		= new Stats("Contract-expand GPU BFS");
+	stats_map[TWO_PHASE] 			= new Stats("Two-phase GPU BFS");
+	stats_map[HYBRID] 				= new Stats("Hybrid contract-expand + two-phase GPU BFS");
+	stats_map[MULTI_GPU] 			= new Stats("Multi-GPU BFS");
 
 	// Allocate problem on GPU
-	bfs::CsrProblem<VertexId, SizeT, MARK_PARENTS> csr_problem;
+	CsrProblem csr_problem;
 	if (csr_problem.FromHostProblem(
-		stream_from_host,
+		g_stream_from_host,
 		csr_graph.nodes,
 		csr_graph.edges,
 		csr_graph.column_indices,
 		csr_graph.row_offsets,
-		queue_sizing,
-		g_uneven,
-		num_gpus))
-	{
-		exit(1);
-	}
+		num_gpus)) exit(1);
 
-	// Initialize statistics
-	Stats stats[7];
-	stats[0] = Stats("Simple CPU BFS");
-	stats[1] = Stats("One-phase expand-contract GPU BFS");
-	stats[2] = Stats("One-phase contract-expand GPU BFS");
-	stats[3] = Stats("Two-phase GPU BFS");
-	stats[4] = Stats("Hybrid online-vertex + two-phase GPU BFS");
-	stats[5] = Stats("Multi-GPU BFS");
-	
-	printf("Running %s %s %s tests...\n\n",
-		(INSTRUMENT) ? "instrumented" : "non-instrumented",
-		(MARK_PARENTS) ? "parent-marking" : "distance-marking",
-		(stream_from_host) ? "stream-from-host" : "copied-to-device");
-	fflush(stdout);
-	
 	// Perform the specified number of test iterations
 	int test_iteration = -1;
 	while (test_iteration < test_iterations) {
@@ -668,116 +632,133 @@ void RunTests(
 		
 		printf("---------------------------------------------------------------\n");
 
+		//
 		// Compute reference CPU BFS solution for source-distance
+		//
+
 		if (!g_quick) {
-			SimpleReferenceBfs(test_iteration, csr_graph, reference_source_dist, src, stats[0]);
-			printf("\n");
-			fflush(stdout);
-		}
-
-		if (num_gpus == 1) {
-
-			if ((!csr_problem.uneven) && (!MARK_PARENTS)) {
-				// Perform one-phase expand-contract BFS implementation (single grid launch)
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					expand_contract_enactor,
-					csr_problem,
-					src,
-					h_source_path,
-					(g_quick) ? (VertexId*) NULL : reference_source_dist,
-					csr_graph,
-					stats[1],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
-			if (!csr_problem.uneven) {
-				// Perform one-phase contract-expand BFS implementation (single grid launch)
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					contract_expand_enactor,
-					csr_problem,
-					src,
-					h_source_path,
-					(g_quick) ? (VertexId*) NULL : reference_source_dist,
-					csr_graph,
-					stats[2],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
-			// Perform two-phase out-of-core BFS implementation (BFS level grid launch)
-			if (TestGpuBfs<INSTRUMENT>(
+			SimpleReferenceBfs(
 				test_iteration,
-				two_phase_enactor,
-				csr_problem,
-				src,
-				h_source_path,
-				(g_quick) ? (VertexId*) NULL : reference_source_dist,
 				csr_graph,
-				stats[3],
-				max_grid_size)) exit(1);
+				reference_labels,
+				src,
+				*stats_map[HOST]);
 			printf("\n");
+
+			if (g_verbose2) {
+				printf("Reference solution: ");
+				DisplaySolution(reference_labels, csr_graph.nodes);
+				printf("\n");
+			}
 			fflush(stdout);
 
-			if (!csr_problem.uneven) {
-
-				// Perform hybrid-phase out-of-core BFS implementation
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					hybrid_enactor,
-					csr_problem,
-					src,
-					h_source_path,
-					(g_quick) ? (VertexId*) NULL : reference_source_dist,
-					csr_graph,
-					stats[4],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
+			if (randomized_src && (test_iteration < stats_map[HOST]->rate.count)) {
+				test_iteration = stats_map[HOST]->rate.count;
 			}
-
-		} else {
-
-			if (!csr_problem.uneven) {
-				// Perform multi-GPU out-of-core BFS implementation
-				if (TestGpuBfs<INSTRUMENT>(
-					test_iteration,
-					multi_gpu_enactor,
-					csr_problem,
-					src,
-					h_source_path,
-					(g_quick) ? (VertexId*) NULL : reference_source_dist,
-					csr_graph,
-					stats[5],
-					max_grid_size)) exit(1);
-				printf("\n");
-				fflush(stdout);
-			}
-
 		}
 
-		if (g_verbose2) {
-			printf("Reference solution: ");
-			DisplaySolution(reference_source_dist, csr_graph.nodes);
-			printf("Computed solution (%s): ", (MARK_PARENTS) ? "parents" : "source dist");
-			DisplaySolution(h_source_path, csr_graph.nodes);
+		//
+		// Iterate over GPU strategies
+		//
+
+		for (typename std::vector<int>::iterator itr = strategies.begin();
+			itr != strategies.end();
+			++itr)
+		{
+			Strategy strategy = (Strategy) *itr;
+			Stats *stats = stats_map[strategy];
+
+			long long 		total_queued = 0;
+			VertexId		search_depth = 0;
+			double			avg_duty = 0.0;
+			cudaError_t		retval = cudaSuccess;
+
+			// Perform BFS
+			GpuTimer gpu_timer;
+
+			switch (strategy) {
+
+			case EXPAND_CONTRACT:
+				if (retval = csr_problem.Reset(expand_contract.GetFrontierType(), max_queue_sizing)) break;
+				gpu_timer.Start();
+				if (retval = expand_contract.EnactFusedSearch(csr_problem, src, max_grid_size)) break;				// Fused variant
+				gpu_timer.Stop();
+				expand_contract.GetStatistics(total_queued, search_depth, avg_duty);
+				break;
+
+			case CONTRACT_EXPAND:
+				if (retval = csr_problem.Reset(contract_expand.GetFrontierType(), max_queue_sizing)) break;
+				gpu_timer.Start();
+				if (retval = contract_expand.EnactFusedSearch(csr_problem, src, max_grid_size)) break;				// Fused variant
+				gpu_timer.Stop();
+				contract_expand.GetStatistics(total_queued, search_depth, avg_duty);
+				break;
+
+			case TWO_PHASE:
+				if (retval = csr_problem.Reset(two_phase.GetFrontierType(), max_queue_sizing)) break;
+				gpu_timer.Start();
+				if (retval = two_phase.EnactIterativeSearch(csr_problem, src, max_grid_size)) break;				// Iterative variant
+				gpu_timer.Stop();
+				two_phase.GetStatistics(total_queued, search_depth, avg_duty);
+				break;
+
+			case HYBRID:
+				if (retval = csr_problem.Reset(hybrid.GetFrontierType(), max_queue_sizing)) break;
+				gpu_timer.Start();
+				if (retval = hybrid.EnactSearch(csr_problem, src, max_grid_size)) break;
+				gpu_timer.Stop();
+				hybrid.GetStatistics(total_queued, search_depth, avg_duty);
+				break;
+
+			case MULTI_GPU:
+				if (retval = csr_problem.Reset(multi_gpu.GetFrontierType(), max_queue_sizing)) break;
+				gpu_timer.Start();
+				if (retval = multi_gpu.EnactSearch(csr_problem, src, max_grid_size)) break;
+				gpu_timer.Stop();
+				multi_gpu.GetStatistics(total_queued, search_depth, avg_duty);
+				break;
+
+			}
+
+			if (retval && (retval != cudaErrorInvalidDeviceFunction)) {
+				exit(1);
+			}
+
+			float elapsed = gpu_timer.ElapsedMillis();
+
+			// Copy out results
+			if (csr_problem.ExtractResults(h_labels)) exit(1);
+
+			if (test_iteration < 0) {
+				printf("Warmup iteration: %.3f ms\n", elapsed);
+			} else {
+
+				DisplayStats<CsrProblem::ProblemType::MARK_PREDECESSORS>(
+					*stats,
+					src,
+					h_labels,
+					reference_check,
+					csr_graph,
+					elapsed,
+					search_depth,
+					total_queued,
+					avg_duty);
+			}
+
 			printf("\n");
-		}
-		
-		if (randomized_src) {
-			// Valid test_iterations is the maximum of any of the
-			// test-statistic-structure's sample-counts
-			test_iteration = 0;
-			for (int i = 0; i < sizeof(stats) / sizeof(Stats); i++) {
-				if (stats[i].rate.count > test_iteration) {
-					test_iteration = stats[i].rate.count;
-				}
+			if (g_verbose2) {
+				printf("Computed solution (%s): ", (MARK_PREDECESSORS) ? "predecessor" : "source dist");
+				DisplaySolution(h_labels, csr_graph.nodes);
+				printf("\n");
 			}
-		} else {
+			fflush(stdout);
+
+			if (randomized_src && (test_iteration < stats->rate.count)) {
+				test_iteration = stats->rate.count;
+			}
+		}
+
+		if (!randomized_src) {
 			test_iteration++;
 		}
 	}
@@ -787,79 +768,64 @@ void RunTests(
 	// Cleanup
 	//
 	
-	if (reference_source_dist) free(reference_source_dist);
-	if (h_source_path) free(h_source_path);
+	if (reference_labels) free(reference_labels);
+	if (h_labels) free(h_labels);
+	for (typename std::map<Strategy, Stats*>::iterator itr = stats_map.begin(); itr != stats_map.end(); ++itr) delete itr->second;
 
 	cudaDeviceSynchronize();
 }
 
 
-/******************************************************************************
- * Main
- ******************************************************************************/
-
-int main( int argc, char** argv)  
+template <
+	typename VertexId,
+	typename Value,
+	typename SizeT>
+void RunTests(
+	CsrGraph<VertexId, Value, SizeT> &csr_graph,
+	CommandLineArgs &args)
 {
-	typedef int VertexId;							// Use as the node identifier type
-	typedef int Value;								// Use as the value type
-	typedef int SizeT;								// Use as the graph size type
-	
 	VertexId 	src 				= -1;			// Use whatever the specified graph-type's default is
-	char* 		src_str				= NULL;
+	std::string	src_str;
 	bool 		randomized_src		= false;		// Whether or not to select a new random src for each test iteration
 	bool 		instrumented		= false;		// Whether or not to collect instrumentation from kernels
-	bool 		mark_parents		= false;		// Whether or not to mark src-distance vs. parent vertices
-	bool		stream_from_host	= false;		// Whether or not to stream CSR representation from host mem
+	bool 		mark_pred			= false;		// Whether or not to mark src-distance vs. parent vertices
 	int 		test_iterations 	= 1;
 	int 		max_grid_size 		= 0;			// Maximum grid size (0: leave it up to the enactor)
 	int 		num_gpus			= 1;			// Number of GPUs for multi-gpu enactor to use
-	double 		queue_sizing		= 0.0;			// Scaling factor for work queues (0.0: leave it up to CsrProblemType)
+	double 		max_queue_sizing	= 1.3;			// Maximum size scaling factor for work queues (e.g., 1.0 creates n and m-element vertex and edge frontiers).
+	std::vector<int> strategies(1, HYBRID);			// Use "hybrid" strategy by default
 
-	CommandLineArgs args(argc, argv);
-	DeviceInit(args);
-	cudaSetDeviceFlags(cudaDeviceMapHost);
-
-	srand(0);									// Presently deterministic
-	//srand(time(NULL));	
-
-	//
-	// Check command line arguments
-	// 
-	
-	if (args.CheckCmdLineFlag("help")) {
-		Usage();
-		return 1;
-	}
 	instrumented = args.CheckCmdLineFlag("instrumented");
 	args.GetCmdLineArgument("src", src_str);
-	if (src_str != NULL) {
-		if (strcmp(src_str, "randomize") == 0) {
-			randomized_src = true;
-		} else {
-			src = atoi(src_str);
-		}
+	if (src_str.empty()) {
+		// Random source
+		src = builder::RandomNode(csr_graph.nodes);
+	} else if (src_str.compare("randomize") == 0) {
+		randomized_src = true;
+	} else {
+		args.GetCmdLineArgument("src", src);
 	}
 
-	g_undirected = args.CheckCmdLineFlag("undirected");
 	g_quick = args.CheckCmdLineFlag("quick");
-	mark_parents = args.CheckCmdLineFlag("mark-parents");
-	stream_from_host = args.CheckCmdLineFlag("stream-from-host");
-	g_uneven = args.CheckCmdLineFlag("uneven");
+	mark_pred = args.CheckCmdLineFlag("mark-pred");
 	args.GetCmdLineArgument("i", test_iterations);
 	args.GetCmdLineArgument("max-ctas", max_grid_size);
 	args.GetCmdLineArgument("num-gpus", num_gpus);
-	args.GetCmdLineArgument("queue-sizing", queue_sizing);
+	args.GetCmdLineArgument("queue-sizing", max_queue_sizing);
 	if (g_verbose2 = args.CheckCmdLineFlag("v2")) {
 		g_verbose = true;
 	} else {
 		g_verbose = args.CheckCmdLineFlag("v");
 	}
-	int flags = args.ParsedArgc();
-	int graph_args = argc - flags - 1;
+	args.GetCmdLineArguments("strategy", strategies);
 
-	if ((num_gpus > 1) && (__B40C_LP64__ == 0)) {
-		printf("Must be compiled in 64-bit to run multiple GPUs\n");
-		exit(1);
+	if (num_gpus > 1) {
+		if (__B40C_LP64__ == 0) {
+			printf("Must be compiled in 64-bit to run multiple GPUs\n");
+			exit(1);
+		}
+		strategies.clear();
+		strategies.push_back(MULTI_GPU);
 	}
 
 	// Enable symmetric peer access between gpus
@@ -882,43 +848,139 @@ int main( int argc, char** argv)
 		}
 	}
 
+	// Optionally display graph
+	if (g_verbose2) {
+		printf("\n");
+		csr_graph.DisplayGraph();
+		printf("\n");
+	}
+	csr_graph.PrintHistogram();
 
 	//
-	// Obtain CSR search graph
+	// Run tests
 	//
 
-	CsrGraph<VertexId, Value, SizeT> csr_graph(stream_from_host);
-	
+ 	if (instrumented) {
+/* Commented out for compilation speed
+		// Run instrumented kernel for per-CTA clock cycle timings
+		if (mark_pred) {
+			// label predecessor
+			RunTests<VertexId, Value, SizeT, true, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+		} else {
+			// label distance
+			RunTests<VertexId, Value, SizeT, true, false>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+		}
+*/
+	} else {
+
+		// Run regular kernel
+		if (mark_pred) {
+			// label predecessor
+			RunTests<VertexId, Value, SizeT, false, true>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+		} else {
+			// label distance
+			RunTests<VertexId, Value, SizeT, false, false>(
+				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, max_queue_sizing, strategies);
+		}
+	}
+}
+
+
+/******************************************************************************
+ * Main
+ ******************************************************************************/
+
+int main( int argc, char** argv)
+{
+	CommandLineArgs args(argc, argv);
+
+	if ((argc < 2) || (args.CheckCmdLineFlag("help"))) {
+		Usage();
+		return 1;
+	}
+
+	DeviceInit(args);
+	cudaSetDeviceFlags(cudaDeviceMapHost);
+
+	srand(0);									// Presently deterministic
+	//srand(time(NULL));
+
+	// Parse graph-contruction params
+	g_stream_from_host = args.CheckCmdLineFlag("stream-from-host");
+	g_undirected = args.CheckCmdLineFlag("undirected");
+
+	std::string graph_type = argv[1];
+	int flags = args.ParsedArgc();
+	int graph_args = argc - flags - 1;
+
 	if (graph_args < 1) {
 		Usage();
 		return 1;
 	}
-	std::string graph_type = argv[1];
+	
+	//
+	// Construct graph and perform search(es)
+	//
+
 	if (graph_type == "grid2d") {
+
 		// Two-dimensional regular lattice grid (degree 4)
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (builder::BuildGrid2dGraph<false>(width, src, csr_graph) != 0) {
+		if (builder::BuildGrid2dGraph<false>(
+			width,
+			csr_graph) != 0)
+		{
 			return 1;
 		}
+
+		// Run tests
+		RunTests(csr_graph, args);
 
 	} else if (graph_type == "grid3d") {
+
 		// Three-dimensional regular lattice grid (degree 6)
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 2) { Usage(); return 1; }
 		VertexId width = atoi(argv[2]);
-		if (builder::BuildGrid3dGraph<false>(width, src, csr_graph) != 0) {
+		if (builder::BuildGrid3dGraph<false>(
+			width,
+			csr_graph) != 0)
+		{
 			return 1;
 		}
 
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "dimacs") {
+
 		// DIMACS-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 1) { Usage(); return 1; }
 		char *dimacs_filename = (graph_args == 2) ? argv[2] : NULL;
 		int splice = 0;
 		args.GetCmdLineArgument("splice", splice);
 		if (builder::BuildDimacsGraph<false>(
 			dimacs_filename,
-			src,
 			csr_graph,
 			g_undirected,
 			splice) != 0)
@@ -926,31 +988,64 @@ int main( int argc, char** argv)
 			return 1;
 		}
 		
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "metis") {
+
 		// METIS-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 1) { Usage(); return 1; }
 		char *metis_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (builder::BuildMetisGraph<false>(metis_filename, src, csr_graph) != 0) {
+		if (builder::BuildMetisGraph<false>(metis_filename, csr_graph) != 0) {
 			return 1;
 		}
 		
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "market") {
+
 		// Matrix-market coordinate-formatted graph file
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 1) { Usage(); return 1; }
 		char *market_filename = (graph_args == 2) ? argv[2] : NULL;
-		if (builder::BuildMarketGraph<false>(market_filename, src, csr_graph) != 0) {
+		if (builder::BuildMarketGraph<false>(
+			market_filename, 
+			csr_graph, 
+			g_undirected) != 0) 
+		{
 			return 1;
 		}
 
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "rmat") {
-		// Random graph of n nodes and m edges
+
+		// GTGraph R-MAT graph of n nodes and m edges (
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		SizeT edges = atol(argv[3]);
 		if (builder::BuildRmatGraph<false>(
 			nodes,
 			edges,
-			src,
 			csr_graph,
 			g_undirected,
 			0.45,
@@ -960,59 +1055,87 @@ int main( int argc, char** argv)
 			return 1;
 		}
 
+		// Run tests
+		RunTests(csr_graph, args);
+
+	} else if (graph_type == "g500") {
+
+		// Graph500 R-MAT graph of n nodes (8-byte vertex identifiers)
+
+		typedef long long VertexId;						// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
+		if (graph_args < 2) { Usage(); return 1; }
+		SizeT nodes = atol(argv[2]);
+		SizeT edges = nodes * 16;						// Undirected edge factor is 16, i.e., half the average degree of a vertex in the graph
+		if (builder::BuildRmatGraph<false>(
+			nodes,
+			edges,
+			csr_graph,
+			true,										// Edges are undirected (i.e., add a back-edge for every directed edge sampled)
+			0.57,
+			0.19,
+			0.19) != 0)
+		{
+			return 1;
+		}
+
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "random") {
+
 		// Random graph of n nodes and m edges
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		SizeT edges = atol(argv[3]);
-		if (builder::BuildRandomGraph<false>(nodes, edges, src, csr_graph, g_undirected) != 0) {
+		if (builder::BuildRandomGraph<false>(
+				nodes, 
+				edges, 
+				csr_graph, 
+				g_undirected) != 0) 
+		{
 			return 1;
 		}
 
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else if (graph_type == "rr") {
-		// Random-regular-ish graph of n nodes, each with degree d (allows loops and cycles)
+
+		// Random-regular(ish) graph of n nodes, each with degree d (allows loops and cycles)
+
+		typedef int VertexId;							// Use as the node identifier type
+		typedef int Value;								// Use as the value type
+		typedef int SizeT;								// Use as the graph size type
+		CsrGraph<VertexId, Value, SizeT> csr_graph(g_stream_from_host);
+
 		if (graph_args < 3) { Usage(); return 1; }
 		SizeT nodes = atol(argv[2]);
 		int degree = atol(argv[3]);
-		if (builder::BuildRandomRegularishGraph<false>(nodes, degree, src, csr_graph) != 0) {
+		if (builder::BuildRandomRegularishGraph<false>(nodes, degree, csr_graph) != 0) {
 			return 1;
 		}
 
+		// Run tests
+		RunTests(csr_graph, args);
+
 	} else {
+
 		// Unknown graph type
 		fprintf(stderr, "Unspecified graph type\n");
 		return 1;
+
 	}
 	
-	// Optionally display graph
-	if (g_verbose2) {
-		printf("\n");
-		csr_graph.DisplayGraph();
-		printf("\n");
-	}
-	csr_graph.PrintHistogram();
 
-	// Run tests
-	if (instrumented) {
-
-		// Run instrumented kernel for runtime statistics
-		if (mark_parents) {
-			RunTests<VertexId, Value, SizeT, true, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
-		} else {
-			RunTests<VertexId, Value, SizeT, true, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
-		}
-
-	} else {
-
-		// Run regular kernel 
-		if (mark_parents) {
-			RunTests<VertexId, Value, SizeT, false, true>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
-		} else {
-			RunTests<VertexId, Value, SizeT, false, false>(
-				csr_graph, src, randomized_src, test_iterations, max_grid_size, num_gpus, queue_sizing, stream_from_host);
-		}
-	}
+	return 0;
 }

@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# Copyright 2010-2011 Duane Merrill
+# Copyright 2010-2012 Duane Merrill
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -183,6 +183,18 @@ bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) : lars_demo.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) lars_demo.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
+
+#-------------------------------------------------------------------------------
+# (make grid) Evaluates grid sizes
+#-------------------------------------------------------------------------------
+
+grid: bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) : grid_size.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) grid_size.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3
+	
+	
 
 #-------------------------------------------------------------------------------
 # Clean

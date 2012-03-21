@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ template <typename T>
 struct Max
 {
 	// Binary reduction
-	__host__ __device__ __forceinline__ T Op(const T &a, const T &b)
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return (a > b) ? a : b;
 	}
@@ -81,12 +81,12 @@ struct Equality
  */
 template <
 	b40c::consecutive_reduction::ProbSizeGenre PROB_SIZE_GENRE,
-	typename PingPongStorage,
+	typename DoubleBuffer,
 	typename SizeT,
 	typename ReductionOp,
 	typename EqualityOp>
 double TimedConsecutiveReduction(
-	PingPongStorage &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
+	DoubleBuffer &h_problem_storage,			// host problem storage (selector points to input, but output contains reference result)
 	SizeT num_elements,
 	SizeT num_compacted,						// number of elements in reference result
 	ReductionOp scan_op,
@@ -97,11 +97,11 @@ double TimedConsecutiveReduction(
 {
 	using namespace b40c;
 
-	typedef typename PingPongStorage::KeyType 		KeyType;
-	typedef typename PingPongStorage::ValueType 	ValueType;
+	typedef typename DoubleBuffer::KeyType 		KeyType;
+	typedef typename DoubleBuffer::ValueType 	ValueType;
 
 	// Allocate device storage
-	PingPongStorage 	d_problem_storage;
+	DoubleBuffer 	d_problem_storage;
 	SizeT				*d_num_compacted;
 
 	if (util::B40CPerror(cudaMalloc((void**) &d_problem_storage.d_keys[0], sizeof(KeyType) * num_elements),
@@ -135,6 +135,9 @@ double TimedConsecutiveReduction(
 
 	SizeT gpu_num_compacted;
 
+	// Marker kernel in profiling stream
+	util::FlushKernel<void><<<1,1>>>();
+
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
 	printf("\n");
 	enactor.ENACTOR_DEBUG = true;
@@ -153,6 +156,9 @@ double TimedConsecutiveReduction(
 
 	double elapsed = 0;
 	for (int i = 0; i < iterations; i++) {
+
+		// Marker kernel in profiling stream
+		util::FlushKernel<void><<<1,1>>>();
 
 		// Start timing record
 		timer.Start();
