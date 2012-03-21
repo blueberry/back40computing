@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -139,7 +139,7 @@ struct SerialSoaReduce
 		typename Tuple,
 		typename RakingSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Reduce(
+	static __host__ __device__ __forceinline__ void Reduce(
 		Tuple &retval,
 		RakingSoa raking_partials,
 		ReductionOp reduction_op)
@@ -150,7 +150,6 @@ struct SerialSoaReduce
 
 		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
 			raking_partials, current_partial, reduction_op);
-		return retval;
 	}
 
 	/**
@@ -178,7 +177,7 @@ struct SerialSoaReduce
 		typename Tuple,
 		typename RakingSoa,
 		typename ReductionOp>
-	static __host__ __device__ __forceinline__ Tuple Reduce(
+	static __host__ __device__ __forceinline__ void Reduce(
 		Tuple &retval,
 		RakingSoa raking_partials,
 		int row,
@@ -190,7 +189,6 @@ struct SerialSoaReduce
 
 		retval = Iterate<1, NUM_ELEMENTS>::Reduce(
 			raking_partials, current_partial, row, reduction_op);
-		return retval;
 	}
 
 

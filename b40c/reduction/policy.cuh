@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,7 +66,6 @@ template <
 	int UPSWEEP_LOG_THREADS,
 	int UPSWEEP_LOG_LOAD_VEC_SIZE,
 	int UPSWEEP_LOG_LOADS_PER_TILE,
-	int UPSWEEP_LOG_SCHEDULE_GRANULARITY,
 
 	// Spine tunable params
 	int SPINE_LOG_THREADS,
@@ -105,7 +104,7 @@ struct Policy : ProblemType
 		READ_MODIFIER,
 		WRITE_MODIFIER,
 		WORK_STEALING,
-		UPSWEEP_LOG_SCHEDULE_GRANULARITY>
+		UPSWEEP_LOG_LOADS_PER_TILE + UPSWEEP_LOG_LOAD_VEC_SIZE + UPSWEEP_LOG_THREADS >
 			Upsweep;
 
 	/**
@@ -179,8 +178,8 @@ struct Policy : ProblemType
 		printf("%d, ", CUDA_ARCH);
 
 		// Common tunable params
-		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
-		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", CacheModifierToString(READ_MODIFIER));
+		printf("%s, ", CacheModifierToString(WRITE_MODIFIER));
 		printf("%s, ", (WORK_STEALING) ? "true" : "false");
 		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
 		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");
@@ -191,7 +190,6 @@ struct Policy : ProblemType
 		printf("%d, ", UPSWEEP_LOG_THREADS);
 		printf("%d, ", UPSWEEP_LOG_LOAD_VEC_SIZE);
 		printf("%d, ", UPSWEEP_LOG_LOADS_PER_TILE);
-		printf("%d, ", UPSWEEP_LOG_SCHEDULE_GRANULARITY);
 
 		// Spine tunable params
 		printf("%d, ", SPINE_LOG_THREADS);

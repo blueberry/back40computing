@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ namespace builder {
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int ReadMarketStream(
 	FILE *f_in,
-	CsrGraph<VertexId, Value, SizeT> &csr_graph)
+	CsrGraph<VertexId, Value, SizeT> &csr_graph,
+	bool undirected)
 {
 	typedef CooEdgeTuple<VertexId, Value> EdgeTupleType;
 	
@@ -56,6 +57,8 @@ int ReadMarketStream(
 	fflush(stdout);
 
 	char line[1024];
+
+	bool ordered_rows = true;
 
 	while(true) {
 
@@ -82,7 +85,7 @@ int ReadMarketStream(
 			}
 
 			nodes = ll_nodes_x;
-			edges = ll_edges;
+			edges = (undirected) ? ll_edges * 2 : ll_edges;
 
 			printf(" (%lld nodes, %lld directed edges)... ",
 				(unsigned long long) ll_nodes_x, (unsigned long long) ll_edges);
@@ -117,6 +120,15 @@ int ReadMarketStream(
 			coo[edges_read].col = ll_col - 1;	// zero-based array
 
 			edges_read++;
+
+			if (undirected) {
+				// Go ahead and insert reverse edge
+				coo[edges_read].row = ll_col - 1;	// zero-based array
+				coo[edges_read].col = ll_row - 1;	// zero-based array
+
+				ordered_rows = false;
+				edges_read++;
+			}
 		}
 	}
 	
@@ -135,8 +147,8 @@ int ReadMarketStream(
 	printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 	fflush(stdout);
 	
-	// Convert sorted COO to CSR
-	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, edges);
+	// Convert COO to CSR
+	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, edges, ordered_rows);
 	free(coo);
 
 	fflush(stdout);
@@ -148,21 +160,18 @@ int ReadMarketStream(
 /**
  * Loads a MARKET-formatted CSR graph from the specified file.  If
  * dimacs_filename == NULL, then it is loaded from stdin.
- * 
- * If src == -1, it is assigned a random node.  Otherwise it is verified 
- * to be in range of the constructed graph.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildMarketGraph(
 	char *dimacs_filename, 
-	VertexId &src,
-	CsrGraph<VertexId, Value, SizeT> &csr_graph)
+	CsrGraph<VertexId, Value, SizeT> &csr_graph,
+	bool undirected)
 { 
 	if (dimacs_filename == NULL) {
 
 		// Read from stdin
 		printf("Reading from stdin:\n");
-		if (ReadMarketStream<LOAD_VALUES>(stdin, csr_graph) != 0) {
+		if (ReadMarketStream<LOAD_VALUES>(stdin, csr_graph, undirected) != 0) {
 			return -1;
 		}
 
@@ -172,7 +181,7 @@ int BuildMarketGraph(
 		FILE *f_in = fopen(dimacs_filename, "r");
 		if (f_in) {
 			printf("Reading from %s:\n", dimacs_filename);
-			if (ReadMarketStream<LOAD_VALUES>(f_in, csr_graph) != 0) {
+			if (ReadMarketStream<LOAD_VALUES>(f_in, csr_graph, undirected) != 0) {
 				fclose(f_in);
 				return -1;
 			}
@@ -181,16 +190,6 @@ int BuildMarketGraph(
 			perror("Unable to open file");
 			return -1;
 		}
-	}
-	
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		// Random source
-		src = RandomNode(csr_graph.nodes);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
 	}
 	
 	return 0;

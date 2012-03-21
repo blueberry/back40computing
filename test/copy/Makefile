@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# Copyright 2010-2011 Duane Merrill
+# Copyright 2010-2012 Duane Merrill
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -168,9 +168,9 @@ bin/test_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_copy.cu $(DEPS)
 # (make tune) Evaluates the space of copy configuration types
 #-------------------------------------------------------------------------------
 
-tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)
+tune: bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
-bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH) : tune_copy.cu $(DEPS)
+bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_copy.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE)   
 
@@ -185,6 +185,16 @@ bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) : compare_copy.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/compare_copy_$(NVCC_VERSION)_$(ARCH_SUFFIX) compare_copy.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3  
 
+
+#-------------------------------------------------------------------------------
+# (make grid) Evaluates grid sizes
+#-------------------------------------------------------------------------------
+
+grid: bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) : grid_size.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) grid_size.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3
 
 #
 # Clean

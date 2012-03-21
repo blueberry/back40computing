@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -206,7 +206,7 @@ int ReadDimacsStream(
 	printf("Done parsing (%ds).\n", (int) (mark1 - mark0));
 	fflush(stdout);
 
-	// Convert sorted COO to CSR
+	// Convert COO to CSR
 	csr_graph.template FromCoo<LOAD_VALUES>(coo, nodes, directed_edges, ordered_rows);
 	free(coo);
 
@@ -218,14 +218,10 @@ int ReadDimacsStream(
 /**
  * Loads a DIMACS-formatted CSR graph from the specified file.  If 
  * dimacs_filename == NULL, then it is loaded from stdin.
- * 
- * If src == -1, it is assigned a random node.  Otherwise it is verified 
- * to be in range of the constructed graph.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildDimacsGraph(
 	char *dimacs_filename, 
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph,
 	bool undirected,
 	int splice)
@@ -272,18 +268,6 @@ int BuildDimacsGraph(
 		}
 	}
 
-	if (!retval) {
-		// If unspecified, assign default source.  Otherwise verify source range.
-		if (src == -1) {
-			// Random source
-			src = RandomNode(csr_graph.nodes);
-		} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-			fprintf(stderr, "Invalid src: %d", src);
-			csr_graph.Free();
-			retval = -1;
-		}
-	}
-	
 	return retval;
 }
 

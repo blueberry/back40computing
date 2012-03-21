@@ -1,6 +1,6 @@
 #-------------------------------------------------------------------------------
 #
-# Copyright 2010-2011 Duane Merrill
+# Copyright 2010-2012 Duane Merrill
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
+GEN_SM11 = -gencode=arch=compute_11,code=\"sm_11,compute_11\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
 #SM_TARGETS = $(GEN_SM20) $(GEN_SM13) $(GEN_SM10)
 SM_TARGETS = $(GEN_SM20)
@@ -57,6 +58,9 @@ endif
 ifeq ($(TUNE_ARCH), 130) 
 	TUNE_SM_TARGETS = $(GEN_SM13)
 endif
+ifeq ($(TUNE_ARCH), 110) 
+	TUNE_SM_TARGETS = $(GEN_SM11)
+endif
 ifeq ($(TUNE_ARCH), 100) 
 	TUNE_SM_TARGETS = $(GEN_SM10)
 endif
@@ -68,7 +72,7 @@ endif
 ifdef tunesize
     TUNE_SIZE = $(tunesize)
 else 
-	TUNE_SIZE = 4
+	TUNE_SIZE = 0
 endif
 
 
@@ -81,7 +85,6 @@ endif
 # Includes
 #-------------------------------------------------------------------------------
 
-THRUST_INC = "../../../Thrust"
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
 INC = -I$(CUDA_INC) -I.. -I../.. 
 
@@ -104,10 +107,10 @@ else
 	ARCH = -m64
 endif
 
-NVCCFLAGS = -Xptxas -v -Xcudafe -\#
+NVCCFLAGS = -Xptxas -v -Xopencc -OPT:Olimit=0 -Xcudafe -\# 
 
 ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
-	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
+	NVCCFLAGS += -Xcompiler /bigobj 
 endif
 
 ifeq (,$(findstring 3.0, $(NVCC_VERSION)))
@@ -141,6 +144,7 @@ DEPS = 			./Makefile \
 				$(wildcard ../../b40c/util/reduction/*.cuh) \
 				$(wildcard ../../b40c/util/scan/*.cuh) \
 				$(wildcard ../../b40c/consecutive_reduction/*.cuh) \
+				$(wildcard ../../b40c/consecutive_reduction/downsweep/*.cuh) \
 				$(wildcard ../../b40c/reduction/*.cuh) \
 				$(wildcard ../../b40c/scan/*.cuh) 
 				 
@@ -170,14 +174,14 @@ bin/test_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_consecutive
 
 	
 #-------------------------------------------------------------------------------
-# (make tune) Evaluates the space of configuration types
+# (make tune) Evaluates the space of scan configuration types
 #-------------------------------------------------------------------------------
 
 tune: bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B
 
 bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B : tune_consecutive_reduction.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3 -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
+	$(NVCC) $(DEFINES) $(TUNE_SM_TARGETS) -o bin/tune_consecutive_reduction_$(NVCC_VERSION)_$(ARCH_SUFFIX)_sm$(TUNE_ARCH)_u$(TUNE_SIZE)B tune_consecutive_reduction.cu $(NVCCFLAGS) $(ARCH) $(INC) -DTUNE_ARCH=$(TUNE_ARCH) -DTUNE_SIZE=$(TUNE_SIZE) 
 
 
 #-------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -176,14 +176,21 @@ struct If<false, ThenType, ElseType>
 template <typename A, typename B>
 struct Equals
 {
-	enum { VALUE = 0 };
+	enum {
+		VALUE = 0,
+		NEGATE = 1
+	};
 };
 
 template <typename A>
 struct Equals <A, A>
 {
-	enum { VALUE = 1 };
+	enum {
+		VALUE = 1,
+		NEGATE = 0
+	};
 };
+
 
 
 /**

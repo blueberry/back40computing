@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -57,15 +57,15 @@ namespace ld {
 /**
  * TODO: replace this with something better
  */
-#define CacheModifierToString(modifier)	(	(modifier == b40c::util::io::ld::NONE) ? 	"util::io::ld::NONE" :	\
-											(modifier == b40c::util::io::ld::cg) ? 		"util::io::ld::cg" :		\
-											(modifier == b40c::util::io::ld::ca) ? 		"util::io::ld::ca" :		\
-											(modifier == b40c::util::io::ld::cs) ? 		"util::io::ld::cs" :		\
-											(modifier == b40c::util::io::st::NONE) ? 	"util::io::st::NONE" :	\
-											(modifier == b40c::util::io::st::cg) ? 		"util::io::st::cg" :		\
-											(modifier == b40c::util::io::st::wb) ? 		"util::io::st::wb" :		\
-											(modifier == b40c::util::io::st::cs) ? 		"util::io::st::cs" :		\
-																						"<ERROR>")
+#define CacheModifierToString(modifier)	(	((int) modifier == b40c::util::io::ld::NONE) ? 		"util::io::ld::NONE" :	\
+											((int) modifier == b40c::util::io::ld::cg) ? 		"util::io::ld::cg" :		\
+											((int) modifier == b40c::util::io::ld::ca) ? 		"util::io::ld::ca" :		\
+											((int) modifier == b40c::util::io::ld::cs) ? 		"util::io::ld::cs" :		\
+											((int) modifier == b40c::util::io::st::NONE) ? 		"util::io::st::NONE" :	\
+											((int) modifier == b40c::util::io::st::cg) ? 		"util::io::st::cg" :		\
+											((int) modifier == b40c::util::io::st::wb) ? 		"util::io::st::wb" :		\
+											((int) modifier == b40c::util::io::st::cs) ? 		"util::io::st::cs" :		\
+																								"<ERROR>")
 
 /**
  * Basic utility for performing modified loads through cache.

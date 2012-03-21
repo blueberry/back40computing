@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,8 @@
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/error_utils.cuh>
 
+#include <b40c/graph/bfs/csr_problem.cuh>
+
 namespace b40c {
 namespace graph {
 namespace bfs {
@@ -53,17 +55,23 @@ protected:
 	// Queue size counters and accompanying functionality
 	util::CtaWorkProgressLifetime work_progress;
 
+	FrontierType frontier_type;
+
 public:
 
 	// Allows display to stdout of search details
 	bool DEBUG;
+
+	FrontierType GetFrontierType() { return frontier_type;}
 
 protected: 	
 
 	/**
 	 * Constructor.
 	 */
-	EnactorBase(bool DEBUG) : DEBUG(DEBUG)
+	EnactorBase(FrontierType frontier_type, bool DEBUG) :
+		frontier_type(frontier_type),
+		DEBUG(DEBUG)
 	{
 		// Setup work progress (only needs doing once since we maintain
 		// it in our kernel code)

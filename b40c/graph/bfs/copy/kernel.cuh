@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ namespace copy {
 
 
 /**
- * Sweep expansion pass (non-workstealing)
+ * Expansion pass (non-workstealing)
  */
 template <typename KernelPolicy, bool WORK_STEALING>
 struct SweepPass
@@ -49,8 +49,8 @@ struct SweepPass
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -74,8 +74,8 @@ struct SweepPass
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path);
+			d_predecessor_in,
+			d_labels);
 
 		// Process full tiles
 		while (work_limits.offset < work_limits.guarded_offset) {
@@ -115,7 +115,7 @@ __device__ __forceinline__ SizeT StealWork(
 
 
 /**
- * Sweep expansion pass (workstealing)
+ * Expansion pass (workstealing)
  */
 template <typename KernelPolicy>
 struct SweepPass <KernelPolicy, true>
@@ -126,8 +126,8 @@ struct SweepPass <KernelPolicy, true>
 		int 									&num_gpus,
 		typename KernelPolicy::VertexId 		*&d_in,
 		typename KernelPolicy::VertexId 		*&d_out,
-		typename KernelPolicy::VertexId 		*&d_parent_in,
-		typename KernelPolicy::VertexId			*&d_source_path,
+		typename KernelPolicy::VertexId 		*&d_predecessor_in,
+		typename KernelPolicy::VertexId			*&d_labels,
 		util::CtaWorkProgress 					&work_progress,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition)
 	{
@@ -140,8 +140,8 @@ struct SweepPass <KernelPolicy, true>
 			num_gpus,
 			d_in,
 			d_out,
-			d_parent_in,
-			d_source_path);
+			d_predecessor_in,
+			d_labels);
 
 		// Total number of elements in full tiles
 		SizeT unguarded_elements = work_decomposition.num_elements & (~(KernelPolicy::TILE_ELEMENTS - 1));
@@ -162,7 +162,7 @@ struct SweepPass <KernelPolicy, true>
 
 
 /******************************************************************************
- * Sweep Copy Kernel Entrypoint
+ * Copy Kernel Entrypoint
  ******************************************************************************/
 
 /**
@@ -179,11 +179,13 @@ void Kernel(
 	int										num_gpus,
 	typename KernelPolicy::VertexId 		*d_in,
 	typename KernelPolicy::VertexId 		*d_out,
-	typename KernelPolicy::VertexId 		*d_parent_in,
-	typename KernelPolicy::VertexId			*d_source_path,
+	typename KernelPolicy::VertexId 		*d_predecessor_in,
+	typename KernelPolicy::VertexId			*d_labels,
 	util::CtaWorkProgress 					work_progress,
 	util::KernelRuntimeStats				kernel_stats)
 {
+#if __B40C_CUDA_ARCH__ >= 200
+
 	typedef typename KernelPolicy::SizeT SizeT;
 
 	__shared__ util::CtaWorkDistribution<SizeT> work_decomposition;
@@ -220,8 +222,8 @@ void Kernel(
 		num_gpus,
 		d_in,
 		d_out,
-		d_parent_in,
-		d_source_path,
+		d_predecessor_in,
+		d_labels,
 		work_progress,
 		work_decomposition);
 
@@ -235,6 +237,8 @@ void Kernel(
 		kernel_stats.MarkStop();
 		kernel_stats.Flush();
 	}
+
+#endif
 }
 
 

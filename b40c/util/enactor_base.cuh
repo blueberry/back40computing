@@ -186,9 +186,12 @@ protected:
 
 			max_cta_occupancy = B40C_MIN(
 				B40C_SM_CTAS(cuda_props.device_sm_version),
-				B40C_MIN(
-					B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared,
-					B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads)));
+				B40C_MIN(B40C_SM_THREADS(cuda_props.device_sm_version) / threads,
+					B40C_MIN(
+						(kernel_attrs.sharedSizeBytes > 0) ? 
+							B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared:
+							B40C_SM_CTAS(cuda_props.device_sm_version), 
+						B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads))));
 
 		} while (0);
 
@@ -268,30 +271,27 @@ protected:
 	 * Useful for kernels that evenly divide up the work amongst threadblocks.
 	 */
 	int OversubscribedGridSize(
-		int num_elements,
-		int max_grid_size,
 		int schedule_granularity,
-		int upsweep_occupancy,
-		int downsweep_occupancy = -1)
+		int max_cta_occupancy,
+		int num_elements,
+		int max_grid_size = 0)
 	{
 		int grid_size;
 		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
-		if (downsweep_occupancy == -1) downsweep_occupancy = upsweep_occupancy;
-		int min_cta_occupancy = B40C_MIN(upsweep_occupancy, downsweep_occupancy);
 
 		if (cuda_props.device_sm_version < 120) {
 
 			// G80/G90: double CTA occupancy times SM count
 			grid_size = (max_grid_size > 0) ?
 				max_grid_size :
-				cuda_props.device_props.multiProcessorCount * min_cta_occupancy * 2;
+				cuda_props.device_props.multiProcessorCount * max_cta_occupancy * 2;
 
 		} else if (cuda_props.device_sm_version < 200) {
 
 			// GT200: Special sauce
 
 			// Start with with full downsweep occupancy of all SMs
-			grid_size = cuda_props.device_props.multiProcessorCount * min_cta_occupancy;
+			grid_size = cuda_props.device_props.multiProcessorCount * max_cta_occupancy;
 
 			int bumps = 0;
 			double cutoff = 0.005;
@@ -347,13 +347,39 @@ protected:
 				grains,
 				((max_grid_size > 0) ?
 					max_grid_size :
-					(upsweep_occupancy * downsweep_occupancy * cuda_props.device_props.multiProcessorCount) - 1));
+					(max_cta_occupancy * max_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1));
 		}
 
 		return grid_size;
 	}
 
 
+
+
+	/**
+	 * Returns the number of threadblocks to launch for the given problem size.
+	 */
+	int GridSize(
+		bool oversubscribed,
+		int schedule_granularity,
+		int max_cta_occupancy,
+		int num_elements,
+		int max_grid_size)
+	{
+		return (oversubscribed) ?
+			OversubscribedGridSize(
+				schedule_granularity,
+				max_cta_occupancy,
+				num_elements,
+				max_grid_size) :
+			OccupiedGridSize(
+				schedule_granularity,
+				max_cta_occupancy,
+				num_elements,
+				max_grid_size);
+	}
+	
+	
 	//-----------------------------------------------------------------------------
 	// Debug Utility Routines
 	//-----------------------------------------------------------------------------

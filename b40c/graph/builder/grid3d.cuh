@@ -1,5 +1,5 @@
 /******************************************************************************
- * Copyright 2010 Duane Merrill
+ * Copyright 2010-2012 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,15 +41,11 @@ namespace builder {
  * Builds a square 3D grid CSR graph.  Interior nodes have degree 7 (including
  * a self-loop)
  * 
- * If src == -1, then it is assigned to the grid-center.  Otherwise it is 
- * verified to be in range of the constructed graph.
- * 
  * Returns 0 on success, 1 on failure.
  */
 template<bool LOAD_VALUES, typename VertexId, typename Value, typename SizeT>
 int BuildGrid3dGraph(
 	VertexId width,
-	VertexId &src,
 	CsrGraph<VertexId, Value, SizeT> &csr_graph)
 { 
 	if (width < 0) {
@@ -122,16 +118,6 @@ int BuildGrid3dGraph(
 	}
 	csr_graph.row_offsets[csr_graph.nodes] = total; 	// last offset is always total
 
-	// If unspecified, assign default source.  Otherwise verify source range.
-	if (src == -1) {
-		VertexId half = width / 2;
-		src = half * ((width * width) + width + 1);
-	} else if ((src < 0 ) || (src > csr_graph.nodes)) {
-		fprintf(stderr, "Invalid src: %d", src);
-		csr_graph.Free();
-		return -1;
-	}
-	
 	return 0;
 }
 
