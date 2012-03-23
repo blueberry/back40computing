@@ -172,8 +172,14 @@ void TestCopy(size_t num_elements)
     // Run the timing test(s)
 	//
 
-	double b40c = TimedCopy<T, copy::UNKNOWN_SIZE>(
-		d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations);
+	double b40c = TimedCopy<copy::UNKNOWN_SIZE>(
+		d_src,
+		d_dest,
+		h_reference,
+		num_elements,
+		g_max_ctas,
+		g_verbose,
+		g_iterations);
 
 	double runtime = TimedRuntimeCopy<T>(
 		d_src, d_dest, h_reference, num_elements);

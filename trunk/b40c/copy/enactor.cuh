@@ -240,7 +240,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::TILE_ELEMENTS *
-			LargePolicy::CTA_OCCUPANCY *
+			B40C_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		SizeT num_elements = detail.num_bytes / sizeof(typename LargePolicy::T);
