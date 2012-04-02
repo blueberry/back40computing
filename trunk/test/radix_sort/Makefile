@@ -130,6 +130,11 @@ ifdef maxregisters
     NVCCFLAGS += -maxrregcount $(maxregisters)
 endif
 
+ifeq (4.1, $(findstring 4.1, $(NVCC_VERSION)))
+	# Disable nvvm for 4.1 
+	NVCCFLAGS += -open64
+endif 
+
 #-------------------------------------------------------------------------------
 # Dependency Lists
 #-------------------------------------------------------------------------------
