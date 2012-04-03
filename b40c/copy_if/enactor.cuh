@@ -456,6 +456,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 		// Copy out compacted size if necessary
 		if (detail.h_num_compacted != NULL) {
+
 			if (util::B40CPerror(cudaMemcpy(
 					detail.h_num_compacted,
 					detail.d_num_compacted,

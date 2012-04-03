@@ -694,7 +694,8 @@ struct Cta
 		// Copy lengths into ranks
 		util::io::InitializeTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(tile.local_ranks, tile.row_length);
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS>::Copy(tile.local_ranks, tile.row_length);
 
 		// Scan tile of local ranks
 		util::Sum<SizeT> scan_op;

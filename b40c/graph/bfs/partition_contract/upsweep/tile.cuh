@@ -333,7 +333,8 @@ struct Tile :
 		// Initialize valid flags
 		util::io::InitializeTile<
 			LOG_LOADS_PER_TILE,
-			LOG_LOAD_VEC_SIZE>::Init(valid, 1);
+			LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS>::Init(valid, 1);
 
 		// Cull valid flags using global visited mask
 		BitmaskCull(cta);

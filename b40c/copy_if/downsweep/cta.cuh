@@ -138,12 +138,19 @@ struct Cta
 		// Initialize valid flags
 		util::io::InitializeTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Transform(valid, keys, select_op);
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS>::Transform(
+				valid,
+				keys,
+				select_op,
+				guarded_elements,
+				0);
 
 		// Copy valid flags into ranks
 		util::io::InitializeTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, valid);
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS>::Copy(ranks, valid);
 
 		// Scan tile of ranks, seed with carry (maintain carry in raking threads)
 		util::Sum<RankType> scan_op;

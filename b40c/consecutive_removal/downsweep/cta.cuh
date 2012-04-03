@@ -145,7 +145,8 @@ struct Cta
 			// Copy discontinuity head_flags into ranks
 			util::io::InitializeTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS>::Copy(ranks, head_flags);
 
 			// Scan tile of ranks
 			util::Sum<RankType> scan_op;
@@ -265,7 +266,8 @@ struct Cta
 			// Copy discontinuity head_flags into ranks
 			util::io::InitializeTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS>::Copy(ranks, head_flags);
 
 			// Scan tile of ranks, seed with carry (maintain carry in raking threads)
 			util::Sum<RankType> scan_op;

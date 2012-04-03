@@ -191,7 +191,8 @@ struct Cta
 			// Copy discontinuity head_flags into ranks
 			util::io::InitializeTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(ranks, head_flags);
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS>::Copy(ranks, head_flags);
 
 			// SOA-scan tile of tuple pairs
 			if (FIRST_TILE && (blockIdx.x == 0)) {
@@ -231,7 +232,8 @@ struct Cta
 			// Decrement scatter ranks for values
 			util::io::InitializeTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE>::Transform(
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS>::Transform(
 					ranks, ranks, DecrementOp<RankType>());
 
 			// First CTA unsets the first head flag of first tile

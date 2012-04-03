@@ -120,7 +120,8 @@ struct Cta
 		// Initialize valid flags
 		util::io::InitializeTile<
 			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE>::Transform(valid, keys, select_op);
+			KernelPolicy::LOG_LOAD_VEC_SIZE,
+			KernelPolicy::THREADS>::Transform(valid, keys, select_op);
 
 		// Prevent accumulation from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
