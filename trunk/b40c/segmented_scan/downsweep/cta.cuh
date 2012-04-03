@@ -214,7 +214,8 @@ struct Cta
 			// Copy head flags (since we will trash them during scan)
 			util::io::InitializeTile<
 				KernelPolicy::LOG_LOADS_PER_TILE,
-				KernelPolicy::LOG_LOAD_VEC_SIZE>::Copy(is_head, flags);
+				KernelPolicy::LOG_LOAD_VEC_SIZE,
+				KernelPolicy::THREADS>::Copy(is_head, flags);
 
 			// Scan tile with carry update in raking threads
 			util::scan::soa::CooperativeSoaTileScan<

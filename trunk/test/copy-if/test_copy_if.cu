@@ -53,19 +53,20 @@ int 	g_iterations  					= 1;
  */
 void Usage()
 {
-	printf("\ntest_copy_if [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--keep<keep-percentage, e.g., 0.5>] [--max-ctas=<max-thread-blocks>] "
-			"[--n=<num-elements>] [--sweep] [--keys-only]\n");
+	printf("\ntest_copy_if [--device=<device index>] [--max-ctas=<max-thread-blocks>] "
+			"[--v] [--i=<num-iterations>] "
+			"[--keep<keep-fraction>]  "
+			"[--n=<num-elements>]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
 	printf("\t--i\tPerforms the copy-if operation <num-iterations> times\n");
 	printf("\t\t\ton the device. Re-copies original input each time. Default = 1\n");
 	printf("\n");
+	printf("\t--keep\tThe fraction of elements to keep as valid (default = 0.5)");
+	printf("\n");
 	printf("\t--n\tThe number of elements to comprise the sample problem\n");
 	printf("\t\t\tDefault = 512\n");
-	printf("\n");
-	printf("\t--keys-only\tWhether or not to pair keys with same-sized values\n");
 	printf("\n");
 }
 
@@ -110,22 +111,28 @@ void TestProblem(SizeT num_elements, float keep_percentage)
 	}
 
 	// Initialize problem
-	if (g_verbose) printf("Input problem: \n");
+	printf("Initializing input...");
+	fflush(stdout);
 	for (int i = 0; i < num_elements; i++) {
-
 		util::RandomBits<KeyType>(h_problem_storage.d_keys[0][i]);
-
-		if (g_verbose) {
-			printf("%lld, ",
-			(long long) h_problem_storage.d_keys[0][i]);
-		}
 	}
-	if (g_verbose) printf("\n");
+	printf(" Done.\n");
+	fflush(stdout);
+
+	// Display problem
+	if (g_verbose) {
+		printf("Input problem: \n");
+		for (int i = 0; i < num_elements; i++) {
+			printf("%lld, ", (long long) h_problem_storage.d_keys[0][i]);
+		}
+		printf("\n");
+	}
 
 	// Initialize keep conditional
 	printf("Keeping %%%f\n", keep_percentage);
 	KeyType comparand = keep_percentage * KeyType(-1);
 	Select<KeyType> select_op(comparand);
+	fflush(stdout);
 
 	// Compute reference solution
 	SizeT num_compacted = 0;
