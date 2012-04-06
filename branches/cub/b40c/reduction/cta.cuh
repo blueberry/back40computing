@@ -68,22 +68,31 @@ struct Cta
 	typedef typename KernelPolicy::SmemStorage	SmemStorage;
 	typedef typename KernelPolicy::ReductionOp	ReductionOp;
 
+	typedef T ThreadData[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+
+
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// The value we will accumulate (in each thread)
-	T 				carry;
+	T 						carry;
 
 	// Input and output device pointers
-	T* 				d_in;
-	T* 				d_out;
+	T* 						d_in;
+	T* 						d_out;
 
 	// Shared memory storage for the CTA
-	SmemStorage 	&smem_storage;
+	SmemStorage 			&smem_storage;
 
 	// Reduction operator
-	ReductionOp		reduction_op;
+	ReductionOp				reduction_op;
+
+	// Tile loader
+	util::io::TileLoader<
+		KernelPolicy::THREADS,
+		ThreadData,
+		KernelPolicy::READ_MODIFIER> tile_loader;
 
 
 	//---------------------------------------------------------------------
@@ -103,7 +112,8 @@ struct Cta
 			smem_storage(smem_storage),
 			d_in(d_in),
 			d_out(d_out),
-			reduction_op(reduction_op)
+			reduction_op(reduction_op),
+			tile_loader()
 	{}
 
 
@@ -117,16 +127,14 @@ struct Cta
 		SizeT cta_offset)
 	{
 		// Tile of elements
-		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		ThreadData data;
 
 		// Load tile
-		util::io::LoadTile<
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadTileUnguarded(
-				data,
-				InputTex<TexRefT>::ref,
-				d_in,
-				cta_offset);
+		tile_loader.LoadUnguarded(
+			data,
+			InputTex<TexRefT>::ref,
+			d_in,
+			cta_offset);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(

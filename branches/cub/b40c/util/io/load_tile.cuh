@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel utilities for loading tiles of loaded through global memory
+ * Kernel utilities for loading tiles of raw through global memory
  * with cache modifiers
  ******************************************************************************/
 
@@ -38,27 +38,24 @@ namespace io {
 
 
 /**
- * Cast transform
- */
-template <typename T, typename S>
-struct CastTransformOp
-{
-	__device__ __forceinline__ T operator ()(S item)
-	{
-		return (T) item;
-	}
-};
-
-
-
-/**
  * Load a tile of items
  */
 template <
 	int ACTIVE_THREADS,								// Active threads that will be loading
-	ld::CacheModifier CACHE_MODIFIER = ld::NONE>	// Cache modifier (e.g., CA/CG/CS/NONE/etc.)
-struct LoadTile
+	typename ThreadData,
+	ld::CacheModifier CACHE_MODIFIER = ld::NONE>	// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
+class TileLoader
 {
+private:
+
+	enum {
+		SEGMENTS = ArrayDims<ThreadData>::FIRST_DIM,
+		ELEMENTS = ArrayDims<ThreadData>::SECOND_DIM,
+	};
+
+	typedef typename ArrayDims<ThreadData>::BaseType T;
+
+private:
 
 	//---------------------------------------------------------------------
 	// Iteration Structures
@@ -95,7 +92,7 @@ struct LoadTile
 		static __device__ __forceinline__ void LoadTexVector(
 			const int SEGMENT,
 			VectorType data_vectors[],
-			const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
+			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
 			unsigned int base_thread_offset)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
@@ -112,65 +109,57 @@ struct LoadTile
 		// Guarded singleton
 		template <
 			typename Flag,
-			typename T,
 			typename S,
 			typename SizeT,
-			typename TransformOp,
-			int ELEMENTS>
+			typename TransformOp>
 		static __device__ __forceinline__ void LoadGuarded(
 			const int SEGMENT,
-			Flag (&valid)[ELEMENTS],
-			T (&transformed)[ELEMENTS],
-			S (&loaded)[ELEMENTS],
+			Flag valid[ELEMENTS],
+			T data[ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
-			if ((threadIdx.x * ELEMENTS) + OFFSET < guarded_elements) {
+			valid[CURRENT] = ((threadIdx.x * ELEMENTS) + OFFSET < guarded_elements);
 
-				ModifiedLoad<CACHE_MODIFIER>::Ld(loaded[CURRENT], d_in + OFFSET);
-				transformed[CURRENT] = transform_op(loaded[CURRENT]);
-				valid[CURRENT] = 1;
-
-			} else {
-
-				valid[CURRENT] = 0;
+			if (valid[CURRENT]) {
+				// Load and transform
+				S raw_data[1];
+				ModifiedLoad<CACHE_MODIFIER>::Ld(raw_data[0], d_in + OFFSET);
+				data[CURRENT] = transform_op(raw_data[0]);
 			}
 
 			// Next load in segment
 			Iterate<CURRENT + 1, TOTAL>::LoadGuarded(
 				SEGMENT,
 				valid,
-				transformed,
-				loaded,
+				data,
 				d_in,
 				guarded_elements,
 				transform_op);
 		}
 
-		// Initialize valid flag within an unguarded segment
+		// Transform data and initialize valid flag within an unguarded segment
 		template <
-			typename T,
 			typename S,
 			typename Flag,
 			typename TransformOp>
-		static __device__ __forceinline__ void InitUnguarded(
+		static __device__ __forceinline__ void TransformRaw(
 			Flag valid[],
-			T transformed[],
-			S loaded[],
+			T data[],
+			S raw[],
 			TransformOp transform_op)
 		{
-
 			valid[CURRENT] = 1;
-			transformed[CURRENT] = transform_op(loaded[CURRENT]);
+			data[CURRENT] = transform_op(raw[CURRENT]);
 
 			// Next load in segment
-			Iterate<CURRENT + 1, TOTAL>::InitUnguarded(
+			Iterate<CURRENT + 1, TOTAL>::TransformRaw(
 				valid,
-				transformed,
-				loaded,
+				data,
+				raw,
 				transform_op);
 		}
 
@@ -181,20 +170,14 @@ struct LoadTile
 
 		// Segment of unguarded vectors
 		template <
-			typename Flag,
-			typename T,
 			typename S,
 			typename VectorType,
-			typename TransformOp,
-			int ELEMENTS,
 			int VECTORS>
 		static __device__ __forceinline__ void LoadVectorSegment(
-			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
-			VectorType *d_in_vectors,
-			TransformOp transform_op)
+			VectorType *d_in_vectors)
 		{
 			// Perform raking vector loads for this segment
 			Iterate<0, VECTORS>::LoadVector(
@@ -204,32 +187,24 @@ struct LoadTile
 
 			// Next segment
 			Iterate<CURRENT + 1, TOTAL>::LoadVectorSegment(
-				valid,
-				transformed,
-				loaded,
+				data,
+				raw,
 				data_vectors,
-				d_in_vectors,
-				transform_op);
+				d_in_vectors);
 		}
 
 		// Segment of unguarded tex vectors
 		template <
-			typename Flag,
-			typename T,
 			typename S,
 			typename VectorType,
 			typename SizeT,
-			typename TransformOp,
-			int ELEMENTS,
 			int VECTORS>
 		static __device__ __forceinline__ void LoadTexVectorSegment(
-			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
-			const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
-			SizeT base_thread_offset,
-			TransformOp transform_op)
+			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			SizeT base_thread_offset)
 		{
 			// Perform raking tex vector loads for this segment
 			Iterate<0, VECTORS>::LoadTexVector(
@@ -240,27 +215,22 @@ struct LoadTile
 
 			// Next segment
 			Iterate<CURRENT + 1, TOTAL>::LoadTexVectorSegment(
-				valid,
-				transformed,
-				loaded,
+				data,
+				raw,
 				data_vectors,
 				ref,
-				base_thread_offset,
-				transform_op);
+				base_thread_offset);
 		}
 
 		// Segment of guarded singletons
 		template <
 			typename Flag,
-			typename T,
 			typename S,
 			typename SizeT,
-			typename TransformOp,
-			int ELEMENTS>
+			typename TransformOp>
 		static __device__ __forceinline__ void LoadSegmentGuarded(
 			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
@@ -269,8 +239,7 @@ struct LoadTile
 			Iterate<0, ELEMENTS>::LoadGuarded(
 				CURRENT,
 				valid[CURRENT],
-				transformed[CURRENT],
-				loaded[CURRENT],
+				data[CURRENT],
 				d_in,
 				guarded_elements,
 				transform_op);
@@ -278,8 +247,7 @@ struct LoadTile
 			// Next segment
 			Iterate<CURRENT + 1, TOTAL>::LoadSegmentGuarded(
 				valid,
-				transformed,
-				loaded,
+				data,
 				d_in,
 				guarded_elements,
 				transform_op);
@@ -303,131 +271,124 @@ struct LoadTile
 		static __device__ __forceinline__ void LoadTexVector(
 			const int SEGMENT,
 			VectorType data_vectors[],
-			const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
+			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
 			unsigned int base_thread_offset) {}
 
 		// Guarded singleton
-		template <typename Flag, typename T, typename S, typename SizeT, typename TransformOp, int ELEMENTS>
+		template <typename Flag, typename S, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void LoadGuarded(
 			const int SEGMENT,
-			Flag (&valid)[ELEMENTS],
-			T (&transformed)[ELEMENTS],
-			S (&loaded)[ELEMENTS],
+			Flag valid[ELEMENTS],
+			T data[ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
 
 		// Initialize valid flag within an unguarded segment
-		template <typename T, typename S, typename Flag, typename TransformOp>
-		static __device__ __forceinline__ void InitUnguarded(
+		template <typename S, typename Flag, typename TransformOp>
+		static __device__ __forceinline__ void TransformRaw(
 			Flag valid[],
-			T transformed[],
-			S loaded[],
+			T data[],
+			S raw[],
 			TransformOp transform_op) {}
 
 		// Segment of unguarded vectors
-		template <typename Flag, typename T, typename S, typename VectorType, typename TransformOp, int ELEMENTS, int VECTORS>
+		template <typename S, typename VectorType, int VECTORS>
 		static __device__ __forceinline__ void LoadVectorSegment(
-			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
-			VectorType *d_in_vectors,
-			TransformOp transform_op) {}
+			VectorType *d_in_vectors) {}
 
 		// Segment of unguarded tex vectors
-		template <typename Flag, typename T, typename S, typename VectorType, typename SizeT, typename TransformOp, int ELEMENTS, int VECTORS>
+		template <typename S, typename VectorType, typename SizeT, int VECTORS>
 		static __device__ __forceinline__ void LoadTexVectorSegment(
-			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
-			const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
-			SizeT base_thread_offset,
-			TransformOp transform_op) {}
+			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			SizeT base_thread_offset) {}
 
 		// Segment of guarded singletons
-		template <typename Flag, typename T, typename S, typename SizeT, typename TransformOp, int ELEMENTS>
+		template <typename Flag, typename S, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void LoadSegmentGuarded(
 			Flag valid[][ELEMENTS],
-			T transformed[][ELEMENTS],
-			S loaded[][ELEMENTS],
+			T data[][ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
 	};
 
+public:
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ TileLoader() {}
 
 
 	//---------------------------------------------------------------------
-	// Interface
+	// Unguarded tile interface
 	//---------------------------------------------------------------------
 
 	/**
-	 * Load a full tile
+	 * Load a tile unguarded
 	 */
 	template <
 		typename Flag,
-		typename T,
 		typename S,
 		typename SizeT,
-		typename TransformOp,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileUnguarded(
-		Flag (&valid)[SEGMENTS][ELEMENTS],
-		T (&data)[SEGMENTS][ELEMENTS],
+		typename TransformOp>
+	__device__ __forceinline__ void LoadUnguarded(
+		Flag valid[SEGMENTS][ELEMENTS],
+		T data[SEGMENTS][ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
 		const int VEC_ELEMENTS 		= B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
-		const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
+		const int VECTORS 			= ELEMENTS / (B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS));
 
 		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
 
 		// Data to load
-		S loaded[SEGMENTS][ELEMENTS];
+		S raw[SEGMENTS][ELEMENTS];
 
-		// Use an aliased pointer to loaded array
-		VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) loaded;
+		// Use an aliased pointer to raw array
+		VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) raw;
 		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x * ELEMENTS) + cta_offset);
 
+		// Load raw data
 		Iterate<0, SEGMENTS>::LoadVectorSegment(
-			valid,
 			data,
-			loaded,
+			raw,
 			data_vectors,
-			d_in_vectors,
-			transform_op);
+			d_in_vectors);
 
-		// Initialize valid and transform loaded
-		Iterate<0, SEGMENTS * ELEMENTS>::InitUnguarded(
+		// Transform from raw and initialize valid
+		Iterate<0, SEGMENTS * ELEMENTS>::TransformRaw(
 			(Flag*) valid,
 			(T*) data,
-			(S*) loaded,
+			(S*) raw,
 			transform_op);
 	}
 
 
 	/**
-	 * Load a full tile
+	 * Load a unguarded tile
 	 */
 	template <
-		typename T,
 		typename S,
-		typename SizeT,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileUnguarded(
-		T (&data)[SEGMENTS][ELEMENTS],
+		typename SizeT>
+	__device__ __forceinline__ void LoadUnguarded(
+		T data[SEGMENTS][ELEMENTS],
 		S *d_in,
 		SizeT cta_offset)
 	{
 		int valid[SEGMENTS][ELEMENTS];
 		CastTransformOp<T, S> transform_op;
 
-		LoadTileUnguarded(
+		LoadUnguarded(
 			valid,
 			data,
 			d_in,
@@ -437,21 +398,18 @@ struct LoadTile
 
 
 	/**
-	 * Load a full tile (optionally using tex if READ_MODIFIER == ld::tex)
+	 * Load a unguarded tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
 		typename Flag,
-		typename T,
 		typename VectorType,
 		typename S,
 		typename SizeT,
-		typename TransformOp,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileUnguarded(
-		Flag (&valid)[SEGMENTS][ELEMENTS],
-		T (&data)[SEGMENTS][ELEMENTS],
-		const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
+		typename TransformOp>
+	__device__ __forceinline__ void LoadUnguarded(
+		Flag valid[SEGMENTS][ELEMENTS],
+		T data[SEGMENTS][ELEMENTS],
+		texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
@@ -460,36 +418,34 @@ struct LoadTile
 
 			// Use tex
 			const int VEC_ELEMENTS 		= sizeof(VectorType) / sizeof(S);
-			const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
+			const int VECTORS 			= ELEMENTS / (sizeof(VectorType) / sizeof(S));
 
 			// Data to load
-			S loaded[SEGMENTS][ELEMENTS];
+			S raw[SEGMENTS][ELEMENTS];
 
-			// Use an aliased pointer to loaded array
-			VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) loaded;
+			// Use an aliased pointer to raw array
+			VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) raw;
 
 			SizeT base_thread_offset = cta_offset / VEC_ELEMENTS;
 
 			Iterate<0, SEGMENTS>::LoadTexVectorSegment(
-				valid,
 				data,
-				loaded,
+				raw,
 				data_vectors,
 				ref,
-				base_thread_offset + (threadIdx.x * VECTORS),
-				transform_op);
+				base_thread_offset + (threadIdx.x * VECTORS));
 
-			// Initialize valid and transform loaded
-			Iterate<0, SEGMENTS * ELEMENTS>::InitUnguarded(
+			// Transform raw and initialize
+			Iterate<0, SEGMENTS * ELEMENTS>::TransformRaw(
 				(Flag*) valid,
 				(T*) data,
-				(S*) loaded,
+				(S*) raw,
 				transform_op);
 
 		} else {
 
 			// Use normal loads
-			LoadTileUnguarded(
+			LoadUnguarded(
 				valid,
 				data,
 				d_in,
@@ -500,25 +456,22 @@ struct LoadTile
 
 
 	/**
-	 * Load a full tile (optionally using tex if READ_MODIFIER == ld::tex)
+	 * Load a unguarded tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
-		typename T,
 		typename VectorType,
 		typename S,
-		typename SizeT,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileUnguarded(
-		T (&data)[SEGMENTS][ELEMENTS],
-		const texture<VectorType, cudaTextureType1D, cudaReadModeElementType> &ref,
+		typename SizeT>
+	__device__ __forceinline__ void LoadUnguarded(
+		T data[SEGMENTS][ELEMENTS],
+		texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset)
 	{
 		int valid[SEGMENTS][ELEMENTS];
 		CastTransformOp<T, S> transform_op;
 
-		LoadTileUnguarded(
+		LoadUnguarded(
 			valid,
 			data,
 			ref,
@@ -528,32 +481,29 @@ struct LoadTile
 	}
 
 
+	//---------------------------------------------------------------------
+	// Guarded tile interface
+	//---------------------------------------------------------------------
+
 	/**
 	 * Load a guarded tile
 	 */
 	template <
 		typename Flag,
-		typename T,
 		typename S,
 		typename SizeT,
-		typename TransformOp,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileGuarded(
-		Flag (&valid)[SEGMENTS][ELEMENTS],
-		T (&data)[SEGMENTS][ELEMENTS],
+		typename TransformOp>
+	__device__ __forceinline__ void LoadGuarded(
+		Flag valid[SEGMENTS][ELEMENTS],
+		T data[SEGMENTS][ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
 		TransformOp transform_op)
 	{
-		// Data to load
-		S loaded[SEGMENTS][ELEMENTS];
-
 		Iterate<0, SEGMENTS>::LoadSegmentGuarded(
 			valid,
 			data,
-			loaded,
 			d_in + (threadIdx.x * ELEMENTS) + cta_offset,
 			guarded_elements,
 			transform_op);
@@ -564,13 +514,10 @@ struct LoadTile
 	 * Load a guarded tile
 	 */
 	template <
-		typename T,
 		typename S,
-		typename SizeT,
-		int SEGMENTS,
-		int ELEMENTS>
-	static __device__ __forceinline__ void LoadTileGuarded(
-		T (&data)[SEGMENTS][ELEMENTS],
+		typename SizeT>
+	__device__ __forceinline__ void LoadGuarded(
+		T data[SEGMENTS][ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -578,7 +525,7 @@ struct LoadTile
 		int valid[SEGMENTS][ELEMENTS];
 		CastTransformOp<T, S> transform_op;
 
-		LoadTileGuarded(
+		LoadGuarded(
 			valid,
 			data,
 			d_in,

@@ -362,6 +362,28 @@ __device__ __forceinline__ int WarpVoteAny(int predicate)
 
 
 /**
+ * One step of a warp SHFL scan.  Produces the following SASS:
+ *
+ *   SHFL.UP P0, R0, R4, 0x1, RZ;
+ *   @P0 IADD R0, R0, R4;
+ */
+__device__ __forceinline__ uint ShflScanStep(uint partial, uint up_offset)
+{
+#if __CUDA_ARCH__ >= 300
+	uint result;
+	asm(
+		"{.reg .u32 r0;"
+		".reg .pred p;"
+		"shfl.up.b32 r0|p, %1, %2, 0;"
+		"@p add.u32 r0, r0, %3;"
+		"mov.u32 %0, r0;}"
+		: "=r"(result) : "r"(partial), "r"(up_offset), "r"(partial));
+	return result;
+#endif
+}
+
+
+/**
  * Wrapper for performing atomic operations on integers of type size_t 
  */
 template <typename T, int SizeT = sizeof(T)>

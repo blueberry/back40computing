@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/operators.cuh>
 #include <b40c/util/vector_types.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -37,183 +37,464 @@ namespace util {
 namespace io {
 
 /**
- * Store of a tile of items using guarded stores 
+ * Store a tile of items
  */
 template <
-	int LOG_LOADS_PER_TILE, 									// Number of vector stores (log)
-	int LOG_LOAD_VEC_SIZE,										// Number of items per vector store (log)
 	int ACTIVE_THREADS,											// Active threads that will be storing
-	st::CacheModifier CACHE_MODIFIER,							// Cache modifier (e.g., WB/CG/CS/NONE/etc.)
-	bool CHECK_ALIGNMENT>										// Whether or not to check alignment to see if vector stores can be used
-struct StoreTile
+	st::CacheModifier CACHE_MODIFIER>							// Cache modifier (e.g., WB/CG/CS/NONE/etc.)
+class StoreTile
 {
-	enum {
-		LOADS_PER_TILE 			= 1 << LOG_LOADS_PER_TILE,
-		LOAD_VEC_SIZE 				= 1 << LOG_LOAD_VEC_SIZE,
-		LOG_ELEMENTS_PER_THREAD		= LOG_LOADS_PER_TILE + LOG_LOAD_VEC_SIZE,
-		ELEMENTS_PER_THREAD			= 1 << LOG_ELEMENTS_PER_THREAD,
-		TILE_SIZE 					= ACTIVE_THREADS * LOADS_PER_TILE * LOAD_VEC_SIZE,
-	};
+private:
 
 	//---------------------------------------------------------------------
 	// Iteration Structures
 	//---------------------------------------------------------------------
 
-	// Iterate over vec-elements
-	template <int LOAD, int VEC>
+	// Iteration
+	template <int CURRENT, int TOTAL>
 	struct Iterate
 	{
-		// Vector
+
+		//---------------------------------------------------------------------
+		// Store elements within a raking segment
+		//---------------------------------------------------------------------
+
+		// Unguarded vector
 		template <typename VectorType>
-		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[],
-			VectorType *d_in_vectors)
+		static __device__ __forceinline__ void StoreVector(
+			const int SEGMENT,
+			VectorType data_vectors[],
+			VectorType *d_out_vectors)
 		{
-			Iterate<LOAD, VEC + 1>::Invoke(vectors, d_in_vectors);
-		}
+			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
-		// Unguarded
-		template <typename T>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out)
-		{
-			int thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
-
-			ModifiedStore<CACHE_MODIFIER>::St(data[LOAD][VEC], d_out + thread_offset);
-
-			Iterate<LOAD, VEC + 1>::Invoke(data, d_out);
-		}
-
-		// Guarded
-		template <typename T, typename SizeT>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out,
-			const SizeT &guarded_elements)
-		{
-			SizeT thread_offset = (threadIdx.x << LOG_LOAD_VEC_SIZE) + (LOAD * ACTIVE_THREADS * LOAD_VEC_SIZE) + VEC;
-
-			if (thread_offset < guarded_elements) {
-				ModifiedStore<CACHE_MODIFIER>::St(data[LOAD][VEC], d_out + thread_offset);
-			}
-			Iterate<LOAD, VEC + 1>::Invoke(data, d_out, guarded_elements);
-		}
-	};
-
-	// Iterate over stores
-	template <int LOAD>
-	struct Iterate<LOAD, LOAD_VEC_SIZE>
-	{
-		// Vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[],
-			VectorType *d_in_vectors)
-		{
 			ModifiedStore<CACHE_MODIFIER>::St(
-				vectors[LOAD], d_in_vectors);
+				data_vectors[CURRENT],
+				d_out_vectors + OFFSET);
 
-			Iterate<LOAD + 1, 0>::Invoke(vectors, d_in_vectors + ACTIVE_THREADS);
+			// Next vector in segment
+			Iterate<CURRENT + 1, TOTAL>::StoreVector(SEGMENT, data_vectors, d_out_vectors);
 		}
 
-		// Unguarded
-		template <typename T>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out)
+
+		// Guarded singleton
+		template <
+			typename T,
+			typename S,
+			typename SizeT,
+			typename TransformOp,
+			int ELEMENTS>
+		static __device__ __forceinline__ void StoreGuarded(
+			const int SEGMENT,
+			T (&data)[ELEMENTS],
+			S (&raw)[ELEMENTS],
+			S *d_out,
+			const SizeT &guarded_elements,
+			TransformOp transform_op)
 		{
-			Iterate<LOAD + 1, 0>::Invoke(data, d_out);
+			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
+
+			if ((threadIdx.x * ELEMENTS) + OFFSET < guarded_elements) {
+				// Transform and store
+				raw[CURRENT] = transform_op(data[CURRENT]);
+				ModifiedStore<CACHE_MODIFIER>::Ld(raw[CURRENT], d_out + OFFSET);
+			}
+
+			// Next store in segment
+			Iterate<CURRENT + 1, TOTAL>::StoreGuarded(
+				SEGMENT,
+				data,
+				raw,
+				d_out,
+				guarded_elements,
+				transform_op);
 		}
 
-		// Guarded
-		template <typename T, typename SizeT>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out,
-			const SizeT &guarded_elements)
+		// Guarded singleton by flag
+		template <
+			typename Flag,
+			typename T,
+			typename S,
+			typename TransformOp,
+			int ELEMENTS>
+		static __device__ __forceinline__ void StoreGuardedByFlag(
+			const int SEGMENT,
+			Flag (&valid)[ELEMENTS],
+			T (&data)[ELEMENTS],
+			S (&raw)[ELEMENTS],
+			S *d_out,
+			TransformOp transform_op)
 		{
-			Iterate<LOAD + 1, 0>::Invoke(data, d_out, guarded_elements);
+			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
+
+			if (valid[CURRENT]) {
+				// Transform and store
+				raw[CURRENT] = transform_op(data[CURRENT]);
+				ModifiedStore<CACHE_MODIFIER>::Ld(raw[CURRENT], d_out + OFFSET);
+			}
+
+			// Next store in segment
+			Iterate<CURRENT + 1, TOTAL>::StoreGuardedByFlag(
+				SEGMENT,
+				data,
+				raw,
+				d_out,
+				guarded_elements,
+				transform_op);
+		}
+
+		// Transform data within an unguarded segment
+		template <
+			typename T,
+			typename S,
+			typename TransformOp>
+		static __device__ __forceinline__ void TransformRaw(
+			T data[],
+			S raw[],
+			TransformOp transform_op)
+		{
+			raw[CURRENT] = transform_op(data[CURRENT]);
+
+			// Next store in segment
+			Iterate<CURRENT + 1, TOTAL>::TransformRaw(
+				data,
+				raw,
+				transform_op);
+		}
+
+
+		//---------------------------------------------------------------------
+		// Store strided segments
+		//---------------------------------------------------------------------
+
+		// Segment of unguarded vectors
+		template <
+			typename T,
+			typename S,
+			typename VectorType,
+			int ELEMENTS,
+			int VECTORS>
+		static __device__ __forceinline__ void StoreVectorSegment(
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			VectorType data_vectors[][VECTORS],
+			VectorType *d_out_vectors)
+		{
+			// Perform raking vector stores for this segment
+			Iterate<0, VECTORS>::StoreVector(
+				CURRENT,
+				data_vectors[CURRENT],
+				d_out_vectors);
+
+			// Next segment
+			Iterate<CURRENT + 1, TOTAL>::StoreVectorSegment(
+				data,
+				raw,
+				data_vectors,
+				d_out_vectors);
+		}
+
+		// Segment of guarded singletons
+		template <
+			typename T,
+			typename S,
+			typename SizeT,
+			typename TransformOp,
+			int ELEMENTS>
+		static __device__ __forceinline__ void StoreSegmentGuarded(
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			S *d_out,
+			const SizeT &guarded_elements,
+			TransformOp transform_op)
+		{
+			// Perform guarded, transforming raking vector stores for this segment
+			Iterate<0, ELEMENTS>::StoreGuarded(
+				CURRENT,
+				data[CURRENT],
+				raw[CURRENT],
+				d_out,
+				guarded_elements,
+				transform_op);
+
+			// Next segment
+			Iterate<CURRENT + 1, TOTAL>::StoreSegmentGuarded(
+				data,
+				raw,
+				d_out,
+				guarded_elements,
+				transform_op);
+		}
+
+		// Segment of guarded singletons by flag
+		template <
+			typename Flag,
+			typename T,
+			typename S,
+			typename TransformOp,
+			int ELEMENTS>
+		static __device__ __forceinline__ void StoreSegmentGuardedByFlag(
+			Flag valid[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			S *d_out,
+			TransformOp transform_op)
+		{
+			// Perform guarded, transforming raking vector stores for this segment
+			Iterate<0, ELEMENTS>::StoreGuardedByFlag(
+				CURRENT,
+				valid[CURRENT],
+				data[CURRENT],
+				raw[CURRENT],
+				d_out,
+				transform_op);
+
+			// Next segment
+			Iterate<CURRENT + 1, TOTAL>::StoreSegmentGuardedByFlag(
+				valid,
+				data,
+				raw,
+				d_out,
+				transform_op);
 		}
 	};
-	
-	// Terminate
-	template <int VEC>
-	struct Iterate<LOADS_PER_TILE, VEC>
+
+
+	// Termination
+	template <int TOTAL>
+	struct Iterate<TOTAL, TOTAL>
 	{
-		// Vector
+		// Unguarded vector
 		template <typename VectorType>
-		static __device__ __forceinline__ void Invoke(
-			VectorType vectors[], VectorType *d_in_vectors) {}
+		static __device__ __forceinline__ void StoreVector(
+			const int SEGMENT,
+			VectorType data_vectors[],
+			VectorType *d_out_vectors) {}
 
-		// Unguarded
-		template <typename T>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out) {}
+		// Guarded singleton
+		template <typename T, typename S, typename SizeT, typename TransformOp, int ELEMENTS>
+		static __device__ __forceinline__ void StoreGuarded(
+			const int SEGMENT,
+			T (&data)[ELEMENTS],
+			S (&raw)[ELEMENTS],
+			S *d_out,
+			const SizeT &guarded_elements,
+			TransformOp transform_op) {}
 
-		// Guarded
-		template <typename T, typename SizeT>
-		static __device__ __forceinline__ void Invoke(
-			T data[][LOAD_VEC_SIZE],
-			T *d_out,
-			const SizeT &guarded_elements) {}
+		// Guarded singleton by flag
+		template <typename Flag, typename T, typename S, typename TransformOp, int ELEMENTS>
+		static __device__ __forceinline__ void StoreGuardedByFlag(
+			const int SEGMENT,
+			Flag (&valid)[ELEMENTS],
+			T (&data)[ELEMENTS],
+			S (&raw)[ELEMENTS],
+			S *d_out,
+			TransformOp transform_op) {}
+
+		// Transform data within an unguarded segment
+		template <typename T, typename S, typename TransformOp>
+		static __device__ __forceinline__ void TransformRaw(
+			T data[],
+			S raw[],
+			TransformOp transform_op) {}
+
+		// Segment of unguarded vectors
+		template <typename Flag, typename T, typename S, typename VectorType, typename TransformOp, int ELEMENTS, int VECTORS>
+		static __device__ __forceinline__ void StoreVectorSegment(
+			Flag valid[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			VectorType data_vectors[][VECTORS],
+			VectorType *d_out_vectors,
+			TransformOp transform_op) {}
+
+		// Segment of guarded singletons
+		template <typename T, typename S, typename SizeT, typename TransformOp, int ELEMENTS>
+		static __device__ __forceinline__ void StoreSegmentGuarded(
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			S *d_out,
+			const SizeT &guarded_elements,
+			TransformOp transform_op) {}
+
+		// Segment of guarded singletons by flag
+		template <typename Flag, typename T, typename S, typename TransformOp, int ELEMENTS>
+		static __device__ __forceinline__ void StoreSegmentGuardedByFlag(
+			Flag valid[][ELEMENTS],
+			T data[][ELEMENTS],
+			S raw[][ELEMENTS],
+			S *d_out,
+			TransformOp transform_op) {}
+
 	};
 
+public:
 
 	//---------------------------------------------------------------------
-	// Interface
+	// Unguarded tile interface
 	//---------------------------------------------------------------------
 
 	/**
-	 * Store a full tile
+	 * Store a unguarded tile
 	 */
-	template <typename T, typename SizeT>
-	static __device__ __forceinline__ void Store(
-		T data[][LOAD_VEC_SIZE],
-		T *d_out,
-		SizeT cta_offset)
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
+		typename TransformOp,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileUnguarded(
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		TransformOp transform_op)
 	{
-		const size_t MASK = ((sizeof(T) * 8 * LOAD_VEC_SIZE) - 1);
+		const int VEC_ELEMENTS 		= B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
+		const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
 
-		if ((CHECK_ALIGNMENT) && (LOAD_VEC_SIZE > 1) && (((size_t) d_out) & MASK)) {
+		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
 
-			Iterate<0, 0>::Invoke(
-				data, d_out + cta_offset);
+		// Data to store
+		S raw[SEGMENTS][ELEMENTS];
 
-		} else {
+		// Use an aliased pointer to raw array
+		VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) raw;
+		VectorType *d_out_vectors = (VectorType *) (d_out + (threadIdx.x * ELEMENTS) + cta_offset);
 
-			// Aliased vector type
-			typedef typename VecType<T, LOAD_VEC_SIZE>::Type VectorType;
+		// Transform into raw
+		Iterate<0, SEGMENTS * ELEMENTS>::TransformRaw(
+			(T*) data,
+			(S*) raw,
+			transform_op);
 
-			// Use an aliased pointer to keys array to perform built-in vector stores
-			VectorType *vectors = (VectorType *) data;
-			VectorType *d_in_vectors = (VectorType *) (d_out + cta_offset + (threadIdx.x << LOG_LOAD_VEC_SIZE));
-
-			Iterate<0, 0>::Invoke(vectors, d_in_vectors);
-		}
+		Iterate<0, SEGMENTS>::StoreVectorSegment(
+			data,
+			raw,
+			data_vectors,
+			d_out_vectors);
 	}
 
+
 	/**
-	 * Store guarded_elements of a tile
+	 * Store a unguarded tile
 	 */
-	template <typename T, typename SizeT>
-	static __device__ __forceinline__ void Store(
-		T data[][LOAD_VEC_SIZE],
-		T *d_out,
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileUnguarded(
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset)
+	{
+		CastTransformOp<T, S> transform_op;
+		StoreTileUnguarded(data, d_out, cta_offset, transform_op);
+	}
+
+
+	//---------------------------------------------------------------------
+	// Guarded tile interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Store a tile guarded by range
+	 */
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
+		typename TransformOp,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileGuarded(
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		const SizeT &guarded_elements,
+		TransformOp transform_op)
+	{
+		// Data to store
+		S raw[SEGMENTS][ELEMENTS];
+
+		Iterate<0, SEGMENTS>::StoreSegmentGuarded(
+			data,
+			raw,
+			d_out + (threadIdx.x * ELEMENTS) + cta_offset,
+			guarded_elements,
+			transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by range
+	 */
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileGuarded(
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
 	{
-		if (guarded_elements >= TILE_SIZE) {
+		CastTransformOp<T, S> transform_op;
+		StoreTileGuarded(data, d_out, cta_offset, guarded_elements, transform_op);
+	}
 
-			Store(data, d_out, cta_offset);
 
-		} else {
+	/**
+	 * Store a tile guarded by flag
+	 */
+	template <
+		typename Flag,
+		typename T,
+		typename S,
+		typename TransformOp,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileGuarded(
+		Flag (&valid)[SEGMENTS][ELEMENTS],
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		TransformOp transform_op = CastTransformOp<T, S>())
+	{
+		// Data to store
+		S raw[SEGMENTS][ELEMENTS];
 
-			Iterate<0, 0>::Invoke(
-				data, d_out + cta_offset, guarded_elements);
-		}
-	} 
+		Iterate<0, SEGMENTS>::StoreSegmentGuardedByFlag(
+			valid,
+			data,
+			raw,
+			d_out + (threadIdx.x * ELEMENTS) + cta_offset,
+			transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by flag
+	 */
+	template <
+		typename Flag,
+		typename T,
+		typename S,
+		int SEGMENTS,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreTileGuarded(
+		Flag (&valid)[SEGMENTS][ELEMENTS],
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset)
+	{
+		CastTransformOp<T, S> transform_op;
+		StoreTileGuarded(valid, data, d_out, cta_offset, transform_op);
+	}
 };
 
 

@@ -111,11 +111,6 @@ ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
 	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
 endif
 
-ifeq (4.1, $(findstring 4.1, $(NVCC_VERSION)))
-	# Disable nvvm 
-	NVCCFLAGS += -open64
-endif 
-
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
 	NVCCFLAGS += -Xptxas -abi=no
@@ -133,6 +128,11 @@ ifdef maxregisters
     NVCCFLAGS += -maxrregcount $(maxregisters)
 endif
 
+ifeq (4.1, $(findstring 4.1, $(NVCC_VERSION)))
+	# Disable nvvm 
+	NVCCFLAGS += -open64
+endif
+ 
 #-------------------------------------------------------------------------------
 # Dependency Lists
 #-------------------------------------------------------------------------------

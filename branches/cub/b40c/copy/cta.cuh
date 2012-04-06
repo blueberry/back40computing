@@ -34,6 +34,19 @@ namespace b40c {
 namespace copy {
 
 
+
+/**
+ * Templated texture reference for global input
+ */
+template <typename TexRefT>
+struct InputTex
+{
+	static texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> ref;
+};
+template <typename TexRefT>
+texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> InputTex<TexRefT>::ref;
+
+
 /**
  * Copy CTA
  */
@@ -70,11 +83,43 @@ struct Cta : KernelPolicy
 
 
 	/**
-	 * Process a single tile
+	 * Process a single full tile
 	 *
 	 * Each thread copies only the strided values it loads.
 	 */
-	__device__ __forceinline__ void ProcessTile(
+	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
+	{
+		// Tile of elements
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+
+		// Load tile
+		util::io::LoadTile<
+			KernelPolicy::THREADS,
+			KernelPolicy::READ_MODIFIER>::LoadTileUnguarded(
+				data,
+				InputTex<TexRefT>::ref,
+				d_in,
+				cta_offset);
+
+		__syncthreads();
+
+		// Store tile
+		util::io::StoreTile<
+			KernelPolicy::THREADS,
+			KernelPolicy::WRITE_MODIFIER>::Store(
+				data,
+				d_out,
+				cta_offset,
+				guarded_elements);
+	}
+
+
+	/**
+	 * Process a single partially-full tile
+	 *
+	 * Each thread copies only the strided values it loads.
+	 */
+	__device__ __forceinline__ void ProcessPartialTile(
 		SizeT cta_offset,
 		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
 	{

@@ -225,6 +225,47 @@ template <typename Tp>
 struct RemovePointers : RemovePointersHelper<Tp, Tp> {};
 
 
+/**
+ * Statically determines array dimensions from an opaque array type
+ */
+template <typename ArrayType>
+struct ArrayDims
+{
+	// Helpers
+
+	template <typename Tp, typename Up, int DIM>
+	struct RemoveDimsHelper
+	{
+		typedef Tp Type;
+	};
+	template <typename Tp, typename Up, int DIM>
+	struct RemoveDimsHelper<Tp, Up[DIM], DIM>
+	{
+		typedef typename RemoveDimsHelper<Up, Up, ArrayDims<Up>::FIRST_DIM>::Type Type;
+	};
+
+	template <typename T, int X>
+	static char (&FirstDim(T (*)[X]))[X + 1];
+
+	template <typename T>
+	static char (&FirstDim(T*))[1];
+
+	template <typename T, int Y, int X>
+	static char (&SecondDim(T (*)[Y][X]))[X + 1];
+
+	template <typename T>
+	static char (&SecondDim(T*))[1];
+
+	// Constants and types
+
+	enum {
+		FIRST_DIM = sizeof(FirstDim((ArrayType *) NULL)) - 1,		// Y dim
+		SECOND_DIM = sizeof(SecondDim((ArrayType *) NULL)) - 1,		// X dim
+	};
+
+	typedef typename RemoveDimsHelper<ArrayType, ArrayType, FIRST_DIM>::Type BaseType;
+};
+
 
 } // namespace util
 } // namespace b40c
