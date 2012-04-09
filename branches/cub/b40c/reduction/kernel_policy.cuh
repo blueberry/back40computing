@@ -99,33 +99,14 @@ struct KernelPolicy : ProblemType
 		SCHEDULE_GRANULARITY			= 1 << LOG_SCHEDULE_GRANULARITY,
 
 		CHECK_ALIGNMENT					= _CHECK_ALIGNMENT,
-
-	};
-
-	typedef typename util::TexVectorElements<T, LOAD_VEC_SIZE>::TexRefT TexRefT;
-
-
-	/**
-	 * Shared memory structure
-	 */
-	struct SmemStorage
-	{
-		T reduction_tree[THREADS];
-
-		// Accessors
-		__device__ __forceinline__ T* ReductionTree() { return reduction_tree; }
-	};
-
-	enum {
-		// Total number of smem quads needed by this kernel
-		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-
-		MAX_CTA_OCCUPANCY  				= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 		MIN_CTA_OCCUPANCY				= _MIN_CTA_OCCUPANCY,
-
-		VALID							= (MAX_CTA_OCCUPANCY > 0),
 	};
+
+	// Texture vector type
+	typedef typename util::io::TexVector<T, LOAD_VEC_SIZE>::TexVec TexVec;
+
+	// Texture reference type
+	typedef typename util::io::TexVector<T, LOAD_VEC_SIZE>::TexRef TexRef;
 };
 
 } // namespace reduction

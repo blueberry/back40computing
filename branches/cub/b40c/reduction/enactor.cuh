@@ -312,12 +312,6 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 	cudaError_t retval = cudaSuccess;
 	do {
 
-		// Make sure we have a valid policy
-		if (!Policy::VALID) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Enactor invalid policy", __FILE__, __LINE__);
-			break;
-		}
-
 		// Kernels
 		typename Policy::UpsweepKernelPtr UpsweepKernel = Policy::UpsweepKernel();
 
@@ -362,9 +356,9 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			// Bind input texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					InputTex<typename Single::TexRefT>::ref,
+					InputTex<typename Single::TexVec>::d_in_ref,
 					detail.d_src,
-					cudaCreateChannelDesc<typename Single::TexRefT>(),
+					cudaCreateChannelDesc<typename Single::TexVec>(),
 					work.num_elements * sizeof(T)),
 				"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
 
@@ -402,9 +396,9 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			// Bind input texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					InputTex<typename Upsweep::TexRefT>::ref,
+					InputTex<typename Upsweep::TexVec>::d_in_ref,
 					detail.d_src,
-					cudaCreateChannelDesc<typename Upsweep::TexRefT>(),
+					cudaCreateChannelDesc<typename Upsweep::TexVec>(),
 					work.num_elements * sizeof(T)),
 				"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
 
@@ -421,9 +415,9 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			// Bind input texture
 			if (retval = util::B40CPerror(cudaBindTexture(
 					0,
-					InputTex<typename Spine::TexRefT>::ref,
+					InputTex<typename Spine::TexVec>::d_in_ref,
 					(T*) spine(),
-					cudaCreateChannelDesc<typename Spine::TexRefT>(),
+					cudaCreateChannelDesc<typename Spine::TexVec>(),
 					spine_elements * sizeof(T)),
 				"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
 

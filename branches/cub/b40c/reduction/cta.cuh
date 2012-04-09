@@ -31,6 +31,7 @@
 
 #include <b40c/util/reduction/serial_reduce.cuh>
 #include <b40c/util/reduction/tree_reduce.cuh>
+#include <b40c/util/reduction/cta_reduction.cuh>
 
 namespace b40c {
 namespace reduction {
@@ -40,20 +41,18 @@ namespace reduction {
 /**
  * Templated texture reference for global input
  */
-template <typename TexRefT>
+template <typename TexVec>
 struct InputTex
 {
-	static texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<TexVec, cudaTextureType1D, cudaReadModeElementType> d_in_ref;
 };
-template <typename TexRefT>
-texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> InputTex<TexRefT>::ref;
-
-
+template <typename TexVec>
+typename texture<TexVec, cudaTextureType1D, cudaReadModeElementType> InputTex<TexVec>::d_in_ref;
 
 
 
 /**
- * Reduction CTA
+ * Reduction CTA abstraction
  */
 template <typename KernelPolicy>
 struct Cta
@@ -62,58 +61,73 @@ struct Cta
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T 			T;
-	typedef typename KernelPolicy::TexRefT 		TexRefT;
-	typedef typename KernelPolicy::SizeT 		SizeT;
-	typedef typename KernelPolicy::SmemStorage	SmemStorage;
-	typedef typename KernelPolicy::ReductionOp	ReductionOp;
+	typedef typename KernelPolicy::T 			T;					// Data type to reduce
+	typedef typename KernelPolicy::TexVec		TexVec;				// Texture vector type
+	typedef typename KernelPolicy::TexRef		TexRef;				// Texture reference type
+	typedef typename KernelPolicy::SizeT 		SizeT;				// Counting type
+	typedef typename KernelPolicy::ReductionOp	ReductionOp;		// Reduction operator type
 
-	typedef T ThreadData[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
-
-
-	//---------------------------------------------------------------------
-	// Members
-	//---------------------------------------------------------------------
-
-	// The value we will accumulate (in each thread)
-	T 						carry;
-
-	// Input and output device pointers
-	T* 						d_in;
-	T* 						d_out;
-
-	// Shared memory storage for the CTA
-	SmemStorage 			&smem_storage;
-
-	// Reduction operator
-	ReductionOp				reduction_op;
-
-	// Tile loader
-	util::io::TileLoader<
+	// Tile loader type
+	typedef util::io::TileLoader<
 		KernelPolicy::THREADS,
-		ThreadData,
-		KernelPolicy::READ_MODIFIER> tile_loader;
+		KernelPolicy::READ_MODIFIER> TileLoader;
+
+	// CTA reduction type
+	typedef util::reduction::CtaReduction<
+		KernelPolicy::THREADS,
+		T> CtaReduction;
+
+	// Shared memory layout
+	struct SmemStorage
+	{
+		typename CtaReduction::SmemStorage reduction_storage;
+	};
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
+
+	enum {
+		CUDA_ARCH				= __B40C_CUDA_ARCH__,
+		THREAD_OCCUPANCY		= B40C_SM_THREADS(CUDA_ARCH) >> KernelPolicy::LOG_THREADS,
+		SMEM_OCCUPANCY			= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		MAX_CTA_OCCUPANCY  		= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		VALID					= (MAX_CTA_OCCUPANCY > 0),
+	};
+
+
+	//---------------------------------------------------------------------
+	// Thread fields
+	//---------------------------------------------------------------------
+
+	T* 					d_in;				// Input device pointer
+	T* 					d_out;				// Output device pointer
+	T 					accumulator;		// The value we will accumulate (in each thread)
+	ReductionOp			reduction_op;		// Reduction operator
+	CtaReduction 		reducer;			// Collective reducer
+	TexRef 				d_in_ref;			// Input texture reference
 
 
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
 
-
 	/**
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage &smem_storage,
-		T *d_in,
-		T *d_out,
+		T* d_in,
+		T* d_out,
 		ReductionOp reduction_op) :
 
-			smem_storage(smem_storage),
+			// Initializers
 			d_in(d_in),
 			d_out(d_out),
 			reduction_op(reduction_op),
-			tile_loader()
+			reducer(smem_storage.reduction_storage),
+			d_in_ref(InputTex<TexVec>::d_in_ref)
 	{}
 
 
@@ -122,31 +136,23 @@ struct Cta
 	 *
 	 * Each thread reduces only the strided values it loads.
 	 */
-	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset)
+		SizeT cta_offset,
+		bool first_tile)
 	{
 		// Tile of elements
-		ThreadData data;
+		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
-		tile_loader.LoadUnguarded(
-			data,
-			InputTex<TexRefT>::ref,
-			d_in,
-			cta_offset);
+		TileLoader::LoadUnguarded(data, d_in_ref, d_in, cta_offset);
 
 		// Reduce the data we loaded for this tile
-		T tile_partial = util::reduction::SerialReduce<KernelPolicy::TILE_ELEMENTS_PER_THREAD>::Invoke(
-			(T*) data,
-			reduction_op);
+		T tile_partial = util::reduction::SerialReduce(data, reduction_op);
 
-		// Reduce into carry
-		if (FIRST_TILE) {
-			carry = tile_partial;
-		} else {
-			carry = reduction_op(carry, tile_partial);
-		}
+		// Reduce into accumulator
+		accumulator = (first_tile) ?
+			tile_partial :
+			reduction_op(accumulator, tile_partial);
 	}
 
 
@@ -155,50 +161,25 @@ struct Cta
 	 *
 	 * Each thread reduces only the strided values it loads.
 	 */
-	template <bool FIRST_TILE>
 	__device__ __forceinline__ void ProcessPartialTile(
 		SizeT cta_offset,
-		SizeT out_of_bounds)
+		SizeT out_of_bounds,
+		bool first_tile)
 	{
-		T datum;
-		cta_offset += threadIdx.x;
+		// First tile processed loads into the accumulator directly
+		if ((first_tile) && (cta_offset < out_of_bounds)) {
 
-		if (FIRST_TILE) {
-			if (cta_offset < out_of_bounds) {
-				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(carry, d_in + cta_offset);
-				cta_offset += KernelPolicy::THREADS;
-			}
+			TileLoader::LoadUnguarded(accumulator, d_in, cta_offset);
+			cta_offset += KernelPolicy::THREADS;
 		}
 
 		// Process loads singly
 		while (cta_offset < out_of_bounds) {
-			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
-			carry = reduction_op(carry, datum);
+
+			T datum;
+			TileLoader::LoadUnguarded(datum, d_in, cta_offset);
+			accumulator = reduction_op(accumulator, datum);
 			cta_offset += KernelPolicy::THREADS;
-		}
-	}
-
-
-	/**
-	 * Unguarded collective reduction across all threads, stores final reduction
-	 * to output.  Used to collectively reduce each thread's aggregate after
-	 * striding through the input.
-	 *
-	 * All threads assumed to have valid carry data.
-	 */
-	__device__ __forceinline__ void OutputToSpine()
-	{
-		carry = util::reduction::TreeReduce<
-			KernelPolicy::LOG_THREADS,
-			false>::Invoke(								// No need to return aggregate reduction in all threads
-				carry,
-				smem_storage.ReductionTree(),
-				reduction_op);
-
-		// Write output
-		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				carry, d_out + blockIdx.x);
 		}
 	}
 
@@ -209,22 +190,20 @@ struct Cta
 	 * the input.
 	 *
 	 * Only threads with ranks less than num_elements are assumed to have valid
-	 * carry data.
+	 * accumulator data.
 	 */
 	__device__ __forceinline__ void OutputToSpine(int num_elements)
 	{
-		carry = util::reduction::TreeReduce<
-			KernelPolicy::LOG_THREADS,
-			false>::Invoke(								// No need to return aggregate reduction in all threads
-				carry,
-				smem_storage.ReductionTree(),
-				num_elements,
-				reduction_op);
+		// Collective CTA reduction of thread accumulators
+		accumulator = reducer.Reduce(
+			accumulator,
+			reduction_op,
+			num_elements);
 
 		// Write output
 		if (threadIdx.x == 0) {
 			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				carry, d_out + blockIdx.x);
+				accumulator, d_out + blockIdx.x);
 		}
 	}
 
@@ -241,34 +220,36 @@ struct Cta
 		if (cta_offset < work_limits.guarded_offset) {
 
 			// Process at least one full tile of tile_elements
-			ProcessFullTile<true>(cta_offset);
+			ProcessFullTile(cta_offset, true);
 			cta_offset += KernelPolicy::TILE_ELEMENTS;
 
 			// Process more full tiles (not first tile)
 			while (cta_offset < work_limits.guarded_offset) {
-				ProcessFullTile<false>(cta_offset);
+				ProcessFullTile(cta_offset, false);
 				cta_offset += KernelPolicy::TILE_ELEMENTS;
 			}
 
 			// Clean up last partial tile with guarded-io (not first tile)
 			if (work_limits.guarded_elements) {
-				ProcessPartialTile<false>(
+				ProcessPartialTile(
 					cta_offset,
-					work_limits.out_of_bounds);
+					work_limits.out_of_bounds,
+					false);
 			}
 
-			// Collectively reduce accumulated carry from each thread into output
+			// Collectively reduce accumulator from each thread into output
 			// destination (all thread have valid reduction partials)
-			OutputToSpine();
+			OutputToSpine(KernelPolicy::TILE_ELEMENTS);
 
 		} else {
 
 			// Clean up last partial tile with guarded-io (first tile)
-			ProcessPartialTile<true>(
+			ProcessPartialTile(
 				cta_offset,
-				work_limits.out_of_bounds);
+				work_limits.out_of_bounds,
+				true);
 
-			// Collectively reduce accumulated carry from each thread into output
+			// Collectively reduce accumulator from each thread into output
 			// destination (not every thread may have a valid reduction partial)
 			OutputToSpine(work_limits.elements);
 		}

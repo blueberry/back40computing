@@ -67,11 +67,13 @@ struct UpsweepPass
 		typename KernelPolicy::T 									*d_out,
 		typename KernelPolicy::ReductionOp							reduction_op,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
-		util::CtaWorkProgress 										&work_progress,
-		typename KernelPolicy::SmemStorage							&smem_storage)
+		util::CtaWorkProgress 										&work_progress)
 	{
 		typedef Cta<KernelPolicy> 				Cta;
 		typedef typename KernelPolicy::SizeT 	SizeT;
+
+		// Shared storage for the kernel
+		__shared__ typename Cta::SmemStorage smem_storage;
 
 		// CTA processing abstraction
 		Cta cta(
@@ -102,11 +104,13 @@ struct UpsweepPass <KernelPolicy, true>
 		typename KernelPolicy::T 									*d_out,
 		typename KernelPolicy::ReductionOp							reduction_op,
 		util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	&work_decomposition,
-		util::CtaWorkProgress 										&work_progress,
-		typename KernelPolicy::SmemStorage							&smem_storage)
+		util::CtaWorkProgress 										&work_progress)
 	{
 		typedef Cta<KernelPolicy> 				Cta;
 		typedef typename KernelPolicy::SizeT 	SizeT;
+
+		// Shared storage for the kernel
+		__shared__ typename Cta::SmemStorage smem_storage;
 
 		// CTA processing abstraction
 		Cta cta(
@@ -130,7 +134,7 @@ struct UpsweepPass <KernelPolicy, true>
 		if (offset < unguarded_elements) {
 
 			// Process our one full tile (first tile seen)
-			cta.template ProcessFullTile<true>(offset);
+			cta.ProcessFullTile(offset, true);
 
 			// Determine the swath we just did
 			SizeT swath = work_decomposition.grid_size << KernelPolicy::LOG_TILE_ELEMENTS;
@@ -140,23 +144,29 @@ struct UpsweepPass <KernelPolicy, true>
 				work_progress,
 				KernelPolicy::TILE_ELEMENTS) + swath) < unguarded_elements)
 			{
-				cta.template ProcessFullTile<false>(offset);
+				cta.ProcessFullTile(offset, false);
 			}
 
 			// If the problem is big enough for the last CTA to be in this if-then-block,
 			// have it do the remaining guarded work (not first tile)
 			if (blockIdx.x == gridDim.x - 1) {
-				cta.template ProcessPartialTile<false>(unguarded_elements, work_decomposition.num_elements);
+				cta.ProcessPartialTile(
+					unguarded_elements,
+					work_decomposition.num_elements,
+					false);
 			}
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (all thread have valid reduction partials)
-			cta.OutputToSpine();
+			cta.OutputToSpine(KernelPolicy::TILE_ELEMENTS);
 
 		} else {
 
 			// Last CTA does any extra, guarded work (first tile seen)
-			cta.template ProcessPartialTile<true>(unguarded_elements, work_decomposition.num_elements);
+			cta.ProcessPartialTile(
+				unguarded_elements,
+				work_decomposition.num_elements,
+				true);
 
 			// Collectively reduce accumulated carry from each thread into output
 			// destination (not every thread may have a valid reduction partial)
@@ -179,16 +189,12 @@ void Kernel(
 	util::CtaWorkDistribution<typename KernelPolicy::SizeT> 	work_decomposition,
 	util::CtaWorkProgress										work_progress)
 {
-	// Shared storage for the kernel
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
-
 	UpsweepPass<KernelPolicy>::Invoke(
 		d_in,
 		d_spine,
 		reduction_op,
 		work_decomposition,
-		work_progress,
-		smem_storage);
+		work_progress);
 }
 
 

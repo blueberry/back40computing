@@ -449,16 +449,12 @@ __global__ void TunedUpsweepKernel(
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Upsweep KernelPolicy;
 
-	// Shared storage for the kernel
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
-
 	upsweep::UpsweepPass<KernelPolicy, KernelPolicy::WORK_STEALING>::Invoke(
 		d_in,
 		d_spine,
 		reduction_op,
 		work_decomposition,
-		work_progress,
-		smem_storage);
+		work_progress);
 }
 
 
@@ -481,15 +477,11 @@ __global__ void TunedSpineKernel(
 		__B40C_CUDA_ARCH__,
 		(ProbSizeGenre) PROB_SIZE_GENRE>::Spine KernelPolicy;
 
-	// Shared storage for the kernel
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
-
 	spine::SpinePass<KernelPolicy>(
 		d_spine,
 		d_out,
 		spine_elements,
-		reduction_op,
-		smem_storage);
+		reduction_op);
 }
 
 

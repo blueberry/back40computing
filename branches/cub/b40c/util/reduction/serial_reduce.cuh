@@ -34,60 +34,53 @@ namespace b40c {
 namespace util {
 namespace reduction {
 
-//---------------------------------------------------------------------
-// Helper functions for vectorizing reduction operations
-//---------------------------------------------------------------------
-
-template <typename T, typename ReductionOp>
-__device__ __forceinline__ T VectorReduce(
-	T a,
-	T b,
-	T c,
-	ReductionOp reduction_op)
-{
-	return reduction_op(a, reduction_op(b, c));
-}
-
-template <>
-__device__ __forceinline__ int VectorReduce<int, Sum<int> >(
-	int a,
-	int b,
-	int c,
-	Sum<int> reduction_op)
-{
-	return util::IADD3(a, b, c);
-};
-
-template <>
-__device__ __forceinline__ unsigned int VectorReduce<unsigned int, Sum<unsigned int> >(
-	unsigned int a,
-	unsigned int b,
-	unsigned int c,
-	Sum<unsigned int> reduction_op)
-{
-	return util::IADD3(a, b, c);
-};
-
-
-
-/**
- * Have each thread perform a serial reduction over its specified segment
- */
-template <int NUM_ELEMENTS>
-struct SerialReduce
+namespace serial_reduction
 {
 	//---------------------------------------------------------------------
-	// Iteration Structures
+	// Helper functions for vectorizing reduction operations
 	//---------------------------------------------------------------------
 
-	// Iterate
+	template <typename T, typename ReductionOp>
+	__device__ __forceinline__ T VectorReduce(
+		T a,
+		T b,
+		T c,
+		ReductionOp reduction_op)
+	{
+		return reduction_op(a, reduction_op(b, c));
+	}
+
+	template <>
+	__device__ __forceinline__ int VectorReduce<int, Sum<int> >(
+		int a,
+		int b,
+		int c,
+		Sum<int> reduction_op)
+	{
+		return util::IADD3(a, b, c);
+	};
+
+	template <>
+	__device__ __forceinline__ unsigned int VectorReduce<unsigned int, Sum<unsigned int> >(
+		unsigned int a,
+		unsigned int b,
+		unsigned int c,
+		Sum<unsigned int> reduction_op)
+	{
+		return util::IADD3(a, b, c);
+	};
+
+	//---------------------------------------------------------------------
+	// Iteration Structures (couting down)
+	//---------------------------------------------------------------------
+
 	template <int COUNT, int TOTAL>
 	struct Iterate
 	{
-		template <typename T, typename ReductionOp>
-		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
+		template <typename T, int ELEMENTS, typename ReductionOp>
+		static __device__ __forceinline__ T SerialReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
 		{
-			T a = Iterate<COUNT - 2, TOTAL>::Invoke(partials, reduction_op);
+			T a = Iterate<COUNT - 2, TOTAL>::SerialReduce(partials, reduction_op);
 			T b = partials[TOTAL - COUNT];
 			T c = partials[TOTAL - (COUNT - 1)];
 
@@ -99,8 +92,8 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<2, TOTAL>
 	{
-		template <typename T, typename ReductionOp>
-		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
+		template <typename T, int ELEMENTS, typename ReductionOp>
+		static __device__ __forceinline__ T SerialReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
 		{
 			return reduction_op(partials[TOTAL - 2], partials[TOTAL - 1]);
 		}
@@ -110,69 +103,138 @@ struct SerialReduce
 	template <int TOTAL>
 	struct Iterate<1, TOTAL>
 	{
-		template <typename T, typename ReductionOp>
-		static __device__ __forceinline__ T Invoke(T *partials, ReductionOp reduction_op)
+		template <typename T, int ELEMENTS, typename ReductionOp>
+		static __device__ __forceinline__ T SerialReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
 		{
 			return partials[TOTAL - 1];
 		}
 	};
 	
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * Serial reduction with the specified operator
-	 */
-	template <typename T, typename ReductionOp>
-	static __device__ __forceinline__ T Invoke(
-		T *partials,
-		ReductionOp reduction_op)
-	{
-		return Iterate<NUM_ELEMENTS, NUM_ELEMENTS>::Invoke(partials, reduction_op);
-	}
+} // namespace serial_reduction
 
 
-	/**
-	 * Serial reduction with the addition operator
-	 */
-	template <typename T>
-	static __device__ __forceinline__ T Invoke(
-		T *partials)
-	{
-		Sum<T> reduction_op;
-		return Invoke(partials, reduction_op);
-	}
+//---------------------------------------------------------------------
+// 1D Interface
+//---------------------------------------------------------------------
+
+/**
+ * Serial reduction with the specified operator
+ */
+template <typename T, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[ELEMENTS],
+	ReductionOp reduction_op)
+{
+	return serial_reduction::Iterate<
+		ELEMENTS,
+		ELEMENTS>::SerialReduce(
+			partials,
+			reduction_op);
+}
 
 
-	/**
-	 * Serial reduction with the specified operator, seeded with the
-	 * given exclusive partial
-	 */
-	template <typename T, typename ReductionOp>
-	static __device__ __forceinline__ T Invoke(
-		T *partials,
-		T exclusive_partial,
-		ReductionOp reduction_op)
-	{
-		return reduction_op(
-			exclusive_partial,
-			Invoke(partials, reduction_op));
-	}
+/**
+ * Serial reduction with the addition operator
+ */
+template <typename T, int ELEMENTS>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[ELEMENTS])
+{
+	Sum<T> reduction_op;
+	return SerialReduce(partials, reduction_op);
+}
 
-	/**
-	 * Serial reduction with the addition operator, seeded with the
-	 * given exclusive partial
-	 */
-	template <typename T, typename ReductionOp>
-	static __device__ __forceinline__ T Invoke(
-		T *partials,
-		T exclusive_partial)
-	{
-		Sum<T> reduction_op;
-		 return Invoke(partials, exclusive_partial, reduction_op);
-	}
-};
+
+/**
+ * Serial reduction with the specified operator, seeded with the
+ * given exclusive partial
+ */
+template <typename T, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[ELEMENTS],
+	T exclusive_partial,
+	ReductionOp reduction_op)
+{
+	return reduction_op(
+		exclusive_partial,
+		SerialReduce(partials, reduction_op));
+}
+
+/**
+ * Serial reduction with the addition operator, seeded with the
+ * given exclusive partial
+ */
+template <typename T, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[ELEMENTS],
+	T exclusive_partial)
+{
+	Sum<T> reduction_op;
+	return SerialReduce(partials, exclusive_partial, reduction_op);
+}
+
+
+//---------------------------------------------------------------------
+// 2D Interface
+//---------------------------------------------------------------------
+
+/**
+ * Serial reduction with the specified operator
+ */
+template <typename T, int SEGMENTS, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[SEGMENTS][ELEMENTS],
+	ReductionOp reduction_op)
+{
+	typedef T LinearArray[SEGMENTS * ELEMENTS];
+
+	return serial_reduction::Iterate<
+		SEGMENTS * ELEMENTS,
+		SEGMENTS * ELEMENTS>::SerialReduce(
+			reinterpret_cast<LinearArray&>(partials),
+			reduction_op);
+}
+
+
+/**
+ * Serial reduction with the addition operator
+ */
+template <typename T, int SEGMENTS, int ELEMENTS>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[SEGMENTS][ELEMENTS])
+{
+	Sum<T> reduction_op;
+	return SerialReduce(partials, reduction_op);
+}
+
+
+/**
+ * Serial reduction with the specified operator, seeded with the
+ * given exclusive partial
+ */
+template <typename T, int SEGMENTS, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[SEGMENTS][ELEMENTS],
+	T exclusive_partial,
+	ReductionOp reduction_op)
+{
+	return reduction_op(
+		exclusive_partial,
+		SerialReduce(partials, reduction_op));
+}
+
+/**
+ * Serial reduction with the addition operator, seeded with the
+ * given exclusive partial
+ */
+template <typename T, int SEGMENTS, int ELEMENTS, typename ReductionOp>
+__device__ __forceinline__ T SerialReduce(
+	T (&partials)[SEGMENTS][ELEMENTS],
+	T exclusive_partial)
+{
+	Sum<T> reduction_op;
+	return SerialReduce(partials, exclusive_partial, reduction_op);
+}
 
 
 } // namespace reduction

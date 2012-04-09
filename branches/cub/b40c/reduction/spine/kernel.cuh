@@ -40,8 +40,7 @@ __device__ __forceinline__ void SpinePass(
 	typename KernelPolicy::T 			*d_in,
 	typename KernelPolicy::T 			*d_spine,
 	typename KernelPolicy::SizeT 		spine_elements,
-	typename KernelPolicy::ReductionOp	reduction_op,
-	typename KernelPolicy::SmemStorage	&smem_storage)
+	typename KernelPolicy::ReductionOp	reduction_op)
 {
 	typedef Cta<KernelPolicy> 				Cta;
 	typedef typename KernelPolicy::T 		T;
@@ -49,6 +48,9 @@ __device__ __forceinline__ void SpinePass(
 
 	// Exit if we're not the first CTA
 	if (blockIdx.x > 0) return;
+
+	// Shared storage for the kernel
+	__shared__ typename Cta::SmemStorage smem_storage;
 
 	// CTA processing abstraction
 	Cta cta(
@@ -88,15 +90,11 @@ void Kernel(
 	typename KernelPolicy::ReductionOp		reduction_op)
 
 {
-	// Shared storage for the kernel
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
-
 	SpinePass<KernelPolicy>(
 		d_in,
 		d_spine,
 		spine_elements,
-		reduction_op,
-		smem_storage);
+		reduction_op);
 }
 
 } // namespace spine

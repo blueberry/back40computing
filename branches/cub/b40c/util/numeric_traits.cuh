@@ -46,29 +46,38 @@ template <Representation R>
 struct BaseTraits
 {
 	enum {
-		REPRESENTATION = R
+		REPRESENTATION = R,
+		NAN = (R == NOT_A_NUMBER)
 	};
 };
 
 
 // Default, non-numeric types
-template <typename T> struct NumericTraits : 				BaseTraits<NOT_A_NUMBER> {};
+template <typename T> struct CleanedTraits : 				BaseTraits<NOT_A_NUMBER> {};
 
-template <> struct NumericTraits<char> : 					BaseTraits<SIGNED_INTEGER> {};
-template <> struct NumericTraits<signed char> : 			BaseTraits<SIGNED_INTEGER> {};
-template <> struct NumericTraits<short> : 					BaseTraits<SIGNED_INTEGER> {};
-template <> struct NumericTraits<int> : 					BaseTraits<SIGNED_INTEGER> {};
-template <> struct NumericTraits<long> : 					BaseTraits<SIGNED_INTEGER> {};
-template <> struct NumericTraits<long long> : 				BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<char> : 					BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<signed char> : 			BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<short> : 					BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<int> : 					BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<long> : 					BaseTraits<SIGNED_INTEGER> {};
+template <> struct CleanedTraits<long long> : 				BaseTraits<SIGNED_INTEGER> {};
 
-template <> struct NumericTraits<unsigned char> : 			BaseTraits<UNSIGNED_INTEGER> {};
-template <> struct NumericTraits<unsigned short> : 			BaseTraits<UNSIGNED_INTEGER> {};
-template <> struct NumericTraits<unsigned int> : 			BaseTraits<UNSIGNED_INTEGER> {};
-template <> struct NumericTraits<unsigned long> : 			BaseTraits<UNSIGNED_INTEGER> {};
-template <> struct NumericTraits<unsigned long long> : 		BaseTraits<UNSIGNED_INTEGER> {};
+template <> struct CleanedTraits<unsigned char> : 			BaseTraits<UNSIGNED_INTEGER> {};
+template <> struct CleanedTraits<unsigned short> : 			BaseTraits<UNSIGNED_INTEGER> {};
+template <> struct CleanedTraits<unsigned int> : 			BaseTraits<UNSIGNED_INTEGER> {};
+template <> struct CleanedTraits<unsigned long> : 			BaseTraits<UNSIGNED_INTEGER> {};
+template <> struct CleanedTraits<unsigned long long> : 		BaseTraits<UNSIGNED_INTEGER> {};
 
-template <> struct NumericTraits<float> : 					BaseTraits<FLOATING_POINT> {};
-template <> struct NumericTraits<double> : 					BaseTraits<FLOATING_POINT> {};
+template <> struct CleanedTraits<float> : 					BaseTraits<FLOATING_POINT> {};
+template <> struct CleanedTraits<double> : 					BaseTraits<FLOATING_POINT> {};
+
+/**
+ * Numeric traits.
+ *
+ * Removes any volatile / const qualifiers
+ */
+template <typename T>
+struct NumericTraits : CleanedTraits<typename RemoveQualifiers<T>::Type> {};
 
 
 } // namespace util

@@ -361,16 +361,16 @@ __device__ __forceinline__ int WarpVoteAny(int predicate)
 }
 
 
+#if __CUDA_ARCH__ >= 300
 /**
  * One step of a warp SHFL scan.  Produces the following SASS:
  *
  *   SHFL.UP P0, R0, R4, 0x1, RZ;
  *   @P0 IADD R0, R0, R4;
  */
-__device__ __forceinline__ uint ShflScanStep(uint partial, uint up_offset)
+__device__ __forceinline__ unsigned int ShflScanStep(unsigned int partial, unsigned int up_offset)
 {
-#if __CUDA_ARCH__ >= 300
-	uint result;
+	unsigned int result;
 	asm(
 		"{.reg .u32 r0;"
 		".reg .pred p;"
@@ -379,8 +379,8 @@ __device__ __forceinline__ uint ShflScanStep(uint partial, uint up_offset)
 		"mov.u32 %0, r0;}"
 		: "=r"(result) : "r"(partial), "r"(up_offset), "r"(partial));
 	return result;
-#endif
 }
+#endif
 
 
 /**

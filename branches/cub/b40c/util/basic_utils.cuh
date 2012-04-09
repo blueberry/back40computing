@@ -72,23 +72,12 @@ void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
 	b = temp;
 }
 
-/**
- *
- */
-template <int VAL>
-struct IsPositive
-{
-	enum {
-		VALUE = (VAL > 0) ? 1 : 0
-	};
-};
-
 
 /**
  * MagnitudeShift().  Allows you to shift left for positive magnitude values, 
  * right for negative.   
  */
-template <int MAGNITUDE, int shift_left = IsPositive<MAGNITUDE>::VALUE >
+template <int MAGNITUDE, int shift_left = (MAGNITUDE >= 0)>
 struct MagnitudeShift
 {
 	template <typename K>
@@ -118,16 +107,6 @@ struct MagnitudeShift<MAGNITUDE, 0>
  * Null type
  */
 struct NullType {};
-
-
-/**
- * Int2Type
- */
-template <int N>
-struct Int2Type
-{
-	enum {VALUE = N};
-};
 
 
 /**
@@ -211,60 +190,94 @@ struct IsVolatile<Tp volatile>
 /**
  * Removes pointers
  */
-template <typename Tp, typename Up>
-struct RemovePointersHelper
+template <typename Tp, typename Up = Tp>
+struct RemovePointers
 {
 	typedef Tp Type;
 };
 template <typename Tp, typename Up>
-struct RemovePointersHelper<Tp, Up*>
+struct RemovePointers<Tp, Up*>
 {
-	typedef typename RemovePointersHelper<Up, Up>::Type Type;
+	typedef typename RemovePointers<Up, Up>::Type Type;
 };
-template <typename Tp>
-struct RemovePointers : RemovePointersHelper<Tp, Tp> {};
 
 
 /**
- * Statically determines array dimensions from an opaque array type
+ * Removes qualifiers
  */
-template <typename ArrayType>
-struct ArrayDims
+template <typename Tp, typename Up = Tp>
+struct RemoveQualifiers
 {
-	// Helpers
+	typedef Up Type;
+};
 
-	template <typename Tp, typename Up, int DIM>
-	struct RemoveDimsHelper
-	{
-		typedef Tp Type;
-	};
-	template <typename Tp, typename Up, int DIM>
-	struct RemoveDimsHelper<Tp, Up[DIM], DIM>
-	{
-		typedef typename RemoveDimsHelper<Up, Up, ArrayDims<Up>::FIRST_DIM>::Type Type;
-	};
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, volatile Up>
+{
+	typedef Up Type;
+};
 
-	template <typename T, int X>
-	static char (&FirstDim(T (*)[X]))[X + 1];
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, const Up>
+{
+	typedef Up Type;
+};
 
-	template <typename T>
-	static char (&FirstDim(T*))[1];
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, const volatile Up>
+{
+	typedef Up Type;
+};
 
-	template <typename T, int Y, int X>
-	static char (&SecondDim(T (*)[Y][X]))[X + 1];
 
-	template <typename T>
-	static char (&SecondDim(T*))[1];
+/**
+ * Utility for finding dimensions and base types of opaque array typenames.
+ * Usage for an array type ArrayType1:
+ *
+ *     ArrayProps<ArrayType1>::DIMS;									// Number of dimensions
+ * 	   ArrayProps<ArrayType1>::LENGTH									// Length of first dimension
+ *	   ArrayProps<typename ArrayProps<ArrayType1>::Element>::LENGTH		// Length of second dimension (possibly zero)
+ */
 
-	// Constants and types
+// Function declarations for finding length of array
+template <typename T, int X>
+static char (&ArrayLength(T (*array)[X]))[X + 1];		// Return value is size (in bytes) of the input array
+
+template <typename T>
+static char (&ArrayLength(T*))[1];						// Parameter is not of type pointer-to-array
+
+template <
+	typename Array,
+	typename Element = Array,
+	int LENGTH = sizeof(ArrayLength((Array *) NULL)) - 1>
+struct ArrayProps;
+
+// Specialization for base type (non array type)
+template <typename Array, typename Element, int _LENGTH>
+struct ArrayProps
+{
+	typedef Element Element;											// Element type
+	typedef Array BaseElement;											// BaseElement element
 
 	enum {
-		FIRST_DIM = sizeof(FirstDim((ArrayType *) NULL)) - 1,		// Y dim
-		SECOND_DIM = sizeof(SecondDim((ArrayType *) NULL)) - 1,		// X dim
+		LENGTH 			= _LENGTH,
+		DIMS			= 0
 	};
-
-	typedef typename RemoveDimsHelper<ArrayType, ArrayType, FIRST_DIM>::Type BaseType;
 };
+
+// Specialization for array type
+template <typename Array, typename Element, int _LENGTH>
+struct ArrayProps<Array, Element[_LENGTH], _LENGTH>
+{
+	typedef Element Element;											// Element type
+	typedef typename ArrayProps<Element>::BaseElement BaseElement;		// BaseElement element type
+
+	enum {
+		LENGTH 			= _LENGTH,
+		DIMS			= ArrayProps<Element>::DIMS + 1
+	};
+};
+
 
 
 } // namespace util

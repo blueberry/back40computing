@@ -56,15 +56,16 @@ namespace util {
 #define B40C_LOG_WARP_THREADS(arch)		(5)			// 32 threads in a warp 
 #define B40C_WARP_THREADS(arch)			(1 << B40C_LOG_WARP_THREADS(arch))
 
-// SM memory bank stride (in bytes)
-#define B40C_LOG_BANK_STRIDE_BYTES(arch)	(2)		// 4 byte words
-#define B40C_BANK_STRIDE_BYTES(arch)		(1 << B40C_LOG_BANK_STRIDE_BYTES)
+// SM memory bank size (in bytes)
+#define B40C_LOG_BANK_BYTES(arch)		(2)		// 4 byte words
+#define B40C_BANK_BYTES(arch)			(1 << B40C_LOG_BANK_BYTES(arch))
 
 // Memory banks per SM
 #define B40C_SM20_LOG_MEM_BANKS()		(5)			// 32 banks on SM2.0+
 #define B40C_SM10_LOG_MEM_BANKS()		(4)			// 16 banks on SM1.0-SM1.3
 #define B40C_LOG_MEM_BANKS(arch)		((arch >= 200) ? B40C_SM20_LOG_MEM_BANKS() : 	\
 														 B40C_SM10_LOG_MEM_BANKS())		
+#define B40C_MEM_BANKS(arch)			(1 << B40C_LOG_MEM_BANKS(arch))
 
 // Physical shared memory per SM (bytes)
 #define B40C_SM20_SMEM_BYTES()			(49152)		// 48KB on SM2.0+

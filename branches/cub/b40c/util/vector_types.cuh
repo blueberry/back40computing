@@ -25,6 +25,8 @@
 
 #pragma once
 
+#include <b40c/util/numeric_traits.cuh>
+
 namespace b40c {
 namespace util {
 
@@ -118,22 +120,6 @@ B40C_DEFINE_VECTOR_TYPE(double,             double)
 
 
 #undef B40C_DEFINE_VECTOR_TYPE
-
-
-/**
- * Maximum number of texture vector elements for a given built-in data type
- */
-template <typename T, int MIN, int SIZEOF = sizeof(T)>
-struct TexVectorElements
-{
-	typedef typename util::VecType<T, B40C_MIN(4, MIN)>::Type TexRefT;
-};
-
-template <typename T, int MIN>
-struct TexVectorElements<T, MIN, 8>
-{
-	typedef typename util::VecType<int, B40C_MIN(4, MIN * 2)>::Type TexRefT;
-};
 
 
 
