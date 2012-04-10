@@ -27,6 +27,7 @@
 
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 

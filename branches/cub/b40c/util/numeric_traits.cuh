@@ -28,6 +28,8 @@
 
 #pragma once
 
+#include <b40c/util/basic_utils.cuh>
+
 
 namespace b40c {
 namespace util {
