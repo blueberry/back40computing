@@ -253,11 +253,11 @@ template <
 struct ArrayProps;
 
 // Specialization for base type (non array type)
-template <typename Array, typename Element, int _LENGTH>
+template <typename Array, typename _Element, int _LENGTH>
 struct ArrayProps
 {
-	typedef Element Element;											// Element type
-	typedef Array BaseElement;											// BaseElement element
+	typedef _Element Element;						// Element type
+	typedef Array BaseElement;						// BaseElement element
 
 	enum {
 		LENGTH 			= _LENGTH,
@@ -266,11 +266,11 @@ struct ArrayProps
 };
 
 // Specialization for array type
-template <typename Array, typename Element, int _LENGTH>
-struct ArrayProps<Array, Element[_LENGTH], _LENGTH>
+template <typename Array, typename _Element, int _LENGTH>
+struct ArrayProps<Array, _Element[_LENGTH], _LENGTH>
 {
-	typedef Element Element;											// Element type
-	typedef typename ArrayProps<Element>::BaseElement BaseElement;		// BaseElement element type
+	typedef _Element Element;						// Element type
+	typedef typename ArrayProps<_Element>::BaseElement BaseElement;		// BaseElement element type
 
 	enum {
 		LENGTH 			= _LENGTH,

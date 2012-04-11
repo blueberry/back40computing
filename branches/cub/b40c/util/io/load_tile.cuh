@@ -43,7 +43,7 @@ template <typename T, int ELEMENTS>
 struct TexVector
 {
 	enum {
-		TEX_VEC_SIZE = (NumericTraits<T>::NAN) ?
+		TEX_VEC_SIZE = (NumericTraits<T>::BUILT_IN) ?
 			1 : 								// vec-1 for non-built-ins (don't actually use!)
 			(sizeof(T) > 4) ?
 				(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
@@ -57,7 +57,7 @@ struct TexVector
 	};
 
 	// Texture base type
-	typedef typename If<(NumericTraits<T>::NAN),
+	typedef typename If<(NumericTraits<T>::BUILT_IN),
 		char,										// use char for non-built-ins (don't actually use!)
 		typename If<(sizeof(T) > 4),
 			int,									// use int for 64-bit built-in types

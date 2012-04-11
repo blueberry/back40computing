@@ -48,8 +48,8 @@ template <Representation R>
 struct BaseTraits
 {
 	enum {
-		REPRESENTATION = R,
-		NAN = (R == NOT_A_NUMBER)
+		REPRESENTATION 		= R,
+		BUILT_IN		= (R == NOT_A_NUMBER),
 	};
 };
 

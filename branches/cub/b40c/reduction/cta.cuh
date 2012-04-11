@@ -46,8 +46,9 @@ struct InputTex
 {
 	static texture<TexVec, cudaTextureType1D, cudaReadModeElementType> d_in_ref;
 };
+
 template <typename TexVec>
-typename texture<TexVec, cudaTextureType1D, cudaReadModeElementType> InputTex<TexVec>::d_in_ref;
+texture<TexVec, cudaTextureType1D, cudaReadModeElementType> InputTex<TexVec>::d_in_ref;
 
 
 

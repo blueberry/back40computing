@@ -59,7 +59,7 @@ private:
 	enum {
 		CUDA_ARCH						= __B40C_CUDA_ARCH__,							// The target architecture
 		WARP_THREADS					= B40C_WARP_THREADS(CUDA_ARCH),					// The number of threads per warp
-		NON_PRIMITIVE					= NumericTraits<T>::NAN,						// Whether or not the reduction type is a built-in primitive
+		NON_PRIMITIVE					= NumericTraits<T>::BUILT_IN,						// Whether or not the reduction type is a built-in primitive
 		POWER_OF_TWO_THREADS			= ((CTA_THREADS & (CTA_THREADS - 1)) == 0)		// Whether nor not the number of CTA threads is a power of two
 	};
 

@@ -1065,7 +1065,7 @@ int main(int argc, char** argv)
 
 	util::CudaProperties cuda_props;
 
-	printf("Test reduction: %d iterations, %lu elements, upsweep-only: %d",
+	printf("Test reduction: %d iterations, %lu elements, upsweep-only: %s",
 			g_iterations,
 			(unsigned long) num_elements,
 			g_bw ? "true" : "false");
