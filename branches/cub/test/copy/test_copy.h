@@ -53,7 +53,8 @@ double TimedCopy(
 	int max_ctas,
 	bool verbose,
 	int iterations,
-	bool same_device = true)
+	bool same_device = true,
+	bool warmup = true)
 {
 	using namespace b40c;
 
@@ -61,10 +62,12 @@ double TimedCopy(
 	copy::Enactor copy_enactor;
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	copy_enactor.ENACTOR_DEBUG = true;
-	copy_enactor.template Copy<PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements * sizeof(T), max_ctas);
-	copy_enactor.ENACTOR_DEBUG = false;
+	if (warmup) {
+		copy_enactor.ENACTOR_DEBUG = true;
+		copy_enactor.template Copy<PROB_SIZE_GENRE>(
+			d_dest, d_src, num_elements * sizeof(T), max_ctas);
+		copy_enactor.ENACTOR_DEBUG = false;
+	}
 
 	// Perform the timed number of iterations
 	GpuTimer timer;

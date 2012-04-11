@@ -160,11 +160,12 @@ void TestCopy(SizeT num_elements)
 				h_data,
 				d_src,
 				d_dest,
-				num_elements,
+				elements,
 				g_max_ctas,
 				g_verbose,
 				1,
-				same_device);
+				same_device,
+				false);
 		}
 	} else {
 		// Test large and small configs on num_elements
