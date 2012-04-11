@@ -240,10 +240,11 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::TILE_ELEMENTS *
-			LargePolicy::CTA_OCCUPANCY *
+			B40C_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		SizeT num_elements = detail.num_bytes / sizeof(typename LargePolicy::T);
+
 		if (num_elements < saturating_load) {
 
 			// Invoke base class enact with small-problem config type
@@ -277,13 +278,6 @@ cudaError_t Enactor::Copy(
 
 	cudaError_t retval = cudaSuccess;
 	do {
-
-		// Make sure we have a valid policy
-		if (!Policy::VALID) {
-			retval = util::B40CPerror(cudaErrorInvalidConfiguration, "Enactor invalid policy", __FILE__, __LINE__);
-			break;
-		}
-
 		// Copy kernel
 		typename Policy::KernelPtr Kernel = Policy::Kernel();
 
@@ -294,10 +288,10 @@ cudaError_t Enactor::Copy(
 
 		// Max CTA occupancy for the actual target device
 		int max_cta_occupancy;
-		if (retval = MaxCtaOccupancy(max_cta_occupancy, Kernel, Policy::THREADS)) break;
-
-		if (ENACTOR_DEBUG) printf("Occupancy:\t[sweep occupancy: %d]\n",
-			max_cta_occupancy);
+		if (retval = MaxCtaOccupancy(
+			max_cta_occupancy,
+			Kernel,
+			Policy::THREADS)) break;
 
 		// Compute sweep grid size
 		int grid_size = GridSize(
@@ -321,10 +315,21 @@ cudaError_t Enactor::Copy(
 			if (retval = work_progress.Setup()) break;
 		}
 
-		int dynamic_smem = 0;
+		// Bind input texture
+		if (retval = util::B40CPerror(cudaBindTexture(
+				0,
+				InputTex<typename Policy::TexVec>::d_in_ref,
+				d_src,
+				cudaCreateChannelDesc<typename Policy::TexVec>(),
+				work.num_elements * sizeof(T)),
+			"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
 
-		Kernel<<<work.grid_size, Policy::THREADS, dynamic_smem>>>(
-			d_src, d_dest, work, work_progress, extra_bytes);
+		Kernel<<<work.grid_size, Policy::THREADS>>>(
+			d_src,
+			d_dest,
+			work,
+			work_progress,
+			extra_bytes);
 
 		if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor Kernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 

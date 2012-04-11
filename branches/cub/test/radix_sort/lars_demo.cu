@@ -296,7 +296,7 @@ int main(int argc, char** argv)
     bool verbose = args.CheckCmdLineFlag("v");
     bool zeros = args.CheckCmdLineFlag("zeros");
     bool regular = args.CheckCmdLineFlag("regular");
-    bool schmoo = args.CheckCmdLineFlag("schmoo");
+    bool sample = args.CheckCmdLineFlag("sample");
     args.GetCmdLineArgument("n", num_elements);
     args.GetCmdLineArgument("i", iterations);
     args.GetCmdLineArgument("max-ctas", max_ctas);
@@ -389,7 +389,7 @@ int main(int argc, char** argv)
 	enactor.ENACTOR_DEBUG = false;
 	cudaThreadSynchronize();
 
-	if (schmoo) {
+	if (sample) {
 		printf("iteration, elements, elapsed (ms), throughput (MKeys/s)\n");
 	}
 
@@ -408,7 +408,7 @@ int main(int argc, char** argv)
 			sizeof(KeyType) * num_elements,
 			cudaMemcpyHostToDevice);
 
-		if (schmoo) {
+		if (sample) {
 
 			// Sample a problem size
 			unsigned int sample;
@@ -448,7 +448,7 @@ int main(int argc, char** argv)
 	}
 
 	// Display output
-	if ((!schmoo) && (iterations > 0)) {
+	if ((!sample) && (iterations > 0)) {
 		float avg_elapsed = elapsed / float(iterations);
 		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %.2f Mkeys/s\n",
 			elapsed,

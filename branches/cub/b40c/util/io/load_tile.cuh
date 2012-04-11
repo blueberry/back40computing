@@ -22,8 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel utilities for loading tiles of raw through global memory
- * with cache modifiers
+ * Kernel utilities loading for CTA-sized tiles of data from memory
  ******************************************************************************/
 
 #pragma once
@@ -79,7 +78,7 @@ struct TexVector
 template <
 	int ACTIVE_THREADS,								// Active threads that will be loading
 	ld::CacheModifier CACHE_MODIFIER = ld::NONE>	// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
-class TileLoader
+class TileReader
 {
 private:
 
@@ -110,7 +109,10 @@ private:
 				d_in_vectors + OFFSET);
 
 			// Next vector in segment
-			Iterate<CURRENT + 1, TOTAL>::LoadVector(SEGMENT, data_vectors, d_in_vectors);
+			Iterate<CURRENT + 1, TOTAL>::LoadVector(
+				SEGMENT,
+				data_vectors,
+				d_in_vectors);
 		}
 
 		// Unguarded tex vector
@@ -128,7 +130,11 @@ private:
 				base_thread_offset + OFFSET);
 
 			// Next vector in segment
-			Iterate<CURRENT + 1, TOTAL>::LoadTexVector(SEGMENT, data_vectors, ref, base_thread_offset);
+			Iterate<CURRENT + 1, TOTAL>::LoadTexVector(
+				SEGMENT,
+				data_vectors,
+				ref,
+				base_thread_offset);
 		}
 
 
@@ -199,14 +205,9 @@ private:
 
 		// Segment of unguarded vectors
 		template <
-			typename T,
-			typename S,
-			int ELEMENTS,
 			typename VectorType,
 			int VECTORS>
 		static __device__ __forceinline__ void LoadVectorSegment(
-			T data[][ELEMENTS],
-			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
 			VectorType *d_in_vectors)
 		{
@@ -218,8 +219,6 @@ private:
 
 			// Next segment
 			Iterate<CURRENT + 1, TOTAL>::LoadVectorSegment(
-				data,
-				raw,
 				data_vectors,
 				d_in_vectors);
 		}
@@ -328,10 +327,8 @@ private:
 			TransformOp transform_op) {}
 
 		// Segment of unguarded vectors
-		template <typename T, typename S, int ELEMENTS, typename VectorType, int VECTORS>
+		template <typename VectorType, int VECTORS>
 		static __device__ __forceinline__ void LoadVectorSegment(
-			T data[][ELEMENTS],
-			S raw[][ELEMENTS],
 			VectorType data_vectors[][VECTORS],
 			VectorType *d_in_vectors) {}
 
@@ -355,12 +352,6 @@ private:
 	};
 
 public:
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ TileLoader() {}
-
 
 	//---------------------------------------------------------------------
 	// Unguarded tile interface
@@ -389,17 +380,18 @@ public:
 
 		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
 
-		// Data to load
+		// Raw data to load
 		S raw[SEGMENTS][ELEMENTS];
 
-		// Use an aliased pointer to raw array
-		VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) raw;
-		VectorType *d_in_vectors = (VectorType *) (d_in + (threadIdx.x * ELEMENTS) + cta_offset);
+		// Alias pointers
+		VectorType (*data_vectors)[VECTORS] =
+			reinterpret_cast<VectorType (*)[VECTORS]>(raw);
+
+		VectorType *d_in_vectors =
+			reinterpret_cast<VectorType *>(d_in + (threadIdx.x * ELEMENTS) + cta_offset);
 
 		// Load raw data
 		Iterate<0, SEGMENTS>::LoadVectorSegment(
-			data,
-			raw,
 			data_vectors,
 			d_in_vectors);
 

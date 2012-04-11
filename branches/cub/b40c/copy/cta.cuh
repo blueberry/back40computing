@@ -38,13 +38,13 @@ namespace copy {
 /**
  * Templated texture reference for global input
  */
-template <typename TexRefT>
+template <typename TexVec>
 struct InputTex
 {
-	static texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> ref;
+	static texture<TexVec, cudaTextureType1D, cudaReadModeElementType> d_in_ref;
 };
-template <typename TexRefT>
-texture<TexRefT, cudaTextureType1D, cudaReadModeElementType> InputTex<TexRefT>::ref;
+template <typename TexVec>
+typename texture<TexVec, cudaTextureType1D, cudaReadModeElementType> InputTex<TexVec>::d_in_ref;
 
 
 /**
@@ -57,16 +57,42 @@ struct Cta : KernelPolicy
 	// Typedefs
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::T T;
-	typedef typename KernelPolicy::SizeT SizeT;
+	typedef typename KernelPolicy::T 			T;					// Data type to reduce
+	typedef typename KernelPolicy::TexVec		TexVec;				// Texture vector type
+	typedef typename KernelPolicy::TexRef		TexRef;				// Texture reference type
+	typedef typename KernelPolicy::SizeT 		SizeT;				// Counting type
+
+	// Tile reader type
+	typedef util::io::TileReader<
+		KernelPolicy::THREADS,
+		KernelPolicy::READ_MODIFIER> TileReader;
+
+	// Tile writer type
+	typedef util::io::TileWriter<
+		KernelPolicy::THREADS,
+		KernelPolicy::WRITE_MODIFIER> TileWriter;
+
+
+	//---------------------------------------------------------------------
+	// Constants
+	//---------------------------------------------------------------------
+
+	enum {
+		CUDA_ARCH				= __B40C_CUDA_ARCH__,
+		THREAD_OCCUPANCY		= B40C_SM_THREADS(CUDA_ARCH) >> KernelPolicy::LOG_THREADS,
+		MAX_CTA_OCCUPANCY  		= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), THREAD_OCCUPANCY),
+		VALID					= (MAX_CTA_OCCUPANCY > 0),
+	};
+
 
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
 	// Input and output device pointers
-	T* d_in;
-	T* d_out;
+	T* 					d_in;				// Input device pointer
+	T* 					d_out;				// Output device pointer
+	TexRef 				d_in_ref;			// Input texture reference
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -78,8 +104,12 @@ struct Cta : KernelPolicy
 	__device__ __forceinline__ Cta(
 		T *d_in,
 		T *d_out) :
+			// Initializers
 			d_in(d_in),
-			d_out(d_out) {}
+			d_out(d_out),
+			d_in_ref(InputTex<TexVec>::d_in_ref)
+	{
+	}
 
 
 	/**
@@ -93,24 +123,12 @@ struct Cta : KernelPolicy
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
-		util::io::LoadTile<
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER>::LoadTileUnguarded(
-				data,
-				InputTex<TexRefT>::ref,
-				d_in,
-				cta_offset);
+		TileReader::LoadUnguarded(data, d_in_ref, d_in, cta_offset);
 
 		__syncthreads();
 
 		// Store tile
-		util::io::StoreTile<
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Store(
-				data,
-				d_out,
-				cta_offset,
-				guarded_elements);
+		TileWriter::StoreUnguarded(data, d_out, cta_offset);
 	}
 
 
@@ -121,36 +139,18 @@ struct Cta : KernelPolicy
 	 */
 	__device__ __forceinline__ void ProcessPartialTile(
 		SizeT cta_offset,
-		SizeT guarded_elements = KernelPolicy::TILE_ELEMENTS)
+		SizeT guarded_elements)
 	{
 		// Tile of elements
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
-		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
-			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
-				data,
-				d_in,
-				cta_offset,
-				guarded_elements);
+		TileReader::LoadGuarded(data, d_in, cta_offset, guarded_elements);
 
 		__syncthreads();
 
 		// Store tile
-		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER,
-			KernelPolicy::CHECK_ALIGNMENT>::Store(
-				data,
-				d_out,
-				cta_offset,
-				guarded_elements);
+		TileWriter::StoreGuarded(data, d_out, cta_offset, guarded_elements);
 	}
 };
 

@@ -63,13 +63,13 @@ struct SweepPass
 		// Process full tiles of tile_elements
 		while (work_limits.offset < work_limits.guarded_offset) {
 
-			cta.ProcessTile(work_limits.offset);
+			cta.ProcessFullTile(work_limits.offset);
 			work_limits.offset += KernelPolicy::TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
-			cta.ProcessTile(
+			cta.ProcessPartialTile(
 				work_limits.offset,
 				work_limits.guarded_elements);
 		}
@@ -136,14 +136,14 @@ struct SweepPass <KernelPolicy, true>
 				break;
 			}
 
-			cta.ProcessTile(offset);
+			cta.ProcessFullTile(offset);
 		}
 
 		// Last CTA does any extra, guarded work
 		if (blockIdx.x == gridDim.x - 1) {
 
 			SizeT guarded_elements = work_decomposition.num_elements - unguarded_elements;
-			cta.ProcessTile(unguarded_elements, guarded_elements);
+			cta.ProcessPartialTile(unguarded_elements, guarded_elements);
 
 			// Cleanup any extra bytes
 			if ((sizeof(typename KernelPolicy::T) > 1) && (threadIdx.x < extra_bytes)) {

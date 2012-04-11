@@ -67,10 +67,10 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 		SizeT;				// Counting type
 	typedef typename KernelPolicy::ReductionOp	ReductionOp;		// Reduction operator type
 
-	// Tile loader type
-	typedef util::io::TileLoader<
+	// Tile reader type
+	typedef util::io::TileReader<
 		KernelPolicy::THREADS,
-		KernelPolicy::READ_MODIFIER> TileLoader;
+		KernelPolicy::READ_MODIFIER> TileReader;
 
 	// CTA reduction type
 	typedef util::reduction::CtaReduction<
@@ -121,14 +121,14 @@ struct Cta
 		T* d_in,
 		T* d_out,
 		ReductionOp reduction_op) :
-
 			// Initializers
 			d_in(d_in),
 			d_out(d_out),
 			reduction_op(reduction_op),
 			reducer(smem_storage.reduction_storage),
 			d_in_ref(InputTex<TexVec>::d_in_ref)
-	{}
+	{
+	}
 
 
 	/**
@@ -144,7 +144,7 @@ struct Cta
 		T data[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
 
 		// Load tile
-		TileLoader::LoadUnguarded(data, d_in_ref, d_in, cta_offset);
+		TileReader::LoadUnguarded(data, d_in_ref, d_in, cta_offset);
 
 		// Reduce the data we loaded for this tile
 		T tile_partial = util::reduction::SerialReduce(data, reduction_op);
@@ -166,10 +166,12 @@ struct Cta
 		SizeT out_of_bounds,
 		bool first_tile)
 	{
+		cta_offset += threadIdx.x;
+
 		// First tile processed loads into the accumulator directly
 		if ((first_tile) && (cta_offset < out_of_bounds)) {
 
-			TileLoader::LoadUnguarded(accumulator, d_in, cta_offset);
+			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(accumulator, d_in + cta_offset);
 			cta_offset += KernelPolicy::THREADS;
 		}
 
@@ -177,10 +179,11 @@ struct Cta
 		while (cta_offset < out_of_bounds) {
 
 			T datum;
-			TileLoader::LoadUnguarded(datum, d_in, cta_offset);
+			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
 			accumulator = reduction_op(accumulator, datum);
 			cta_offset += KernelPolicy::THREADS;
 		}
+
 	}
 
 

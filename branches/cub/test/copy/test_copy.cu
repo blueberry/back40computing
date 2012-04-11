@@ -30,58 +30,39 @@
 #include "b40c_test_util.h"
 #include "test_copy.h"
 
-#ifdef _MSC_VER
-#include <random>
-#else
-#include <tr1/random>
-#endif
-
-
 using namespace b40c;
 
 /******************************************************************************
  * Defines, constants, globals
  ******************************************************************************/
 
-bool 	g_verbose 						= false;
-int 	g_sweep							= 0;
+bool 	g_verbose;
+bool 	g_sample;
+bool 	g_from_host;
 int 	g_max_ctas 						= 0;
 int 	g_iterations  					= 1;
 int 	g_num_elements 					= 1024;
 int 	g_src_gpu						= -1;
 int 	g_dest_gpu						= -1;
-bool 	g_from_host						= false;
 
 
 /******************************************************************************
  * Utility Routines
  ******************************************************************************/
 
-
-__global__
-void CopyKernel(int *d_in, int *d_out, int num_elements)
-{
-	int offset = (blockIdx.x * blockDim.x) + threadIdx.x;
-	if (offset < num_elements) {
-		d_out[offset] = d_in[offset];
-	}
-}
-
-
-
-
-
-
-
-
 /**
  * Displays the commandline usage for this tool
  */
 void Usage()
 {
-	printf("\ntest_copy [--device=<device index>] [--v] [--i=<num-iterations>] "
-			"[--max-ctas=<max-thread-blocks>] [--n=<num-bytes>] [--sweep] "
-			"[ [--src=<src-gpu> --dest=<dest-gpu>] | --from-host ]\n");
+	printf("\ntest_copy "
+		"[--device=<device index>] "
+		"[--v] "
+		"[--i=<num-iterations>] "
+		"[--max-ctas=<max-thread-blocks>] "
+		"[--n=<num-bytes>] "
+		"[--sample] "
+		"[ [--src=<src-gpu> --dest=<dest-gpu>] | --from-host ]\n");
 	printf("\n");
 	printf("\t--v\tDisplays copied results to the console.\n");
 	printf("\n");
@@ -103,12 +84,12 @@ void TestCopy(SizeT num_elements)
 {
 	typedef unsigned char T;
 
+	//
 	// Allocate the copy problem on the host and fill the keys with random bytes
+	//
 
-	T *h_data 			= (T*) malloc(num_elements * sizeof(T));
-	T *h_reference 		= (T*) malloc(num_elements * sizeof(T));
-
-	if ((h_data == NULL) || (h_reference == NULL)){
+	T *h_data = (T*) malloc(num_elements * sizeof(T));
+	if (!h_data) {
 		fprintf(stderr, "Host malloc of problem data failed\n");
 		exit(1);
 	}
@@ -116,7 +97,6 @@ void TestCopy(SizeT num_elements)
 	for (SizeT i = 0; i < num_elements; ++i) {
 		// util::RandomBits<T>(h_data[i], 0);
 		h_data[i] = i;
-		h_reference[i] = h_data[i];
 	}
 
 	// Allocate device storage (and leave g_dest_gpu as current gpu)
@@ -155,84 +135,68 @@ void TestCopy(SizeT num_elements)
     // Run the timing test(s)
 	//
 
-	// Execute test(s), optionally sampling within the problem size
-	if (g_sweep) {
+	b40c::GpuTimer gpu_timer;
+	double max_exponent 		= log2(double(num_elements)) - 5.0;
+	unsigned int max_int 		= (unsigned int) -1;
 
-		typedef copy::Policy<
-			int,
-			SizeT,
-			200,
-			7,
-			1,
-			7,
-			0,
-			0,
-			util::io::ld::NONE,
-			util::io::st::NONE,
-			false,
-			false> Policy;
+	if (g_sample) {
+		// Sample problem sizes up to num_elements
+		printf("ITERATION, ELEMENTS, BYTES, SAMPLES, AVG_MILLIS, BANDWIDTH, STATUS\n");
 
-		std::tr1::mt19937 mt19937;							// engine
-		std::tr1::uniform_real<double> r(0, log2(double(num_elements)));	// generator
+		for (int i = 0; i < g_iterations; i++) {
 
-		printf("Sample, Bytes, Words, Large GB/s, Small GB/s, Basic GB/s, Simple GB/s\n");
+			// Sample a problem size
+			unsigned int sample;
+			b40c::util::RandomBits(sample);
+			double scale = double(sample) / max_int;
+			SizeT elements = (i < g_iterations / 2) ?
+				(SizeT) pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
+				elements = scale * num_elements;						// uniform bias
 
-		for (int i = 0; i < g_sweep; i++) {
+			printf("%d, ", i);
 
-			double power = r(mt19937);
-			SizeT elements = (SizeT) pow(2.0, power) + 128;
-
-
-			double large = TimedCopy<copy::LARGE_SIZE>(
-				d_src, d_dest, elements, g_max_ctas, g_iterations);
-
-			double small = TimedCopy<copy::SMALL_SIZE>(
-				d_src, d_dest, elements, g_max_ctas, g_iterations);
-
-			double basic = TimedCopy<Policy>(
-				d_src, d_dest, elements, g_max_ctas, g_iterations);
-
-
-			// Perform the timed number of iterations
-			SizeT bytes = elements * sizeof(T);
-			SizeT words = (bytes + sizeof(typename Policy::T) - 1) / sizeof(typename Policy::T);
-			int cta_size = 256;
-			int grid_size = (words + cta_size - 1) / cta_size;
-
-			GpuTimer timer;
-			double simple = 0.0;
-			for (int j = 0; j < g_iterations; j++) {
-				timer.Start();
-				CopyKernel<<<grid_size, cta_size>>>((int *) d_src, (int *) d_dest, words);
-				timer.Stop();
-				simple += timer.ElapsedMillis();
-			}
-			simple = simple / g_iterations;
-			simple = ((double) elements) / simple / 1000.0 / 1000.0;
-
-			printf("%d, %d, %d, %0.3f, %0.3f, %0.3f, %0.3f\n",
-				i,
-				elements,
-				elements / 4,
-				2 * large,
-				2 * small,
-				2 * basic,
-				2 * simple);
+			// One iteration at that problem size
+			TimedCopy<copy::UNKNOWN_SIZE>(
+				h_data,
+				d_src,
+				d_dest,
+				num_elements,
+				g_max_ctas,
+				g_verbose,
+				1,
+				same_device);
 		}
-
 	} else {
-		printf("\nLARGE config:\n");
-		double large = TimedCopy<copy::LARGE_SIZE>(
-			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations, same_device);
+		// Test large and small configs on num_elements
+		printf("ELEMENTS, BYTES, SAMPLES, AVG_MILLIS, BANDWIDTH, STATUS\n\n");
 
-		printf("\nSMALL config:\n");
-		double small = TimedCopy<copy::SMALL_SIZE>(
-			d_src, d_dest, h_reference, num_elements, g_max_ctas, g_verbose, g_iterations, same_device);
+		printf("Large-problem configuration:\n");
+		TimedCopy<copy::LARGE_SIZE>(
+			h_data,
+			d_src,
+			d_dest,
+			num_elements,
+			g_max_ctas,
+			g_verbose,
+			g_iterations,
+			same_device);
+
+		printf("\n");
+
+		printf("Small-problem configuration:\n");
+		TimedCopy<copy::SMALL_SIZE>(
+			h_data,
+			d_src,
+			d_dest,
+			num_elements,
+			g_max_ctas,
+			g_verbose,
+			g_iterations,
+			same_device);
 	}
 
     // Free allocated memory
 	if (h_data) free(h_data);
-    if (h_reference) free(h_reference);
     if (h_src) {
 		cudaFreeHost(h_src);
 	} else {
@@ -251,28 +215,23 @@ int main(int argc, char** argv)
 
 	CommandLineArgs args(argc, argv);
 	DeviceInit(args);
+	cudaSetDeviceFlags(cudaDeviceMapHost);
 
 	//srand(time(NULL));
 	srand(0);				// presently deterministic
 
-    //
 	// Check command line arguments
-    //
-
     if (args.CheckCmdLineFlag("help")) {
 		Usage();
 		return 0;
 	}
-
-	cudaSetDeviceFlags(cudaDeviceMapHost);
-
-    args.GetCmdLineArgument("sweep", g_sweep);
-    g_from_host = args.CheckCmdLineFlag("from-host");
     args.GetCmdLineArgument("i", g_iterations);
     args.GetCmdLineArgument("n", g_num_elements);
     args.GetCmdLineArgument("src", g_src_gpu);
     args.GetCmdLineArgument("dest", g_dest_gpu);
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
+    g_from_host = args.CheckCmdLineFlag("from-host");
+    g_sample = args.CheckCmdLineFlag("sample");
 	g_verbose = args.CheckCmdLineFlag("v");
 
 	if ((g_src_gpu > -1) && (g_dest_gpu > -1)) {

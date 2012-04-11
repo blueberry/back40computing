@@ -131,6 +131,13 @@ struct Policy
 	};
 
 
+	// Texture vector type
+	typedef typename util::io::TexVector<T, LOAD_VEC_SIZE>::TexVec TexVec;
+
+	// Texture reference type
+	typedef typename util::io::TexVector<T, LOAD_VEC_SIZE>::TexRef TexRef;
+
+
 	static void Print()
 	{
 		// ProblemType type parameters

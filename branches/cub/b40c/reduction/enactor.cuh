@@ -317,7 +317,10 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 
 		// Max CTA occupancy for the actual target device
 		int max_cta_occupancy;
-		if (retval = MaxCtaOccupancy(max_cta_occupancy, UpsweepKernel, Upsweep::THREADS)) break;
+		if (retval = MaxCtaOccupancy(
+			max_cta_occupancy,
+			UpsweepKernel,
+			Upsweep::THREADS)) break;
 
 		// Compute sweep grid size
 		int sweep_grid_size = GridSize(

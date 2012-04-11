@@ -90,8 +90,8 @@ void TestReduction(
 
 	for (size_t i = 0; i < num_elements; ++i) {
 // 		util::RandomBits<T>(h_data[i], 0);
-		h_data[i] = i;
-//		h_data[i] = 1;
+//		h_data[i] = i;
+		h_data[i] = 1;
 		h_reference[0] = (i == 0) ?
 			h_data[i] :
 			reduction_op(h_reference[0], h_data[i]);

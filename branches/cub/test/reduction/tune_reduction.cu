@@ -62,6 +62,7 @@ int 	g_max_ctas = 0;
 int 	g_iterations = 0;
 bool 	g_verify;
 int 	g_policy_id = 0;
+bool 	g_bw;
 
 
 struct KernelDetails
@@ -187,7 +188,7 @@ struct UpsweepTuning
 		typedef typename ProblemType::T T;
 		typedef typename ProblemType::SizeT SizeT;
 		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename BaseKernelPolicy::TexRefT TexRefT;
+		typedef typename BaseKernelPolicy::TexVec TexVec;
 
 		typedef void (*KernelPtr)(T*, T*, ReductionOp, util::CtaWorkDistribution<SizeT>, util::CtaWorkProgress);
 
@@ -201,7 +202,7 @@ struct UpsweepTuning
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
 			VALID_COMPILE =
-				((BaseKernelPolicy::VALID > 0) &&
+				((Cta<BaseKernelPolicy>::VALID > 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
@@ -250,9 +251,9 @@ struct UpsweepTuning
 		{
 			return cudaBindTexture(
 				0,
-				InputTex<typename BaseKernelPolicy::TexRefT>::ref,
+				InputTex<TexVec>::d_in_ref,
 				(T*) d_src,
-				cudaCreateChannelDesc<typename BaseKernelPolicy::TexRefT>(),
+				cudaCreateChannelDesc<TexVec>(),
 				num_elements * sizeof(T));
 		}
 	};
@@ -374,7 +375,7 @@ struct SpineTuning
 		typedef typename ProblemType::T T;
 		typedef typename ProblemType::SizeT SizeT;
 		typedef typename ProblemType::ReductionOp ReductionOp;
-		typedef typename BaseKernelPolicy::TexRefT TexRefT;
+		typedef typename BaseKernelPolicy::TexVec TexVec;
 
 		typedef void (*KernelPtr)(T*, T*, SizeT, ReductionOp);
 
@@ -387,7 +388,7 @@ struct SpineTuning
 			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
 			VALID_COMPILE =
-				((BaseKernelPolicy::VALID > 0) &&
+				((Cta<BaseKernelPolicy>::VALID > 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
@@ -428,9 +429,9 @@ struct SpineTuning
 		{
 			return cudaBindTexture(
 				0,
-				InputTex<typename BaseKernelPolicy::TexRefT>::ref,
+				InputTex<TexVec>::d_in_ref,
 				(T*) d_src,
-				cudaCreateChannelDesc<typename BaseKernelPolicy::TexRefT>(),
+				cudaCreateChannelDesc<TexVec>(),
 				num_elements * sizeof(T));
 		}
 	};
@@ -794,18 +795,21 @@ struct Enactor : public util::EnactorBase
 
 				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
-				// Bind input texture
-				if (retval = util::B40CPerror(spine_details.first.map_textures((void *) spine(), spine_elements),
-					"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
+				// Run spine kernel if not configured for read-only bandwidth
+				if (!g_bw) {
+					// Bind input texture
+					if (retval = util::B40CPerror(spine_details.first.map_textures((void *) spine(), spine_elements),
+						"Enactor cudaBindTexture InputTex failed", __FILE__, __LINE__)) break;
 
-				// Spine scan
-				spine_details.second<<<grid_size[1], spine_details.first.threads, dynamic_smem[1]>>>(
-					(T*) spine(),
-					d_dest,
-					spine_elements,
-					reduction_op);
+					// Spine scan
+					spine_details.second<<<grid_size[1], spine_details.first.threads, dynamic_smem[1]>>>(
+						(T*) spine(),
+						d_dest,
+						spine_elements,
+						reduction_op);
 
-				if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
+					if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
+				}
 			}
 
 		} while (0);
@@ -1057,10 +1061,14 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("max-ctas", g_max_ctas);
     g_verify = args.CheckCmdLineFlag("verify");
 	g_verbose = args.CheckCmdLineFlag("v");
+    g_bw = args.CheckCmdLineFlag("bw");
 
 	util::CudaProperties cuda_props;
 
-	printf("Test Scan: %d iterations, %lu elements", g_iterations, (unsigned long) num_elements);
+	printf("Test reduction: %d iterations, %lu elements, upsweep-only: %d",
+			g_iterations,
+			(unsigned long) num_elements,
+			g_bw ? "true" : "false");
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 

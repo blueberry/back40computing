@@ -90,7 +90,7 @@ namespace util {
 												 	 	 B40C_SM10_LOG_CTA_THREADS())
 
 // Max CTAs per SM
-#define B40C_SM30_SM_CTAS()				(16)	// 16 CTAs on SM3.0+
+#define B40C_SM30_SM_CTAS()				(8)		// 8 CTAs on SM3.0+
 #define B40C_SM20_SM_CTAS()				(8)		// 8 CTAs on SM2.0+
 #define B40C_SM12_SM_CTAS()				(8)		// 8 CTAs on SM1.2-SM1.3
 #define B40C_SM10_SM_CTAS()				(8)		// 8 CTAs on SM1.0-SM1.1

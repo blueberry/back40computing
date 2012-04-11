@@ -342,12 +342,14 @@ protected:
 
 		} else {
 
+			int saturation_cap  = (2 * B40C_SM_CTAS(cuda_props.device_sm_version) * cuda_props.device_props.multiProcessorCount) - 1;
+
 			// GF10x
 			grid_size = B40C_MIN(
 				grains,
 				((max_grid_size > 0) ?
 					max_grid_size :
-					(max_cta_occupancy * max_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1));
+					saturation_cap));
 		}
 
 		return grid_size;
