@@ -91,6 +91,8 @@ struct Tile
 	typedef typename KernelPolicy::KeyType 					KeyType;
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
+	typedef typename KernelPolicy::Counter 					Counter;
+	typedef typename KernelPolicy::RakingPartial			RakingPartial;
 
 	typedef typename util::VecType<
 		KeyType,
@@ -129,9 +131,9 @@ struct Tile
 	// The keys (and values) this thread will read this tile
 	KeyType 			keys[LOAD_VEC_SIZE];
 	ValueType 			values[LOAD_VEC_SIZE];
-	unsigned short		thread_prefixes[LOAD_VEC_SIZE];
+	Counter				thread_prefixes[LOAD_VEC_SIZE];
 	int 				ranks[LOAD_VEC_SIZE];
-	unsigned short 		*counter_offsets[LOAD_VEC_SIZE];
+	Counter 			*counter_offsets[LOAD_VEC_SIZE];
 	SizeT				bin_offsets[LOAD_VEC_SIZE];
 
 
@@ -151,13 +153,13 @@ struct Tile
 		{
 			int sub_counter = util::BFE(
 				tile->keys[VEC],
-				KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_BINS - 1,
-				1);
+				KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_LANES,
+				KernelPolicy::LOG_PACKED_COUNTERS);
 
 			int lane = util::BFE(
 				tile->keys[VEC],
 				KernelPolicy::CURRENT_BIT,
-				KernelPolicy::LOG_SCAN_BINS - 1);
+				KernelPolicy::LOG_SCAN_LANES);
 
 			tile->counter_offsets[VEC] = &cta->smem_storage.packed_counters[lane][threadIdx.x][sub_counter];
 
@@ -191,7 +193,7 @@ struct Tile
 			Tile *tile,
 			T items[LOAD_VEC_SIZE])
 		{
-			int offset = (Cta::BANK_PADDING) ?
+			int offset = (KernelPolicy::BANK_PADDING) ?
 				util::SHR_ADD(tile->ranks[VEC], LOG_MEM_BANKS, tile->ranks[VEC]) :
 				tile->ranks[VEC];
 
@@ -208,7 +210,7 @@ struct Tile
 			Tile *tile,
 			T items[LOAD_VEC_SIZE])
 		{
-			const int LOAD_OFFSET = (Cta::BANK_PADDING) ?
+			const int LOAD_OFFSET = (KernelPolicy::BANK_PADDING) ?
 				(VEC * KernelPolicy::THREADS) + ((VEC * KernelPolicy::THREADS) >> LOG_MEM_BANKS) :
 				(VEC * KernelPolicy::THREADS);
 
@@ -298,7 +300,7 @@ struct Tile
 	__device__ __forceinline__ void RakingScan(Cta *cta)
 	{
 
-		int partial, raking_partial;
+		RakingPartial partial, raking_partial;
 
 		if ((KernelPolicy::THREADS == RAKING_THREADS) || (threadIdx.x < RAKING_THREADS)) {
 
@@ -307,7 +309,6 @@ struct Tile
 				cta->raking_segment);
 
 			// Warpscan
-
 			partial = raking_partial;
 			cta->warpscan[0] = partial;
 
@@ -332,13 +333,13 @@ struct Tile
 #endif
 
 			// Scan across warpscan totals
-			int warpscan_totals = 0;
+			RakingPartial warpscan_totals = 0;
 
 			#pragma unroll
 			for (int WARP = 0; WARP < KernelPolicy::RAKING_WARPS; WARP++) {
 
 				// Add totals from all previous warpscans into our partial
-				int warpscan_total = cta->smem_storage.warpscan[((WARP + 1) * (WARP_THREADS * 2)) - 1];
+				RakingPartial warpscan_total = cta->smem_storage.warpscan[((WARP + 1) * (WARP_THREADS * 2)) - 1];
 				if (cta->warp_id == (WARP * 32)) {
 					partial += warpscan_totals;
 				}
@@ -348,12 +349,17 @@ struct Tile
 			}
 
 			// Add lower totals from all warpscans into partial's upper
-			partial = util::SHL_ADD(warpscan_totals, 16, partial);
+			#pragma unroll
+			for (int PACKED = 1; PACKED < KernelPolicy::PACKED_COUNTERS; PACKED++) {
+//				partial = util::SHL_ADD(warpscan_totals, 16 * PACKED, partial);
+				partial += warpscan_totals << (16 * PACKED);
+			}
 
 			// Downsweep scan with exclusive partial
+			RakingPartial exclusive_partial = partial - raking_partial;
 			util::scan::SerialScan<KernelPolicy::PADDED_RAKING_SEG>::Invoke(
 				cta->raking_segment,
-				partial - raking_partial);
+				exclusive_partial);
 		}
 	}
 
@@ -367,7 +373,7 @@ struct Tile
 		// Initialize counters
 		#pragma unroll
 		for (int LANE = 0; LANE < KernelPolicy::SCAN_LANES + 1; LANE++) {
-			*((int*) cta->smem_storage.packed_counters[LANE][threadIdx.x]) = 0;
+			*((RakingPartial*) cta->smem_storage.packed_counters[LANE][threadIdx.x]) = 0;
 		}
 
 		// Decode bins and update counters
@@ -383,9 +389,9 @@ struct Tile
 		// Update carry
 		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
 
-			unsigned short bin_inclusive = cta->bin_counter[KernelPolicy::THREADS * 2];
+			Counter bin_inclusive = cta->bin_counter[KernelPolicy::THREADS * KernelPolicy::PACKED_COUNTERS];
 			cta->smem_storage.warpscan[32 + threadIdx.x] = bin_inclusive;
-			int bin_exclusive = cta->smem_storage.warpscan[32 + threadIdx.x - 1];
+			RakingPartial bin_exclusive = cta->smem_storage.warpscan[32 + threadIdx.x - 1];
 
 			cta->my_bin_carry -= bin_exclusive;
 			cta->smem_storage.bin_carry[threadIdx.x] = cta->my_bin_carry;

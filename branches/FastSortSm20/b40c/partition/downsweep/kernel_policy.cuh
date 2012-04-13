@@ -42,9 +42,11 @@ namespace downsweep {
 template <typename TuningPolicy>
 struct KernelPolicy : TuningPolicy
 {
-	typedef typename TuningPolicy::SizeT 		SizeT;
-	typedef typename TuningPolicy::KeyType 		KeyType;
-	typedef typename TuningPolicy::ValueType 	ValueType;
+	typedef typename TuningPolicy::SizeT 			SizeT;
+	typedef typename TuningPolicy::KeyType 			KeyType;
+	typedef typename TuningPolicy::ValueType 		ValueType;
+	typedef typename TuningPolicy::Counter 			Counter;
+	typedef typename TuningPolicy::RakingPartial	RakingPartial;
 
 	enum {
 
@@ -71,7 +73,10 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_BINS					= TuningPolicy::LOG_BINS,
 		SCAN_BINS						= 1 << LOG_SCAN_BINS,
 
-		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - 1), 0),				// Always at least one lane
+		PACKED_COUNTERS					= sizeof(RakingPartial) / sizeof(Counter),
+		LOG_PACKED_COUNTERS				= util::Log2<PACKED_COUNTERS>::VALUE,
+
+		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - LOG_PACKED_COUNTERS), 0),				// Always at least one lane
 		SCAN_LANES						= 1 << LOG_SCAN_LANES,
 
 		LOG_SCAN_ELEMENTS				= LOG_SCAN_LANES + LOG_THREADS,
@@ -99,13 +104,13 @@ struct KernelPolicy : TuningPolicy
 		SizeT 							bin_carry[BINS];
 
 		// Storage for scanning local ranks
-		volatile int 					warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile RakingPartial			warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
 
 		struct {
 			int4						align_padding;
 			union {
-				unsigned short			packed_counters[SCAN_LANES + 1][THREADS][2];
-				int						raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
+				Counter					packed_counters[SCAN_LANES + 1][THREADS][PACKED_COUNTERS];
+				RakingPartial			raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
 				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 				ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 			};
