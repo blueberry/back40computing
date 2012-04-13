@@ -342,7 +342,7 @@ protected:
 
 		} else {
 
-			int saturation_cap  = (2 * B40C_SM_CTAS(cuda_props.device_sm_version) * cuda_props.device_props.multiProcessorCount) - 1;
+			int saturation_cap  = (4 * max_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1;
 
 			// GF10x
 			grid_size = B40C_MIN(
@@ -350,6 +350,7 @@ protected:
 				((max_grid_size > 0) ?
 					max_grid_size :
 					saturation_cap));
+
 		}
 
 		return grid_size;

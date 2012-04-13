@@ -56,6 +56,8 @@ struct Cta
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
+	typedef typename KernelPolicy::Counter 					Counter;
+	typedef typename KernelPolicy::RakingPartial			RakingPartial;
 
 	typedef DerivedCta Dispatch;
 
@@ -65,8 +67,6 @@ struct Cta
 
 		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
-
-		BANK_PADDING 				= 1,				// Whether or not to insert padding for exchanging keys
 	};
 
 	//---------------------------------------------------------------------
@@ -82,13 +82,13 @@ struct Cta
 	ValueType							*d_values0;
 	ValueType							*d_values1;
 
-	int									*raking_segment;
-	unsigned short						*bin_counter;
+	RakingPartial						*raking_segment;
+	Counter								*bin_counter;
 
 	SizeT								my_bin_carry;
 
 	int 								warp_id;
-	volatile int 						*warpscan;
+	volatile RakingPartial				*warpscan;
 
 	KeyType 							*base_gather_offset;
 
@@ -113,10 +113,10 @@ struct Cta
 			d_values0(d_values0),
 			d_values1(d_values1),
 			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
+			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((KernelPolicy::BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
 	{
 		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
-		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_BINS - 1);
+		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_SCAN_LANES);
 		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
 
 		warp_id = (threadIdx.x & (~31));
@@ -177,7 +177,6 @@ struct Cta
 				pack_offset,
 				work_limits.guarded_elements);
 		}
-
 	}
 };
 

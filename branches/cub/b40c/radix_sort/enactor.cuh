@@ -331,6 +331,13 @@ protected:
 
 			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
+			// Set shared mem bank mode
+			enum cudaSharedMemConfig old_config;
+			cudaDeviceGetSharedMemConfig(&old_config);
+			cudaDeviceSetSharedMemConfig((sizeof(typename Downsweep::RakingPartial) > 4) ?
+				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
+				cudaSharedMemBankSizeEightByte);		// 32-bit bank mode
+
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
 				d_selectors,
@@ -343,8 +350,10 @@ protected:
 
 			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
 
-		} while (0);
+			// Restore smem bank mode
+			cudaDeviceSetSharedMemConfig(old_config);
 
+		} while (0);
 
 		return retval;
 	}
