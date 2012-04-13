@@ -35,7 +35,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 # Gen targets
 #-------------------------------------------------------------------------------
 
-GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" 
+GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" -open64
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM11 = -gencode=arch=compute_11,code=\"sm_11,compute_11\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
@@ -110,11 +110,6 @@ NVCCFLAGS = -Xptxas -v -Xcudafe -\#
 ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
 	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
 endif
-
-ifeq (4.1, $(findstring 4.1, $(NVCC_VERSION)))
-	# Disable nvvm 
-	NVCCFLAGS += -open64
-endif 
 
 ifneq ($(abi), 1)
 	# Disable the ABI by default for 3.1+
