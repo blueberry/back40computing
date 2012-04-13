@@ -92,7 +92,13 @@ struct TuningPolicy : ProblemType
 
 		LOG_PACK_SIZE 								= 2,
 		PACK_SIZE									= 1 << LOG_PACK_SIZE,
+
+		BANK_PADDING 								= 1,		// Whether or not to insert padding for exchanging keys
 	};
+
+	typedef unsigned short			Counter;			// Integer type for digit counters (to be packed in the RakingPartial type defined below)
+	typedef unsigned int			RakingPartial;		// Integer type for raking partials (packed counters).  Consider using 64b counters on Kepler+ for better smem bandwidth
+
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
