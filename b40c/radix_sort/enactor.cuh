@@ -336,7 +336,7 @@ protected:
 			cudaDeviceGetSharedMemConfig(&old_config);
 			cudaDeviceSetSharedMemConfig((sizeof(typename Downsweep::RakingPartial) > 4) ?
 				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
-				cudaSharedMemBankSizeEightByte);		// 32-bit bank mode
+				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
