@@ -36,8 +36,7 @@
 #include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/scan/warp_scan.cuh>
 #include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/soa_tuple.cuh>
-#include <b40c/util/scan/soa/cooperative_soa_scan.cuh>
+#include <b40c/util/denorm.cuh>
 
 namespace b40c {
 namespace partition {
@@ -72,6 +71,100 @@ template <typename ValueVectorType>
 texture<ValueVectorType, cudaTextureType1D, cudaReadModeElementType> ValuesTex<ValueVectorType>::ref0;
 template <typename ValueVectorType>
 texture<ValueVectorType, cudaTextureType1D, cudaReadModeElementType> ValuesTex<ValueVectorType>::ref1;
+
+
+
+/**
+ * Bit extraction, specialized for non-64bit key types
+ */
+template <
+	typename T,
+	int BIT_OFFSET,
+	int NUM_BITS,
+	int LEFT_SHIFT>
+struct Extract
+{
+	/**
+	 * Super bitfield-extract (BFE, then left-shift).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		T source)
+	{
+		const T MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		if (SHIFT == 0) {
+			return util::BFE(source, BIT_OFFSET, NUM_BITS);
+		} else {
+			T bits = (source & MASK);
+			return util::MagnitudeShift<SHIFT>::Shift(bits);
+		}
+	}
+
+	/**
+	 * Super bitfield-extract (BFE, then left-shift, then add).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		T source,
+		unsigned int addend)
+	{
+		const T MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		if (SHIFT == 0) {
+			return util::BFE(source, BIT_OFFSET, NUM_BITS) + addend;
+		} else {
+			T bits = (source & MASK);
+			bits = (SHIFT > 0) ?
+				(util::SHL_ADD(bits, SHIFT, addend)) :
+				(util::SHR_ADD(bits, SHIFT * -1, addend));
+			return bits;
+		}
+	}
+
+};
+
+
+/**
+ * Bit extraction, specialized for 64bit key types
+ */
+template <
+	int BIT_OFFSET,
+	int NUM_BITS,
+	int LEFT_SHIFT>
+struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
+{
+	/**
+	 * Super bitfield-extract (BFE, then left-shift).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		unsigned long long source)
+	{
+		const unsigned long long MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		if (SHIFT == 0) {
+			return util::BFE(source, BIT_OFFSET, NUM_BITS);
+		} else {
+			unsigned long long bits = (source & MASK);
+			return util::MagnitudeShift<SHIFT>::Shift(bits);
+		}
+	}
+
+	/**
+	 * Super bitfield-extract (BFE, then left-shift, then add).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		unsigned long long source,
+		unsigned int addend)
+	{
+		return SuperBFE(source) + addend;
+	}
+};
+
+
+
+
 
 
 /**
@@ -122,6 +215,9 @@ struct Tile
 
 		LOG_STORE_TXN_THREADS 		= LOG_MEM_BANKS,
 		STORE_TXN_THREADS 			= 1 << LOG_STORE_TXN_THREADS,
+
+		BYTES_PER_COUNTER			= sizeof(Counter),
+		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
 	};
 
 	//---------------------------------------------------------------------
@@ -133,7 +229,9 @@ struct Tile
 	ValueType 			values[LOAD_VEC_SIZE];
 	Counter				thread_prefixes[LOAD_VEC_SIZE];
 	int 				ranks[LOAD_VEC_SIZE];
-	Counter 			*counter_offsets[LOAD_VEC_SIZE];
+
+	unsigned int 		counter_offsets[LOAD_VEC_SIZE];
+
 	SizeT				bin_offsets[LOAD_VEC_SIZE];
 
 
@@ -151,23 +249,35 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeKeys(Cta *cta,	Tile *tile)
 		{
-			int sub_counter = util::BFE(
-				tile->keys[VEC],
+			// Compute byte offset of smem counter.  Add in thread column.
+			tile->counter_offsets[VEC] = (threadIdx.x << (KernelPolicy::LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
+
+			// Add in sub-counter offset
+			tile->counter_offsets[VEC] = Extract<
+				KeyType,
 				KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_LANES,
-				KernelPolicy::LOG_PACKED_COUNTERS);
+				KernelPolicy::LOG_PACKED_COUNTERS,
+				LOG_BYTES_PER_COUNTER>::SuperBFE(
+					tile->keys[VEC],
+					tile->counter_offsets[VEC]);
 
-			int lane = util::BFE(
-				tile->keys[VEC],
+			// Add in row offset
+			tile->counter_offsets[VEC] = Extract<
+				KeyType,
 				KernelPolicy::CURRENT_BIT,
-				KernelPolicy::LOG_SCAN_LANES);
+				KernelPolicy::LOG_SCAN_LANES,
+				KernelPolicy::LOG_THREADS + KernelPolicy::LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER>::SuperBFE(
+					tile->keys[VEC],
+					tile->counter_offsets[VEC]);
 
-			tile->counter_offsets[VEC] = &cta->smem_storage.packed_counters[lane][threadIdx.x][sub_counter];
+			Counter* counter = (Counter*)
+				(((unsigned char *) cta->smem_storage.packed_counters) + tile->counter_offsets[VEC]);
 
 			// Load thread-exclusive prefix
-			tile->thread_prefixes[VEC] = *tile->counter_offsets[VEC];
+			tile->thread_prefixes[VEC] = *counter;
 
 			// Store inclusive prefix
-			*tile->counter_offsets[VEC] = tile->thread_prefixes[VEC] + 1;
+			*counter = tile->thread_prefixes[VEC] + 1;
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::DecodeKeys(cta, tile);
@@ -178,8 +288,11 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void ComputeRanks(Cta *cta, Tile *tile)
 		{
+			Counter* counter = (Counter*)
+				(((unsigned char *) cta->smem_storage.packed_counters) + tile->counter_offsets[VEC]);
+
 			// Add in CTA exclusive prefix
-			tile->ranks[VEC] = tile->thread_prefixes[VEC] + *tile->counter_offsets[VEC];
+			tile->ranks[VEC] = tile->thread_prefixes[VEC] + *counter;
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::ComputeRanks(cta, tile);
@@ -224,11 +337,16 @@ struct Tile
 		template <typename Cta, typename Tile>
 		static __device__ __forceinline__ void DecodeBinOffsets(Cta *cta, Tile *tile)
 		{
-			// Decode bin from key
-			int bin = util::BFE(tile->keys[VEC], KernelPolicy::CURRENT_BIT, KernelPolicy::LOG_BINS);
+			// Decode address of bin-offset in smem
+			unsigned int byte_offset = Extract<
+				KeyType,
+				KernelPolicy::CURRENT_BIT,
+				KernelPolicy::LOG_BINS,
+				util::Log2<sizeof(SizeT)>::VALUE>::SuperBFE(
+					tile->keys[VEC]);
 
 			// Lookup global bin offset
-			tile->bin_offsets[VEC] = cta->smem_storage.bin_carry[bin];
+			tile->bin_offsets[VEC] = *(SizeT *)(((char *) cta->smem_storage.bin_carry) + byte_offset);
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::DecodeBinOffsets(cta, tile);
