@@ -36,7 +36,6 @@
 #include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/scan/warp_scan.cuh>
 #include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/denorm.cuh>
 
 namespace b40c {
 namespace partition {
@@ -90,13 +89,13 @@ struct Extract
 	__device__ __forceinline__ static unsigned int SuperBFE(
 		T source)
 	{
-		const T MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
 		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
 
+		T bits = (source & MASK);
 		if (SHIFT == 0) {
-			return util::BFE(source, BIT_OFFSET, NUM_BITS);
+			return bits;
 		} else {
-			T bits = (source & MASK);
 			return util::MagnitudeShift<SHIFT>::Shift(bits);
 		}
 	}
@@ -108,13 +107,13 @@ struct Extract
 		T source,
 		unsigned int addend)
 	{
-		const T MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
 		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
 
+		T bits = (source & MASK);
 		if (SHIFT == 0) {
-			return util::BFE(source, BIT_OFFSET, NUM_BITS) + addend;
+			return bits + addend;
 		} else {
-			T bits = (source & MASK);
 			bits = (SHIFT > 0) ?
 				(util::SHL_ADD(bits, SHIFT, addend)) :
 				(util::SHR_ADD(bits, SHIFT * -1, addend));
@@ -140,13 +139,13 @@ struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
 	__device__ __forceinline__ static unsigned int SuperBFE(
 		unsigned long long source)
 	{
-		const unsigned long long MASK = ((1 << NUM_BITS) - 1) << BIT_OFFSET;
+		const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
 		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
 
+		unsigned long long bits = (source & MASK);
 		if (SHIFT == 0) {
-			return util::BFE(source, BIT_OFFSET, NUM_BITS);
+			return bits;
 		} else {
-			unsigned long long bits = (source & MASK);
 			return util::MagnitudeShift<SHIFT>::Shift(bits);
 		}
 	}
