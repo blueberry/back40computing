@@ -184,14 +184,16 @@ protected:
 			// 128B aligned sections
 			int shared = ((kernel_attrs.sharedSizeBytes + 128 - 1) / 128) * 128;
 
+			int max_block_occupancy = B40C_SM_CTAS(cuda_props.device_sm_version);
+			int max_thread_occupancy = B40C_SM_THREADS(cuda_props.device_sm_version) / threads;
+			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+					(B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared) :
+					max_block_occupancy;
+			int max_reg_occupancy = B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
+
 			max_cta_occupancy = B40C_MIN(
-				B40C_SM_CTAS(cuda_props.device_sm_version),
-				B40C_MIN(B40C_SM_THREADS(cuda_props.device_sm_version) / threads,
-					B40C_MIN(
-						(kernel_attrs.sharedSizeBytes > 0) ? 
-							B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared:
-							B40C_SM_CTAS(cuda_props.device_sm_version), 
-						B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads))));
+				B40C_MIN(max_block_occupancy, max_thread_occupancy),
+				B40C_MIN(max_smem_occupancy, max_reg_occupancy));
 
 		} while (0);
 
