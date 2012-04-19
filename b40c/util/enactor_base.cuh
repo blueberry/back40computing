@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include <stdlib.h>
+
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/basic_utils.cuh>
@@ -92,6 +94,111 @@ protected:
 	//---------------------------------------------------------------------
 	// Tuning Utility Routines
 	//---------------------------------------------------------------------
+
+	struct KernelDetails
+	{
+		cudaFuncAttributes 				kernel_attrs;
+		util::CudaProperties 			cuda_props;
+		int 							max_cta_occupancy;
+
+		/**
+		 * Constructor
+		 */
+		template <typename KernelPtr>
+		KernelDetails(
+			KernelPtr Kernel,
+			int threads,
+			util::CudaProperties cuda_props) :
+				cuda_props(cuda_props)
+		{
+			util::B40CPerror(
+				cudaFuncGetAttributes(&kernel_attrs, Kernel),
+				"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
+				__FILE__,
+				__LINE__);
+
+
+			int max_block_occupancy = B40C_SM_CTAS(cuda_props.device_sm_version);
+			int max_thread_occupancy = B40C_SM_THREADS(cuda_props.device_sm_version) / threads;
+			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+					(B40C_SMEM_BYTES(cuda_props.device_sm_version) / kernel_attrs.sharedSizeBytes) :
+					max_block_occupancy;
+			int max_reg_occupancy = B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
+
+			max_cta_occupancy = B40C_MIN(
+				B40C_MIN(max_block_occupancy, max_thread_occupancy),
+				B40C_MIN(max_smem_occupancy, max_reg_occupancy));
+		}
+
+		/**
+		 * Return dynamic padding to reduce occupancy to a multiple of the specified base_occupancy
+		 */
+		int SmemPadding(int base_occupancy)
+		{
+			div_t div_result = div(max_cta_occupancy, base_occupancy);
+			if ((!div_result.quot) || (!div_result.rem)) {
+				return 0;													// Perfect division (or cannot be padded)
+			}
+
+			int target_occupancy = div_result.quot * base_occupancy;
+			int required_shared = B40C_SMEM_BYTES(cuda_props.device_sm_version) / target_occupancy;
+			int padding = (required_shared - kernel_attrs.sharedSizeBytes) / 128 * 128;					// Round down to nearest 128B
+
+			return padding;
+		}
+	};
+
+
+	template <typename KernelPtr>
+	cudaError_t MaxCtaOccupancy(
+		int &max_cta_occupancy,					// out param
+		KernelPtr Kernel,
+		int threads)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			// Get kernel attributes
+			cudaFuncAttributes kernel_attrs;
+			if (retval = util::B40CPerror(cudaFuncGetAttributes(&kernel_attrs, Kernel),
+				"EnactorBase cudaFuncGetAttributes kernel_attrs failed", __FILE__, __LINE__)) break;
+
+			KernelDetails details(Kernel, threads, cuda_props);
+			max_cta_occupancy = details.max_cta_occupancy;
+
+		} while (0);
+
+		return retval;
+
+	}
+
+	template <
+		typename UpsweepKernelPtr,
+		typename DownsweepKernelPtr>
+	cudaError_t MaxCtaOccupancy(
+		int &max_cta_occupancy,					// out param
+		UpsweepKernelPtr UpsweepKernel,
+		int upsweep_threads,
+		DownsweepKernelPtr DownsweepKernel,
+		int downsweep_threads)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			int upsweep_cta_occupancy, downsweep_cta_occupancy;
+
+			if (retval = MaxCtaOccupancy(upsweep_cta_occupancy, UpsweepKernel, upsweep_threads)) break;
+			if (retval = MaxCtaOccupancy(downsweep_cta_occupancy, DownsweepKernel, downsweep_threads)) break;
+
+			if (ENACTOR_DEBUG) printf("Occupancy:\t[upsweep occupancy: %d, downsweep occupancy %d]\n",
+				upsweep_cta_occupancy, downsweep_cta_occupancy);
+
+			max_cta_occupancy = B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy);
+
+		} while (0);
+
+		return retval;
+
+	}
+
 
 	/**
 	 * Computes dynamic smem allocations to ensure all three kernels end up
@@ -166,70 +273,6 @@ protected:
 
 		return retval;
 	}
-
-
-	template <typename KernelPtr>
-	cudaError_t MaxCtaOccupancy(
-		int &max_cta_occupancy,					// out param
-		KernelPtr Kernel,
-		int threads)
-	{
-		cudaError_t retval = cudaSuccess;
-		do {
-			// Get kernel attributes
-			cudaFuncAttributes kernel_attrs;
-			if (retval = util::B40CPerror(cudaFuncGetAttributes(&kernel_attrs, Kernel),
-				"EnactorBase cudaFuncGetAttributes kernel_attrs failed", __FILE__, __LINE__)) break;
-
-			// 128B aligned sections
-			int shared = ((kernel_attrs.sharedSizeBytes + 128 - 1) / 128) * 128;
-
-			int max_block_occupancy = B40C_SM_CTAS(cuda_props.device_sm_version);
-			int max_thread_occupancy = B40C_SM_THREADS(cuda_props.device_sm_version) / threads;
-			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
-					(B40C_SMEM_BYTES(cuda_props.device_sm_version) / shared) :
-					max_block_occupancy;
-			int max_reg_occupancy = B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
-
-			max_cta_occupancy = B40C_MIN(
-				B40C_MIN(max_block_occupancy, max_thread_occupancy),
-				B40C_MIN(max_smem_occupancy, max_reg_occupancy));
-
-		} while (0);
-
-		return retval;
-
-	}
-
-	template <
-		typename UpsweepKernelPtr,
-		typename DownsweepKernelPtr>
-	cudaError_t MaxCtaOccupancy(
-		int &max_cta_occupancy,					// out param
-		UpsweepKernelPtr UpsweepKernel,
-		int upsweep_threads,
-		DownsweepKernelPtr DownsweepKernel,
-		int downsweep_threads)
-	{
-		cudaError_t retval = cudaSuccess;
-		do {
-			int upsweep_cta_occupancy, downsweep_cta_occupancy;
-
-			if (retval = MaxCtaOccupancy(upsweep_cta_occupancy, UpsweepKernel, upsweep_threads)) break;
-			if (retval = MaxCtaOccupancy(downsweep_cta_occupancy, DownsweepKernel, downsweep_threads)) break;
-
-			if (ENACTOR_DEBUG) printf("Occupancy:\t[upsweep occupancy: %d, downsweep occupancy %d]\n",
-				upsweep_cta_occupancy, downsweep_cta_occupancy);
-
-			max_cta_occupancy = B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy);
-
-		} while (0);
-
-		return retval;
-
-	}
-
-
 
 	/**
 	 * Returns the number of threadblocks to launch for the given problem size.
@@ -344,7 +387,7 @@ protected:
 
 		} else {
 
-			int saturation_cap  = (4 * max_cta_occupancy * cuda_props.device_props.multiProcessorCount) - 1;
+			int saturation_cap  = (4 * max_cta_occupancy * cuda_props.device_props.multiProcessorCount);
 
 			// GF10x
 			grid_size = B40C_MIN(
