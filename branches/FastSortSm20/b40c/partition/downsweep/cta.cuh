@@ -119,21 +119,15 @@ struct Cta
 		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_SCAN_LANES);
 		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
 
-		warp_id = (threadIdx.x & (~31));
-		warpscan = smem_storage.warpscan + 32 + threadIdx.x + warp_id;
+		// Initialize warpscan identity regions
+		warp_id = threadIdx.x >> 5;
+		warpscan = &smem_storage.warpscan[warp_id][16 + (threadIdx.x & 31)];
+		warpscan[-16] = 0;
 
 		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
-
 			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
-		}
-
-		// Initialize warpscan identity regions
-		if ((KernelPolicy::THREADS == KernelPolicy::RAKING_THREADS) || (threadIdx.x < KernelPolicy::RAKING_THREADS)) {
-
-			int tid = threadIdx.x + (threadIdx.x & (~31));
-			smem_storage.warpscan[tid] = 0;
 		}
 	}
 
