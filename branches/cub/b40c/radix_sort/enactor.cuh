@@ -309,11 +309,18 @@ protected:
 			int dynamic_smem[3] = 	{0, 0, 0};
 			int grid_size[3] = 		{sweep_grid_size, 1, sweep_grid_size};
 
-			// Tuning option: make sure all kernels have the same overall smem allocation
-			if (BitPolicy::UNIFORM_SMEM_ALLOCATION) if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
-
 			// Tuning option: make sure that all kernels launch the same number of CTAs)
 			if (BitPolicy::UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
+
+			// Dynamic smem padding
+			if (BitPolicy::UNIFORM_SMEM_ALLOCATION) {
+				// Make sure all kernels have the same overall smem allocation
+				if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
+			} else {
+				// Compute smem padding for upsweep to make upsweep occupancy a multiple of downsweep occupancy
+				KernelDetails upsweep_details(UpsweepKernel, grid_size[0], this->cuda_props);
+				dynamic_smem[0] = upsweep_details.SmemPadding(downsweep_cta_occupancy);
+			}
 
 			// Upsweep reduction into spine
 			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
@@ -336,7 +343,7 @@ protected:
 			cudaDeviceGetSharedMemConfig(&old_config);
 			cudaDeviceSetSharedMemConfig((sizeof(typename Downsweep::RakingPartial) > 4) ?
 				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
-				cudaSharedMemBankSizeEightByte);		// 32-bit bank mode
+				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
 			// Downsweep scan from spine
 			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(

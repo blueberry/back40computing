@@ -27,8 +27,7 @@
 
 #pragma once
 
-namespace b40c {
-namespace util {
+namespace cub {
 
 
 /******************************************************************************
@@ -38,13 +37,13 @@ namespace util {
 /**
  * Select maximum
  */
-#define B40C_MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define B40C_MAX(a, b) ((a > b) ? a : b)
 
 
 /**
  * Select maximum
  */
-#define B40C_MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define B40C_MIN(a, b) ((a < b) ? a : b)
 
 /**
  * Return the size in quad-words of a number of bytes
@@ -280,6 +279,5 @@ struct ArrayProps<Array, _Element[_LENGTH], _LENGTH>
 
 
 
-} // namespace util
-} // namespace b40c
+} // namespace cub
 

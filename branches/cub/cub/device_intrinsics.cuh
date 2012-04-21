@@ -13,12 +13,7 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
- * Thanks!
- * 
+ *
  ******************************************************************************/
 
 /******************************************************************************
@@ -27,21 +22,40 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/reduction/warp_reduce.cuh>
+#include <cub/cuda_properties.cuh>
 
-namespace b40c {
-namespace util {
+namespace cub {
+
+
+/******************************************************************************
+ * Inlined PTX helper macros
+ ******************************************************************************/
+
+
+// Register modifier for pointer-types (for inlining PTX assembly)
+#if defined(_WIN64) || defined(__LP64__)
+	#define __B40C_LP64__ 1
+	// 64-bit register modifier for inlined asm
+	#define _B40C_ASM_PTR_ "l"
+#else
+	#define __B40C_LP64__ 0
+	// 32-bit register modifier for inlined asm
+	#define _B40C_ASM_PTR_ "r"
+#endif
+
 
 
 
 /**
- * SHR_ADD (shift-right then add)
+ * Shift-right then add.  Returns (x >> shift) + addend.
  */
-__device__ __forceinline__ unsigned int SHR_ADD(unsigned int x, unsigned int shift, unsigned int addend)
+__host__ __device__ __forceinline__ unsigned int ShrAdd(
+	unsigned int x,
+	unsigned int shift,
+	unsigned int addend)
 {
 	unsigned int ret;
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	asm("vshr.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
 		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
 #else
@@ -52,13 +66,13 @@ __device__ __forceinline__ unsigned int SHR_ADD(unsigned int x, unsigned int shi
 
 
 /**
- * SHL_ADD (shift-left then add)
+ * Shift-left then add.  Returns (x << shift) + addend.
  */
 
 __device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shift, unsigned int addend)
 {
 	unsigned int ret;
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	asm("vshl.u32.u32.u32.clamp.add %0, %1, %2, %3;" :
 		"=r"(ret) : "r"(x), "r"(shift), "r"(addend));
 #else
@@ -74,7 +88,7 @@ __device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shi
 __device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
 	unsigned int bits;
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
 #else
 	const unsigned int MASK = (1 << num_bits) - 1;
@@ -90,7 +104,7 @@ __device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bi
  */
 __device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned int y, unsigned int bit_start, unsigned int num_bits)
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	asm("bfi.b32 %0, %1, %2, %3, %4;" :
 		"=r"(ret) : "r"(y), "r"(x), "r"(bit_start), "r"(num_bits));
 #else
@@ -104,7 +118,7 @@ __device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned 
  */
 __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(x) : "r"(x), "r"(y), "r"(z));
 #else
 	x = x + y + z;
@@ -207,7 +221,7 @@ __device__ __forceinline__ unsigned int LaneId()
  */
 __device__ __forceinline__ unsigned int FastMul(unsigned int a, unsigned int b)
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	return a * b;
 #else
 	return __umul24(a, b);
@@ -220,7 +234,7 @@ __device__ __forceinline__ unsigned int FastMul(unsigned int a, unsigned int b)
  */
 __device__ __forceinline__ int FastMul(int a, int b)
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	return a * b;
 #else
 	return __mul24(a, b);
@@ -234,7 +248,7 @@ __device__ __forceinline__ int FastMul(int a, int b)
 template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int TallyWarpVote(int predicate)
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	return __popc(__ballot(predicate));
 #else
 	const int ACTIVE_WARPS = 1 << LOG_ACTIVE_WARPS;
@@ -258,7 +272,7 @@ __device__ __forceinline__ int TallyWarpVote(
 	int predicate,
 	volatile int storage[2][1 << LOG_ACTIVE_THREADS])
 {
-#if __CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 	return __popc(__ballot(predicate));
 #else
 	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(
@@ -274,7 +288,7 @@ __device__ __forceinline__ int TallyWarpVote(
 template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int WarpVoteAll(int predicate)
 {
-#if __CUDA_ARCH__ >= 120
+#if __CUB_CUDA_ARCH__ >= 120
 	return __all(predicate);
 #else 
 	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
@@ -289,7 +303,7 @@ __device__ __forceinline__ int WarpVoteAll(int predicate)
 template <int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int WarpVoteAll(int predicate)
 {
-#if __CUDA_ARCH__ >= 120
+#if __CUB_CUDA_ARCH__ >= 120
 	return __all(predicate);
 #else
 	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
@@ -305,7 +319,7 @@ __device__ __forceinline__ int WarpVoteAll(int predicate)
 template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int WarpVoteAny(int predicate)
 {
-#if __CUDA_ARCH__ >= 120
+#if __CUB_CUDA_ARCH__ >= 120
 	return __any(predicate);
 #else
 	return TallyWarpVote<LOG_ACTIVE_WARPS, LOG_ACTIVE_THREADS>(predicate);
@@ -319,7 +333,7 @@ __device__ __forceinline__ int WarpVoteAny(int predicate)
 template <int LOG_ACTIVE_THREADS>
 __device__ __forceinline__ int WarpVoteAny(int predicate)
 {
-#if __CUDA_ARCH__ >= 120
+#if __CUB_CUDA_ARCH__ >= 120
 	return __any(predicate);
 #else
 	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
@@ -328,28 +342,6 @@ __device__ __forceinline__ int WarpVoteAny(int predicate)
 	return TallyWarpVote<LOG_ACTIVE_THREADS>(predicate, storage);
 #endif
 }
-
-
-#if __CUDA_ARCH__ >= 300
-/**
- * One step of a warp SHFL scan.  Produces the following SASS:
- *
- *   SHFL.UP P0, R0, R4, 0x1, RZ;
- *   @P0 IADD R0, R0, R4;
- */
-__device__ __forceinline__ unsigned int ShflScanStep(unsigned int partial, unsigned int up_offset)
-{
-	unsigned int result;
-	asm(
-		"{.reg .u32 r0;"
-		".reg .pred p;"
-		"shfl.up.b32 r0|p, %1, %2, 0;"
-		"@p add.u32 r0, r0, %3;"
-		"mov.u32 %0, r0;}"
-		: "=r"(result) : "r"(partial), "r"(up_offset), "r"(partial));
-	return result;
-}
-#endif
 
 
 /**
@@ -377,6 +369,5 @@ struct AtomicInt<T, 8>
 };
 
 
-} // namespace util
-} // namespace b40c
+} // namespace cub
 

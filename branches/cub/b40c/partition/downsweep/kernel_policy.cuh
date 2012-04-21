@@ -56,14 +56,11 @@ struct KernelPolicy : TuningPolicy
 		LOG_THREADS						= TuningPolicy::LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
-		LOG_WARPS						= TuningPolicy::LOG_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
+		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
+		WARP_THREADS					= 1 << LOG_WARP_THREADS,
+
+		LOG_WARPS						= TuningPolicy::LOG_THREADS - LOG_WARP_THREADS,
 		WARPS							= 1 << LOG_WARPS,
-
-		LOG_RAKING_THREADS				= TuningPolicy::LOG_RAKING_THREADS,
-		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
-
-		LOG_RAKING_WARPS				= LOG_RAKING_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
-		RAKING_WARPS					= 1 << LOG_RAKING_WARPS,
 
 		LOAD_VEC_SIZE					= 1 << TuningPolicy::LOG_LOAD_VEC_SIZE,
 
@@ -82,7 +79,7 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_ELEMENTS				= LOG_SCAN_LANES + LOG_THREADS,
 		SCAN_ELEMENTS					= 1 << LOG_SCAN_ELEMENTS,
 
-		LOG_BASE_RAKING_SEG				= LOG_SCAN_ELEMENTS - LOG_RAKING_THREADS,
+		LOG_BASE_RAKING_SEG				= LOG_SCAN_ELEMENTS - LOG_THREADS,
 		PADDED_RAKING_SEG				= (1 << LOG_BASE_RAKING_SEG) + 1,
 
 		LOG_MEM_BANKS					= B40C_LOG_MEM_BANKS(TuningPolicy::CUDA_ARCH)
@@ -104,13 +101,13 @@ struct KernelPolicy : TuningPolicy
 		SizeT 							bin_carry[BINS];
 
 		// Storage for scanning local ranks
-		volatile RakingPartial			warpscan[RAKING_WARPS * 2 * B40C_WARP_THREADS(CUDA_ARCH)];
+		volatile RakingPartial			warpscan[WARPS][WARP_THREADS * 3 / 2];
 
 		struct {
 			int4						align_padding;
 			union {
 				Counter					packed_counters[SCAN_LANES + 1][THREADS][PACKED_COUNTERS];
-				RakingPartial			raking_grid[RAKING_THREADS][PADDED_RAKING_SEG];
+				RakingPartial			raking_grid[THREADS][PADDED_RAKING_SEG];
 				KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 				ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 			};

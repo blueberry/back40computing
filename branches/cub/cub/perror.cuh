@@ -1,0 +1,107 @@
+/******************************************************************************
+ * 
+ * Copyright 2010-2012 Duane Merrill
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License. 
+ * 
+ ******************************************************************************/
+
+/******************************************************************************
+ * Error handling utility routines
+ ******************************************************************************/
+
+#pragma once
+
+#include <stdio.h>
+
+// CUB debugging macro (prints error messages to stderr)
+#if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
+	#define CUB_DEBUG	(1)
+#else
+	#define CUB_DEBUG	(0)
+#endif
+
+namespace cub {
+
+
+/**
+ * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
+ * error message is printed to stderr along with the supplied source context.  Returns
+ * the CUDA error.
+ */
+cudaError_t Perror(
+	cudaError_t error,
+	const char *message,
+	const char *filename,
+	int line,
+	bool print = CUB_DEBUG)
+{
+	if (error && print) {
+		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
+
+
+/**
+ * Peeks at the last CUDA error.  If print is true and the specified error is
+ * not cudaSuccess, the corresponding error message is printed to stderr along
+ * with the supplied source context. Returns the CUDA error.
+ */
+cudaError_t Perror(
+	const char *message,
+	const char *filename,
+	int line,
+	bool print = CUB_DEBUG)
+{
+	cudaError_t error = cudaPeekAtLastError();
+	Perror(error, message, filename, line, print);
+	return error;
+}
+
+
+/**
+ * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
+ * error message is printed to stderr.  Returns the CUDA error.
+ */
+cudaError_t Perror(
+	cudaError_t error,
+	bool print = CUB_DEBUG)
+{
+	if (error && print) {
+		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
+
+
+/**
+ * Peeks at the last CUDA error.  If print is true and the specified error is
+ * not cudaSuccess, the corresponding error message is printed to stderr.
+ * Returns the CUDA error.
+ */
+cudaError_t Perror(bool print = CUB_DEBUG)
+{
+	cudaError_t error = cudaPeekAtLastError();
+	if (error && print) {
+		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
+
+
+} // namespace cub
+
