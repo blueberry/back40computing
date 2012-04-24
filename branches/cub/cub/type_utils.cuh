@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Common B40C Routines 
+ * Common CUB utility routines
  ******************************************************************************/
 
 #pragma once
@@ -37,29 +37,24 @@ namespace cub {
 /**
  * Select maximum
  */
-#define B40C_MAX(a, b) ((a > b) ? a : b)
+#define CUB_MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 
 /**
  * Select maximum
  */
-#define B40C_MIN(a, b) ((a < b) ? a : b)
+#define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
+
 
 /**
- * Return the size in quad-words of a number of bytes
+ * x rounded up to the nearest multiple of y
  */
-#define B40C_QUADS(bytes) (((bytes + sizeof(uint4) - 1) / sizeof(uint4)))
+#define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
+
 
 /******************************************************************************
  * Simple templated utilities
  ******************************************************************************/
-
-/**
- * Supress warnings for unused constants
- */
-template <typename T>
-__host__ __device__ __forceinline__ void SuppressUnusedConstantWarning(const T) {}
-
 
 /**
  * Perform a swap
@@ -186,23 +181,9 @@ struct IsVolatile<Tp volatile>
 };
 
 
-/**
- * Removes pointers
- */
-template <typename Tp, typename Up = Tp>
-struct RemovePointers
-{
-	typedef Tp Type;
-};
-template <typename Tp, typename Up>
-struct RemovePointers<Tp, Up*>
-{
-	typedef typename RemovePointers<Up, Up>::Type Type;
-};
-
 
 /**
- * Removes qualifiers
+ * Removes const and volatile qualifiers from type Tp
  */
 template <typename Tp, typename Up = Tp>
 struct RemoveQualifiers
@@ -226,55 +207,6 @@ template <typename Tp, typename Up>
 struct RemoveQualifiers<Tp, const volatile Up>
 {
 	typedef Up Type;
-};
-
-
-/**
- * Utility for finding dimensions and base types of opaque array typenames.
- * Usage for an array type ArrayType1:
- *
- *     ArrayProps<ArrayType1>::DIMS;									// Number of dimensions
- * 	   ArrayProps<ArrayType1>::LENGTH									// Length of first dimension
- *	   ArrayProps<typename ArrayProps<ArrayType1>::Element>::LENGTH		// Length of second dimension (possibly zero)
- */
-
-// Function declarations for finding length of array
-template <typename T, int X>
-static char (&ArrayLength(T (*array)[X]))[X + 1];		// Return value is size (in bytes) of the input array
-
-template <typename T>
-static char (&ArrayLength(T*))[1];						// Parameter is not of type pointer-to-array
-
-template <
-	typename Array,
-	typename Element = Array,
-	int LENGTH = sizeof(ArrayLength((Array *) NULL)) - 1>
-struct ArrayProps;
-
-// Specialization for base type (non array type)
-template <typename Array, typename _Element, int _LENGTH>
-struct ArrayProps
-{
-	typedef _Element Element;						// Element type
-	typedef Array BaseElement;						// BaseElement element
-
-	enum {
-		LENGTH 			= _LENGTH,
-		DIMS			= 0
-	};
-};
-
-// Specialization for array type
-template <typename Array, typename _Element, int _LENGTH>
-struct ArrayProps<Array, _Element[_LENGTH], _LENGTH>
-{
-	typedef _Element Element;						// Element type
-	typedef typename ArrayProps<_Element>::BaseElement BaseElement;		// BaseElement element type
-
-	enum {
-		LENGTH 			= _LENGTH,
-		DIMS			= ArrayProps<Element>::DIMS + 1
-	};
 };
 
 
