@@ -6,22 +6,6 @@
 #include <cub/cuda_properties.cuh>
 #include <cub/kernel_properties.cuh>
 
-
-/******************************************************************************
- *
- *****************************************************************************/
-
-#ifndef __CUDA_ARCH__
-	#define __CUB_CUDA_ARCH__ 0						// Host path
-#else
-	#define __CUB_CUDA_ARCH__ __CUDA_ARCH__			// Device path
-#endif
-
-
-template <typename T>
-__global__ void EmptyKernel(void) {}
-
-
 /******************************************************************************
  * Kernel tuning policy and entrypoint
  *****************************************************************************/
@@ -76,8 +60,8 @@ struct Policy
 /**
  * "Foo" kernel entrypoint
  */
-template <typename KernelPolicy, typename T>
-__global__ void FooKernel(T *d_data)
+template <typename KernelPolicy, typename T, typename SizeT>
+__global__ void FooKernel(T *d_data, SizeT num_elements)
 {
 	d_data[0] = KernelPolicy::TILE_SIZE;
 }
@@ -118,7 +102,9 @@ struct FooKernelProperties : cub::KernelProperties<KernelPtr>
 	 * Initializer
 	 */
 	template <typename KernelPolicy>
-	cudaError_t Init(const cub::CudaProperties &cuda_props)
+	cudaError_t Init(
+		KernelPolicy policy,
+		const cub::CudaProperties &cuda_props)
 	{
 		tile_size = KernelPolicy::TILE_SIZE;
 
@@ -126,6 +112,7 @@ struct FooKernelProperties : cub::KernelProperties<KernelPtr>
 			KernelPolicy::TILE_SIZE,
 			cuda_props);
 	}
+
 };
 
 
@@ -138,7 +125,7 @@ struct FooKernelProperties : cub::KernelProperties<KernelPtr>
 /**
  * Foo dispatch assistant
  */
-template <typename T>
+template <typename T, typename SizeT>
 struct FooDispatch
 {
 	//---------------------------------------------------------------------
@@ -198,17 +185,18 @@ struct FooDispatch
 	// Type definitions
 	//---------------------------------------------------------------------
 
-	// Type signatures of kernel entrypoints
-	typedef void (*UpsweepKernelPtr)(T *);
-	typedef void (*SpineKernelPtr)(T *);
-	typedef void (*DownsweepKernelPtr)(T *);
-
 	// Tuning policies specific to the arch-id of the active compiler
 	// pass.  (The policy's type signature is "opaque" to the target
 	// architecture.)
-	struct OpaqueUpsweep : 		TunedPolicy<TUNE_ARCH>::Upsweep {};
-	struct OpaqueSpine : 		TunedPolicy<TUNE_ARCH>::Spine {};
-	struct OpaqueDownsweep : 	TunedPolicy<TUNE_ARCH>::Downsweep {};
+	struct TunedUpsweep : 		TunedPolicy<TUNE_ARCH>::Upsweep {};
+	struct TunedSpine : 		TunedPolicy<TUNE_ARCH>::Spine {};
+	struct TunedDownsweep : 	TunedPolicy<TUNE_ARCH>::Downsweep {};
+
+	// Type signatures of kernel entrypoints
+	typedef void (*UpsweepKernelPtr)(T*, SizeT);
+	typedef void (*SpineKernelPtr)(T*, SizeT);
+	typedef void (*DownsweepKernelPtr)(T*, SizeT);
+
 
 
 	//---------------------------------------------------------------------
@@ -224,8 +212,8 @@ struct FooDispatch
 	FooKernelProperties<DownsweepKernelPtr>		downsweep_props;
 
 	// Host-specific tuning details
-	bool uniform_smem_allocation;
-	bool uniform_grid_size;
+	bool 										uniform_smem_allocation;
+	bool 										uniform_grid_size;
 
 
 	//---------------------------------------------------------------------
@@ -234,17 +222,17 @@ struct FooDispatch
 
 	// Initializer
 	template <typename Policy>
-	cudaError_t Init()
+	cudaError_t Init(Policy policy)
 	{
 		cudaError_t error = cudaSuccess;
 		do {
 
-			if (error = upsweep_props.template 		Init<typename Policy::Upsweep>(cuda_props)) break;
-			if (error = spine_props.template 		Init<typename Policy::Spine>(cuda_props)) break;
-			if (error = downsweep_props.template 	Init<typename Policy::Downsweep>(cuda_props)) break;
+			if (error = upsweep_props.Init(Policy::Upsweep(), cuda_props)) break;
+			if (error = spine_props.Init(Policy::Spine(), cuda_props)) break;
+			if (error = downsweep_props.Init(Policy::Downsweep(), cuda_props)) break;
 
-			uniform_smem_allocation = Policy::UNIFORM_SMEM_ALLOCATION;
-			uniform_grid_size = Policy::UNIFORM_GRID_SIZE;
+			uniform_smem_allocation 	= Policy::UNIFORM_SMEM_ALLOCATION;
+			uniform_grid_size 			= Policy::UNIFORM_GRID_SIZE;
 
 		} while (0);
 
@@ -264,7 +252,7 @@ struct FooDispatch
 	{
 		do {
 			if (init_error = cuda_props.init_error) break;
-			if (init_error = Init<Policy>()) break;
+			if (init_error = Init(Policy())) break;
 		} while (0);
 	}
 
@@ -274,23 +262,27 @@ struct FooDispatch
 	 * an appropriate policy specialization for the given ptx version.
 	 */
 	FooDispatch() :
-		upsweep_props(FooKernel<OpaqueUpsweep>),
-		spine_props(FooKernel<OpaqueSpine>),
-		downsweep_props(FooKernel<OpaqueDownsweep>)
+		upsweep_props(FooKernel<TunedUpsweep>),
+		spine_props(FooKernel<TunedSpine>),
+		downsweep_props(FooKernel<TunedDownsweep>)
 	{
 		do {
 			if (init_error = cuda_props.init_error) break;
 
 			// Initialize kernel details with appropriate tuning parameterizations
-
 			if (cuda_props.ptx_version >= 300) {
-				if (init_error = Init<TunedPolicy<300> >()) break;
-			} else if (cuda_props.ptx_version >= 200) {
-				if (init_error = Init<TunedPolicy<200> >()) break;
-			} else {
-				if (init_error = Init<TunedPolicy<100> >()) break;
-			}
 
+				if (init_error = Init(TunedPolicy<300>())) break;
+
+			} else if (cuda_props.ptx_version >= 200) {
+
+				if (init_error = Init(TunedPolicy<200>())) break;
+
+			} else {
+
+				if (init_error = Init(TunedPolicy<100>())) break;
+
+			}
 		} while (0);
 	}
 
@@ -315,7 +307,7 @@ struct FooDispatch
 	/**
 	 * Enact a Foo pass
 	 */
-	cudaError_t Enact(T *d_data)
+	cudaError_t Enact(T* d_data, SizeT num_elements)
 	{
 		if (init_error) {
 			return init_error;
@@ -325,15 +317,15 @@ struct FooDispatch
 
 		do {
 			// Upsweep
-			upsweep_props.kernel_ptr<<<1,1>>>(d_data);
+			upsweep_props.kernel_ptr<<<1,1>>>(d_data, num_elements);
 			if (retval = cudaDeviceSynchronize()) break;
 
 			// Spine
-			spine_props.kernel_ptr<<<1,1>>>(d_data);
+			spine_props.kernel_ptr<<<1,1>>>(d_data, num_elements);
 			if (retval = cudaDeviceSynchronize()) break;
 
 			// Downsweep
-			downsweep_props.kernel_ptr<<<1,1>>>(d_data);
+			downsweep_props.kernel_ptr<<<1,1>>>(d_data, num_elements);
 			if (retval = cudaDeviceSynchronize()) break;
 
 		} while (0);
@@ -343,6 +335,28 @@ struct FooDispatch
 };
 
 
+
+
+/**
+ *
+ */
+template <typename T, typename SizeT>
+cudaError_t Foo(T* d_data, SizeT num_elements)
+{
+	FooDispatch<T, SizeT> dispatch;
+	return dispatch.Enact(d_data, num_elements);
+}
+
+
+/**
+ *
+ */
+template <typename Policy, typename T, typename SizeT>
+cudaError_t Foo(Policy policy, T* d_data, SizeT num_elements)
+{
+	FooDispatch<T, SizeT> dispatch(policy);
+	return dispatch.Enact(d_data, num_elements);
+}
 
 
 
@@ -357,14 +371,13 @@ struct FooDispatch
 /**
  * Test selection and dispatch of autotuned policy
  */
-template <typename T>
-void TestAutotunedPolicy(T *d_data)
+template <typename T, typename SizeT>
+void TestAutotunedPolicy(T *d_data, SizeT num_elements)
 {
 	cudaError_t error;
 
 	// Dispatch kernel
-	FooDispatch<T> dispatch;
-	dispatch.Enact(d_data);
+	Foo(d_data, num_elements);
 
 	// Copy results back
 	T h_data;
@@ -381,8 +394,8 @@ void TestAutotunedPolicy(T *d_data)
 /**
  * Test custom tuning policy
  */
-template <typename T>
-void TestCustomPolicy(T *d_data)
+template <typename T, typename SizeT>
+void TestCustomPolicy(T *d_data, SizeT num_elements)
 {
 	cudaError_t error;
 
@@ -395,8 +408,7 @@ void TestCustomPolicy(T *d_data)
 		false> custom_policy;
 
 	// Dispatch kernel
-	FooDispatch<T> dispatch(custom_policy);
-	dispatch.Enact(d_data);
+	Foo(custom_policy, d_data, num_elements);
 
 	// Copy results back
 	T h_data;
@@ -437,11 +449,13 @@ int main(int argc, const char**argv)
 		exit(1);
 	}
 
+	int num_elements = 3;
+
 	// Test autotuned policy
-	TestAutotunedPolicy(d_data);
+	TestAutotunedPolicy(d_data, num_elements);
 
 	// Test custom policy
-	TestCustomPolicy(d_data);
+	TestCustomPolicy(d_data, num_elements);
 
 	return 0;
 }

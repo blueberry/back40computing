@@ -54,6 +54,7 @@ struct KernelProperties
 
 	int 						max_cta_occupancy;		// Maximum CTA occupancy per SM for the target device
 
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -138,7 +139,7 @@ struct KernelProperties
 		int max_grid_size = 0)
 	{
 		int grid_size;
-		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
+		int grains = (num_elements + schedule_granularity) / schedule_granularity;
 
 		if (sm_version < 120) {
 
@@ -190,7 +191,7 @@ struct KernelProperties
 		} else {
 
 			// GF10x: quadruple CTA occupancy times SM count
-			int grid_size = 4 * max_cta_occupancy * sm_count;
+			grid_size = 4 * max_cta_occupancy * sm_count;
 		}
 
 		grid_size = (max_grid_size > 0) ? max_grid_size : grid_size;	// Apply override, if specified
@@ -211,7 +212,7 @@ struct KernelProperties
 		}
 
 		int target_occupancy = div_result.quot * base_occupancy;
-		int required_shared = ((smem_bytes / target_occupancy) / smem_alloc_unit) * smem_alloc_unit;
+		int required_shared = CUB_ROUND_DOWN_NEAREST(smem_bytes / target_occupancy, smem_alloc_unit);
 		int padding = required_shared - cta_allocated_smem;
 
 		return padding;

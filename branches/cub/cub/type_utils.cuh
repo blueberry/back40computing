@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Common CUB utility routines
+ * Common CUB meta-programming and utility routines
  ******************************************************************************/
 
 #pragma once
@@ -50,6 +50,12 @@ namespace cub {
  * x rounded up to the nearest multiple of y
  */
 #define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
+
+
+/**
+ * x rounded down to the nearest multiple of y
+ */
+#define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
 
 
 /******************************************************************************
