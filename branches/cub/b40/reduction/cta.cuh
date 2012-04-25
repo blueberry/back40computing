@@ -106,10 +106,74 @@ struct Cta
 
 
 	/**
+	 * Process a single, full tile
+	 *
+	 * Each thread reduces only the strided values it loads.
+	 */
+	__device__ __forceinline__ void ProcessFullTile(bool first_tile)
+	{
+	}
+
+
+	/**
+	 * Process a single, partial tile
+	 *
+	 * Each thread reduces only the strided values it loads.
+	 */
+	__device__ __forceinline__ void ProcessPartialTile(bool first_tile)
+	{
+	}
+
+
+	/**
+	 * Guarded collective reduction across all threads, stores final reduction
+	 * to output. Used to collectively reduce each thread's aggregate after striding through
+	 * the input.
+	 *
+	 * Only threads with ranks less than num_elements are assumed to have valid
+	 * accumulator data.
+	 */
+	__device__ __forceinline__ void OutputToSpine(int num_elements)
+	{
+	}
+
+
+	/**
 	 * Process work range of tiles
 	 */
 	__device__ __forceinline__ void ProcessTiles()
 	{
+		// Check for at least one full tile of tile_elements
+		if (cta_progress.HasTile()) {
+
+			// Process first tile
+			ProcessFullTile(true);
+			cta_progress.NextTile();
+
+			// Process further full tiles
+			while (cta_progress.HasTile()) {
+				ProcessFullTile(false);
+				cta_progress.NextTile();
+			}
+
+			if (cta_progress.extra_elements) {
+				// Clean up last partial tile with guarded-io
+				ProcessPartialTile(false);
+			}
+
+			// Collectively reduce accumulator from each thread into output
+			// destination (all thread have valid reduction partials)
+			OutputToSpine(KernelPolicy::TILE_ELEMENTS);
+
+		} else if (cta_progress.extra_elements) {
+
+			// Clean up last partial tile with guarded-io (first tile)
+			ProcessPartialTile(true);
+
+			// Collectively reduce accumulator from each thread into output
+			// destination (not every thread may have a valid reduction partial)
+			OutputToSpine(cta_progress.extra_elements);
+		}
 	}
 };
 

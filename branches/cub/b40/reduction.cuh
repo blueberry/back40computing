@@ -24,7 +24,7 @@
 #pragma once
 
 #include <iterator>
-#include <b40/reduction/dispatch.cuh>
+#include <b40/reduction/problem.cuh>
 #include <cub/core/operators.cuh>
 
 namespace b40 {
@@ -36,28 +36,28 @@ namespace b40 {
 template <
 	typename InputIterator,
 	typename OutputIterator,
-	typename SizeT>
+	typename ReductionOp>
 cudaError_t Reduce(
-	InputIterator first,
-	OutputIterator result,
-	SizeT num_elements,
-	int max_grid_size = 0)
+	InputIterator 		first,
+	OutputIterator 		result,
+	int 				num_elements,
+	ReductionOp 		reduction_op,
+	int 				max_grid_size = 0)
 {
-	typedef typename std::iterator_traits<InputIterator>::value_type T;
-	typedef cub::Sum<T> ReductionOp;
-
-	reduction::Dispatch<
+	typedef reduction::Problem<
 		InputIterator,
 		OutputIterator,
-		SizeT,
-		ReductionOp> dispatch;
+		int,
+		ReductionOp> ReductionProblem;
 
-	return dispatch.Enact(
+	ReductionProblem problem(
 		first,
 		result,
 		num_elements,
-		ReductionOp(),
+		reduction_op,
 		max_grid_size);
+
+	return problem.Reduce();
 }
 
 
@@ -66,28 +66,17 @@ cudaError_t Reduce(
  */
 template <
 	typename InputIterator,
-	typename OutputIterator,
-	typename SizeT,
-	typename ReductionOp>
+	typename OutputIterator>
 cudaError_t Reduce(
 	InputIterator 		first,
 	OutputIterator 		result,
-	SizeT 				num_elements,
-	ReductionOp 		reduction_op,
+	int 				num_elements,
 	int 				max_grid_size = 0)
 {
-	reduction::Dispatch<
-		InputIterator,
-		OutputIterator,
-		SizeT,
-		ReductionOp> dispatch;
+	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
-	return dispatch.Enact(
-		first,
-		result,
-		num_elements,
-		reduction_op,
-		max_grid_size);
+	cub::Sum<T> reduction_op;
+	return Reduce(first, result, num_elements, reduction_op, max_grid_size);
 }
 
 
@@ -98,28 +87,29 @@ template <
 	typename Policy,
 	typename InputIterator,
 	typename OutputIterator,
-	typename SizeT,
 	typename ReductionOp>
 cudaError_t Reduce(
-	Policy policy,
-	InputIterator first,
-	OutputIterator result,
-	SizeT num_elements,
-	ReductionOp reduction_op,
-	int max_grid_size = 0)
+	Policy 				policy,
+	InputIterator 		first,
+	OutputIterator 		result,
+	int 				num_elements,
+	ReductionOp 		reduction_op,
+	int 				max_grid_size = 0)
 {
-	reduction::Dispatch<
+	typedef reduction::Problem<
 		InputIterator,
 		OutputIterator,
-		SizeT,
-		ReductionOp> dispatch(policy);
+		int,
+		ReductionOp> ReductionProblem;
 
-	return dispatch.Enact(
+	ReductionProblem problem(
 		first,
 		result,
 		num_elements,
 		reduction_op,
 		max_grid_size);
+
+	return problem.Reduce(policy);
 }
 
 
