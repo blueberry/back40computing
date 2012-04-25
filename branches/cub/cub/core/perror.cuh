@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -39,7 +40,7 @@ namespace cub {
  * error message is printed to stderr along with the supplied source context.  Returns
  * the CUDA error.
  */
-cudaError_t Perror(
+__host__ __device__ __forceinline__ cudaError_t Perror(
 	cudaError_t error,
 	const char *message,
 	const char *filename,
@@ -59,7 +60,7 @@ cudaError_t Perror(
  * not cudaSuccess, the corresponding error message is printed to stderr along
  * with the supplied source context. Returns the CUDA error.
  */
-cudaError_t Perror(
+__host__ __device__ __forceinline__ cudaError_t Perror(
 	const char *message,
 	const char *filename,
 	int line,
@@ -75,7 +76,7 @@ cudaError_t Perror(
  * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
  * error message is printed to stderr.  Returns the CUDA error.
  */
-cudaError_t Perror(
+__host__ __device__ __forceinline__ cudaError_t Perror(
 	cudaError_t error,
 	bool print = CUB_DEBUG)
 {
@@ -92,7 +93,7 @@ cudaError_t Perror(
  * not cudaSuccess, the corresponding error message is printed to stderr.
  * Returns the CUDA error.
  */
-cudaError_t Perror(bool print = CUB_DEBUG)
+__host__ __device__ __forceinline__ cudaError_t Perror(bool print = CUB_DEBUG)
 {
 	cudaError_t error = cudaPeekAtLastError();
 	if (error && print) {

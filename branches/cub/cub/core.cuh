@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,71 +15,17 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
- * Simple functor operators
+ * Core CUB utilities
  ******************************************************************************/
 
 #pragma once
 
-namespace b40c {
-namespace util {
-
-
-/**
- * Cast transform functor
- */
-template <typename T, typename S>
-struct CastTransformOp
-{
-	__device__ __forceinline__ T operator ()(S item)
-	{
-		return (T) item;
-	}
-};
-
-
-/**
- * Default equality functor
- */
-template <typename T>
-struct Equality
-{
-	__host__ __device__ __forceinline__ bool operator()(const T &a, const T &b)
-	{
-		return a == b;
-	}
-};
-
-
-/**
- * Default sum functor
- */
-template <typename T>
-struct Sum
-{
-	// Binary reduction
-	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
-	{
-		return a + b;
-	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return (T) 0;
-	}
-};
-
-
-
-
-} // namespace util
-} // namespace b40c
+#include "cub/core/cuda_properties.cuh"
+#include "cub/core/device_intrinsics.cuh"
+#include "cub/core/operators.cuh"
+#include "cub/core/perror.cuh"
+#include "cub/core/type_utils.cuh"
 

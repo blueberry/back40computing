@@ -54,7 +54,7 @@ struct CtaWorkDistribution
 	/**
 	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ void CtaWorkDistribution(
+	__host__ __device__ __forceinline__ CtaWorkDistribution(
 		SizeT num_elements,
 		int grid_size,
 		int schedule_granularity)
@@ -68,7 +68,7 @@ struct CtaWorkDistribution
 
 		normal_share 			= grains_per_cta * schedule_granularity;
 		normal_base_offset 		= extra_grains * schedule_granularity;
-		big_share 				= normal.elements + schedule_granularity;
+		big_share 				= normal_share + schedule_granularity;
 
 		last_block 				= CUB_MIN(total_grains, grid_size) - 1;
 	}
@@ -78,9 +78,9 @@ struct CtaWorkDistribution
 
 
 template <
-	typename SizeT,
-	int TILE_ELEMENTS,
-	bool WORK_STEAL>
+	typename 	SizeT,
+	int 		TILE_ELEMENTS,
+	bool 		WORK_STEALING>
 struct CtaProgress
 {
 	// Even share parameters
@@ -94,9 +94,11 @@ struct CtaProgress
 	__device__ __forceinline__ CtaProgress(
 		const CtaWorkDistribution<SizeT> &distribution)
 	{
-		extra_elements = distribution.extra_elements;
+		extra_elements = (blockIdx.x == distribution.last_block) ?
+			distribution.extra_elements :
+			0;
 
-		if (WORK_STEAL) {
+		if (WORK_STEALING) {
 
 			// This CTA gets at least one tile (if possible)
 			cta_base = blockIdx.x * TILE_ELEMENTS;
@@ -124,9 +126,20 @@ struct CtaProgress
 
 
 	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ CtaProgress(SizeT num_elements)
+	{
+		cta_base = 0;
+		extra_elements = num_elements % TILE_ELEMENTS;
+		out_of_bounds = num_elements - extra_elements;
+	}
+
+
+	/**
 	 *
 	 */
-	__device__ __forceinline__ bool FirstTile(SizeT &cta_offset )
+	__device__ __forceinline__ bool FirstTile(SizeT &cta_offset)
 	{
 		cta_offset = this->cta_base;
 		this->cta_base += TILE_ELEMENTS;
@@ -139,7 +152,7 @@ struct CtaProgress
 	 */
 	__device__ __forceinline__ bool NextTile(SizeT &cta_offset)
 	{
-		if (WORK_STEAL) {
+		if (WORK_STEALING) {
 
 		} else {
 
@@ -153,12 +166,14 @@ struct CtaProgress
 	/**
 	 *
 	 */
-	__device__ __forceinline__ bool LastPartialTile(SizeT &cta_offset, int &num_valid)
+	__device__ __forceinline__ bool LastPartialTile(
+		SizeT &cta_offset,
+		int &num_valid)
 	{
 		cta_offset = out_of_bounds;
 		num_valid = extra_elements;
 
-		return (blockIdx.x == distribution.last_block);
+		return (num_valid);
 	}
 
 

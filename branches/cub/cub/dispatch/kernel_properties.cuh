@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <cub/cuda_properties.cuh>
-#include <cub/type_utils.cuh>
+#include <cub/core/cuda_properties.cuh>
+#include <cub/core/type_utils.cuh>
 
 namespace cub {
 
@@ -60,23 +60,17 @@ struct KernelProperties
 	//---------------------------------------------------------------------
 
 	/**
-	 * Constructor
-	 */
-	KernelProperties(KernelPtr kernel_ptr) :
-		kernel_ptr(kernel_ptr)
-	{};
-
-
-	/**
 	 * Initializer
 	 */
 	cudaError_t Init(
+		KernelPtr kernel_ptr,
 		int cta_threads,					// Number of threads per CTA
 		const CudaProperties &cuda_props)	// CUDA properties for a specific device
 	{
 		cudaError_t error = cudaSuccess;
 
 		do {
+			this->kernel_ptr			= kernel_ptr;
 			this->cta_threads 			= cta_threads;
 			this->sm_count 				= cuda_props.sm_count;
 			this->sm_version 			= cuda_props.sm_version;

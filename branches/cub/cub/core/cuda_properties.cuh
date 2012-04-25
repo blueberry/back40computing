@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/perror.cuh>
+#include <cub/core/perror.cuh>
 
 namespace cub {
 
