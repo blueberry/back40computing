@@ -37,11 +37,11 @@ using namespace cub;
  * Reduction CTA abstraction
  */
 template <
-	typename KernelPolicy,
-	typename InputIterator,
-	typename OutputIterator,
-	typename ReductionOp,
-	typename SizeT>
+	typename KernelPolicy,		// Tuning policy for this kernel
+	typename InputIterator,		// Iterator type for reading input
+	typename OutputIterator,	// Iterator type for producing output
+	typename ReductionOp,		// Type of reduction operator (functor)
+	typename SizeT>				// Integral type for indexing input items
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -78,7 +78,7 @@ struct Cta
 
 	InputIterator		d_in;				// Input iterator
 	OutputIterator		d_out;				// Output iterator
-	T 					accumulator;		// The value we will accumulate (in each thread)
+	T 					accumulator;		// The value each thread is to accumulate
 	ReductionOp			reduction_op;		// Reduction operator
 	CtaProgress			cta_progress;		// CTA progress
 
