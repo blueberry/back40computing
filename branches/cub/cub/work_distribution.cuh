@@ -35,7 +35,7 @@ namespace cub {
  * Description of work distribution amongst CTAs
  */
 template <typename SizeT>
-struct CtaWorkDistribution
+struct WorkDistribution
 {
 	int total_grains;
 	int extra_grains;
@@ -51,7 +51,7 @@ struct CtaWorkDistribution
 	/**
 	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ CtaWorkDistribution(
+	__host__ __device__ __forceinline__ WorkDistribution(
 		SizeT num_elements,
 		int grid_size,
 		int schedule_granularity)
@@ -91,7 +91,7 @@ struct CtaProgress
 	 * Constructor
 	 */
 	__device__ __forceinline__ CtaProgress(
-		const CtaWorkDistribution<SizeT> &distribution)
+		const WorkDistribution<SizeT> &distribution)
 	{
 		extra_elements = (blockIdx.x == distribution.last_block) ?
 			distribution.extra_elements :

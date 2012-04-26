@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/cta_work_distribution.cuh>
+#include <cub/work_distribution.cuh>
 #include <b40/reduction/cta.cuh>
 
 namespace b40 {
@@ -45,8 +45,9 @@ __global__ void UpsweepKernel(
 	InputIterator					d_in,
 	OutputIterator			 		d_out,
 	ReductionOp						reduction_op,
-	CtaWorkDistribution<SizeT> 		work_distribution)
+	WorkDistribution<SizeT> 		work_distribution)
 {
+	// CTA abstraction type
 	typedef Cta<
 		KernelPolicy,
 		InputIterator,
@@ -54,8 +55,10 @@ __global__ void UpsweepKernel(
 		ReductionOp,
 		SizeT> Cta;
 
+	// Declare shared memory for the CTA
 	__shared__ typename Cta::SmemStorage smem_storage;
 
+	// Create CTA and have it iteratively process input tiles
 	Cta cta(smem_storage, d_in, d_out, reduction_op, work_distribution);
 	cta.ProcessTiles();
 }
@@ -76,6 +79,7 @@ __global__ void SingleKernel(
 	ReductionOp						reduction_op,
 	SizeT							num_elements)
 {
+	// CTA abstraction type
 	typedef Cta<
 		KernelPolicy,
 		InputIterator,
@@ -83,8 +87,10 @@ __global__ void SingleKernel(
 		ReductionOp,
 		SizeT> Cta;
 
+	// Declare shared memory for the CTA
 	__shared__ typename Cta::SmemStorage smem_storage;
 
+	// Create CTA and have it iteratively process input tiles
 	Cta cta(smem_storage, d_in, d_out, reduction_op, num_elements);
 	cta.ProcessTiles();
 }

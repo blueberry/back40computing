@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/cuda_properties.cuh>
+#include <cub/device_props.cuh>
 
 namespace cub {
 
@@ -32,25 +32,24 @@ namespace cub {
  * Inlined PTX helper macros
  ******************************************************************************/
 
-
-// Register modifier for pointer-types (for inlining PTX assembly)
+/**
+ * Register modifier for pointer-types (for inlining PTX assembly)
+ */
 #if defined(_WIN64) || defined(__LP64__)
-	#define __B40C_LP64__ 1
+	#define __CUB_LP64__ 1
 	// 64-bit register modifier for inlined asm
-	#define _B40C_ASM_PTR_ "l"
+	#define _CUB_ASM_PTR_ "l"
 #else
-	#define __B40C_LP64__ 0
+	#define __CUB_LP64__ 0
 	// 32-bit register modifier for inlined asm
-	#define _B40C_ASM_PTR_ "r"
+	#define _CUB_ASM_PTR_ "r"
 #endif
-
-
 
 
 /**
  * Shift-right then add.  Returns (x >> shift) + addend.
  */
-__host__ __device__ __forceinline__ unsigned int ShrAdd(
+__device__ __forceinline__ unsigned int ShrAdd(
 	unsigned int x,
 	unsigned int shift,
 	unsigned int addend)
@@ -69,8 +68,10 @@ __host__ __device__ __forceinline__ unsigned int ShrAdd(
 /**
  * Shift-left then add.  Returns (x << shift) + addend.
  */
-
-__device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shift, unsigned int addend)
+__device__ __forceinline__ unsigned int SHL_ADD(
+	unsigned int x,
+	unsigned int shift,
+	unsigned int addend)
 {
 	unsigned int ret;
 #if __CUB_CUDA_ARCH__ >= 200
@@ -82,11 +83,14 @@ __device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shi
 	return ret;
 }
 
+
 /**
- * BFE (bitfield extract).   Extracts a bit field from source and places the
- * zero or sign-extended result in extract
+ * Bitfield-extract.
  */
-__device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
+__device__ __forceinline__ unsigned int BFE(
+	unsigned int source,
+	unsigned int bit_start,
+	unsigned int num_bits)
 {
 	unsigned int bits;
 #if __CUB_CUDA_ARCH__ >= 200
@@ -99,11 +103,15 @@ __device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bi
 }
 
 
-
 /**
- * BFI (bitfield insert).  Inserts the first num_bits of y into x starting at bit_start
+ * Bitfield insert.  Inserts the first num_bits of y into x starting at bit_start
  */
-__device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned int y, unsigned int bit_start, unsigned int num_bits)
+__device__ __forceinline__ void BFI(
+	unsigned int &ret,
+	unsigned int x,
+	unsigned int y,
+	unsigned int bit_start,
+	unsigned int num_bits)
 {
 #if __CUB_CUDA_ARCH__ >= 200
 	asm("bfi.b32 %0, %1, %2, %3, %4;" :
@@ -115,7 +123,7 @@ __device__ __forceinline__ void BFI(unsigned int &ret, unsigned int x, unsigned 
 
 
 /**
- * IADD3
+ * Vector-3 add
  */
 __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
 {
@@ -128,9 +136,8 @@ __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, un
 }
 
 
-
 /**
- * PMT (byte permute).  Pick four arbitrary bytes from two 32-bit registers, and
+ * Byte-permute. Pick four arbitrary bytes from two 32-bit registers, and
  * reassemble them into a 32-bit destination register
  */
 __device__ __forceinline__ int PRMT(unsigned int a, unsigned int b, unsigned int index)
@@ -140,12 +147,19 @@ __device__ __forceinline__ int PRMT(unsigned int a, unsigned int b, unsigned int
 	return ret;
 }
 
+
+/**
+ * Sync-threads barrier.
+ */
 __device__ __forceinline__ void BAR(int count)
 {
 	asm volatile("bar.sync 1, %0;" : : "r"(count));
 }
 
 
+/**
+ * Floating point multiply. (Mantissa LSB rounds towards zero.)
+ */
 __device__ __forceinline__ float FMUL_RZ(float a, float b)
 {
 	float d;
@@ -153,49 +167,16 @@ __device__ __forceinline__ float FMUL_RZ(float a, float b)
 	return d;
 }
 
+
+/**
+ * Floating point multiply-add. (Mantissa LSB rounds towards zero.)
+ */
 __device__ __forceinline__ float FFMA_RZ(float a, float b, float c)
 {
 	float d;
 	asm("fma.rz.f32 %0, %1, %2, %3;" : "=f"(d) : "f"(a), "f"(b), "f"(c));
 	return d;
 }
-
-
-
-/**
- * Expands packed nibbles into packed bytes
- */
-__device__ __forceinline__ void NibblesToBytes(
-	unsigned int &int_byte0,
-	unsigned int &int_byte1,
-	unsigned int int_nibbles)
-{
-	unsigned int nib_shifted = int_nibbles >> 4;
-
-	int_byte0 = PRMT(int_nibbles, nib_shifted, 0x5140);
-	int_byte0 &= 0x0f0f0f0f;
-
-	int_byte1 = PRMT(int_nibbles, nib_shifted, 0x7362);
-	int_byte1 &= 0x0f0f0f0f;
-}
-
-
-/**
- * Expands packed nibbles into packed bytes
- */
-__device__ __forceinline__ void BytesToHalves(
-	unsigned int int_halves[2],
-	unsigned int int_bytes)
-{
-	int_halves[0] = PRMT(int_bytes, 0, 0x4140);
-	int_halves[1] = PRMT(int_bytes, 0, 0x4342);
-}
-
-
-
-
-
-
 
 
 /**
@@ -216,158 +197,6 @@ __device__ __forceinline__ unsigned int LaneId()
 	return ret;
 }
 
-
-/**
- * The best way to multiply integers (24 effective bits or less)
- */
-__device__ __forceinline__ unsigned int FastMul(unsigned int a, unsigned int b)
-{
-#if __CUB_CUDA_ARCH__ >= 200
-	return a * b;
-#else
-	return __umul24(a, b);
-#endif
-}
-
-
-/**
- * The best way to multiply integers (24 effective bits or less)
- */
-__device__ __forceinline__ int FastMul(int a, int b)
-{
-#if __CUB_CUDA_ARCH__ >= 200
-	return a * b;
-#else
-	return __mul24(a, b);
-#endif	
-}
-
-
-/**
- * The best way to tally a warp-vote
- */
-template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int TallyWarpVote(int predicate)
-{
-#if __CUB_CUDA_ARCH__ >= 200
-	return __popc(__ballot(predicate));
-#else
-	const int ACTIVE_WARPS = 1 << LOG_ACTIVE_WARPS;
-	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
-
-	__shared__ volatile int storage[ACTIVE_WARPS + 1][ACTIVE_THREADS];
-
-	int tid = threadIdx.x & (B40C_WARP_THREADS(__B40C_CUDA_ARCH__) - 1);
-	int wid = threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__);
-
-	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(predicate, storage[wid], tid);
-#endif
-}
-
-
-/**
- * The best way to tally a warp-vote in the first warp
- */
-template <int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int TallyWarpVote(
-	int predicate,
-	volatile int storage[2][1 << LOG_ACTIVE_THREADS])
-{
-#if __CUB_CUDA_ARCH__ >= 200
-	return __popc(__ballot(predicate));
-#else
-	return reduction::WarpReduce<LOG_ACTIVE_THREADS>::Invoke(
-		predicate, 
-		storage);
-#endif
-}
-
-
-/**
- * The best way to warp-vote-all
- */
-template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int WarpVoteAll(int predicate)
-{
-#if __CUB_CUDA_ARCH__ >= 120
-	return __all(predicate);
-#else 
-	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
-	return (TallyWarpVote<LOG_ACTIVE_WARPS, LOG_ACTIVE_THREADS>(predicate) == ACTIVE_THREADS);
-#endif
-}
-
-
-/**
- * The best way to warp-vote-all in the first warp
- */
-template <int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int WarpVoteAll(int predicate)
-{
-#if __CUB_CUDA_ARCH__ >= 120
-	return __all(predicate);
-#else
-	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
-	__shared__ volatile int storage[2][ACTIVE_THREADS];
-
-	return (TallyWarpVote<LOG_ACTIVE_THREADS>(predicate, storage) == ACTIVE_THREADS);
-#endif
-}
-
-/**
- * The best way to warp-vote-any
- */
-template <int LOG_ACTIVE_WARPS, int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int WarpVoteAny(int predicate)
-{
-#if __CUB_CUDA_ARCH__ >= 120
-	return __any(predicate);
-#else
-	return TallyWarpVote<LOG_ACTIVE_WARPS, LOG_ACTIVE_THREADS>(predicate);
-#endif
-}
-
-
-/**
- * The best way to warp-vote-any in the first warp
- */
-template <int LOG_ACTIVE_THREADS>
-__device__ __forceinline__ int WarpVoteAny(int predicate)
-{
-#if __CUB_CUDA_ARCH__ >= 120
-	return __any(predicate);
-#else
-	const int ACTIVE_THREADS = 1 << LOG_ACTIVE_THREADS;
-	__shared__ volatile int storage[2][ACTIVE_THREADS];
-
-	return TallyWarpVote<LOG_ACTIVE_THREADS>(predicate, storage);
-#endif
-}
-
-
-/**
- * Wrapper for performing atomic operations on integers of type size_t 
- */
-template <typename T, int SizeT = sizeof(T)>
-struct AtomicInt;
-
-template <typename T>
-struct AtomicInt<T, 4>
-{
-	static __device__ __forceinline__ T Add(T* ptr, T val)
-	{
-		return atomicAdd((unsigned int *) ptr, (unsigned int) val);
-	}
-};
-
-template <typename T>
-struct AtomicInt<T, 8>
-{
-	static __device__ __forceinline__ T Add(T* ptr, T val)
-	{
-		return atomicAdd((unsigned long long int *) ptr, (unsigned long long int) val);
-	}
-};
 
 
 } // namespace cub

@@ -23,9 +23,10 @@
 
 #pragma once
 
-#include <cub/cuda_properties.cuh>
-#include <cub/kernel_properties.cuh>
-#include <cub/cta_work_distribution.cuh>
+#include <cub/host/cuda_props.cuh>
+#include <cub/host/kernel_props.cuh>
+
+#include <cub/work_distribution.cuh>
 
 #include <b40/reduction/kernel_policy.cuh>
 #include <b40/reduction/policy.cuh>
@@ -55,16 +56,17 @@ struct ProblemInstance
 	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
 	// Type signatures of kernel entrypoints
-	typedef void (*UpsweepKernelPtr)	(InputIterator, T*, ReductionOp, CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelPtr)	(InputIterator, T*, ReductionOp, WorkDistribution<SizeT>);
 	typedef void (*SpineKernelPtr)		(T*, T*, ReductionOp, SizeT);
 	typedef void (*SingleKernelPtr)		(InputIterator, T*, ReductionOp, SizeT);
 
 
 	/**
-	 * Structure reflecting KernelPolicy details
+	 * Kernel properties for a given kernel pointer, opaquely parameterized by
+	 * static KernelPolicy details for that kernel
 	 */
 	template <typename KernelPtr>
-	struct KernelDetails : KernelProperties<KernelPtr>
+	struct KernelProps : cub::KernelProps<KernelPtr>
 	{
 		int tile_elements;
 
@@ -75,11 +77,11 @@ struct ProblemInstance
 		cudaError_t Init(
 			KernelPolicy 			policy,
 			KernelPtr 				kernel_ptr,
-			const CudaProperties 	&cuda_props)
+			const CudaProps 		&cuda_props)
 		{
 			tile_elements = KernelPolicy::TILE_ELEMENTS;
 
-			return KernelProperties<KernelPtr>::Init(
+			return cub::KernelProps<KernelPtr>::Init(
 				kernel_ptr,
 				KernelPolicy::THREADS,
 				cuda_props);
@@ -91,7 +93,9 @@ struct ProblemInstance
 	// Fields
 	//---------------------------------------------------------------------
 
-	CudaProperties				cuda_props;
+	CudaProps					cuda_props;
+
+	// Problem-specific inputs
 	InputIterator 				first;
 	T* 							d_result;
 	T* 							h_result;
@@ -132,9 +136,9 @@ struct ProblemInstance
 	 * Reduce problem using the specified kernel and dispatch details
 	 */
 	cudaError_t Reduce(
-		const KernelDetails<UpsweepKernelPtr>&	upsweep_details,
-		const KernelDetails<SpineKernelPtr>&	spine_details,
-		const KernelDetails<SingleKernelPtr>&	single_details,
+		const KernelProps<UpsweepKernelPtr>&	upsweep_details,
+		const KernelProps<SpineKernelPtr>&		spine_details,
+		const KernelProps<SingleKernelPtr>&		single_details,
 		bool 									uniform_smem_allocation,
 		bool 									uniform_grid_size)
 	{
@@ -168,15 +172,15 @@ struct ProblemInstance
 			// Construct kernel details from policy
 
 			UpsweepKernelPtr upsweep_ptr = UpsweepKernel<UpsweepKernelPolicy>;
-			KernelDetails<UpsweepKernelPtr>	upsweep_details;
+			KernelProps<UpsweepKernelPtr>	upsweep_details;
 			if (error = upsweep_details.Init(upsweep_policy, upsweep_ptr, cuda_props)) break;
 
 			SpineKernelPtr spine_ptr = SingleKernel<SpineKernelPolicy>;
-			KernelDetails<SpineKernelPtr> spine_details;
+			KernelProps<SpineKernelPtr> spine_details;
 			if (error = spine_details.Init(spine_policy, spine_ptr, cuda_props)) break;
 
 			SingleKernelPtr	single_ptr = SingleKernel<SingleKernelPolicy>;
-			KernelDetails<SingleKernelPtr> single_details;
+			KernelProps<SingleKernelPtr> single_details;
 			if (error = single_details.Init(single_policy, single_ptr, cuda_props)) break;
 
 			// Reduce problem using the kernel and dispatch details
@@ -200,7 +204,8 @@ struct ProblemInstance
 	template <typename Policy>
 	cudaError_t Reduce(Policy policy)
 	{
-		// Reduce problem using dispatch and kernel policy specializations
+		// Reduce problem using the specified dispatch-policy and
+		// kernel-policy specializations
 		return Reduce(
 			policy,
 			Policy::Upsweep(),

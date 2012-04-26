@@ -25,7 +25,7 @@
 
 #include <iterator>
 
-#include <cub/cta_work_distribution.cuh>
+#include <cub/work_distribution.cuh>
 
 namespace b40 {
 namespace reduction {
@@ -150,7 +150,7 @@ struct Cta
 			ProcessFullTile(true);
 			cta_progress.NextTile();
 
-			// Process further full tiles
+			// Process any further full tiles
 			while (cta_progress.HasTile()) {
 				ProcessFullTile(false);
 				cta_progress.NextTile();

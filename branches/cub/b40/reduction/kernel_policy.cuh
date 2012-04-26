@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/tile/io.cuh>
+#include <cub/io.cuh>
 
 namespace b40 {
 namespace reduction {

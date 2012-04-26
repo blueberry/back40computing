@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <cub/core/cuda_properties.cuh>
-#include <cub/core/type_utils.cuh>
+#include <cub/host/cuda_props.cuh>
+#include <cub/type_utils.cuh>
 
 namespace cub {
 
@@ -34,7 +34,7 @@ namespace cub {
  * Encapsulation of kernel properties for a combination of {device, CTA size}
  */
 template <typename KernelPtr>
-struct KernelProperties
+struct KernelProps
 {
 	//---------------------------------------------------------------------
 	// Fields
@@ -65,7 +65,7 @@ struct KernelProperties
 	cudaError_t Init(
 		KernelPtr kernel_ptr,
 		int cta_threads,					// Number of threads per CTA
-		const CudaProperties &cuda_props)	// CUDA properties for a specific device
+		const CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		cudaError_t error = cudaSuccess;
 

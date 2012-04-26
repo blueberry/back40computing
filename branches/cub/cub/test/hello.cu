@@ -2,60 +2,46 @@
 
 #include <stdio.h>
 
+#include <cub/io.cuh>
+
+using namespace cub;
+
+template <ReadModifier READ_MODIFIER, typename T>
+__global__ void Kernel(T *d_in, T *d_out)
+{
+	T datum = Load<READ_MODIFIER>(d_in);
+	*d_out = datum;
+}
+
+
+__global__ void Kernel2(double4 *d_in, double4 *d_out)
+{
+	double4 datum = *d_in;
+	*d_out = datum;
+}
+
 
 /**
  * Main
  */
-int main(int argc, const char**argv)
+int main(int argc, const int**argv)
 {
-	typedef int T;
+	double* d_double = NULL;
+	Kernel<READ_CS><<<1,1>>>(d_double, d_double);
 
-	cudaError_t error;
+	double1* d_double1 = NULL;
+	Kernel<READ_CS><<<1,1>>>(d_double1, d_double1);
 
-	// Set device
-	int current_device = 0;
-	if (argc > 1) {
-		current_device = atoi(argv[1]);
-	}
-	if (error = cudaSetDevice(current_device)) {
-		printf("cudaSetDevice failed (%d:%s)\n",  error, cudaGetErrorString(error));
-		exit(1);
-	}
+	double2* d_double2 = NULL;
+	Kernel<READ_CS><<<1,1>>>(d_double2, d_double2);
 
-	cudaDeviceProp device_props;
-	if (error = cudaGetDeviceProperties(&device_props, current_device)) {
-		printf("cudaGetDeviceProperties failed (%d:%s)\n",  error, cudaGetErrorString(error));
-		exit(1);
-	}
-	printf("Device(%s), UVA(%d)\n", device_props.name, device_props.unifiedAddressing);
+	double4* d_double4 = NULL;
+	Kernel<READ_CS><<<1,1>>>(d_double4, d_double4);
 
-	// Allocate device data
-	T *d_data;
-	if (error = cudaMalloc((void**) &d_data, sizeof(T))) {
-		printf("cudaMalloc failed (%d:%s)\n",  error, cudaGetErrorString(error));
-		exit(1);
-	}
+	Kernel2<<<1,1>>>(d_double4, d_double4);
 
-	cudaPointerAttributes pointer_attrs;
-	if (error = cudaPointerGetAttributes(&pointer_attrs, d_data)) {
-		printf("cudaPointerGetAttributes1 failed (%d:%s)\n",  error, cudaGetErrorString(error));
-		exit(1);
-	}
-
-	printf("Type(%s), device(%d)\n",
-		(pointer_attrs.memoryType == cudaMemoryTypeDevice) ? "Device" : "Host",
-		pointer_attrs.device);
-
-	int h_data[5];
-
-	if (error = cudaPointerGetAttributes(&pointer_attrs, h_data)) {
-		printf("cudaPointerGetAttributes2 failed (%d:%s)\n",  error, cudaGetErrorString(error));
-		exit(1);
-	}
-
-	printf("Type(%s), device(%d)\n",
-		(pointer_attrs.memoryType == cudaMemoryTypeDevice) ? "Device" : "Host",
-		pointer_attrs.device);
+	cudaDeviceSynchronize();
 
 	return 0;
+
 }

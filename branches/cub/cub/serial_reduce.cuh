@@ -23,12 +23,10 @@
 
 #pragma once
 
-#include <b40c/util/operators.cuh>
-#include <b40c/util/device_intrinsics.cuh>
+#include <cub/operators.cuh>
+#include <cub/device_intrinsics.cuh>
 
-namespace b40c {
-namespace util {
-namespace reduction {
+namespace cub {
 
 namespace serial_reduction
 {
@@ -233,8 +231,6 @@ __device__ __forceinline__ T SerialReduce(
 }
 
 
-} // namespace reduction
-} // namespace util
-} // namespace b40c
+} // namespace cub
 
 
