@@ -24,8 +24,11 @@
 #pragma once
 
 #include <iterator>
-#include <b40/reduction/problem.cuh>
-#include <cub/core/operators.cuh>
+
+#include <cub/operators.cuh>
+
+#include <b40/reduction/problem_instance.cuh>
+
 
 namespace b40 {
 
@@ -35,24 +38,21 @@ namespace b40 {
  */
 template <
 	typename InputIterator,
-	typename OutputIterator,
 	typename ReductionOp>
 cudaError_t Reduce(
-	InputIterator 		first,
-	OutputIterator 		result,
-	int 				num_elements,
-	ReductionOp 		reduction_op,
-	int 				max_grid_size = 0)
+	InputIterator 												d_in,
+	typename std::iterator_traits<InputIterator>::value_type* 	d_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_seed,
+	int 														num_elements,
+	ReductionOp 												reduction_op,
+	int 														max_grid_size = 0)
 {
-	typedef reduction::Problem<
-		InputIterator,
-		OutputIterator,
-		int,
-		ReductionOp> ReductionProblem;
-
-	ReductionProblem problem(
-		first,
-		result,
+	reduction::ProblemInstance<InputIterator, int, ReductionOp> problem(
+		d_in,
+		d_result,
+		h_result,
+		h_seed,
 		num_elements,
 		reduction_op,
 		max_grid_size);
@@ -64,21 +64,27 @@ cudaError_t Reduce(
 /**
  * @return cudaSuccess on success, error enumeration otherwise
  */
-template <
-	typename InputIterator,
-	typename OutputIterator>
+template <typename InputIterator>
 cudaError_t Reduce(
-	InputIterator 		first,
-	OutputIterator 		result,
-	int 				num_elements,
-	int 				max_grid_size = 0)
+	InputIterator 												d_in,
+	typename std::iterator_traits<InputIterator>::value_type* 	d_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_seed,
+	int 														num_elements,
+	int 														max_grid_size = 0)
 {
 	typedef typename std::iterator_traits<InputIterator>::value_type T;
-
 	cub::Sum<T> reduction_op;
-	return Reduce(first, result, num_elements, reduction_op, max_grid_size);
-}
 
+	return Reduce(
+		d_in,
+		d_result,
+		h_result,
+		h_seed,
+		num_elements,
+		reduction_op,
+		max_grid_size);
+}
 
 /**
  * @return cudaSuccess on success, error enumeration otherwise
@@ -86,25 +92,22 @@ cudaError_t Reduce(
 template <
 	typename Policy,
 	typename InputIterator,
-	typename OutputIterator,
 	typename ReductionOp>
 cudaError_t Reduce(
-	Policy 				policy,
-	InputIterator 		first,
-	OutputIterator 		result,
-	int 				num_elements,
-	ReductionOp 		reduction_op,
-	int 				max_grid_size = 0)
+	InputIterator 												d_in,
+	typename std::iterator_traits<InputIterator>::value_type* 	d_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_result,
+	typename std::iterator_traits<InputIterator>::value_type* 	h_seed,
+	int 														num_elements,
+	ReductionOp 												reduction_op,
+	Policy														policy,
+	int 														max_grid_size = 0)
 {
-	typedef reduction::Problem<
-		InputIterator,
-		OutputIterator,
-		int,
-		ReductionOp> ReductionProblem;
-
-	ReductionProblem problem(
-		first,
-		result,
+	reduction::ProblemInstance<InputIterator, int, ReductionOp> problem(
+		d_in,
+		d_result,
+		h_result,
+		h_seed,
 		num_elements,
 		reduction_op,
 		max_grid_size);

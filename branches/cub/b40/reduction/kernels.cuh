@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/dispatch/cta_work_distribution.cuh>
+#include <cub/cta_work_distribution.cuh>
 #include <b40/reduction/cta.cuh>
 
 namespace b40 {

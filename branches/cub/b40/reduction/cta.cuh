@@ -25,7 +25,7 @@
 
 #include <iterator>
 
-#include <cub/dispatch/cta_work_distribution.cuh>
+#include <cub/cta_work_distribution.cuh>
 
 namespace b40 {
 namespace reduction {

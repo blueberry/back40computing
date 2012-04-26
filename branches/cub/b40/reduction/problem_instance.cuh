@@ -23,9 +23,9 @@
 
 #pragma once
 
-#include <cub/core/cuda_properties.cuh>
-#include <cub/dispatch/kernel_properties.cuh>
-#include <cub/dispatch/cta_work_distribution.cuh>
+#include <cub/cuda_properties.cuh>
+#include <cub/kernel_properties.cuh>
+#include <cub/cta_work_distribution.cuh>
 
 #include <b40/reduction/kernel_policy.cuh>
 #include <b40/reduction/policy.cuh>
@@ -43,10 +43,9 @@ using namespace cub;
  */
 template <
 	typename InputIterator,
-	typename OutputIterator,
 	typename SizeT,
 	typename ReductionOp>
-struct Problem
+struct ProblemInstance
 {
 	//---------------------------------------------------------------------
 	// Type definitions
@@ -57,8 +56,8 @@ struct Problem
 
 	// Type signatures of kernel entrypoints
 	typedef void (*UpsweepKernelPtr)	(InputIterator, T*, ReductionOp, CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)		(T*, OutputIterator, ReductionOp, SizeT);
-	typedef void (*SingleKernelPtr)		(InputIterator, OutputIterator, ReductionOp, SizeT);
+	typedef void (*SpineKernelPtr)		(T*, T*, ReductionOp, SizeT);
+	typedef void (*SingleKernelPtr)		(InputIterator, T*, ReductionOp, SizeT);
 
 
 	/**
@@ -94,7 +93,9 @@ struct Problem
 
 	CudaProperties				cuda_props;
 	InputIterator 				first;
-	OutputIterator 				result;
+	T* 							d_result;
+	T* 							h_result;
+	T*							h_seed;
 	SizeT 						num_elements;
 	ReductionOp 				reduction_op;
 	int 						max_grid_size;
@@ -108,15 +109,19 @@ struct Problem
 	/**
 	 * Constructor
 	 */
-	Problem(
+	ProblemInstance(
 		InputIterator 			first,
-		OutputIterator 			result,
+		T* 						d_result,
+		T* 						h_result,
+		T*						h_seed,
 		SizeT 					num_elements,
 		ReductionOp 			reduction_op,
 		int 					max_grid_size) :
 			// Initializers
 			first(first),
-			result(result),
+			d_result(d_result),
+			h_result(h_result),
+			h_seed(h_seed),
 			num_elements(num_elements),
 			reduction_op(reduction_op),
 			max_grid_size(max_grid_size)
@@ -160,6 +165,7 @@ struct Problem
 	{
 		cudaError_t error = cudaSuccess;
 		do {
+			// Construct kernel details from policy
 
 			UpsweepKernelPtr upsweep_ptr = UpsweepKernel<UpsweepKernelPolicy>;
 			KernelDetails<UpsweepKernelPtr>	upsweep_details;
@@ -173,6 +179,7 @@ struct Problem
 			KernelDetails<SingleKernelPtr> single_details;
 			if (error = single_details.Init(single_policy, single_ptr, cuda_props)) break;
 
+			// Reduce problem using the kernel and dispatch details
 			if (error = Reduce(
 				upsweep_details,
 				spine_details,
@@ -193,6 +200,7 @@ struct Problem
 	template <typename Policy>
 	cudaError_t Reduce(Policy policy)
 	{
+		// Reduce problem using dispatch and kernel policy specializations
 		return Reduce(
 			policy,
 			Policy::Upsweep(),
