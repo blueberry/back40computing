@@ -185,7 +185,9 @@ struct IsVolatile<Tp volatile>
 
 
 /**
- * Removes const and volatile qualifiers from type Tp
+ * Removes const and volatile qualifiers from type Tp.
+ *
+ * E.g., typedef typename RemoveQualifiers<AdornedType>::Type NakedType;
  */
 template <typename Tp, typename Up = Tp>
 struct RemoveQualifiers
