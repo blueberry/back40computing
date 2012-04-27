@@ -23,20 +23,17 @@
 
 #pragma once
 
-#include <cub/host/cuda_props.cuh>
-#include <cub/host/kernel_props.cuh>
+#include <cub/cub.cuh>
 
-#include <cub/work_distribution.cuh>
-
-#include <b40/reduction/kernel_policy.cuh>
-#include <b40/reduction/policy.cuh>
-#include <b40/reduction/kernels.cuh>
+#include <back40/reduction/kernel_policy.cuh>
+#include <back40/reduction/policy.cuh>
+#include <back40/reduction/kernels.cuh>
 
 
-namespace b40 {
+namespace back40 {
 namespace reduction {
 
-using namespace cub;
+using namespace cub;	// Fold cub namespace into back40
 
 
 /**
@@ -292,5 +289,5 @@ struct ProblemInstance
 
 
 }// namespace reduction
-}// namespace b40
+}// namespace back40
 

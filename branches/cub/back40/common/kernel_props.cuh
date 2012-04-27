@@ -23,8 +23,7 @@
 
 #pragma once
 
-#include <cub/host/cuda_props.cuh>
-#include <cub/type_utils.cuh>
+#include <cub/cub.cuh>
 
 namespace cub {
 

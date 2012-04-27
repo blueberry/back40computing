@@ -23,38 +23,45 @@
 
 #pragma once
 
-namespace b40 {
+#include <cub/cub.cuh>
+
+namespace back40 {
 namespace reduction {
 
-using namespace cub;
+using namespace cub;	// Fold cub namespace into back40
 
 
 /**
- * Reduction policy for GPU reduction primitives.
+ * Policy type for specializing reduction kernels.  Parameterizations
+ * of this policy type encapsulate tuning decisions (which are reflected via
+ * the static fields).
  *
- * Encapsulates:
- *   - Kernel tuning parameters for specializing upsweep and spine kernels
- *   - Dispatch tuning parameters.
+ * Used to bind generic kernel code to a specific problem-type, SM-version,
+ * etc.
  */
 template <
-	typename 		UpsweepKernelPolicy,
-	typename 		SingleKernelPolicy,
-	bool 			_UNIFORM_SMEM_ALLOCATION,
-	bool 			_UNIFORM_GRID_SIZE>
-struct Policy
+	int 			_THREADS,
+	int 			_STRIPS_PER_THREAD,
+	int 			_ELEMENTS_PER_STRIP,
+	ReadModifier 	_READ_MODIFIER,
+	WriteModifier 	_WRITE_MODIFIER,
+	bool 			_WORK_STEALING>
+struct KernelPolicy
 {
-	// Kernel policies
-	typedef UpsweepKernelPolicy 		Upsweep;
-	typedef SingleKernelPolicy 			Single;
-
-	// Dispatch tuning details
 	enum {
-		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
-		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+		THREADS					= _THREADS,
+		STRIPS_PER_THREAD		= _STRIPS_PER_THREAD,
+		ELEMENTS_PER_STRIP		= _ELEMENTS_PER_STRIP,
+		TILE_ELEMENTS			= THREADS * STRIPS_PER_THREAD * ELEMENTS_PER_STRIP,
 	};
+
+	static const ReadModifier 	READ_MODIFIER 	= _READ_MODIFIER;
+	static const WriteModifier 	WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const bool 			WORK_STEALING	= _WORK_STEALING;
 };
+
 		
 
 }// namespace reduction
-}// namespace b40
+}// namespace back40
 

@@ -23,10 +23,11 @@
 
 #pragma once
 
-#include <cub/perror.cuh>
-#include <cub/device_props.cuh>
+#include <cub/cub.cuh>
 
-namespace cub {
+namespace back40 {
+
+
 
 
 /**
@@ -149,5 +150,5 @@ public:
 
 
 
-} // namespace cub
+} // namespace back40
 

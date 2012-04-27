@@ -25,12 +25,12 @@
 
 #include <iterator>
 
-#include <cub/operators.cuh>
+#include <cub/cub.cuh>
 
-#include <b40/reduction/problem_instance.cuh>
+#include <back40/reduction/problem_instance.cuh>
 
 
-namespace b40 {
+namespace back40 {
 
 
 /**
@@ -116,5 +116,5 @@ cudaError_t Reduce(
 }
 
 
-}// namespace b40
+}// namespace back40
 

@@ -18,50 +18,16 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Policy types for GPU reduction primitives
+ * Back40 umbrella include file
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/io.cuh>
+// Back40 common
+#include <common/cuda_props.cuh>
+#include <common/kernel_props.cuh>
+#include <common/spinlock.cuh>
 
-namespace b40 {
-namespace reduction {
-
-using namespace cub;
-
-
-/**
- * Policy type for specializing reduction kernels.  Parameterizations
- * of this policy type encapsulate tuning decisions (which are reflected via
- * the static fields).
- *
- * Used to bind generic kernel code to a specific problem-type, SM-version,
- * etc.
- */
-template <
-	int 			_THREADS,
-	int 			_STRIPS_PER_THREAD,
-	int 			_ELEMENTS_PER_STRIP,
-	ReadModifier 	_READ_MODIFIER,
-	WriteModifier 	_WRITE_MODIFIER,
-	bool 			_WORK_STEALING>
-struct KernelPolicy
-{
-	enum {
-		THREADS					= _THREADS,
-		STRIPS_PER_THREAD		= _STRIPS_PER_THREAD,
-		ELEMENTS_PER_STRIP		= _ELEMENTS_PER_STRIP,
-		TILE_ELEMENTS			= THREADS * STRIPS_PER_THREAD * ELEMENTS_PER_STRIP,
-	};
-
-	static const ReadModifier 	READ_MODIFIER 	= _READ_MODIFIER;
-	static const WriteModifier 	WRITE_MODIFIER 	= _WRITE_MODIFIER;
-	static const bool 			WORK_STEALING	= _WORK_STEALING;
-};
-
-		
-
-}// namespace reduction
-}// namespace b40
+// Primitives
+#include <reduce.cuh>
 

@@ -24,13 +24,12 @@
 #pragma once
 
 #include <iterator>
+#include <cub/cub.cuh>
 
-#include <cub/work_distribution.cuh>
-
-namespace b40 {
+namespace back40 {
 namespace reduction {
 
-using namespace cub;
+using namespace cub;	// Fold cub namespace into back40
 
 
 /**
@@ -179,5 +178,5 @@ struct Cta
 
 
 } // namespace reduction
-} // namespace b40
+} // namespace back40
 
