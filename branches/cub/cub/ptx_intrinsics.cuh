@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Common device intrinsics (potentially specialized by architecture)
+ * Inlined PTX intrinsics
  ******************************************************************************/
 
 #pragma once
@@ -46,10 +46,14 @@ namespace cub {
 #endif
 
 
+/******************************************************************************
+ * Inlined PTX intrinsics
+ ******************************************************************************/
+
 /**
  * Shift-right then add.  Returns (x >> shift) + addend.
  */
-__device__ __forceinline__ unsigned int ShrAdd(
+__device__ __forceinline__ unsigned int SHR_ADD(
 	unsigned int x,
 	unsigned int shift,
 	unsigned int addend)
@@ -128,7 +132,7 @@ __device__ __forceinline__ void BFI(
 __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
 {
 #if __CUB_CUDA_ARCH__ >= 200
-	asm("vadd.s32.s32.s32.add %0, %1, %2, %3;" : "=r"(x) : "r"(x), "r"(y), "r"(z));
+	asm("vadd.u32.u32.u32.add %0, %1, %2, %3;" : "=r"(x) : "r"(x), "r"(y), "r"(z));
 #else
 	x = x + y + z;
 #endif
