@@ -35,7 +35,7 @@
 
 #include <device_props.cuh>
 #include <operators.cuh>
-#include <perror.cuh>
+#include <debug.cuh>
 #include <ptx_intrinsics.cuh>
 #include <type_utils.cuh>
 #include <work_distribution.cuh>

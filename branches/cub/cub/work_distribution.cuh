@@ -73,7 +73,9 @@ struct WorkDistribution
 
 
 
-
+/**
+ *
+ */
 template <
 	typename 	SizeT,
 	int 		TILE_ELEMENTS,
@@ -159,7 +161,6 @@ struct CtaProgress
 			cta_offset += TILE_ELEMENTS;
 		}
 	}
-
 
 };
 

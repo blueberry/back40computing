@@ -59,11 +59,11 @@ private:
 		//---------------------------------------------------------------------
 
 		// Unguarded vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void StoreVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void StoreVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_out_vectors)
+			VectorTType data_vectors[],
+			VectorTType *d_out_vectors)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
@@ -72,7 +72,7 @@ private:
 				d_out_vectors + OFFSET);
 
 			// Next vector in segment
-			Iterate<CURRENT + 1, TOTAL>::StoreVector(
+			Iterate<CURRENT + 1, TOTAL>::StoreVectorT(
 				SEGMENT,
 				data_vectors,
 				d_out_vectors);
@@ -167,20 +167,20 @@ private:
 
 		// Segment of unguarded vectors
 		template <
-			typename VectorType,
+			typename VectorTType,
 			int VECTORS>
-		static __device__ __forceinline__ void StoreVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_out_vectors)
+		static __device__ __forceinline__ void StoreVectorTSegment(
+			VectorTType data_vectors[][VECTORS],
+			VectorTType *d_out_vectors)
 		{
 			// Perform raking vector stores for this segment
-			Iterate<0, VECTORS>::StoreVector(
+			Iterate<0, VECTORS>::StoreVectorT(
 				CURRENT,
 				data_vectors[CURRENT],
 				d_out_vectors);
 
 			// Next segment
-			Iterate<CURRENT + 1, TOTAL>::StoreVectorSegment(
+			Iterate<CURRENT + 1, TOTAL>::StoreVectorTSegment(
 				data_vectors,
 				d_out_vectors);
 		}
@@ -250,11 +250,11 @@ private:
 	struct Iterate<TOTAL, TOTAL>
 	{
 		// Unguarded vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void StoreVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void StoreVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_out_vectors) {}
+			VectorTType data_vectors[],
+			VectorTType *d_out_vectors) {}
 
 		// Guarded singleton
 		template <typename T, int ELEMENTS, typename S, typename SizeT, typename TransformOp>
@@ -282,10 +282,10 @@ private:
 			TransformOp transform_op) {}
 
 		// Segment of unguarded vectors
-		template <typename VectorType, int VECTORS>
-		static __device__ __forceinline__ void StoreVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_out_vectors) {}
+		template <typename VectorTType, int VECTORS>
+		static __device__ __forceinline__ void StoreVectorTSegment(
+			VectorTType data_vectors[][VECTORS],
+			VectorTType *d_out_vectors) {}
 
 		// Segment of guarded singletons
 		template <typename T, int ELEMENTS, typename S, typename SizeT, typename TransformOp>
@@ -330,7 +330,7 @@ public:
 		const int VEC_ELEMENTS 		= B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
 		const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
 
-		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
+		typedef typename VectorT<S, VEC_ELEMENTS>::Type VectorTType;
 
 		// Raw data to store
 		S raw[SEGMENTS][ELEMENTS];
@@ -342,13 +342,13 @@ public:
 			transform_op);
 
 		// Alias pointers
-		VectorType (*data_vectors)[VECTORS] =
-			reinterpret_cast<VectorType (*)[VECTORS]>(raw);
+		VectorTType (*data_vectors)[VECTORS] =
+			reinterpret_cast<VectorTType (*)[VECTORS]>(raw);
 
-		VectorType *d_out_vectors =
-			reinterpret_cast<VectorType *>(d_out + (threadIdx.x * ELEMENTS) + cta_offset);
+		VectorTType *d_out_vectors =
+			reinterpret_cast<VectorTType *>(d_out + (threadIdx.x * ELEMENTS) + cta_offset);
 
-		Iterate<0, SEGMENTS>::StoreVectorSegment(
+		Iterate<0, SEGMENTS>::StoreVectorTSegment(
 			data_vectors,
 			d_out_vectors);
 	}

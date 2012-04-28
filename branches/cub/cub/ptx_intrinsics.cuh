@@ -125,7 +125,7 @@ __device__ __forceinline__ void BFI(
 
 
 /**
- * Vector-3 add
+ * VectorT-3 add
  */
 __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
 {

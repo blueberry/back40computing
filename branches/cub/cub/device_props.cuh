@@ -20,19 +20,15 @@
 /******************************************************************************
  * Static CUDA device properties by SM architectural version.
  *
- *	PTX_ARCH
+ * "PTX_ARCH" reflects the PTX arch-id targeted by the active compiler pass
+ * (or zero during the host pass).
  *
- *    Macro for the arch-id targeted by the active compiler pass (or zero
- *    during the host pass).
+ * "DeviceProps" reflects the PTX architecture targeted by the active compiler
+ * pass.  It provides useful compile-time statics within device code.  E.g.,:
  *
- * DeviceProps
+ *     __shared__ int[DeviceProps::WARP_THREADS];
  *
- *    Reflects the architecture targeted by the active compiler pass.
- *    It provides useful compile-time statics within device code.  E.g.,:
- *
- *         __shared__ int[DeviceProps::WARP_THREADS];
- *
- *         int padded_offset = threadIdx.x + (threadIdx.x >> DeviceProps::SMEM_BANKS);
+ *     int padded_offset = threadIdx.x + (threadIdx.x >> DeviceProps::SMEM_BANKS);
  *
  ******************************************************************************/
 

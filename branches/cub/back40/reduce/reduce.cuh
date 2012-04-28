@@ -27,8 +27,11 @@
 
 #include <cub/cub.cuh>
 
+#include <back40/reduction/cta.cuh>
+#include <back40/reduction/kernel_policy.cuh>
+#include <back40/reduction/kernels.cuh>
+#include <back40/reduction/policy.cuh>
 #include <back40/reduction/problem_instance.cuh>
-
 
 namespace back40 {
 

@@ -29,5 +29,5 @@
 #include <common/spinlock.cuh>
 
 // Primitives
-#include <reduce.cuh>
+#include <reduce/reduce.cuh>
 

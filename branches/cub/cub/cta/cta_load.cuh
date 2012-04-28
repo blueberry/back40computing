@@ -38,7 +38,7 @@ namespace cub {
  * Texture vector types for reading ELEMENTS consecutive elements of T per thread
  */
 template <typename T, int ELEMENTS>
-struct TexVector
+struct TexVectorT
 {
 	enum {
 		TEX_VEC_SIZE = (NumericTraits<T>::BUILT_IN) ?
@@ -62,7 +62,7 @@ struct TexVector
 			T>::Type>::Type TexBase; 				// use T for other built-in types
 
 	// Texture vector type
-	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type TexVec;
+	typedef typename util::VectorT<TexBase, TEX_VEC_SIZE>::Type TexVec;
 
 	// Texture reference type
 	typedef texture<TexVec, cudaTextureType1D, cudaReadModeElementType> TexRef;
@@ -94,11 +94,11 @@ private:
 		//---------------------------------------------------------------------
 
 		// Unguarded vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void LoadVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void LoadVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_in_vectors)
+			VectorTType data_vectors[],
+			VectorTType *d_in_vectors)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
@@ -107,18 +107,18 @@ private:
 				d_in_vectors + OFFSET);
 
 			// Next vector in segment
-			Iterate<CURRENT + 1, TOTAL>::LoadVector(
+			Iterate<CURRENT + 1, TOTAL>::LoadVectorT(
 				SEGMENT,
 				data_vectors,
 				d_in_vectors);
 		}
 
 		// Unguarded tex vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void LoadTexVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void LoadTexVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			VectorTType data_vectors[],
+			texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 			unsigned int base_thread_offset)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
@@ -128,7 +128,7 @@ private:
 				base_thread_offset + OFFSET);
 
 			// Next vector in segment
-			Iterate<CURRENT + 1, TOTAL>::LoadTexVector(
+			Iterate<CURRENT + 1, TOTAL>::LoadTexVectorT(
 				SEGMENT,
 				data_vectors,
 				ref,
@@ -203,20 +203,20 @@ private:
 
 		// Segment of unguarded vectors
 		template <
-			typename VectorType,
+			typename VectorTType,
 			int VECTORS>
-		static __device__ __forceinline__ void LoadVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_in_vectors)
+		static __device__ __forceinline__ void LoadVectorTSegment(
+			VectorTType data_vectors[][VECTORS],
+			VectorTType *d_in_vectors)
 		{
 			// Perform raking vector loads for this segment
-			Iterate<0, VECTORS>::LoadVector(
+			Iterate<0, VECTORS>::LoadVectorT(
 				CURRENT,
 				data_vectors[CURRENT],
 				d_in_vectors);
 
 			// Next segment
-			Iterate<CURRENT + 1, TOTAL>::LoadVectorSegment(
+			Iterate<CURRENT + 1, TOTAL>::LoadVectorTSegment(
 				data_vectors,
 				d_in_vectors);
 		}
@@ -226,25 +226,25 @@ private:
 			typename T,
 			typename S,
 			int ELEMENTS,
-			typename VectorType,
+			typename VectorTType,
 			typename SizeT,
 			int VECTORS>
-		static __device__ __forceinline__ void LoadTexVectorSegment(
+		static __device__ __forceinline__ void LoadTexVectorTSegment(
 			T data[][ELEMENTS],
 			S raw[][ELEMENTS],
-			VectorType data_vectors[][VECTORS],
-			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			VectorTType data_vectors[][VECTORS],
+			texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 			SizeT base_thread_offset)
 		{
 			// Perform raking tex vector loads for this segment
-			Iterate<0, VECTORS>::LoadTexVector(
+			Iterate<0, VECTORS>::LoadTexVectorT(
 				CURRENT,
 				data_vectors[CURRENT],
 				ref,
 				base_thread_offset);
 
 			// Next segment
-			Iterate<CURRENT + 1, TOTAL>::LoadTexVectorSegment(
+			Iterate<CURRENT + 1, TOTAL>::LoadTexVectorTSegment(
 				data,
 				raw,
 				data_vectors,
@@ -292,18 +292,18 @@ private:
 	struct Iterate<TOTAL, TOTAL>
 	{
 		// Unguarded vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void LoadVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void LoadVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_in_vectors) {}
+			VectorTType data_vectors[],
+			VectorTType *d_in_vectors) {}
 
 		// Unguarded tex vector
-		template <typename VectorType>
-		static __device__ __forceinline__ void LoadTexVector(
+		template <typename VectorTType>
+		static __device__ __forceinline__ void LoadTexVectorT(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			VectorTType data_vectors[],
+			texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 			unsigned int base_thread_offset) {}
 
 		// Guarded singleton
@@ -325,18 +325,18 @@ private:
 			TransformOp transform_op) {}
 
 		// Segment of unguarded vectors
-		template <typename VectorType, int VECTORS>
-		static __device__ __forceinline__ void LoadVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_in_vectors) {}
+		template <typename VectorTType, int VECTORS>
+		static __device__ __forceinline__ void LoadVectorTSegment(
+			VectorTType data_vectors[][VECTORS],
+			VectorTType *d_in_vectors) {}
 
 		// Segment of unguarded tex vectors
-		template <typename T, typename S, int ELEMENTS, typename VectorType, typename SizeT, int VECTORS>
-		static __device__ __forceinline__ void LoadTexVectorSegment(
+		template <typename T, typename S, int ELEMENTS, typename VectorTType, typename SizeT, int VECTORS>
+		static __device__ __forceinline__ void LoadTexVectorTSegment(
 			T data[][ELEMENTS],
 			S raw[][ELEMENTS],
-			VectorType data_vectors[][VECTORS],
-			texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+			VectorTType data_vectors[][VECTORS],
+			texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 			SizeT base_thread_offset) {}
 
 		// Segment of guarded singletons
@@ -376,20 +376,20 @@ public:
 		const int VEC_ELEMENTS 		= B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
 		const int VECTORS 			= ELEMENTS / (B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS));
 
-		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
+		typedef typename VectorT<S, VEC_ELEMENTS>::Type VectorTType;
 
 		// Raw data to load
 		S raw[SEGMENTS][ELEMENTS];
 
 		// Alias pointers
-		VectorType (*data_vectors)[VECTORS] =
-			reinterpret_cast<VectorType (*)[VECTORS]>(raw);
+		VectorTType (*data_vectors)[VECTORS] =
+			reinterpret_cast<VectorTType (*)[VECTORS]>(raw);
 
-		VectorType *d_in_vectors =
-			reinterpret_cast<VectorType *>(d_in + (threadIdx.x * ELEMENTS) + cta_offset);
+		VectorTType *d_in_vectors =
+			reinterpret_cast<VectorTType *>(d_in + (threadIdx.x * ELEMENTS) + cta_offset);
 
 		// Load raw data
-		Iterate<0, SEGMENTS>::LoadVectorSegment(
+		Iterate<0, SEGMENTS>::LoadVectorTSegment(
 			data_vectors,
 			d_in_vectors);
 
@@ -436,14 +436,14 @@ public:
 		int SEGMENTS,
 		int ELEMENTS,
 		typename T,
-		typename VectorType,
+		typename VectorTType,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
 		Flag (&valid)[SEGMENTS][ELEMENTS],
 		T (&data)[SEGMENTS][ELEMENTS],
-		texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+		texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
@@ -451,18 +451,18 @@ public:
 		if (CACHE_MODIFIER == ld::tex) {
 
 			// Use tex
-			const int VEC_ELEMENTS 		= sizeof(VectorType) / sizeof(S);
-			const int VECTORS 			= ELEMENTS / (sizeof(VectorType) / sizeof(S));
+			const int VEC_ELEMENTS 		= sizeof(VectorTType) / sizeof(S);
+			const int VECTORS 			= ELEMENTS / (sizeof(VectorTType) / sizeof(S));
 
 			// Data to load
 			S raw[SEGMENTS][ELEMENTS];
 
 			// Use an aliased pointer to raw array
-			VectorType (*data_vectors)[VECTORS] = (VectorType (*)[VECTORS]) raw;
+			VectorTType (*data_vectors)[VECTORS] = (VectorTType (*)[VECTORS]) raw;
 
 			SizeT base_thread_offset = cta_offset / VEC_ELEMENTS;
 
-			Iterate<0, SEGMENTS>::LoadTexVectorSegment(
+			Iterate<0, SEGMENTS>::LoadTexVectorTSegment(
 				data,
 				raw,
 				data_vectors,
@@ -496,12 +496,12 @@ public:
 		typename T,
 		int SEGMENTS,
 		int ELEMENTS,
-		typename VectorType,
+		typename VectorTType,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadUnguarded(
 		T (&data)[SEGMENTS][ELEMENTS],
-		texture<VectorType, cudaTextureType1D, cudaReadModeElementType> ref,
+		texture<VectorTType, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset)
 	{

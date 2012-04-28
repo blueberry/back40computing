@@ -31,8 +31,8 @@ namespace cub {
 
 /**
  * Namespace for utility/iteration structures
- */
-namespace thread_reduce
+ * /
+namespace reduce
 {
 	//---------------------------------------------------------------------
 	// Helper functions for vectorizing reduction operations
@@ -40,7 +40,7 @@ namespace thread_reduce
 
 	// Generic case
 	template <typename T, typename ReductionOp>
-	__device__ __forceinline__ T VectorReduce(
+	__device__ __forceinline__ T VectorTReduce(
 		T a,
 		T b,
 		T c,
@@ -51,7 +51,7 @@ namespace thread_reduce
 
 	// Specialization for 32-bit int
 	template <>
-	__device__ __forceinline__ int VectorReduce<int, Sum<int> >(
+	__device__ __forceinline__ int VectorTReduce<int, Sum<int> >(
 		int a,
 		int b,
 		int c,
@@ -62,7 +62,7 @@ namespace thread_reduce
 
 	// Specialization for 32-bit uint
 	template <>
-	__device__ __forceinline__ unsigned int VectorReduce<unsigned int, Sum<unsigned int> >(
+	__device__ __forceinline__ unsigned int VectorTReduce<unsigned int, Sum<unsigned int> >(
 		unsigned int a,
 		unsigned int b,
 		unsigned int c,
@@ -79,13 +79,13 @@ namespace thread_reduce
 	struct Iterate
 	{
 		template <typename T, int ELEMENTS, typename ReductionOp>
-		static __device__ __forceinline__ T ThreadReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
+		static __device__ __forceinline__ T Reduce(T (&data)[ELEMENTS], ReductionOp reduction_op)
 		{
-			T a = Iterate<COUNT - 2, TOTAL>::ThreadReduce(partials, reduction_op);
-			T b = partials[TOTAL - COUNT];
-			T c = partials[TOTAL - (COUNT - 1)];
+			T a = Iterate<COUNT - 2, TOTAL>::Reduce(data, reduction_op);
+			T b = data[TOTAL - COUNT];
+			T c = data[TOTAL - (COUNT - 1)];
 
-			return VectorReduce(a, b, c, reduction_op);
+			return VectorTReduce(a, b, c, reduction_op);
 		}
 	};
 
@@ -94,9 +94,9 @@ namespace thread_reduce
 	struct Iterate<2, TOTAL>
 	{
 		template <typename T, int ELEMENTS, typename ReductionOp>
-		static __device__ __forceinline__ T ThreadReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
+		static __device__ __forceinline__ T Reduce(T (&data)[ELEMENTS], ReductionOp reduction_op)
 		{
-			return reduction_op(partials[TOTAL - 2], partials[TOTAL - 1]);
+			return reduction_op(data[TOTAL - 2], data[TOTAL - 1]);
 		}
 	};
 
@@ -105,48 +105,57 @@ namespace thread_reduce
 	struct Iterate<1, TOTAL>
 	{
 		template <typename T, int ELEMENTS, typename ReductionOp>
-		static __device__ __forceinline__ T ThreadReduce(T (&partials)[ELEMENTS], ReductionOp reduction_op)
+		static __device__ __forceinline__ T Reduce(T (&data)[ELEMENTS], ReductionOp reduction_op)
 		{
-			return partials[TOTAL - 1];
+			return data[TOTAL - 1];
 		}
 	};
 	
-} // namespace thread_reduce
-
+} // namespace reduce
+*/
 
 /**
  * Serial reduction with the specified operator
  */
 template <typename ArrayType, typename ReductionOp>
-__device__ __forceinline__ T ThreadReduce(
-	ArrayType partials,
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+	ArrayType data,
 	ReductionOp reduction_op)
 {
+	return 0;
+/*
+	ArrayTraits<ArrayType>::
+
 	typedef T LinearArray[SEGMENTS * ELEMENTS];
 
 	return serial_reduction::Iterate<
 		SEGMENTS * ELEMENTS,
 		SEGMENTS * ELEMENTS>::SerialReduce(
-			reinterpret_cast<LinearArray&>(partials),
+			reinterpret_cast<LinearArray&>(data),
 			reduction_op);
 
-	return thread_reduce::Iterate<
+	return reduce::Iterate<
 		ELEMENTS,
-		ELEMENTS>::ThreadReduce(
-			partials,
+		ELEMENTS>::Reduce(
+			data,
 			reduction_op);
+*/
 }
 
 
 /**
  * Serial reduction with the addition operator
  */
-template <typename ArrayType, int ELEMENTS>
-__device__ __forceinline__ T ThreadReduce(
-	T (&partials)[ELEMENTS])
+template <typename ArrayType>
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+	ArrayType data,
+	int num_elements = ArrayTraits<ArrayType>::ELEMENTS)
 {
+	return 0;
+/*
 	Sum<T> reduction_op;
-	return ThreadReduce(partials, reduction_op);
+	return Reduce(data, reduction_op);
+*/
 }
 
 
@@ -154,28 +163,36 @@ __device__ __forceinline__ T ThreadReduce(
  * Serial reduction with the specified operator, seeded with the
  * given exclusive partial
  */
-template <typename T, int ELEMENTS, typename ReductionOp>
-__device__ __forceinline__ T ThreadReduce(
-	T (&partials)[ELEMENTS],
-	T exclusive_partial,
-	ReductionOp reduction_op)
+template <typename ArrayType, typename T, typename ReductionOp>
+__device__ __forceinline__ T Reduce(
+	ArrayType data,
+	T seed,
+	ReductionOp reduction_op,
+	int num_elements = ArrayTraits<ArrayType>::ELEMENTS)
 {
+	return 0;
+/*
 	return reduction_op(
-		exclusive_partial,
-		ThreadReduce(partials, reduction_op));
+		seed,
+		Reduce(data, reduction_op));
+*/
 }
 
 /**
  * Serial reduction with the addition operator, seeded with the
  * given exclusive partial
  */
-template <typename T, int ELEMENTS, typename ReductionOp>
-__device__ __forceinline__ T ThreadReduce(
-	T (&partials)[ELEMENTS],
-	T exclusive_partial)
+template <typename ArrayType, typename T>
+__device__ __forceinline__ T Reduce(
+	ArrayType data,
+	T seed,
+	int num_elements = ArrayTraits<ArrayType>::ELEMENTS)
 {
+	return 0;
+/*
 	Sum<T> reduction_op;
-	return ThreadReduce(partials, exclusive_partial, reduction_op);
+	return Reduce(data, seed, reduction_op);
+*/
 }
 
 
