@@ -18,12 +18,12 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel utilities for reading memory (optionally using cache modifiers)
+ * Thread utilities for reading memory (optionally using cache modifiers)
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/device_intrinsics.cuh>
+#include <cub/ptx_intrinsics.cuh>
 
 namespace cub {
 

@@ -28,12 +28,12 @@
 namespace back40 {
 
 
-
-
 /**
  * Invalid CUDA gpu device ordinal
  */
-#define CUB_GPU_ORDINAL				(-1)
+enum {
+	CUB_GPU_ORDINAL = -1,
+};
 
 
 /**
@@ -104,7 +104,7 @@ public:
 		do {
 			// Obtain SM version and count
 			cudaDeviceProp device_props;
-			if (error = Perror(cudaGetDeviceProperties(&device_props, gpu_ordinal),
+			if (error = Debug(cudaGetDeviceProperties(&device_props, gpu_ordinal),
 				"cudaGetDeviceProperties failed", __FILE__, __LINE__)) break;
 			cuda_props->sm_version = device_props.major * 100 + device_props.minor * 10;
 			cuda_props->sm_count = device_props.multiProcessorCount;
@@ -112,7 +112,7 @@ public:
 			// Obtain PTX version of the bundled kernel assemblies compiled for
 			// the current device
 			cudaFuncAttributes flush_kernel_attrs;
-			if (error = Perror(cudaFuncGetAttributes(&flush_kernel_attrs, EmptyKernel<void>),
+			if (error = Debug(cudaFuncGetAttributes(&flush_kernel_attrs, EmptyKernel<void>),
 				"cudaFuncGetAttributes failed", __FILE__, __LINE__)) break;
 			cuda_props->ptx_version = flush_kernel_attrs.ptxVersion * 10;
 

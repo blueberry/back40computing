@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Kernel utilities for writing memory (optionally using cache modifiers)
+ * Thread utilities for writing memory (optionally using cache modifiers)
  ******************************************************************************/
 
 #pragma once

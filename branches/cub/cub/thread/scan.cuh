@@ -18,25 +18,19 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CUB umbrella include file
+ * Scan over thread-local array types
  ******************************************************************************/
 
 #pragma once
 
-#include <cta/cta_load.cuh>
-#include <cta/cta_reduce.cuh>
-#include <cta/cta_scan.cuh>
-#include <cta/cta_store.cuh>
+#include <cub/operators.cuh>
+#include <cub/ptx_intrinsics.cuh>
+#include <cub/type_utils.cuh>
 
-#include <thread/load.cuh>
-#include <thread/reduce.cuh>
-#include <thread/scan.cuh>
-#include <thread/store.cuh>
+namespace cub {
 
-#include <device_props.cuh>
-#include <operators.cuh>
-#include <perror.cuh>
-#include <ptx_intrinsics.cuh>
-#include <type_utils.cuh>
-#include <work_distribution.cuh>
+
+
+} // namespace cub
+
 

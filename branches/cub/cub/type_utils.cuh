@@ -54,6 +54,7 @@ namespace cub {
 #define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
 
 
+
 /******************************************************************************
  * Simple templated utilities
  ******************************************************************************/
@@ -73,7 +74,7 @@ void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
  * MagnitudeShift().  Allows you to shift left for positive magnitude values, 
  * right for negative.   
  */
-template <int MAGNITUDE, int shift_left = (MAGNITUDE >= 0)>
+template <int MAGNITUDE, int SHIFT_LEFT = (MAGNITUDE >= 0)>
 struct MagnitudeShift
 {
 	template <typename K>
@@ -96,7 +97,7 @@ struct MagnitudeShift<MAGNITUDE, 0>
 
 
 /******************************************************************************
- * Metaprogramming Utilities
+ * Metaprogramming utilities
  ******************************************************************************/
 
 /**
@@ -213,6 +214,220 @@ struct RemoveQualifiers<Tp, const volatile Up>
 	typedef Up Type;
 };
 
+
+/******************************************************************************
+ * Simple type traits utilities.
+ *
+ * For example:
+ *     TypeTraits<int>::CATEGORY 			--> SIGNED_INTEGER
+ *     TypeTraits<NullType>::NULL_TYPE 		--> true
+ *     TypeTraits<uint4>::CATEGORY 			--> NOT_A_NUMBER
+ *     TypeTraits<uint4>::PRIMITIVE 		--> false
+ *
+ ******************************************************************************/
+
+/**
+ * Basic type categories
+ */
+enum Category
+{
+	NOT_A_NUMBER,
+	SIGNED_INTEGER,
+	UNSIGNED_INTEGER,
+	FLOATING_POINT
+};
+
+
+/**
+ * Basic type traits
+ */
+template <Category _CATEGORY, bool _PRIMITIVE, bool _NULL_TYPE>
+struct BaseTraits
+{
+	static const Category CATEGORY 		= _CATEGORY;
+	enum {
+		PRIMITIVE						= _PRIMITIVE,
+		NULL_TYPE						= _NULL_TYPE
+	};
+};
+
+
+/**
+ * Numeric traits
+ */
+template <typename T> struct NumericTraits : 				BaseTraits<NOT_A_NUMBER, false, false> {};
+template <> struct NumericTraits<NullType> : 				BaseTraits<NOT_A_NUMBER, false, true> {};
+
+template <> struct NumericTraits<char> : 					BaseTraits<SIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<signed char> : 			BaseTraits<SIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<short> : 					BaseTraits<SIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<int> : 					BaseTraits<SIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<long> : 					BaseTraits<SIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<long long> : 				BaseTraits<SIGNED_INTEGER, true, false> {};
+
+template <> struct NumericTraits<unsigned char> : 			BaseTraits<UNSIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<unsigned short> : 			BaseTraits<UNSIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<unsigned int> : 			BaseTraits<UNSIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<unsigned long> : 			BaseTraits<UNSIGNED_INTEGER, true, false> {};
+template <> struct NumericTraits<unsigned long long> : 		BaseTraits<UNSIGNED_INTEGER, true, false> {};
+
+template <> struct NumericTraits<float> : 					BaseTraits<FLOATING_POINT, true, false> {};
+template <> struct NumericTraits<double> : 					BaseTraits<FLOATING_POINT, true, false> {};
+
+
+/**
+ * Type traits
+ */
+template <typename T>
+struct TypeTraits : NumericTraits<typename RemoveQualifiers<T>::Type> {};
+
+
+
+/******************************************************************************
+ * Simple array traits utilities.
+ *
+ * For example:
+ *
+ *     typedef int A[10][20];
+ *
+ *     ArrayTraits<A>::DIMS 			// --> 2
+ *     ArrayTraits<A>::ELEMENTS			// --> 200
+ *     typename ArrayTraits<A>::Type	// --> int
+ *
+ ******************************************************************************/
+
+/**
+ * Array traits
+ */
+template <typename ArrayType, int LENGTH = -1>
+struct ArrayTraits;
+
+
+/**
+ * Specialization for non array type
+ */
+template <typename DimType, int LENGTH>
+struct ArrayTraits
+{
+	typedef DimType Type;
+
+	enum {
+		ELEMENTS 	= 1,
+		DIMS		= 0
+	};
+};
+
+
+/**
+ * Specialization for array type
+ */
+template <typename DimType, int LENGTH>
+struct ArrayTraits<DimType[LENGTH], -1>
+{
+	typedef typename ArrayTraits<DimType>::Type Type;
+
+	enum {
+		ELEMENTS 	= ArrayTraits<DimType>::ELEMENTS * LENGTH,
+		DIMS		= ArrayTraits<DimType>::DIMS + 1,
+	};
+};
+
+
+/******************************************************************************
+ * Utility code for working with vector types of arbitary typenames
+ ******************************************************************************/
+
+enum {
+	MAX_VEC_ELEMENTS = 4,	// The maximum number of elements in CUDA vector types
+};
+
+
+/**
+ * Specializations of this vector-type template can be used to indicate the
+ * proper vector type for a given typename and vector size. We can use the ::Type
+ * typedef to declare and work with the appropriate vectorized type for a given
+ * typename T.
+ *
+ * For example, consider the following copy kernel that uses vec-2 loads
+ * and stores:
+ *
+ * 		template <typename T>
+ * 		__global__ void CopyKernel(T *d_in, T *d_out)
+ * 		{
+ * 			typedef typename VecType<T, 2>::Type Vector;
+ *
+ * 			Vector datum;
+ *
+ * 			Vector *d_in_v2 = (Vector *) d_in;
+ * 			Vector *d_out_v2 = (Vector *) d_out;
+ *
+ * 			datum = d_in_v2[threadIdx.x];
+ * 			d_out_v2[threadIdx.x] = datum;
+ * 		}
+ *
+ */
+template <typename T, int vec_elements> struct VecType
+{
+	typedef util::NullType Type;
+};
+
+/**
+ * Partially-specialized generic vec1 type
+ */
+template <typename T>
+struct VecType<T, 1> {
+	T x;
+	typedef VecType<T, 1> Type;
+};
+
+/**
+ * Partially-specialized generic vec2 type
+ */
+template <typename T>
+struct VecType<T, 2> {
+	T x;
+	T y;
+	typedef VecType<T, 2> Type;
+};
+
+/**
+ * Partially-specialized generic vec4 type
+ */
+template <typename T>
+struct VecType<T, 4> {
+	T x;
+	T y;
+	T z;
+	T w;
+	typedef VecType<T, 4> Type;
+};
+
+
+/**
+ * Macro for expanding partially-specialized built-in vector types
+ */
+#define CUB_DEFINE_VECTOR_TYPE(base_type,short_type)                            \
+  template<> struct VecType<base_type, 1> { typedef short_type##1 Type; };      \
+  template<> struct VecType<base_type, 2> { typedef short_type##2 Type; };      \
+  template<> struct VecType<base_type, 4> { typedef short_type##4 Type; };
+
+// Expand CUDA vector types for built-in primitives
+CUB_DEFINE_VECTOR_TYPE(char,               char)
+CUB_DEFINE_VECTOR_TYPE(signed char,        char)
+CUB_DEFINE_VECTOR_TYPE(short,              short)
+CUB_DEFINE_VECTOR_TYPE(int,                int)
+CUB_DEFINE_VECTOR_TYPE(long,               long)
+CUB_DEFINE_VECTOR_TYPE(long long,          longlong)
+CUB_DEFINE_VECTOR_TYPE(unsigned char,      uchar)
+CUB_DEFINE_VECTOR_TYPE(unsigned short,     ushort)
+CUB_DEFINE_VECTOR_TYPE(unsigned int,       uint)
+CUB_DEFINE_VECTOR_TYPE(unsigned long,      ulong)
+CUB_DEFINE_VECTOR_TYPE(unsigned long long, ulonglong)
+CUB_DEFINE_VECTOR_TYPE(float,              float)
+CUB_DEFINE_VECTOR_TYPE(double,             double)
+
+// Undefine macros
+#undef CUB_DEFINE_VECTOR_TYPE
 
 
 } // namespace cub

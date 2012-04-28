@@ -250,9 +250,9 @@ struct ProblemInstance
 	// by the active compiler pass.
 	enum {
 		TUNE_ARCH =
-			(__CUB_CUDA_ARCH__ >= 200) ?
+			(PTX_ARCH >= 200) ?
 				200 :
-				(__CUB_CUDA_ARCH__ >= 130) ?
+				(PTX_ARCH >= 130) ?
 					130 :
 					100
 	};

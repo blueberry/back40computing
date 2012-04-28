@@ -20,7 +20,7 @@
 /******************************************************************************
  * Static CUDA device properties by SM architectural version.
  *
- *	__CUB_CUDA_ARCH__
+ *	PTX_ARCH
  *
  *    Macro for the arch-id targeted by the active compiler pass (or zero
  *    during the host pass).
@@ -44,18 +44,20 @@ namespace cub {
 /**
  * CUDA architecture-id targeted by the active compiler pass
  */
+enum {
 #ifndef __CUDA_ARCH__
-	#define __CUB_CUDA_ARCH__ 		0						// Host path
+	PTX_ARCH = 0,						// Host path
 #else
-	#define __CUB_CUDA_ARCH__ 		__CUDA_ARCH__			// Device path
+	PTX_ARCH = __CUDA_ARCH__,			// Device path
 #endif
+};
 
 
 /**
  * Structure for statically reporting CUDA device properties, parameterized by SM
  * architecture.
  */
-template <int CUDA_ARCH>
+template <int SM_ARCH>
 struct StaticDeviceProps;
 
 
@@ -212,19 +214,14 @@ struct StaticDeviceProps<110> : StaticDeviceProps<100> {};		// Derives from SM10
 /**
  * Unknown device properties
  */
-template <int CUDA_ARCH>
+template <int SM_ARCH>
 struct StaticDeviceProps : StaticDeviceProps<100> {};			// Derives from SM10
 
 
 /**
  * Device properties for the arch-id targeted by the active compiler pass.
  */
-struct DeviceProps : StaticDeviceProps<__CUB_CUDA_ARCH__>
-{
-	enum {
-		CUDA_ARCH = __CUB_CUDA_ARCH__,
-	};
-};
+struct DeviceProps : StaticDeviceProps<PTX_ARCH> {};
 
 
 } // namespace cub

@@ -40,14 +40,13 @@ namespace cub {
  * error message is printed to stderr along with the supplied source context.  Returns
  * the CUDA error.
  */
-__host__ __device__ __forceinline__ cudaError_t Perror(
+__host__ __device__ __forceinline__ cudaError_t Debug(
 	cudaError_t error,
 	const char *message,
 	const char *filename,
-	int line,
-	bool print = CUB_DEBUG)
+	int line)
 {
-	if (error && print) {
+	if (CUB_DEBUG) {
 		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
@@ -56,52 +55,18 @@ __host__ __device__ __forceinline__ cudaError_t Perror(
 
 
 /**
- * Peeks at the last CUDA error.  If print is true and the specified error is
- * not cudaSuccess, the corresponding error message is printed to stderr along
- * with the supplied source context. Returns the CUDA error.
- */
-__host__ __device__ __forceinline__ cudaError_t Perror(
-	const char *message,
-	const char *filename,
-	int line,
-	bool print = CUB_DEBUG)
-{
-	cudaError_t error = cudaPeekAtLastError();
-	Perror(error, message, filename, line, print);
-	return error;
-}
-
-
-/**
  * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
  * error message is printed to stderr.  Returns the CUDA error.
  */
-__host__ __device__ __forceinline__ cudaError_t Perror(
-	cudaError_t error,
-	bool print = CUB_DEBUG)
+__host__ __device__ __forceinline__ cudaError_t Debug(cudaError_t error)
 {
-	if (error && print) {
+	if (CUB_DEBUG) {
 		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
 	return error;
 }
 
-
-/**
- * Peeks at the last CUDA error.  If print is true and the specified error is
- * not cudaSuccess, the corresponding error message is printed to stderr.
- * Returns the CUDA error.
- */
-__host__ __device__ __forceinline__ cudaError_t Perror(bool print = CUB_DEBUG)
-{
-	cudaError_t error = cudaPeekAtLastError();
-	if (error && print) {
-		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
-		fflush(stderr);
-	}
-	return error;
-}
 
 
 } // namespace cub

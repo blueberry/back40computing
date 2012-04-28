@@ -23,14 +23,11 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/operators.cuh>
-#include <b40c/util/numeric_traits.cuh>
+#include <cub/device_props.cuh>
+#include <cub/type_utils.cuh>
+#include <cub/operators.cuh>
 
-namespace b40c {
-namespace util {
-namespace reduction {
+namespace cub {
 
 
 /**
@@ -288,7 +285,5 @@ public:
 };
 
 
-} // namespace reduction
-} // namespace util
-} // namespace b40c
+} // namespace cub
 

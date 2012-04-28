@@ -78,7 +78,7 @@ struct KernelProps
 
 			// Get kernel attributes
 			cudaFuncAttributes kernel_attrs;
-			if (error = Perror(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
+			if (error = Debug(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
 				"cudaFuncGetAttributes failed", __FILE__, __LINE__)) break;
 
 			this->cta_warps = CUB_ROUND_UP_NEAREST(cta_threads / cuda_props.warp_threads, 1);
