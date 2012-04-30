@@ -25,8 +25,9 @@
 
 #include <cub/cub.cuh>
 
-namespace cub {
+namespace back40 {
 
+using namespace cub;	// Fold cub namespace into back40
 
 
 /**
@@ -214,5 +215,5 @@ struct KernelProps
 
 
 
-} // namespace cub
+} // namespace back40
 

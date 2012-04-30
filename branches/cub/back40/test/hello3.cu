@@ -1,9 +1,7 @@
 #include <stdio.h>
 
 
-#include <b40/reduce.cuh>
-#include <cub/io.cuh>
-#include <cub/operators.cuh>
+#include <back40/back40.cuh>
 
 
 int main()
@@ -15,17 +13,17 @@ int main()
 	T *h_out = NULL;
 	T *h_seed = NULL;
 
-	b40::Reduce(d_in, d_out, h_out, h_seed, 5);
-
-	b40::reduction::Policy<
-		b40::reduction::KernelPolicy<32, 1, 1, cub::READ_NONE, cub::WRITE_NONE, false>,
-		b40::reduction::KernelPolicy<32, 1, 1, cub::READ_NONE, cub::WRITE_NONE, false>,
+	back40::Reduce(d_in, d_out, h_out, h_seed, 5);
+/*
+	back40::reduce::Policy<
+		back40::reduce::KernelPolicy<32, 1, 1, cub::READ_NONE, cub::WRITE_NONE, false>,
+		back40::reduce::KernelPolicy<32, 1, 1, cub::READ_NONE, cub::WRITE_NONE, false>,
 		true,
 		true> policy;
 
 	cub::Sum<T> reduction_op;
 
-	b40::Reduce(d_in, d_out, h_out, h_seed, 5, reduction_op, policy);
-
+	back40::Reduce(d_in, d_out, h_out, h_seed, 5, reduction_op, policy);
+*/
 	return 0;
 }

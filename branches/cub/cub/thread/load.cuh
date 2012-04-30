@@ -18,7 +18,28 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Thread utilities for reading memory (optionally using cache modifiers)
+ * Thread utilities for reading memory (optionally using cache modifiers).
+ * Cache modifiers will only be effected for built-in types (i.e., C++
+ * primitives and CUDA vector-types).
+ *
+ * For example:
+ *
+ *     // 32-bit load using cache-global modifier
+ *     int *d_in;
+ *     int data = Load<LOAD_CG>(d_in + threadIdx.x);
+ *
+ *     // 16-bit load using default modifier
+ *     short *d_in;
+ *     short data = Load(d_in + threadIdx.x);
+
+ *     // 256-bit load using cache-volatile modifier
+ *     double4 *d_in;
+ *     double4 data = Load<LOAD_CV>(d_in + threadIdx.x);
+ *
+ *     // 96-bit load using default cache modifier (ignoring LOAD_CS)
+ *     struct Foo { bool a; short b; } *d_struct = NULL;
+ *     Foo data = Load<LOAD_CS>(d_in + threadIdx.x);
+ *
  ******************************************************************************/
 
 #pragma once
@@ -45,6 +66,16 @@ enum LoadModifier {
 
 /**
  * Generic Load() operation
+ */
+template <typename T>
+__device__ __forceinline__ T Load(T *ptr)
+{
+	return *ptr;
+}
+
+
+/**
+ * Generic Load() operation (ignores LOAD_MODIFIER)
  */
 template <LoadModifier LOAD_MODIFIER, typename T>
 __device__ __forceinline__ T Load(T *ptr)

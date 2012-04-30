@@ -25,13 +25,14 @@
 
 #include <cub/cub.cuh>
 
-#include <back40/reduction/kernel_policy.cuh>
-#include <back40/reduction/policy.cuh>
-#include <back40/reduction/kernels.cuh>
+#include <back40/common/cuda_props.cuh>
+#include <back40/reduce/kernel_policy.cuh>
+#include <back40/reduce/policy.cuh>
+#include <back40/reduce/kernels.cuh>
 
 
 namespace back40 {
-namespace reduction {
+namespace reduce {
 
 using namespace cub;	// Fold cub namespace into back40
 
@@ -63,7 +64,7 @@ struct ProblemInstance
 	 * static KernelPolicy details for that kernel
 	 */
 	template <typename KernelPtr>
-	struct KernelProps : cub::KernelProps<KernelPtr>
+	struct KernelProps : back40::KernelProps<KernelPtr>
 	{
 		int tile_elements;
 
@@ -78,7 +79,7 @@ struct ProblemInstance
 		{
 			tile_elements = KernelPolicy::TILE_ELEMENTS;
 
-			return cub::KernelProps<KernelPtr>::Init(
+			return back40::KernelProps<KernelPtr>::Init(
 				kernel_ptr,
 				KernelPolicy::THREADS,
 				cuda_props);
@@ -142,7 +143,6 @@ struct ProblemInstance
 		cudaError_t error = cudaSuccess;
 		do {
 
-			// Reduction kernels
 
 		} while (0);
 
@@ -221,8 +221,8 @@ struct ProblemInstance
 	// 100
 	template <>
 	struct TunedPolicy<100> : Policy<
-		KernelPolicy<64, 1, 1, READ_NONE, WRITE_NONE, false>,
-		KernelPolicy<64, 1, 1, READ_NONE, WRITE_NONE, false>,
+		KernelPolicy<64, 1, 1, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<64, 1, 1, LOAD_NONE, STORE_NONE, false>,
 		true,
 		true>
 	{};
@@ -230,8 +230,8 @@ struct ProblemInstance
 	// 130
 	template <>
 	struct TunedPolicy<130> : Policy<
-		KernelPolicy<128, 1, 2, READ_NONE, WRITE_NONE, false>,
-		KernelPolicy<128, 1, 2, READ_NONE, WRITE_NONE, false>,
+		KernelPolicy<128, 1, 2, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<128, 1, 2, LOAD_NONE, STORE_NONE, false>,
 		true,
 		true>
 	{};
@@ -239,8 +239,8 @@ struct ProblemInstance
 	// 200
 	template <>
 	struct TunedPolicy<200> : Policy<
-		KernelPolicy<128, 2, 2, READ_NONE, WRITE_NONE, false>,
-		KernelPolicy<128, 2, 2, READ_NONE, WRITE_NONE, false>,
+		KernelPolicy<128, 2, 2, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<128, 2, 2, LOAD_NONE, STORE_NONE, false>,
 		true,
 		true>
 	{};
@@ -288,6 +288,6 @@ struct ProblemInstance
 
 
 
-}// namespace reduction
+}// namespace reduce
 }// namespace back40
 

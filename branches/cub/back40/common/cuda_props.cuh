@@ -27,6 +27,8 @@
 
 namespace back40 {
 
+using namespace cub;	// Fold cub namespace into back40
+
 
 /**
  * Invalid CUDA gpu device ordinal

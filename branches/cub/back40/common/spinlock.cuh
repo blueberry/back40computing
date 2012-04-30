@@ -21,7 +21,8 @@
  * Simple x86/x64 atomic spinlock
  ******************************************************************************/
 
-namespace cub {
+namespace back40 {
+
 
 #if defined(_MSC_VER)
 
@@ -99,6 +100,6 @@ __forceinline__ void Unlock(volatile Spinlock *lock)
 }
 
 
-} // namespace cub
+} // namespace back40
 
 

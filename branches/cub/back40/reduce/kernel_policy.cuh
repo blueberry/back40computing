@@ -26,7 +26,7 @@
 #include <cub/cub.cuh>
 
 namespace back40 {
-namespace reduction {
+namespace reduce {
 
 using namespace cub;	// Fold cub namespace into back40
 
@@ -43,8 +43,8 @@ template <
 	int 			_THREADS,
 	int 			_STRIPS_PER_THREAD,
 	int 			_ELEMENTS_PER_STRIP,
-	ReadModifier 	_READ_MODIFIER,
-	WriteModifier 	_WRITE_MODIFIER,
+	LoadModifier 	_LOAD_MODIFIER,
+	StoreModifier 	_STORE_MODIFIER,
 	bool 			_WORK_STEALING>
 struct KernelPolicy
 {
@@ -55,13 +55,13 @@ struct KernelPolicy
 		TILE_ELEMENTS			= THREADS * STRIPS_PER_THREAD * ELEMENTS_PER_STRIP,
 	};
 
-	static const ReadModifier 	READ_MODIFIER 	= _READ_MODIFIER;
-	static const WriteModifier 	WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const LoadModifier 	LOAD_MODIFIER 	= _LOAD_MODIFIER;
+	static const StoreModifier 	STORE_MODIFIER 	= _STORE_MODIFIER;
 	static const bool 			WORK_STEALING	= _WORK_STEALING;
 };
 
 		
 
-}// namespace reduction
+}// namespace reduce
 }// namespace back40
 

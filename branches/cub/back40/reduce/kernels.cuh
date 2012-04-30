@@ -24,10 +24,10 @@
 #pragma once
 
 #include <cub/cub.cuh>
-#include <back40/reduction/cta.cuh>
+#include <back40/reduce/cta.cuh>
 
 namespace back40 {
-namespace reduction {
+namespace reduce {
 
 using namespace cub;	// Fold cub namespace into back40
 
@@ -96,6 +96,6 @@ __global__ void SingleKernel(
 }
 
 
-} // namespace reduction
+} // namespace reduce
 } // namespace back40
 

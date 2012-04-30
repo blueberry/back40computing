@@ -18,87 +18,13 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Common CUB meta-programming and utility routines
+ * Common CUB type manipulation (metaprogramming) utilities
  ******************************************************************************/
 
 #pragma once
 
 namespace cub {
 
-
-/******************************************************************************
- * Macro utilities
- ******************************************************************************/
-
-/**
- * Select maximum
- */
-#define CUB_MAX(a, b) (((a) > (b)) ? (a) : (b))
-
-
-/**
- * Select maximum
- */
-#define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
-
-
-/**
- * x rounded up to the nearest multiple of y
- */
-#define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
-
-
-/**
- * x rounded down to the nearest multiple of y
- */
-#define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
-
-
-
-/******************************************************************************
- * Simple templated utilities
- ******************************************************************************/
-
-/**
- * Perform a swap
- */
-template <typename T> 
-void __host__ __device__ __forceinline__ Swap(T &a, T &b) {
-	T temp = a;
-	a = b;
-	b = temp;
-}
-
-
-/**
- * MagnitudeShift().  Allows you to shift left for positive magnitude values, 
- * right for negative.   
- */
-template <int MAGNITUDE, int SHIFT_LEFT = (MAGNITUDE >= 0)>
-struct MagnitudeShift
-{
-	template <typename K>
-	__device__ __forceinline__ static K Shift(K key)
-	{
-		return key << MAGNITUDE;
-	}
-};
-
-
-template <int MAGNITUDE>
-struct MagnitudeShift<MAGNITUDE, 0>
-{
-	template <typename K>
-	__device__ __forceinline__ static K Shift(K key)
-	{
-		return key >> (MAGNITUDE * -1);
-	}
-};
-
-
-/******************************************************************************
- * Metaprogramming utilities
- ******************************************************************************/
 
 /**
  * Null type
@@ -107,9 +33,11 @@ struct NullType {};
 
 
 /**
- * Statically determine log2(N), rounded up, e.g.,
- * 		Log2<8>::VALUE == 3
- * 		Log2<3>::VALUE == 2
+ * Statically determine log2(N), rounded up.
+ *
+ * For example:
+ *     Log2<8>::VALUE		// 3
+ *     Log2<3>::VALUE 		// 2
  */
 template <int N, int CURRENT_VAL = N, int COUNT = 0>
 struct Log2
@@ -129,7 +57,7 @@ struct Log2<N, 0, COUNT>
 
 
 /**
- * If/Then/Else
+ * If ? Then : Else
  */
 template <bool IF, typename ThenType, typename ElseType>
 struct If
@@ -168,7 +96,6 @@ struct Equals <A, A>
 };
 
 
-
 /**
  * Is volatile
  */
@@ -184,11 +111,11 @@ struct IsVolatile<Tp volatile>
 };
 
 
-
 /**
  * Removes const and volatile qualifiers from type Tp.
  *
- * E.g., typedef typename RemoveQualifiers<AdornedType>::Type NakedType;
+ * For example:
+ *     typename RemoveQualifiers<volatile int>::Type 		// int;
  */
 template <typename Tp, typename Up = Tp>
 struct RemoveQualifiers
@@ -219,10 +146,10 @@ struct RemoveQualifiers<Tp, const volatile Up>
  * Simple type traits utilities.
  *
  * For example:
- *     TypeTraits<int>::CATEGORY 			--> SIGNED_INTEGER
- *     TypeTraits<NullType>::NULL_TYPE 		--> true
- *     TypeTraits<uint4>::CATEGORY 			--> NOT_A_NUMBER
- *     TypeTraits<uint4>::PRIMITIVE 		--> false
+ *     Traits<int>::CATEGORY 			// SIGNED_INTEGER
+ *     Traits<NullType>::NULL_TYPE 		// true
+ *     Traits<uint4>::CATEGORY 			// NOT_A_NUMBER
+ *     Traits<uint4>::PRIMITIV; 		// false
  *
  ******************************************************************************/
 
@@ -279,7 +206,7 @@ template <> struct NumericTraits<double> : 					BaseTraits<FLOATING_POINT, true,
  * Type traits
  */
 template <typename T>
-struct TypeTraits : NumericTraits<typename RemoveQualifiers<T>::Type> {};
+struct Traits : NumericTraits<typename RemoveQualifiers<T>::Type> {};
 
 
 
@@ -288,11 +215,30 @@ struct TypeTraits : NumericTraits<typename RemoveQualifiers<T>::Type> {};
  *
  * For example:
  *
- *     typedef int A[10][20];
+ *     typedef int A[10];
+ *     ArrayTraits<A>::DIMS 			// 1
+ *     ArrayTraits<A>::ELEMENTS			// 10
+ *     typename ArrayTraits<A>::Type	// int
  *
- *     ArrayTraits<A>::DIMS 			// --> 2
- *     ArrayTraits<A>::ELEMENTS			// --> 200
- *     typename ArrayTraits<A>::Type	// --> int
+ *     typedef int B[10][20];
+ *     ArrayTraits<B>::DIMS 			// 2
+ *     ArrayTraits<B>::ELEMENTS			// 200
+ *     typename ArrayTraits<B>::Type	// int
+ *
+ *     typedef int C;
+ *     ArrayTraits<C>::DIMS 			// 0
+ *     ArrayTraits<C>::ELEMENTS			// 1
+ *     typename ArrayTraits<C>::Type	// int
+
+ *     typedef int* D;
+ *     ArrayTraits<D>::DIMS 			// 1
+ *     ArrayTraits<D>::ELEMENTS			// 1
+ *     typename ArrayTraits<D>::Type	// int
+ *
+ *     typedef int (*E)[2];
+ *     ArrayTraits<E>::DIMS 			// 2
+ *     ArrayTraits<E>::ELEMENTS			// 2
+ *     typename ArrayTraits<E>::Type	// int
  *
  ******************************************************************************/
 
@@ -324,11 +270,11 @@ struct ArrayTraits
 template <typename DimType, int LENGTH>
 struct ArrayTraits<DimType*, LENGTH>
 {
-	typedef DimType Type;
+	typedef typename ArrayTraits<DimType>::Type Type;
 
 	enum {
-		ELEMENTS 	= 0,
-		DIMS		= 0
+		ELEMENTS 	= ArrayTraits<DimType>::ELEMENTS,
+		DIMS		= ArrayTraits<DimType>::DIMS + 1,
 	};
 };
 
@@ -349,11 +295,11 @@ struct ArrayTraits<DimType[LENGTH], -1>
 
 
 /******************************************************************************
- * Utility code for obtaining CUDA vector-types for built-ins.
+ * Derive CUDA vector-types for built-in types
  *
  * For example:
  *
- *     VectorT<unsigned int, 2> pair; 			--> uint2 pair;
+ *     VectorT<unsigned int, 2> pair; 			// uint2 pair;
  *
  ******************************************************************************/
 

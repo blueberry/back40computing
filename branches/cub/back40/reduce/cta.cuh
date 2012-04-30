@@ -27,7 +27,7 @@
 #include <cub/cub.cuh>
 
 namespace back40 {
-namespace reduction {
+namespace reduce {
 
 using namespace cub;	// Fold cub namespace into back40
 
@@ -42,6 +42,10 @@ template <
 	typename ReductionOp,		// Type of reduction operator (functor)
 	typename SizeT>				// Integral type for indexing input items
 struct Cta
+	: CtaProgress<				// Progress-management base class
+		SizeT,
+		KernelPolicy::TILE_ELEMENTS,
+		KernelPolicy::WORK_STEALING>
 {
 	//---------------------------------------------------------------------
 	// Typedefs
@@ -50,7 +54,7 @@ struct Cta
 	// The value of the type that we're reducing
 	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
-	// CTA progress type
+	// Progress-management base class
 	typedef CtaProgress<
 		SizeT,
 		KernelPolicy::TILE_ELEMENTS,
@@ -79,7 +83,6 @@ struct Cta
 	OutputIterator		d_out;				// Output iterator
 	T 					accumulator;		// The value each thread is to accumulate
 	ReductionOp			reduction_op;		// Reduction operator
-	CtaProgress			cta_progress;		// CTA progress
 
 
 	//---------------------------------------------------------------------
@@ -97,10 +100,10 @@ struct Cta
 		ReductionOp 					reduction_op,
 		const WorkDistribution			&work_distribution) :
 			// Initializers
+			CtaProgress(work_distribution),
 			d_in(d_in),
 			d_out(d_out),
-			reduction_op(reduction_op),
-			cta_progress(work_distribution)
+			reduction_op(reduction_op)
 	{}
 
 
@@ -143,19 +146,19 @@ struct Cta
 	__device__ __forceinline__ void ProcessTiles()
 	{
 		// Check for at least one full tile of tile_elements
-		if (cta_progress.HasTile()) {
+		if (this->HasTile()) {
 
 			// Process first tile
 			ProcessFullTile(true);
-			cta_progress.NextTile();
+			this->NextTile();
 
 			// Process any further full tiles
-			while (cta_progress.HasTile()) {
+			while (HasTile()) {
 				ProcessFullTile(false);
-				cta_progress.NextTile();
+				this->NextTile();
 			}
 
-			if (cta_progress.extra_elements) {
+			if (this->extra_elements) {
 				// Clean up last partial tile with guarded-io
 				ProcessPartialTile(false);
 			}
@@ -164,19 +167,19 @@ struct Cta
 			// destination (all thread have valid reduction partials)
 			OutputToSpine(KernelPolicy::TILE_ELEMENTS);
 
-		} else if (cta_progress.extra_elements) {
+		} else if (this->extra_elements) {
 
 			// Clean up last partial tile with guarded-io (first tile)
 			ProcessPartialTile(true);
 
 			// Collectively reduce accumulator from each thread into output
 			// destination (not every thread may have a valid reduction partial)
-			OutputToSpine(cta_progress.extra_elements);
+			OutputToSpine(this->extra_elements);
 		}
 	}
 };
 
 
-} // namespace reduction
+} // namespace reduce
 } // namespace back40
 

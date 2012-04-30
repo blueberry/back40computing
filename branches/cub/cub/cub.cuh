@@ -23,20 +23,21 @@
 
 #pragma once
 
-#include <cta/cta_load.cuh>
-#include <cta/cta_reduce.cuh>
-#include <cta/cta_scan.cuh>
-#include <cta/cta_store.cuh>
+#include <cub/cta/cta_load.cuh>
+#include <cub/cta/cta_reduce.cuh>
+#include <cub/cta/cta_scan.cuh>
+#include <cub/cta/cta_store.cuh>
+#include <cub/cta/cta_progress.cuh>
 
-#include <thread/load.cuh>
-#include <thread/reduce.cuh>
-#include <thread/scan.cuh>
-#include <thread/store.cuh>
+#include <cub/thread/load.cuh>
+#include <cub/thread/reduce.cuh>
+#include <cub/thread/scan.cuh>
+#include <cub/thread/store.cuh>
 
-#include <device_props.cuh>
-#include <operators.cuh>
-#include <debug.cuh>
-#include <ptx_intrinsics.cuh>
-#include <type_utils.cuh>
-#include <work_distribution.cuh>
+#include <cub/basic_utils.cuh>
+#include <cub/device_props.cuh>
+#include <cub/operators.cuh>
+#include <cub/debug.cuh>
+#include <cub/ptx_intrinsics.cuh>
+#include <cub/type_utils.cuh>
 

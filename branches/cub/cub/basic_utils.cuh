@@ -18,16 +18,64 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Back40 umbrella include file
+ * Basic, common utility subroutines
  ******************************************************************************/
 
 #pragma once
 
-// Back40 common
-#include <back40/common/cuda_props.cuh>
-#include <back40/common/kernel_props.cuh>
-#include <back40/common/spinlock.cuh>
+namespace cub {
 
-// Primitives
-#include <back40/reduce/reduce.cuh>
+
+/**
+ * Select maximum(a, b)
+ */
+#define CUB_MAX(a, b) (((a) > (b)) ? (a) : (b))
+
+
+/**
+ * Select minimum(a, b)
+ */
+#define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+
+/**
+ * x rounded up to the nearest multiple of y
+ */
+#define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
+
+
+/**
+ * x rounded down to the nearest multiple of y
+ */
+#define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
+
+
+/**
+ * Perform a swap
+ */
+template <typename T> 
+__host__ __device__ __forceinline__ void Swap(T &a, T &b) {
+	T temp = a;
+	a = b;
+	b = temp;
+}
+
+
+/**
+ * Allows you to shift by magnitude (left for positive, right for negative).
+ *
+ * For example:
+ *     Shift(8, -2)		// 2
+ */
+__host__ __device__ __forceinline__ int Shift(int val, const int magnitude)
+{
+	if (magnitude > 0) {
+		return val << magnitude;
+	} else {
+		return val >> magnitude;
+	}
+}
+
+
+} // namespace cub
 

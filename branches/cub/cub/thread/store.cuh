@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include <cub/device_intrinsics.cuh>
+#include <cub/ptx_intrinsics.cuh>
 
 namespace cub {
 
@@ -45,11 +45,22 @@ enum StoreModifier {
 /**
  * Generic Store() operation
  */
+template <typename T>
+__device__ __forceinline__ void Store(T *ptr, const T& val)
+{
+	*ptr = val;
+}
+
+
+/**
+ * Generic Store() operation
+ */
 template <StoreModifier STORE_MODIFIER, typename T>
 __device__ __forceinline__ void Store(T *ptr, const T& val)
 {
 	*ptr = val;
 }
+
 
 /**
  * Overload specializations for built-ins when compiling for SM20+

@@ -24,7 +24,7 @@
 #pragma once
 
 namespace back40 {
-namespace reduction {
+namespace reduce {
 
 using namespace cub;	// Fold cub namespace into back40
 
@@ -55,6 +55,6 @@ struct Policy
 };
 		
 
-}// namespace reduction
+}// namespace reduce
 }// namespace back40
 

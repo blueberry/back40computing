@@ -27,11 +27,11 @@
 
 #include <cub/cub.cuh>
 
-#include <back40/reduction/cta.cuh>
-#include <back40/reduction/kernel_policy.cuh>
-#include <back40/reduction/kernels.cuh>
-#include <back40/reduction/policy.cuh>
-#include <back40/reduction/problem_instance.cuh>
+#include <back40/reduce/cta.cuh>
+#include <back40/reduce/kernel_policy.cuh>
+#include <back40/reduce/kernels.cuh>
+#include <back40/reduce/policy.cuh>
+#include <back40/reduce/problem_instance.cuh>
 
 namespace back40 {
 
@@ -51,7 +51,7 @@ cudaError_t Reduce(
 	ReductionOp 												reduction_op,
 	int 														max_grid_size = 0)
 {
-	reduction::ProblemInstance<InputIterator, int, ReductionOp> problem(
+	reduce::ProblemInstance<InputIterator, int, ReductionOp> problem(
 		d_in,
 		d_result,
 		h_result,
@@ -106,7 +106,7 @@ cudaError_t Reduce(
 	Policy														policy,
 	int 														max_grid_size = 0)
 {
-	reduction::ProblemInstance<InputIterator, int, ReductionOp> problem(
+	reduce::ProblemInstance<InputIterator, int, ReductionOp> problem(
 		d_in,
 		d_result,
 		h_result,

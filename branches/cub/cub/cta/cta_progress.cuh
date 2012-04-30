@@ -18,9 +18,9 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Work management data structures.
+ * CTA Work management.
  *
- * A given threadblock may receive one of three different amounts of
+ * A given CTA may receive one of three different amounts of
  * work: "big", "normal", and "last".  The big workloads are one
  * grain greater than the normal, and the last workload
  * does the extra work.
