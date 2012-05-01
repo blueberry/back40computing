@@ -177,6 +177,17 @@ lars: bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) : lars_demo.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) lars_demo.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	
+	
+#-------------------------------------------------------------------------------
+# (make harris) Test driver for Harris
+#-------------------------------------------------------------------------------
+
+harris: bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+
+bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX) : harris.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX) harris.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  	
 
 
 #-------------------------------------------------------------------------------
