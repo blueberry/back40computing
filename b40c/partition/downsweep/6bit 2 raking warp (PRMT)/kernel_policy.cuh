@@ -66,7 +66,7 @@ struct KernelPolicy : TuningPolicy
 		LOG_SCAN_BINS					= (TuningPolicy::LOG_BINS > 3) ? 3 : TuningPolicy::LOG_BINS,
 		SCAN_BINS						= 1 << LOG_SCAN_BINS,
 
-		LOG_SCAN_LANES_PER_TILE			= B40C_MAX((LOG_SCAN_BINS - 2), 0),		// Always at least one lane per load
+		LOG_SCAN_LANES_PER_TILE			= CUB_MAX((LOG_SCAN_BINS - 2), 0),		// Always at least one lane per load
 		SCAN_LANES_PER_TILE				= 1 << LOG_SCAN_LANES_PER_TILE,
 
 		LOG_DEPOSITS_PER_LANE 			= TuningPolicy::LOG_THREADS + TuningPolicy::LOG_LOADS_PER_TILE,
@@ -117,7 +117,7 @@ struct KernelPolicy : TuningPolicy
 	enum {
 		THREAD_OCCUPANCY					= B40C_SM_THREADS(CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
 		SMEM_OCCUPANCY						= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-		MAX_CTA_OCCUPANCY					= B40C_MIN(B40C_SM_CTAS(CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY					= CUB_MIN(B40C_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 
 		VALID								= (MAX_CTA_OCCUPANCY > 0),
 	};

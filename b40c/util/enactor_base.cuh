@@ -125,9 +125,9 @@ protected:
 					max_block_occupancy;
 			int max_reg_occupancy = B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
 
-			max_cta_occupancy = B40C_MIN(
-				B40C_MIN(max_block_occupancy, max_thread_occupancy),
-				B40C_MIN(max_smem_occupancy, max_reg_occupancy));
+			max_cta_occupancy = CUB_MIN(
+				CUB_MIN(max_block_occupancy, max_thread_occupancy),
+				CUB_MIN(max_smem_occupancy, max_reg_occupancy));
 		}
 
 		/**
@@ -191,7 +191,7 @@ protected:
 			if (ENACTOR_DEBUG) printf("Occupancy:\t[upsweep occupancy: %d, downsweep occupancy %d]\n",
 				upsweep_cta_occupancy, downsweep_cta_occupancy);
 
-			max_cta_occupancy = B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy);
+			max_cta_occupancy = CUB_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy);
 
 		} while (0);
 
@@ -226,9 +226,9 @@ protected:
 			if (retval = util::B40CPerror(cudaFuncGetAttributes(&downsweep_kernel_attrs, DownsweepKernel),
 				"EnactorBase cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
-			int max_static_smem = B40C_MAX(
+			int max_static_smem = CUB_MAX(
 				upsweep_kernel_attrs.sharedSizeBytes,
-				B40C_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
+				CUB_MAX(spine_kernel_attrs.sharedSizeBytes, downsweep_kernel_attrs.sharedSizeBytes));
 
 			dynamic_smem[0] = max_static_smem - upsweep_kernel_attrs.sharedSizeBytes;
 			dynamic_smem[1] = max_static_smem - spine_kernel_attrs.sharedSizeBytes;
@@ -262,7 +262,7 @@ protected:
 			if (retval = util::B40CPerror(cudaFuncGetAttributes(&spine_kernel_attrs, SpineKernel),
 				"EnactorBase cudaFuncGetAttributes spine_kernel_attrs failed", __FILE__, __LINE__)) break;
 
-			int max_static_smem = B40C_MAX(
+			int max_static_smem = CUB_MAX(
 				upsweep_kernel_attrs.sharedSizeBytes,
 				spine_kernel_attrs.sharedSizeBytes);
 
@@ -379,7 +379,7 @@ protected:
 				break;
 			}
 
-			grid_size = B40C_MIN(
+			grid_size = CUB_MIN(
 				grains,
 				((max_grid_size > 0) ?
 					max_grid_size :
@@ -390,7 +390,7 @@ protected:
 			int saturation_cap  = (4 * max_cta_occupancy * cuda_props.device_props.multiProcessorCount);
 
 			// GF10x
-			grid_size = B40C_MIN(
+			grid_size = CUB_MIN(
 				grains,
 				((max_grid_size > 0) ?
 					max_grid_size :

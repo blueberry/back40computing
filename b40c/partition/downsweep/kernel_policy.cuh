@@ -73,7 +73,7 @@ struct KernelPolicy : TuningPolicy
 		PACKED_COUNTERS					= sizeof(RakingPartial) / sizeof(Counter),
 		LOG_PACKED_COUNTERS				= util::Log2<PACKED_COUNTERS>::VALUE,
 
-		LOG_SCAN_LANES					= B40C_MAX((LOG_SCAN_BINS - LOG_PACKED_COUNTERS), 0),				// Always at least one lane
+		LOG_SCAN_LANES					= CUB_MAX((LOG_SCAN_BINS - LOG_PACKED_COUNTERS), 0),				// Always at least one lane
 		SCAN_LANES						= 1 << LOG_SCAN_LANES,
 
 		LOG_SCAN_ELEMENTS				= LOG_SCAN_LANES + LOG_THREADS,
@@ -117,7 +117,7 @@ struct KernelPolicy : TuningPolicy
 	enum {
 		THREAD_OCCUPANCY					= B40C_SM_THREADS(TuningPolicy::CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
 		SMEM_OCCUPANCY						= B40C_SMEM_BYTES(TuningPolicy::CUDA_ARCH) / sizeof(SmemStorage),
-		MAX_CTA_OCCUPANCY					= B40C_MIN(B40C_SM_CTAS(TuningPolicy::CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY					= CUB_MIN(B40C_SM_CTAS(TuningPolicy::CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 
 		VALID								= (MAX_CTA_OCCUPANCY > 0),
 	};

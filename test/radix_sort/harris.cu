@@ -9,6 +9,11 @@
 #include <stdio.h>
 #include <algorithm>
 
+#include <thrust/device_ptr.h>
+#include <thrust/gather.h>
+#include <thrust/sort.h>
+
+#include "b40c_test_util.h"
 
 
 /******************************************************************************
@@ -42,14 +47,14 @@ namespace my_dev
  */
 bool Uint4Compare96(uint4 elem1, uint4 elem2)
 {
-	if (elem1.z != elem2.z) {
-		return (elem1.z < elem2.z);
+	if (elem1.x != elem2.x) {
+		return (elem1.x < elem2.x);
 
 	} else if (elem1.y != elem2.y) {
 		return (elem1.y < elem2.y);
 
 	} else {
-		return (elem1.x < elem2.x);
+		return (elem1.z < elem2.z);
 	}
 }
 
@@ -135,10 +140,10 @@ namespace original
 	 * Sort the lower 96-bits of a uint4 structure
 	 */
 	void thrust_sort_96b(
-		my_dev::dev_mem<uint4> &srcKeys,
-		my_dev::dev_mem<uint4> &sortedKeys,
-		my_dev::dev_mem<uint> &temp_buffer,
-		my_dev::dev_mem<uint> &permutation_buffer,
+		my_dev::dev_mem<uint4> srcKeys,
+		my_dev::dev_mem<uint4> sortedKeys,
+		my_dev::dev_mem<uint> temp_buffer,
+		my_dev::dev_mem<uint> permutation_buffer,
 		int N)
 	{
 
@@ -174,7 +179,7 @@ namespace original
 /**
  * Main
  */
-int main()
+int main(int argc, char** argv)
 {
     int num_elements 	= 450 * 1000;	// 450K 96-bit keys
 	int device_id 		= 0;
@@ -190,8 +195,7 @@ int main()
 
     // Allocate and initialize 96-bit keys on host
 	printf("Allocating...\n"); fflush(stdout);
-    Foo *h_keys = new uint4[num_elements];
-    Foo *h_sorted_keys = new uint4[num_elements];
+    uint4 *h_keys = new uint4[num_elements];
     for (int i(0); i < num_elements; ++i) {
 
     	b40c::util::RandomBits(h_keys[i].x);
@@ -201,8 +205,8 @@ int main()
 
     // Compute answer (sorted keys) on host
 	printf("Computing reference answer...\n"); fflush(stdout);
-    Foo *h_reference_keys = new uint4[num_elements];
-    memcpy(h_reference_keys, sorted_keys, sizeof(uint4) * num_elements);
+    uint4 *h_reference_keys = new uint4[num_elements];
+    memcpy(h_reference_keys, h_keys, sizeof(uint4) * num_elements);
 	std::stable_sort(h_reference_keys, h_reference_keys + num_elements, Uint4Compare96);
 
     // Allocate keys on device
@@ -211,7 +215,7 @@ int main()
     cudaMalloc((void**)&d_keys, sizeof(uint4) * num_elements);
 
 	// Allocate sorted keys on device
-    uint *d_sorted_keys;
+    uint4 *d_sorted_keys;
 	cudaMalloc((void**)&d_sorted_keys, sizeof(uint4) * num_elements);
 
     // Allocate output permutation vector on device
@@ -225,40 +229,60 @@ int main()
 	cudaMalloc((void**)&d_temp1, sizeof(uint) * num_elements);
 
 
-
+	//
     // Thrust
-    {
-		// Copy problem to GPU
-		printf("Copying problem to GPU...\n"); fflush(stdout);
-	    cudaMemcpy(d_keys, h_keys, sizeof(uint4) * num_elements, cudaMemcpyHostToDevice);
+	//
 
+	// Copy problem to GPU
+	printf("Thrust: copying problem to GPU...\n"); fflush(stdout);
+	cudaMemcpy(d_keys, h_keys, sizeof(uint4) * num_elements, cudaMemcpyHostToDevice);
 
-		// Copy out results and check answer
-	    cudaMemcpy(h_sorted_keys, d_sorted_keys, sizeof(uint4) * num_elements, cudaMemcpyDeviceToHost);
-	    for (int i(0); i < num_elements; ++i) {
+	// Thrust sort
+	original::thrust_sort_96b(
+		my_dev::dev_mem<uint4>(d_keys),
+		my_dev::dev_mem<uint4>(d_sorted_keys),
+		my_dev::dev_mem<uint>(d_temp1),
+		my_dev::dev_mem<uint>(d_permutation),
+		num_elements);
 
-	    	b40c::util::RandomBits(h_keys[i].x);
-	    	b40c::util::RandomBits(h_keys[i].y);
-	    	b40c::util::RandomBits(h_keys[i].z);
-	    }
+	// Copy out results and check answer
+    uint4 *h_sorted_keys = new uint4[num_elements];
+	cudaMemcpy(h_sorted_keys, d_sorted_keys, sizeof(uint4) * num_elements, cudaMemcpyDeviceToHost);
+	bool correct = true;
+	for (int i(0); i < num_elements; ++i) {
 
-    }
+		if ((h_sorted_keys[i].z != h_reference_keys[i].z) ||
+			(h_sorted_keys[i].y != h_reference_keys[i].y) ||
+			(h_sorted_keys[i].x != h_reference_keys[i].x))
+		{
+			printf("Incorrect: [%d]: (%d,%d,%d) != (%d,%d,%d)\n",
+				i,
+				h_sorted_keys[i].z,
+				h_sorted_keys[i].y,
+				h_sorted_keys[i].x,
+				h_reference_keys[i].z,
+				h_reference_keys[i].y,
+				h_reference_keys[i].x);
 
-
-    // Check answer
-
+			correct = false;
+			break;
+		}
+	}
+	if (correct) {
+		printf("Correct\n");
+	}
 
     // Cleanup
     delete h_keys;
-    delete h_permutation;
+    delete h_sorted_keys;
+    delete h_reference_keys;
+
     cudaFree(d_keys);
+    cudaFree(d_sorted_keys);
     cudaFree(d_permutation);
-    cudaFree(d_temp);
+    cudaFree(d_temp0);
+    cudaFree(d_temp1);
 
     return 0;
-
-
-
-
 
 }

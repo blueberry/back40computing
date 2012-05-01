@@ -70,7 +70,7 @@ struct SortingPolicy<200> : ProblemType
 
 				// Common
 				200,						// SM ARCH
-				B40C_MIN(BITS, 5),			// RADIX_BITS
+				CUB_MIN(BITS, 5),			// RADIX_BITS
 
 				// Launch tuning policy
 				12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
@@ -124,7 +124,7 @@ struct SortingPolicy<130> : ProblemType
 	{
 		enum
 		{
-			KEY_BITS = B40C_MIN(BITS, 5)
+			KEY_BITS = CUB_MIN(BITS, 5)
 		};
 
 		typedef b40c::radix_sort::Policy<
@@ -196,7 +196,7 @@ struct SortingPolicy<110> : ProblemType
 	{
 		enum
 		{
-			KEY_BITS = B40C_MIN(BITS, 5)
+			KEY_BITS = CUB_MIN(BITS, 5)
 		};
 
 		typedef b40c::radix_sort::Policy<

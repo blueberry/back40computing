@@ -72,7 +72,7 @@ int main(int argc, char** argv)
     b40c::util::CudaProperties cuda_props;
 
     // Compute grid size and occupancy
-    int occupancy = B40C_MIN(
+    int occupancy = CUB_MIN(
     	(B40C_SM_THREADS(cuda_props.kernel_ptx_version) / cta_size),
     	B40C_SM_CTAS(cuda_props.kernel_ptx_version));
 
