@@ -121,7 +121,7 @@ struct TypeSizeClassifier
 	enum {
 		KEYS_ROUNDED_SIZE		= 1 << util::Log2<sizeof(typename ProblemType::KeyType)>::VALUE,	// Round up to the nearest arch subword
 		VALUES_ROUNDED_SIZE		= 1 << util::Log2<sizeof(typename ProblemType::ValueType)>::VALUE,
-		MAX_ROUNDED_SIZE		= B40C_MAX(KEYS_ROUNDED_SIZE, VALUES_ROUNDED_SIZE),
+		MAX_ROUNDED_SIZE		= CUB_MAX(KEYS_ROUNDED_SIZE, VALUES_ROUNDED_SIZE),
 	};
 
 	static const TypeSizeGenre GENRE 		= (MAX_ROUNDED_SIZE < 8) ? MEDIUM_TYPE : LARGE_TYPE;

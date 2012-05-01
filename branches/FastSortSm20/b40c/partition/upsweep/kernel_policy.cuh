@@ -74,7 +74,7 @@ struct KernelPolicy : TuningPolicy
 		// is assigned to a warp for aggregation.  Each lane is therefore equivalent to
 		// four rows of SizeT-bit bin-counts, each the width of a warp.
 	
-		LOG_LANES_PER_WARP					= B40C_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
+		LOG_LANES_PER_WARP					= CUB_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
 		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,
 	
 		LOG_COMPOSITES_PER_LANE_PER_THREAD 	= LOG_COMPOSITES_PER_LANE - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),					// Number of partials per thread to aggregate
@@ -110,7 +110,7 @@ struct KernelPolicy : TuningPolicy
 	enum {
 		THREAD_OCCUPANCY					= B40C_SM_THREADS(TuningPolicy::CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
 		SMEM_OCCUPANCY						= B40C_SMEM_BYTES(TuningPolicy::CUDA_ARCH) / sizeof(SmemStorage),
-		MAX_CTA_OCCUPANCY					= B40C_MIN(B40C_SM_CTAS(TuningPolicy::CUDA_ARCH), B40C_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY					= CUB_MIN(B40C_SM_CTAS(TuningPolicy::CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 
 		VALID								= (MAX_CTA_OCCUPANCY > 0),
 	};

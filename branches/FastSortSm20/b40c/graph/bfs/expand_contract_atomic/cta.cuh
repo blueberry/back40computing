@@ -722,7 +722,7 @@ struct Cta
 			__syncthreads();
 
 			// Copy scratch space into queue
-			int scratch_remainder = B40C_MIN(SmemStorage::OFFSET_ELEMENTS, tile.fine_count - tile.progress);
+			int scratch_remainder = CUB_MIN(SmemStorage::OFFSET_ELEMENTS, tile.fine_count - tile.progress);
 
 			for (int scratch_offset = 0;
 				scratch_offset < scratch_remainder;

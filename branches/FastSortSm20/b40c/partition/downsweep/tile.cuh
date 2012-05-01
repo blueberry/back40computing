@@ -198,7 +198,7 @@ struct Tile
 	enum {
 		LOAD_VEC_SIZE 				= KernelPolicy::LOAD_VEC_SIZE,
 
-		LOG_PACKS_PER_LOAD			= B40C_MAX(0, KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE),
+		LOG_PACKS_PER_LOAD			= CUB_MAX(0, KernelPolicy::LOG_LOAD_VEC_SIZE - KernelPolicy::LOG_PACK_SIZE),
 		PACKS_PER_LOAD				= 1 << LOG_PACKS_PER_LOAD,
 
 		WARP_THREADS				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),

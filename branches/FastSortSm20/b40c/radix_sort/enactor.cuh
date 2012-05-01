@@ -251,7 +251,7 @@ protected:
 			int sweep_grid_size = GridSize(
 				true, 										// oversubscribed
 				Upsweep::SCHEDULE_GRANULARITY,
-				B40C_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy),
+				CUB_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy),
 				detail.num_elements,
 				detail.max_grid_size);
 
@@ -436,7 +436,7 @@ protected:
 		typedef typename Policy::template BitPolicy<BIT_SELECT>::Policy BitPolicy;
 
 		enum {
-			BITS_RUN = B40C_MIN(BITS_LEFT, BitPolicy::RADIX_BITS)
+			BITS_RUN = CUB_MIN(BITS_LEFT, BitPolicy::RADIX_BITS)
 		};
 
 		template <typename Detail>

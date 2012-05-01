@@ -114,7 +114,7 @@ struct RakingGrid
 											Log2<sizeof(T)>::VALUE,
 		PARTIALS_PER_BANK_ARRAY			= 1 << LOG_PARTIALS_PER_BANK_ARRAY,
 
-		LOG_SEGS_PER_BANK_ARRAY 		= B40C_MAX(0, LOG_PARTIALS_PER_BANK_ARRAY - LOG_PARTIALS_PER_SEG),
+		LOG_SEGS_PER_BANK_ARRAY 		= CUB_MAX(0, LOG_PARTIALS_PER_BANK_ARRAY - LOG_PARTIALS_PER_SEG),
 		SEGS_PER_BANK_ARRAY				= 1 << LOG_SEGS_PER_BANK_ARRAY,
 
 		// Whether or not one warp of raking threads can rake entirely in one stripe across the shared memory banks
@@ -123,7 +123,7 @@ struct RakingGrid
 		// Number of raking segments we can have without padding (i.e., a "row")
 		LOG_SEGS_PER_ROW 				= (NO_PADDING) ?
 											LOG_RAKING_THREADS :												// All raking threads (segments)
-											B40C_MIN(LOG_RAKING_THREADS_PER_LANE, LOG_SEGS_PER_BANK_ARRAY),		// Up to as many segments per lane (all lanes must have same amount of padding to have constant lane stride)
+											CUB_MIN(LOG_RAKING_THREADS_PER_LANE, LOG_SEGS_PER_BANK_ARRAY),		// Up to as many segments per lane (all lanes must have same amount of padding to have constant lane stride)
 		SEGS_PER_ROW					= 1 << LOG_SEGS_PER_ROW,
 
 		// Number of partials per row
@@ -131,11 +131,11 @@ struct RakingGrid
 		PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW,
 
 		// Number of partials that we must use to "pad out" one memory bank
-		LOG_BANK_PADDING_PARTIALS		= B40C_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) - Log2<sizeof(T)>::VALUE),
+		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) - Log2<sizeof(T)>::VALUE),
 		BANK_PADDING_PARTIALS			= 1 << LOG_BANK_PADDING_PARTIALS,
 
 		// Number of partials that we must use to "pad out" a lane to one memory bank
-		LANE_PADDING_PARTIALS			= B40C_MAX(0, PARTIALS_PER_BANK_ARRAY - PARTIALS_PER_LANE),
+		LANE_PADDING_PARTIALS			= CUB_MAX(0, PARTIALS_PER_BANK_ARRAY - PARTIALS_PER_LANE),
 
 		// Number of partials (including padding) per "row"
 		PADDED_PARTIALS_PER_ROW			= (NO_PADDING) ?
@@ -147,7 +147,7 @@ struct RakingGrid
 		ROWS 							= 1 << LOG_ROWS,
 
 		// Number of rows per lane (always at least one)
-		LOG_ROWS_PER_LANE				= B40C_MAX(0, LOG_RAKING_THREADS_PER_LANE - LOG_SEGS_PER_ROW),
+		LOG_ROWS_PER_LANE				= CUB_MAX(0, LOG_RAKING_THREADS_PER_LANE - LOG_SEGS_PER_ROW),
 		ROWS_PER_LANE					= 1 << LOG_ROWS_PER_LANE,
 
 		// Padded stride between lanes (in partials)

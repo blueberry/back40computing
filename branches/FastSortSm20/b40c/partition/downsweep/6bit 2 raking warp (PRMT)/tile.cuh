@@ -781,11 +781,11 @@ struct Tile
 				for (int VEC = 0; VEC < LOAD_VEC_SIZE; VEC++) {
 
 					const int LOAD_IDX = LOAD * LOAD_VEC_SIZE * KernelPolicy::THREADS;
-					const int LOAD_OFFSET = LOAD_IDX + (LOAD_IDX >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE));
+					const int LOAD_OFFSET = LOAD_IDX + (LOAD_IDX >> CUB_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE));
 
 					tile->keys[LOAD][VEC] = cta->smem_storage.key_exchange[
 						(threadIdx.x * LOAD_VEC_SIZE) +
-						((threadIdx.x * LOAD_VEC_SIZE) >> B40C_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE)) +
+						((threadIdx.x * LOAD_VEC_SIZE) >> CUB_MAX(5, KernelPolicy::LOG_LOAD_VEC_SIZE)) +
 						LOAD_OFFSET +
 						VEC];
 				}
