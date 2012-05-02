@@ -41,17 +41,16 @@ template <
 	typename _KeyType,
 	typename _ValueType,
 	typename _SizeT>
-struct ProblemType :
-	partition::ProblemType<
-		typename KeyTraits<_KeyType>::ConvertedKeyType,		// converted (unsigned) key type
-		_ValueType,
-		_SizeT>
+struct ProblemType
 {
-	// The original type of data we are operating upon
-	typedef _KeyType OriginalKeyType;
+	typedef _KeyType 											OriginalKeyType;
+	typedef typename KeyTraits<_KeyType>::ConvertedKeyType 		KeyType;			// converted (unsigned) key type
+	typedef _ValueType 											ValueType;
+	typedef _SizeT 												SizeT;
 
-	// The key traits that describe any pre/post processing
-	typedef KeyTraits<_KeyType> KeyTraits;
+	enum {
+		KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
+	};
 };
 		
 

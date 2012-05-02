@@ -123,24 +123,8 @@ protected:
 
 		do {
 
-	//		if (!Policy::Upsweep::EARLY_EXIT) {
+			detail.problem_storage.selector = (detail.problem_storage.selector + detail.num_passes) & 0x1;
 
-				// We moved data between storage buffers at every pass
-				detail.problem_storage.selector = (detail.problem_storage.selector + detail.num_passes) & 0x1;
-	/*
-			} else {
-
-				// Save old selector
-				int old_selector = detail.problem_storage.selector;
-
-				// Copy out the selector from the last pass
-				if (retval = util::B40CPerror(cudaMemcpy(&detail.problem_storage.selector, &d_selectors[num_passes & 0x1], sizeof(int), cudaMemcpyDeviceToHost),
-					"LsbSortEnactor cudaMemcpy d_selector failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-
-				// Correct new selector if the original indicated that we started off from the alternate
-				detail.problem_storage.selector ^= old_selector;
-			}
-	*/
 		} while (0);
 
 		return retval;

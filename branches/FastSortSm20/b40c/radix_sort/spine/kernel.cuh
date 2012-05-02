@@ -20,60 +20,57 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tuning policy for radix sort upsweep reduction kernels
+ * Radix sort spine scan kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/io/modified_store.cuh>
-
-#include <b40c/partition/upsweep/tuning_policy.cuh>
+#include <b40c/scan/spine/kernel.cuh>
 
 namespace b40c {
 namespace radix_sort {
-namespace upsweep {
+namespace spine {
+
 
 /**
- * Radix sort upsweep reduction tuning policy.
- *
- * See constraints in base class.
+ * Templated texture reference for spine
  */
-template <
-	typename ProblemType,
-
-	int CUDA_ARCH,
-	bool CHECK_ALIGNMENT,
-	int LOG_BINS,
-	int LOG_SCHEDULE_GRANULARITY,
-	int MIN_CTA_OCCUPANCY,
-	int LOG_THREADS,
-	int LOG_LOAD_VEC_SIZE,
-	int LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
-	bool _EARLY_EXIT>
-
-struct TuningPolicy :
-	partition::upsweep::TuningPolicy <
-		ProblemType,
-		CUDA_ARCH,
-		CHECK_ALIGNMENT,
-		LOG_BINS,
-		LOG_SCHEDULE_GRANULARITY,
-		MIN_CTA_OCCUPANCY,
-		LOG_THREADS,
-		LOG_LOAD_VEC_SIZE,
-		LOG_LOADS_PER_TILE,
-		READ_MODIFIER,
-		WRITE_MODIFIER>
+template <typename SizeT>
+struct SpineTex
 {
-	enum {
-		EARLY_EXIT								= _EARLY_EXIT,
-	};
+	static texture<SizeT, cudaTextureType1D, cudaReadModeElementType> ref;
 };
+template <typename SizeT>
+texture<SizeT, cudaTextureType1D, cudaReadModeElementType> SpineTex<SizeT>::ref;
 
-} // namespace upsweep
+
+
+/**
+ * Consecutive removal spine scan kernel entry point
+ */
+template <typename KernelPolicy>
+__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
+__global__ 
+void Kernel(
+	typename KernelPolicy::T			*d_in,
+	typename KernelPolicy::T			*d_out,
+	typename KernelPolicy::SizeT 		spine_elements)
+{
+	__shared__ typename KernelPolicy::SmemStorage smem_storage;
+
+	typename KernelPolicy::ReductionOp reduction_op;
+	typename KernelPolicy::IdentityOp identity_op;
+
+	scan::spine::SpinePass<KernelPolicy>(
+		d_in,
+		d_out,
+		spine_elements,
+		reduction_op,
+		identity_op,
+		smem_storage);
+}
+
+} // namespace spine
 } // namespace radix_sort
 } // namespace b40c
 

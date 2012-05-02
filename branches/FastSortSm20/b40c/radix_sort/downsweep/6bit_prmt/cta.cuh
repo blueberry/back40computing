@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright 2010-2011 Duane Merrill
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,25 +20,31 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for radix sort downsweep scan kernels
+ * Abstract CTA-processing functionality for partitioning downsweep
+ * scan kernels
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/basic_utils.cuh>
-#include <b40c/radix_sort/downsweep/tile.cuh>
+#include <b40c/util/device_intrinsics.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/scatter_tile.cuh>
 
 namespace b40c {
-namespace radix_sort {
+namespace partition {
 namespace downsweep {
 
 
 /**
  * Partitioning downsweep scan CTA
+ *
+ * Abstract class
  */
 template <
 	typename KernelPolicy,
-	bool _FLOP_TURN>			// (FLOP_TURN) ? (d_keys1 --> d_keys0) : (d_keys0 --> d_keys1)
+	typename DerivedCta,									// Derived CTA class
+	template <typename Policy> class Tile>			// Derived Tile class to use
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -49,16 +55,12 @@ struct Cta
 	typedef typename KernelPolicy::ValueType 				ValueType;
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
-	typedef typename KernelPolicy::Counter 					Counter;
-	typedef typename KernelPolicy::RakingPartial			RakingPartial;
+	typedef typename KernelPolicy::ByteGrid::LanePartial	LanePartial;
 
-	enum {
-		WARP_THREADS 				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
-		FLOP_TURN					= _FLOP_TURN,
+	// Operational details type for short grid
+	typedef util::SrtsDetails<typename KernelPolicy::ByteGrid> 		ByteGridDetails;
 
-		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
-		MEM_BANKS					= 1 << LOG_MEM_BANKS,
-	};
+	typedef DerivedCta Dispatch;
 
 	//---------------------------------------------------------------------
 	// Members
@@ -67,22 +69,20 @@ struct Cta
 	// Shared storage for this CTA
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
-	KeyType								*d_keys0;
-	KeyType								*d_keys1;
+	// Input and output device pointers
+	KeyType								*d_in_keys;
+	KeyType								*d_out_keys;
 
-	ValueType							*d_values0;
-	ValueType							*d_values1;
+	ValueType							*d_in_values;
+	ValueType							*d_out_values;
 
-	RakingPartial						*raking_segment;
-	Counter								*bin_counter;
+	// Operational details for scan grids
+	ByteGridDetails 					byte_grid_details;
 
 	SizeT								my_bin_carry;
 
-	int 								warp_id;
-	volatile RakingPartial				*warpscan;
-
-	KeyType 							*base_gather_offset;
-
+	KeyType 							*offset;
+	KeyType 							*next_offset;
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -93,32 +93,37 @@ struct Cta
 	 */
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys0,
-		KeyType 		*d_keys1,
-		ValueType 		*d_values0,
-		ValueType 		*d_values1,
+		KeyType 		*d_in_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
 		SizeT 			*d_spine) :
 			smem_storage(smem_storage),
-			d_keys0(d_keys0),
-			d_keys1(d_keys1),
-			d_values0(d_values0),
-			d_values1(d_values1),
-			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((KernelPolicy::BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
+			d_in_keys(d_in_keys),
+			d_out_keys(d_out_keys),
+			d_in_values(d_in_values),
+			d_out_values(d_out_values),
+			byte_grid_details(smem_storage.byte_raking_lanes),
+			offset(smem_storage.key_exchange + threadIdx.x + (threadIdx.x >> 5)),
+			next_offset(smem_storage.key_exchange + (threadIdx.x + 1) + ((threadIdx.x + 1) >> 5))
 	{
-		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
-		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_SCAN_LANES);
-		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
 
-		// Initialize warpscan identity regions
-		warp_id = threadIdx.x >> 5;
-		warpscan = &smem_storage.warpscan[warp_id][16 + (threadIdx.x & 31)];
-		warpscan[-16] = 0;
+		if (threadIdx.x < KernelPolicy::BINS) {
 
-		if ((KernelPolicy::THREADS == KernelPolicy::BINS) || (threadIdx.x < KernelPolicy::BINS)) {
 			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+
 			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
+
+			int2 item;
+			item.x = -1;
+			item.y = KernelPolicy::BINS;
+			smem_storage.bin_in_prefixes[threadIdx.x] = item;
+		}
+
+		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
+			smem_storage.warpscan[0][threadIdx.x] = 0;
+			smem_storage.warpscan[1][threadIdx.x] = 0;
 		}
 	}
 
@@ -135,7 +140,7 @@ struct Cta
 		tile.Partition(
 			cta_offset,
 			guarded_elements,
-			this);
+			(Dispatch *) this);
 	}
 
 
@@ -155,18 +160,19 @@ struct Cta
 			pack_offset += (KernelPolicy::TILE_ELEMENTS / KernelPolicy::PACK_SIZE);
 		}
 
+/*
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
-
 			ProcessTile(
 				pack_offset,
 				work_limits.guarded_elements);
 		}
+*/
 	}
 };
 
 
 } // namespace downsweep
-} // namespace radix_sort
+} // namespace partition
 } // namespace b40c
 
