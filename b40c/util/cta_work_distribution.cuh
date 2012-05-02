@@ -77,32 +77,15 @@ struct CtaWorkLimits
  * grain greater than the normal, and the last workload 
  * does the extra work.
  */
-template <typename SizeT> 		// Integer type for indexing into problem arrays (e.g., int, long long, etc.)
+template <typename SizeT> 				// Integer type for indexing into problem arrays (e.g., int, long long, etc.)
 struct CtaWorkDistribution
 {
-	SizeT 	num_elements;		// Number of elements in the problem
-	SizeT 	total_grains;		// Number of "grain" blocks to break the problem into (round up)
-	SizeT 	grains_per_cta;		// Number of "grain" blocks per CTA
-	SizeT 	extra_grains;		// Number of CTAs having one extra "grain block"
-	int 	grid_size;			// Number of CTAs
-
-
-	/**
-	 * Initializer
-	 */
-	template <int LOG_SCHEDULE_GRANULARITY>
-	__host__ __device__ __forceinline__ void Init(
-		SizeT num_elements,
-		int grid_size)
-	{
-		const int SCHEDULE_GRANULARITY = 1 << LOG_SCHEDULE_GRANULARITY;
-
-		this->num_elements 		= num_elements;
-		this->total_grains 		= ((num_elements + SCHEDULE_GRANULARITY - 1) >> LOG_SCHEDULE_GRANULARITY);	// round up
-		this->grains_per_cta 	= total_grains / grid_size;													// round down for the ks
-		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);								// the CTAs with +1 grains
-		this->grid_size 		= grid_size;
-	}
+	SizeT 	num_elements;				// Number of elements in the problem
+	SizeT 	total_grains;				// Number of "grain" blocks to break the problem into (round up)
+	SizeT 	grains_per_cta;				// Number of "grain" blocks per CTA
+	SizeT 	extra_grains;				// Number of CTAs having one extra "grain block"
+	int 	grid_size;					// Number of CTAs
+	int 	log_schedule_granularity;	// Scheduling grain
 
 	/**
 	 * Initializer
@@ -112,39 +95,37 @@ struct CtaWorkDistribution
 		int grid_size,
 		int log_schedule_granularity)
 	{
-		const int SCHEDULE_GRANULARITY = 1 << log_schedule_granularity;
-
-		this->num_elements 		= num_elements;
-		this->total_grains 		= ((num_elements + SCHEDULE_GRANULARITY - 1) >> log_schedule_granularity);	// round up
-		this->grains_per_cta 	= total_grains / grid_size;													// round down for the ks
-		this->extra_grains 		= total_grains - (grains_per_cta * grid_size);								// the CTAs with +1 grains
-		this->grid_size 		= grid_size;
+		this->log_schedule_granularity 	= log_schedule_granularity;
+		int schedule_granularity 		= 1 << log_schedule_granularity;
+		this->num_elements 				= num_elements;
+		this->total_grains 				= ((num_elements + schedule_granularity - 1) >> log_schedule_granularity);	// round up
+		this->grains_per_cta 			= total_grains / grid_size;													// round down for the ks
+		this->extra_grains 				= total_grains - (grains_per_cta * grid_size);								// the CTAs with +1 grains
+		this->grid_size 				= grid_size;
 	}
 
 
 	/**
 	 * Computes work limits for the current CTA
 	 */	
-	template <
-		int LOG_TILE_ELEMENTS,			// CTA tile size, i.e., granularity by which the CTA processes work
-		int LOG_SCHEDULE_GRANULARITY>	// Problem granularity by which work is distributed amongst CTA threadblocks
 	__host__ __device__ __forceinline__ void GetCtaWorkLimits(
+		int log_tile_elements,
 		CtaWorkLimits<SizeT> &work_limits)	// Out param
 	{
-		const int TILE_ELEMENTS 				= 1 << LOG_TILE_ELEMENTS;
+		const int TILE_ELEMENTS = 1 << log_tile_elements;
 		
 		// Compute number of elements and offset at which to start tile processing
 		if (blockIdx.x < extra_grains) {
 
 			// This CTA gets grains_per_cta+1 grains
-			work_limits.elements = (grains_per_cta + 1) << LOG_SCHEDULE_GRANULARITY;
+			work_limits.elements = (grains_per_cta + 1) << log_schedule_granularity;
 			work_limits.offset = work_limits.elements * blockIdx.x;
 
 		} else if (blockIdx.x < total_grains) {
 
 			// This CTA gets grains_per_cta grains
-			work_limits.elements = grains_per_cta << LOG_SCHEDULE_GRANULARITY;
-			work_limits.offset = (work_limits.elements * blockIdx.x) + (extra_grains << LOG_SCHEDULE_GRANULARITY);
+			work_limits.elements = grains_per_cta << log_schedule_granularity;
+			work_limits.offset = (work_limits.elements * blockIdx.x) + (extra_grains << log_schedule_granularity);
 
 		} else {
 
@@ -176,12 +157,25 @@ struct CtaWorkDistribution
 	 */
 	void Print()
 	{
-		printf("num_elements: %lu, total_grains: %lu, grains_per_cta: %lu, extra_grains: %lu, grid_size: %lu\n",
-			(unsigned long) num_elements,
-			(unsigned long) total_grains,
-			(unsigned long) grains_per_cta,
-			(unsigned long) extra_grains,
-			(unsigned long) grid_size);
+		unsigned long schedule_granularity = 1 << log_schedule_granularity;
+		unsigned long last_grain_elements = work.num_elements & (schedule_granularity - 1);
+
+		if (last_grain_elements == 0) last_grain_elements = schedule_granularity;
+
+		printf("num_elements: %lu, "
+			"total_grains: %lu, "
+			"schedule_granularity: %lu, "
+			"grains_per_cta: %lu, "
+			"extra_grains: %lu, "
+			"grid_size: %lu"
+			"last-grain elements: %lu\n",
+				(unsigned long) num_elements,
+				(unsigned long) schedule_granularity,
+				(unsigned long) total_grains,
+				(unsigned long) grains_per_cta,
+				(unsigned long) extra_grains,
+				(unsigned long) grid_size,
+				(unsigned long) last_grain_elements);
 	}
 };
 

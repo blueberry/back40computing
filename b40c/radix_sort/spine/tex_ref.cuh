@@ -20,40 +20,62 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Partitioning problem type
+ * Texture references for spine kernels
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/partition/problem_type.cuh>
-#include <b40c/radix_sort/sort_utils.cuh>
+#include <b40c/util/error_utils.cuh>
 
 namespace b40c {
 namespace radix_sort {
-
+namespace spine {
 
 /**
- * Type of radix sorting problem (i.e., data types to sort)
- *
- * Derives from partition::KeyType
+ * Templated texture reference for spine
  */
-template <
-	typename _KeyType,
-	typename _ValueType,
-	typename _SizeT>
-struct ProblemType
+template <typename SizeT>
+struct SpineTex
 {
-	typedef _KeyType 											OriginalKeyType;
-	typedef typename KeyTraits<_KeyType>::ConvertedKeyType 		KeyType;			// converted (unsigned) key type
-	typedef _ValueType 											ValueType;
-	typedef _SizeT 												SizeT;
+	typedef texture<SizeT, cudaTextureType1D, cudaReadModeElementType> TexRef;
 
-	enum {
-		KEYS_ONLY = util::Equals<ValueType, util::NullType>::VALUE,
-	};
+	static TexRef ref;
+
+	/**
+	 * Bind textures
+	 */
+	static cudaError_t BindTexture(void *d_spine, size_t bytes)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<SizeT>();
+
+			// Bind key texture ref0
+			if (retval = util::B40CPerror(cudaBindTexture(
+					0,
+					ref,
+					d_spine,
+					tex_desc,
+					bytes),
+				"cudaBindTexture SpineTex failed", __FILE__, __LINE__)) break;
+
+		} while (0);
+
+		return retval;
+	}
+
 };
-		
 
-}// namespace radix_sort
-}// namespace b40c
+// Reference definition
+template <typename SizeT>
+typename SpineTex<SizeT>::TexRef SpineTex<SizeT>::ref;
+
+
+
+
+
+
+} // namespace spine
+} // namespace radix_sort
+} // namespace b40c
 

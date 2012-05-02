@@ -25,335 +25,447 @@
 
 #pragma once
 
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/io/modified_store.cuh>
-
-
 namespace b40c {
 namespace radix_sort {
 
 
 /******************************************************************************
- * Pass policy
+ * Dispatch policy
  ******************************************************************************/
 
-/**
- * Pass policy
- */
 template <
-
-	// Common
-	int TUNE_ARCH,
-	typename ProblemType,
-	int _CURRENT_BIT,
-	int _RADIX_BITS,
-	int _CURRENT_PASS,
-
-	// Dispatch
-	int LOG_SCHEDULE_GRANULARITY,
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
-	bool EARLY_EXIT,
-	bool _UNIFORM_SMEM_ALLOCATION,
-	bool _UNIFORM_GRID_SIZE,
-	bool _OVERSUBSCRIBED_GRID_SIZE,
-
-	// Upsweep
-	int UPSWEEP_MIN_CTA_OCCUPANCY,
-	int UPSWEEP_LOG_THREADS,
-	int UPSWEEP_LOG_LOAD_VEC_SIZE,
-	int UPSWEEP_LOG_LOADS_PER_TILE,
-
-	// Spine-scan
-	int SPINE_LOG_THREADS,
-	int SPINE_LOG_LOAD_VEC_SIZE,
-	int SPINE_LOG_LOADS_PER_TILE,
-	int SPINE_LOG_RAKING_THREADS,
-
-	// Downsweep
-	partition::downsweep::ScatterStrategy DOWNSWEEP_SCATTER_STRATEGY,
-	int DOWNSWEEP_MIN_CTA_OCCUPANCY,
-	int DOWNSWEEP_LOG_THREADS,
-	int DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-	int DOWNSWEEP_LOG_LOADS_PER_TILE,
-	int DOWNSWEEP_LOG_RAKING_THREADS>
-
-struct PassPolicy
+	int 		_RADIX_BITS,
+	int 		_LOG_SCHEDULE_GRANULARITY,
+	bool 		_UNIFORM_SMEM_ALLOCATION,
+	bool 		_UNIFORM_GRID_SIZE>
+struct DispatchPolicy
 {
-	//---------------------------------------------------------------------
-	// Typedefs
-	//---------------------------------------------------------------------
-
-	typedef typename ProblemType::KeyType 		KeyType;
-	typedef typename ProblemType::ValueType		ValueType;
-	typedef typename ProblemType::SizeT 		SizeT;
-
-	typedef void (*UpsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, int);
-	typedef void (*DownsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
-
-	//---------------------------------------------------------------------
-	// Constants
-	//---------------------------------------------------------------------
-
 	enum {
+		RADIX_BITS					= _RADIX_BITS,
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
-		OVERSUBSCRIBED_GRID_SIZE	= _OVERSUBSCRIBED_GRID_SIZE,
-		CHECK_ALIGNMENT 			= false,
 	};
-
-	//---------------------------------------------------------------------
-	// Tuning Policies
-	//---------------------------------------------------------------------
-
-	// Upsweep
-	typedef upsweep::KernelPolicy<
-		ProblemType,
-		TUNE_ARCH,
-		CHECK_ALIGNMENT,
-		RADIX_BITS,
-		LOG_SCHEDULE_GRANULARITY,
-		UPSWEEP_MIN_CTA_OCCUPANCY,
-		UPSWEEP_LOG_THREADS,
-		UPSWEEP_LOG_LOAD_VEC_SIZE,
-		UPSWEEP_LOG_LOADS_PER_TILE,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		EARLY_EXIT>
-			Upsweep;
-
-	// Problem type for spine scan
-	typedef scan::ProblemType<
-		SizeT,								// spine scan type T
-		int,								// spine scan SizeT
-		util::Sum<SizeT>,
-		util::Sum<SizeT>,
-		true,								// exclusive
-		true> SpineProblemType;				// addition is commutative
-
-	// Kernel config for spine scan
-	typedef scan::KernelPolicy <
-		SpineProblemType,
-		CUDA_ARCH,
-		false,								// do not check alignment
-		1,									// only a single-CTA grid
-		SPINE_LOG_THREADS,
-		SPINE_LOG_LOAD_VEC_SIZE,
-		SPINE_LOG_LOADS_PER_TILE,
-		SPINE_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
-			Spine;
-
-	// Downsweep
-	typedef downsweep::KernelPolicy<
-		ProblemType,
-		TUNE_ARCH,
-		CHECK_ALIGNMENT,
-		_RADIX_BITS,
-		LOG_SCHEDULE_GRANULARITY,
-		DOWNSWEEP_MIN_CTA_OCCUPANCY,
-		DOWNSWEEP_LOG_THREADS,
-		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
-		DOWNSWEEP_SCATTER_STRATEGY,
-		EARLY_EXIT>
-			Downsweep;
-
-
 };
 
 
 /******************************************************************************
- * Tuned pass policy
+ * Pass policy
  ******************************************************************************/
 
 /**
- * Tuned pass policy
+ * Pass policy
  */
 template <
-	int 		TUNE_ARCH,
-	typename 	ProblemType,
-	int 		CURRENT_BIT,
-	int 		BITS_REMAINING,
-	int 		CURRENT_PASS>
-struct TunedPassPolicy;
-
-
-/**
- * SM20
- */
-template <
-	typename ProblemType,
-	int CURRENT_BIT,
-	int BITS_REMAINING,
-	int CURRENT_PASS>
-struct TunedPassPolicy<200, ProblemType, CURRENT_BIT, BITS_REMAINING, CURRENT_PASS> :
-	b40c::radix_sort::PassPolicy<
-
-		// Common
-		200,						// TUNE_ARCH
-		ProblemType,				// Problem type
-		CURRENT_BIT,				// Current bit
-		CUB_MIN(BITS_REMAINING, 5),	// RADIX_BITS
-		CURRENT_PASS,				// Current pass
-
-		// Dispatch tuning policy
-		12,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
-		b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
-		b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
-		false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-		false,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
-		true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
-		true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
-
-		// Upsweep kernel policy
-		8,							// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		2,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-		1,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-
-		// Spine-scan kernel policy
-		8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-		2,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
-		5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
-
-		// Policy for downsweep kernel
-		b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-		ProblemType::KEYS_ONLY ? 4 : 2,							// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-		ProblemType::KEYS_ONLY ? 7 : 8,							// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-		ProblemType::KEYS_ONLY ? 4 : 4,							// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-		ProblemType::KEYS_ONLY ? 7 : 8>							// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
-{};
-
-
-/**
- * SM13
- */
-template <
-	typename ProblemType,
-	int CURRENT_BIT,
-	int BITS_REMAINING,
-	int CURRENT_PASS>
-struct TunedPassPolicy<130, ProblemType, CURRENT_BIT, BITS_REMAINING, CURRENT_PASS> :
-	b40c::radix_sort::PassPolicy<
-
-		// Common
-		130,						// TUNE_ARCH
-		ProblemType,				// Problem type
-		CURRENT_BIT,				// Current bit
-		CUB_MIN(BITS_REMAINING, 5),	// RADIX_BITS
-		CURRENT_PASS,				// Current pass
-
-		// Dispatch tuning policy
-		10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
-		b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
-		b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
-		false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-		true,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
-		true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
-		true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
-
-		// Upsweep kernel policy
-		(KEY_BITS > 4) ?			// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			3 :							// 5bit
-			6,							// 4bit
-		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-		2,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-
-		// Spine-scan kernel policy
-		8,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-		0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
-		5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
-
-		// Downsweep kernel policy
-		b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			3 :
-			2,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-			6 :
-			6,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-			4 :
-			4,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
-			6 :
-			6>
-{};
-
-
-/**
- * SM10
- */
-template <
-	typename ProblemType,
-	int CURRENT_BIT,
-	int BITS_REMAINING,
-	int CURRENT_PASS>
-struct TunedPassPolicy<100, ProblemType, CURRENT_BIT, BITS_REMAINING, CURRENT_PASS> :
-	b40c::radix_sort::PassPolicy<
-
-		// Common
-		100,						// TUNE_ARCH
-		ProblemType,				// Problem type
-		CURRENT_BIT,				// Current bit
-		CUB_MIN(BITS_REMAINING, 5),	// RADIX_BITS
-		CURRENT_PASS,				// Current pass
-
-		// Dispatch tuning policy
-		10,							// LOG_SCHEDULE_GRANULARITY			The "grain" by which to divide up the problem input.  E.g., 7 implies a near-even distribution of 128-key chunks to each CTA.  Related to, but different from the upsweep/downswep tile sizes, which may be different from each other.
-		b40c::util::io::ld::NONE,	// CACHE_MODIFIER					Load cache-modifier.  Valid values: NONE, ca, cg, cs
-		b40c::util::io::st::NONE,	// CACHE_MODIFIER					Store cache-modifier.  Valid values: NONE, wb, cg, cs
-		false,						// EARLY_EXIT						Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-		false,						// UNIFORM_SMEM_ALLOCATION			Whether or not to pad the dynamic smem allocation to ensure that all three kernels (upsweep, spine, downsweep) have the same overall smem allocation
-		true, 						// UNIFORM_GRID_SIZE				Whether or not to launch the spine kernel with one CTA (all that's needed), or pad it up to the same grid size as the upsweep/downsweep kernels
-		true,						// OVERSUBSCRIBED_GRID_SIZE			Whether or not to oversubscribe the GPU with CTAs, up to a constant factor (usually 4x the resident occupancy)
-
-		// Upsweep kernel policy
-		(KEY_BITS > 4) ?			// UPSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			2 :							// 5bit
-			2,							// 4bit
-		7,							// UPSWEEP_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		0,							// UPSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2
-		0,							// UPSWEEP_LOG_LOADS_PER_TILE		The number of loads (log) per tile.  Valid range: 0-2
-
-		// Spine-scan kernel policy
-		7,							// SPINE_LOG_THREADS				The number of threads (log) to launch per CTA.  Valid range: 5-10
-		2,							// SPINE_LOG_LOAD_VEC_SIZE			The vector-load size (log) for each load (log).  Valid range: 0-2
-		0,							// SPINE_LOG_LOADS_PER_TILE			The number of loads (log) per tile.  Valid range: 0-2
-		5,							// SPINE_LOG_RAKING_THREADS			The number of raking threads (log) for local prefix sum.  Valid range: 5-SPINE_LOG_THREADS
-
-		// Downsweep kernel policy
-		b40c::partition::downsweep::SCATTER_TWO_PHASE,			// DOWNSWEEP_TWO_PHASE_SCATTER		Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_CTA_OCCUPANCY			The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			2 :
-			2,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10, subject to constraints described above
-			6 :
-			6,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_LOAD_VEC_SIZE		The vector-load size (log) for each load (log).  Valid range: 0-2, subject to constraints described above
-			4 :
-			4,
-		ProblemType::KEYS_ONLY ?		// DOWNSWEEP_LOG_RAKING_THREADS		The number of raking threads (log) for local prefix sum.  Valid range: 5-DOWNSWEEP_LOG_THREADS
-			6 :
-			6>
-{};
-
-
-
-/**
- * Sorting Policy
- */
-template <typename ProblemType>
-struct Policy
+	typename 	_UpsweepPolicy,
+	typename 	_SpinePolicy,
+	typename 	_DownsweepPolicy,
+	typename 	_DispatchPolicy>
+struct PassPolicy
 {
+	typedef _UpsweepPolicy			UpsweepPolicy;
+	typedef _SpinePolicy 			SpinePolicy;
+	typedef _DownsweepPolicy 		DownsweepPolicy;
+	typedef _DispatchPolicy 		DispatchPolicy;
+};
+
+
+
+/******************************************************************************
+ * Pass dispatch
+ ******************************************************************************/
+
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/kernel_props.cuh>
+#include <b40c/util/spine.cuh>
+#include <b40c/util/vector_types.cuh>
+#include <b40c/util/error_utils.cuh>
+
+#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
+#include <b40c/radix_sort/upsweep/kernel.cuh>
+
+#include <b40c/radix_sort/spine/kernel_policy.cuh>
+#include <b40c/radix_sort/spine/kernel.cuh>
+#include <b40c/radix_sort/spine/tex_ref.cuh>
+
+#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
+#include <b40c/radix_sort/downsweep/kernel.cuh>
+#include <b40c/radix_sort/downsweep/tex_ref.cuh>
+
+/**
+ * Pass instance
+ */
+template <
+	typename 	KeyType,
+	typename 	ValueType,
+	typename 	SizeT
+	int 		BITS_REMAINING,
+	int 		CURRENT_BIT,
+	int 		CURRENT_PASS>
+struct PassInstance
+{
+	//---------------------------------------------------------------------
+	// Type definitions
+	//---------------------------------------------------------------------
+
+	// Kernel function types
+	typedef void (*UpsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, int);
+	typedef void (*DownsweepKernelPtr)(int*, SizeT*, KeyType*, KeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
+
+	// Texture binding function types
+	typedef cudaError_t (*BindDownsweepTexture)(void *, void *, size_t, void *, void *, size_t);
+	typedef cudaError_t (*BindSpineTexture)(void *, size_t);
+
+
+	//---------------------------------------------------------------------
+	// Fields
+	//---------------------------------------------------------------------
+
+	Spine				&spine;
+	DoubleBuffer		&problem_storage;
+	SizeT				num_elements;
+	int			 		max_grid_size;
+	int 				ptx_arch;
+	int 				sm_arch;
+	bool				debug;
+
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
+
+	/**
+	 * Constructor
+	 */
+	PassInstance(
+		Spine				&spine,
+		DoubleBuffer		&problem_storage,
+		SizeT				num_elements,
+		int			 		max_grid_size,
+		int 				ptx_arch,
+		int 				sm_arch,
+		bool				debug) :
+			spine(spine),
+			problem_storage(problem_storage),
+			num_elements(num_elements),
+			max_grid_size(max_grid_size),
+			ptx_arch(ptx_arch),
+			sm_arch(sm_arch),
+			debug(debug)
+	{}
+
+
+	/**
+	 * Dispatch
+	 */
+	cudaError_t Dispatch(
+		int 									radix_bits,
+		const KernelProps<UpsweepKernelPtr> 	&upsweep_props,
+		const KernelProps<SpineKernelPtr> 		&spine_props,
+		const KernelProps<DownsweepKernelPtr> 	&downsweep_props,
+		BindDownsweepTexture 					bind_downsweep_texture_ptr,
+		BindValueTextures 						bind_value_textures_ptr,
+		BindSpineTexture 						bind_spine_texture_ptr,
+		int 									log_schedule_granularity,
+		int										spine_tile_elements,
+		bool									smem_8byte_banks,
+		bool									unform_grid_size,
+		bool									uniform_smem_allocation)
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+
+			if (debug) {
+				printf("Current bit %d, Pass %d, Radix bits %d:\n",
+					CURRENT_BIT,
+					CURRENT_PASS,
+					radix_bits);
+
+				printf("Upsweep occupancy %d, downsweep occupancy %d\n",
+					upsweep_props.max_cta_occupancy,
+					downsweep_props.max_cta_occupancy);
+			}
+
+			// Compute sweep grid size
+			int schedule_granularity = 1 << log_schedule_granularity;
+			int sweep_grid_size = downsweep_props.OversubscribedGridSize(
+				schedule_granularity,
+				num_elements,
+				max_grid_size);
+
+			// Compute spine elements (rounded up to nearest tile size)
+			SizeT spine_elements = CUB_ROUND_UP_NEAREST(
+				sweep_grid_size << radix_bits,
+				spine_tile_elements);
+
+			// Make sure our spine is big enough
+			if (retval = spine.Setup<SizeT>(spine_elements)) break;
+
+			// Obtain a CTA work distribution
+			util::CtaWorkDistribution<SizeT> work;
+			work.Init(detail.num_elements, sweep_grid_size, log_schedule_granularity);
+			if (debug) {
+				work.Print();
+			}
+
+			// Bind downsweep textures
+			if (bind_downsweep_texture_ptr != NULL) {
+				if (retval = bind_downsweep_texture_ptr(
+					problem_storage.d_keys[problem_storage.selector],
+					problem_storage.d_keys[problem_storage.selector ^ 1],
+					num_elements * sizeof(KeyType),
+					problem_storage.d_values[problem_storage.selector],
+					problem_storage.d_values[problem_storage.selector ^ 1],
+					num_elements * sizeof(ValueType))) break;
+			}
+
+			// Bind spine textures
+			if (bind_spine_texture_ptr != NULL) {
+				if (retval = bind_spine_texture_ptr(
+					spine(),
+					spine_elements * sizeof(SizeT))) break;
+			}
+
+			// Operational details
+			int dynamic_smem[3] = 	{0, 0, 0};
+			int grid_size[3] = 		{sweep_grid_size, 1, sweep_grid_size};
+
+			// Grid size tuning
+			if (unform_grid_size) {
+				// Make sure that all kernels launch the same number of CTAs
+				grid_size[1] = grid_size[0];
+			}
+
+			// Smem allocation tuning
+			if (uniform_smem_allocation) {
+
+				// Make sure all kernels have the same overall smem allocation
+				int max_static_smem = CUB_MAX(
+					upsweep_props.kernel_attrs.sharedSizeBytes,
+					CUB_MAX(
+						spine_props.kernel_attrs.sharedSizeBytes,
+						downsweep_props.kernel_attrs.sharedSizeBytes));
+
+				dynamic_smem[0] = max_static_smem - upsweep_props.kernel_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - pine_props.kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_props.kernel_attrs.sharedSizeBytes;
+
+			} else {
+
+				// Compute smem padding for upsweep to make upsweep occupancy a multiple of downsweep occupancy
+				dynamic_smem[0] = upsweep_props.SmemPadding(downsweep_props.max_cta_occupancy);
+			}
+
+			// Upsweep reduction into spine
+			upsweep_props.kenrel_ptr<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
+				(SizeT*) spine(),
+				(KeyType *) problem_storage.d_keys[problem_storage.selector],
+				(KeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
+				work);
+
+			if (debug && (retval = util::B40CPerror(cudaThreadSynchronize(), "Upsweep kernel failed ", __FILE__, __LINE__, debug))) break;
+
+			// Spine scan
+			spine_props.kenrel_ptr<<<grid_size[1], spine_props.threads, dynamic_smem[1]>>>(
+				(SizeT*) spine(),
+				(SizeT*) spine(),
+				spine_elements);
+
+			if (debug && (retval = util::B40CPerror(cudaThreadSynchronize(), "Spine kernel failed ", __FILE__, __LINE__, debug))) break;
+
+			// Set shared mem bank mode
+			enum cudaSharedMemConfig old_config;
+			cudaDeviceGetSharedMemConfig(&old_config);
+			cudaDeviceSetSharedMemConfig(smem_8byte_banks ?
+				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
+				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
+
+			// Downsweep scan from spine
+			downsweep_props.kenrel_ptr<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
+				d_selectors,
+				(SizeT *) spine(),
+				(KeyType *) problem_storage.d_keys[problem_storage.selector],
+				(KeyType *) problem_storage.d_keys[problem_storage.selector ^ 1],
+				problem_storage.d_values[problem_storage.selector],
+				problem_storage.d_values[problem_storage.selector ^ 1],
+				work);
+
+			if (debug && (retval = util::B40CPerror(cudaThreadSynchronize(), "Downsweep kernel failed ", __FILE__, __LINE__, debug))) break;
+
+			// Restore smem bank mode
+			cudaDeviceSetSharedMemConfig(old_config);
+
+		} while(0);
+
+		return retval;
+	}
+
+
+	/**
+	 * Dispatch
+	 */
+	template <
+		typename HostPassPolicy,
+		typename DevicePassPolicy>
+	cudaError_t Dispatch()
+	{
+		typedef typename HostPassPolicy::UpsweepPolicy 		UpsweepPolicy;
+		typedef typename HostPassPolicy::SpinePolicy 		SpinePolicy;
+		typedef typename HostPassPolicy::DownsweepPolicy 	DownsweepPolicy;
+		typedef typename HostPassPolicy::DispatchPolicy	 	DispatchPolicy;
+
+		// Upsweep kernel properties
+		KernelProps<UpsweepKernelPtr> upsweep_props(
+			upsweep::Kernel<typename DevicePassPolicy::UpsweepPolicy>,
+			UpsweepPolicy::THREADS,
+			sm_arch);
+
+		// Spine kernel properties
+		KernelProps<SpineKernelPtr> spine_props(
+			spine::Kernel<typename DevicePassPolicy::SpinePolicy>,
+			SpinePolicy::THREADS,
+			sm_arch);
+
+		// Downsweep kernel properties
+		KernelProps<DownsweepKernelPtr> downsweep_props(
+			downsweep::Kernel<typename DevicePassPolicy::DownsweepPolicy>,
+			DownsweepPolicy::THREADS,
+			sm_arch);
+
+		// Whether to use 8-byte bank mode
+		bool smem_8byte_banks = DownsweepPolicy::SMEM_8BYTE_BANKS;
+
+		// Schedule granularity
+		int log_schedule_granularity = CUB_MAX(
+			UpsweepPolicy::LOG_TILE_ELEMENTS,
+			DownsweepPolicy::LOG_TILE_ELEMENTS);
+
+		// Radix bits
+		int radix_bits = DispatchPolicy::RADIX_BITS;
+
+		// Spine tile elements
+		int spine_tile_elements = SpinePolicy::TILE_ELEMENTS;
+
+		// Texture binding functions
+		BindKeyTextures bind_downsweep_texture_ptr = downsweep::DownsweepTex<
+			KeyType,
+			ValueType,
+			1 << DownsweepPolicy::LOG_THREAD_ELEMENTS>::BindTextures;
+
+		BindSpineTexture bind_spine_texture_ptr = spine::SpineTex<SizeT>::BindTexture;
+
+		return Dispatch(
+			radix_bits,
+			upsweep_props,
+			spine_props,
+			downsweep_props,
+			bind_downsweep_texture_ptr,
+			bind_spine_texture_ptr,
+			log_schedule_granularity,
+			spine_tile_elements,
+			smem_8byte_banks);
+	}
+
+
+	/**
+	 * Dispatch
+	 */
+	template <PassPolicy>
+	cudaError_t Dispatch()
+	{
+		return Dispatch(PassPolicy, PassPolicy);
+	}
+
+
+	//---------------------------------------------------------------------
+	// Preconfigured pass dispatch
+	//---------------------------------------------------------------------
+
+	/**
+	 * Specialized pass policies
+	 */
+	template <TUNE_ARCH>
+	struct TunedPassPolicy;
+
+
+	/**
+	 * SM20
+	 */
+	template <>
+	struct TunedPassPolicy<200>
+	{
+		enum {
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
+			EARLY_EXIT 		= false,
+		};
+
+		// Upsweep kernel policy
+		typedef upsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				UpsweepPolicy;
+
+		// Spine-scan kernel policy
+		typedef spine::KernelPolicy<
+			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				SpinePolicy;
+
+		// Downsweep kernel policy
+		typedef downsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
+			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+			false,							// SMEM_8BYTE_BANKS
+			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				DownsweepPolicy;
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true, 								// UNIFORM_GRID_SIZE
+			true>  								// OVERSUBSCRIBED_GRID_SIZE
+				DispatchPolicy;
+	};
+
+
+	/**
+	 * Opaque pass policy
+	 */
+	template <int PTX_ARCH>
+	struct OpaquePassPolicy
+	{
+		struct UpsweepPolicy : 		TunedPassPolicy<PTX_ARCH>::UpsweepPolicy {};
+		struct SpinePolicy : 		TunedPassPolicy<PTX_ARCH>::SpinePolicy {};
+		struct DownsweepPolicy : 	TunedPassPolicy<PTX_ARCH>::DownsweepPolicy {};
+		struct DispatchPolicy : 	TunedPassPolicy<PTX_ARCH>::DispatchPolicy {};
+	};
+
+
+	/**
+	 * The appropriate tuning arch-id from the arch-id targeted by the
+	 * active compiler pass.
+	 */
 	enum {
 		TUNE_ARCH =
 			(__B40C_CUDA_ARCH__ >= 200) ?
@@ -363,32 +475,27 @@ struct Policy
 					100,
 	};
 
-	template <
-		int CURRENT_BIT,
-		int BITS_REMAINING,
-		int CURRENT_PASS>
-	struct OpaqueUpsweep :
-		typename TunedPassPolicy<
-			TUNE_ARCH,
-			ProblemType,
-			CURRENT_BIT,
-			BITS_REMAINING,
-			CURRENT_PASS>::Upsweep
-	{};
 
-	template <
-		int TUNE_ARCH,
-		int CURRENT_BIT,
-		int BITS_REMAINING,
-		int CURRENT_PASS>
-	struct PassPolicy :
-		TunedPassPolicy<
-			TUNE_ARCH,
-			ProblemType,
-			CURRENT_BIT,
-			BITS_REMAINING,
-			CURRENT_PASS>
-	{};
+	/**
+	 * Dispatch
+	 */
+	cudaError_t Dispatch()
+	{
+		if (ptx_arch >= 200) {
+
+			return Disaptch<TunedPassPolicy<200>, OpaquePassPolicy<TUNE_ARCH> >();
+
+		} else if (ptx_arch >= 130) {
+
+			return Disaptch<TunedPassPolicy<130>, OpaquePassPolicy<TUNE_ARCH> >();
+
+		} else {
+
+			return Disaptch<TunedPassPolicy<100>, OpaquePassPolicy<TUNE_ARCH> >();
+		}
+	}
+
+
 };
 
 

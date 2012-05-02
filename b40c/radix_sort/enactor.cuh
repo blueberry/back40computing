@@ -241,7 +241,7 @@ protected:
 
 			// Compute spine elements: BIN elements per CTA, rounded
 			// up to nearest spine tile size
-			SizeT spine_elements = sweep_grid_size << Downsweep::LOG_BINS;
+			SizeT spine_elements = sweep_grid_size << Downsweep::RADIX_BITS;
 			spine_elements = ((spine_elements + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
 
 			// Make sure our spine is big enough

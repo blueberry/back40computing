@@ -26,7 +26,7 @@
 #pragma once
 
 namespace b40c {
-namespace partition {
+namespace radix_sort {
 namespace upsweep {
 
 
@@ -208,6 +208,6 @@ struct AggregateCounters
 
 
 } // namespace upsweep
-} // namespace partition
+} // namespace radix_sort
 } // namespace b40c
 
