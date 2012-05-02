@@ -48,7 +48,7 @@ namespace util {
  * (And their roles can be reversed for each subsequent pass.) This structure
  * tracks two sets of device vectors (a keys and a values sets), and a "selector"
  * member to index which vector in each set is "currently valid".  I.e., the
- * valid data within "MultipleBuffer<2, int, int> b" is accessible by:
+ * valid data within "MultiBuffer<2, int, int> b" is accessible by:
  * 
  * 		b.d_keys[b.selector];
  * 
@@ -57,7 +57,7 @@ template <
 	int BUFFER_COUNT,
 	typename _KeyType,
 	typename _ValueType = util::NullType>
-struct MultipleBuffer
+struct MultiBuffer
 {
 	typedef _KeyType	KeyType;
 	typedef _ValueType 	ValueType;
@@ -72,7 +72,7 @@ struct MultipleBuffer
 	int selector;
 
 	// Constructor
-	MultipleBuffer()
+	MultiBuffer()
 	{
 		selector = 0;
 		for (int i = 0; i < BUFFER_COUNT; i++) {
@@ -105,42 +105,13 @@ struct MultipleBuffer
 template <
 	typename KeyType,
 	typename ValueType = util::NullType>
-struct DoubleBuffer : MultipleBuffer<2, KeyType, ValueType>
+struct DoubleBuffer : MultiBuffer<2, KeyType, ValueType>
 {
-	typedef MultipleBuffer<2, KeyType, ValueType> ParentType;
+	typedef MultiBuffer<2, KeyType, ValueType> ParentType;
 
 	// Constructor
 	DoubleBuffer() : ParentType() {}
 
-	// Constructor
-	DoubleBuffer(
-		KeyType* keys) : ParentType()
-
-	{
-		this->d_keys[0] = keys;
-	}
-
-	// Constructor
-	DoubleBuffer(
-		KeyType* keys,
-		ValueType* values) : ParentType()
-	{
-		this->d_keys[0] = keys;
-		this->d_values[0] = values;
-	}
-
-	// Constructor
-	DoubleBuffer(
-		KeyType* keys0,
-		KeyType* keys1,
-		ValueType* values0,
-		ValueType* values1) : ParentType()
-	{
-		this->d_keys[0] = keys0;
-		this->d_keys[1] = keys1;
-		this->d_values[0] = values0;
-		this->d_values[1] = values1;
-	}
 };
 
 
@@ -150,9 +121,9 @@ struct DoubleBuffer : MultipleBuffer<2, KeyType, ValueType>
 template <
 	typename KeyType,
 	typename ValueType = util::NullType>
-struct TripleBuffer : MultipleBuffer<3, KeyType, ValueType>
+struct TripleBuffer : MultiBuffer<3, KeyType, ValueType>
 {
-	typedef MultipleBuffer<3, KeyType, ValueType> ParentType;
+	typedef MultiBuffer<3, KeyType, ValueType> ParentType;
 
 	// Constructor
 	TripleBuffer() : ParentType() {}

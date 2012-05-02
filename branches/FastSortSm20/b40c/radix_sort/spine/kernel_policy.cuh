@@ -20,67 +20,64 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Configuration policy for radix sort downsweep scan kernel
+ * Configuration policy for radix sort spine scan kernel
  ******************************************************************************/
 
 #pragma once
 
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
 namespace b40c {
 namespace radix_sort {
-namespace downsweep {
-
-/**
- * Types of scattering strategies
- */
-enum ScatterStrategy {
-	SCATTER_DIRECT = 0,
-	SCATTER_TWO_PHASE,
-	SCATTER_WARP_TWO_PHASE,
-};
+namespace spine {
 
 
 /**
- * Downsweep tuning policy.
+ * Spine tuning policy.
  */
 template <
-	int 							_RADIX_BITS,
-	int 							_CURRENT_BIT,
-	int 							_CURRENT_PASS,
-	int 							_MIN_CTA_OCCUPANCY,
 	int 							_LOG_THREADS,
-	int 							_LOG_THREAD_ELEMENTS,
-	util::io::ld::CacheModifier	 	_READ_MODIFIER,
-	util::io::st::CacheModifier 	_WRITE_MODIFIER,
-	ScatterStrategy 				_SCATTER_STRATEGY,
-	bool							_SMEM_8BYTE_BANKS,
-	bool						 	_EARLY_EXIT>
+	int 							_LOG_LOAD_VEC_SIZE,
+	int 							_LOG_LOADS_PER_TILE,
+	util::io::ld::CacheModifier 	_READ_MODIFIER,
+	util::io::st::CacheModifier 	_WRITE_MODIFIER>
 struct KernelPolicy
 {
 	enum {
-		RADIX_BITS						= _RADIX_BITS,
-		CURRENT_BIT 					= _CURRENT_BIT,
-		CURRENT_PASS 					= _CURRENT_PASS,
-		MIN_CTA_OCCUPANCY  				= _MIN_CTA_OCCUPANCY,
 		LOG_THREADS 					= _LOG_THREADS,
-		LOG_THREAD_ELEMENTS 			= _LOG_THREAD_ELEMENTS,
-		SMEM_8BYTE_BANKS				= _SMEM_8BYTE_BANKS,
-		EARLY_EXIT						= _EARLY_EXIT,
+		THREADS							= 1 << LOG_THREADS,
+
+		LOG_LOAD_VEC_SIZE  				= _LOG_LOAD_VEC_SIZE,
+		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
+
+		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
+		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
+
+		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
+		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
+
+		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
+		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
+
+		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		WARPS							= 1 << LOG_WARPS,
+
+		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 	};
 
-	static const util::io::ld::CacheModifier 	READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier 	WRITE_MODIFIER 		= _WRITE_MODIFIER;
-	static const ScatterStrategy 				SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
+	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
+	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
 
 };
 
 
-
-} // namespace downsweep
-} // namespace partition
+} // namespace spine
+} // namespace radix_sort
 } // namespace b40c
 

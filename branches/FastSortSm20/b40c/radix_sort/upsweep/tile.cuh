@@ -70,7 +70,7 @@ struct Tile :
 		ExtractKeyBits<
 			KeyType,
 			KernelPolicy::CURRENT_BIT,
-			KernelPolicy::LOG_BINS>::Extract(bin, key);
+			KernelPolicy::RADIX_BITS>::Extract(bin, key);
 		return bin;
 	}
 

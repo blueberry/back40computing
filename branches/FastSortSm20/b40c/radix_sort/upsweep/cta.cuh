@@ -49,6 +49,23 @@ struct Cta
 	typedef typename KernelPolicy::SizeT 					SizeT;
 	typedef typename KernelPolicy::SmemStorage				SmemStorage;
 
+	/**
+	 * Shared storage for radix distribution sorting upsweep
+	 */
+	struct SmemStorage
+	{
+		union {
+			// Composite counter storage
+			union {
+				char counters[COMPOSITE_LANES][THREADS][4];
+				int words[COMPOSITE_LANES][THREADS];
+				int direct[COMPOSITE_LANES * THREADS];
+			} composite_counters;
+
+			// Final bin reduction storage
+			typename TuningPolicy::SizeT aggregate[AGGREGATED_ROWS][PADDED_AGGREGATED_PARTIALS_PER_ROW];
+		};
+	};
 
 	//---------------------------------------------------------------------
 	// Members
@@ -266,7 +283,7 @@ struct Cta
 		__syncthreads();
 
 		// Rake-reduce and write out the bin_count reductions
-		if (threadIdx.x < KernelPolicy::BINS) {
+		if (threadIdx.x < KernelPolicy::RADIX_DIGITS) {
 
 			SizeT bin_count = util::reduction::SerialReduce<KernelPolicy::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 				smem_storage.aggregate[threadIdx.x]);

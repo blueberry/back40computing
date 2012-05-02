@@ -35,6 +35,95 @@ namespace radix_sort {
  ******************************************************************************/
 
 /**
+ * Bit extraction, specialized for non-64bit key types
+ */
+template <
+	typename T,
+	int BIT_OFFSET,
+	int NUM_BITS,
+	int LEFT_SHIFT>
+struct Extract
+{
+	/**
+	 * Super bitfield-extract (BFE, then left-shift).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		T source)
+	{
+		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		T bits = (source & MASK);
+		if (SHIFT == 0) {
+			return bits;
+		} else {
+			return util::MagnitudeShift<SHIFT>::Shift(bits);
+		}
+	}
+
+	/**
+	 * Super bitfield-extract (BFE, then left-shift, then add).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		T source,
+		unsigned int addend)
+	{
+		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		T bits = (source & MASK);
+		if (SHIFT == 0) {
+			return bits + addend;
+		} else {
+			bits = (SHIFT > 0) ?
+				(util::SHL_ADD(bits, SHIFT, addend)) :
+				(util::SHR_ADD(bits, SHIFT * -1, addend));
+			return bits;
+		}
+	}
+
+};
+
+
+/**
+ * Bit extraction, specialized for 64bit key types
+ */
+template <
+	int BIT_OFFSET,
+	int NUM_BITS,
+	int LEFT_SHIFT>
+struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
+{
+	/**
+	 * Super bitfield-extract (BFE, then left-shift).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		unsigned long long source)
+	{
+		const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+		unsigned long long bits = (source & MASK);
+		if (SHIFT == 0) {
+			return bits;
+		} else {
+			return util::MagnitudeShift<SHIFT>::Shift(bits);
+		}
+	}
+
+	/**
+	 * Super bitfield-extract (BFE, then left-shift, then add).
+	 */
+	__device__ __forceinline__ static unsigned int SuperBFE(
+		unsigned long long source,
+		unsigned int addend)
+	{
+		return SuperBFE(source) + addend;
+	}
+};
+
+
+/**
  * Extracts a bit field from source and places the zero or sign-extended result 
  * in extract
  */

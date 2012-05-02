@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include <b40c/scan/spine/kernel.cuh>
+#include <b40c/radix_sort/spine/cta.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -33,41 +33,28 @@ namespace spine {
 
 
 /**
- * Templated texture reference for spine
- */
-template <typename SizeT>
-struct SpineTex
-{
-	static texture<SizeT, cudaTextureType1D, cudaReadModeElementType> ref;
-};
-template <typename SizeT>
-texture<SizeT, cudaTextureType1D, cudaReadModeElementType> SpineTex<SizeT>::ref;
-
-
-
-/**
  * Consecutive removal spine scan kernel entry point
  */
-template <typename KernelPolicy>
+template <
+	typename KernelPolicy,
+	typename T,
+	typename SizeT>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__ 
 void Kernel(
-	typename KernelPolicy::T			*d_in,
-	typename KernelPolicy::T			*d_out,
-	typename KernelPolicy::SizeT 		spine_elements)
+	T			*d_in,
+	T			*d_out,
+	SizeT 		spine_elements)
 {
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
+	// CTA abstraction type
+	typedef Cta<KernelPolicy, T, SizeT> Cta;
 
-	typename KernelPolicy::ReductionOp reduction_op;
-	typename KernelPolicy::IdentityOp identity_op;
+	// Shared memory pool
+	__shared__ typename Cta::SmemStorage smem_storage;
 
-	scan::spine::SpinePass<KernelPolicy>(
-		d_in,
-		d_out,
-		spine_elements,
-		reduction_op,
-		identity_op,
-		smem_storage);
+	Cta cta(smem_storage, d_in, d_out);
+
+	cta.ProcessWorkRange(spine_elements);
 }
 
 } // namespace spine

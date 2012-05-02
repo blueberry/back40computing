@@ -46,6 +46,13 @@ namespace util {
  */
 #define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+
+/**
+ * x rounded up to the nearest multiple of y
+ */
+#define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
+
+
 /**
  * Return the size in quad-words of a number of bytes
  */
@@ -224,6 +231,37 @@ struct RemovePointersHelper<Tp, Up*>
 template <typename Tp>
 struct RemovePointers : RemovePointersHelper<Tp, Tp> {};
 
+
+
+/**
+ * Removes const and volatile qualifiers from type Tp.
+ *
+ * For example:
+ *     typename RemoveQualifiers<volatile int>::Type 		// int;
+ */
+template <typename Tp, typename Up = Tp>
+struct RemoveQualifiers
+{
+	typedef Up Type;
+};
+
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, volatile Up>
+{
+	typedef Up Type;
+};
+
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, const Up>
+{
+	typedef Up Type;
+};
+
+template <typename Tp, typename Up>
+struct RemoveQualifiers<Tp, const volatile Up>
+{
+	typedef Up Type;
+};
 
 
 } // namespace util
