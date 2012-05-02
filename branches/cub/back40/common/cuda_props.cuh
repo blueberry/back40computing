@@ -34,7 +34,7 @@ using namespace cub;	// Fold cub namespace into back40
  * Invalid CUDA gpu device ordinal
  */
 enum {
-	CUB_GPU_ORDINAL = -1,
+	INVALID_GPU_ORDINAL = -1,
 };
 
 
