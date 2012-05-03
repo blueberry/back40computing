@@ -40,9 +40,9 @@ namespace downsweep {
  */
 template <
 	typename KernelPolicy,
+	typename SizeT,
 	typename KeyType,
-	typename ValueType,
-	typename SizeT>
+	typename ValueType>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__ 
 void Kernel(
@@ -53,6 +53,7 @@ void Kernel(
 	ValueType 	*d_values1,
 	util::CtaWorkDistribution<SizeT> work_decomposition)
 {
+/*
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, SizeT, KeyType, ValueType> Cta;
 
@@ -66,8 +67,8 @@ void Kernel(
 			smem_storage.work_limits,
 			KernelPolicy::LOG_TILE_ELEMENTS);
 
-		smem_storage.tex_offset 		= smem_storage.work_limits.offset >> KernelPolicy::LOG_TEX_VEC_SIZE;
-		smem_storage.tex_offset_limit 	= smem_storage.work_limits.guarded_offset >> KernelPolicy::LOG_TEX_VEC_SIZE;
+		smem_storage.tex_offset 		= smem_storage.work_limits.offset >> Cta::LOG_TEX_VEC_SIZE;
+		smem_storage.tex_offset_limit 	= smem_storage.work_limits.guarded_offset >> Cta::LOG_TEX_VEC_SIZE;
 	}
 
 	// Sync to acquire work limits
@@ -82,6 +83,7 @@ void Kernel(
 		d_spine);
 
 	cta.ProcessWorkRange(smem_storage.work_limits);
+*/
 }
 
 

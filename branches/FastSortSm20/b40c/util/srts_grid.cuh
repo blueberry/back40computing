@@ -62,13 +62,11 @@ namespace util {
  * (N.B.: Typically two-level grids are a losing performance proposition)
  */
 template <
-	int _CUDA_ARCH,
 	typename _T,									// Type of items we will be reducing/scanning
 	int _LOG_ACTIVE_THREADS, 						// Number of threads placing a lane partial (i.e., the number of partials per lane)
 	int _LOG_SCAN_LANES,							// Number of scan lanes
 	int _LOG_RAKING_THREADS, 						// Number of threads used for raking (typically 1 warp)
 	bool _DEPENDENT_LANES>							// If there are prefix dependences between lanes (i.e., downsweeping will incorporate aggregates from previous lanes)
-
 struct RakingGrid
 {
 	// Type of items we will be reducing/scanning
@@ -85,8 +83,8 @@ struct RakingGrid
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.
 	enum {
-
-		CUDA_ARCH						= _CUDA_ARCH,
+		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		WARP_THREADS					= 1 << LOG_WARP_THREADS,
 
 		// Number of scan lanes
 		LOG_SCAN_LANES					= _LOG_SCAN_LANES,
@@ -109,8 +107,8 @@ struct RakingGrid
 		PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG,
 
 		// Number of partials that we can put in one stripe across the shared memory banks
-		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(CUDA_ARCH) +
-											B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) -
+		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) +
+											B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) -
 											Log2<sizeof(T)>::VALUE,
 		PARTIALS_PER_BANK_ARRAY			= 1 << LOG_PARTIALS_PER_BANK_ARRAY,
 
@@ -118,7 +116,7 @@ struct RakingGrid
 		SEGS_PER_BANK_ARRAY				= 1 << LOG_SEGS_PER_BANK_ARRAY,
 
 		// Whether or not one warp of raking threads can rake entirely in one stripe across the shared memory banks
-		NO_PADDING = (LOG_SEGS_PER_BANK_ARRAY >= B40C_LOG_WARP_THREADS(CUDA_ARCH)),
+		NO_PADDING = (LOG_SEGS_PER_BANK_ARRAY >= LOG_WARP_THREADS),
 
 		// Number of raking segments we can have without padding (i.e., a "row")
 		LOG_SEGS_PER_ROW 				= (NO_PADDING) ?
@@ -131,7 +129,7 @@ struct RakingGrid
 		PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW,
 
 		// Number of partials that we must use to "pad out" one memory bank
-		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) - Log2<sizeof(T)>::VALUE),
+		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - Log2<sizeof(T)>::VALUE),
 		BANK_PADDING_PARTIALS			= 1 << LOG_BANK_PADDING_PARTIALS,
 
 		// Number of partials that we must use to "pad out" a lane to one memory bank
@@ -162,13 +160,12 @@ struct RakingGrid
 	// If there are prefix dependences between lanes, a secondary raking grid
 	// type will be needed in the event we have more than one warp of raking threads
 
-	typedef typename If<_DEPENDENT_LANES && (LOG_RAKING_THREADS > B40C_LOG_WARP_THREADS(CUDA_ARCH)),
+	typedef typename If<_DEPENDENT_LANES && (LOG_RAKING_THREADS > LOG_WARP_THREADS),
 		RakingGrid<										// Yes secondary grid
-			CUDA_ARCH,
 			T,													// Partial type
 			LOG_RAKING_THREADS,									// Depositing threads (the primary raking threads)
 			0,													// 1 lane (the primary raking threads only make one deposit)
-			B40C_LOG_WARP_THREADS(CUDA_ARCH),					// Raking threads (1 warp)
+			LOG_WARP_THREADS,									// Raking threads (1 warp)
 			false>,												// There is only one lane, so there are no inter-lane prefix dependences
 		NullType>										// No secondary grid
 			::Type SecondaryGrid;

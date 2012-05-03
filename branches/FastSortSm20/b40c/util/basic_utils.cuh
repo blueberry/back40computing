@@ -128,6 +128,18 @@ struct NullType {};
 
 
 /**
+ * True type
+ */
+struct True {};
+
+
+/**
+ * False type
+ */
+struct FalseType {};
+
+
+/**
  * Int2Type
  */
 template <int N>

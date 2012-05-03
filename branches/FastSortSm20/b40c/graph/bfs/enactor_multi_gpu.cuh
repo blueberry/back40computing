@@ -290,8 +290,9 @@ protected:
 				copy_grid_size 					= MaxGridSize(copy_min_occupancy, max_grid_size);
 
 				// Setup partitioning spine
+				typedef typename PartitionPolicy::SizeT SizeT;
 				spine_elements = (partition_grid_size * PartitionPolicy::Upsweep::BINS) + 1;
-				if (retval = spine.template Setup<typename PartitionPolicy::SizeT>(spine_elements)) break;
+				if (retval = spine.Setup(sizeof(SizeT) * spine_elements)) break;
 
 				if (DEBUG) printf("Gpu %d contract  min occupancy %d, grid size %d\n",
 					gpu, contract_min_occupancy, contract_grid_size);

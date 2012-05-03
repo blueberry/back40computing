@@ -29,6 +29,7 @@
 #pragma once
 
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/cuda_properties.cuh>
 
 namespace b40c {
 namespace util {
@@ -154,19 +155,14 @@ struct Spine
 
 
 	/**
-	 * Sets up the spine to accommodate partials of the specified type
-	 * produced/consumed by grids of the specified sweep grid size (lazily
-	 * allocating it if necessary)
-	 *
-	 * Grows as necessary.
+	 * Sets up the spine to accommodate the specified number of bytes.
+	 * Reallocates if necessary.
 	 */
-	template <typename T>
-	cudaError_t Setup(int spine_elements)
+	template <typename SizeT>
+	cudaError_t Setup(SizeT problem_spine_bytes)
 	{
 		cudaError_t retval = cudaSuccess;
 		do {
-			size_t problem_spine_bytes = spine_elements * sizeof(T);
-
 			// Get current gpu
 			int current_gpu;
 			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),

@@ -39,20 +39,20 @@ namespace upsweep {
  * composite-counters within lane belonging to its warp.  There
  * are four encoded bins within each composite counter.
  */
-template <typename KernelPolicy>
+template <typename Cta>
 struct AggregateCounters
 {
 	//---------------------------------------------------------------------
 	// Typedefs and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::SizeT SizeT;
+	typedef typename Cta::SizeT SizeT;
 
 	enum {
-		LANES_PER_WARP 						= KernelPolicy::LANES_PER_WARP,
-		COMPOSITES_PER_LANE_PER_THREAD 		= KernelPolicy::COMPOSITES_PER_LANE_PER_THREAD,
-		WARPS								= KernelPolicy::WARPS,
-		COMPOSITE_LANES						= KernelPolicy::COMPOSITE_LANES,
+		LANES_PER_WARP 						= Cta::LANES_PER_WARP,
+		COMPOSITES_PER_LANE_PER_THREAD 		= Cta::COMPOSITES_PER_LANE_PER_THREAD,
+		WARPS								= Cta::WARPS,
+		COMPOSITE_LANES						= Cta::COMPOSITE_LANES,
 	};
 
 	//---------------------------------------------------------------------
@@ -61,7 +61,7 @@ struct AggregateCounters
 
 	// Aggregate counters (four encoded bins per lane by the number of lanes
 	// aggregated per warp)
-	SizeT local_counts[KernelPolicy::LANES_PER_WARP][4];
+	SizeT local_counts[Cta::LANES_PER_WARP][4];
 
 
 	//---------------------------------------------------------------------
@@ -75,12 +75,12 @@ struct AggregateCounters
 	struct Iterate
 	{
 		// ExtractComposites
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ExtractComposites(
 			Cta *cta,
 			AggregateCounters *aggregate_counters)
 		{
-			const int LANE_OFFSET = WARP_LANE * WARPS * KernelPolicy::THREADS * 4;
+			const int LANE_OFFSET = WARP_LANE * WARPS * Cta::THREADS * 4;
 			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__) * 4;
 
 			aggregate_counters->local_counts[WARP_LANE][0] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 0);
@@ -99,7 +99,7 @@ struct AggregateCounters
 	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
 		// ExtractComposites
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ExtractComposites(
 			Cta *cta,
 			AggregateCounters *aggregate_counters)
@@ -108,7 +108,7 @@ struct AggregateCounters
 		}
 
 		// ShareCounters
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ShareCounters(
 			Cta *cta,
 			AggregateCounters *aggregate_counters)
@@ -125,7 +125,7 @@ struct AggregateCounters
 		}
 
 		// ResetCounters
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ResetCounters(
 			Cta *cta,
 			AggregateCounters *aggregate_counters)
@@ -146,7 +146,7 @@ struct AggregateCounters
 	struct Iterate<LANES_PER_WARP, 0, dummy>
 	{
 		// ExtractComposites
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ExtractComposites(
 			Cta *cta, AggregateCounters *aggregate_counters) {}
 	};
@@ -158,12 +158,12 @@ struct AggregateCounters
 	struct Iterate<LANES_PER_WARP, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
 		// ShareCounters
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ShareCounters(
 			Cta *cta, AggregateCounters *aggregate_counters) {}
 
 		// ResetCounters
-		template <typename Cta, typename AggregateCounters>
+		template <typename AggregateCounters>
 		static __device__ __forceinline__ void ResetCounters(
 			Cta *cta, AggregateCounters *aggregate_counters) {}
 	};
@@ -176,7 +176,6 @@ struct AggregateCounters
 	 * Extracts and aggregates the shared-memory composite counters for each
 	 * composite-counter lane owned by this warp
 	 */
-	template <typename Cta>
 	__device__ __forceinline__ void ExtractComposites(Cta *cta)
 	{
 		if (cta->warp_id < COMPOSITE_LANES) {
@@ -187,7 +186,6 @@ struct AggregateCounters
 	/**
 	 * Places aggregate-counters into shared storage for final bin-wise reduction
 	 */
-	template <typename Cta>
 	__device__ __forceinline__ void ShareCounters(Cta *cta)
 	{
 		if (cta->warp_id < COMPOSITE_LANES) {
@@ -198,7 +196,6 @@ struct AggregateCounters
 	/**
 	 * Resets the aggregate counters
 	 */
-	template <typename Cta>
 	__device__ __forceinline__ void ResetCounters(Cta *cta)
 	{
 		Iterate<0, COMPOSITES_PER_LANE_PER_THREAD>::ResetCounters(cta, this);

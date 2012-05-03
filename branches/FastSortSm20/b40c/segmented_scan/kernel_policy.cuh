@@ -125,7 +125,6 @@ struct KernelPolicy : ProblemType
 
 	// Raking grid type for partials
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		T,										// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
@@ -135,7 +134,6 @@ struct KernelPolicy : ProblemType
 
 	// Raking grid type for flags
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		Flag,									// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)

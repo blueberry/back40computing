@@ -28,7 +28,7 @@
 
 #pragma once
 
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 namespace b40c {
 namespace util {

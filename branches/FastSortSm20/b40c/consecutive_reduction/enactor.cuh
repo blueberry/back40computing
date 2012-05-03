@@ -29,7 +29,7 @@
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/arch_dispatch.cuh>
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 #include <b40c/consecutive_reduction/problem_type.cuh>
 #include <b40c/consecutive_reduction/policy.cuh>
@@ -417,8 +417,8 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 		}
 
 		// Make sure our spine is big enough
-		if (retval = partial_spine.Setup<ValueType>(spine_elements)) break;
-		if (retval = flag_spine.Setup<SizeT>(spine_elements)) break;
+		if (retval = partial_spine.Setup(sizeof(ValueType) * spine_elements)) break;
+		if (retval = flag_spine.Setup(sizeof(SizeT) * spine_elements)) break;
 
 		if (detail.d_num_compacted == NULL) {
 			// If we're to output the compacted sizes to device memory, write out

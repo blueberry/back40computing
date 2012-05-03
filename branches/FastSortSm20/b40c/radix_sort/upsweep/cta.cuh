@@ -25,9 +25,14 @@
 
 #pragma once
 
-#include <b40c/partition/upsweep/cta.cuh>
+#include <b40c/util/basic_utils.cuh>
+#include <b40c/util/device_intrinsics.cuh>
+#include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/io/scatter_tile.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
 
-#include <b40c/radix_sort/upsweep/tile.cuh>
+#include <b40c/radix_sort/sort_utils.cuh>
+#include <b40c/radix_sort/upsweep/aggregate_counters.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -35,19 +40,80 @@ namespace upsweep {
 
 /**
  * Radix sort upsweep reduction CTA
- *
- * Derives from partition::upsweep::Cta
  */
-template <typename KernelPolicy>
+template <
+	typename KernelPolicy,
+	typename SizeT,
+	typename KeyType>
 struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
 	//---------------------------------------------------------------------
 
-	typedef typename KernelPolicy::KeyType 					KeyType;
-	typedef typename KernelPolicy::SizeT 					SizeT;
-	typedef typename KernelPolicy::SmemStorage				SmemStorage;
+	enum {
+		MIN_CTA_OCCUPANCY  				= KernelPolicy::MIN_CTA_OCCUPANCY,
+		CURRENT_BIT 					= KernelPolicy::CURRENT_BIT,
+		CURRENT_PASS 					= KernelPolicy::CURRENT_PASS,
+
+		RADIX_BITS						= KernelPolicy::RADIX_BITS,
+		RADIX_DIGITS 					= 1 << RADIX_BITS,
+
+		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
+		THREADS							= 1 << LOG_THREADS,
+
+		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		WARP_THREADS					= 1 << LOG_WARP_THREADS,
+
+		LOG_WARPS						= LOG_THREADS - LOG_WARP_THREADS,
+		WARPS							= 1 << LOG_WARPS,
+
+		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
+		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
+
+		LOG_LOADS_PER_TILE 				= KernelPolicy::LOG_LOADS_PER_TILE,
+		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
+
+
+		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+
+
+		// A shared-memory composite counter lane is a row of 32-bit words, one word per thread, each word a
+		// composite of four 8-bit bin counters.  I.e., we need one lane for every four distribution bins.
+
+		LOG_COMPOSITE_LANES 			= (RADIX_BITS >= 2) ?
+											RADIX_BITS - 2 :
+											0,	// Always at least one lane
+		COMPOSITE_LANES 				= 1 << LOG_COMPOSITE_LANES,
+
+		LOG_COMPOSITES_PER_LANE			= LOG_THREADS,				// Every thread contributes one partial for each lane
+		COMPOSITES_PER_LANE 			= 1 << LOG_COMPOSITES_PER_LANE,
+
+		// To prevent bin-counter overflow, we must partially-aggregate the
+		// 8-bit composite counters back into SizeT-bit registers periodically.  Each lane
+		// is assigned to a warp for aggregation.  Each lane is therefore equivalent to
+		// four rows of SizeT-bit bin-counts, each the width of a warp.
+
+		LOG_LANES_PER_WARP					= CUB_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
+		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,
+
+		LOG_COMPOSITES_PER_LANE_PER_THREAD 	= LOG_COMPOSITES_PER_LANE - LOG_WARP_THREADS,		// Number of partials per thread to aggregate
+		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_LANE_PER_THREAD,
+
+		AGGREGATED_ROWS						= RADIX_DIGITS,
+		AGGREGATED_PARTIALS_PER_ROW 		= WARP_THREADS,
+		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
+
+		// Unroll tiles in batches of X elements per thread (X = log(255) is maximum without risking overflow)
+		LOG_UNROLL_COUNT 					= 6 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
+		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
+	};
+
+
 
 	/**
 	 * Shared storage for radix distribution sorting upsweep
@@ -63,22 +129,19 @@ struct Cta
 			} composite_counters;
 
 			// Final bin reduction storage
-			typename TuningPolicy::SizeT aggregate[AGGREGATED_ROWS][PADDED_AGGREGATED_PARTIALS_PER_ROW];
+			SizeT aggregate[AGGREGATED_ROWS][PADDED_AGGREGATED_PARTIALS_PER_ROW];
 		};
 	};
 
 	//---------------------------------------------------------------------
-	// Members
+	// Fields
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
 	typename KernelPolicy::SmemStorage 	&smem_storage;
 
-	// Shared-memory lanes of composite-counters
-	CompostiteCounters<KernelPolicy> 	composite_counters;
-
 	// Thread-local counters for periodically aggregating composite-counter lanes
-	AggregateCounters<KernelPolicy>		aggregate_counters;
+	AggregateCounters<Cta>				aggregate_counters;
 
 	// Input and output device pointers
 	KeyType								*d_in_keys;
@@ -105,12 +168,11 @@ struct Cta
 		{
 			static const int HALF = UNROLL_COUNT / 2;
 
-			template <typename Cta>
 			static __device__ __forceinline__ void ProcessTiles(
 				Cta *cta, SizeT cta_offset)
 			{
 				Iterate<HALF>::ProcessTiles(cta, cta_offset);
-				Iterate<HALF>::ProcessTiles(cta, cta_offset + (KernelPolicy::TILE_ELEMENTS * HALF));
+				Iterate<HALF>::ProcessTiles(cta, cta_offset + (TILE_ELEMENTS * HALF));
 			}
 		};
 
@@ -118,7 +180,6 @@ struct Cta
 		template <int __dummy>
 		struct Iterate<1, __dummy>
 		{
-			template <typename Cta>
 			static __device__ __forceinline__ void ProcessTiles(
 				Cta *cta, SizeT cta_offset)
 			{
@@ -142,7 +203,7 @@ struct Cta
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_spine(d_spine),
-			warp_id(threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),
+			warp_id(threadIdx.x >> LOG_WARP_THREADS),
 			warp_idx(util::LaneId())
 	{
 		base = (char *) (smem_storage.composite_counters.words[warp_id] + warp_idx);
@@ -150,27 +211,87 @@ struct Cta
 
 
 	/**
+	 * Bucket a key into smem counters
+	 */
+	__device__ __forceinline__ void Bucket(KeyType key)
+	{
+		const KeyType COUNTER_BYTE_MASK = (RADIX_BITS < 2) ? 0x1 : 0x3;
+
+		if (__B40C_CUDA_ARCH__ >= 200) {
+
+			// Use BFE on Fermi
+			int sub_counter = util::BFE(key, CURRENT_BIT, 2);
+
+			int lane = (RADIX_BITS <= 2) ?
+				0 :
+				util::BFE(key, CURRENT_BIT + 2, RADIX_BITS - 2);
+
+			// Increment sub-field in composite counter
+			smem_storage.composite_counters.counters[lane][threadIdx.x][sub_counter]++;
+
+		} else {
+
+			// Decode the bin for this key
+			int bin;
+			ExtractKeyBits<
+				KeyType,
+				CURRENT_BIT,
+				RADIX_BITS>::Extract(bin, key);
+
+			// Decode composite-counter lane and sub-counter from bin
+			int lane = bin >> 2;										// extract composite counter lane
+			int sub_counter = bin & COUNTER_BYTE_MASK;					// extract 8-bit counter offset
+
+			// Increment sub-field in composite counter
+			smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << (sub_counter << 0x3));
+		}
+	}
+
+
+	/**
+	 * Reset composite counters
+	 */
+	__device__ __forceinline__ void ResetCompositeCounters()
+	{
+		#pragma unroll
+		for (int LANE = 0; LANE > COMPOSITE_LANES; ++LANE) {
+			smem_storage.composite_counters.words[LANE][threadIdx.x] = 0;
+		}
+	}
+
+
+
+	/**
 	 * Processes a single, full tile
 	 */
-	__device__ __forceinline__ void ProcessFullTile(
-		SizeT cta_offset)
+	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
 	{
-		Tile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy> tile;
+		// Tile of keys
+		KeyType keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		// Load keys
-		tile.LoadKeys(this, cta_offset);
+		// Read tile of keys
+		util::io::LoadTile<
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			THREADS,
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(
+				(KeyType (*)[LOAD_VEC_SIZE]) keys,
+				d_in_keys,
+				cta_offset);
 
 		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
-		if (KernelPolicy::LOADS_PER_TILE > 1) __syncthreads();
+		if (LOADS_PER_TILE > 1) __syncthreads();
 
 		// Bucket tile of keys
-		tile.Bucket(this);
+		#pragma unroll
+		for (int LOAD = 0; LOAD < LOADS_PER_TILE; ++LOAD) {
 
-		// Store keys (if necessary)
-		tile.StoreKeys(this, cta_offset);
+			#pragma unroll
+			for (int VEC = 0; VEC < LOAD_VEC_SIZE; ++VEC) {
+				Bucket(keys[LOAD][VEC]);
+			}
+		}
 	}
 
 
@@ -182,20 +303,13 @@ struct Cta
 		const SizeT &out_of_bounds)
 	{
 		// Process partial tile if necessary using single loads
-		while (cta_offset + threadIdx.x < out_of_bounds) {
+		cta_offset += threadIdx.x;
+		while (cta_offset < out_of_bounds) {
 
-			Tile<0, 0, KernelPolicy> tile;
-
-			// Load keys
-			tile.LoadKeys(this, cta_offset);
-
-			// Bucket tile of keys
-			tile.Bucket(this);
-
-			// Store keys (if necessary)
-			tile.StoreKeys(this, cta_offset);
-
-			cta_offset += KernelPolicy::THREADS;
+			// Load and bucket key
+			KeyType key = d_in_keys[cta_offset];
+			Bucket(key);
+			cta_offset += THREADS;
 		}
 	}
 
@@ -210,16 +324,16 @@ struct Cta
 		SizeT cta_offset = work_limits.offset;
 
 		aggregate_counters.ResetCounters(this);
-		composite_counters.ResetCompositeCounters(this);
+		ResetCompositeCounters();
 
 
 #if 1	// Use deep unrolling for better instruction efficiency
 
 		// Unroll batches of full tiles
-		const int UNROLLED_ELEMENTS = KernelPolicy::UNROLL_COUNT * KernelPolicy::TILE_ELEMENTS;
+		const int UNROLLED_ELEMENTS = UNROLL_COUNT * TILE_ELEMENTS;
 		while (cta_offset  + UNROLLED_ELEMENTS < work_limits.out_of_bounds) {
 
-			UnrollTiles::template Iterate<KernelPolicy::UNROLL_COUNT>::ProcessTiles(
+			UnrollTiles::template Iterate<UNROLL_COUNT>::ProcessTiles(
 				this,
 				cta_offset);
 			cta_offset += UNROLLED_ELEMENTS;
@@ -232,14 +346,14 @@ struct Cta
 			__syncthreads();
 
 			// Reset composite counters in lanes
-			composite_counters.ResetCompositeCounters(this);
+			ResetCompositeCounters();
 		}
 
 		// Unroll single full tiles
 		while (cta_offset < work_limits.guarded_offset) {
 
 			ProcessFullTile(cta_offset);
-			cta_offset += KernelPolicy::TILE_ELEMENTS;
+			cta_offset += TILE_ELEMENTS;
 		}
 
 #else 	// Use shallow unrolling for faster compilation tiles
@@ -248,9 +362,9 @@ struct Cta
 		while (cta_offset < work_limits.guarded_offset) {
 
 			ProcessFullTile(cta_offset);
-			cta_offset += KernelPolicy::TILE_ELEMENTS;
+			cta_offset += TILE_ELEMENTS;
 
-			const SizeT UNROLL_MASK = (KernelPolicy::UNROLL_COUNT - 1) << KernelPolicy::LOG_TILE_ELEMENTS;
+			const SizeT UNROLL_MASK = (UNROLL_COUNT - 1) << LOG_TILE_ELEMENTS;
 			if ((cta_offset & UNROLL_MASK) == 0) {
 
 				__syncthreads();
@@ -261,7 +375,7 @@ struct Cta
 				__syncthreads();
 
 				// Reset composite counters in lanes
-				composite_counters.ResetCompositeCounters(this);
+				ResetCompositeCounters();
 			}
 		}
 #endif
@@ -283,9 +397,9 @@ struct Cta
 		__syncthreads();
 
 		// Rake-reduce and write out the bin_count reductions
-		if (threadIdx.x < KernelPolicy::RADIX_DIGITS) {
+		if (threadIdx.x < RADIX_DIGITS) {
 
-			SizeT bin_count = util::reduction::SerialReduce<KernelPolicy::AGGREGATED_PARTIALS_PER_ROW>::Invoke(
+			SizeT bin_count = util::reduction::SerialReduce<AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 				smem_storage.aggregate[threadIdx.x]);
 
 			int spine_bin_offset = util::FastMul(gridDim.x, threadIdx.x) + blockIdx.x;

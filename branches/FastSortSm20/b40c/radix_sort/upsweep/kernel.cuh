@@ -36,67 +36,41 @@ namespace upsweep {
 
 
 /**
- * Radix sort upsweep reduction pass
- */
-template <typename KernelPolicy>
-__device__ __forceinline__ void UpsweepPass(
-	int 									*&d_selectors,
-	typename KernelPolicy::SizeT 			*&d_spine,
-	typename KernelPolicy::KeyType 			*&d_in_keys,
-	typename KernelPolicy::KeyType 			*&d_out_keys,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> &work_decomposition,
-	typename KernelPolicy::SmemStorage		&smem_storage)
-{
-	typedef Cta<KernelPolicy> 						Cta;
-	typedef typename KernelPolicy::KeyType 			KeyType;
-	typedef typename KernelPolicy::SizeT 			SizeT;
-	
-	// Determine where to read our input
-
-	bool selector = ((KernelPolicy::EARLY_EXIT) && ((KernelPolicy::CURRENT_PASS != 0) && (d_selectors[KernelPolicy::CURRENT_PASS & 0x1]))) ||
-		(KernelPolicy::CURRENT_PASS & 0x1);
-	KeyType *d_keys = (selector) ? d_out_keys : d_in_keys;
-
-	// Determine our threadblock's work range
-	util::CtaWorkLimits<SizeT> work_limits;
-	work_decomposition.template GetCtaWorkLimits<
-		KernelPolicy::LOG_TILE_ELEMENTS,
-		KernelPolicy::LOG_SCHEDULE_GRANULARITY>(work_limits);
-
-	// CTA processing abstraction
-	Cta cta(
-		smem_storage,
-		d_keys,
-		d_spine);
-	
-	// Accumulate digit counts for all tiles
-	cta.ProcessWorkRange(work_limits);
-}
-
-
-/**
  * Radix sort upsweep reduction kernel entry point
  */
-template <typename KernelPolicy>
+template <
+	typename KernelPolicy,
+	typename SizeT,
+	typename KeyType>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
-	int 								*d_selectors,
-	typename KernelPolicy::SizeT 		*d_spine,
-	typename KernelPolicy::KeyType 		*d_in_keys,
-	typename KernelPolicy::KeyType 		*d_out_keys,
-	util::CtaWorkDistribution<typename KernelPolicy::SizeT> work_decomposition)
+	SizeT 		*d_spine,
+	KeyType 	*d_in_keys,
+	KeyType 	*d_out_keys,
+	util::CtaWorkDistribution<SizeT> work_decomposition)
 {
-	// Shared memory pool
-	__shared__ typename KernelPolicy::SmemStorage smem_storage;
+/*
+	// CTA abstraction type
+	typedef Cta<KernelPolicy, SizeT, KeyType> Cta;
 
-	UpsweepPass<KernelPolicy>(
-		d_selectors,
-		d_spine,
-		d_in_keys,
-		d_out_keys,
-		work_decomposition,
-		smem_storage);
+	// Shared memory pool
+	__shared__ typename Cta::SmemStorage smem_storage;
+	
+	// Determine where to read our input
+	KeyType *d_keys = (KernelPolicy::CURRENT_PASS & 0x1) ?
+		d_out_keys :
+		d_in_keys;
+
+	// Determine our threadblock's work range
+	util::CtaWorkLimits<SizeT> work_limits;
+	work_decomposition.GetCtaWorkLimits(
+		work_limits,
+		KernelPolicy::LOG_TILE_ELEMENTS);
+
+	Cta cta(smem_storage, d_keys, d_spine);
+	cta.ProcessWorkRange(work_limits);
+*/
 }
 
 

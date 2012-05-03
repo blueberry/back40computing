@@ -379,7 +379,7 @@ cudaError_t Enactor::EnactPass(DetailType &detail)
 			}
 
 			// Make sure our spine is big enough
-			if (retval = spine.Setup<T>(spine_elements)) break;
+			if (retval = spine.Setup(sizeof(T) * spine_elements)) break;
 
 			int dynamic_smem[2] = 	{0, 0};
 			int grid_size[2] = 		{work.grid_size, 1};

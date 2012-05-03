@@ -30,7 +30,7 @@
 #include "b40c_test_util.h"
 #include "test_consecutive_reduction.h"
 
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 #include <thrust/device_vector.h>
 #include <thrust/reduce.h>

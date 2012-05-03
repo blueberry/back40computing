@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/util/basic_utils.cuh>
+#include <b40c/util/tex_vector.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/scatter_tile.cuh>
 
@@ -42,9 +43,9 @@ namespace downsweep {
  */
 template <
 	typename KernelPolicy,
+	typename SizeT,
 	typename KeyType,
-	typename ValueType,
-	typename SizeT>
+	typename ValueType>
 struct Cta
 {
 	//---------------------------------------------------------------------
@@ -95,10 +96,6 @@ struct Cta
 		LOG_BASE_RAKING_SEG			= LOG_SCAN_ELEMENTS - LOG_THREADS,
 		PADDED_RAKING_SEG			= (1 << LOG_BASE_RAKING_SEG) + 1,
 
-		TEX_VEC_SIZE				= sizeof(KeyVectorType) / sizeof(KeyType),
-		THREAD_TEX_LOADS	 		= THREAD_ELEMENTS / TEX_VEC_SIZE,
-		TILE_TEX_LOADS				= THREADS * THREAD_TEX_LOADS,
-
 		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 
@@ -112,16 +109,21 @@ struct Cta
 		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
 	};
 
-
-	typedef typename DownsweepTex<
+	typedef typename util::TexVector::TexVec<
 		KeyType,
-		ValueType,
-		THREAD_ELEMENTS>::KeyVectorType 		KeyVectorType;
+		THREAD_ELEMENTS> KeyTexVector;
 
-	typedef typename DownsweepTex<
-		KeyType,
+	// Texture binding for downsweep values
+	typedef typename util::TexVector::TexVec<
 		ValueType,
-		THREAD_ELEMENTS>::ValueVectorType 	ValueVectorType;
+		THREAD_ELEMENTS> ValueTexVector;
+
+	enum {
+		TEX_VEC_SIZE				= sizeof(KeyVectorType) / sizeof(KeyType),
+		LOG_TEX_VEC_SIZE			= util::Log2<TEX_VEC_SIZE>::VALUE,
+		THREAD_TEX_LOADS	 		= THREAD_ELEMENTS / TEX_VEC_SIZE,
+		TILE_TEX_LOADS				= THREADS * THREAD_TEX_LOADS,
+	};
 
 
 	/**
@@ -481,8 +483,8 @@ struct Cta
 
 				vectors[TEX_LOAD] = tex1Dfetch(
 					(FLOP_TURN) ?
-						KeysTex<KeyType, THREAD_ELEMENTS>::ref1 :
-						KeysTex<KeyType, THREAD_ELEMENTS>::ref0,
+							DownsweepTexKeys<KeyType, THREAD_ELEMENTS>::key_ref0 :
+							DownsweepTexKeys<KeyType, THREAD_ELEMENTS>::key_ref1,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
 			}
 
@@ -524,8 +526,8 @@ struct Cta
 
 				vectors[TEX_LOAD] = tex1Dfetch(
 					(FLOP_TURN) ?
-						ValuesTex<ValueType, THREAD_ELEMENTS>::ref1 :
-						ValuesTex<ValueType, THREAD_ELEMENTS>::ref0,
+						DownsweepTexValues<ValueType, THREAD_ELEMENTS>::value_ref0 :
+						DownsweepTexValues<ValueType, THREAD_ELEMENTS>::value_ref1,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
 			}
 
@@ -602,8 +604,7 @@ struct Cta
 	__device__ __forceinline__ void TruckValues<true>(
 		SizeT tex_offset,
 		const SizeT &guarded_elements,
-		Tile &tile,
-		True) {}
+		Tile &tile) {}
 
 
 	/**

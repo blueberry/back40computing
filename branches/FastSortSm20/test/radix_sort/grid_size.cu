@@ -28,7 +28,7 @@
 #include <algorithm>
 
 // Sorting includes
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
