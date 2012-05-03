@@ -25,8 +25,6 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -62,14 +60,17 @@ template <
 struct KernelPolicy
 {
 	enum {
-		RADIX_BITS						= _RADIX_BITS,
-		CURRENT_BIT 					= _CURRENT_BIT,
-		CURRENT_PASS 					= _CURRENT_PASS,
-		MIN_CTA_OCCUPANCY  				= _MIN_CTA_OCCUPANCY,
-		LOG_THREADS 					= _LOG_THREADS,
-		LOG_THREAD_ELEMENTS 			= _LOG_THREAD_ELEMENTS,
-		SMEM_8BYTE_BANKS				= _SMEM_8BYTE_BANKS,
-		EARLY_EXIT						= _EARLY_EXIT,
+		RADIX_BITS					= _RADIX_BITS,
+		CURRENT_BIT 				= _CURRENT_BIT,
+		CURRENT_PASS 				= _CURRENT_PASS,
+		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
+		LOG_THREADS 				= _LOG_THREADS,
+		LOG_THREAD_ELEMENTS 		= _LOG_THREAD_ELEMENTS,
+		SMEM_8BYTE_BANKS			= _SMEM_8BYTE_BANKS,
+		EARLY_EXIT					= _EARLY_EXIT,
+
+		THREADS						= 1 << LOG_THREADS,
+		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_THREAD_ELEMENTS,
 	};
 
 	static const util::io::ld::CacheModifier 	READ_MODIFIER 		= _READ_MODIFIER;

@@ -34,7 +34,7 @@
 #include <b40c/util/parameter_generation.cuh>
 #include <b40c/util/enactor_base.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 #include <b40c/consecutive_reduction/problem_type.cuh>
 #include <b40c/consecutive_reduction/policy.cuh>

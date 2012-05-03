@@ -35,7 +35,7 @@
 #include <algorithm>
 
 #include <b40c/util/error_utils.cuh>
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 #include <b40c/radix_sort/enactor.cuh>
 

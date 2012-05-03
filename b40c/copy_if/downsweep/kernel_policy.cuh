@@ -109,7 +109,6 @@ struct KernelPolicy : ProblemType
 
 	// Raking grid type
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		RankType,								// Partial type (discontinuity counts / ranks)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)

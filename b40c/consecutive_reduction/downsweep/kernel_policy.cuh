@@ -133,7 +133,6 @@ struct KernelPolicy : ProblemType
 
 	// Raking grid type for value partials
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		ValueType,								// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
@@ -143,7 +142,6 @@ struct KernelPolicy : ProblemType
 
 	// Raking grid type for ranks
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		RankType,								// Partial type
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
@@ -165,15 +163,6 @@ struct KernelPolicy : ProblemType
 				ValueType	partials_raking_elements[PartialsRakingGrid::TOTAL_RAKING_ELEMENTS];
 				RankType 	ranks_raking_elements[RanksRakingGrid::TOTAL_RAKING_ELEMENTS];
 			};
-/*
-			// Swap exchange arenas for two-phase scatter
-			struct {
-				KeyType 	key_exchange[TILE_ELEMENTS];
-			};
-			struct {
-				ValueType 	value_exchange[TILE_ELEMENTS];
-			};
-*/
 		};
 
 		KeyType				assist_scratch[THREADS+ 1];

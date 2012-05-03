@@ -39,13 +39,14 @@ template <
 	typename KernelPolicy,
 	typename T,
 	typename SizeT>
-__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
+__launch_bounds__ (KernelPolicy::THREADS, 1)
 __global__ 
 void Kernel(
 	T			*d_in,
 	T			*d_out,
 	SizeT 		spine_elements)
 {
+/*
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, T, SizeT> Cta;
 
@@ -53,8 +54,8 @@ void Kernel(
 	__shared__ typename Cta::SmemStorage smem_storage;
 
 	Cta cta(smem_storage, d_in, d_out);
-
 	cta.ProcessWorkRange(spine_elements);
+*/
 }
 
 } // namespace spine

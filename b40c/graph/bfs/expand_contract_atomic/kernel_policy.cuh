@@ -137,7 +137,6 @@ struct KernelPolicy : _ProblemType
 
 	// Prefix sum raking grid for expansion allocations
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		SizeT,									// Partial type (valid counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
@@ -152,7 +151,6 @@ struct KernelPolicy : _ProblemType
 
 	// Prefix sum raking grid for contraction allocations
 	typedef util::RakingGrid<
-		CUDA_ARCH,
 		SizeT,									// Partial type (valid counts)
 		LOG_THREADS,							// Depositing threads (the CTA size)
 		0,										// 1 lane

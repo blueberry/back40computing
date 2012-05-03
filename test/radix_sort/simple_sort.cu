@@ -29,7 +29,7 @@
 
 // Sorting includes
 #include <b40c/radix_sort/enactor.cuh>
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 // Test utils
 #include "b40c_test_util.h"

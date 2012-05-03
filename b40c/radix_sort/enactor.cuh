@@ -25,30 +25,683 @@
 
 #pragma once
 
-#include <b40c/util/enactor_base.cuh>
-#include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
-#include <b40c/util/arch_dispatch.cuh>
 #include <b40c/util/ping_pong_storage.cuh>
 #include <b40c/util/numeric_traits.cuh>
+#include <b40c/util/io/modified_load.cuh>
+#include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/kernel_props.cuh>
+#include <b40c/util/spine.cuh>
+#include <b40c/util/vector_types.cuh>
+#include <b40c/util/error_utils.cuh>
 
-#include <b40c/radix_sort/problem_type.cuh>
+#include <b40c/radix_sort/sort_utils.cuh>
 #include <b40c/radix_sort/policy.cuh>
-#include <b40c/radix_sort/pass_policy.cuh>
-#include <b40c/radix_sort/autotuned_policy.cuh>
-#include <b40c/radix_sort/downsweep/kernel.cuh>
+#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/upsweep/kernel.cuh>
 
-#include <b40c/scan/spine/kernel.cuh>
+#include <b40c/radix_sort/spine/kernel_policy.cuh>
+#include <b40c/radix_sort/spine/kernel.cuh>
+#include <b40c/radix_sort/spine/tex_ref.cuh>
+
+#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
+#include <b40c/radix_sort/downsweep/kernel.cuh>
+#include <b40c/radix_sort/downsweep/tex_ref.cuh>
 
 namespace b40c {
 namespace radix_sort {
 
 
+/******************************************************************************
+ * Problem instance
+ ******************************************************************************/
+
 /**
- * Radix sorting enactor class.
+ * Problem instance
  */
-class Enactor : public util::EnactorBase
+template <
+	typename DoubleBuffer,
+	typename SizeT>
+struct ProblemInstance
+{
+	DoubleBuffer		&storage;
+	SizeT				num_elements;
+
+	util::Spine			&spine;
+	int			 		max_grid_size;
+	int 				ptx_arch;
+	int 				sm_arch;
+	bool				debug;
+
+	/**
+	 * Constructor
+	 */
+	ProblemInstance(
+		DoubleBuffer	&storage,
+		SizeT			num_elements,
+		util::Spine		&spine,
+		int			 	max_grid_size,
+		int 			ptx_arch,
+		int 			sm_arch,
+		bool			debug) :
+			spine(spine),
+			storage(storage),
+			num_elements(num_elements),
+			max_grid_size(max_grid_size),
+			ptx_arch(ptx_arch),
+			sm_arch(sm_arch),
+			debug(debug)
+	{}
+};
+
+
+/******************************************************************************
+ * Sorting pass
+ ******************************************************************************/
+
+/**
+ * Sorting pass
+ */
+template <
+	typename KeyType,
+	typename ValueType,
+	typename SizeT>
+struct SortingPass
+{
+	//---------------------------------------------------------------------
+	// Type definitions
+	//---------------------------------------------------------------------
+
+	// Converted key type
+	typedef typename KeyTraits<KeyType>::ConvertedKeyType ConvertedKeyType;
+
+	// Kernel function types
+	typedef void (*UpsweepKernelPtr)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, int);
+	typedef void (*DownsweepKernelPtr)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
+
+	// Texture binding function types
+	typedef cudaError_t (*BindKeyTexture)(void *, void *, size_t);
+	typedef cudaError_t (*BindValueTexture)(void *, void *, size_t);
+	typedef cudaError_t (*BindSpineTexture)(void *, size_t);
+
+
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
+
+	/**
+	 * Dispatch
+	 */
+	template <typename ProblemInstance>
+	static cudaError_t Dispatch(
+		ProblemInstance							problem_instance,
+		int 									radix_bits,
+		util::KernelProps<UpsweepKernelPtr> 	&upsweep_props,
+		util::KernelProps<SpineKernelPtr> 		&spine_props,
+		util::KernelProps<DownsweepKernelPtr> 	&downsweep_props,
+		BindKeyTexture 							bind_key_texture_ptr,
+		BindValueTexture 						bind_value_texture_ptr,
+		BindSpineTexture 						bind_spine_texture_ptr,
+		int 									log_schedule_granularity,
+		int										spine_tile_elements,
+		bool									smem_8byte_banks,
+		bool									unform_grid_size,
+		bool									uniform_smem_allocation)
+	{
+		cudaError_t error = cudaSuccess;
+/*
+		do {
+			if (problem_instance.debug) {
+				printf("Upsweep occupancy %d, downsweep occupancy %d\n",
+					upsweep_props.max_cta_occupancy,
+					downsweep_props.max_cta_occupancy);
+			}
+
+			// Compute sweep grid size
+			int schedule_granularity = 1 << log_schedule_granularity;
+			int sweep_grid_size = downsweep_props.OversubscribedGridSize(
+				schedule_granularity,
+				problem_instance.num_elements,
+				problem_instance.max_grid_size);
+
+			// Compute spine elements (rounded up to nearest tile size)
+			SizeT spine_elements = CUB_ROUND_UP_NEAREST(
+				sweep_grid_size << radix_bits,
+				spine_tile_elements);
+
+			// Make sure our spine is big enough
+			error = problem_instance.spine.Setup(sizeof(SizeT) * spine_elements);
+			if (error) break;
+
+			// Obtain a CTA work distribution
+			util::CtaWorkDistribution<SizeT> work(
+				problem_instance.num_elements,
+				sweep_grid_size,
+				log_schedule_granularity);
+
+			if (problem_instance.debug) {
+				work.Print();
+			}
+
+			// Bind key textures
+			if (bind_key_texture_ptr != NULL) {
+				error = bind_key_texture_ptr(
+					problem_instance.storage.d_keys[problem_instance.storage.selector],
+					problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
+					sizeof(ConvertedKeyType) * problem_instance.num_elements);
+				if (error) break;
+			}
+
+			// Bind value textures
+			if (bind_value_texture_ptr != NULL) {
+				error = bind_downsweep_texture_ptr(
+					problem_instance.storage.d_values[problem_instance.storage.selector],
+					problem_instance.storage.d_values[problem_instance.storage.selector ^ 1],
+					sizeof(ValueType) * problem_instance.num_elements);
+				if (error) break;
+			}
+
+			// Bind spine textures
+			if (bind_spine_texture_ptr != NULL) {
+				error = bind_spine_texture_ptr(
+					problem_instance.spine(),
+					sizeof(SizeT) * spine_elements);
+				if (error) break;
+			}
+
+			// Operational details
+			int dynamic_smem[3] = 	{0, 0, 0};
+			int grid_size[3] = 		{sweep_grid_size, 1, sweep_grid_size};
+
+			// Grid size tuning
+			if (unform_grid_size) {
+				// Make sure that all kernels launch the same number of CTAs
+				grid_size[1] = grid_size[0];
+			}
+
+			// Smem allocation tuning
+			if (uniform_smem_allocation) {
+
+				// Make sure all kernels have the same overall smem allocation
+				int max_static_smem = CUB_MAX(
+					upsweep_props.kernel_attrs.sharedSizeBytes,
+					CUB_MAX(
+						spine_props.kernel_attrs.sharedSizeBytes,
+						downsweep_props.kernel_attrs.sharedSizeBytes));
+
+				dynamic_smem[0] = max_static_smem - upsweep_props.kernel_attrs.sharedSizeBytes;
+				dynamic_smem[1] = max_static_smem - spine_props.kernel_attrs.sharedSizeBytes;
+				dynamic_smem[2] = max_static_smem - downsweep_props.kernel_attrs.sharedSizeBytes;
+
+			} else {
+
+				// Compute smem padding for upsweep to make upsweep occupancy a multiple of downsweep occupancy
+				dynamic_smem[0] = upsweep_props.SmemPadding(downsweep_props.max_cta_occupancy);
+			}
+
+			// Upsweep reduction into spine
+			upsweep_props.kenrel_ptr<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
+				(SizeT*) problem_instance.spine(),
+				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector],
+				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
+				work);
+
+			if (problem_instance.debug) {
+				error = cudaThreadSynchronize();
+				if (error = util::B40CPerror(error, "Upsweep kernel failed ", __FILE__, __LINE__)) break;
+			}
+
+			// Spine scan
+			spine_props.kenrel_ptr<<<grid_size[1], spine_props.threads, dynamic_smem[1]>>>(
+				(SizeT*) problem_instance.spine(),
+				(SizeT*) problem_instance.spine(),
+				spine_elements);
+
+			if (problem_instance.debug) {
+				error = cudaThreadSynchronize();
+				if (error = util::B40CPerror(error, "Spine kernel failed ", __FILE__, __LINE__)) break;
+			}
+
+			// Set shared mem bank mode
+			enum cudaSharedMemConfig old_config;
+			cudaDeviceGetSharedMemConfig(&old_config);
+			cudaDeviceSetSharedMemConfig(smem_8byte_banks ?
+				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
+				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
+
+			// Downsweep scan from spine
+			downsweep_props.kenrel_ptr<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
+				d_selectors,
+				(SizeT *) problem_instance.spine(),
+				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector],
+				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
+				problem_instance.storage.d_values[problem_instance.storage.selector],
+				problem_instance.storage.d_values[problem_instance.storage.selector ^ 1],
+				work);
+
+			if (problem_instance.debug) {
+				error = cudaThreadSynchronize();
+				if (error = util::B40CPerror(error, "Downsweep kernel failed ", __FILE__, __LINE__)) break;
+			}
+
+			// Restore smem bank mode
+			cudaDeviceSetSharedMemConfig(old_config);
+
+		} while(0);
+*/
+		return error;
+	}
+
+
+	/**
+	 * Dispatch
+	 */
+	template <
+		typename HostPassPolicy,
+		typename DevicePassPolicy,
+		typename ProblemInstance>
+	static cudaError_t Dispatch(ProblemInstance &problem_instance)
+	{
+		typedef typename HostPassPolicy::UpsweepPolicy 		UpsweepPolicy;
+		typedef typename HostPassPolicy::SpinePolicy 		SpinePolicy;
+		typedef typename HostPassPolicy::DownsweepPolicy 	DownsweepPolicy;
+		typedef typename HostPassPolicy::DispatchPolicy	 	DispatchPolicy;
+
+		// Upsweep kernel properties
+		util::KernelProps<UpsweepKernelPtr> upsweep_props(
+			upsweep::Kernel<typename DevicePassPolicy::UpsweepPolicy>,
+			UpsweepPolicy::THREADS,
+			problem_instance.sm_arch);
+
+		// Spine kernel properties
+		util::KernelProps<SpineKernelPtr> spine_props(
+			spine::Kernel<typename DevicePassPolicy::SpinePolicy>,
+			SpinePolicy::THREADS,
+			problem_instance.sm_arch);
+
+		// Downsweep kernel properties
+		util::KernelProps<DownsweepKernelPtr> downsweep_props(
+			downsweep::Kernel<typename DevicePassPolicy::DownsweepPolicy>,
+			DownsweepPolicy::THREADS,
+			problem_instance.sm_arch);
+
+		// Schedule granularity
+		int log_schedule_granularity = CUB_MAX(
+			UpsweepPolicy::LOG_TILE_ELEMENTS,
+			DownsweepPolicy::LOG_TILE_ELEMENTS);
+
+		// Spine tile elements
+		int spine_tile_elements = 1 << SpinePolicy::LOG_TILE_ELEMENTS;
+
+		// Downsweep thread elements
+		const int DOWNSWEEP_THREAD_ELEMENTS = 1 << DownsweepPolicy::LOG_THREAD_ELEMENTS;
+
+		// Texture binding for downsweep keys
+		typedef typename util::TexVector::TexVec<
+			ConvertedKeyType,
+			DOWNSWEEP_THREAD_ELEMENTS> KeyTexVector;
+		BindKeyTexture bind_key_texture_ptr =
+			downsweep::DownsweepTexKeys<ConvertedKeyType>::BindTexture;
+
+		// Texture binding for downsweep values
+		typedef typename util::TexVector::TexVec<
+			ValueType,
+			DOWNSWEEP_THREAD_ELEMENTS> ValueTexVector;
+		BindValueTexture bind_value_texture_ptr =
+			downsweep::DownsweepTexValues<ValueTexVector>::BindTexture;
+
+		// Texture binding for spine
+		BindSpineTexture bind_spine_texture_ptr = spine::SpineTex<SizeT>::BindTexture;
+
+		return Dispatch(
+			problem_instance,
+			DispatchPolicy::RADIX_BITS,
+			upsweep_props,
+			spine_props,
+			downsweep_props,
+			bind_key_texture_ptr,
+			bind_value_texture_ptr,
+			bind_spine_texture_ptr,
+			log_schedule_granularity,
+			spine_tile_elements,
+			DownsweepPolicy::SMEM_8BYTE_BANKS,
+			DispatchPolicy::UNIFORM_GRID_SIZE,
+			DispatchPolicy::UNIFORM_SMEM_ALLOCATION);
+	}
+
+
+	/**
+	 * Dispatch.  Custom tuning interface.
+	 */
+	template <
+		typename PassPolicy,
+		typename ProblemInstance>
+	static cudaError_t Dispatch(ProblemInstance &problem_instance)
+	{
+		return Dispatch<PassPolicy, PassPolicy>(problem_instance);
+	}
+
+
+	//---------------------------------------------------------------------
+	// Preconfigured pass dispatch
+	//---------------------------------------------------------------------
+
+	/**
+	 * Specialized pass policies
+	 */
+	template <
+		int TUNE_ARCH,
+		int BITS_REMAINING,
+		int CURRENT_BIT,
+		int CURRENT_PASS>
+	struct TunedPassPolicy;
+
+
+	/**
+	 * SM20
+	 */
+	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+	struct TunedPassPolicy<200, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+	{
+		enum {
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
+			EARLY_EXIT 		= false,
+		};
+
+		// Upsweep kernel policy
+		typedef upsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				UpsweepPolicy;
+
+		// Spine-scan kernel policy
+		typedef spine::KernelPolicy<
+			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				SpinePolicy;
+
+		// Downsweep kernel policy
+		typedef downsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
+			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+			false,							// SMEM_8BYTE_BANKS
+			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				DownsweepPolicy;
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
+	};
+
+
+	/**
+	 * SM13
+	 */
+	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+	struct TunedPassPolicy<130, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+	{
+		enum {
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
+			EARLY_EXIT 		= false,
+		};
+
+		// Upsweep kernel policy
+		typedef upsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				UpsweepPolicy;
+
+		// Spine-scan kernel policy
+		typedef spine::KernelPolicy<
+			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				SpinePolicy;
+
+		// Downsweep kernel policy
+		typedef downsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
+			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+			false,							// SMEM_8BYTE_BANKS
+			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				DownsweepPolicy;
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
+	};
+
+
+	/**
+	 * SM10
+	 */
+	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+	struct TunedPassPolicy<100, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+	{
+		enum {
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
+			EARLY_EXIT 		= false,
+		};
+
+		// Upsweep kernel policy
+		typedef upsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				UpsweepPolicy;
+
+		// Spine-scan kernel policy
+		typedef spine::KernelPolicy<
+			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
+			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
+			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				SpinePolicy;
+
+		// Downsweep kernel policy
+		typedef downsweep::KernelPolicy<
+			RADIX_BITS,						// RADIX_BITS
+			CURRENT_BIT,					// CURRENT_BIT
+			CURRENT_PASS,					// CURRENT_PASS
+			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
+			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+			false,							// SMEM_8BYTE_BANKS
+			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+				DownsweepPolicy;
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
+	};
+
+
+	/**
+	 * Opaque pass policy
+	 */
+	template <int PTX_ARCH, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+	struct OpaquePassPolicy
+	{
+		typedef TunedPassPolicy<PTX_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
+
+		struct UpsweepPolicy : 		TunedPolicy::UpsweepPolicy {};
+		struct SpinePolicy : 		TunedPolicy::SpinePolicy {};
+		struct DownsweepPolicy : 	TunedPolicy::DownsweepPolicy {};
+		struct DispatchPolicy : 	TunedPolicy::DispatchPolicy {};
+	};
+
+
+	/**
+	 * Helper structure for iterating passes.
+	 */
+	template <
+		int BITS_REMAINING,
+		int CURRENT_BIT,
+		int CURRENT_PASS,
+		int PTX_ARCH,
+		int OPAQUE_ARCH>
+	struct IteratePasses
+	{
+		typedef TunedPassPolicy<PTX_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
+		typedef OpaquePassPolicy<OPAQUE_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> OpaquePolicy;
+
+		/**
+		 * Dispatch pass
+		 */
+		template <typename ProblemInstance>
+		static cudaError_t Dispatch(ProblemInstance &problem_instance)
+		{
+			cudaError_t error = cudaSuccess;
+			do {
+				if (problem_instance.debug) {
+					printf("Current bit %d, Pass %d, Radix bits %d:\n",
+						CURRENT_BIT,
+						CURRENT_PASS,
+						TunedPolicy::DispatchPolicy::RADIX_BITS);
+				}
+
+				// Dispatch current pass
+				error = SortingPass::Dispatch<TunedPolicy, OpaquePolicy>(problem_instance);
+				if (error) break;
+
+				// Dispatch next pass
+				error = IteratePasses<
+					BITS_REMAINING - TunedPolicy::DispatchPolicy::RADIX_BITS,
+					CURRENT_BIT + TunedPolicy::DispatchPolicy::RADIX_BITS,
+					CURRENT_PASS + 1,
+					PTX_ARCH,
+					OPAQUE_ARCH>::Dispatch(problem_instance);
+				if (error) break;
+
+			} while (0);
+
+			return error;
+		}
+	};
+
+
+	/**
+	 * Helper structure for iterating passes. (Termination)
+	 */
+	template <
+		int CURRENT_BIT,
+		int CURRENT_PASS,
+		int PTX_ARCH,
+		int OPAQUE_ARCH>
+	struct IteratePasses<0, CURRENT_BIT, CURRENT_PASS, PTX_ARCH, OPAQUE_ARCH>
+	{
+		/**
+		 * Dispatch pass
+		 */
+		template <typename ProblemInstance>
+		static cudaError_t Dispatch(ProblemInstance &problem_instance)
+		{
+			return cudaSuccess;
+		}
+	};
+
+
+	/**
+	 * Dispatch
+	 */
+	template <
+		int BITS_REMAINING,
+		int CURRENT_BIT,
+		typename ProblemInstance>
+	static cudaError_t DispatchPasses(ProblemInstance &problem_instance)
+	{
+		// The appropriate tuning arch-id from the arch-id targeted by the
+		// active compiler pass.
+		const int OPAQUE_ARCH =
+			(__B40C_CUDA_ARCH__ >= 200) ?
+				200 :
+				(__B40C_CUDA_ARCH__ >= 130) ?
+					130 :
+					100;
+
+		if (problem_instance.ptx_arch >= 200) {
+
+			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 200, OPAQUE_ARCH>::Dispatch(problem_instance);
+
+		} else if (problem_instance.ptx_arch >= 130) {
+
+			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 130, OPAQUE_ARCH>::Dispatch(problem_instance);
+
+		} else {
+
+			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 100, OPAQUE_ARCH>::Dispatch(problem_instance);
+		}
+	}
+};
+
+
+/******************************************************************************
+ * Radix sorting enactor class
+ ******************************************************************************/
+
+/**
+ * Radix sorting enactor class
+ */
+class Enactor
 {
 protected:
 
@@ -60,433 +713,19 @@ protected:
 	// by separate CTAs
 	util::Spine spine;
 
-	// Pair of "selector" device integers.  The first selects the incoming device
-	// vector for even passes, the second selects the odd.
-	int *d_selectors;
-
-
-	//-----------------------------------------------------------------------------
-	// Utility Routines
-	//-----------------------------------------------------------------------------
-
-    /**
-     * Pre-sorting logic.
-     */
-	template <typename Policy, typename Detail>
-    cudaError_t PreSort(Detail &detail)
-	{
-		typedef typename Policy::KeyType 		KeyType;
-		typedef typename Policy::ValueType 		ValueType;
-		typedef typename Policy::SizeT 			SizeT;
-
-		cudaError_t retval = cudaSuccess;
-		do {
-			// Setup d_selectors if necessary
-			if (d_selectors == NULL) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_selectors, 2 * sizeof(int)),
-					"LsbSortEnactor cudaMalloc d_selectors failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-			}
-
-			// Setup pong-storage if necessary
-			if (detail.problem_storage.d_keys[0] == NULL) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_keys[0], detail.num_elements * sizeof(KeyType)),
-					"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[0] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-			}
-			if (detail.problem_storage.d_keys[1] == NULL) {
-				if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_keys[1], detail.num_elements * sizeof(KeyType)),
-					"LsbSortEnactor cudaMalloc detail.problem_storage.d_keys[1] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-			}
-			if (!util::Equals<ValueType, util::NullType>::VALUE) {
-				if (detail.problem_storage.d_values[0] == NULL) {
-					if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_values[0], detail.num_elements * sizeof(ValueType)),
-						"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[0] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-				}
-				if (detail.problem_storage.d_values[1] == NULL) {
-					if (retval = util::B40CPerror(cudaMalloc((void**) &detail.problem_storage.d_values[1], detail.num_elements * sizeof(ValueType)),
-						"LsbSortEnactor cudaMalloc detail.problem_storage.d_values[1] failed", __FILE__, __LINE__, ENACTOR_DEBUG)) break;
-				}
-			}
-
-		} while (0);
-
-		return retval;
-	}
-
-
-	/**
-     * Post-sorting logic.
-     */
-	template <typename Policy, typename Detail>
-    cudaError_t PostSort(Detail &detail)
-	{
-		cudaError_t retval = cudaSuccess;
-
-		do {
-
-			detail.problem_storage.selector = (detail.problem_storage.selector + detail.num_passes) & 0x1;
-
-		} while (0);
-
-		return retval;
-	}
-
-
-	/**
-	 * Bind value textures (specialized for primitive types)
-	 */
-	template <
-		typename BitPolicy,
-		typename ValueType,
-		int REPRESENTATION = util::NumericTraits<ValueType>::REPRESENTATION>
-	struct BindValueTextures
-	{
-		template <typename Detail>
-		static cudaError_t Bind(Detail &detail)
-		{
-			typedef typename util::VecType<ValueType, BitPolicy::Downsweep::PACK_SIZE>::Type ValueVectorType;
-			cudaChannelFormatDesc values_tex_desc = cudaCreateChannelDesc<ValueVectorType>();
-
-			cudaError_t retval = cudaSuccess;
-			do {
-				if (retval = util::B40CPerror(cudaBindTexture(
-						0,
-						partition::downsweep::ValuesTex<ValueVectorType>::ref0,
-						detail.problem_storage.d_values[detail.problem_storage.selector],
-						values_tex_desc,
-						detail.num_elements * sizeof(ValueVectorType)),
-					"EnactorTwoPhase cudaBindTexture ValuesTex failed", __FILE__, __LINE__)) break;
-				if (retval = util::B40CPerror(cudaBindTexture(
-						0,
-						partition::downsweep::ValuesTex<ValueVectorType>::ref1,
-						detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
-						values_tex_desc,
-						detail.num_elements * sizeof(ValueVectorType)),
-					"EnactorTwoPhase cudaBindTexture ValuesTex failed", __FILE__, __LINE__)) break;
-
-			} while(0);
-
-			return retval;
-		}
-
-	};
-
-
-	/**
-	 * Bind value textures (specialized for non-primitive types)
-	 */
-	template <
-		typename BitPolicy,
-		typename ValueType>
-	struct BindValueTextures<BitPolicy, ValueType, util::NOT_A_NUMBER>
-	{
-		template <typename Detail>
-		static cudaError_t Bind(Detail &detail)
-		{
-			// do nothing
-			return cudaSuccess;
-		}
-	};
-
-
-	/**
-	 * Performs a radix sorting pass
-	 */
-	template <typename BitPolicy, typename PassPolicy, typename Detail>
-	cudaError_t EnactPass(Detail &detail)
-	{
-		// Tuning policy
-		typedef typename BitPolicy::Upsweep 					Upsweep;
-		typedef typename BitPolicy::Spine 						Spine;
-		typedef typename BitPolicy::Downsweep 					Downsweep;
-
-		// Data types
-		typedef typename BitPolicy::KeyType 					KeyType;	// Converted key type
-		typedef typename BitPolicy::ValueType 					ValueType;
-		typedef typename BitPolicy::SizeT 						SizeT;
-
-		cudaError_t retval = cudaSuccess;
-
-		do {
-			if (ENACTOR_DEBUG) {
-				printf("Pass %d, Bit %d, Radix bits %d:\n",
-					PassPolicy::CURRENT_PASS,
-					PassPolicy::CURRENT_BIT,
-					BitPolicy::RADIX_BITS);
-			}
-
-			// Kernel pointers
-			typename BitPolicy::UpsweepKernelPtr 		UpsweepKernel 		= BitPolicy::template UpsweepKernel<PassPolicy>();
-			typename BitPolicy::SpineKernelPtr 			SpineKernel 		= BitPolicy::template SpineKernel<PassPolicy>();
-			typename BitPolicy::DownsweepKernelPtr		DownsweepKernel 	= BitPolicy::template DownsweepKernel<PassPolicy>();
-
-			// Max CTA occupancy for the actual target device
-			int upsweep_cta_occupancy, downsweep_cta_occupancy;
-			if (retval = MaxCtaOccupancy(
-				upsweep_cta_occupancy,
-				UpsweepKernel,
-				Upsweep::THREADS)) break;
-			if (retval = MaxCtaOccupancy(
-				downsweep_cta_occupancy,
-				DownsweepKernel,
-				Downsweep::THREADS)) break;
-
-			if (ENACTOR_DEBUG) printf("Upsweep occupancy %d, downsweep occupancy %d\n", upsweep_cta_occupancy, downsweep_cta_occupancy);
-
-			int sweep_grid_size = GridSize(
-				true, 										// oversubscribed
-				Upsweep::SCHEDULE_GRANULARITY,
-				CUB_MIN(upsweep_cta_occupancy, downsweep_cta_occupancy),
-				detail.num_elements,
-				detail.max_grid_size);
-
-			// Compute spine elements: BIN elements per CTA, rounded
-			// up to nearest spine tile size
-			SizeT spine_elements = sweep_grid_size << Downsweep::RADIX_BITS;
-			spine_elements = ((spine_elements + Spine::TILE_ELEMENTS - 1) / Spine::TILE_ELEMENTS) * Spine::TILE_ELEMENTS;
-
-			// Make sure our spine is big enough
-			if (retval = spine.Setup<SizeT>(spine_elements)) break;
-
-			// Bind spine textures
-			cudaChannelFormatDesc spine_tex_desc = cudaCreateChannelDesc<SizeT>();
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					partition::spine::SpineTex<SizeT>::ref,
-					(SizeT *) spine(),
-					spine_tex_desc,
-					spine_elements * sizeof(SizeT)),
-				"EnactorTwoPhase cudaBindTexture SpineTex failed", __FILE__, __LINE__)) break;
-
-			// Bind key textures
-			typedef typename util::VecType<KeyType, BitPolicy::Downsweep::PACK_SIZE>::Type KeyVectorType;
-			cudaChannelFormatDesc keys_tex_desc = cudaCreateChannelDesc<KeyVectorType>();
-
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					partition::downsweep::KeysTex<KeyVectorType>::ref0,
-					detail.problem_storage.d_keys[detail.problem_storage.selector],
-					keys_tex_desc,
-					detail.num_elements * sizeof(KeyVectorType)),
-				"EnactorTwoPhase cudaBindTexture KeysTex failed", __FILE__, __LINE__)) break;
-			if (retval = util::B40CPerror(cudaBindTexture(
-					0,
-					partition::downsweep::KeysTex<KeyVectorType>::ref1,
-					detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
-					keys_tex_desc,
-					detail.num_elements * sizeof(KeyVectorType)),
-				"EnactorTwoPhase cudaBindTexture KeysTex failed", __FILE__, __LINE__)) break;
-
-			// Bind value textures
-			if (retval = BindValueTextures<BitPolicy, ValueType>::Bind(detail)) break;
-
-			// Obtain a CTA work distribution
-			util::CtaWorkDistribution<SizeT> work;
-			work.template Init<Downsweep::LOG_SCHEDULE_GRANULARITY>(detail.num_elements, sweep_grid_size);
-
-			if (ENACTOR_DEBUG) {
-				PrintPassInfo<Upsweep, Spine, Downsweep>(work, spine_elements);
-				printf("\n");
-				fflush(stdout);
-			}
-
-			// Operational details
-			int dynamic_smem[3] = 	{0, 0, 0};
-			int grid_size[3] = 		{sweep_grid_size, 1, sweep_grid_size};
-
-			// Tuning option: make sure that all kernels launch the same number of CTAs)
-			if (BitPolicy::UNIFORM_GRID_SIZE) grid_size[1] = grid_size[0];
-
-			// Dynamic smem padding
-			if (BitPolicy::UNIFORM_SMEM_ALLOCATION) {
-				// Make sure all kernels have the same overall smem allocation
-				if (retval = PadUniformSmem(dynamic_smem, UpsweepKernel, SpineKernel, DownsweepKernel)) break;
-			} else {
-				// Compute smem padding for upsweep to make upsweep occupancy a multiple of downsweep occupancy
-				KernelDetails upsweep_details(UpsweepKernel, grid_size[0], this->cuda_props);
-				dynamic_smem[0] = upsweep_details.SmemPadding(downsweep_cta_occupancy);
-			}
-
-			// Upsweep reduction into spine
-			UpsweepKernel<<<grid_size[0], Upsweep::THREADS, dynamic_smem[0]>>>(
-				d_selectors,
-				(SizeT*) spine(),
-				(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector],
-				(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
-				work);
-
-			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor UpsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-
-			// Spine scan
-			SpineKernel<<<grid_size[1], Spine::THREADS, dynamic_smem[1]>>>(
-				(SizeT*) spine(), (SizeT*) spine(), spine_elements);
-
-			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor SpineKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-
-			// Set shared mem bank mode
-			enum cudaSharedMemConfig old_config;
-			cudaDeviceGetSharedMemConfig(&old_config);
-			cudaDeviceSetSharedMemConfig((sizeof(typename Downsweep::RakingPartial) > 4) ?
-				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
-				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
-
-			// Downsweep scan from spine
-			DownsweepKernel<<<grid_size[2], Downsweep::THREADS, dynamic_smem[2]>>>(
-				d_selectors,
-				(SizeT *) spine(),
-				(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector],
-				(KeyType *) detail.problem_storage.d_keys[detail.problem_storage.selector ^ 1],
-				detail.problem_storage.d_values[detail.problem_storage.selector],
-				detail.problem_storage.d_values[detail.problem_storage.selector ^ 1],
-				work);
-
-			if (ENACTOR_DEBUG && (retval = util::B40CPerror(cudaThreadSynchronize(), "Enactor DownsweepKernel failed ", __FILE__, __LINE__, ENACTOR_DEBUG))) break;
-
-			// Restore smem bank mode
-			cudaDeviceSetSharedMemConfig(old_config);
-
-		} while (0);
-
-		return retval;
-	}
-
-
-	//-----------------------------------------------------------------------------
-	// Helper structures
-	//-----------------------------------------------------------------------------
-
-	/**
-	 * Type for encapsulating operational details regarding an invocation
-	 */
-	template <typename _ProblemType>
-	struct Detail
-	{
-		// Problem type
-		typedef _ProblemType 														ProblemType;
-		typedef typename ProblemType::OriginalKeyType								StorageKeyType;
-		typedef typename ProblemType::ValueType										StorageValueType;
-		typedef typename ProblemType::SizeT											SizeT;
-		typedef typename util::PingPongStorage<StorageKeyType, StorageValueType> 	PingPongStorage;
-
-		// Problem data
-		PingPongStorage		&problem_storage;
-		SizeT				num_elements;
-		int			 		max_grid_size;
-		int					num_passes;
-		Enactor				*enactor;
-
-		// Constructor
-		Detail(
-			Enactor *enactor,
-			PingPongStorage &problem_storage,
-			SizeT num_elements,
-			int max_grid_size = 0) :
-				enactor(enactor),
-				num_elements(num_elements),
-				problem_storage(problem_storage),
-				max_grid_size(max_grid_size),
-				num_passes(0)
-		{}
-
-	};
-
-
-	/**
-	 * Middle sorting passes (i.e., neither first, nor last pass).  Does not apply
-	 * any pre/post bit-twiddling functors.
-	 */
-	template <
-		typename Policy,
-		int FIRST_BIT,
-		int CURRENT_BIT,
-		int LAST_BIT,
-		int CURRENT_PASS>
-	struct PassIteration
-	{
-		typedef PassPolicy<
-			CURRENT_PASS,
-			CURRENT_BIT,
-			NopKeyConversion,
-			NopKeyConversion> PassPolicy;
-
-		enum {
-			BITS_LEFT 				= LAST_BIT - CURRENT_BIT,
-			BIT_SELECT 				= ((BITS_LEFT > 12) || (BITS_LEFT % 5 == 0)) ?
-											5 :
-											((BITS_LEFT > 3) || (BITS_LEFT % 4 == 0)) ?
-												4 :
-												BITS_LEFT
-		};
-
-		typedef typename Policy::template BitPolicy<BIT_SELECT>::Policy BitPolicy;
-
-		enum {
-			BITS_RUN = CUB_MIN(BITS_LEFT, BitPolicy::RADIX_BITS)
-		};
-
-		template <typename Detail>
-		static cudaError_t Invoke(Detail &detail)
-		{
-			cudaError_t retval = detail.enactor->template EnactPass<BitPolicy, PassPolicy>(detail);
-			if (retval) return retval;
-
-			detail.num_passes++;
-
-			return PassIteration<
-				Policy,
-				FIRST_BIT,
-				CURRENT_BIT + BITS_RUN,
-				LAST_BIT,
-				CURRENT_PASS + 1>::Invoke(detail);
-		}
-	};
-
-
-	/**
-	 * Done
-	 */
-	template <
-		typename Policy,
-		int FIRST_BIT,
-		int CURRENT_BIT,
-		int CURRENT_PASS>
-	struct PassIteration <Policy, FIRST_BIT, CURRENT_BIT, CURRENT_BIT, CURRENT_PASS>
-	{
-		template <typename Detail>
-		static cudaError_t Invoke(Detail &detail)
-		{
-			return cudaSuccess;
-		}
-	};
-
+	// Device properties
+	const util::CudaProperties cuda_props;
 
 public:
 
 	/**
 	 * Constructor
 	 */
-	Enactor() : d_selectors(NULL) {}
+	Enactor() {}
 
 
 	/**
-     * Destructor
-     */
-    virtual ~Enactor()
-    {
-   		if (d_selectors) {
-   			util::B40CPerror(cudaFree(d_selectors), "Enactor cudaFree d_selectors failed: ", __FILE__, __LINE__, ENACTOR_DEBUG);
-   		}
-    }
-
-	/**
-	 * Enacts a scan on the specified device data.  Uses the specified
-	 * kernel configuration policy.  (Useful for auto-tuning.)
-	 *
-	 * If left NULL, the non-selected problem storage arrays will be allocated
-	 * lazily upon the first sorting pass, and are the caller's responsibility
-	 * for freeing. After a sorting operation has completed, the selector member will
-	 * index the key (and value) pointers that contain the final sorted results.
-	 * (E.g., an odd number of sorting passes may leave the results in d_keys[1] if
-	 * the input started in d_keys[0].)
+	 * Enact a sort.
 	 *
 	 * @param problem_storage
 	 * 		Instance of b40c::util::PingPongStorage type describing the details of the
@@ -499,50 +738,33 @@ public:
 	 * @return cudaSuccess on success, error enumeration otherwise
 	 */
 	template <
-		int START_BIT,
-		int NUM_BITS,
-		typename Policy>
+		int BITS_REMAINING,
+		int CURRENT_BIT,
+		typename DoubleBuffer>
 	cudaError_t Sort(
-		util::PingPongStorage<
-			typename Policy::OriginalKeyType,
-			typename Policy::ValueType> &problem_storage,
-		typename Policy::SizeT num_elements,
-		int max_grid_size = 0)
+		DoubleBuffer& 	problem_storage,
+		int 			num_elements,
+		int 			max_grid_size = 0,
+		bool 			debug = false)
 	{
-		Detail<Policy> detail(
-			this,
+		typedef typename DoubleBuffer::KeyType KeyType;
+		typedef typename DoubleBuffer::ValueType ValueType;
+		typedef SortingPass<KeyType, ValueType, int> SortingPass;
+
+		// Create problem instance
+		ProblemInstance<DoubleBuffer, int> problem_instance(
 			problem_storage,
 			num_elements,
-			max_grid_size);
+			spine,
+			max_grid_size,
+			cuda_props.kernel_ptx_version,
+			cuda_props.device_sm_version,
+			debug);
 
-		cudaError_t retval = cudaSuccess;
-		do {
-
-			if (ENACTOR_DEBUG) {
-				printf("\n\n");
-				printf("Sorting: \t[start_bit: %d, num_bits: %d]\n",
-					START_BIT,
-					NUM_BITS);
-				fflush(stdout);
-			}
-
-			// Perform any preparation prior to sorting
-			if (retval = PreSort<Policy>(detail)) break;
-
-			// Perform sorting passes
-			if (retval = PassIteration<
-				Policy,
-				START_BIT,
-				START_BIT,
-				START_BIT + NUM_BITS,
-				0>::Invoke(detail)) break;
-
-			// Perform any cleanup after sorting
-			if (retval = PostSort<Policy>(detail)) break;
-
-		} while (0);
-
-		return retval;
+		// Dispatch sorting passes
+		return SortingPass::template DispatchPasses<
+			BITS_REMAINING,
+			CURRENT_BIT>(problem_instance);
 	}
 
 };

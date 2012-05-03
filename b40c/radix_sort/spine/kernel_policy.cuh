@@ -25,7 +25,6 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
@@ -46,34 +45,16 @@ template <
 struct KernelPolicy
 {
 	enum {
-		LOG_THREADS 					= _LOG_THREADS,
-		THREADS							= 1 << LOG_THREADS,
+		LOG_THREADS 				= _LOG_THREADS,
+		LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE,
+		LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE,
 
-		LOG_LOAD_VEC_SIZE  				= _LOG_LOAD_VEC_SIZE,
-		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
-
-		LOG_LOADS_PER_TILE 				= _LOG_LOADS_PER_TILE,
-		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
-
-		LOG_LOAD_STRIDE					= LOG_THREADS + LOG_LOAD_VEC_SIZE,
-		LOAD_STRIDE						= 1 << LOG_LOAD_STRIDE,
-
-		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
-		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
-
-		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
-		WARPS							= 1 << LOG_WARPS,
-
-		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
-		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
-
-		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
-		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+		THREADS						= 1 << LOG_THREADS,
+		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 	};
 
 	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
 	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
-
 };
 
 

@@ -25,10 +25,15 @@
 
 #pragma once
 
+#include <b40c/util/cuda_properties.cuh>
+#include <b40c/util/srts_grid.cuh>
+#include <b40c/util/srts_details.cuh>
+#include <b40c/util/operators.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/store_tile.cuh>
+#include <b40c/util/scan/cooperative_scan.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -39,16 +44,61 @@ template <
 	typename KernelPolicy,
 	typename T,
 	typename SizeT>
-template <typename KernelPolicy>
 struct Cta
 {
 	//---------------------------------------------------------------------
-	// Type definitions
+	// Constants and type definitions
 	//---------------------------------------------------------------------
 
+	enum {
+		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
+		THREADS							= 1 << LOG_THREADS,
+
+		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
+		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
+
+		LOG_LOADS_PER_TILE 				= KernelPolicy::LOG_LOADS_PER_TILE,
+		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
+
+		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		WARP_THREADS					= 1 << LOG_WARP_THREADS,
+
+		LOG_WARPS						= LOG_THREADS - LOG_WARP_THREADS,
+		WARPS							= 1 << LOG_WARPS,
+
+		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
+
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+	};
+
+	/**
+	 * Raking grid type
+	 */
+	typedef util::RakingGrid<
+		T,										// Partial type
+		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
+		LOG_WARP_THREADS,						// 1 warp of raking threads
+		true>									// There are prefix dependences between lanes
+			RakingGrid;
+
+	/**
+	 * Operational details type for raking grid type
+	 */
+	typedef util::RakingDetails<RakingGrid> RakingDetails;
+
+
+	/**
+	 * Shared memory storage type
+	 */
 	struct SmemStorage
 	{
+		T warpscan[2][WARP_THREADS];
+		T raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];		// Raking raking elements
 	};
+
 
 	//---------------------------------------------------------------------
 	// Fields
@@ -65,6 +115,13 @@ struct Cta
 	T *d_in;
 	T *d_out;
 
+	// Operational details for raking scan grid
+	RakingDetails raking_details;
+
+	// Scan operator
+	util::Sum<T> scan_op;
+
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -77,6 +134,10 @@ struct Cta
 		T 					*d_in,
 		T 					*d_out) :
 			// Initializers
+			raking_details(
+				smem_storage.RakingElements(),
+				smem_storage.warpscan,
+				0),
 			smem_storage(smem_storage),
 			d_in(d_in),
 			d_out(d_out),
@@ -89,25 +150,33 @@ struct Cta
 	__device__ __forceinline__ void ProcessTile(SizeT cta_offset)
 	{
 		// Tile of scan elements
-		T partials[KernelPolicy::LOADS_PER_TILE][KernelPolicy::LOAD_VEC_SIZE];
+		T partials[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Load tile
 		util::io::LoadTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			THREADS,
 			KernelPolicy::READ_MODIFIER,
 			false>::LoadValid(
 				partials,
 				d_in,
 				cta_offset);
 
+		// Scan tile with carry update in raking threads
+		util::scan::CooperativeTileScan<
+			LOAD_VEC_SIZE,
+			true>::ScanTileWithCarry(
+				raking_details,
+				partials,
+				carry,
+				scan_op);
 
 		// Store tile
 		util::io::StoreTile<
-			KernelPolicy::LOG_LOADS_PER_TILE,
-			KernelPolicy::LOG_LOAD_VEC_SIZE,
-			KernelPolicy::THREADS,
+			LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			THREADS,
 			KernelPolicy::WRITE_MODIFIER,
 			false>::Store(
 				partials,
@@ -124,7 +193,7 @@ struct Cta
 	{
 		for (SizeT cta_offset = 0;
 			cta_offset < num_elements;
-			cta_offset += KernelPolicy::TILE_ELEMENTS)
+			cta_offset += TILE_ELEMENTS)
 		{
 			// Process full tiles of tile_elements
 			ProcessTile(cta_offset);

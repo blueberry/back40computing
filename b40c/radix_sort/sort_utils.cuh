@@ -26,6 +26,8 @@
 
 #pragma once
 
+#include <b40c/util/device_intrinsics.cuh>
+
 namespace b40c {
 namespace radix_sort {
 

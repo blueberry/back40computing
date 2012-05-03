@@ -88,9 +88,9 @@ struct CtaWorkDistribution
 	int 	log_schedule_granularity;	// Scheduling grain
 
 	/**
-	 * Initializer
+	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ void Init(
+	__host__ __device__ __forceinline__ CtaWorkDistribution(
 		SizeT num_elements,
 		int grid_size,
 		int log_schedule_granularity)
@@ -109,8 +109,8 @@ struct CtaWorkDistribution
 	 * Computes work limits for the current CTA
 	 */	
 	__host__ __device__ __forceinline__ void GetCtaWorkLimits(
-		int log_tile_elements,
-		CtaWorkLimits<SizeT> &work_limits)	// Out param
+		CtaWorkLimits<SizeT> &work_limits,		// Out param
+		int log_tile_elements)
 	{
 		const int TILE_ELEMENTS = 1 << log_tile_elements;
 		
@@ -158,7 +158,7 @@ struct CtaWorkDistribution
 	void Print()
 	{
 		unsigned long schedule_granularity = 1 << log_schedule_granularity;
-		unsigned long last_grain_elements = work.num_elements & (schedule_granularity - 1);
+		unsigned long last_grain_elements = num_elements & (schedule_granularity - 1);
 
 		if (last_grain_elements == 0) last_grain_elements = schedule_granularity;
 

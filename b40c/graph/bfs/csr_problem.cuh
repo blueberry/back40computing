@@ -30,7 +30,7 @@
 #include <b40c/util/memset_kernel.cuh>
 #include <b40c/util/cta_work_progress.cuh>
 #include <b40c/util/error_utils.cuh>
-#include <b40c/util/multiple_buffering.cuh>
+#include <b40c/util/multi_buffer.cuh>
 
 #include <b40c/graph/bfs/problem_type.cuh>
 
