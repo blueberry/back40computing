@@ -27,7 +27,7 @@
 
 #pragma once
 
-#include <b40c/util/operators.cuh>
+#include <b40c/util/numeric_traits.cuh>
 #include <b40c/util/vector_types.cuh>
 #include <b40c/util/io/modified_load.cuh>
 
@@ -42,7 +42,7 @@ struct TexVector
 {
 	enum {
 		TEX_VEC_SIZE = (NumericTraits<T>::BUILT_IN) ?
-			1 : 								// vec-1 for non-built-ins (don't actually use!)
+			4 : 								// cast as vec-4 for non-built-ins (don't actually use!)
 			(sizeof(T) > 4) ?
 				(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
 					2 : 								// cast as vec-2 ints (odd)
@@ -62,10 +62,10 @@ struct TexVector
 			T>::Type>::Type TexBase; 				// use T for other built-in types
 
 	// Texture vector type
-	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type TexVec;
+	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
 
 	// Texture reference type
-	typedef texture<TexVec, cudaTextureType1D, cudaReadModeElementType> TexRef;
+	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;
 };
 
 

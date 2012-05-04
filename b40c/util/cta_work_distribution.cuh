@@ -167,11 +167,11 @@ struct CtaWorkDistribution
 			"schedule_granularity: %lu, "
 			"grains_per_cta: %lu, "
 			"extra_grains: %lu, "
-			"grid_size: %lu"
-			"last-grain elements: %lu\n",
+			"grid_size: %lu, "
+			"last_grain_elements: %lu\n",
 				(unsigned long) num_elements,
-				(unsigned long) schedule_granularity,
 				(unsigned long) total_grains,
+				(unsigned long) schedule_granularity,
 				(unsigned long) grains_per_cta,
 				(unsigned long) extra_grains,
 				(unsigned long) grid_size,

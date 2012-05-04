@@ -35,7 +35,7 @@ namespace spine {
  * Templated texture reference for spine
  */
 template <typename SizeT>
-struct SpineTex
+struct TexSpine
 {
 	typedef texture<SizeT, cudaTextureType1D, cudaReadModeElementType> TexRef;
 
@@ -57,7 +57,7 @@ struct SpineTex
 					d_spine,
 					tex_desc,
 					bytes),
-				"cudaBindTexture SpineTex failed", __FILE__, __LINE__)) break;
+				"cudaBindTexture TexSpine failed", __FILE__, __LINE__)) break;
 
 		} while (0);
 
@@ -68,7 +68,7 @@ struct SpineTex
 
 // Reference definition
 template <typename SizeT>
-typename SpineTex<SizeT>::TexRef SpineTex<SizeT>::ref;
+typename TexSpine<SizeT>::TexRef TexSpine<SizeT>::ref;
 
 
 

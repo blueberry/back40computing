@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <algorithm>
 
-#include <thrust/device_ptr.h>
+#include <thrust/device_func.h>
 #include <thrust/gather.h>
 #include <thrust/sort.h>
 
@@ -147,14 +147,14 @@ namespace original
 		int N)
 	{
 
-		// wrap raw pointer with a device_ptr
-		thrust::device_ptr<uint4> keys = thrust::device_pointer_cast(
+		// wrap raw pointer with a device_func
+		thrust::device_func<uint4> keys = thrust::device_pointer_cast(
 				srcKeys.raw_p());
-		thrust::device_ptr<uint4> outKeys = thrust::device_pointer_cast(
+		thrust::device_func<uint4> outKeys = thrust::device_pointer_cast(
 				sortedKeys.raw_p());
-		thrust::device_ptr<uint> temp = thrust::device_pointer_cast(
+		thrust::device_func<uint> temp = thrust::device_pointer_cast(
 				temp_buffer.raw_p());
-		thrust::device_ptr<uint> permutation = thrust::device_pointer_cast(
+		thrust::device_func<uint> permutation = thrust::device_pointer_cast(
 				permutation_buffer.raw_p());
 
 		// initialize permutation to [0, 1, 2, ... ,N-1]

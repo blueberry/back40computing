@@ -135,7 +135,7 @@ struct Cta
 		T 					*d_out) :
 			// Initializers
 			raking_details(
-				smem_storage.RakingElements(),
+				smem_storage.raking_elements,
 				smem_storage.warpscan,
 				0),
 			smem_storage(smem_storage),

@@ -26,6 +26,7 @@
 #pragma once
 
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/basic_utils.cuh>
 #include <b40c/util/tex_vector.cuh>
 
 namespace b40c {
@@ -39,8 +40,8 @@ namespace downsweep {
 /**
  * Templated texture reference for downsweep keys
  */
-template <KeyVectorType>
-struct DownsweepTexKeys
+template <typename KeyVectorType>
+struct TexKeys
 {
 	// Texture reference type
 	typedef texture<KeyVectorType, cudaTextureType1D, cudaReadModeElementType> TexRef;
@@ -79,10 +80,10 @@ struct DownsweepTexKeys
 
 // Texture reference definitions
 template <typename KeyVectorType>
-typename DownsweepTexKeys<KeyVectorType>::TexRef DownsweepTexKeys<KeyVectorType>::ref0;
+typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref0;
 
 template <typename KeyVectorType>
-typename DownsweepTexKeys<KeyVectorType>::TexRef DownsweepTexKeys<KeyVectorType>::ref1;
+typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref1;
 
 
 
@@ -93,8 +94,8 @@ typename DownsweepTexKeys<KeyVectorType>::TexRef DownsweepTexKeys<KeyVectorType>
 /**
  * Templated texture reference for downsweep values
  */
-template <ValueVectorType>
-struct DownsweepTexValues
+template <typename ValueVectorType>
+struct TexValues
 {
 	// Texture reference type
 	typedef texture<ValueVectorType, cudaTextureType1D, cudaReadModeElementType> TexRef;
@@ -133,11 +134,40 @@ struct DownsweepTexValues
 
 // Texture reference definitions
 template <typename ValueVectorType>
-typename DownsweepTexValues<ValueVectorType>::TexRef DownsweepTexValues<ValueVectorType>::ref0;
+typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref0;
 
 template <typename ValueVectorType>
-typename DownsweepTexValues<ValueVectorType>::TexRef DownsweepTexValues<ValueVectorType>::ref1;
+typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref1;
 
+
+
+/******************************************************************************
+ * Texture types for downsweep kernel
+ ******************************************************************************/
+
+template <typename KeyType, typename ValueType, int THREAD_ELEMENTS>
+struct Textures
+{
+	enum {
+		KEY_TEX_VEC_SIZE		= util::TexVector<KeyType, THREAD_ELEMENTS>::TEX_VEC_SIZE,
+		VALUE_TEX_VEC_SIZE		= util::TexVector<ValueType, THREAD_ELEMENTS>::TEX_VEC_SIZE,
+		TEX_VEC_SIZE			= CUB_MIN(KEY_TEX_VEC_SIZE, VALUE_TEX_VEC_SIZE)
+	};
+
+	typedef typename util::TexVector<
+		KeyType,
+		TEX_VEC_SIZE>::VecType KeyTexType;
+
+	// Texture binding for downsweep values
+	typedef typename util::TexVector<
+		ValueType,
+		TEX_VEC_SIZE>::VecType ValueTexType;
+
+	enum {
+		// Elements per texture load
+		ELEMENTS_PER_TEX = sizeof(KeyTexType) / sizeof(KeyType),
+	};
+};
 
 
 

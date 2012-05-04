@@ -44,7 +44,8 @@
 int main(int argc, char** argv)
 {
 	typedef unsigned int 			KeyType;
-	typedef b40c::util::NullType 	ValueType;
+//	typedef b40c::util::NullType 	ValueType;
+	typedef unsigned int 			ValueType;
 
 	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
@@ -137,8 +138,7 @@ int main(int argc, char** argv)
 
 	enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas, true);
 
-	printf("Outgoing selector: %d\n", double_buffer.selector);
-	printf("Restricted-range %s sort: ", (KEYS_ONLY) ? "keys-only" : "key-value");
+	printf("\nRestricted-range %s sort: ", (KEYS_ONLY) ? "keys-only" : "key-value");
 	fflush(stdout);
 	b40c::CompareDeviceResults(
 		h_reference_keys,
@@ -149,7 +149,6 @@ int main(int argc, char** argv)
 
 	cudaThreadSynchronize();
 
-/*
 	if (schmoo) {
 		printf("iteration, elements, elapsed (ms), throughput (MKeys/s)\n");
 	}
@@ -175,15 +174,12 @@ int main(int argc, char** argv)
 			unsigned int sample;
 			b40c::util::RandomBits(sample);
 			double scale = double(sample) / max_int;
-			SizeT elements = (i < iterations / 2) ?
-				(SizeT) pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
+			int elements = (i < iterations / 2) ?
+				pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
 				elements = scale * num_elements;						// uniform bias
 
 			gpu_timer.Start();
-			enactor.Sort<
-				0,
-				KEY_BITS,
-				Policy>(double_buffer, elements, max_ctas);
+			enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas);
 			gpu_timer.Stop();
 
 			float millis = gpu_timer.ElapsedMillis();
@@ -198,10 +194,7 @@ int main(int argc, char** argv)
 
 			// Regular iteration
 			gpu_timer.Start();
-			enactor.Sort<
-				0,
-				KEY_BITS,
-				Policy>(double_buffer, num_elements, max_ctas);
+			enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas);
 			gpu_timer.Stop();
 
 			elapsed += gpu_timer.ElapsedMillis();
@@ -217,14 +210,16 @@ int main(int argc, char** argv)
 			float(num_elements) / avg_elapsed / 1000.f);
 	}
 
-	// Cleanup any "pong" storage allocated by the enactor
+	// Cleanup device storage
+	if (double_buffer.d_keys[0]) cudaFree(double_buffer.d_keys[0]);
 	if (double_buffer.d_keys[1]) cudaFree(double_buffer.d_keys[1]);
+	if (double_buffer.d_values[0]) cudaFree(double_buffer.d_values[0]);
 	if (double_buffer.d_values[1]) cudaFree(double_buffer.d_values[1]);
 
 	// Cleanup other
 	delete h_keys;
 	delete h_reference_keys;
-*/
+
 	return 0;
 }
 

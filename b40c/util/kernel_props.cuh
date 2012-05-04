@@ -36,12 +36,13 @@ namespace b40c {
 namespace util {
 
 
-template <typename KernelPtr>
+template <typename KernelFunc>
 struct KernelProps
 {
-	KernelPtr						kernel_ptr;
+	KernelFunc						kernel_func;
 	int 							threads;
 	int								sm_arch;
+	int								sm_count;
 	cudaFuncAttributes 				kernel_attrs;
 	int 							max_cta_occupancy;
 
@@ -49,29 +50,37 @@ struct KernelProps
 	 * Constructor
 	 */
 	KernelProps(
-		KernelPtr kernel_ptr,
+		KernelFunc kernel_func,
 		int threads,
-		int sm_arch) :
-			kernel_ptr(kernel_ptr),
+		int sm_arch,
+		int sm_count) :
+			kernel_func(kernel_func),
 			threads(threads),
-			sm_arch(sm_arch)
+			sm_arch(sm_arch),
+			sm_count(sm_count),
+			max_cta_occupancy(0)
 	{
-		util::B40CPerror(
-			cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
+		cudaError_t error;
+		error = util::B40CPerror(
+			cudaFuncGetAttributes(&kernel_attrs, kernel_func),
 			"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
 			__FILE__,
 			__LINE__);
 
-		int max_block_occupancy = B40C_SM_CTAS(sm_arch);
-		int max_thread_occupancy = B40C_SM_THREADS(sm_arch) / threads;
-		int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
-				(B40C_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
-				max_block_occupancy;
-		int max_reg_occupancy = B40C_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
+		if (error) {
+			kernel_func = NULL;
+		} else {
+			int max_block_occupancy = B40C_SM_CTAS(sm_arch);
+			int max_thread_occupancy = B40C_SM_THREADS(sm_arch) / threads;
+			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+					(B40C_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
+					max_block_occupancy;
+			int max_reg_occupancy = B40C_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
 
-		max_cta_occupancy = CUB_MIN(
-			CUB_MIN(max_block_occupancy, max_thread_occupancy),
-			CUB_MIN(max_smem_occupancy, max_reg_occupancy));
+			max_cta_occupancy = CUB_MIN(
+				CUB_MIN(max_block_occupancy, max_thread_occupancy),
+				CUB_MIN(max_smem_occupancy, max_reg_occupancy));
+		}
 	}
 
 
@@ -88,7 +97,7 @@ struct KernelProps
 		int max_grid_size = 0)
 	{
 		int grid_size;
-		int grains = (num_elements + schedule_granularity) / schedule_granularity;
+		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
 
 		if (sm_arch < 120) {
 

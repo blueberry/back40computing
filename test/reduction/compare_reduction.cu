@@ -102,8 +102,8 @@ double TimedThrustReduction(
 	util::FlushKernel<void><<<1,1>>>();
 	
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	thrust::device_ptr<T> dev_ptr(d_src);		
-	h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, reduction_op);
+	thrust::device_func<T> dev_func(d_src);		
+	h_dest[0] = thrust::reduce(dev_func, dev_func + num_elements, (T) 0, reduction_op);
 	
 	// Perform the timed number of iterations
 	GpuTimer timer;
@@ -117,7 +117,7 @@ double TimedThrustReduction(
 		// Start timing record
 		timer.Start();
 
-		h_dest[0] = thrust::reduce(dev_ptr, dev_ptr + num_elements, (T) 0, reduction_op);
+		h_dest[0] = thrust::reduce(dev_func, dev_func + num_elements, (T) 0, reduction_op);
 		
 		// End timing record
 		timer.Stop();

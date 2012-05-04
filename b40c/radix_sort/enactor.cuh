@@ -71,6 +71,7 @@ struct ProblemInstance
 	int			 		max_grid_size;
 	int 				ptx_arch;
 	int 				sm_arch;
+	int					sm_count;
 	bool				debug;
 
 	/**
@@ -83,6 +84,7 @@ struct ProblemInstance
 		int			 	max_grid_size,
 		int 			ptx_arch,
 		int 			sm_arch,
+		int				sm_count,
 		bool			debug) :
 			spine(spine),
 			storage(storage),
@@ -90,6 +92,7 @@ struct ProblemInstance
 			max_grid_size(max_grid_size),
 			ptx_arch(ptx_arch),
 			sm_arch(sm_arch),
+			sm_count(sm_count),
 			debug(debug)
 	{}
 };
@@ -116,14 +119,14 @@ struct SortingPass
 	typedef typename KeyTraits<KeyType>::ConvertedKeyType ConvertedKeyType;
 
 	// Kernel function types
-	typedef void (*UpsweepKernelPtr)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, util::CtaWorkDistribution<SizeT>);
-	typedef void (*SpineKernelPtr)(SizeT*, SizeT*, int);
-	typedef void (*DownsweepKernelPtr)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*UpsweepKernelFunc)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, util::CtaWorkDistribution<SizeT>);
+	typedef void (*SpineKernelFunc)(SizeT*, SizeT*, int);
+	typedef void (*DownsweepKernelFunc)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, ValueType*, ValueType*, util::CtaWorkDistribution<SizeT>);
 
 	// Texture binding function types
-	typedef cudaError_t (*BindKeyTexture)(void *, void *, size_t);
-	typedef cudaError_t (*BindValueTexture)(void *, void *, size_t);
-	typedef cudaError_t (*BindSpineTexture)(void *, size_t);
+	typedef cudaError_t (*BindKeyTexFunc)(void *, void *, size_t);
+	typedef cudaError_t (*BindValueTexFunc)(void *, void *, size_t);
+	typedef cudaError_t (*BindTexSpineFunc)(void *, size_t);
 
 
 	//---------------------------------------------------------------------
@@ -137,27 +140,23 @@ struct SortingPass
 	static cudaError_t Dispatch(
 		ProblemInstance							problem_instance,
 		int 									radix_bits,
-		util::KernelProps<UpsweepKernelPtr> 	&upsweep_props,
-		util::KernelProps<SpineKernelPtr> 		&spine_props,
-		util::KernelProps<DownsweepKernelPtr> 	&downsweep_props,
-		BindKeyTexture 							bind_key_texture_ptr,
-		BindValueTexture 						bind_value_texture_ptr,
-		BindSpineTexture 						bind_spine_texture_ptr,
+		util::KernelProps<UpsweepKernelFunc> 	&upsweep_props,
+		util::KernelProps<SpineKernelFunc> 		&spine_props,
+		util::KernelProps<DownsweepKernelFunc> 	&downsweep_props,
+		BindKeyTexFunc 							bind_key_texture_func,
+		BindValueTexFunc 						bind_value_texture_func,
+		BindTexSpineFunc 						bind_spine_texture_func,
 		int 									log_schedule_granularity,
+		int										upsweep_tile_elements,
 		int										spine_tile_elements,
+		int										downsweep_tile_elements,
 		bool									smem_8byte_banks,
 		bool									unform_grid_size,
 		bool									uniform_smem_allocation)
 	{
 		cudaError_t error = cudaSuccess;
-/*
-		do {
-			if (problem_instance.debug) {
-				printf("Upsweep occupancy %d, downsweep occupancy %d\n",
-					upsweep_props.max_cta_occupancy,
-					downsweep_props.max_cta_occupancy);
-			}
 
+		do {
 			// Compute sweep grid size
 			int schedule_granularity = 1 << log_schedule_granularity;
 			int sweep_grid_size = downsweep_props.OversubscribedGridSize(
@@ -185,8 +184,8 @@ struct SortingPass
 			}
 
 			// Bind key textures
-			if (bind_key_texture_ptr != NULL) {
-				error = bind_key_texture_ptr(
+			if (bind_key_texture_func != NULL) {
+				error = bind_key_texture_func(
 					problem_instance.storage.d_keys[problem_instance.storage.selector],
 					problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
 					sizeof(ConvertedKeyType) * problem_instance.num_elements);
@@ -194,8 +193,8 @@ struct SortingPass
 			}
 
 			// Bind value textures
-			if (bind_value_texture_ptr != NULL) {
-				error = bind_downsweep_texture_ptr(
+			if (bind_value_texture_func != NULL) {
+				error = bind_value_texture_func(
 					problem_instance.storage.d_values[problem_instance.storage.selector],
 					problem_instance.storage.d_values[problem_instance.storage.selector ^ 1],
 					sizeof(ValueType) * problem_instance.num_elements);
@@ -203,8 +202,8 @@ struct SortingPass
 			}
 
 			// Bind spine textures
-			if (bind_spine_texture_ptr != NULL) {
-				error = bind_spine_texture_ptr(
+			if (bind_spine_texture_func != NULL) {
+				error = bind_spine_texture_func(
 					problem_instance.spine(),
 					sizeof(SizeT) * spine_elements);
 				if (error) break;
@@ -240,8 +239,19 @@ struct SortingPass
 				dynamic_smem[0] = upsweep_props.SmemPadding(downsweep_props.max_cta_occupancy);
 			}
 
+			if (problem_instance.debug) {
+				printf(
+					"Upsweep:   tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n"
+					"Spine:     tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n"
+					"Downsweep: tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n",
+					upsweep_tile_elements, upsweep_props.max_cta_occupancy, grid_size[0], dynamic_smem[0],
+					spine_tile_elements, spine_props.max_cta_occupancy, grid_size[1], dynamic_smem[1],
+					downsweep_tile_elements, downsweep_props.max_cta_occupancy, grid_size[2], dynamic_smem[2]);
+				fflush(stdout);
+			}
+
 			// Upsweep reduction into spine
-			upsweep_props.kenrel_ptr<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
+			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
 				(SizeT*) problem_instance.spine(),
 				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector],
 				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
@@ -253,7 +263,7 @@ struct SortingPass
 			}
 
 			// Spine scan
-			spine_props.kenrel_ptr<<<grid_size[1], spine_props.threads, dynamic_smem[1]>>>(
+			spine_props.kernel_func<<<grid_size[1], spine_props.threads, dynamic_smem[1]>>>(
 				(SizeT*) problem_instance.spine(),
 				(SizeT*) problem_instance.spine(),
 				spine_elements);
@@ -271,8 +281,7 @@ struct SortingPass
 				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
 			// Downsweep scan from spine
-			downsweep_props.kenrel_ptr<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
-				d_selectors,
+			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
 				(SizeT *) problem_instance.spine(),
 				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector],
 				(ConvertedKeyType *) problem_instance.storage.d_keys[problem_instance.storage.selector ^ 1],
@@ -289,7 +298,7 @@ struct SortingPass
 			cudaDeviceSetSharedMemConfig(old_config);
 
 		} while(0);
-*/
+
 		return error;
 	}
 
@@ -308,51 +317,55 @@ struct SortingPass
 		typedef typename HostPassPolicy::DownsweepPolicy 	DownsweepPolicy;
 		typedef typename HostPassPolicy::DispatchPolicy	 	DispatchPolicy;
 
+		// Wrapper of downsweep texture types
+		typedef downsweep::Textures<
+			KeyType,
+			ValueType,
+			(1 << DownsweepPolicy::LOG_THREAD_ELEMENTS)> DownsweepTextures;
+
+		// Downsweep key texture type
+		typedef typename DownsweepTextures::KeyTexType KeyTexType;
+
+		// Downsweep value texture type
+		typedef typename DownsweepTextures::ValueTexType ValueTexType;
+
 		// Upsweep kernel properties
-		util::KernelProps<UpsweepKernelPtr> upsweep_props(
+		util::KernelProps<UpsweepKernelFunc> upsweep_props(
 			upsweep::Kernel<typename DevicePassPolicy::UpsweepPolicy>,
 			UpsweepPolicy::THREADS,
-			problem_instance.sm_arch);
+			problem_instance.sm_arch,
+			problem_instance.sm_count);
 
 		// Spine kernel properties
-		util::KernelProps<SpineKernelPtr> spine_props(
+		util::KernelProps<SpineKernelFunc> spine_props(
 			spine::Kernel<typename DevicePassPolicy::SpinePolicy>,
 			SpinePolicy::THREADS,
-			problem_instance.sm_arch);
+			problem_instance.sm_arch,
+			problem_instance.sm_count);
 
 		// Downsweep kernel properties
-		util::KernelProps<DownsweepKernelPtr> downsweep_props(
+		util::KernelProps<DownsweepKernelFunc> downsweep_props(
 			downsweep::Kernel<typename DevicePassPolicy::DownsweepPolicy>,
 			DownsweepPolicy::THREADS,
-			problem_instance.sm_arch);
+			problem_instance.sm_arch,
+			problem_instance.sm_count);
 
 		// Schedule granularity
 		int log_schedule_granularity = CUB_MAX(
 			UpsweepPolicy::LOG_TILE_ELEMENTS,
 			DownsweepPolicy::LOG_TILE_ELEMENTS);
 
-		// Spine tile elements
-		int spine_tile_elements = 1 << SpinePolicy::LOG_TILE_ELEMENTS;
-
-		// Downsweep thread elements
-		const int DOWNSWEEP_THREAD_ELEMENTS = 1 << DownsweepPolicy::LOG_THREAD_ELEMENTS;
-
 		// Texture binding for downsweep keys
-		typedef typename util::TexVector::TexVec<
-			ConvertedKeyType,
-			DOWNSWEEP_THREAD_ELEMENTS> KeyTexVector;
-		BindKeyTexture bind_key_texture_ptr =
-			downsweep::DownsweepTexKeys<ConvertedKeyType>::BindTexture;
+		BindKeyTexFunc bind_key_texture_func =
+			downsweep::TexKeys<KeyTexType>::BindTexture;
 
 		// Texture binding for downsweep values
-		typedef typename util::TexVector::TexVec<
-			ValueType,
-			DOWNSWEEP_THREAD_ELEMENTS> ValueTexVector;
-		BindValueTexture bind_value_texture_ptr =
-			downsweep::DownsweepTexValues<ValueTexVector>::BindTexture;
+		BindValueTexFunc bind_value_texture_func =
+			downsweep::TexValues<ValueTexType>::BindTexture;
 
 		// Texture binding for spine
-		BindSpineTexture bind_spine_texture_ptr = spine::SpineTex<SizeT>::BindTexture;
+		BindTexSpineFunc bind_spine_texture_func =
+			spine::TexSpine<SizeT>::BindTexture;
 
 		return Dispatch(
 			problem_instance,
@@ -360,11 +373,13 @@ struct SortingPass
 			upsweep_props,
 			spine_props,
 			downsweep_props,
-			bind_key_texture_ptr,
-			bind_value_texture_ptr,
-			bind_spine_texture_ptr,
+			bind_key_texture_func,
+			bind_value_texture_func,
+			bind_spine_texture_func,
 			log_schedule_granularity,
-			spine_tile_elements,
+			(1 << UpsweepPolicy::LOG_TILE_ELEMENTS),
+			(1 << SpinePolicy::LOG_TILE_ELEMENTS),
+			(1 << DownsweepPolicy::LOG_TILE_ELEMENTS),
 			DownsweepPolicy::SMEM_8BYTE_BANKS,
 			DispatchPolicy::UNIFORM_GRID_SIZE,
 			DispatchPolicy::UNIFORM_SMEM_ALLOCATION);
@@ -405,10 +420,18 @@ struct SortingPass
 	struct TunedPassPolicy<200, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
 	{
 		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
 			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
 			EARLY_EXIT 		= false,
 		};
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			200,								// TUNE_ARCH
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
 
 		// Upsweep kernel policy
 		typedef upsweep::KernelPolicy<
@@ -447,13 +470,6 @@ struct SortingPass
 			false,							// SMEM_8BYTE_BANKS
 			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 				DownsweepPolicy;
-
-		// Dispatch policy
-		typedef radix_sort::DispatchPolicy <
-			RADIX_BITS,							// RADIX_BITS
-			false, 								// UNIFORM_SMEM_ALLOCATION
-			true> 								// UNIFORM_GRID_SIZE
-				DispatchPolicy;
 	};
 
 
@@ -464,10 +480,18 @@ struct SortingPass
 	struct TunedPassPolicy<130, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
 	{
 		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
 			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
 			EARLY_EXIT 		= false,
 		};
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			130,								// TUNE_ARCH
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
 
 		// Upsweep kernel policy
 		typedef upsweep::KernelPolicy<
@@ -506,13 +530,6 @@ struct SortingPass
 			false,							// SMEM_8BYTE_BANKS
 			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 				DownsweepPolicy;
-
-		// Dispatch policy
-		typedef radix_sort::DispatchPolicy <
-			RADIX_BITS,							// RADIX_BITS
-			false, 								// UNIFORM_SMEM_ALLOCATION
-			true> 								// UNIFORM_GRID_SIZE
-				DispatchPolicy;
 	};
 
 
@@ -523,10 +540,18 @@ struct SortingPass
 	struct TunedPassPolicy<100, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
 	{
 		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, 5),
+			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
 			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
 			EARLY_EXIT 		= false,
 		};
+
+		// Dispatch policy
+		typedef radix_sort::DispatchPolicy <
+			100,								// TUNE_ARCH
+			RADIX_BITS,							// RADIX_BITS
+			false, 								// UNIFORM_SMEM_ALLOCATION
+			true> 								// UNIFORM_GRID_SIZE
+				DispatchPolicy;
 
 		// Upsweep kernel policy
 		typedef upsweep::KernelPolicy<
@@ -565,23 +590,25 @@ struct SortingPass
 			false,							// SMEM_8BYTE_BANKS
 			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 				DownsweepPolicy;
-
-		// Dispatch policy
-		typedef radix_sort::DispatchPolicy <
-			RADIX_BITS,							// RADIX_BITS
-			false, 								// UNIFORM_SMEM_ALLOCATION
-			true> 								// UNIFORM_GRID_SIZE
-				DispatchPolicy;
 	};
 
 
 	/**
 	 * Opaque pass policy
 	 */
-	template <int PTX_ARCH, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
 	struct OpaquePassPolicy
 	{
-		typedef TunedPassPolicy<PTX_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
+		// The appropriate tuning arch-id from the arch-id targeted by the
+		// active compiler pass.
+		static const int OPAQUE_ARCH =
+			(__B40C_CUDA_ARCH__ >= 200) ?
+				200 :
+				(__B40C_CUDA_ARCH__ >= 130) ?
+					130 :
+					100;
+
+		typedef TunedPassPolicy<OPAQUE_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
 
 		struct UpsweepPolicy : 		TunedPolicy::UpsweepPolicy {};
 		struct SpinePolicy : 		TunedPolicy::SpinePolicy {};
@@ -593,30 +620,25 @@ struct SortingPass
 	/**
 	 * Helper structure for iterating passes.
 	 */
-	template <
-		int BITS_REMAINING,
-		int CURRENT_BIT,
-		int CURRENT_PASS,
-		int PTX_ARCH,
-		int OPAQUE_ARCH>
+	template <int PTX_ARCH, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
 	struct IteratePasses
 	{
-		typedef TunedPassPolicy<PTX_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
-		typedef OpaquePassPolicy<OPAQUE_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> OpaquePolicy;
-
-		/**
-		 * Dispatch pass
-		 */
+		// Dispatch pass
 		template <typename ProblemInstance>
 		static cudaError_t Dispatch(ProblemInstance &problem_instance)
 		{
+			typedef TunedPassPolicy<PTX_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
+
+			typedef OpaquePassPolicy<BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> OpaquePolicy;
+
+			const int RADIX_BITS = TunedPolicy::DispatchPolicy::RADIX_BITS;
+
 			cudaError_t error = cudaSuccess;
 			do {
 				if (problem_instance.debug) {
-					printf("Current bit %d, Pass %d, Radix bits %d:\n",
-						CURRENT_BIT,
-						CURRENT_PASS,
-						TunedPolicy::DispatchPolicy::RADIX_BITS);
+					printf("\nCurrent bit(%d), Pass(%d), Radix bits(%d), PTX arch(%d), SM arch(%d)\n",
+						CURRENT_BIT, CURRENT_PASS, RADIX_BITS, PTX_ARCH, problem_instance.sm_arch);
+					fflush(stdout);
 				}
 
 				// Dispatch current pass
@@ -625,11 +647,10 @@ struct SortingPass
 
 				// Dispatch next pass
 				error = IteratePasses<
-					BITS_REMAINING - TunedPolicy::DispatchPolicy::RADIX_BITS,
-					CURRENT_BIT + TunedPolicy::DispatchPolicy::RADIX_BITS,
-					CURRENT_PASS + 1,
 					PTX_ARCH,
-					OPAQUE_ARCH>::Dispatch(problem_instance);
+					BITS_REMAINING - RADIX_BITS,
+					CURRENT_BIT + RADIX_BITS,
+					CURRENT_PASS + 1>::Dispatch(problem_instance);
 				if (error) break;
 
 			} while (0);
@@ -642,19 +663,17 @@ struct SortingPass
 	/**
 	 * Helper structure for iterating passes. (Termination)
 	 */
-	template <
-		int CURRENT_BIT,
-		int CURRENT_PASS,
-		int PTX_ARCH,
-		int OPAQUE_ARCH>
-	struct IteratePasses<0, CURRENT_BIT, CURRENT_PASS, PTX_ARCH, OPAQUE_ARCH>
+	template <int PTX_ARCH, int CURRENT_BIT, int NUM_PASSES>
+	struct IteratePasses<PTX_ARCH, 0, CURRENT_BIT, NUM_PASSES>
 	{
-		/**
-		 * Dispatch pass
-		 */
+		// Dispatch pass
 		template <typename ProblemInstance>
 		static cudaError_t Dispatch(ProblemInstance &problem_instance)
 		{
+			// We moved data between storage buffers at every pass
+			problem_instance.storage.selector =
+				(problem_instance.storage.selector + NUM_PASSES) & 0x1;
+
 			return cudaSuccess;
 		}
 	};
@@ -669,26 +688,17 @@ struct SortingPass
 		typename ProblemInstance>
 	static cudaError_t DispatchPasses(ProblemInstance &problem_instance)
 	{
-		// The appropriate tuning arch-id from the arch-id targeted by the
-		// active compiler pass.
-		const int OPAQUE_ARCH =
-			(__B40C_CUDA_ARCH__ >= 200) ?
-				200 :
-				(__B40C_CUDA_ARCH__ >= 130) ?
-					130 :
-					100;
-
 		if (problem_instance.ptx_arch >= 200) {
 
-			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 200, OPAQUE_ARCH>::Dispatch(problem_instance);
+			return IteratePasses<200, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
 
 		} else if (problem_instance.ptx_arch >= 130) {
 
-			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 130, OPAQUE_ARCH>::Dispatch(problem_instance);
+			return IteratePasses<130, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
 
 		} else {
 
-			return IteratePasses<BITS_REMAINING, CURRENT_BIT, 0, 100, OPAQUE_ARCH>::Dispatch(problem_instance);
+			return IteratePasses<100, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
 		}
 	}
 };
@@ -759,6 +769,7 @@ public:
 			max_grid_size,
 			cuda_props.kernel_ptx_version,
 			cuda_props.device_sm_version,
+			cuda_props.device_props.multiProcessorCount,
 			debug);
 
 		// Dispatch sorting passes

@@ -54,10 +54,10 @@ protected :
 	/**
 	 * Simple wrapper for returning a CG-loaded SyncFlag at the specified pointer
 	 */
-	__device__ __forceinline__ SyncFlag LoadCG(SyncFlag* d_ptr) const
+	__device__ __forceinline__ SyncFlag LoadCG(SyncFlag* d_func) const
 	{
 		SyncFlag retval;
-		util::io::ModifiedLoad<util::io::ld::cg>::Ld(retval, d_ptr);
+		util::io::ModifiedLoad<util::io::ld::cg>::Ld(retval, d_func);
 		return retval;
 	}
 
