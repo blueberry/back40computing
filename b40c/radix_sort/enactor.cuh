@@ -241,12 +241,12 @@ struct SortingPass
 
 			if (problem_instance.debug) {
 				printf(
-					"Upsweep:   tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n"
-					"Spine:     tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n"
-					"Downsweep: tile size(%d), occupancy(%d), grid_size(%d), dynamic smem(%d)\n",
-					upsweep_tile_elements, upsweep_props.max_cta_occupancy, grid_size[0], dynamic_smem[0],
-					spine_tile_elements, spine_props.max_cta_occupancy, grid_size[1], dynamic_smem[1],
-					downsweep_tile_elements, downsweep_props.max_cta_occupancy, grid_size[2], dynamic_smem[2]);
+					"Upsweep:   tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
+					"Spine:     tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
+					"Downsweep: tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n",
+					upsweep_tile_elements, upsweep_props.max_cta_occupancy, grid_size[0], upsweep_props.threads, dynamic_smem[0],
+					spine_tile_elements, spine_props.max_cta_occupancy, grid_size[1], spine_props.threads, dynamic_smem[1],
+					downsweep_tile_elements, downsweep_props.max_cta_occupancy, grid_size[2], downsweep_props.threads, dynamic_smem[2]);
 				fflush(stdout);
 			}
 
