@@ -64,6 +64,11 @@ struct TexVector
 	// Texture vector type
 	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
 
+	// Number of T loaded per texture load
+	enum {
+		ELEMENTS_PER_TEX = sizeof(VecType) / sizeof(T),
+	};
+
 	// Texture reference type
 	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;
 };

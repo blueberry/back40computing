@@ -148,25 +148,21 @@ typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref1;
 template <typename KeyType, typename ValueType, int THREAD_ELEMENTS>
 struct Textures
 {
+	// Elements per texture load
 	enum {
-		KEY_TEX_VEC_SIZE		= util::TexVector<KeyType, THREAD_ELEMENTS>::TEX_VEC_SIZE,
-		VALUE_TEX_VEC_SIZE		= util::TexVector<ValueType, THREAD_ELEMENTS>::TEX_VEC_SIZE,
-		TEX_VEC_SIZE			= CUB_MIN(KEY_TEX_VEC_SIZE, VALUE_TEX_VEC_SIZE)
+		KEY_ELEMENTS_PER_TEX		= util::TexVector<KeyType, THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
+		VALUE_ELEMENTS_PER_TEX		= util::TexVector<ValueType, THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
+		ELEMENTS_PER_TEX			= CUB_MIN(KEY_ELEMENTS_PER_TEX, VALUE_ELEMENTS_PER_TEX)
 	};
 
 	typedef typename util::TexVector<
 		KeyType,
-		TEX_VEC_SIZE>::VecType KeyTexType;
+		ELEMENTS_PER_TEX>::VecType KeyTexType;
 
 	// Texture binding for downsweep values
 	typedef typename util::TexVector<
 		ValueType,
-		TEX_VEC_SIZE>::VecType ValueTexType;
-
-	enum {
-		// Elements per texture load
-		ELEMENTS_PER_TEX = sizeof(KeyTexType) / sizeof(KeyType),
-	};
+		ELEMENTS_PER_TEX>::VecType ValueTexType;
 };
 
 
