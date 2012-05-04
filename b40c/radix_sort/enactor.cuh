@@ -423,6 +423,7 @@ struct SortingPass
 			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
 			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
 			EARLY_EXIT 		= false,
+			LARGE_DATA		= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
 		};
 
 		// Dispatch policy
@@ -457,140 +458,37 @@ struct SortingPass
 				SpinePolicy;
 
 		// Downsweep kernel policy
-		typedef downsweep::KernelPolicy<
-			RADIX_BITS,						// RADIX_BITS
-			CURRENT_BIT,					// CURRENT_BIT
-			CURRENT_PASS,					// CURRENT_PASS
-			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
-			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
-			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
-			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-			false,							// SMEM_8BYTE_BANKS
-			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				DownsweepPolicy;
+		typedef typename util::If<
+			(!LARGE_DATA),
+			downsweep::KernelPolicy<
+				RADIX_BITS,						// RADIX_BITS
+				CURRENT_BIT,					// CURRENT_BIT
+				CURRENT_PASS,					// CURRENT_PASS
+				KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
+				KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+				b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+				b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+				false,							// SMEM_8BYTE_BANKS
+				EARLY_EXIT>,					// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+			downsweep::KernelPolicy<
+				RADIX_BITS,						// RADIX_BITS
+				CURRENT_BIT,					// CURRENT_BIT
+				CURRENT_PASS,					// CURRENT_PASS
+				2,								// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
+				8,								// LOG_THREADS				The number of threads (log) to launch per CTA.
+				3,								// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
+				b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
+				b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
+				downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
+				false,							// SMEM_8BYTE_BANKS
+				EARLY_EXIT> >::Type 			// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
+					DownsweepPolicy;
 	};
 
 
-	/**
-	 * SM13
-	 */
-	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
-	struct TunedPassPolicy<130, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
-	{
-		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
-			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
-			EARLY_EXIT 		= false,
-		};
 
-		// Dispatch policy
-		typedef radix_sort::DispatchPolicy <
-			130,								// TUNE_ARCH
-			RADIX_BITS,							// RADIX_BITS
-			false, 								// UNIFORM_SMEM_ALLOCATION
-			true> 								// UNIFORM_GRID_SIZE
-				DispatchPolicy;
-
-		// Upsweep kernel policy
-		typedef upsweep::KernelPolicy<
-			RADIX_BITS,						// RADIX_BITS
-			CURRENT_BIT,					// CURRENT_BIT
-			CURRENT_PASS,					// CURRENT_PASS
-			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
-			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
-			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
-			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
-			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				UpsweepPolicy;
-
-		// Spine-scan kernel policy
-		typedef spine::KernelPolicy<
-			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
-			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
-			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
-			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
-				SpinePolicy;
-
-		// Downsweep kernel policy
-		typedef downsweep::KernelPolicy<
-			RADIX_BITS,						// RADIX_BITS
-			CURRENT_BIT,					// CURRENT_BIT
-			CURRENT_PASS,					// CURRENT_PASS
-			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
-			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
-			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
-			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-			false,							// SMEM_8BYTE_BANKS
-			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				DownsweepPolicy;
-	};
-
-
-	/**
-	 * SM10
-	 */
-	template <int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
-	struct TunedPassPolicy<100, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
-	{
-		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
-			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
-			EARLY_EXIT 		= false,
-		};
-
-		// Dispatch policy
-		typedef radix_sort::DispatchPolicy <
-			100,								// TUNE_ARCH
-			RADIX_BITS,							// RADIX_BITS
-			false, 								// UNIFORM_SMEM_ALLOCATION
-			true> 								// UNIFORM_GRID_SIZE
-				DispatchPolicy;
-
-		// Upsweep kernel policy
-		typedef upsweep::KernelPolicy<
-			RADIX_BITS,						// RADIX_BITS
-			CURRENT_BIT,					// CURRENT_BIT
-			CURRENT_PASS,					// CURRENT_PASS
-			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
-			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
-			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
-			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
-			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				UpsweepPolicy;
-
-		// Spine-scan kernel policy
-		typedef spine::KernelPolicy<
-			8,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
-			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
-			2,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
-			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE>		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
-				SpinePolicy;
-
-		// Downsweep kernel policy
-		typedef downsweep::KernelPolicy<
-			RADIX_BITS,						// RADIX_BITS
-			CURRENT_BIT,					// CURRENT_BIT
-			CURRENT_PASS,					// CURRENT_PASS
-			KEYS_ONLY ? 4 : 2,				// MIN_CTA_OCCUPANCY		The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
-			KEYS_ONLY ? 7 : 8,				// LOG_THREADS				The number of threads (log) to launch per CTA.
-			KEYS_ONLY ? 4 : 4,				// LOG_ELEMENTS_PER_TILE	The number of keys (log) per thread
-			b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
-			b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
-			downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-			false,							// SMEM_8BYTE_BANKS
-			EARLY_EXIT>						// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
-				DownsweepPolicy;
-	};
 
 
 	/**
@@ -601,13 +499,14 @@ struct SortingPass
 	{
 		// The appropriate tuning arch-id from the arch-id targeted by the
 		// active compiler pass.
-		static const int OPAQUE_ARCH =
+		static const int OPAQUE_ARCH = 200;
+/*
 			(__CUB_CUDA_ARCH__ >= 200) ?
 				200 :
 				(__CUB_CUDA_ARCH__ >= 130) ?
 					130 :
 					100;
-
+*/
 		typedef TunedPassPolicy<OPAQUE_ARCH, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS> TunedPolicy;
 
 		struct UpsweepPolicy : 		TunedPolicy::UpsweepPolicy {};
@@ -691,7 +590,7 @@ struct SortingPass
 		if (problem_instance.ptx_arch >= 200) {
 
 			return IteratePasses<200, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
-
+/*
 		} else if (problem_instance.ptx_arch >= 130) {
 
 			return IteratePasses<130, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
@@ -699,6 +598,10 @@ struct SortingPass
 		} else {
 
 			return IteratePasses<100, BITS_REMAINING, CURRENT_BIT, 0>::Dispatch(problem_instance);
+		}
+*/
+		} else {
+			return cudaErrorNotYetImplemented;
 		}
 	}
 };

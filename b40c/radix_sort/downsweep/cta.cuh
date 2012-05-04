@@ -209,8 +209,6 @@ struct Cta
 	int 								warp_id;
 	volatile RakingPartial				*warpscan;
 
-	KeyType 							*base_gather_offset;
-
 
 	//---------------------------------------------------------------------
 	// Helper structure for tile elements iteration
@@ -298,11 +296,16 @@ struct Cta
 			Tile &tile,
 			T items[THREAD_ELEMENTS])
 		{
-			const int LOAD_OFFSET = (BANK_PADDING) ?
-				(VEC * THREADS) + ((VEC * THREADS) >> LOG_MEM_BANKS) :
-				(VEC * THREADS);
+			int gather_offset =
+				threadIdx.x +
+				(BANK_PADDING ?
+					(threadIdx.x >> LOG_MEM_BANKS) :
+					0) +
+				(BANK_PADDING ?
+					(VEC * THREADS) + ((VEC * THREADS) >> LOG_MEM_BANKS) :
+					(VEC * THREADS));
 
-			items[VEC] = cta.base_gather_offset[LOAD_OFFSET];
+			items[VEC] = ((T*) cta.smem_storage.key_exchange)[gather_offset];
 
 			// Next vector element
 			IterateTileElements<VEC + 1>::GatherShared(cta, tile, items);
@@ -459,11 +462,7 @@ struct Cta
 			d_keys1(d_keys1),
 			d_values0(d_values0),
 			d_values1(d_values1),
-			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			base_gather_offset(
-				smem_storage.key_exchange +
-				threadIdx.x +
-				(BANK_PADDING ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
+			raking_segment(smem_storage.raking_grid[threadIdx.x])
 	{
 		int counter_lane = threadIdx.x & (SCAN_LANES - 1);
 		int sub_counter = threadIdx.x >> (LOG_SCAN_LANES);
@@ -532,7 +531,6 @@ struct Cta
 		const SizeT &guarded_elements,
 		Tile &tile)
 	{
-
 		if (guarded_elements >= TILE_ELEMENTS) {
 
 			// Unguarded loads through tex
@@ -549,7 +547,6 @@ struct Cta
 			}
 
 		} else {
-
 			// Guarded loads with default assignment of -1 to out-of-bound values
 			util::io::LoadTile<
 				0,									// log loads per tile
@@ -557,7 +554,7 @@ struct Cta
 				THREADS,
 				READ_MODIFIER,
 				false>::LoadValid(
-					(KeyType (*)[THREAD_ELEMENTS]) tile.values,
+					(ValueType (*)[THREAD_ELEMENTS]) tile.values,
 					(Cta::FLOP_TURN) ?
 						d_values1 :
 						d_values0,

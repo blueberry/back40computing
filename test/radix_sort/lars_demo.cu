@@ -35,6 +35,14 @@
 #include "b40c_test_util.h"
 
 
+template <typename T, typename S>
+void Assign(T &t, S &s)
+{
+	t = s;
+}
+
+template <typename S>
+void Assign(b40c::util::NullType, S &s) {}
 
 
 /******************************************************************************
@@ -43,9 +51,11 @@
 
 int main(int argc, char** argv)
 {
+//	typedef unsigned long long		KeyType;
 	typedef unsigned int 			KeyType;
-//	typedef b40c::util::NullType 	ValueType;
-	typedef unsigned int 			ValueType;
+	typedef b40c::util::NullType 	ValueType;
+//	typedef unsigned long long 		ValueType;
+//	typedef unsigned int			ValueType;
 
 	const int 		KEY_BITS 			= 5; //sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
@@ -88,8 +98,12 @@ int main(int argc, char** argv)
 	// Only use RADIX_BITS effective bits (remaining high order bits
 	// are left zero): we only want to perform one sorting pass
 
-    KeyType *h_keys 				= new KeyType[num_elements];
-	KeyType *h_reference_keys 		= new KeyType[num_elements];
+    KeyType 	*h_keys 				= new KeyType[num_elements];
+	KeyType 	*h_reference_keys 		= new KeyType[num_elements];
+    ValueType 	*h_values = NULL;
+	if (!KEYS_ONLY) {
+		h_values = new ValueType[num_elements];
+	}
 
 	if (verbose) printf("Original: ");
 	for (size_t i = 0; i < num_elements; ++i) {
@@ -103,6 +117,7 @@ int main(int argc, char** argv)
 		}
 
 		h_reference_keys[i] = h_keys[i];
+		Assign(h_values[i], h_keys[i]);
 
 		if (verbose) {
 			printf("%d, ", h_keys[i]);
@@ -138,7 +153,7 @@ int main(int argc, char** argv)
 	if (!KEYS_ONLY) {
 		cudaMemcpy(
 			double_buffer.d_values[double_buffer.selector],
-			h_keys,
+			h_values,
 			sizeof(ValueType) * num_elements,
 			cudaMemcpyHostToDevice);
 	}
@@ -185,7 +200,7 @@ int main(int argc, char** argv)
 		if (!KEYS_ONLY) {
 			cudaMemcpy(
 				double_buffer.d_values[double_buffer.selector],
-				h_keys,
+				h_values,
 				sizeof(ValueType) * num_elements,
 				cudaMemcpyHostToDevice);
 		}
@@ -241,6 +256,7 @@ int main(int argc, char** argv)
 	// Cleanup other
 	delete h_keys;
 	delete h_reference_keys;
+	delete h_values;
 
 	return 0;
 }

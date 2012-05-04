@@ -284,27 +284,50 @@ void PrintValue<unsigned long long>(unsigned long long val) {
 	printf("%llu", val);
 }
 
+template<>
+void PrintValue<util::NullType>(util::NullType) {
+}
 
 
 /******************************************************************************
  * Helper routines for list construction and validation 
  ******************************************************************************/
 
+template <typename T, typename S>
+bool CompareEquals(T &t, S &s)
+{
+	return t == s;
+}
+
+template <typename S>
+bool CompareEquals(util::NullType&, S &s)
+{
+	return false;
+}
+
+template <typename T>
+bool CompareEquals(T &T, util::NullType)
+{
+	return false;
+}
+
+
+
 /**
  * Compares the equivalence of two arrays
  */
-template <typename T, typename SizeT>
-int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
+template <typename S, typename T, typename SizeT>
+int CompareResults(T* computed, S* reference, SizeT len, bool verbose = true)
 {
 	for (SizeT i = 0; i < len; i++) {
 
 		int window = 8;
 
-		if (computed[i] != reference[i]) {
+		if (!CompareEquals(computed[i], reference[i])) {
 			printf("INCORRECT: [%lu]: ", (unsigned long) i);
 			PrintValue<T>(computed[i]);
 			printf(" != ");
-			PrintValue<T>(reference[i]);
+			PrintValue<S>(reference[i]);
 
 			if (verbose) {
 				printf("\nresult[...");
@@ -315,7 +338,7 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
 				printf("...]");
 				printf("\nreference[...");
 				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
-					PrintValue<T>(reference[j]);
+					PrintValue<S>(reference[j]);
 					printf(", ");
 				}
 				printf("...]");
@@ -334,9 +357,9 @@ int CompareResults(T* computed, T* reference, SizeT len, bool verbose = true)
  * Verify the contents of a device array match those
  * of a host array
  */
-template <typename T>
+template <typename S, typename T>
 int CompareDeviceResults(
-	T *h_reference,
+	S *h_reference,
 	T *d_data,
 	size_t num_elements,
 	bool verbose = true,
