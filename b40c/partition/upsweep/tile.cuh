@@ -123,7 +123,7 @@ struct Tile
 				const KeyType COUNTER_BYTE_MASK = (KernelPolicy::LOG_BINS < 2) ? 0x1 : 0x3;
 
 
-				if (__B40C_CUDA_ARCH__ >= 200) {
+				if (__CUB_CUDA_ARCH__ >= 200) {
 /*
 					int lane = util::BFE(
 						tile->keys[LOAD][VEC],

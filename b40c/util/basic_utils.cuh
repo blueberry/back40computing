@@ -56,7 +56,7 @@ namespace util {
 /**
  * Return the size in quad-words of a number of bytes
  */
-#define B40C_QUADS(bytes) (((bytes + sizeof(uint4) - 1) / sizeof(uint4)))
+#define CUB_QUADS(bytes) (((bytes + sizeof(uint4) - 1) / sizeof(uint4)))
 
 /******************************************************************************
  * Simple templated utilities

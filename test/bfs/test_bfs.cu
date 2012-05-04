@@ -72,7 +72,7 @@ enum Strategy {
 };
 
 
-//#define __B40C_ERROR_CHECKING__		 
+//#define __CUB_ERROR_CHECKING__		 
 
 bool g_verbose;
 bool g_verbose2;
@@ -820,7 +820,7 @@ void RunTests(
 	args.GetCmdLineArguments("strategy", strategies);
 
 	if (num_gpus > 1) {
-		if (__B40C_LP64__ == 0) {
+		if (__CUB_LP64__ == 0) {
 			printf("Must be compiled in 64-bit to run multiple GPUs\n");
 			exit(1);
 		}

@@ -96,8 +96,8 @@ struct RakingGrid
 		PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG,
 
 		// Number of partials that we can put in one stripe across the shared memory banks
-		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(CUDA_ARCH) +
-											B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) -
+		LOG_PARTIALS_PER_BANK_ARRAY		= CUB_LOG_MEM_BANKS(CUDA_ARCH) +
+											CUB_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) -
 											Log2<sizeof(T)>::VALUE,
 		PARTIALS_PER_BANK_ARRAY			= 1 << LOG_PARTIALS_PER_BANK_ARRAY,
 
@@ -105,7 +105,7 @@ struct RakingGrid
 		SEGS_PER_BANK_ARRAY				= 1 << LOG_SEGS_PER_BANK_ARRAY,
 
 		// Whether or not one warp of raking threads can rake entirely in one stripe across the shared memory banks
-		NO_PADDING = (LOG_SEGS_PER_BANK_ARRAY >= B40C_LOG_WARP_THREADS(CUDA_ARCH)),
+		NO_PADDING = (LOG_SEGS_PER_BANK_ARRAY >= CUB_LOG_WARP_THREADS(CUDA_ARCH)),
 
 		// Number of raking segments we can have without padding (i.e., a "row")
 		LOG_SEGS_PER_ROW 				= (NO_PADDING) ?
@@ -118,7 +118,7 @@ struct RakingGrid
 		PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW,
 
 		// Number of partials that we must use to "pad out" one memory bank
-		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) - Log2<sizeof(T)>::VALUE),
+		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, CUB_LOG_BANK_STRIDE_BYTES(CUDA_ARCH) - Log2<sizeof(T)>::VALUE),
 		BANK_PADDING_PARTIALS			= 1 << LOG_BANK_PADDING_PARTIALS,
 
 		// Number of partials that we must use to "pad out" a lane to one memory bank

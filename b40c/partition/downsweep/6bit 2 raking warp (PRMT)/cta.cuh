@@ -121,7 +121,7 @@ struct Cta
 			smem_storage.bin_in_prefixes[threadIdx.x] = item;
 		}
 
-		if (threadIdx.x < B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
+		if (threadIdx.x < CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH)) {
 			smem_storage.warpscan[0][threadIdx.x] = 0;
 			smem_storage.warpscan[1][threadIdx.x] = 0;
 		}

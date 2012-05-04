@@ -114,7 +114,7 @@ void Kernel(
 	typename KernelPolicy::SizeT			max_edge_frontier, 			// Maximum number of elements we can place into the outgoing edge frontier
 	util::KernelRuntimeStats				kernel_stats)				// Per-CTA clock timing statistics (used when KernelPolicy::INSTRUMENT)
 {
-#if __B40C_CUDA_ARCH__ >= 200
+#if __CUB_CUDA_ARCH__ >= 200
 
 	typedef typename KernelPolicy::SizeT SizeT;
 

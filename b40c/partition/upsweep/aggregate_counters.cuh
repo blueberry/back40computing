@@ -81,7 +81,7 @@ struct AggregateCounters
 			AggregateCounters *aggregate_counters)
 		{
 			const int LANE_OFFSET = WARP_LANE * WARPS * KernelPolicy::THREADS * 4;
-			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__) * 4;
+			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * CUB_WARP_THREADS(__CUB_CUDA_ARCH__) * 4;
 
 			aggregate_counters->local_counts[WARP_LANE][0] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 0);
 			aggregate_counters->local_counts[WARP_LANE][1] += *(cta->base + LANE_OFFSET + COMPOSITE_OFFSET + 1);

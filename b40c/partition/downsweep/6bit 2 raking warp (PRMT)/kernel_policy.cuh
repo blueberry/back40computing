@@ -51,7 +51,7 @@ struct KernelPolicy : TuningPolicy
 		BINS 							= 1 << TuningPolicy::LOG_BINS,
 		THREADS							= 1 << TuningPolicy::LOG_THREADS,
 
-		LOG_WARPS						= TuningPolicy::LOG_THREADS - B40C_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
+		LOG_WARPS						= TuningPolicy::LOG_THREADS - CUB_LOG_WARP_THREADS(TuningPolicy::CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
 		LOAD_VEC_SIZE					= 1 << TuningPolicy::LOG_LOAD_VEC_SIZE,
@@ -100,7 +100,7 @@ struct KernelPolicy : TuningPolicy
 		int2							bin_in_prefixes[BINS + 1];
 
 		// Storage for scanning local ranks
-		volatile int 					warpscan[2][B40C_WARP_THREADS(CUDA_ARCH) * 3 / 2];
+		volatile int 					warpscan[2][CUB_WARP_THREADS(CUDA_ARCH) * 3 / 2];
 
 		union {
 			struct {
@@ -115,9 +115,9 @@ struct KernelPolicy : TuningPolicy
 	};
 
 	enum {
-		THREAD_OCCUPANCY					= B40C_SM_THREADS(CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
-		SMEM_OCCUPANCY						= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-		MAX_CTA_OCCUPANCY					= CUB_MIN(B40C_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		THREAD_OCCUPANCY					= CUB_SM_THREADS(CUDA_ARCH) >> TuningPolicy::LOG_THREADS,
+		SMEM_OCCUPANCY						= CUB_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		MAX_CTA_OCCUPANCY					= CUB_MIN(CUB_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 
 		VALID								= (MAX_CTA_OCCUPANCY > 0),
 	};

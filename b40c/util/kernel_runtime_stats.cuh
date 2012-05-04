@@ -145,7 +145,7 @@ public:
 	KernelRuntimeStatsLifetime() :
 		KernelRuntimeStats(),
 		stat_bytes(0),
-		gpu(B40C_INVALID_DEVICE) {}
+		gpu(CUB_INVALID_DEVICE) {}
 
 
 	/**
@@ -171,7 +171,7 @@ public:
 					"KernelRuntimeStatsLifetime cudaFree d_stat failed: ", __FILE__, __LINE__)) break;
 
 				d_stat = NULL;
-				gpu = B40C_INVALID_DEVICE;
+				gpu = CUB_INVALID_DEVICE;
 
 				// Restore current gpu
 				if (retval = util::B40CPerror(cudaSetDevice(current_gpu),

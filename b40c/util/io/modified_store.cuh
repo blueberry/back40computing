@@ -106,132 +106,132 @@ struct ModifiedStore
 	/**
 	 * Singleton store op
 	 */
-	#define B40C_STORE(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define CUB_STORE(base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
-			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
+			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _CUB_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(val)));			\
 		}
 
 	/**
 	 * Vector store ops
 	 */
-	#define B40C_STORE_VEC1(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define CUB_STORE_VEC1(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			component_type c = val.x;																											\
-			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(c)));			\
+			asm("st.global."#modifier"."#ptx_type" [%0], %1;" : : _CUB_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(c)));			\
 		}
 
-	#define B40C_STORE_VEC2(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define CUB_STORE_VEC2(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			component_type cx = val.x;																											\
 			component_type cy = val.y;																											\
-			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)));		\
+			asm("st.global."#modifier".v2."#ptx_type" [%0], {%1, %2};" : : _CUB_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)));		\
 		}
 
-	#define B40C_STORE_VEC4(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
+	#define CUB_STORE_VEC4(component_type, base_type, ptx_type, reg_mod, cast_type, modifier)																	\
 		template<> template<> void ModifiedStore<st::modifier>::St(base_type val, base_type* ptr) {											\
 			component_type cx = val.x;																											\
 			component_type cy = val.y;																											\
 			component_type cz = val.z;																											\
 			component_type cw = val.w;																											\
-			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _B40C_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)), #reg_mod(reinterpret_cast<cast_type&>(cz)), #reg_mod(reinterpret_cast<cast_type&>(cw)));		\
+			asm("st.global."#modifier".v4."#ptx_type" [%0], {%1, %2, %3, %4};" : : _CUB_ASM_PTR_(ptr), #reg_mod(reinterpret_cast<cast_type&>(cx)), #reg_mod(reinterpret_cast<cast_type&>(cy)), #reg_mod(reinterpret_cast<cast_type&>(cz)), #reg_mod(reinterpret_cast<cast_type&>(cw)));		\
 		}
 
 
 	/**
 	 * Defines specialized store ops for only the base type
 	 */
-	#define B40C_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)		\
-		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cg)		\
-		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, wb)		\
-		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, wt)		\
-		B40C_STORE(base_type, ptx_type, reg_mod, cast_type, cs)
+	#define CUB_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)		\
+		CUB_STORE(base_type, ptx_type, reg_mod, cast_type, cg)		\
+		CUB_STORE(base_type, ptx_type, reg_mod, cast_type, wb)		\
+		CUB_STORE(base_type, ptx_type, reg_mod, cast_type, wt)		\
+		CUB_STORE(base_type, ptx_type, reg_mod, cast_type, cs)
 
 
 	/**
 	 * Defines specialized store ops for the base type and for its derivative vec1 and vec2 types
 	 */
-	#define B40C_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)		\
-		B40C_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)										\
+	#define CUB_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)		\
+		CUB_STORE_BASE(base_type, ptx_type, reg_mod, cast_type)										\
 																										\
-		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cg)						\
-		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wb)						\
-		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wt)						\
-		B40C_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cs)						\
+		CUB_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cg)						\
+		CUB_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wb)						\
+		CUB_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, wt)						\
+		CUB_STORE_VEC1(base_type, short_type##1, ptx_type, reg_mod, cast_type, cs)						\
 																										\
-		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cg)								\
-		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wb)								\
-		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wt)								\
-		B40C_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cs)
+		CUB_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cg)								\
+		CUB_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wb)								\
+		CUB_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, wt)								\
+		CUB_STORE_VEC2(base_type, short_type##2, ptx_type, reg_mod, cast_type, cs)
 
 
 	/**
 	 * Defines specialized store ops for the base type and for its derivative vec1, vec2, and vec4 types
 	 */
-	#define B40C_STORE_BASE_ONE_TWO_FOUR(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)	\
-		B40C_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)				\
+	#define CUB_STORE_BASE_ONE_TWO_FOUR(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)	\
+		CUB_STORE_BASE_ONE_TWO(base_type, dest_type, short_type, ptx_type, reg_mod, cast_type)				\
 																											\
-		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cg)									\
-		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wb)									\
-		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wt)									\
-		B40C_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cs)
+		CUB_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cg)									\
+		CUB_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wb)									\
+		CUB_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, wt)									\
+		CUB_STORE_VEC4(base_type, short_type##4, ptx_type, reg_mod, cast_type, cs)
 
 
 #if CUDA_VERSION >= 4000
-	#define B40C_REG8		h
-	#define B40C_REG16 		h
-	#define B40C_CAST8 		short
+	#define CUB_REG8		h
+	#define CUB_REG16 		h
+	#define CUB_CAST8 		short
 #else
-	#define B40C_REG8		r
-	#define B40C_REG16 		r
-	#define B40C_CAST8 		char
+	#define CUB_REG8		r
+	#define CUB_REG16 		r
+	#define CUB_CAST8 		char
 #endif
 
 
 	/**
 	 * Define cache-modified stores for all 4-byte (and smaller) structures
 	 */
-	B40C_STORE_BASE_ONE_TWO_FOUR(char, 				char, 			char, 	s8, 	B40C_REG8, 		B40C_CAST8)
-	B40C_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	B40C_REG16, 	short)
-	B40C_STORE_BASE_ONE_TWO_FOUR(int, 				int, 			int, 	s32, 	r, 				int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	B40C_REG8, 		unsigned B40C_CAST8)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	B40C_REG16, 	unsigned short)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned int, 		unsigned int, 	uint,	u32, 	r, 				unsigned int)
-	B40C_STORE_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, 				float)
+	CUB_STORE_BASE_ONE_TWO_FOUR(char, 				char, 			char, 	s8, 	CUB_REG8, 		CUB_CAST8)
+	CUB_STORE_BASE_ONE_TWO_FOUR(short, 			short, 			short, 	s16, 	CUB_REG16, 	short)
+	CUB_STORE_BASE_ONE_TWO_FOUR(int, 				int, 			int, 	s32, 	r, 				int)
+	CUB_STORE_BASE_ONE_TWO_FOUR(unsigned char, 	unsigned char, 	uchar,	u8, 	CUB_REG8, 		unsigned CUB_CAST8)
+	CUB_STORE_BASE_ONE_TWO_FOUR(unsigned short,	unsigned short,	ushort,	u16, 	CUB_REG16, 	unsigned short)
+	CUB_STORE_BASE_ONE_TWO_FOUR(unsigned int, 		unsigned int, 	uint,	u32, 	r, 				unsigned int)
+	CUB_STORE_BASE_ONE_TWO_FOUR(float, 			float, 			float, 	f32, 	f, 				float)
 
 	#if !defined(__LP64__) || (__LP64__ == 0)
 	// longs are 64-bit on non-Windows 64-bit compilers
-	B40C_STORE_BASE_ONE_TWO_FOUR(long, 				long, 			long, 	s32, 	r, long)
-	B40C_STORE_BASE_ONE_TWO_FOUR(unsigned long, 	unsigned long, 	ulong, 	u32, 	r, unsigned long)
+	CUB_STORE_BASE_ONE_TWO_FOUR(long, 				long, 			long, 	s32, 	r, long)
+	CUB_STORE_BASE_ONE_TWO_FOUR(unsigned long, 	unsigned long, 	ulong, 	u32, 	r, unsigned long)
 	#endif
 
-	B40C_STORE_BASE(signed char, s8, r, unsigned int)		// Only need to define base: char2,char4, etc already defined from char
+	CUB_STORE_BASE(signed char, s8, r, unsigned int)		// Only need to define base: char2,char4, etc already defined from char
 
 
 	/**
 	 * Define cache-modified stores for all 8-byte structures
 	 */
-	B40C_STORE_BASE_ONE_TWO(unsigned long long, 	unsigned long long, 	ulonglong, 	u64, l, unsigned long long)
-	B40C_STORE_BASE_ONE_TWO(long long, 				long long, 				longlong, 	s64, l, long long)
-	B40C_STORE_BASE_ONE_TWO(double, 				double, 				double, 	s64, l, long long)				// Cast to 64-bit long long a workaround for the fact that the 3.x assembler has no register constraint for doubles
+	CUB_STORE_BASE_ONE_TWO(unsigned long long, 	unsigned long long, 	ulonglong, 	u64, l, unsigned long long)
+	CUB_STORE_BASE_ONE_TWO(long long, 				long long, 				longlong, 	s64, l, long long)
+	CUB_STORE_BASE_ONE_TWO(double, 				double, 				double, 	s64, l, long long)				// Cast to 64-bit long long a workaround for the fact that the 3.x assembler has no register constraint for doubles
 
 	#if defined(__LP64__)
 	// longs are 64-bit on non-Windows 64-bit compilers
-	B40C_STORE_BASE_ONE_TWO(long, 					long, 					long, 		s64, l, long)
-	B40C_STORE_BASE_ONE_TWO(unsigned long, 			unsigned long, 			ulong, 		u64, l, unsigned long)
+	CUB_STORE_BASE_ONE_TWO(long, 					long, 					long, 		s64, l, long)
+	CUB_STORE_BASE_ONE_TWO(unsigned long, 			unsigned long, 			ulong, 		u64, l, unsigned long)
 	#endif
 
 	/**
 	 * Undefine macros
 	 */
-	#undef B40C_STORE_VEC1
-	#undef B40C_STORE_VEC2
-	#undef B40C_STORE_VEC4
-	#undef B40C_STORE_BASE
-	#undef B40C_STORE_BASE_ONE_TWO
-	#undef B40C_STORE_BASE_ONE_TWO_FOUR
-	#undef B40C_CAST8
-	#undef B40C_REG8
-	#undef B40C_REG16
+	#undef CUB_STORE_VEC1
+	#undef CUB_STORE_VEC2
+	#undef CUB_STORE_VEC4
+	#undef CUB_STORE_BASE
+	#undef CUB_STORE_BASE_ONE_TWO
+	#undef CUB_STORE_BASE_ONE_TWO_FOUR
+	#undef CUB_CAST8
+	#undef CUB_REG8
+	#undef CUB_REG16
 
 #else  //__CUDA_ARCH__
 

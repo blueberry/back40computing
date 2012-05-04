@@ -297,7 +297,7 @@ struct Cta
 			static __device__ __forceinline__ void ExpandByWarp(Cta *cta, Tile *tile)
 			{
 				// Warp-based expansion/loading
-				int warp_id = threadIdx.x >> B40C_LOG_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+				int warp_id = threadIdx.x >> CUB_LOG_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 				int lane_id = util::LaneId();
 
 				while (__any(tile->row_length[LOAD][VEC] >= KernelPolicy::WARP_GATHER_THRESHOLD)) {
@@ -338,8 +338,8 @@ struct Cta
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
 
-						coop_offset += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
-						coop_rank += B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+						coop_offset += CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+						coop_rank += CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 					}
 
 				}

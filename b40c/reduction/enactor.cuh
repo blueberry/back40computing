@@ -272,7 +272,7 @@ struct PolicyResolver <UNKNOWN_SIZE>
 
 		// Identify the maximum problem size for which we can saturate loads
 		int saturating_load = LargePolicy::Upsweep::TILE_ELEMENTS *
-			B40C_SM_CTAS(CUDA_ARCH) *
+			CUB_SM_CTAS(CUDA_ARCH) *
 			detail.enactor->SmCount();
 
 		if (detail.num_elements < saturating_load) {
@@ -464,7 +464,7 @@ cudaError_t Enactor::Reduce(
 		this, d_dest, d_src, num_elements, reduction_op, max_grid_size);
 
 	return util::ArchDispatch<
-		__B40C_CUDA_ARCH__,
+		__CUB_CUDA_ARCH__,
 		PolicyResolver<PROB_SIZE_GENRE> >::Enact(detail, PtxVersion());
 }
 

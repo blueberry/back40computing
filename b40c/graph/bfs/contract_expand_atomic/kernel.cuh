@@ -260,7 +260,7 @@ struct Dispatch
  * Valid for this arch (policy matches compiler-inserted macro)
  */
 template <typename KernelPolicy>
-struct Dispatch<KernelPolicy, __B40C_CUDA_ARCH__>
+struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 {
 	typedef typename KernelPolicy::VertexId VertexId;
 	typedef typename KernelPolicy::SizeT SizeT;

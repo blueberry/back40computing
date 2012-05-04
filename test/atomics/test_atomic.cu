@@ -170,7 +170,7 @@ __global__ void LocalAtomicKernel(
 		if ((tid & mask) == mask) {
 			if (stride > 0) {
 
-#if __B40C_CUDA_ARCH__ >= 120
+#if __CUB_CUDA_ARCH__ >= 120
 				// access shared counter
 				atomicAdd(&s_counter, 1);
 #endif

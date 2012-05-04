@@ -87,7 +87,7 @@ struct KernelPolicy : ProblemType
 		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
 		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
 
-		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		LOG_WARPS						= LOG_THREADS - CUB_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
 		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
@@ -122,7 +122,7 @@ struct KernelPolicy : ProblemType
 	 */
 	struct SmemStorage
 	{
-		T 			warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+		T 			warpscan[2][CUB_WARP_THREADS(CUDA_ARCH)];
 
 		__align__(16)
 		union {																			// Repurposable storage (complexity added b/c non-default-constructible types are not allowed in C++ unions)
@@ -138,10 +138,10 @@ struct KernelPolicy : ProblemType
 
 
 	enum {
-		THREAD_OCCUPANCY				= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY					= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		THREAD_OCCUPANCY				= CUB_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY					= CUB_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 
-		MAX_CTA_OCCUPANCY  				= CUB_MIN(B40C_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY  				= CUB_MIN(CUB_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 		MIN_CTA_OCCUPANCY 				= _MIN_CTA_OCCUPANCY,
 
 		VALID							= (MAX_CTA_OCCUPANCY > 0)

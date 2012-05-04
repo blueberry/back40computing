@@ -61,7 +61,7 @@ struct Cta
 		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
 		THREADS							= 1 << LOG_THREADS,
 
-		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS					= 1 << LOG_WARP_THREADS,
 
 		LOG_WARPS						= LOG_THREADS - LOG_WARP_THREADS,
@@ -166,7 +166,7 @@ struct Cta
 		static __device__ __forceinline__ void ExtractComposites(Cta &cta)
 		{
 			const int LANE_OFFSET = WARP_LANE * WARPS * THREADS * 4;
-			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * B40C_WARP_THREADS(__B40C_CUDA_ARCH__) * 4;
+			const int COMPOSITE_OFFSET = THREAD_COMPOSITE * CUB_WARP_THREADS(__CUB_CUDA_ARCH__) * 4;
 
 			cta.local_counts[WARP_LANE][0] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 0);
 			cta.local_counts[WARP_LANE][1] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 1);
@@ -303,7 +303,7 @@ struct Cta
 	{
 		const KeyType COUNTER_BYTE_MASK = (RADIX_BITS < 2) ? 0x1 : 0x3;
 
-		if (__B40C_CUDA_ARCH__ >= 200) {
+		if (__CUB_CUDA_ARCH__ >= 200) {
 
 			// Use BFE on Fermi
 			int sub_counter = util::BFE(key, CURRENT_BIT, 2);
@@ -518,7 +518,7 @@ struct Cta
 			SizeT bin_count = util::reduction::SerialReduce<AGGREGATED_PARTIALS_PER_ROW>::Invoke(
 				smem_storage.aggregate[threadIdx.x]);
 
-			int spine_bin_offset = util::FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
+			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 
 			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				bin_count,

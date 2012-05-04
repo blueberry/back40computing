@@ -143,7 +143,7 @@ struct Cta
 			smem_storage(smem_storage),
 			d_in_keys(d_in_keys),
 			d_spine(d_spine),
-			warp_id(threadIdx.x >> B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__)),
+			warp_id(threadIdx.x >> CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__)),
 			warp_idx(util::LaneId())
 	{
 		base = (char *) (smem_storage.composite_counters.words[warp_id] + warp_idx);

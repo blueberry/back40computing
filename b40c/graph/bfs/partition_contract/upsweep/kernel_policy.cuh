@@ -74,7 +74,7 @@ struct KernelPolicy :
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES			= (B40C_SMEM_BYTES(CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES			= (CUB_SMEM_BYTES(CUDA_ARCH) / KernelPolicy::MAX_CTA_OCCUPANCY)
 												- sizeof(typename Base::SmemStorage)
 												- sizeof(util::CtaWorkDistribution<SizeT>)
 												- sizeof(VertexId[WARPS][WARP_HASH_ELEMENTS])
@@ -94,10 +94,10 @@ struct KernelPolicy :
 
 		CUDA_ARCH 								= KernelPolicy::CUDA_ARCH,
 		LOG_THREADS 							= KernelPolicy::LOG_THREADS,
-		THREAD_OCCUPANCY						= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY							= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		THREAD_OCCUPANCY						= CUB_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY							= CUB_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
 
-		MAX_CTA_OCCUPANCY  						= CUB_MIN(B40C_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
+		MAX_CTA_OCCUPANCY  						= CUB_MIN(CUB_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY)),
 
 		VALID									= (MAX_CTA_OCCUPANCY > 0),
 	};

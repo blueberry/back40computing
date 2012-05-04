@@ -190,13 +190,13 @@ struct UpsweepTuning
 
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
-			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
+			EST_REGS_OCCUPANCY = CUB_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
-				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
+				(BaseKernelPolicy::LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
 
@@ -354,13 +354,13 @@ struct SpineTuning
 
 			REG_MULTIPLIER = (sizeof(T) + 4 - 1) / 4,
 			REGS_ESTIMATE = (REG_MULTIPLIER * KernelPolicy::TILE_ELEMENTS_PER_THREAD) + 2,
-			EST_REGS_OCCUPANCY = B40C_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
+			EST_REGS_OCCUPANCY = CUB_SM_REGISTERS(TUNE_ARCH) / (REGS_ESTIMATE * KernelPolicy::THREADS),
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
 				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
-				(BaseKernelPolicy::LOG_THREADS <= B40C_LOG_CTA_THREADS(TUNE_ARCH)) &&
+				(BaseKernelPolicy::LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
 

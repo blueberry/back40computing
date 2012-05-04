@@ -71,7 +71,7 @@ struct Spine
 		d_spine(NULL),
 		h_spine(NULL),
 		spine_bytes(0),
-		gpu(B40C_INVALID_DEVICE),
+		gpu(CUB_INVALID_DEVICE),
 		host_shadow(false) {}
 
 
@@ -85,7 +85,7 @@ struct Spine
 		d_spine(NULL),
 		h_spine(NULL),
 		spine_bytes(0),
-		gpu(B40C_INVALID_DEVICE),
+		gpu(CUB_INVALID_DEVICE),
 		host_shadow(host_shadow) {}
 
 
@@ -97,7 +97,7 @@ struct Spine
 		cudaError_t retval = cudaSuccess;
 		do {
 
-			if (gpu == B40C_INVALID_DEVICE) return retval;
+			if (gpu == CUB_INVALID_DEVICE) return retval;
 
 			// Save current gpu
 			int current_gpu;
@@ -127,7 +127,7 @@ struct Spine
 				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 #endif
 
-			gpu 			= B40C_INVALID_DEVICE;
+			gpu 			= CUB_INVALID_DEVICE;
 			spine_bytes	 	= 0;
 
 		} while (0);

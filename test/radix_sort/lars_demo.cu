@@ -44,10 +44,10 @@
 int main(int argc, char** argv)
 {
 	typedef unsigned int 			KeyType;
-	typedef b40c::util::NullType 	ValueType;
-//	typedef unsigned int 			ValueType;
+//	typedef b40c::util::NullType 	ValueType;
+	typedef unsigned int 			ValueType;
 
-	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
+	const int 		KEY_BITS 			= 5; //sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
     int 			num_elements 		= 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas 			= 0;						// default: let the enactor decide how many CTAs to launch based upon device properties
@@ -135,6 +135,13 @@ int main(int argc, char** argv)
 		h_keys,
 		sizeof(KeyType) * num_elements,
 		cudaMemcpyHostToDevice);
+	if (!KEYS_ONLY) {
+		cudaMemcpy(
+			double_buffer.d_values[double_buffer.selector],
+			h_keys,
+			sizeof(ValueType) * num_elements,
+			cudaMemcpyHostToDevice);
+	}
 
 	enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas, true);
 
@@ -146,6 +153,14 @@ int main(int argc, char** argv)
 		num_elements,
 		true,
 		verbose); printf("\n");
+	if (!KEYS_ONLY) {
+		b40c::CompareDeviceResults(
+			h_reference_keys,
+			double_buffer.d_values[double_buffer.selector],
+			num_elements,
+			true,
+			verbose); printf("\n");
+	}
 
 	cudaThreadSynchronize();
 
@@ -167,6 +182,13 @@ int main(int argc, char** argv)
 			h_keys,
 			sizeof(KeyType) * num_elements,
 			cudaMemcpyHostToDevice);
+		if (!KEYS_ONLY) {
+			cudaMemcpy(
+				double_buffer.d_values[double_buffer.selector],
+				h_keys,
+				sizeof(ValueType) * num_elements,
+				cudaMemcpyHostToDevice);
+		}
 
 		if (schmoo) {
 

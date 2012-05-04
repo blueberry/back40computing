@@ -96,7 +96,7 @@ struct Tile
 		LOG_RAKING_THREADS 			= KernelPolicy::ByteGrid::LOG_RAKING_THREADS,
 		RAKING_THREADS 				= 1 << LOG_RAKING_THREADS,
 
-		LOG_WARPSCAN_THREADS		= B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		LOG_WARPSCAN_THREADS		= CUB_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPSCAN_THREADS 			= 1 << LOG_WARPSCAN_THREADS,
 
 	};
@@ -549,7 +549,7 @@ struct Tile
 */
 			// Extract bytes into shorts (first warp has 0-3, second has 4-7)
 			p[tid] = util::PRMT(partial_bytes, 0, 0x4240);
-			p[tid + B40C_WARP_THREADS(CUDA_ARCH)] = util::PRMT(partial_bytes, 0, 0x4341);
+			p[tid + CUB_WARP_THREADS(CUDA_ARCH)] = util::PRMT(partial_bytes, 0, 0x4341);
 
 			int partial0 = *p2;
 			int partial1 = *(p2 + 1);
@@ -573,7 +573,7 @@ struct Tile
 			util::BAR(RAKING_THREADS);
 
 			// Grab first warp total
-			int total = cta->smem_storage.warpscan[0][16 + B40C_WARP_THREADS(CUDA_ARCH) - 1];
+			int total = cta->smem_storage.warpscan[0][16 + CUB_WARP_THREADS(CUDA_ARCH) - 1];
 			if (threadIdx.x >= (RAKING_THREADS / 2)) {
 
 				// Second warp adds halves from first warp total into partial
@@ -582,7 +582,7 @@ struct Tile
 				partial += total;
 
 				// Second warp replaces with second warp total
-				total = cta->smem_storage.warpscan[1][16 + B40C_WARP_THREADS(CUDA_ARCH) - 1];
+				total = cta->smem_storage.warpscan[1][16 + CUB_WARP_THREADS(CUDA_ARCH) - 1];
 			}
 
 			// Add lower into upper

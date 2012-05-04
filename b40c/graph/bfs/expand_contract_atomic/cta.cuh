@@ -82,7 +82,7 @@ struct Cta
 
 	// Row-length cutoff below which we expand neighbors by writing gather
 	// offsets into scratch space (instead of gang-pressing warps or the entire CTA)
-	static const int SCAN_EXPAND_CUTOFF = B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH);
+	static const int SCAN_EXPAND_CUTOFF = CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH);
 
 	typedef typename KernelPolicy::SmemStorage			SmemStorage;
 	typedef typename KernelPolicy::VertexId 			VertexId;

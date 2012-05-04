@@ -83,7 +83,7 @@ struct RakingGrid
 	// compiler can't handle ternary expressions in static-const fields having
 	// both evaluation targets as local const expressions.
 	enum {
-		LOG_WARP_THREADS 				= B40C_LOG_WARP_THREADS(__B40C_CUDA_ARCH__),
+		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS					= 1 << LOG_WARP_THREADS,
 
 		// Number of scan lanes
@@ -107,8 +107,8 @@ struct RakingGrid
 		PARTIALS_PER_SEG 				= 1 << LOG_PARTIALS_PER_SEG,
 
 		// Number of partials that we can put in one stripe across the shared memory banks
-		LOG_PARTIALS_PER_BANK_ARRAY		= B40C_LOG_MEM_BANKS(__B40C_CUDA_ARCH__) +
-											B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) -
+		LOG_PARTIALS_PER_BANK_ARRAY		= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__) +
+											CUB_LOG_BANK_STRIDE_BYTES(__CUB_CUDA_ARCH__) -
 											Log2<sizeof(T)>::VALUE,
 		PARTIALS_PER_BANK_ARRAY			= 1 << LOG_PARTIALS_PER_BANK_ARRAY,
 
@@ -129,7 +129,7 @@ struct RakingGrid
 		PARTIALS_PER_ROW				= 1 << LOG_PARTIALS_PER_ROW,
 
 		// Number of partials that we must use to "pad out" one memory bank
-		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, B40C_LOG_BANK_STRIDE_BYTES(__B40C_CUDA_ARCH__) - Log2<sizeof(T)>::VALUE),
+		LOG_BANK_PADDING_PARTIALS		= CUB_MAX(0, CUB_LOG_BANK_STRIDE_BYTES(__CUB_CUDA_ARCH__) - Log2<sizeof(T)>::VALUE),
 		BANK_PADDING_PARTIALS			= 1 << LOG_BANK_PADDING_PARTIALS,
 
 		// Number of partials that we must use to "pad out" a lane to one memory bank
