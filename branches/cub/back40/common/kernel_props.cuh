@@ -133,7 +133,7 @@ struct KernelProps
 		int max_grid_size = 0)
 	{
 		int grid_size;
-		int grains = (num_elements + schedule_granularity) / schedule_granularity;
+		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
 
 		if (sm_version < 120) {
 
