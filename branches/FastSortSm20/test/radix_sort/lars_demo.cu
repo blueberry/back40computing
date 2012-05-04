@@ -44,8 +44,8 @@
 int main(int argc, char** argv)
 {
 	typedef unsigned int 			KeyType;
-//	typedef b40c::util::NullType 	ValueType;
-	typedef unsigned int 			ValueType;
+	typedef b40c::util::NullType 	ValueType;
+//	typedef unsigned int 			ValueType;
 
 	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;

@@ -145,7 +145,7 @@ struct Cta
 
 
 	/**
-	 * Shared storage for partitioning downsweep
+	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
@@ -155,7 +155,7 @@ struct Cta
 		bool 							non_trivial_pass;
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		SizeT 							bin_carry[RADIX_DIGITS];
+		SizeT 							base_digit_offset[RADIX_DIGITS];
 
 		// Storage for scanning local ranks
 		volatile RakingPartial			warpscan[WARPS][WARP_THREADS * 3 / 2];
@@ -173,7 +173,7 @@ struct Cta
 
 
 	/**
-	 * Tile
+	 * Tile state
 	 */
 	struct Tile
 	{
@@ -204,12 +204,13 @@ struct Cta
 	RakingPartial						*raking_segment;
 	Counter								*bin_counter;
 
-	SizeT								my_bin_carry;
+	SizeT								my_base_digit_offset;
 
 	int 								warp_id;
 	volatile RakingPartial				*warpscan;
 
 	KeyType 							*base_gather_offset;
+
 
 	//---------------------------------------------------------------------
 	// Helper structure for tile elements iteration
@@ -218,58 +219,58 @@ struct Cta
 	/**
 	 * Iterate next vector element
 	 */
-	template <int ELEMENT, int DUMMY = 0>
+	template <int VEC, int DUMMY = 0>
 	struct IterateTileElements
 	{
 		// DecodeKeys
-		static __device__ __forceinline__ void DecodeKeys(Cta &cta, Tile &tile)
+		static __device__ __forceinline__ void DecodeKeys(Cta &cta,	Tile &tile)
 		{
 			// Compute byte offset of smem counter.  Add in thread column.
-			tile.counter_offsets[ELEMENT] = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
+			tile.counter_offsets[VEC] = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
 
 			// Add in sub-counter offset
-			tile.counter_offsets[ELEMENT] = Extract<
+			tile.counter_offsets[VEC] = Extract<
 				KeyType,
 				CURRENT_BIT + LOG_SCAN_LANES,
 				LOG_PACKED_COUNTERS,
 				LOG_BYTES_PER_COUNTER>::SuperBFE(
-					tile.keys[ELEMENT],
-					tile.counter_offsets[ELEMENT]);
+					tile.keys[VEC],
+					tile.counter_offsets[VEC]);
 
 			// Add in row offset
-			tile.counter_offsets[ELEMENT] = Extract<
+			tile.counter_offsets[VEC] = Extract<
 				KeyType,
 				CURRENT_BIT,
 				LOG_SCAN_LANES,
 				LOG_THREADS + LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER>::SuperBFE(
-					tile.keys[ELEMENT],
-					tile.counter_offsets[ELEMENT]);
+					tile.keys[VEC],
+					tile.counter_offsets[VEC]);
 
 			Counter* counter = (Counter*)
-				(((unsigned char *) cta.smem_storage.packed_counters) + tile.counter_offsets[ELEMENT]);
+				(((unsigned char *) cta.smem_storage.packed_counters) + tile.counter_offsets[VEC]);
 
 			// Load thread-exclusive prefix
-			tile.thread_prefixes[ELEMENT] = *counter;
+			tile.thread_prefixes[VEC] = *counter;
 
 			// Store inclusive prefix
-			*counter = tile.thread_prefixes[ELEMENT] + 1;
+			*counter = tile.thread_prefixes[VEC] + 1;
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::DecodeKeys(cta, tile);
+			IterateTileElements<VEC + 1>::DecodeKeys(cta, tile);
 		}
 
 
-		// ComputeRanks
-		static __device__ __forceinline__ void ComputeRanks(Cta &cta, Tile &tile)
+		// ComputeLocalRanks
+		static __device__ __forceinline__ void ComputeLocalRanks(Cta &cta, Tile &tile)
 		{
 			Counter* counter = (Counter*)
-				(((unsigned char *) cta.smem_storage.packed_counters) + tile.counter_offsets[ELEMENT]);
+				(((unsigned char *) cta.smem_storage.packed_counters) + tile.counter_offsets[VEC]);
 
 			// Add in CTA exclusive prefix
-			tile.ranks[ELEMENT] = tile.thread_prefixes[ELEMENT] + *counter;
+			tile.ranks[VEC] = tile.thread_prefixes[VEC] + *counter;
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::ComputeRanks(cta, tile);
+			IterateTileElements<VEC + 1>::ComputeLocalRanks(cta, tile);
 		}
 
 
@@ -281,13 +282,13 @@ struct Cta
 			T items[THREAD_ELEMENTS])
 		{
 			int offset = (BANK_PADDING) ?
-				util::SHR_ADD(tile.ranks[ELEMENT], LOG_MEM_BANKS, tile.ranks[ELEMENT]) :
-				tile.ranks[ELEMENT];
+				util::SHR_ADD(tile.ranks[VEC], LOG_MEM_BANKS, tile.ranks[VEC]) :
+				tile.ranks[VEC];
 
-			((T*) cta.smem_storage.key_exchange)[offset] = items[ELEMENT];
+			((T*) cta.smem_storage.key_exchange)[offset] = items[VEC];
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::ScatterRanked(cta, tile, items);
+			IterateTileElements<VEC + 1>::ScatterRanked(cta, tile, items);
 		}
 
 		// GatherShared
@@ -298,13 +299,13 @@ struct Cta
 			T items[THREAD_ELEMENTS])
 		{
 			const int LOAD_OFFSET = (BANK_PADDING) ?
-				(ELEMENT * THREADS) + ((ELEMENT * THREADS) >> LOG_MEM_BANKS) :
-				(ELEMENT * THREADS);
+				(VEC * THREADS) + ((VEC * THREADS) >> LOG_MEM_BANKS) :
+				(VEC * THREADS);
 
-			items[ELEMENT] = cta.base_gather_offset[LOAD_OFFSET];
+			items[VEC] = cta.base_gather_offset[LOAD_OFFSET];
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::GatherShared(cta, tile, items);
+			IterateTileElements<VEC + 1>::GatherShared(cta, tile, items);
 		}
 
 		// DecodeBinOffsets
@@ -316,13 +317,13 @@ struct Cta
 				CURRENT_BIT,
 				RADIX_BITS,
 				util::Log2<sizeof(SizeT)>::VALUE>::SuperBFE(
-					tile.keys[ELEMENT]);
+					tile.keys[VEC]);
 
 			// Lookup global bin offset
-			tile.bin_offsets[ELEMENT] = *(SizeT *)(((char *) cta.smem_storage.bin_carry) + byte_offset);
+			tile.bin_offsets[VEC] = *(SizeT *)(((char *) cta.smem_storage.base_digit_offset) + byte_offset);
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::DecodeBinOffsets(cta, tile);
+			IterateTileElements<VEC + 1>::DecodeBinOffsets(cta, tile);
 		}
 
 		// ScatterGlobal
@@ -334,18 +335,18 @@ struct Cta
 			T *d_out,
 			const SizeT &guarded_elements)
 		{
-			int tile_element = threadIdx.x + (ELEMENT * THREADS);
+			int tile_element = threadIdx.x + (VEC * THREADS);
 
 			// Distribute if not out-of-bounds
 			if ((guarded_elements >= TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
 				util::io::ModifiedStore<WRITE_MODIFIER>::St(
-					items[ELEMENT],
-					d_out + threadIdx.x + (THREADS * ELEMENT) + tile.bin_offsets[ELEMENT]);
+					items[VEC],
+					d_out + threadIdx.x + (THREADS * VEC) + tile.bin_offsets[VEC]);
 			}
 
 			// Next vector element
-			IterateTileElements<ELEMENT + 1>::ScatterGlobal(cta, tile, items, d_out, guarded_elements);
+			IterateTileElements<VEC + 1>::ScatterGlobal(cta, tile, items, d_out, guarded_elements);
 		}
 	};
 
@@ -359,8 +360,8 @@ struct Cta
 		// DecodeKeys
 		static __device__ __forceinline__ void DecodeKeys(Cta &cta, Tile &tile) {}
 
-		// ComputeRanks
-		static __device__ __forceinline__ void ComputeRanks(Cta &cta, Tile &tile) {}
+		// ComputeLocalRanks
+		static __device__ __forceinline__ void ComputeLocalRanks(Cta &cta, Tile &tile) {}
 
 		// ScatterRanked
 		template <typename T>
@@ -379,10 +380,6 @@ struct Cta
 	};
 
 
-	//---------------------------------------------------------------------
-	// Helper structure for explicitly-aligned scatter
-	//---------------------------------------------------------------------
-
 	/**
 	 * Warp based scattering that does not cross alignment boundaries, e.g., for SM1.0-1.1
 	 * coalescing rules
@@ -395,7 +392,7 @@ struct Cta
 			Cta &cta,
 			T *exchange,
 			T *d_out,
-			SizeT valid_elements)
+			const SizeT &valid_elements)
 		{
 			int store_txn_idx = threadIdx.x & (STORE_TXN_THREADS - 1);
 			int store_txn_digit = threadIdx.x >> LOG_STORE_TXN_THREADS;
@@ -408,7 +405,7 @@ struct Cta
 				int my_inclusive_scan = cta.smem_storage.warpscan[0][16 + my_digit];
 				int my_digit_count = my_inclusive_scan - my_exclusive_scan;
 
-				int my_carry = cta.smem_storage.bin_carry[my_digit] + my_exclusive_scan;
+				int my_carry = cta.smem_storage.base_digit_offset[my_digit] + my_exclusive_scan;
 				int my_aligned_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
 
 				while (my_aligned_offset < my_digit_count) {
@@ -439,7 +436,7 @@ struct Cta
 			Cta &cta,
 			T *exchange,
 			T *d_out,
-			SizeT valid_elements) {}
+			const SizeT &valid_elements) {}
 	};
 
 
@@ -479,12 +476,11 @@ struct Cta
 
 		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
 
-			// Read bin_carry in parallel
+			// Read base_digit_offset in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-			my_bin_carry = tex1Dfetch(spine::TexSpine<SizeT>::ref, spine_bin_offset);
+			my_base_digit_offset = tex1Dfetch(spine::TexSpine<SizeT>::ref, spine_bin_offset);
 		}
 	}
-
 
 	/**
 	 * Load tile of keys
@@ -497,16 +493,16 @@ struct Cta
 		if (guarded_elements >= TILE_ELEMENTS) {
 
 			// Unguarded loads through tex
-			KeyTexType *vectors = (KeyTexType*) tile.keys;
+			KeyTexType *vectors = (KeyTexType *) tile.keys;
 
 			#pragma unroll
-			for (int TEX_LOAD = 0; TEX_LOAD < THREAD_TEX_LOADS; TEX_LOAD++) {
+			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++) {
 
-				vectors[TEX_LOAD] = tex1Dfetch(
-					(FLOP_TURN) ?
+				vectors[PACK] = tex1Dfetch(
+					(Cta::FLOP_TURN) ?
 						TexKeys<KeyTexType>::ref1 :
 						TexKeys<KeyTexType>::ref0,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 			}
 
 		} else {
@@ -519,7 +515,7 @@ struct Cta
 				READ_MODIFIER,
 				false>::LoadValid(
 					(KeyType (*)[THREAD_ELEMENTS]) tile.keys,
-					(FLOP_TURN) ?
+					(Cta::FLOP_TURN) ?
 						d_keys1 :
 						d_keys0,
 					(tex_offset * ELEMENTS_PER_TEX),
@@ -528,28 +524,28 @@ struct Cta
 		}
 	}
 
-
 	/**
-	 * Load tile of values. (Specialized for keys-only passes.)
+	 * Load tile of values
 	 */
 	__device__ __forceinline__ void LoadValues(
 		SizeT tex_offset,
 		const SizeT &guarded_elements,
 		Tile &tile)
 	{
+
 		if (guarded_elements >= TILE_ELEMENTS) {
 
 			// Unguarded loads through tex
-			ValueTexType *vectors = (ValueTexType *) tile.values;
+			ValueTexType *vectors = (ValueTexType*) tile.values;
 
 			#pragma unroll
-			for (int TEX_LOAD = 0; TEX_LOAD < THREAD_TEX_LOADS; TEX_LOAD++) {
+			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++) {
 
-				vectors[TEX_LOAD] = tex1Dfetch(
-					(FLOP_TURN) ?
+				vectors[PACK] = tex1Dfetch(
+					(Cta::FLOP_TURN) ?
 						TexValues<ValueTexType>::ref1 :
 						TexValues<ValueTexType>::ref0,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 			}
 
 		} else {
@@ -561,8 +557,8 @@ struct Cta
 				THREADS,
 				READ_MODIFIER,
 				false>::LoadValid(
-					(ValueType (*)[THREAD_ELEMENTS]) tile.values,
-					(FLOP_TURN) ?
+					(KeyType (*)[THREAD_ELEMENTS]) tile.values,
+					(Cta::FLOP_TURN) ?
 						d_values1 :
 						d_values0,
 					(tex_offset * ELEMENTS_PER_TEX),
@@ -570,111 +566,18 @@ struct Cta
 		}
 	}
 
+
 	/**
-	 * Truck along tile of values. (Specialized for key-value passes.)
+	 * Scan shared memory counters
 	 */
-	template <int KEYS_ONLY>
-	__device__ __forceinline__ void TruckValues(
-		SizeT tex_offset,
-		const SizeT &guarded_elements,
-		Tile &tile)
+	__device__ __forceinline__ void ScanCounters(Tile &tile)
 	{
-		// Load tile of values
-		LoadValues(tex_offset, guarded_elements, tile);
-
-		__syncthreads();
-
-		// Scatter values shared
-		IterateTileElements<0>::ScatterRanked(*this, tile, tile.values);
-
-		__syncthreads();
-
-		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
-
-			// Use explicitly warp-aligned scattering of values from smem
-			AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
-				*this,
-				smem_storage.value_exchange,
-				(FLOP_TURN) ?
-					d_values0 :
-					d_values1,
-					guarded_elements);
-
-		} else {
-			// Use hardware-coalesced scattering of values from smem
-
-			// Gather values from smem and scatter to global
-			IterateTileElements<0>::GatherShared(*this, tile, tile.values);
-			IterateTileElements<0>::ScatterGlobal(
-				*this,
-				tile,
-				tile.values,
-				(FLOP_TURN) ?
-					d_values0 :
-					d_values1,
-				guarded_elements);
-		}
-	}
-
-
-	/**
-	 * Truck along tile of values. (Specialized for key-only passes.)
-	 */
-	template <>
-	__device__ __forceinline__ void TruckValues<true>(
-		SizeT tex_offset,
-		const SizeT &guarded_elements,
-		Tile &tile) {}
-
-
-	/**
-	 * Process tile
-	 */
-	__device__ __forceinline__ void ProcessTile(
-		SizeT tex_offset,
-		const SizeT &guarded_elements = TILE_ELEMENTS)
-	{
-		// State for the current tile
-		Tile tile;
-
-
-		//
-		// Step 1: Load tile of keys
-		//
-
-		LoadKeys(tex_offset, guarded_elements, tile);
-
-		__syncthreads();
-
-
-		//
-		// Step 2: Decode keys
-		//
-
-		// Initialize counters
-		#pragma unroll
-		for (int LANE = 0; LANE < SCAN_LANES + 1; LANE++) {
-			*((RakingPartial*) smem_storage.packed_counters[LANE][threadIdx.x]) = 0;
-		}
-
-		// Decode bins and update counters
-		IterateTileElements<0>::DecodeKeys(*this, tile);
-
-		__syncthreads();
-
-
-		//
-		// Step 3: Raking multi-scan
-		//
-
-		RakingPartial partial, raking_partial;
-
 		// Upsweep reduce
-		raking_partial = util::reduction::SerialReduce<PADDED_RAKING_SEG>::Invoke(
+		RakingPartial raking_partial = util::reduction::SerialReduce<PADDED_RAKING_SEG>::Invoke(
 			raking_segment);
 
 		// Warpscan
-		partial = raking_partial;
+		RakingPartial partial = raking_partial;
 		warpscan[0] = partial;
 
 		warpscan[0] = partial =
@@ -688,7 +591,7 @@ struct Cta
 		warpscan[0] = partial =
 			partial + warpscan[0 - 16];
 
-			// Barrier
+		// Barrier
 		__syncthreads();
 
 		// Scan across warpscan totals
@@ -718,46 +621,78 @@ struct Cta
 		util::scan::SerialScan<PADDED_RAKING_SEG>::Invoke(
 			raking_segment,
 			exclusive_partial);
+	}
+
+
+	/**
+	 * Truck along associated values.  (Specialized for keys-only passes.)
+	 */
+	template <bool IS_KEYS_ONLY>
+	__device__ __forceinline__ void TruckValues(
+		SizeT tex_offset,
+		const SizeT &guarded_elements,
+		Tile &tile)
+	{
+		// do nothing
+	}
+
+
+	/**
+	 * Truck along associated values.  (Specialized for key-value passes.)
+	 */
+	template <>
+	__device__ __forceinline__ void TruckValues<false>(
+		SizeT tex_offset,
+		const SizeT &guarded_elements,
+		Tile &tile)
+	{
+		// Load tile of values
+		LoadValues(tex_offset, guarded_elements, tile);
 
 		__syncthreads();
 
+		// Scatter values shared
+		IterateTileElements<0>::ScatterRanked(*this, tile, tile.values);
 
-		//
-		// Step 4: Update carry and extract ranks
-		//
+		__syncthreads();
 
-		// Update carry
-		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
+		// Gather values from shared memory and scatter to global
+		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
-			Counter bin_inclusive = bin_counter[THREADS * PACKED_COUNTERS];
-			smem_storage.warpscan[0][16 + threadIdx.x] = bin_inclusive;
-			RakingPartial bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
+			// Use explicitly warp-aligned scattering of values from smem
+			AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
+				*this,
+				smem_storage.value_exchange,
+				(FLOP_TURN) ?
+					d_values0 :
+					d_values1,
+					guarded_elements);
 
-			my_bin_carry -= bin_exclusive;
-			smem_storage.bin_carry[threadIdx.x] = my_bin_carry;
-			my_bin_carry += bin_inclusive;
+		} else {
+
+			// Gather values shared
+			IterateTileElements<0>::GatherShared(*this, tile, tile.values);
+
+			// Scatter to global
+			IterateTileElements<0>::ScatterGlobal(
+				*this,
+				tile,
+				tile.values,
+				(Cta::FLOP_TURN) ?
+					d_values0 :
+					d_values1,
+				guarded_elements);
 		}
-
-		// Extract the local ranks of each key
-		IterateTileElements<0>::ComputeRanks(*this, tile);
-
-		__syncthreads();
+	}
 
 
-		//
-		// Step 4: Scatter keys to shared memory
-		//
-
-		// Scatter keys shared
-		IterateTileElements<0>::ScatterRanked(*this, tile, tile.keys);
-
-		__syncthreads();
-
-
-		//
-		// Step 5: Gather keys from shared memory and scatter to global
-		//
-
+	/**
+	 * Gather keys from smem and scatter to global
+	 */
+	__device__ __forceinline__ void GatherScatterKeys(
+		Tile &tile,
+		const SizeT &guarded_elements)
+	{
 		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
 			// Use explicitly warp-aligned scattering of keys from smem
@@ -770,9 +705,8 @@ struct Cta
 					guarded_elements);
 
 		} else {
-			// Use hardware-coalesced scattering of keys from smem
 
-			// Gather keys from smem
+			// Gather keys
 			IterateTileElements<0>::GatherShared(*this, tile, tile.keys);
 
 			// Decode global scatter offsets
@@ -783,21 +717,90 @@ struct Cta
 				*this,
 				tile,
 				tile.keys,
-				(FLOP_TURN) ?
+				(Cta::FLOP_TURN) ?
 					d_keys0 :
 					d_keys1,
 				guarded_elements);
 		}
+	}
 
 
-		//
-		// Step 6: Truck along values, if applicable
-		//
+	/**
+	 * Reset shared memory digit counters
+	 */
+	__device__ __forceinline__ void ResetCounters()
+	{
+		#pragma unroll
+		for (int LANE = 0; LANE < SCAN_LANES + 1; LANE++) {
+			*((RakingPartial*) smem_storage.packed_counters[LANE][threadIdx.x]) = 0;
+		}
+	}
 
-		TruckValues<KEYS_ONLY>(
-			tex_offset,
-			guarded_elements,
-			tile);
+
+	/**
+	 * Update global scatter offsets for each digit
+	 */
+	__device__ __forceinline__ void UpdateDigitScatterOffsets()
+	{
+		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
+
+			Counter bin_inclusive = bin_counter[THREADS * PACKED_COUNTERS];
+			smem_storage.warpscan[0][16 + threadIdx.x] = bin_inclusive;
+			RakingPartial bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
+
+			my_base_digit_offset -= bin_exclusive;
+			smem_storage.base_digit_offset[threadIdx.x] = my_base_digit_offset;
+			my_base_digit_offset += bin_inclusive;
+		}
+	}
+
+
+	/**
+	 * Process tile
+	 */
+	__device__ __forceinline__ void ProcessTile(
+		SizeT tex_offset,
+		const SizeT &guarded_elements = TILE_ELEMENTS)
+	{
+		// State for the current tile
+		Tile tile;
+
+		// Load tile of keys
+		LoadKeys(tex_offset, guarded_elements, tile);
+
+		__syncthreads();
+
+		// Reset shared memory digit counters
+		ResetCounters();
+
+		// Decode bins and update counters
+		IterateTileElements<0>::DecodeKeys(*this, tile);
+
+		__syncthreads();
+
+		// Scan shared memory counters
+		ScanCounters(tile);
+
+		__syncthreads();
+
+		// Update global scatter offsets for each digit
+		UpdateDigitScatterOffsets();
+
+		// Extract the local ranks of each key
+		IterateTileElements<0>::ComputeLocalRanks(*this, tile);
+
+		__syncthreads();
+
+		// Scatter keys to shared memory in sorted order
+		IterateTileElements<0>::ScatterRanked(*this, tile, tile.keys);
+
+		__syncthreads();
+
+		// Gather keys from shared memory and scatter to global
+		GatherScatterKeys(tile, guarded_elements);
+
+		// Truck along values (if applicable)
+		TruckValues<KEYS_ONLY>(tex_offset, guarded_elements, tile);
 	}
 
 
