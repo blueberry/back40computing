@@ -106,11 +106,7 @@ struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
 		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
 
 		unsigned long long bits = (source & MASK);
-		if (SHIFT == 0) {
-			return bits;
-		} else {
-			return util::MagnitudeShift<SHIFT>::Shift(bits);
-		}
+		return util::MagnitudeShift<SHIFT>::Shift(bits);
 	}
 
 	/**
@@ -125,43 +121,7 @@ struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
 };
 
 
-/**
- * Extracts a bit field from source and places the zero or sign-extended result 
- * in extract
- */
-template <typename T, int BIT_START, int NUM_BITS> 
-struct ExtractKeyBits 
-{
-	__device__ __forceinline__ static void Extract(int &bits, T source)
-	{
-#if __CUDA_ARCH__ >= 200
-		asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"((unsigned int) source), "r"(BIT_START), "r"(NUM_BITS));
-#else
-		const T MASK = (1 << NUM_BITS) - 1;
-		bits = (source >> BIT_START) & MASK;
-#endif
-	}
-};
-	
-/**
- * Extracts a bit field from source and places the zero or sign-extended result 
- * in extract
- */
-template <int BIT_START, int NUM_BITS> 
-struct ExtractKeyBits<unsigned long long, BIT_START, NUM_BITS> 
-{
-	__device__ __forceinline__ static void Extract(int &bits, const unsigned long long &source) 
-	{
-		if (BIT_START >= 32) {											// For extraction on GT200, the compiler goes nuts and shoves hundreds of bytes to lmem unless we use different extractions for upper/lower
-			const unsigned long long MASK = (1 << NUM_BITS) - 1;
-			bits = (source >> BIT_START) & MASK;
-		} else {
-			const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_START;
-			bits = (source & MASK) >> BIT_START;
-		}
-	}
-};
-	
+
 
 /******************************************************************************
  * Traits for converting for converting signed and floating point types

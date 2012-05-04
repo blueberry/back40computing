@@ -44,6 +44,17 @@ void Assign(T &t, S &s)
 template <typename S>
 void Assign(b40c::util::NullType, S &s) {}
 
+template <typename T>
+int CastInt(T &t)
+{
+	return (int) t;
+}
+
+int CastInt(b40c::util::NullType)
+{
+	return 0;
+}
+
 
 /******************************************************************************
  * Main
@@ -57,7 +68,8 @@ int main(int argc, char** argv)
 //	typedef unsigned long long 		ValueType;
 //	typedef unsigned int			ValueType;
 
-	const int 		KEY_BITS 			= 5; //sizeof(KeyType) * 8;
+	const int 		START_BIT			= 0;
+	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
     int 			num_elements 		= 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas 			= 0;						// default: let the enactor decide how many CTAs to launch based upon device properties
@@ -115,9 +127,13 @@ int main(int argc, char** argv)
 		} else {
 			b40c::util::RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
 		}
+		h_keys[i] <<= START_BIT;
 
 		h_reference_keys[i] = h_keys[i];
-		Assign(h_values[i], h_keys[i]);
+
+		if (!KEYS_ONLY) {
+			Assign(h_values[i], i);
+		}
 
 		if (verbose) {
 			printf("%d, ", h_keys[i]);
@@ -158,23 +174,43 @@ int main(int argc, char** argv)
 			cudaMemcpyHostToDevice);
 	}
 
-	enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas, true);
+	enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas, true);
 
-	printf("\nRestricted-range %s sort: ", (KEYS_ONLY) ? "keys-only" : "key-value");
+	printf("\nRestricted-range %s sort (selector %d): ",
+		(KEYS_ONLY) ? "keys-only" : "key-value",
+		double_buffer.selector);
 	fflush(stdout);
+
 	b40c::CompareDeviceResults(
 		h_reference_keys,
 		double_buffer.d_keys[double_buffer.selector],
 		num_elements,
 		true,
 		verbose); printf("\n");
+
 	if (!KEYS_ONLY) {
-		b40c::CompareDeviceResults(
-			h_reference_keys,
+
+		cudaMemcpy(
+			h_values,
 			double_buffer.d_values[double_buffer.selector],
-			num_elements,
-			true,
-			verbose); printf("\n");
+			sizeof(ValueType) * num_elements,
+			cudaMemcpyDeviceToHost);
+
+		bool correct = true;
+		for (size_t i = 0; i < num_elements; ++i) {
+			if (h_keys[CastInt(h_values[i])] != h_reference_keys[i])
+			{
+				printf("Incorrect: [%d]: %d != %d\n",
+					i,
+					h_keys[CastInt(h_values[i])],
+					h_reference_keys[i]);
+				correct = false;
+				break;
+			}
+		}
+		if (correct) {
+			printf("Correct\n\n");
+		}
 	}
 
 	cudaThreadSynchronize();
@@ -216,7 +252,7 @@ int main(int argc, char** argv)
 				elements = scale * num_elements;						// uniform bias
 
 			gpu_timer.Start();
-			enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas);
+			enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas);
 			gpu_timer.Stop();
 
 			float millis = gpu_timer.ElapsedMillis();
@@ -231,7 +267,7 @@ int main(int argc, char** argv)
 
 			// Regular iteration
 			gpu_timer.Start();
-			enactor.Sort<KEY_BITS, 0>(double_buffer, num_elements, max_ctas);
+			enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas);
 			gpu_timer.Stop();
 
 			elapsed += gpu_timer.ElapsedMillis();

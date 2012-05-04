@@ -441,7 +441,7 @@ struct SortingPass
 			CURRENT_PASS,					// CURRENT_PASS
 			8,								// MIN_CTA_OCCUPANCY	The targeted SM occupancy to feed PTXAS in order to influence how it does register allocation
 			7,								// LOG_THREADS			The number of threads (log) to launch per CTA.  Valid range: 5-10
-			2,								// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
+			LARGE_DATA ? 1 : 2,				// LOG_LOAD_VEC_SIZE	The vector-load size (log) for each load (log).  Valid range: 0-2
 			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
 			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
 			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
