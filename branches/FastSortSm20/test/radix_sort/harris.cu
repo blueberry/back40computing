@@ -202,7 +202,7 @@ namespace thrust_uint4_96bit
 		int N,
 		int iterations)
 	{
-		printf("Thrust 96-bit sorting: (128-bit uint4 keys)\n");
+		printf("Thrust 96-bit sorting: (128-bit uint4 keys, up to 32 bits per xyz component)\n");
 		fflush(stdout);
 
 		// Allocate thrust_permutation vector on device
@@ -375,7 +375,7 @@ namespace back40_uint4_90bit
 		int N,
 		int iterations)
 	{
-		printf("Back40 90-bit sorting: (128-bit uint4 keys)\n");
+		printf("Back40 90-bit sorting: (128-bit uint4 keys, up to 30 bits per xyz component)\n");
 		fflush(stdout);
 
 		// Allocate reusable ping-pong buffers on device.
@@ -574,7 +574,7 @@ namespace back40_uint4_60bit
 		int N,
 		int iterations)
 	{
-		printf("Back40 60-bit sorting: (128-bit uint4 keys)\n");
+		printf("Back40 60-bit sorting: (128-bit uint4 keys, up to 20 bits per xyz component)\n");
 		fflush(stdout);
 
 		// Allocate reusable ping-pong buffers on device.
@@ -705,7 +705,7 @@ namespace back40_ulonglong_60bit
 		int N,
 		int iterations)
 	{
-		printf("Back40 60-bit sorting (64-bit ulonglong keys):\n");
+		printf("Back40 60-bit sorting (64-bit ulonglong keys, up to 60 bits):\n");
 		fflush(stdout);
 
 		// Sorted keys pointer: we will set it inside back40_ulonglong_sort_60bit
@@ -806,8 +806,9 @@ int main(int argc, char** argv)
 	cudaSetDevice(device_id);
 	cudaDeviceProp deviceProp;
 	cudaGetDeviceProperties(&deviceProp, device_id);
-	printf("Evaluating %d iterations using device %d: %s\n\n",
+	printf("Evaluating %d iterations of %d keys using device %d: %s\n\n",
 		iterations,
+		N,
 		device_id,
 		deviceProp.name);
 
