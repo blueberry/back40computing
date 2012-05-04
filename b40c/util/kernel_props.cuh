@@ -153,8 +153,8 @@ struct KernelProps
 
 		} else {
 
-			// Kepler: double CTA occupancy times SM count
-			grid_size = 2 * max_cta_occupancy * sm_count;
+			// Kepler: quadruple CTA occupancy times SM count
+			grid_size = 4 * max_cta_occupancy * sm_count;
 		}
 
 		grid_size = (max_grid_size > 0) ? max_grid_size : grid_size;	// Apply override, if specified
