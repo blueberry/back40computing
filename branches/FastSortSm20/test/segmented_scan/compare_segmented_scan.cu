@@ -132,9 +132,9 @@ double TimedThrustSegmentedScan(
 	util::FlushKernel<void><<<1,1>>>();
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	thrust::device_ptr<T> dev_src(d_src);
-	thrust::device_ptr<T> dev_dest(d_dest);
-	thrust::device_ptr<Flag> dev_flag_src(d_flag_src);
+	thrust::device_func<T> dev_src(d_src);
+	thrust::device_func<T> dev_dest(d_dest);
+	thrust::device_func<Flag> dev_flag_src(d_flag_src);
 	if (EXCLUSIVE) {
 
 		// shift input one to the right and initialize segments with init

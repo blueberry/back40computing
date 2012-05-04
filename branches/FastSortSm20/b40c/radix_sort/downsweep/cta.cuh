@@ -26,12 +26,19 @@
 #pragma once
 
 #include <b40c/util/basic_utils.cuh>
+#include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/tex_vector.cuh>
+#include <b40c/util/reduction/serial_reduce.cuh>
+#include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/io/load_tile.cuh>
 #include <b40c/util/io/scatter_tile.cuh>
 
 #include <b40c/radix_sort/sort_utils.cuh>
+
+#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/tex_ref.cuh>
+
+#include <b40c/radix_sort/spine/tex_ref.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -52,12 +59,14 @@ struct Cta
 	// Type definitions and Constants
 	//---------------------------------------------------------------------
 
-	typedef unsigned short								Counter;			// Integer type for digit counters (to be packed in the RakingPartial type defined below)
+	// Integer type for digit counters (to be packed in the RakingPartial type defined below)
+	typedef unsigned short Counter;
 
+	// Integer type for raking partials (packed counters).
 	typedef typename util::If<
-		KernelPolicy::SMEM_8BYTE_BANKS,
+		(KernelPolicy::SMEM_8BYTE_BANKS),
 		unsigned long long,
-		unsigned int>::Type								RakingPartial;		// Integer type for raking partials (packed counters).
+		unsigned int>::Type RakingPartial;
 
 	enum {
 		CURRENT_BIT 				= KernelPolicy::CURRENT_BIT,
@@ -107,23 +116,32 @@ struct Cta
 
 		BYTES_PER_COUNTER			= sizeof(Counter),
 		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
-	};
 
-	typedef typename util::TexVector::TexVec<
-		KeyType,
-		THREAD_ELEMENTS> KeyTexVector;
+		ELEMENTS_PER_TEX			= Textures<
+										KeyType,
+										ValueType,
+										THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
 
-	// Texture binding for downsweep values
-	typedef typename util::TexVector::TexVec<
-		ValueType,
-		THREAD_ELEMENTS> ValueTexVector;
+		THREAD_TEX_LOADS	 		= THREAD_ELEMENTS / ELEMENTS_PER_TEX,
 
-	enum {
-		TEX_VEC_SIZE				= sizeof(KeyVectorType) / sizeof(KeyType),
-		LOG_TEX_VEC_SIZE			= util::Log2<TEX_VEC_SIZE>::VALUE,
-		THREAD_TEX_LOADS	 		= THREAD_ELEMENTS / TEX_VEC_SIZE,
 		TILE_TEX_LOADS				= THREADS * THREAD_TEX_LOADS,
 	};
+
+	static const util::io::ld::CacheModifier 	READ_MODIFIER 		= KernelPolicy::READ_MODIFIER;
+	static const util::io::st::CacheModifier 	WRITE_MODIFIER 		= KernelPolicy::WRITE_MODIFIER;
+	static const ScatterStrategy 				SCATTER_STRATEGY 	= KernelPolicy::SCATTER_STRATEGY;
+
+	// Key texture type
+	typedef typename Textures<
+		KeyType,
+		ValueType,
+		THREAD_ELEMENTS>::KeyTexType KeyTexType;
+
+	// Value texture type
+	typedef typename Textures<
+		KeyType,
+		ValueType,
+		THREAD_ELEMENTS>::ValueTexType ValueTexType;
 
 
 	/**
@@ -193,9 +211,8 @@ struct Cta
 
 	KeyType 							*base_gather_offset;
 
-
 	//---------------------------------------------------------------------
-	// IterateTileElements Structures
+	// Helper structure for tile elements iteration
 	//---------------------------------------------------------------------
 
 	/**
@@ -208,13 +225,13 @@ struct Cta
 		static __device__ __forceinline__ void DecodeKeys(Cta &cta, Tile &tile)
 		{
 			// Compute byte offset of smem counter.  Add in thread column.
-			tile.counter_offsets[ELEMENT] = (threadIdx.x << (KernelPolicy::LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
+			tile.counter_offsets[ELEMENT] = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
 
 			// Add in sub-counter offset
 			tile.counter_offsets[ELEMENT] = Extract<
 				KeyType,
-				KernelPolicy::CURRENT_BIT + KernelPolicy::LOG_SCAN_LANES,
-				KernelPolicy::LOG_PACKED_COUNTERS,
+				CURRENT_BIT + LOG_SCAN_LANES,
+				LOG_PACKED_COUNTERS,
 				LOG_BYTES_PER_COUNTER>::SuperBFE(
 					tile.keys[ELEMENT],
 					tile.counter_offsets[ELEMENT]);
@@ -222,9 +239,9 @@ struct Cta
 			// Add in row offset
 			tile.counter_offsets[ELEMENT] = Extract<
 				KeyType,
-				KernelPolicy::CURRENT_BIT,
-				KernelPolicy::LOG_SCAN_LANES,
-				KernelPolicy::LOG_THREADS + KernelPolicy::LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER>::SuperBFE(
+				CURRENT_BIT,
+				LOG_SCAN_LANES,
+				LOG_THREADS + LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER>::SuperBFE(
 					tile.keys[ELEMENT],
 					tile.counter_offsets[ELEMENT]);
 
@@ -263,7 +280,7 @@ struct Cta
 			Tile &tile,
 			T items[THREAD_ELEMENTS])
 		{
-			int offset = (KernelPolicy::BANK_PADDING) ?
+			int offset = (BANK_PADDING) ?
 				util::SHR_ADD(tile.ranks[ELEMENT], LOG_MEM_BANKS, tile.ranks[ELEMENT]) :
 				tile.ranks[ELEMENT];
 
@@ -280,9 +297,9 @@ struct Cta
 			Tile &tile,
 			T items[THREAD_ELEMENTS])
 		{
-			const int LOAD_OFFSET = (KernelPolicy::BANK_PADDING) ?
-				(ELEMENT * KernelPolicy::THREADS) + ((ELEMENT * KernelPolicy::THREADS) >> LOG_MEM_BANKS) :
-				(ELEMENT * KernelPolicy::THREADS);
+			const int LOAD_OFFSET = (BANK_PADDING) ?
+				(ELEMENT * THREADS) + ((ELEMENT * THREADS) >> LOG_MEM_BANKS) :
+				(ELEMENT * THREADS);
 
 			items[ELEMENT] = cta.base_gather_offset[LOAD_OFFSET];
 
@@ -296,8 +313,8 @@ struct Cta
 			// Decode address of bin-offset in smem
 			unsigned int byte_offset = Extract<
 				KeyType,
-				KernelPolicy::CURRENT_BIT,
-				KernelPolicy::RADIX_BITS,
+				CURRENT_BIT,
+				RADIX_BITS,
 				util::Log2<sizeof(SizeT)>::VALUE>::SuperBFE(
 					tile.keys[ELEMENT]);
 
@@ -317,14 +334,14 @@ struct Cta
 			T *d_out,
 			const SizeT &guarded_elements)
 		{
-			int tile_element = threadIdx.x + (ELEMENT * KernelPolicy::THREADS);
+			int tile_element = threadIdx.x + (ELEMENT * THREADS);
 
 			// Distribute if not out-of-bounds
-			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
+			if ((guarded_elements >= TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
-				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				util::io::ModifiedStore<WRITE_MODIFIER>::St(
 					items[ELEMENT],
-					d_out + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + tile.bin_offsets[ELEMENT]);
+					d_out + threadIdx.x + (THREADS * ELEMENT) + tile.bin_offsets[ELEMENT]);
 			}
 
 			// Next vector element
@@ -363,7 +380,7 @@ struct Cta
 
 
 	//---------------------------------------------------------------------
-	// Force-aligned scatter
+	// Helper structure for explicitly-aligned scatter
 	//---------------------------------------------------------------------
 
 	/**
@@ -373,19 +390,19 @@ struct Cta
 	template <int PASS, int SCATTER_PASSES>
 	struct AlignedScatter
 	{
-		template <typename T, typename Cta>
+		template <typename T>
 		static __device__ __forceinline__ void ScatterPass(
 			Cta &cta,
 			T *exchange,
 			T *d_out,
-			const SizeT &valid_elements)
+			SizeT valid_elements)
 		{
 			int store_txn_idx = threadIdx.x & (STORE_TXN_THREADS - 1);
 			int store_txn_digit = threadIdx.x >> LOG_STORE_TXN_THREADS;
 
 			int my_digit = (PASS * DIGITS_PER_SCATTER_PASS) + store_txn_digit;
 
-			if (my_digit < KernelPolicy::RADIX_DIGITS) {
+			if (my_digit < RADIX_DIGITS) {
 
 				int my_exclusive_scan = cta.smem_storage.warpscan[0][16 + my_digit - 1];
 				int my_inclusive_scan = cta.smem_storage.warpscan[0][16 + my_digit];
@@ -417,12 +434,12 @@ struct Cta
 	template <int SCATTER_PASSES>
 	struct AlignedScatter<SCATTER_PASSES, SCATTER_PASSES>
 	{
-		template <typename T, typename Cta>
+		template <typename T>
 		static __device__ __forceinline__ void ScatterPass(
 			Cta &cta,
 			T *exchange,
 			T *d_out,
-			const SizeT &valid_elements) {}
+			SizeT valid_elements) {}
 	};
 
 
@@ -446,10 +463,13 @@ struct Cta
 			d_values0(d_values0),
 			d_values1(d_values1),
 			raking_segment(smem_storage.raking_grid[threadIdx.x]),
-			base_gather_offset(smem_storage.key_exchange + threadIdx.x + ((KernelPolicy::BANK_PADDING) ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
+			base_gather_offset(
+				smem_storage.key_exchange +
+				threadIdx.x +
+				(BANK_PADDING ? (threadIdx.x >> LOG_MEM_BANKS) : 0))
 	{
-		int counter_lane = threadIdx.x & (KernelPolicy::SCAN_LANES - 1);
-		int sub_counter = threadIdx.x >> (KernelPolicy::LOG_SCAN_LANES);
+		int counter_lane = threadIdx.x & (SCAN_LANES - 1);
+		int sub_counter = threadIdx.x >> (LOG_SCAN_LANES);
 		bin_counter = &smem_storage.packed_counters[counter_lane][0][sub_counter];
 
 		// Initialize warpscan identity regions
@@ -457,10 +477,11 @@ struct Cta
 		warpscan = &smem_storage.warpscan[warp_id][16 + (threadIdx.x & 31)];
 		warpscan[-16] = 0;
 
-		if ((KernelPolicy::THREADS == KernelPolicy::RADIX_DIGITS) || (threadIdx.x < KernelPolicy::RADIX_DIGITS)) {
+		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
+
 			// Read bin_carry in parallel
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-			my_bin_carry = tex1Dfetch(spine::SpineTex<SizeT>::ref, spine_bin_offset);
+			my_bin_carry = tex1Dfetch(spine::TexSpine<SizeT>::ref, spine_bin_offset);
 		}
 	}
 
@@ -473,18 +494,18 @@ struct Cta
 		const SizeT &guarded_elements,
 		Tile &tile)
 	{
-		KeyVectorType *vectors = (KeyVectorType*) tile.keys;
-
-		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
+		if (guarded_elements >= TILE_ELEMENTS) {
 
 			// Unguarded loads through tex
+			KeyTexType *vectors = (KeyTexType*) tile.keys;
+
 			#pragma unroll
 			for (int TEX_LOAD = 0; TEX_LOAD < THREAD_TEX_LOADS; TEX_LOAD++) {
 
 				vectors[TEX_LOAD] = tex1Dfetch(
 					(FLOP_TURN) ?
-							DownsweepTexKeys<KeyType, THREAD_ELEMENTS>::key_ref0 :
-							DownsweepTexKeys<KeyType, THREAD_ELEMENTS>::key_ref1,
+						TexKeys<KeyTexType>::ref1 :
+						TexKeys<KeyTexType>::ref0,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
 			}
 
@@ -493,15 +514,15 @@ struct Cta
 			// Guarded loads with default assignment of -1 to out-of-bound keys
 			util::io::LoadTile<
 				0,									// log loads per tile
-				KernelPolicy::LOG_THREAD_ELEMENTS,
-				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				LOG_THREAD_ELEMENTS,
+				THREADS,
+				READ_MODIFIER,
 				false>::LoadValid(
-					(KeyType (*)[THREAD_ELEMENTS]) keys,
+					(KeyType (*)[THREAD_ELEMENTS]) tile.keys,
 					(FLOP_TURN) ?
 						d_keys1 :
 						d_keys0,
-					(tex_offset * TEX_VEC_SIZE),
+					(tex_offset * ELEMENTS_PER_TEX),
 					guarded_elements,
 					KeyType(-1));
 		}
@@ -516,18 +537,18 @@ struct Cta
 		const SizeT &guarded_elements,
 		Tile &tile)
 	{
-		ValueVectorType *vectors = (ValueVectorType *) tile.values;
-
-		if (guarded_elements >= KernelPolicy::TILE_ELEMENTS) {
+		if (guarded_elements >= TILE_ELEMENTS) {
 
 			// Unguarded loads through tex
+			ValueTexType *vectors = (ValueTexType *) tile.values;
+
 			#pragma unroll
 			for (int TEX_LOAD = 0; TEX_LOAD < THREAD_TEX_LOADS; TEX_LOAD++) {
 
 				vectors[TEX_LOAD] = tex1Dfetch(
 					(FLOP_TURN) ?
-						DownsweepTexValues<ValueType, THREAD_ELEMENTS>::value_ref0 :
-						DownsweepTexValues<ValueType, THREAD_ELEMENTS>::value_ref1,
+						TexValues<ValueTexType>::ref1 :
+						TexValues<ValueTexType>::ref0,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + TEX_LOAD);
 			}
 
@@ -538,17 +559,16 @@ struct Cta
 				0,									// log loads per tile
 				LOG_THREAD_ELEMENTS,
 				THREADS,
-				KernelPolicy::READ_MODIFIER,
+				READ_MODIFIER,
 				false>::LoadValid(
-					(KeyType (*)[THREAD_ELEMENTS]) values,
+					(ValueType (*)[THREAD_ELEMENTS]) tile.values,
 					(FLOP_TURN) ?
 						d_values1 :
 						d_values0,
-					(tex_offset * TEX_VEC_SIZE),
+					(tex_offset * ELEMENTS_PER_TEX),
 					guarded_elements);
 		}
 	}
-
 
 	/**
 	 * Truck along tile of values. (Specialized for key-value passes.)
@@ -569,8 +589,9 @@ struct Cta
 
 		__syncthreads();
 
-		if (KernelPolicy::ScatterStrategy == SCATTER_WARP_TWO_PHASE) {
+		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
+			// Use explicitly warp-aligned scattering of values from smem
 			AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
 				*this,
 				smem_storage.value_exchange,
@@ -580,15 +601,14 @@ struct Cta
 					guarded_elements);
 
 		} else {
+			// Use hardware-coalesced scattering of values from smem
 
-			// Gather values shared
+			// Gather values from smem and scatter to global
 			IterateTileElements<0>::GatherShared(*this, tile, tile.values);
-
-			// Scatter to global
 			IterateTileElements<0>::ScatterGlobal(
 				*this,
 				tile,
-				tile->values,
+				tile.values,
 				(FLOP_TURN) ?
 					d_values0 :
 					d_values1,
@@ -611,7 +631,7 @@ struct Cta
 	 * Process tile
 	 */
 	__device__ __forceinline__ void ProcessTile(
-		SizeT cta_offset,
+		SizeT tex_offset,
 		const SizeT &guarded_elements = TILE_ELEMENTS)
 	{
 		// State for the current tile
@@ -729,7 +749,7 @@ struct Cta
 		//
 
 		// Scatter keys shared
-		IterateTileElements<0>::ScatterRanked(*cta, tile, keys);
+		IterateTileElements<0>::ScatterRanked(*this, tile, tile.keys);
 
 		__syncthreads();
 
@@ -738,8 +758,9 @@ struct Cta
 		// Step 5: Gather keys from shared memory and scatter to global
 		//
 
-		if (KernelPolicy::ScatterStrategy == SCATTER_WARP_TWO_PHASE) {
+		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
 
+			// Use explicitly warp-aligned scattering of keys from smem
 			AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
 				*this,
 				smem_storage.key_exchange,
@@ -749,9 +770,10 @@ struct Cta
 					guarded_elements);
 
 		} else {
+			// Use hardware-coalesced scattering of keys from smem
 
-			// Gather keys
-			IterateTileElements<0>::GatherShared(*this, tile, keys);
+			// Gather keys from smem
+			IterateTileElements<0>::GatherShared(*this, tile, tile.keys);
 
 			// Decode global scatter offsets
 			IterateTileElements<0>::DecodeBinOffsets(*this, tile);
@@ -760,7 +782,7 @@ struct Cta
 			IterateTileElements<0>::ScatterGlobal(
 				*this,
 				tile,
-				keys,
+				tile.keys,
 				(FLOP_TURN) ?
 					d_keys0 :
 					d_keys1,
@@ -790,17 +812,13 @@ struct Cta
 
 		// Process full tiles of tile_elements
 		while (tex_offset < smem_storage.tex_offset_limit) {
-
 			ProcessTile(tex_offset);
 			tex_offset += TILE_TEX_LOADS;
 		}
 
 		// Clean up last partial tile with guarded-io
 		if (work_limits.guarded_elements) {
-
-			ProcessTile(
-				tex_offset,
-				work_limits.guarded_elements);
+			ProcessTile(tex_offset, work_limits.guarded_elements);
 		}
 	}
 };

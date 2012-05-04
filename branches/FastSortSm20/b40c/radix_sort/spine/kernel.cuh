@@ -46,16 +46,17 @@ void Kernel(
 	T			*d_out,
 	SizeT 		spine_elements)
 {
-/*
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, T, SizeT> Cta;
 
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
+	// Only CTA-0 needs to run
+	if (blockIdx.x > 0) return;
+
 	Cta cta(smem_storage, d_in, d_out);
 	cta.ProcessWorkRange(spine_elements);
-*/
 }
 
 } // namespace spine

@@ -50,7 +50,7 @@ void Kernel(
 	KeyType 	*d_out_keys,
 	util::CtaWorkDistribution<SizeT> work_decomposition)
 {
-/*
+
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, SizeT, KeyType> Cta;
 
@@ -70,7 +70,6 @@ void Kernel(
 
 	Cta cta(smem_storage, d_keys, d_spine);
 	cta.ProcessWorkRange(work_limits);
-*/
 }
 
 

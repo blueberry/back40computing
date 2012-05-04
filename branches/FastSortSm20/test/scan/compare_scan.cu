@@ -106,8 +106,8 @@ double TimedThrustScan(
 	util::FlushKernel<void><<<1,1>>>();
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	thrust::device_ptr<T> dev_src(d_src);
-	thrust::device_ptr<T> dev_dest(d_dest);
+	thrust::device_func<T> dev_src(d_src);
+	thrust::device_func<T> dev_dest(d_dest);
 	if (EXCLUSIVE) {
 		thrust::exclusive_scan(dev_src, dev_src + num_elements, dev_dest);
 	} else {

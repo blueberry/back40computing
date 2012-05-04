@@ -107,9 +107,9 @@ struct LoadTileDiscontinuity
 
 					} else {
 						// Get the previous vector element from global
-						T *d_ptr = (T*) d_in_vectors;
+						T *d_func = (T*) d_in_vectors;
 						T previous;
-						ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
+						ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_func - 1);
 						flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
 					}
 				} else {
@@ -135,9 +135,9 @@ struct LoadTileDiscontinuity
 
 				} else {
 					// Get the previous vector element from global
-					T *d_ptr = (T*) d_in_vectors;
+					T *d_func = (T*) d_in_vectors;
 					T previous;
-					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_ptr - 1);
+					ModifiedLoad<CACHE_MODIFIER>::Ld(previous, d_func - 1);
 					flags[LOAD][0] = !equality_op(previous, data[LOAD][0]);
 				}
 			}

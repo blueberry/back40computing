@@ -136,12 +136,12 @@ double TimedThrustConsecutiveReduction(
 			cudaMemcpyHostToDevice),
 		"TimedConsecutiveReduction cudaMemcpy d_values failed: ", __FILE__, __LINE__)) exit(1);
 
-	thrust::device_ptr<KeyType> d_in_keys(d_problem_storage.d_keys[0]);
-	thrust::device_ptr<KeyType> d_out_keys(d_problem_storage.d_keys[1]);
-	thrust::device_ptr<ValueType> d_in_values(d_problem_storage.d_values[0]);
-	thrust::device_ptr<ValueType> d_out_values(d_problem_storage.d_values[1]);
+	thrust::device_func<KeyType> d_in_keys(d_problem_storage.d_keys[0]);
+	thrust::device_func<KeyType> d_out_keys(d_problem_storage.d_keys[1]);
+	thrust::device_func<ValueType> d_in_values(d_problem_storage.d_values[0]);
+	thrust::device_func<ValueType> d_out_values(d_problem_storage.d_values[1]);
 
-	thrust::pair<thrust::device_ptr<KeyType>, thrust::device_ptr<ValueType> > new_end;
+	thrust::pair<thrust::device_func<KeyType>, thrust::device_func<ValueType> > new_end;
 
 	// Marker kernel in profiling stream
 	util::FlushKernel<void><<<1,1>>>();

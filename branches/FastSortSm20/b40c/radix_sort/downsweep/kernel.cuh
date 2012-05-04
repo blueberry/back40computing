@@ -53,7 +53,6 @@ void Kernel(
 	ValueType 	*d_values1,
 	util::CtaWorkDistribution<SizeT> work_decomposition)
 {
-/*
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, SizeT, KeyType, ValueType> Cta;
 
@@ -67,8 +66,11 @@ void Kernel(
 			smem_storage.work_limits,
 			KernelPolicy::LOG_TILE_ELEMENTS);
 
-		smem_storage.tex_offset 		= smem_storage.work_limits.offset >> Cta::LOG_TEX_VEC_SIZE;
-		smem_storage.tex_offset_limit 	= smem_storage.work_limits.guarded_offset >> Cta::LOG_TEX_VEC_SIZE;
+		smem_storage.tex_offset =
+			smem_storage.work_limits.offset / Cta::ELEMENTS_PER_TEX;
+
+		smem_storage.tex_offset_limit =
+			smem_storage.work_limits.guarded_offset / Cta::ELEMENTS_PER_TEX;
 	}
 
 	// Sync to acquire work limits
@@ -83,7 +85,6 @@ void Kernel(
 		d_spine);
 
 	cta.ProcessWorkRange(smem_storage.work_limits);
-*/
 }
 
 

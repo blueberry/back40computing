@@ -37,12 +37,14 @@ namespace radix_sort {
  * Dispatch policy
  */
 template <
+	int			_TUNE_ARCH,
 	int 		_RADIX_BITS,
 	bool 		_UNIFORM_SMEM_ALLOCATION,
 	bool 		_UNIFORM_GRID_SIZE>
 struct DispatchPolicy
 {
 	enum {
+		TUNE_ARCH					= _TUNE_ARCH,
 		RADIX_BITS					= _RADIX_BITS,
 		UNIFORM_SMEM_ALLOCATION 	= _UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
