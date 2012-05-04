@@ -84,9 +84,13 @@ struct Cta
 		// A shared-memory composite counter lane is a row of 32-bit words, one word per thread, each word a
 		// composite of four 8-bit bin counters.  I.e., we need one lane for every four distribution bins.
 
-		LOG_COMPOSITE_LANES 			= (RADIX_BITS >= 2) ?
-											RADIX_BITS - 2 :
-											0,	// Always at least one lane
+		BYTES_PER_COUNTER				= sizeof(char),
+		LOG_BYTES_PER_COUNTER			= util::Log2<BYTES_PER_COUNTER>::VALUE,
+
+		PACKED_COUNTERS					= sizeof(int) / sizeof(char),
+		LOG_PACKED_COUNTERS 			= util::Log2<PACKED_COUNTERS>::VALUE,
+
+		LOG_COMPOSITE_LANES 			= CUB_MAX(0, RADIX_BITS - LOG_PACKED_COUNTERS),
 		COMPOSITE_LANES 				= 1 << LOG_COMPOSITE_LANES,
 
 		LOG_COMPOSITES_PER_LANE			= LOG_THREADS,				// Every thread contributes one partial for each lane
@@ -125,7 +129,7 @@ struct Cta
 				char counters[COMPOSITE_LANES][THREADS][4];
 				int words[COMPOSITE_LANES][THREADS];
 				int direct[COMPOSITE_LANES * THREADS];
-			} composite_counters;
+			};
 
 			// Final bin reduction storage
 			SizeT aggregate[AGGREGATED_ROWS][PADDED_AGGREGATED_PARTIALS_PER_ROW];
@@ -275,6 +279,9 @@ struct Cta
 	};
 
 
+
+
+
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -292,7 +299,7 @@ struct Cta
 			warp_id(threadIdx.x >> LOG_WARP_THREADS),
 			warp_idx(util::LaneId())
 	{
-		base = (char *) (smem_storage.composite_counters.words[warp_id] + warp_idx);
+		base = (char *) (smem_storage.words[warp_id] + warp_idx);
 	}
 
 
@@ -301,37 +308,51 @@ struct Cta
 	 */
 	__device__ __forceinline__ void Bucket(KeyType key)
 	{
-		const KeyType COUNTER_BYTE_MASK = (RADIX_BITS < 2) ? 0x1 : 0x3;
+		// Compute byte offset of smem counter.  Add in thread column.
+		unsigned int offset = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
 
-		if (__CUB_CUDA_ARCH__ >= 200) {
+		// Add in sub-counter offset
+		offset = Extract<
+			KeyType,
+			CURRENT_BIT,
+			LOG_PACKED_COUNTERS,
+			LOG_BYTES_PER_COUNTER>::SuperBFE(
+				key,
+				offset);
 
-			// Use BFE on Fermi
-			int sub_counter = util::BFE(key, CURRENT_BIT, 2);
+		// Add in row offset
+		offset = Extract<
+			KeyType,
+			CURRENT_BIT + LOG_PACKED_COUNTERS,
+			LOG_COMPOSITE_LANES,
+			LOG_THREADS + (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER)>::SuperBFE(
+				key,
+				offset);
 
-			int lane = (RADIX_BITS <= 2) ?
-				0 :
-				util::BFE(key, CURRENT_BIT + 2, RADIX_BITS - 2);
+		((unsigned char *) smem_storage.counters)[offset]++;
 
-			// Increment sub-field in composite counter
-			smem_storage.composite_counters.counters[lane][threadIdx.x][sub_counter]++;
 
-		} else {
-
-			// Decode the bin for this key
-			int bin;
-			ExtractKeyBits<
-				KeyType,
-				CURRENT_BIT,
-				RADIX_BITS>::Extract(bin, key);
-
-			// Decode composite-counter lane and sub-counter from bin
-			int lane = bin >> 2;										// extract composite counter lane
-			int sub_counter = bin & COUNTER_BYTE_MASK;					// extract 8-bit counter offset
-
-			// Increment sub-field in composite counter
-			smem_storage.composite_counters.words[lane][threadIdx.x] += (1 << (sub_counter << 0x3));
-		}
 	}
+
+
+	template <int COUNT, int MAX>
+	struct IterateKeys
+	{
+		static __device__ __forceinline__ void Bucket(
+			Cta &cta, KeyType keys[LOADS_PER_TILE * LOAD_VEC_SIZE])
+		{
+			cta.Bucket(keys[COUNT]);
+			IterateKeys<COUNT + 1, MAX>::Bucket(cta, keys);
+		}
+	};
+
+
+	template <int MAX>
+	struct IterateKeys<MAX, MAX>
+	{
+		static __device__ __forceinline__ void Bucket(
+			Cta &cta, KeyType keys[LOADS_PER_TILE * LOAD_VEC_SIZE]) {}
+	};
 
 
 	/**
@@ -341,7 +362,7 @@ struct Cta
 	{
 		#pragma unroll
 		for (int LANE = 0; LANE < COMPOSITE_LANES; ++LANE) {
-			smem_storage.composite_counters.words[LANE][threadIdx.x] = 0;
+			smem_storage.words[LANE][threadIdx.x] = 0;
 		}
 	}
 
@@ -401,14 +422,9 @@ struct Cta
 		if (LOADS_PER_TILE > 1) __syncthreads();
 
 		// Bucket tile of keys
-		#pragma unroll
-		for (int LOAD = 0; LOAD < LOADS_PER_TILE; ++LOAD) {
-
-			#pragma unroll
-			for (int VEC = 0; VEC < LOAD_VEC_SIZE; ++VEC) {
-				Bucket(keys[LOAD][VEC]);
-			}
-		}
+		IterateKeys<0, LOADS_PER_TILE * LOAD_VEC_SIZE>::Bucket(
+			*this,
+			(KeyType *) keys);
 	}
 
 
@@ -523,6 +539,8 @@ struct Cta
 			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
 				bin_count,
 				d_spine + spine_bin_offset);
+
+
 		}
 	}
 };

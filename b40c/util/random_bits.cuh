@@ -71,7 +71,7 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 		if (lower_key_bits < sizeof(K) * 8) {
 			unsigned long long base = 0;
 			memcpy(&base, key_bits, sizeof(K));
-			base &= (1 << lower_key_bits) - 1;
+			base &= (1ull << lower_key_bits) - 1;
 			memcpy(key_bits, &base, sizeof(K));
 		}
 		
