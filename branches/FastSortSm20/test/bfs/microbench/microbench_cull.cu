@@ -57,7 +57,7 @@ using namespace graph;
  * Defines, constants, globals 
  ******************************************************************************/
 
-//#define __B40C_ERROR_CHECKING__		 
+//#define __CUB_ERROR_CHECKING__		 
 
 bool g_verbose;
 bool g_verbose2;

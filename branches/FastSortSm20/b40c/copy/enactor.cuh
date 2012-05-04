@@ -372,7 +372,7 @@ cudaError_t Enactor::Copy(
 
 	Detail detail(this, d_dest, d_src, num_bytes, max_grid_size);
 
-	return util::ArchDispatch<__B40C_CUDA_ARCH__, Resolver>::Enact(
+	return util::ArchDispatch<__CUB_CUDA_ARCH__, Resolver>::Enact(
 		detail, PtxVersion());
 }
 

@@ -227,8 +227,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, UPSWEEP_LOG_THREADS> {
 		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+			MIN = CUB_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = CUB_LOG_CTA_THREADS(TUNE_ARCH)
 		};
 	};
 
@@ -254,7 +254,7 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, UPSWEEP_LOG_RAKING_THREADS> {
 		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MIN = CUB_LOG_WARP_THREADS(TUNE_ARCH),
 			MAX = util::Access<ParamList, UPSWEEP_LOG_THREADS>::VALUE
 		};
 	};
@@ -263,8 +263,8 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, DOWNSWEEP_LOG_THREADS> {
 		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
-			MAX = B40C_LOG_CTA_THREADS(TUNE_ARCH)
+			MIN = CUB_LOG_WARP_THREADS(TUNE_ARCH),
+			MAX = CUB_LOG_CTA_THREADS(TUNE_ARCH)
 		};
 	};
 
@@ -290,7 +290,7 @@ public:
 	template <typename ParamList>
 	struct Ranges<ParamList, DOWNSWEEP_LOG_RAKING_THREADS> {
 		enum {
-			MIN = B40C_LOG_WARP_THREADS(TUNE_ARCH),
+			MIN = CUB_LOG_WARP_THREADS(TUNE_ARCH),
 			MAX = util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE
 		};
 	};
@@ -416,10 +416,10 @@ public:
 			util::Access<ParamList, UPSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_UPSWEEP_LOG_RAKING_THREADS =
 //			util::Access<ParamList, UPSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
-			B40C_LOG_WARP_THREADS(TUNE_ARCH);
+			CUB_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_UPSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, UPSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
-			B40C_SM_CTAS(TUNE_ARCH);
+			CUB_SM_CTAS(TUNE_ARCH);
 
 		const int C_DOWNSWEEP_LOG_THREADS =
 			util::Access<ParamList, DOWNSWEEP_LOG_THREADS>::VALUE;
@@ -429,10 +429,10 @@ public:
 			util::Access<ParamList, DOWNSWEEP_LOG_LOADS_PER_TILE>::VALUE;
 		const int C_DOWNSWEEP_LOG_RAKING_THREADS =
 //			util::Access<ParamList, DOWNSWEEP_LOG_RAKING_THREADS>::VALUE;		// These can be tuned, but we're currently not compelled to
-			B40C_LOG_WARP_THREADS(TUNE_ARCH);
+			CUB_LOG_WARP_THREADS(TUNE_ARCH);
 		const int C_DOWNSWEEP_MAX_CTA_OCCUPANCY =
 //			util::Access<ParamList, DOWNSWEEP_MAX_CTA_OCCUPANCY>::VALUE;
-			B40C_SM_CTAS(TUNE_ARCH);
+			CUB_SM_CTAS(TUNE_ARCH);
 
 
 		const int C_UPSWEEP_LOG_SCHEDULE_GRANULARITY =
@@ -455,7 +455,7 @@ public:
 		const int C_SPINE_LOG_THREADS = 8;
 		const int C_SPINE_LOG_LOAD_VEC_SIZE = 0;
 		const int C_SPINE_LOG_LOADS_PER_TILE = 1;
-		const int C_SPINE_LOG_RAKING_THREADS = B40C_LOG_WARP_THREADS(TUNE_ARCH);
+		const int C_SPINE_LOG_RAKING_THREADS = CUB_LOG_WARP_THREADS(TUNE_ARCH);
 		
 		// Establish the problem type
 		typedef segmented_scan::ProblemType<

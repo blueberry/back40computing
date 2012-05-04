@@ -118,12 +118,12 @@ protected:
 				__LINE__);
 
 
-			int max_block_occupancy = B40C_SM_CTAS(cuda_props.device_sm_version);
-			int max_thread_occupancy = B40C_SM_THREADS(cuda_props.device_sm_version) / threads;
+			int max_block_occupancy = CUB_SM_CTAS(cuda_props.device_sm_version);
+			int max_thread_occupancy = CUB_SM_THREADS(cuda_props.device_sm_version) / threads;
 			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
-					(B40C_SMEM_BYTES(cuda_props.device_sm_version) / kernel_attrs.sharedSizeBytes) :
+					(CUB_SMEM_BYTES(cuda_props.device_sm_version) / kernel_attrs.sharedSizeBytes) :
 					max_block_occupancy;
-			int max_reg_occupancy = B40C_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
+			int max_reg_occupancy = CUB_SM_REGISTERS(cuda_props.device_sm_version) / (kernel_attrs.numRegs * threads);
 
 			max_cta_occupancy = CUB_MIN(
 				CUB_MIN(max_block_occupancy, max_thread_occupancy),
@@ -141,7 +141,7 @@ protected:
 			}
 
 			int target_occupancy = div_result.quot * base_occupancy;
-			int required_shared = B40C_SMEM_BYTES(cuda_props.device_sm_version) / target_occupancy;
+			int required_shared = CUB_SMEM_BYTES(cuda_props.device_sm_version) / target_occupancy;
 			int padding = (required_shared - kernel_attrs.sharedSizeBytes) / 128 * 128;					// Round down to nearest 128B
 
 			return padding;

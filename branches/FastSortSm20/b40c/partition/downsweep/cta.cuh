@@ -62,10 +62,10 @@ struct Cta
 	typedef DerivedCta Dispatch;
 
 	enum {
-		WARP_THREADS 				= B40C_WARP_THREADS(KernelPolicy::CUDA_ARCH),
+		WARP_THREADS 				= CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH),
 		FLOP_TURN					= _FLOP_TURN,
 
-		LOG_MEM_BANKS				= B40C_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
+		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(KernelPolicy::CUDA_ARCH),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 	};
 

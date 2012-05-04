@@ -112,7 +112,7 @@ struct KernelPolicy : _ProblemType
 		LOG_RAKING_THREADS				= _LOG_RAKING_THREADS,
 		RAKING_THREADS					= 1 << LOG_RAKING_THREADS,
 
-		LOG_WARPS						= LOG_THREADS - B40C_LOG_WARP_THREADS(CUDA_ARCH),
+		LOG_WARPS						= LOG_THREADS - CUB_LOG_WARP_THREADS(CUDA_ARCH),
 		WARPS							= 1 << LOG_WARPS,
 
 		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
@@ -158,7 +158,7 @@ struct KernelPolicy : _ProblemType
 			util::CtaWorkDistribution<SizeT>	work_decomposition;
 
 			// Storage for scanning local ranks
-			SizeT 								warpscan[2][B40C_WARP_THREADS(CUDA_ARCH)];
+			SizeT 								warpscan[2][CUB_WARP_THREADS(CUDA_ARCH)];
 
 			// General pool for hashing & prefix sum
 			union {
@@ -171,7 +171,7 @@ struct KernelPolicy : _ProblemType
 
 		enum {
 			// Amount of storage we can use for hashing scratch space under target occupancy
-			FULL_OCCUPANCY_BYTES				= (B40C_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
+			FULL_OCCUPANCY_BYTES				= (CUB_SMEM_BYTES(CUDA_ARCH) / _MIN_CTA_OCCUPANCY)
 													- sizeof(State)
 													- 128,												// Fudge-factor to guarantee occupancy
 
@@ -183,9 +183,9 @@ struct KernelPolicy : _ProblemType
 	};
 
 	enum {
-		THREAD_OCCUPANCY	= B40C_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
-		SMEM_OCCUPANCY		= B40C_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
-		CTA_OCCUPANCY  		= CUB_MIN(_MIN_CTA_OCCUPANCY, CUB_MIN(B40C_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
+		THREAD_OCCUPANCY	= CUB_SM_THREADS(CUDA_ARCH) >> LOG_THREADS,
+		SMEM_OCCUPANCY		= CUB_SMEM_BYTES(CUDA_ARCH) / sizeof(SmemStorage),
+		CTA_OCCUPANCY  		= CUB_MIN(_MIN_CTA_OCCUPANCY, CUB_MIN(CUB_SM_CTAS(CUDA_ARCH), CUB_MIN(THREAD_OCCUPANCY, SMEM_OCCUPANCY))),
 		VALID				= (CTA_OCCUPANCY > 0),
 	};
 };

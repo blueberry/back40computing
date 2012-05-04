@@ -602,9 +602,9 @@ struct SortingPass
 		// The appropriate tuning arch-id from the arch-id targeted by the
 		// active compiler pass.
 		static const int OPAQUE_ARCH =
-			(__B40C_CUDA_ARCH__ >= 200) ?
+			(__CUB_CUDA_ARCH__ >= 200) ?
 				200 :
-				(__B40C_CUDA_ARCH__ >= 130) ?
+				(__CUB_CUDA_ARCH__ >= 130) ?
 					130 :
 					100;
 

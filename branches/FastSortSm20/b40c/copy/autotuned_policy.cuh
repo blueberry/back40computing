@@ -213,8 +213,8 @@ struct AutotunedGenre<SizeT, CUDA_ARCH, SMALL_SIZE, SM13, POINTER_SIZE_GENRE>
  */
 template <typename SizeT, int PROB_SIZE_GENRE>
 __launch_bounds__ (
-	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
-	(AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::MIN_CTA_OCCUPANCY))
+	(AutotunedClassifier<SizeT, __CUB_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::THREADS),
+	(AutotunedClassifier<SizeT, __CUB_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE>::MIN_CTA_OCCUPANCY))
 __global__ void TunedKernel(
 	void 								*d_in,
 	void 								*d_out,
@@ -223,7 +223,7 @@ __global__ void TunedKernel(
 	int 								extra_bytes)
 {
 	// Load the tuned granularity type identified by the enum for this architecture
-	typedef AutotunedClassifier<SizeT, __B40C_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
+	typedef AutotunedClassifier<SizeT, __CUB_CUDA_ARCH__, (ProbSizeGenre) PROB_SIZE_GENRE> Policy;
 	typedef typename Policy::T T;
 
 	T* out = (T*)(d_out);

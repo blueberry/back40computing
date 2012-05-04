@@ -52,7 +52,7 @@ struct RakingDetails<RakingGrid, NullType> : RakingGrid
 	enum {
 		QUEUE_RSVN_THREAD 	= 0,
 		CUMULATIVE_THREAD 	= RakingGrid::RAKING_THREADS - 1,
-		WARP_THREADS 		= B40C_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
+		WARP_THREADS 		= CUB_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
 	};
 
 	typedef typename RakingGrid::T T;													// Partial type
@@ -176,7 +176,7 @@ struct RakingDetails : RakingGrid
 {
 	enum {
 		CUMULATIVE_THREAD 	= RakingGrid::RAKING_THREADS - 1,
-		WARP_THREADS 		= B40C_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
+		WARP_THREADS 		= CUB_WARP_THREADS(RakingSoaDetails::CUDA_ARCH)
 	};
 
 	typedef typename RakingGrid::T T;													// Partial type
