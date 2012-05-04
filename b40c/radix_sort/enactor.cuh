@@ -352,8 +352,8 @@ struct SortingPass
 
 		// Schedule granularity
 		int log_schedule_granularity = CUB_MAX(
-			UpsweepPolicy::LOG_TILE_ELEMENTS,
-			DownsweepPolicy::LOG_TILE_ELEMENTS);
+			int(UpsweepPolicy::LOG_TILE_ELEMENTS),
+			int(DownsweepPolicy::LOG_TILE_ELEMENTS));
 
 		// Texture binding for downsweep keys
 		BindKeyTexFunc bind_key_texture_func =

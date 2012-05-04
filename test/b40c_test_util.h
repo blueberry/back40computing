@@ -306,7 +306,7 @@ bool CompareEquals(util::NullType&, S &s)
 }
 
 template <typename T>
-bool CompareEquals(T &T, util::NullType)
+bool CompareEquals(T &t, util::NullType)
 {
 	return false;
 }

@@ -622,65 +622,73 @@ struct Cta
 
 
 	/**
-	 * Truck along associated values.  (Specialized for keys-only passes.)
+	 * Truck along associated values.  (Specialized for key-value passes.)
 	 */
-	template <bool IS_KEYS_ONLY>
-	__device__ __forceinline__ void TruckValues(
-		SizeT tex_offset,
-		const SizeT &guarded_elements,
-		Tile &tile)
+	template <bool IS_KEYS_ONLY, int DUMMY = 0>
+	struct TruckValues
 	{
-		// do nothing
-	}
+		static __device__ __forceinline__ void Invoke(
+			SizeT tex_offset,
+			const SizeT &guarded_elements,
+			Cta &cta,
+			Tile &tile)
+		{
+			// Load tile of values
+			cta.LoadValues(tex_offset, guarded_elements, tile);
+
+			__syncthreads();
+
+			// Scatter values shared
+			IterateTileElements<0>::ScatterRanked(cta, tile, tile.values);
+
+			__syncthreads();
+
+			// Gather values from shared memory and scatter to global
+			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
+
+				// Use explicitly warp-aligned scattering of values from smem
+				AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
+					cta,
+					cta.smem_storage.value_exchange,
+					(FLOP_TURN) ?
+						cta.d_values0 :
+						cta.d_values1,
+						guarded_elements);
+
+			} else {
+
+				// Gather values shared
+				IterateTileElements<0>::GatherShared(cta, tile, tile.values);
+
+				// Scatter to global
+				IterateTileElements<0>::ScatterGlobal(
+					cta,
+					tile,
+					tile.values,
+					(Cta::FLOP_TURN) ?
+					cta.d_values0 :
+					cta.d_values1,
+					guarded_elements);
+			}
+		}
+	};
 
 
 	/**
-	 * Truck along associated values.  (Specialized for key-value passes.)
+	 * Truck along associated values.  (Specialized for keys-only passes.)
 	 */
-	template <>
-	__device__ __forceinline__ void TruckValues<false>(
-		SizeT tex_offset,
-		const SizeT &guarded_elements,
-		Tile &tile)
+	template <int DUMMY>
+	struct TruckValues<true, DUMMY>
 	{
-		// Load tile of values
-		LoadValues(tex_offset, guarded_elements, tile);
-
-		__syncthreads();
-
-		// Scatter values shared
-		IterateTileElements<0>::ScatterRanked(*this, tile, tile.values);
-
-		__syncthreads();
-
-		// Gather values from shared memory and scatter to global
-		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
-
-			// Use explicitly warp-aligned scattering of values from smem
-			AlignedScatter<0, SCATTER_PASSES>::ScatterPass(
-				*this,
-				smem_storage.value_exchange,
-				(FLOP_TURN) ?
-					d_values0 :
-					d_values1,
-					guarded_elements);
-
-		} else {
-
-			// Gather values shared
-			IterateTileElements<0>::GatherShared(*this, tile, tile.values);
-
-			// Scatter to global
-			IterateTileElements<0>::ScatterGlobal(
-				*this,
-				tile,
-				tile.values,
-				(Cta::FLOP_TURN) ?
-					d_values0 :
-					d_values1,
-				guarded_elements);
+		static __device__ __forceinline__ void Invoke(
+			SizeT tex_offset,
+			const SizeT &guarded_elements,
+			Cta &cta,
+			Tile &tile)
+		{
+			// do nothing
 		}
-	}
+	};
 
 
 	/**
@@ -797,7 +805,7 @@ struct Cta
 		GatherScatterKeys(tile, guarded_elements);
 
 		// Truck along values (if applicable)
-		TruckValues<KEYS_ONLY>(tex_offset, guarded_elements, tile);
+		TruckValues<KEYS_ONLY>::Invoke(tex_offset, guarded_elements, *this, tile);
 	}
 
 

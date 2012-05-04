@@ -765,7 +765,7 @@ namespace back40_ulonglong_60bit
 
 			if (h_sorted_keys[i] != h_reference_keys[i])
 			{
-				printf("Incorrect: [%d]: %d != %d\n",
+				printf("Incorrect: [%d]: %lld != %lld\n",
 					i,
 					h_sorted_keys[i],
 					h_reference_keys[i]);
