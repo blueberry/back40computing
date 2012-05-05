@@ -420,10 +420,11 @@ struct SortingPass
 	struct TunedPassPolicy<200, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
 	{
 		enum {
-			RADIX_BITS 		= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
-			KEYS_ONLY 		= util::Equals<ValueType, util::NullType>::VALUE,
-			EARLY_EXIT 		= false,
-			LARGE_DATA		= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
+			RADIX_BITS 			= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
+			KEYS_ONLY 			= util::Equals<ValueType, util::NullType>::VALUE,
+			SMEM_8BYTE_BANKS	= false,
+			EARLY_EXIT 			= false,
+			LARGE_DATA			= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
 		};
 
 		// Dispatch policy
@@ -445,6 +446,7 @@ struct SortingPass
 			1,								// LOG_LOADS_PER_TILE	The number of loads (log) per tile.  Valid range: 0-2
 			b40c::util::io::ld::NONE,		// READ_MODIFIER		Load cache-modifier.  Valid values: NONE, ca, cg, cs
 			b40c::util::io::st::NONE,		// WRITE_MODIFIER		Store cache-modifier.  Valid values: NONE, wb, cg, cs
+			SMEM_8BYTE_BANKS,							// SMEM_8BYTE_BANKS
 			EARLY_EXIT>						// EARLY_EXIT			Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 				UpsweepPolicy;
 
@@ -470,7 +472,7 @@ struct SortingPass
 				b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
 				b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				false,							// SMEM_8BYTE_BANKS
+				SMEM_8BYTE_BANKS,				// SMEM_8BYTE_BANKS
 				EARLY_EXIT>,					// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 			downsweep::KernelPolicy<
 				RADIX_BITS,						// RADIX_BITS
@@ -482,7 +484,7 @@ struct SortingPass
 				b40c::util::io::ld::NONE,		// READ_MODIFIER			Load cache-modifier.  Valid values: NONE, ca, cg, cs
 				b40c::util::io::st::NONE,		// WRITE_MODIFIER			Store cache-modifier.  Valid values: NONE, wb, cg, cs
 				downsweep::SCATTER_TWO_PHASE,	// SCATTER_STRATEGY			Whether or not to perform a two-phase scatter (scatter to smem first to recover some locality before scattering to global bins)
-				false,							// SMEM_8BYTE_BANKS
+				SMEM_8BYTE_BANKS,				// SMEM_8BYTE_BANKS
 				EARLY_EXIT> >::Type 			// EARLY_EXIT				Whether or not to early-terminate a sorting pass if we detect all keys have the same digit in that pass's digit place
 					DownsweepPolicy;
 	};

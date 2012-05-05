@@ -45,6 +45,7 @@ template <
 	int 							_LOG_LOADS_PER_TILE,
 	util::io::ld::CacheModifier 	_READ_MODIFIER,
 	util::io::st::CacheModifier 	_WRITE_MODIFIER,
+	bool							_SMEM_8BYTE_BANKS,
 	bool 							_EARLY_EXIT>
 struct KernelPolicy
 {
@@ -56,6 +57,7 @@ struct KernelPolicy
 		LOG_THREADS 				= _LOG_THREADS,
 		LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE,
 		LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE,
+		SMEM_8BYTE_BANKS			= _SMEM_8BYTE_BANKS,
 		EARLY_EXIT					= _EARLY_EXIT,
 
 		THREADS						= 1 << LOG_THREADS,
