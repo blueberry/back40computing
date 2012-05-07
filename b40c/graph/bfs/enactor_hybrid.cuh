@@ -643,6 +643,8 @@ public:
 				csr_problem, src, max_grid_size);
     	}
 
+/* Commented out to reduce compile time. Uncomment for GT200
+
     	// GT200
     	if (cuda_props.device_sm_version >= 130) {
 
@@ -731,6 +733,7 @@ public:
 			return EnactSearch<OnePhasePolicy, ExpandPolicy, FilterPolicy, ContractPolicy>(
 				csr_problem, src, max_grid_size);
 	    }
+*/
 
 		printf("Not yet tuned for this architecture\n");
 		return cudaErrorInvalidDeviceFunction;
