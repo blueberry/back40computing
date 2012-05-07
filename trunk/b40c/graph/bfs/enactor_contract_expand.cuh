@@ -551,6 +551,8 @@ public:
 			return EnactIterativeSearch<KernelPolicy>(csr_problem, src, max_grid_size);
 		}
 
+/* Commented out to reduce compile time. Uncomment for GT200
+
 		// GT200
 		if (this->cuda_props.device_sm_version >= 130) {
 
@@ -579,7 +581,7 @@ public:
 
 			return EnactIterativeSearch<KernelPolicy>(csr_problem, src, max_grid_size);
 		}
-
+*/
 		printf("Contract-expand not yet tuned for this architecture\n");
 		return cudaErrorInvalidDeviceFunction;
 	}
