@@ -291,7 +291,7 @@ struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_in);
 
 					// Update source's label
 					if (KernelPolicy::MARK_PREDECESSORS) {
@@ -565,7 +565,7 @@ struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_in);
 
 					// Update source's label
 					if (KernelPolicy::MARK_PREDECESSORS) {

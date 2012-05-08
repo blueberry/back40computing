@@ -157,7 +157,7 @@ struct Cta
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				partials,
 				d_in,
@@ -177,7 +177,7 @@ struct Cta
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			THREADS,
-			KernelPolicy::WRITE_MODIFIER,
+			KernelPolicy::STORE_MODIFIER,
 			false>::Store(
 				partials,
 				d_out,

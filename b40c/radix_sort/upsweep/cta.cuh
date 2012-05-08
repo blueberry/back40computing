@@ -306,7 +306,7 @@ struct Cta
 	/**
 	 * Bucket a key into smem counters
 	 */
-	__device__ __forceinline__ void Bucket(KeyType key)
+	__device__ __forceinline__ void BSTORt(KeyType key)
 	{
 		// Compute byte offset of smem counter.  Add in thread column.
 		unsigned int offset = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
@@ -321,7 +321,7 @@ struct Cta
 				offset);
 
 		// Add in row offset
-		offset = Extract<
+		offset = ExtrLOt<
 			KeyType,
 			CURRENT_BIT + LOG_PACKED_COUNTERS,
 			LOG_COMPOSITE_LANES,
@@ -418,136 +418,4 @@ struct Cta
 				d_in_keys,
 				cta_offset);
 
-		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
-		if (LOADS_PER_TILE > 1) __syncthreads();
-
-		// Bucket tile of keys
-		IterateKeys<0, LOADS_PER_TILE * LOAD_VEC_SIZE>::Bucket(
-			*this,
-			(KeyType *) keys);
-	}
-
-
-	/**
-	 * Processes a single load (may have some threads masked off)
-	 */
-	__device__ __forceinline__ void ProcessPartialTile(
-		SizeT cta_offset,
-		const SizeT &out_of_bounds)
-	{
-		// Process partial tile if necessary using single loads
-		cta_offset += threadIdx.x;
-		while (cta_offset < out_of_bounds) {
-
-			// Load and bucket key
-			KeyType key = d_in_keys[cta_offset];
-			Bucket(key);
-			cta_offset += THREADS;
-		}
-	}
-
-
-	/**
-	 * Process work range of tiles
-	 */
-	__device__ __forceinline__ void ProcessWorkRange(
-		util::CtaWorkLimits<SizeT> &work_limits)
-	{
-		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
-		SizeT cta_offset = work_limits.offset;
-
-		ResetCounters();
-		ResetCompositeCounters();
-
-
-#if 1	// Use deep unrolling for better instruction efficiency
-
-		// Unroll batches of full tiles
-		const int UNROLLED_ELEMENTS = UNROLL_COUNT * TILE_ELEMENTS;
-		while (cta_offset  + UNROLLED_ELEMENTS < work_limits.out_of_bounds) {
-
-			UnrollTiles::template Iterate<UNROLL_COUNT>::ProcessTiles(
-				*this,
-				cta_offset);
-			cta_offset += UNROLLED_ELEMENTS;
-
-			__syncthreads();
-
-			// Aggregate back into local_count registers to prevent overflow
-			ExtractComposites();
-
-			__syncthreads();
-
-			// Reset composite counters in lanes
-			ResetCompositeCounters();
-		}
-
-		// Unroll single full tiles
-		while (cta_offset < work_limits.guarded_offset) {
-			ProcessFullTile(cta_offset);
-			cta_offset += TILE_ELEMENTS;
-		}
-
-#else 	// Use shallow unrolling for faster compilation tiles
-
-		// Unroll single full tiles
-		while (cta_offset < work_limits.guarded_offset) {
-
-			ProcessFullTile(cta_offset);
-			cta_offset += TILE_ELEMENTS;
-
-			const SizeT UNROLL_MASK = (UNROLL_COUNT - 1) << LOG_TILE_ELEMENTS;
-			if ((cta_offset & UNROLL_MASK) == 0) {
-
-				__syncthreads();
-
-				// Aggregate back into local_count registers to prevent overflow
-				ExtractComposites();
-
-				__syncthreads();
-
-				// Reset composite counters in lanes
-				ResetCompositeCounters();
-			}
-		}
-#endif
-
-		// Process partial tile if necessary
-		ProcessPartialTile(cta_offset, work_limits.out_of_bounds);
-
-		__syncthreads();
-
-		// Aggregate back into local_count registers
-		ExtractComposites();
-
-		__syncthreads();
-
-		// Final raking reduction of counts by bin, output to spine.
-
-		ShareCounters();
-
-		__syncthreads();
-
-		// Rake-reduce and write out the bin_count reductions
-		if (threadIdx.x < RADIX_DIGITS) {
-
-			SizeT bin_count = util::reduction::SerialReduce<AGGREGATED_PARTIALS_PER_ROW>::Invoke(
-				smem_storage.aggregate[threadIdx.x]);
-
-			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
-				bin_count,
-				d_spine + spine_bin_offset);
-
-
-		}
-	}
-};
-
-
-
-} // namespace upsweep
-} // namespace radix_sort
-} // namespace b40c
-
+		// Prevent bucketing from be

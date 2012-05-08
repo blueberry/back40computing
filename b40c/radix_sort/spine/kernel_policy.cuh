@@ -37,11 +37,11 @@ namespace spine {
  * Spine tuning policy.
  */
 template <
-	int 							_LOG_THREADS,
-	int 							_LOG_LOAD_VEC_SIZE,
-	int 							_LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier 	_READ_MODIFIER,
-	util::io::st::CacheModifier 	_WRITE_MODIFIER>
+	int 							_LOG_THREADS,			// The number of threads per CTA
+	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load
+	int 							_LOG_LOADS_PER_TILE,	// The number of loads to process per thread per tile
+	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER>		// Store cache-modifier
 struct KernelPolicy
 {
 	enum {
@@ -53,8 +53,8 @@ struct KernelPolicy
 		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 	};
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier STORE_MODIFIER 	= _STORE_MODIFIER;
 };
 
 

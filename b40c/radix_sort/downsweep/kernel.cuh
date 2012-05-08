@@ -42,7 +42,9 @@ template <
 	typename KernelPolicy,
 	typename SizeT,
 	typename KeyType,
-	typename ValueType>
+	typename ValueType,
+	typename IngressOp,
+	typename EgressOp>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__ 
 void Kernel(
@@ -51,6 +53,8 @@ void Kernel(
 	KeyType 	*d_keys1,
 	ValueType 	*d_values0,
 	ValueType 	*d_values1,
+	IngressOp	ingress_op,
+	EgressOp	egress_op,
 	util::CtaWorkDistribution<SizeT> work_decomposition)
 {
 	// CTA abstraction type

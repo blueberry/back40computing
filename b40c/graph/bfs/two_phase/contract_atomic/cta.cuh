@@ -497,7 +497,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.vertex_id,
 				d_in,
@@ -512,7 +512,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::QUEUE_READ_MODIFIER,
+				KernelPolicy::QUEUE_LOAD_MODIFIER,
 				false>::LoadValid(
 					tile.predecessor_id,
 					d_predecessor_in,
@@ -559,7 +559,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_WRITE_MODIFIER>::Scatter(
+			KernelPolicy::QUEUE_STORE_MODIFIER>::Scatter(
 				d_out,
 				tile.vertex_id,
 				tile.flags,

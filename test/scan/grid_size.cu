@@ -78,8 +78,8 @@ typedef b40c::scan::ProblemType <
 typedef b40c::scan::Policy<
 	ProblemType,
 	200,
-	b40c::util::io::ld::NONE, 		// READ_MODIFIER
-	b40c::util::io::st::NONE, 		// WRITE_MODIFIER
+	b40c::util::io::ld::NONE, 		// LOAD_MODIFIER
+	b40c::util::io::st::NONE, 		// STORE_MODIFIER
 	false, 						// UNIFORM_SMEM_ALLOCATION
 	false, 						// UNIFORM_GRID_SIZE
 	false, 						// OVERSUBSCRIBED_GRID_SIZE

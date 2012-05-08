@@ -427,7 +427,7 @@ struct Cta
 						SizeT ranks[1][1] = { {0} };
 						if (coop_offset + threadIdx.x < coop_oob) {
 
-							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+							util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 								neighbor_id, cta->d_column_indices + coop_offset + threadIdx.x);
 
 							// Cull visited vertices and update discovered vertices
@@ -456,7 +456,7 @@ struct Cta
 
 						// Scatter neighbor if valid
 						if (neighbor_id != -1) {
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								neighbor_id,
 								cta->d_out + ranks[0][0]);
 						}
@@ -670,7 +670,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.vertex_id,
 				d_in,
@@ -733,7 +733,7 @@ struct Cta
 				SizeT ranks[1][1] = { {0} };
 				if (scratch_offset + threadIdx.x < scratch_remainder) {
 
-					util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+					util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 						neighbor_id,
 						d_column_indices + smem_storage.offset_scratch[scratch_offset + threadIdx.x]);
 
@@ -769,7 +769,7 @@ struct Cta
 				if (neighbor_id != -1) {
 
 					// Scatter it into queue
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 						neighbor_id,
 						d_out + ranks[0][0]);
 				}

@@ -254,8 +254,8 @@ struct UpsweepTuningRanges
 			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
 			CUB_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
+			util::io::ld::NONE,											// LOAD_MODIFIER,
+			util::io::st::NONE,											// STORE_MODIFIER,
 			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
@@ -274,8 +274,8 @@ struct UpsweepTuningRanges
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::LOAD_MODIFIER == util::io::ld::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::STORE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0)),
 		};
@@ -381,8 +381,8 @@ struct SpineTuningRanges
 			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
 			CUB_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
+			util::io::ld::NONE,											// LOAD_MODIFIER,
+			util::io::st::NONE,											// STORE_MODIFIER,
 			(util::Access<ParamList, LOG_THREADS>::VALUE +
 				util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE +
 				util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE) > >	// LOG_SCHEDULE_GRANULARITY
@@ -409,8 +409,8 @@ struct SpineTuningRanges
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::LOAD_MODIFIER == util::io::ld::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::STORE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0) &&
 				(INVALID_SPECIAL == 0)),
@@ -532,8 +532,8 @@ struct DownsweepTuningRanges
 			util::Access<ParamList, LOG_LOAD_VEC_SIZE>::VALUE,			// LOG_LOAD_VEC_SIZE,
 			util::Access<ParamList, LOG_LOADS_PER_TILE>::VALUE,			// LOG_LOADS_PER_TILE,
 			CUB_LOG_WARP_THREADS(TUNE_ARCH),							// LOG_RAKING_THREADS,
-			util::io::ld::NONE,											// READ_MODIFIER,
-			util::io::st::NONE,											// WRITE_MODIFIER,
+			util::io::ld::NONE,											// LOAD_MODIFIER,
+			util::io::st::NONE,											// STORE_MODIFIER,
 			util::Access<ParamList, LOG_SCHEDULE_GRANULARITY>::VALUE> >	// LOG_SCHEDULE_GRANULARITY
 	struct KernelPolicy : BaseKernelPolicy
 	{
@@ -558,8 +558,8 @@ struct DownsweepTuningRanges
 
 			VALID_COMPILE =
 				((BaseKernelPolicy::VALID > 0) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::READ_MODIFIER == util::io::ld::NONE)) &&
-				((TUNE_ARCH >= 200) || (BaseKernelPolicy::WRITE_MODIFIER == util::io::st::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::LOAD_MODIFIER == util::io::ld::NONE)) &&
+				((TUNE_ARCH >= 200) || (BaseKernelPolicy::STORE_MODIFIER == util::io::st::NONE)) &&
 				(BaseKernelPolicy::LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 				(EST_REGS_OCCUPANCY > 0) &&
 				(INVALID_SPECIAL == 0)),
@@ -611,8 +611,8 @@ struct PassTuningRanges
 		END,
 
 		// Parameters below here are currently not part of the tuning sweep
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		UNIFORM_SMEM_ALLOCATION,
 		UNIFORM_GRID_SIZE
 	};
@@ -623,18 +623,18 @@ struct PassTuningRanges
 	 */
 	template <typename ParamList, int PARAM> struct Ranges;
 
-	// READ_MODIFIER
+	// LOAD_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, READ_MODIFIER> {
+	struct Ranges<ParamList, LOAD_MODIFIER> {
 		enum {
 			MIN = util::io::ld::NONE,
 			MAX = util::io::ld::LIMIT - 1,
 		};
 	};
 
-	// WRITE_MODIFIER
+	// STORE_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, WRITE_MODIFIER> {
+	struct Ranges<ParamList, STORE_MODIFIER> {
 		enum {
 			MIN = util::io::st::NONE,
 			MAX = util::io::st::LIMIT - 1,

@@ -59,11 +59,11 @@ template <
 	// Tunable parameters (generic)
 	int MIN_CTA_OCCUPANCY,												// Lower bound on number of CTAs to have resident per SM (influences per-CTA smem cache sizes and register allocation/spills)
 	int _LOG_THREADS,													// Number of threads per CTA (log)
-	util::io::ld::CacheModifier QUEUE_READ_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where util::io::ld::cg is req'd for fused-iteration implementations incorporating software global barriers.
-	util::io::ld::CacheModifier COLUMN_READ_MODIFIER,					// Load instruction cache-modifier for reading CSR column-indices
-	util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_READ_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 8-byte aligned)
-	util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_READ_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 4-byte aligned)
-	util::io::st::CacheModifier QUEUE_WRITE_MODIFIER,					// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where util::io::st::cg is req'd for fused-iteration implementations incorporating software global barriers.
+	util::io::ld::CacheModifier QUEUE_LOAD_MODIFIER,					// Load instruction cache-modifier for reading incoming frontier vertex-ids. Valid on SM2.0 or newer, where util::io::ld::cg is req'd for fused-iteration implementations incorporating software global barriers.
+	util::io::ld::CacheModifier COLUMN_LOAD_MODIFIER,					// Load instruction cache-modifier for reading CSR column-indices
+	util::io::ld::CacheModifier ROW_OFFSET_ALIGNED_LOAD_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 8-byte aligned)
+	util::io::ld::CacheModifier ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,		// Load instruction cache-modifier for reading CSR row-offsets (when 4-byte aligned)
+	util::io::st::CacheModifier QUEUE_STORE_MODIFIER,					// Store instruction cache-modifier for writing outgoign frontier vertex-ids. Valid on SM2.0 or newer, where util::io::st::cg is req'd for fused-iteration implementations incorporating software global barriers.
 
 	// Tunable parameters (contract)
 	int CONTRACT_LOG_LOAD_VEC_SIZE,										// Number of incoming frontier vertex-ids to dequeue in a single load (log)
@@ -105,8 +105,8 @@ struct KernelPolicy : _ProblemType
 		CONTRACT_LOG_LOAD_VEC_SIZE,
 		CONTRACT_LOG_LOADS_PER_TILE,
 		CONTRACT_LOG_RAKING_THREADS,
-		QUEUE_READ_MODIFIER,
-		QUEUE_WRITE_MODIFIER,
+		QUEUE_LOAD_MODIFIER,
+		QUEUE_STORE_MODIFIER,
 		CONTRACT_WORK_STEALING,
 		CONTRACT_END_BITMASK_CULL,
 		CONTRACT_LOG_SCHEDULE_GRANULARITY>
@@ -121,11 +121,11 @@ struct KernelPolicy : _ProblemType
 		EXPAND_LOG_LOAD_VEC_SIZE,
 		EXPAND_LOG_LOADS_PER_TILE,
 		EXPAND_LOG_RAKING_THREADS,
-		QUEUE_READ_MODIFIER,
-		COLUMN_READ_MODIFIER,
-		ROW_OFFSET_ALIGNED_READ_MODIFIER,
-		ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-		QUEUE_WRITE_MODIFIER,
+		QUEUE_LOAD_MODIFIER,
+		COLUMN_LOAD_MODIFIER,
+		ROW_OFFSET_ALIGNED_LOAD_MODIFIER,
+		ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,
+		QUEUE_STORE_MODIFIER,
 		EXPAND_WORK_STEALING,
 		EXPAND_WARP_GATHER_THRESHOLD,
 		EXPAND_CTA_GATHER_THRESHOLD,

@@ -88,8 +88,8 @@ enum TuningParam {
 
 	PARAM_BEGIN,
 
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		WORK_STEALING,
 
 		LOG_THREADS,
@@ -122,18 +122,18 @@ public:
 	 */
 	template <typename ParamList, int PARAM> struct Ranges;
 
-	// READ_MODIFIER
+	// LOAD_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, READ_MODIFIER> {
+	struct Ranges<ParamList, LOAD_MODIFIER> {
 		enum {
 			MIN = util::io::ld::NONE,
 			MAX = util::io::ld::LIMIT - 1,
 		};
 	};
 
-	// WRITE_MODIFIER
+	// STORE_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, WRITE_MODIFIER> {
+	struct Ranges<ParamList, STORE_MODIFIER> {
 		enum {
 			MIN = util::io::st::NONE,
 			MAX = util::io::st::LIMIT - 1,
@@ -294,10 +294,10 @@ public:
 	template <typename ParamList>
 	void Invoke()
 	{
-		const int C_READ_MODIFIER =
-			util::Access<ParamList, READ_MODIFIER>::VALUE;
-		const int C_WRITE_MODIFIER =
-			util::Access<ParamList, WRITE_MODIFIER>::VALUE;
+		const int C_LOAD_MODIFIER =
+			util::Access<ParamList, LOAD_MODIFIER>::VALUE;
+		const int C_STORE_MODIFIER =
+			util::Access<ParamList, STORE_MODIFIER>::VALUE;
 		const int C_WORK_STEALING =
 			util::Access<ParamList, WORK_STEALING>::VALUE;
 		const int C_OVERSUBSCRIBED_GRID_SIZE =
@@ -326,8 +326,8 @@ public:
 			C_LOG_THREADS,
 			C_LOG_LOAD_VEC_SIZE,
 			C_LOG_LOADS_PER_TILE,
-			(util::io::ld::CacheModifier) C_READ_MODIFIER,
-			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
+			(util::io::ld::CacheModifier) C_LOAD_MODIFIER,
+			(util::io::st::CacheModifier) C_STORE_MODIFIER,
 			C_WORK_STEALING,
 			C_OVERSUBSCRIBED_GRID_SIZE> Policy;
 
@@ -338,8 +338,8 @@ public:
 		const int EST_REGS_OCCUPANCY = CUB_SM_REGISTERS(TUNE_ARCH) / REGS_ESTIMATE;
 
 		const int VALID =
-			(((TUNE_ARCH >= 200) || (C_READ_MODIFIER == util::io::ld::NONE)) &&
-			((TUNE_ARCH >= 200) || (C_WRITE_MODIFIER == util::io::st::NONE)) &&
+			(((TUNE_ARCH >= 200) || (C_LOAD_MODIFIER == util::io::ld::NONE)) &&
+			((TUNE_ARCH >= 200) || (C_STORE_MODIFIER == util::io::st::NONE)) &&
 			(C_LOG_THREADS <= CUB_LOG_CTA_THREADS(TUNE_ARCH)) &&
 			(EST_REGS_OCCUPANCY > 0));
 
@@ -445,8 +445,8 @@ int main(int argc, char** argv)
 		"LOG_THREADS, "
 		"LOG_LOAD_VEC_SIZE, "
 		"LOG_LOADS_PER_TILE, "
-		"READ_MODIFIER, "
-		"WRITE_MODIFIER, "
+		"LOAD_MODIFIER, "
+		"STORE_MODIFIER, "
 		"WORK_STEALING, "
 		"OVERSUBSCRIBED_GRID_SIZE, "
 		"elapsed time (ms), "

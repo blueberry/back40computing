@@ -408,11 +408,11 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::cg,		// QUEUE_LOAD_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_LOAD_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_LOAD_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,
+				util::io::st::cg,		// QUEUE_STORE_MODIFIER,
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
@@ -431,11 +431,11 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::cg,		// QUEUE_LOAD_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_LOAD_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_LOAD_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,
+				util::io::st::cg,		// QUEUE_STORE_MODIFIER,
 				true,					// WORK_STEALING
 				6> SerialPolicy;
 
@@ -451,8 +451,8 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				2,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
-				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::NONE,		// QUEUE_LOAD_MODIFIER,
+				util::io::st::NONE,		// QUEUE_STORE_MODIFIER,
 				false,					// WORK_STEALING
 				9> CompactPolicy;
 
@@ -473,11 +473,11 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::cg,		// QUEUE_LOAD_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_LOAD_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_LOAD_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,
+				util::io::st::cg,		// QUEUE_STORE_MODIFIER,
 				true,					// WORK_STEALING
 				32,						// WARP_GATHER_THRESHOLD
 				128 * 4, 				// CTA_GATHER_THRESHOLD,
@@ -496,11 +496,11 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				0,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::cg,		// QUEUE_READ_MODIFIER,
-				util::io::ld::NONE,		// COLUMN_READ_MODIFIER,
-				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_READ_MODIFIER,
-				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_READ_MODIFIER,
-				util::io::st::cg,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::cg,		// QUEUE_LOAD_MODIFIER,
+				util::io::ld::NONE,		// COLUMN_LOAD_MODIFIER,
+				util::io::ld::cg,		// ROW_OFFSET_ALIGNED_LOAD_MODIFIER,
+				util::io::ld::NONE,		// ROW_OFFSET_UNALIGNED_LOAD_MODIFIER,
+				util::io::st::cg,		// QUEUE_STORE_MODIFIER,
 				true,					// WORK_STEALING
 				6> BenchSerialPolicy;
 
@@ -516,8 +516,8 @@ public:
 				0,						// LOG_LOAD_VEC_SIZE
 				2,						// LOG_LOADS_PER_TILE
 				5,						// LOG_RAKING_THREADS
-				util::io::ld::NONE,		// QUEUE_READ_MODIFIER,
-				util::io::st::NONE,		// QUEUE_WRITE_MODIFIER,
+				util::io::ld::NONE,		// QUEUE_LOAD_MODIFIER,
+				util::io::st::NONE,		// QUEUE_STORE_MODIFIER,
 				false,					// WORK_STEALING
 				9> BenchCompactPolicy;
 

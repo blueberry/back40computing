@@ -54,8 +54,8 @@ typedef b40c::copy::Policy <
 	7, 						// LOG_THREADS
 	2, 						// LOG_LOAD_VEC_SIZE
 	0, 						// LOG_LOADS_PER_TILE
-	b40c::util::io::ld::NONE,	// READ_MODIFIER
-	b40c::util::io::st::NONE, 	// WRITE_MODIFIER
+	b40c::util::io::ld::NONE,	// LOAD_MODIFIER
+	b40c::util::io::st::NONE, 	// STORE_MODIFIER
 	false,					// WORKSTEALING
 	false> 					// OVERSUBSCRIBED
 		Policy;

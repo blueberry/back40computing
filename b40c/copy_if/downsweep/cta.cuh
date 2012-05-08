@@ -128,7 +128,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				keys,
 				d_in_keys,
@@ -158,7 +158,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER>::Scatter(
+			KernelPolicy::STORE_MODIFIER>::Scatter(
 				d_out_keys,
 				keys,
 				valid,
@@ -191,7 +191,7 @@ struct Cta
 
 		// Output number of compacted items
 		if (work_limits.last_block && (threadIdx.x == 0)) {
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry, d_num_compacted);
 		}
 	}

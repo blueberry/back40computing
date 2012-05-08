@@ -36,17 +36,17 @@ namespace upsweep {
  * Radix sort upsweep reduction tuning policy.
  */
 template <
-	int 							_RADIX_BITS,
-	int 							_CURRENT_BIT,
-	int 							_CURRENT_PASS,
-	int 							_MIN_CTA_OCCUPANCY,
-	int 							_LOG_THREADS,
-	int 							_LOG_LOAD_VEC_SIZE,
-	int 							_LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier 	_READ_MODIFIER,
-	util::io::st::CacheModifier 	_WRITE_MODIFIER,
-	bool							_SMEM_8BYTE_BANKS,
-	bool 							_EARLY_EXIT>
+	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
+	int 							_CURRENT_BIT,			// The bit offset of the current radix digit place
+	int 							_CURRENT_PASS,			// The number of previous passes
+	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
+	int 							_LOG_THREADS,			// The number of threads per CTA
+	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load
+	int 							_LOG_LOADS_PER_TILE,	// The number of loads to process per thread per tile
+	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	bool							_SMEM_8BYTE_BANKS,		// Shared memory bank size
+	bool 							_EARLY_EXIT>			// Whether or not to short-circuit passes if the upsweep determines homogoneous digits in the current digit place
 struct KernelPolicy
 {
 	enum {
@@ -64,8 +64,8 @@ struct KernelPolicy
 		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 	};
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier STORE_MODIFIER 	= _STORE_MODIFIER;
 };
 	
 

@@ -324,7 +324,7 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				(KeyType (*)[LOAD_VEC_SIZE]) this->keys,
 				cta->d_in_keys,
@@ -356,7 +356,7 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::WRITE_MODIFIER,
+			KernelPolicy::STORE_MODIFIER,
 			false>::Store(
 				valid,
 				cta->d_flags_out,

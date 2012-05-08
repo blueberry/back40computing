@@ -81,9 +81,9 @@ struct SweepPass
 			unsigned char* d_out_bytes = (unsigned char *)(d_out + work_limits.guarded_elements);
 			unsigned char extra_byte;
 
-			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+			util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(
 				extra_byte, d_in_bytes + threadIdx.x);
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				extra_byte, d_out_bytes + threadIdx.x);
 		}
 
@@ -152,8 +152,8 @@ struct SweepPass <KernelPolicy, true>
 				unsigned char* d_out_bytes = (unsigned char *)(d_out + work_decomposition.num_elements);
 				unsigned char extra_byte;
 
-				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);
-				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(extra_byte, d_out_bytes + threadIdx.x);
+				util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(extra_byte, d_in_bytes + threadIdx.x);
+				util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(extra_byte, d_out_bytes + threadIdx.x);
 			}
 		}
 	}

@@ -107,7 +107,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				data, d_in, cta_offset);
 
@@ -140,14 +140,14 @@ struct Cta
 
 		if (FIRST_TILE) {
 			if (cta_offset < out_of_bounds) {
-				util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(carry, d_in + cta_offset);
+				util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(carry, d_in + cta_offset);
 				cta_offset += KernelPolicy::THREADS;
 			}
 		}
 
 		// Process loads singly
 		while (cta_offset < out_of_bounds) {
-			util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(datum, d_in + cta_offset);
+			util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(datum, d_in + cta_offset);
 			carry = reduction_op(carry, datum);
 			cta_offset += KernelPolicy::THREADS;
 		}
@@ -172,7 +172,7 @@ struct Cta
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry, d_out + blockIdx.x);
 		}
 	}
@@ -198,7 +198,7 @@ struct Cta
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry, d_out + blockIdx.x);
 		}
 	}

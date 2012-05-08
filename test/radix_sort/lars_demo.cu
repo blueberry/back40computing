@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 //	typedef unsigned int			ValueType;
 
 	const int 		START_BIT			= 0;
-	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
+	const int 		KEY_BITS 			= 5; //sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
     int 			num_elements 		= 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas 			= 0;						// default: let the enactor decide how many CTAs to launch based upon device properties

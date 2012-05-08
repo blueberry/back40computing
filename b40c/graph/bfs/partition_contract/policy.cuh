@@ -69,8 +69,8 @@ template <
 	// Common tunable parameters
 	int LOG_BINS,
 	int LOG_SCHEDULE_GRANULARITY,
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
+	util::io::ld::CacheModifier LOAD_MODIFIER,
+	util::io::st::CacheModifier STORE_MODIFIER,
 
 	// Upsweep
 	int UPSWEEP_MIN_CTA_OCCUPANCY,
@@ -97,8 +97,8 @@ struct Policy :
 	partition::Policy<
 		ProblemType,
 		CUDA_ARCH,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		SPINE_LOG_THREADS,
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
@@ -131,8 +131,8 @@ struct Policy :
 			UPSWEEP_LOG_THREADS,
 			UPSWEEP_LOG_LOAD_VEC_SIZE,
 			UPSWEEP_LOG_LOADS_PER_TILE,
-			READ_MODIFIER,
-			WRITE_MODIFIER>,
+			LOAD_MODIFIER,
+			STORE_MODIFIER>,
 		INSTRUMENT>
 			Upsweep;
 
@@ -149,8 +149,8 @@ struct Policy :
 			DOWNSWEEP_LOG_LOADS_PER_CYCLE,
 			DOWNSWEEP_LOG_CYCLES_PER_TILE,
 			DOWNSWEEP_LOG_RAKING_THREADS,
-			READ_MODIFIER,
-			WRITE_MODIFIER,
+			LOAD_MODIFIER,
+			STORE_MODIFIER,
 			DOWNSWEEP_SCATTER_STRATEGY>,
 		INSTRUMENT>
 			Downsweep;

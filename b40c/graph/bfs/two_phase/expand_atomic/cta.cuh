@@ -259,17 +259,17 @@ struct Cta
 					while (coop_offset < coop_oob) {
 
 						// Gather
-						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+						util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 							neighbor_id, cta->d_column_indices + coop_offset);
 
 						// Scatter neighbor
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+						util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 							neighbor_id,
 							cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
 						if (KernelPolicy::MARK_PREDECESSORS) {
 							// Scatter predecessor
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								predecessor_id,
 								cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
@@ -329,16 +329,16 @@ struct Cta
 						while (coop_offset  + CUB_WARP_THREADS(KernelPolicy::CUDA_ARCH) < coop_oob) {
 
 							// Gather
-							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+							util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
 
 							// Scatter neighbor
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
 							if (KernelPolicy::MARK_PREDECESSORS) {
 								// Scatter predecessor
-								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+								util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 									predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 							}
 
@@ -348,16 +348,16 @@ struct Cta
 
 						if (coop_offset + lane_id < coop_oob) {
 							// Gather
-							util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+							util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 								neighbor_id, cta->d_column_indices + coop_offset + lane_id);
 
 							// Scatter neighbor
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 
 							if (KernelPolicy::MARK_PREDECESSORS) {
 								// Scatter predecessor
-								util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+								util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 									predecessor_id, cta->d_predecessor_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 							}
 						}
@@ -592,7 +592,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.vertex_id,
 				d_in,
@@ -670,19 +670,19 @@ struct Cta
 			{
 				// Gather a neighbor
 				VertexId neighbor_id;
-				util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+				util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 					neighbor_id,
 					d_column_indices + smem_storage.gather_offsets[scratch_offset]);
 
 				// Scatter it into queue
-				util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+				util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 					neighbor_id,
 					d_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 
 				if (KernelPolicy::MARK_PREDECESSORS) {
 					// Scatter predecessor it into queue
 					VertexId predecessor_id = smem_storage.gather_predecessors[scratch_offset];
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 						predecessor_id,
 						d_predecessor_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 				}

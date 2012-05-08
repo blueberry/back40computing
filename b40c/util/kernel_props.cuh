@@ -36,10 +36,8 @@ namespace b40c {
 namespace util {
 
 
-template <typename KernelFunc>
 struct KernelProps
 {
-	KernelFunc						kernel_func;
 	int 							threads;
 	int								sm_arch;
 	int								sm_count;
@@ -47,9 +45,10 @@ struct KernelProps
 	int 							max_cta_occupancy;
 
 	/**
-	 * Constructor
+	 * Initializer
 	 */
-	KernelProps(
+	template <typename KernelFunc>
+	cudaError_t Init(
 		KernelFunc kernel_func,
 		int threads,
 		int sm_arch,
@@ -60,16 +59,18 @@ struct KernelProps
 			sm_count(sm_count),
 			max_cta_occupancy(0)
 	{
-		cudaError_t error;
-		error = util::B40CPerror(
-			cudaFuncGetAttributes(&kernel_attrs, kernel_func),
-			"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
-			__FILE__,
-			__LINE__);
+		cudaError_t error = cudaSuccess;
 
-		if (error) {
-			kernel_func = NULL;
-		} else {
+		do {
+			// Get kernel attributes
+			error = util::B40CPerror(
+				cudaFuncGetAttributes(&kernel_attrs, kernel_func),
+				"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
+				__FILE__,
+				__LINE__);
+			if (error) break;
+
+			// Compute SM CTA occupancy by resource
 			int max_block_occupancy = CUB_SM_CTAS(sm_arch);
 			int max_thread_occupancy = CUB_SM_THREADS(sm_arch) / threads;
 			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
@@ -77,10 +78,14 @@ struct KernelProps
 					max_block_occupancy;
 			int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
 
+			// Determine overall SM CTA occupancy
 			max_cta_occupancy = CUB_MIN(
 				CUB_MIN(max_block_occupancy, max_thread_occupancy),
 				CUB_MIN(max_smem_occupancy, max_reg_occupancy));
-		}
+
+		} while (0);
+
+		return error;
 	}
 
 
