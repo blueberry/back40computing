@@ -362,7 +362,7 @@ struct Tile
 			// Distribute if not out-of-bounds
 			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
-				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 					items[VEC],
 					d_out + threadIdx.x + (KernelPolicy::THREADS * VEC) + tile->bin_offsets[VEC]);
 			}
@@ -538,7 +538,7 @@ struct Tile
 				0,									// log loads per tile
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::LOAD_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					(KeyType (*)[LOAD_VEC_SIZE]) keys,
 					(Cta::FLOP_TURN) ?
@@ -581,7 +581,7 @@ struct Tile
 				0,									// log loads per tile
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::LOAD_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					(KeyType (*)[LOAD_VEC_SIZE]) values,
 					(Cta::FLOP_TURN) ?

@@ -273,12 +273,12 @@ struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 
 						// We'll be the only block with active work this iteration.
 						// Enqueue the source for us to subsequently process.
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
+						util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_edge_frontier);
 
 						if (KernelPolicy::MARK_PREDECESSORS) {
 							// Enqueue predecessor of source
 							typename KernelPolicy::VertexId predecessor = -2;
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(predecessor, d_predecessor);
 						}
 					}
 

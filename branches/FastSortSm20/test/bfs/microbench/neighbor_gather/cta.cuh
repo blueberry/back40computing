@@ -268,7 +268,7 @@ struct Cta
 
 						// Gather
 						VertexId neighbor_id;
-						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+						util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 							neighbor_id,
 							cta->d_column_indices + coop_offset);
 
@@ -277,7 +277,7 @@ struct Cta
 						if (!KernelPolicy::BENCHMARK) {
 
 							// Scatter neighbor
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								neighbor_id,
 								cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
@@ -326,7 +326,7 @@ struct Cta
 
 						// Gather
 						VertexId neighbor_id;
-						util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+						util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 							neighbor_id, cta->d_column_indices + coop_offset);
 
 						BitmaskCull(cta, neighbor_id);
@@ -334,7 +334,7 @@ struct Cta
 						if (!KernelPolicy::BENCHMARK) {
 
 							// Scatter neighbor
-							util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+							util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 								neighbor_id, cta->d_out + cta->smem_storage.state.coarse_enqueue_offset + coop_rank);
 						}
 
@@ -546,7 +546,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.row_offset,
 				d_in_row_offsets,
@@ -558,7 +558,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.row_length,
 				d_in_row_lengths,
@@ -627,7 +627,7 @@ struct Cta
 				// Gather a neighbor
 				VertexId neighbor_id;
 
-				util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+				util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 					neighbor_id,
 					d_column_indices + smem_storage.offset_scratch[scratch_offset]);
 
@@ -636,7 +636,7 @@ struct Cta
 				if (!KernelPolicy::BENCHMARK) {
 
 					// Scatter it into queue
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 						neighbor_id,
 						d_out + smem_storage.state.fine_enqueue_offset + tile.progress + scratch_offset);
 				}

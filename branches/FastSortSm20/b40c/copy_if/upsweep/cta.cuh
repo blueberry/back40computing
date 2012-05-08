@@ -110,7 +110,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				keys,
 				d_in_keys,
@@ -148,7 +148,7 @@ struct Cta
 
 		// Write output
 		if (threadIdx.x == 0) {
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry, d_spine + blockIdx.x);
 		}
 	}

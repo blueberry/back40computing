@@ -163,7 +163,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::LOAD_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT,
 				KernelPolicy::CONSECUTIVE_SMEM_ASSIST,
 				FIRST_TILE,
@@ -181,7 +181,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::READ_MODIFIER,
+				KernelPolicy::LOAD_MODIFIER,
 				KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 					values,
 					cta->d_in_values,
@@ -221,7 +221,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_keys,
 					keys,
 					head_flags,
@@ -244,7 +244,7 @@ struct Cta
 				KernelPolicy::LOG_LOADS_PER_TILE,
 				KernelPolicy::LOG_LOAD_VEC_SIZE,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_values,
 					values,
 					head_flags,
@@ -354,7 +354,7 @@ struct Cta
 
 			// Output the number of compacted items
 			if (threadIdx.x == RakingSoaDetails::CUMULATIVE_THREAD) {
-				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 					carry.t1 - 1, d_num_compacted);
 			}
 
@@ -363,12 +363,12 @@ struct Cta
 			// Partial-tile processing outputs the final reduced value.  If there is
 			// no partial work for the last CTA, it must instead write the final reduced value
 			// residing in its carry.t1 flag
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry.t0,
 				d_out_values + carry.t1 - 1);
 
 			// Output the number of compacted items
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry.t1, d_num_compacted);
 		}
 	}

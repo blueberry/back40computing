@@ -60,8 +60,8 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _LOAD_MODIFIER,
+	util::io::st::CacheModifier _STORE_MODIFIER,
 	bool _WORK_STEALING,
 	bool _OVERSUBSCRIBED_GRID_SIZE>
 
@@ -89,8 +89,8 @@ struct Policy
 	// Constants
 	//---------------------------------------------------------------------
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier STORE_MODIFIER 	= _STORE_MODIFIER;
 
 	enum {
 
@@ -144,8 +144,8 @@ struct Policy
 		printf("%d, ", _LOG_THREADS);
 		printf("%d, ", _LOG_LOAD_VEC_SIZE);
 		printf("%d, ", _LOG_LOADS_PER_TILE);
-		printf("%s, ", CacheModifierToString(_READ_MODIFIER));
-		printf("%s, ", CacheModifierToString(_WRITE_MODIFIER));
+		printf("%s, ", CacheModifierToString(_LOAD_MODIFIER));
+		printf("%s, ", CacheModifierToString(_STORE_MODIFIER));
 		printf("%s, ", (WORK_STEALING) ? "true" : "false");
 		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");
 	}

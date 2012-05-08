@@ -58,9 +58,9 @@ __device__ __forceinline__ void DownsweepPass(
 	// Read the exclusive spine partial
 	SpineSoaTuple spine_partial;
 
-	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+	util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(
 		spine_partial.t0, d_spine_partials + blockIdx.x);
-	util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+	util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(
 		spine_partial.t1, d_spine_flags + blockIdx.x);
 
 	// CTA processing abstraction

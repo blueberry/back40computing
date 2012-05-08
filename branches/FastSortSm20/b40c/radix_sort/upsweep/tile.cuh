@@ -100,7 +100,7 @@ struct Tile :
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::template LoadValid<
 				KeyType,
 				KernelPolicy::PreprocessTraits::Preprocess>(

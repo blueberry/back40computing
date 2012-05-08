@@ -58,8 +58,8 @@ template <
 	int _LOG_THREADS,
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _LOAD_MODIFIER,
+	util::io::st::CacheModifier _STORE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY,
 	bool _CONSECUTIVE_SMEM_ASSIST>
 
@@ -68,8 +68,8 @@ struct KernelPolicy : ProblemType
 	typedef typename ProblemType::SizeT 	SizeT;
 	typedef typename ProblemType::KeyType 	KeyType;
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier STORE_MODIFIER 	= _STORE_MODIFIER;
 
 	enum {
 

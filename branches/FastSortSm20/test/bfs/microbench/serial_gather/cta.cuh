@@ -145,7 +145,7 @@ struct Cta
 					// Gather a neighbor
 					VertexId neighbor_id;
 
-					util::io::ModifiedLoad<KernelPolicy::COLUMN_READ_MODIFIER>::Ld(
+					util::io::ModifiedLoad<KernelPolicy::COLUMN_LOAD_MODIFIER>::Ld(
 						neighbor_id,
 						cta->d_column_indices + tile->row_offset[LOAD][VEC] + i);
 
@@ -154,7 +154,7 @@ struct Cta
 					if (!KernelPolicy::BENCHMARK) {
 
 						// Scatter it into queue
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(
+						util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(
 							neighbor_id,
 							cta->d_out + tile->rank[LOAD][VEC] + i);
 					}
@@ -257,7 +257,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.row_offset,
 				d_in_row_offsets,
@@ -269,7 +269,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::QUEUE_READ_MODIFIER,
+			KernelPolicy::QUEUE_LOAD_MODIFIER,
 			false>::LoadValid(
 				tile.row_length,
 				d_in_row_lengths,

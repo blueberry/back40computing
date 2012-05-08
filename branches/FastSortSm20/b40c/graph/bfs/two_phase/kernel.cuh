@@ -98,12 +98,12 @@ void Kernel(
 
 				// We'll be the only block with active work this iteration.
 				// Enqueue the source for us to subsequently process.
-				util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_edge_frontier);
+				util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_edge_frontier);
 
 				if (ExpandKernelPolicy::MARK_PREDECESSORS) {
 					// Enqueue predecessor of source
 					VertexId predecessor = -2;
-					util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor);
+					util::io::ModifiedStore<ExpandKernelPolicy::QUEUE_STORE_MODIFIER>::St(predecessor, d_predecessor);
 				}
 
 				// Initialize work decomposition in smem

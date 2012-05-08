@@ -136,8 +136,8 @@ enum TuningParam {
 	UNIFORM_GRID_SIZE,
 	UNIFORM_SMEM_ALLOCATION,
 	OVERSUBSCRIBED_GRID_SIZE,
-	READ_MODIFIER,
-	WRITE_MODIFIER,
+	LOAD_MODIFIER,
+	STORE_MODIFIER,
 	UPSWEEP_LOG_RAKING_THREADS,
 	DOWNSWEEP_LOG_RAKING_THREADS,
 
@@ -178,18 +178,18 @@ public:
 	 */
 	template <typename ParamList, int PARAM> struct Ranges;
 
-	// READ_MODIFIER
+	// LOAD_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, READ_MODIFIER> {
+	struct Ranges<ParamList, LOAD_MODIFIER> {
 		enum {
 			MIN = util::ld::NONE,
 			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::ld::NONE : util::ld::CS		// No type modifiers for pre-Fermi or non-builtin types
 		};
 	};
 
-	// WRITE_MODIFIER
+	// STORE_MODIFIER
 	template <typename ParamList>
-	struct Ranges<ParamList, WRITE_MODIFIER> {
+	struct Ranges<ParamList, STORE_MODIFIER> {
 		enum {
 			MIN = util::st::NONE,
 			MAX = ((TUNE_ARCH < 200) || (util::NumericTraits<T>::REPRESENTATION == util::NOT_A_NUMBER)) ? util::st::NONE : util::st::CS		// No type modifiers for pre-Fermi or non-builtin types
@@ -392,11 +392,11 @@ public:
 	template <typename ParamList>
 	void Invoke()
 	{
-		const int C_READ_MODIFIER =
-//			util::Access<ParamList, READ_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+		const int C_LOAD_MODIFIER =
+//			util::Access<ParamList, LOAD_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
 			util::ld::NONE;
-		const int C_WRITE_MODIFIER =
-//			util::Access<ParamList, WRITE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
+		const int C_STORE_MODIFIER =
+//			util::Access<ParamList, STORE_MODIFIER>::VALUE;					// These can be tuned, but we're currently not compelled to
 			util::ld::NONE;
 		const int C_UNIFORM_SMEM_ALLOCATION =
 //			util::Access<ParamList, UNIFORM_SMEM_ALLOCATION>::VALUE;
@@ -470,8 +470,8 @@ public:
 		typedef segmented_scan::ProblemConfig <
 			ProblemType,
 			TUNE_ARCH,
-			(util::io::ld::CacheModifier) C_READ_MODIFIER,
-			(util::io::st::CacheModifier) C_WRITE_MODIFIER,
+			(util::io::ld::CacheModifier) C_LOAD_MODIFIER,
+			(util::io::st::CacheModifier) C_STORE_MODIFIER,
 			C_UNIFORM_SMEM_ALLOCATION,
 			C_UNIFORM_GRID_SIZE,
 			C_OVERSUBSCRIBED_GRID_SIZE,
@@ -612,7 +612,7 @@ int main(int argc, char** argv)
 	printf("\nCodeGen: \t[device_sm_version: %d, kernel_ptx_version: %d]\n\n",
 		cuda_props.device_sm_version, cuda_props.kernel_ptx_version);
 
-	printf("sizeof(T), READ_MODIFIER, WRITE_MODIFIER, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, LOG_SCHEDULE_GRANULARITY, "
+	printf("sizeof(T), LOAD_MODIFIER, STORE_MODIFIER, UNIFORM_SMEM_ALLOCATION, UNIFORM_GRID_SIZE, OVERSUBSCRIBED_GRID_SIZE, LOG_SCHEDULE_GRANULARITY, "
 		"UPSWEEP_MAX_CTA_OCCUPANCY, UPSWEEP_LOG_THREADS, UPSWEEP_LOG_LOAD_VEC_SIZE, UPSWEEP_LOG_LOADS_PER_TILE, UPSWEEP_LOG_RAKING_THREADS, "
 		"SPINE_LOG_THREADS, SPINE_LOG_LOAD_VEC_SIZE, SPINE_LOG_LOADS_PER_TILE, SPINE_LOG_RAKING_THREADS, "
 		"DOWNSWEEP_MAX_CTA_OCCUPANCY, DOWNSWEEP_LOG_THREADS, DOWNSWEEP_LOG_LOAD_VEC_SIZE, DOWNSWEEP_LOG_LOADS_PER_TILE, DOWNSWEEP_LOG_RAKING_THREADS, "

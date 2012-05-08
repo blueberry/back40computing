@@ -139,7 +139,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT,
 			KernelPolicy::CONSECUTIVE_SMEM_ASSIST,
 			FIRST_TILE,
@@ -157,7 +157,7 @@ struct Cta
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			KernelPolicy::CHECK_ALIGNMENT>::LoadValid(
 				values,
 				d_in_values,
@@ -185,11 +185,11 @@ struct Cta
 		// Write output
 		if (threadIdx.x == RakingSoaDetails::CUMULATIVE_THREAD) {
 
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry.t0,
 				d_spine_partials + blockIdx.x);
 
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 				carry.t1,
 				d_spine_flags + blockIdx.x);
 		}

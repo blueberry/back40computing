@@ -687,7 +687,7 @@ struct Tile
 */
 			if ((guarded_elements >= KernelPolicy::TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
-				util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+				util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 					linear_keys[ELEMENT],
 					cta->d_out_keys + threadIdx.x + (KernelPolicy::THREADS * ELEMENT) + bin_carry);
 			}

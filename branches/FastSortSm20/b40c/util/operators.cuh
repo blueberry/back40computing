@@ -30,21 +30,19 @@
 namespace b40c {
 namespace util {
 
-/**
- * Static operator wrapping structure.
- *
- * (N.B. due to an NVCC/cudafe 4.0 regression, we can't specify static templated
- * functions inside other types...)
- */
-template <typename T, typename R = T>
-struct Operators
-{
-	/**
-	 * Empty default transform function
-	 */
-	static __device__ __forceinline__ void NopTransform(T &val) {}
 
+/**
+ * Cast transform functor
+ */
+template <typename T, typename S>
+struct CastTransformOp
+{
+	__device__ __forceinline__ T operator ()(const S &item)
+	{
+		return (T) item;
+	}
 };
+
 
 
 /**

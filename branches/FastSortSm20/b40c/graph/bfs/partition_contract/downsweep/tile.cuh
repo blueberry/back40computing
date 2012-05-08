@@ -125,7 +125,7 @@ struct Tile :
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 					(KeyType (*)[KernelPolicy::LOAD_VEC_SIZE]) this->keys,
 					cta->d_in_keys,
@@ -138,7 +138,7 @@ struct Tile :
 			KernelPolicy::LOG_LOADS_PER_TILE,
 			KernelPolicy::LOG_LOAD_VEC_SIZE,
 			KernelPolicy::THREADS,
-			KernelPolicy::READ_MODIFIER,
+			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				(ValidFlag (*)[KernelPolicy::LOAD_VEC_SIZE]) flags,
 				cta->d_flags_in,
@@ -162,7 +162,7 @@ struct Tile :
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_keys,
 					(KeyType (*)[1]) this->keys,
 					(ValidFlag (*)[1]) this->flags,
@@ -173,7 +173,7 @@ struct Tile :
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_keys,
 					(KeyType (*)[1])  this->keys,
 					(SizeT (*)[1])  this->scatter_offsets,
@@ -197,7 +197,7 @@ struct Tile :
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_values,
 					(ValueType (*)[1]) this->values,
 					(ValidFlag (*)[1]) this->flags,
@@ -208,7 +208,7 @@ struct Tile :
 				KernelPolicy::LOG_TILE_ELEMENTS_PER_THREAD,
 				0,
 				KernelPolicy::THREADS,
-				KernelPolicy::WRITE_MODIFIER>::Scatter(
+				KernelPolicy::STORE_MODIFIER>::Scatter(
 					cta->d_out_values,
 					(ValueType (*)[1]) this->values,
 					(SizeT (*)[1]) this->scatter_offsets,

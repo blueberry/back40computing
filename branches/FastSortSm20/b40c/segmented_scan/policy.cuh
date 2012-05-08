@@ -54,8 +54,8 @@ template <
 	int CUDA_ARCH,
 
 	// Common tunable params
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
+	util::io::ld::CacheModifier LOAD_MODIFIER,
+	util::io::st::CacheModifier STORE_MODIFIER,
 	bool _UNIFORM_SMEM_ALLOCATION,
 	bool _UNIFORM_GRID_SIZE,
 	bool _OVERSUBSCRIBED_GRID_SIZE,
@@ -114,8 +114,8 @@ struct Policy : ProblemType
 		UPSWEEP_LOG_LOAD_VEC_SIZE,
 		UPSWEEP_LOG_LOADS_PER_TILE,
 		UPSWEEP_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Upsweep;
 
@@ -130,8 +130,8 @@ struct Policy : ProblemType
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 
@@ -146,8 +146,8 @@ struct Policy : ProblemType
 		DOWNSWEEP_LOG_LOAD_VEC_SIZE,
 		DOWNSWEEP_LOG_LOADS_PER_TILE,
 		DOWNSWEEP_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		LOG_SCHEDULE_GRANULARITY>
 			Downsweep;
 
@@ -162,8 +162,8 @@ struct Policy : ProblemType
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Single;
 
@@ -208,8 +208,8 @@ struct Policy : ProblemType
 		printf("%d, ", CUDA_ARCH);
 
 		// Common tunable params
-		printf("%s, ", CacheModifierToString(READ_MODIFIER));
-		printf("%s, ", CacheModifierToString(WRITE_MODIFIER));
+		printf("%s, ", CacheModifierToString(LOAD_MODIFIER));
+		printf("%s, ", CacheModifierToString(STORE_MODIFIER));
 		printf("%s ", (_UNIFORM_SMEM_ALLOCATION) ? "true" : "false");
 		printf("%s ", (_UNIFORM_GRID_SIZE) ? "true" : "false");
 		printf("%s ", (_OVERSUBSCRIBED_GRID_SIZE) ? "true" : "false");

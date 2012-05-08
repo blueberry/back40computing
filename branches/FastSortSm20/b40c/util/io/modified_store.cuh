@@ -235,9 +235,9 @@ struct ModifiedStore
 
 #else  //__CUDA_ARCH__
 
-	template <st::CacheModifier WRITE_MODIFIER>
+	template <st::CacheModifier STORE_MODIFIER>
 	template <typename T>
-	__device__ __forceinline__ void ModifiedStore<WRITE_MODIFIER>::St(T val, T *ptr)
+	__device__ __forceinline__ void ModifiedStore<STORE_MODIFIER>::St(T val, T *ptr)
 	{
 		*ptr = val;
 	}

@@ -60,8 +60,8 @@ template <
 	int _LOG_LOAD_VEC_SIZE,
 	int _LOG_LOADS_PER_TILE,
 	int _LOG_RAKING_THREADS,
-	util::io::ld::CacheModifier _READ_MODIFIER,
-	util::io::st::CacheModifier _WRITE_MODIFIER,
+	util::io::ld::CacheModifier _LOAD_MODIFIER,
+	util::io::st::CacheModifier _STORE_MODIFIER,
 	int _LOG_SCHEDULE_GRANULARITY>
 
 struct KernelPolicy : ProblemType
@@ -72,8 +72,8 @@ struct KernelPolicy : ProblemType
 	typedef int 									LocalFlag;		// Local type for noting local discontinuities, (just needs to count up to TILE_ELEMENTS)
 	typedef SizeT									RankType;		// Type for local raking prefix sum
 
-	static const util::io::ld::CacheModifier READ_MODIFIER 		= _READ_MODIFIER;
-	static const util::io::st::CacheModifier WRITE_MODIFIER 	= _WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier STORE_MODIFIER 	= _STORE_MODIFIER;
 
 	enum {
 		LOG_THREADS 					= _LOG_THREADS,

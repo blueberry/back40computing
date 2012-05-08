@@ -307,12 +307,12 @@ struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_in);
 
 					if (KernelPolicy::MARK_PREDECESSORS) {
 						// Enqueue predecessor of source
 						VertexId predecessor = -2;
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
+						util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(predecessor, d_predecessor_in);
 					}
 
 					// Initialize work decomposition in smem
@@ -585,12 +585,12 @@ struct Dispatch<KernelPolicy, __CUB_CUDA_ARCH__>
 
 					// We'll be the only block with active work this iteration.
 					// Enqueue the source for us to subsequently process.
-					util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(src, d_in);
+					util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(src, d_in);
 
 					if (KernelPolicy::MARK_PREDECESSORS) {
 						// Enqueue predecessor of source
 						typename KernelPolicy::VertexId predecessor = -2;
-						util::io::ModifiedStore<KernelPolicy::QUEUE_WRITE_MODIFIER>::St(predecessor, d_predecessor_in);
+						util::io::ModifiedStore<KernelPolicy::QUEUE_STORE_MODIFIER>::St(predecessor, d_predecessor_in);
 					}
 
 					// Initialize work decomposition in smem

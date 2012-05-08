@@ -53,8 +53,8 @@ template <
 
 	// Common
 	int CUDA_ARCH,
-	util::io::ld::CacheModifier READ_MODIFIER,
-	util::io::st::CacheModifier WRITE_MODIFIER,
+	util::io::ld::CacheModifier LOAD_MODIFIER,
+	util::io::st::CacheModifier STORE_MODIFIER,
 	
 	// Spine-scan
 	int SPINE_LOG_THREADS,
@@ -95,8 +95,8 @@ struct Policy : ProblemType
 		SPINE_LOG_LOAD_VEC_SIZE,
 		SPINE_LOG_LOADS_PER_TILE,
 		SPINE_LOG_RAKING_THREADS,
-		READ_MODIFIER,
-		WRITE_MODIFIER,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
 		SPINE_LOG_LOADS_PER_TILE + SPINE_LOG_LOAD_VEC_SIZE + SPINE_LOG_THREADS>
 			Spine;
 

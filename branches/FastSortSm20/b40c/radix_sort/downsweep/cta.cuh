@@ -122,8 +122,8 @@ struct Cta
 		TILE_TEX_LOADS				= THREADS * THREAD_TEX_LOADS,
 	};
 
-	static const util::io::ld::CacheModifier 	READ_MODIFIER 		= KernelPolicy::READ_MODIFIER;
-	static const util::io::st::CacheModifier 	WRITE_MODIFIER 		= KernelPolicy::WRITE_MODIFIER;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= KernelPolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= KernelPolicy::STORE_MODIFIER;
 	static const ScatterStrategy 				SCATTER_STRATEGY 	= KernelPolicy::SCATTER_STRATEGY;
 
 	// Key texture type
@@ -341,7 +341,7 @@ struct Cta
 			if ((guarded_elements >= TILE_ELEMENTS) || (tile_element < guarded_elements)) {
 
 				T* scatter = d_out + threadIdx.x + (THREADS * COUNT) + tile.global_digit_base[COUNT];
-				util::io::ModifiedStore<WRITE_MODIFIER>::St(items[COUNT], scatter);
+				util::io::ModifSTORtore<WRITE_MODIFIER>::St(items[COUNT], scatter);
 			}
 
 			// Next vector element
@@ -545,7 +545,7 @@ struct Cta
 
 	/**
 	 * Scan shared memory counters
-	 */
+	 LO
 	__device__ __forceinline__ void ScanCounters(Tile &tile)
 	{
 		// Upsweep reduce
@@ -579,7 +579,7 @@ struct Cta
 			// Add totals from all previous warpscans into our partial
 			PackedCounter warpscan_total = smem_storage.warpscan[WARP][(WARP_THREADS * 3 / 2) - 1];
 			if (warp_id == WARP) {
-				partial += warpscan_totals;
+				partial += warpscan_totalLO
 			}
 
 			// Increment warpscan totals
@@ -792,18 +792,4 @@ struct Cta
 		// Process full tiles of tile_elements
 		while (tex_offset < smem_storage.tex_offset_limit) {
 			ProcessTile(tex_offset);
-			tex_offset += TILE_TEX_LOADS;
-		}
-
-		// Clean up last partial tile with guarded-io
-		if (work_limits.guarded_elements) {
-			ProcessTile(tex_offset, work_limits.guarded_elements);
-		}
-	}
-};
-
-
-} // namespace downsweep
-} // namespace radix_sort
-} // namespace b40c
-
+		

@@ -297,7 +297,7 @@ struct Cta
 
 			int spine_bin_offset = util::FastMul(gridDim.x, threadIdx.x) + blockIdx.x;
 
-			util::io::ModifiedStore<KernelPolicy::WRITE_MODIFIER>::St(
+			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
 					bin_count, d_spine + spine_bin_offset);
 		}
 	}

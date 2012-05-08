@@ -53,7 +53,7 @@ __device__ __forceinline__ void DownsweepPass(
 	// We need the exclusive partial from our spine
 	SizeT spine_partial = 0;
 	if (d_spine != NULL) {
-		util::io::ModifiedLoad<KernelPolicy::READ_MODIFIER>::Ld(
+		util::io::ModifiedLoad<KernelPolicy::LOAD_MODIFIER>::Ld(
 			spine_partial, d_spine + blockIdx.x);
 	}
 

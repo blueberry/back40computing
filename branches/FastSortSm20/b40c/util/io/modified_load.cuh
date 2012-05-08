@@ -240,9 +240,9 @@ struct ModifiedLoad
 #else  //__CUDA_ARCH__
 
 
-	template <ld::CacheModifier READ_MODIFIER>
+	template <ld::CacheModifier LOAD_MODIFIER>
 	template <typename T>
-	__device__ __forceinline__ void ModifiedLoad<READ_MODIFIER>::Ld(T &val, T *ptr)
+	__device__ __forceinline__ void ModifiedLoad<LOAD_MODIFIER>::Ld(T &val, T *ptr)
 	{
 		val = *ptr;
 	}
