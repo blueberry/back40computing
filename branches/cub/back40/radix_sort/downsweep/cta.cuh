@@ -339,7 +339,6 @@ struct Cta :
 			Iterate<COUNT + 1, MAX>::ScatterGlobal(cta, tile, items, d_out, guarded_elements);
 		}
 
-
 		/**
 		 * Warp based scattering that does not cross alignment boundaries, e.g., for SM1.0-1.1
 		 * coalescing rules
@@ -470,12 +469,16 @@ struct Cta :
 	 * Constructor
 	 */
 	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys0,
-		KeyType 		*d_keys1,
-		ValueType 		*d_values0,
-		ValueType 		*d_values1,
-		SizeT 			*d_spine) :
+		SmemStorage 		&smem_storage,
+		KeyType 			*d_keys0,
+		KeyType 			*d_keys1,
+		ValueType 			*d_values0,
+		ValueType 			*d_values1,
+		SizeT 				*d_spine,
+		WorkDistribution	&work_distribution) :
+
+			// Initializers
+			CtaProgress(work_distribution),
 			smem_storage(smem_storage),
 			d_in_keys(FLOP_TURN ? d_keys1 : d_keys0),
 			d_out_keys(FLOP_TURN ? d_keys0 : d_keys1),
@@ -747,14 +750,14 @@ struct Cta :
 		// Process full tiles
 		while (this->HasTile())
 		{
-			ProcessTile();
+			ProcessTile(this->cta_offset);
 			this->NextTile();
 		}
 
 		if (this->extra_elements)
 		{
 			// Clean up last partial tile with guarded-i/o
-			ProcessTile(this->extra_elements);
+			ProcessTile(this->cta_offset, this->extra_elements);
 		}
 	}
 };

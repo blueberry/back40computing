@@ -51,7 +51,7 @@ void Kernel(
 	ValueType 	*d_values1,
 	IngressOp	ingress_op,
 	EgressOp	egress_op,
-	util::CtaWorkDistribution<SizeT> work_decomposition)
+	cub::WorkDistribution<SizeT> work_distribution)
 {
 	// CTA abstraction type
 	typedef Cta<KernelPolicy, SizeT, KeyType, ValueType> Cta;
@@ -59,32 +59,17 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
-	if (threadIdx.x == 0)
-	{
-		// Determine our threadblock's work range
-		work_decomposition.GetCtaWorkLimits(
-			smem_storage.work_limits,
-			KernelPolicy::LOG_TILE_ELEMENTS);
-
-		smem_storage.tex_offset =
-			smem_storage.work_limits.offset / Cta::ELEMENTS_PER_TEX;
-
-		smem_storage.tex_offset_limit =
-			smem_storage.work_limits.guarded_offset / Cta::ELEMENTS_PER_TEX;
-	}
-
-	// Sync to acquire work limits
-	__syncthreads();
-
+	// Create CTA and have it iteratively process input tiles
 	Cta cta(
 		smem_storage,
 		d_keys0,
 		d_keys1,
 		d_values0,
 		d_values1,
-		d_spine);
+		d_spine,
+		work_distribution);
 
-	cta.ProcessWorkRange(smem_storage.work_limits);
+	cta.ProcessTiles();
 }
 
 

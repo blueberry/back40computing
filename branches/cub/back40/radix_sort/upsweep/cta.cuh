@@ -48,7 +48,7 @@ struct Cta
 	typedef unsigned char DigitCounter;
 
 	// Integer type for packing DigitCounters into columns of shared memory banks
-	typedef typename util::If<
+	typedef typename cub::If<
 		(KernelPolicy::SMEM_8BYTE_BANKS),
 		unsigned long long,
 		unsigned int>::Type PackedCounter;
@@ -84,10 +84,10 @@ struct Cta
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 
 		BYTES_PER_COUNTER				= sizeof(DigitCounter),
-		LOG_BYTES_PER_COUNTER			= util::Log2<BYTES_PER_COUNTER>::VALUE,
+		LOG_BYTES_PER_COUNTER			= cub::Log2<BYTES_PER_COUNTER>::VALUE,
 
 		PACKING_RATIO					= sizeof(PackedCounter) / sizeof(DigitCounter),
-		LOG_PACKING_RATIO				= util::Log2<PACKING_RATIO>::VALUE,
+		LOG_PACKING_RATIO				= cub::Log2<PACKING_RATIO>::VALUE,
 
 		LOG_COUNTER_LANES 				= CUB_MAX(0, RADIX_BITS - LOG_PACKING_RATIO),
 		COUNTER_LANES 					= 1 << LOG_COUNTER_LANES,
@@ -104,6 +104,8 @@ struct Cta
 		UNROLLED_ELEMENTS 					= UNROLL_COUNT * TILE_ELEMENTS,
 	};
 
+	static const cub::LoadModifier 		LOAD_MODIFIER 		= KernelPolicy::LOAD_MODIFIER;
+	static const cub::StoreModifier 	STORE_MODIFIER 		= KernelPolicy::STORE_MODIFIER;
 
 
 	/**
@@ -197,7 +199,7 @@ struct Cta
 			d_in_keys(FLOP_TURN ? d_keys1 : d_keys0),
 			d_spine(d_spine),
 			warp_id(threadIdx.x >> LOG_WARP_THREADS),
-			warp_tid(util::LaneId())
+			warp_tid(cub::LaneId())
 	{
 		base_counter = smem_storage.digit_counters[warp_id][warp_tid];
 	}
@@ -321,14 +323,11 @@ struct Cta
 		// Rake-reduce and write out the bin_count reductions
 		if (threadIdx.x < RADIX_DIGITS)
 		{
-			SizeT bin_count = util::reduction::SerialReduce<WARP_THREADS>::Invoke(
-				smem_storage.digit_partials[threadIdx.x]);
+			SizeT bin_count = cub::Reduce<WARP_THREADS>(smem_storage.digit_partials[threadIdx.x]);
 
 			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 
-			util::io::ModifiedStore<KernelPolicy::STORE_MODIFIER>::St(
-				bin_count,
-				d_spine + spine_bin_offset);
+			cub::Store<STORE_MODIFIER>(d_spine + spine_bin_offset, bin_count);
 		}
 	}
 
@@ -342,15 +341,7 @@ struct Cta
 		KeyType keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Read tile of keys
-		util::io::LoadTile<
-			LOG_LOADS_PER_TILE,
-			LOG_LOAD_VEC_SIZE,
-			THREADS,
-			KernelPolicy::LOAD_MODIFIER,
-			false>::LoadValid(
-				(KeyType (*)[LOAD_VEC_SIZE]) keys,
-				d_in_keys,
-				cta_offset);
+		cub::CtaLoad<THREADS, LOAD_MODIFIER>::LoadUnguarded(keys, d_in_keys, cta_offset);
 
 		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
 		if (LOADS_PER_TILE > 1) __syncthreads();
@@ -382,7 +373,7 @@ struct Cta
 	/**
 	 * Process work range of tiles
 	 */
-	__device__ __forceinline__ void ProcessWorkRange(
+	__device__ __forceinline__ void ProcessTiles(
 		util::CtaWorkLimits<SizeT> &work_limits)
 	{
 		// Reset digit counters in smem and unpacked counters in registers
