@@ -55,7 +55,9 @@ namespace radix_sort {
 /**
  * Problem instance
  */
-template <typename DoubleBuffer, typename _SizeT>
+template <
+	typename DoubleBuffer,
+	typename _SizeT>
 struct ProblemInstance
 {
 	//---------------------------------------------------------------------
@@ -65,6 +67,7 @@ struct ProblemInstance
 	typedef typename DoubleBuffer::KeyType 					KeyType;
 	typedef typename DoubleBuffer::ValueType 				ValueType;
 	typedef _SizeT 											SizeT;
+
 	typedef typename KeyTraits<KeyType>::IngressOp 			IngressOp;
 	typedef typename KeyTraits<KeyType>::EgressOp 			EgressOp;
 	typedef typename KeyTraits<KeyType>::ConvertedKeyType 	ConvertedKeyType;
@@ -75,10 +78,15 @@ struct ProblemInstance
 	struct UpsweepKernelProps : util::KernelProps
 	{
 		// Upsweep kernel function type
-		typedef void (*KernelFunc)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, IngressOp, util::CtaWorkDistribution<SizeT>);
+		typedef void (*KernelFunc)(
+			SizeT*,
+			ConvertedKeyType*,
+			ConvertedKeyType*,
+			IngressOp,
+			util::CtaWorkDistribution<SizeT>);
 
 		// Fields
-		KernelFunc 	kernel_ptr;
+		KernelFunc 	kernel_func;
 		int 		log_tile_elements;
 		bool 		smem_8byte_banks;
 
@@ -87,20 +95,29 @@ struct ProblemInstance
 		 */
 		template <
 			typename KernelPolicy,
-			typename OpaquePolicy = KernelPolicy>
+			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
 			// Initialize fields
-			kernel_ptr 			= upsweep::Kernel<OpaquePolicy>;
+			kernel_func 			= upsweep::Kernel<OpaquePolicy>;
 			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
 			smem_8byte_banks 	= KernelPolicy::SMEM_8BYTE_BANKS;
 
 			// Initialize super class
 			return util::KernelProps::Init(
-				kernel_ptr,
+				kernel_func,
 				KernelPolicy::THREADS,
 				sm_arch,
 				sm_count);
+		}
+
+		/**
+		 * Initializer
+		 */
+		template <typename KernelPolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
 		}
 	};
 
@@ -117,7 +134,7 @@ struct ProblemInstance
 		typedef cudaError_t (*BindTexFunc)(void *, size_t);
 
 		// Fields
-		KernelFunc 		kernel_ptr;
+		KernelFunc 		kernel_func;
 		BindTexFunc		bind_tex_func;
 		int 			log_tile_elements;
 
@@ -126,24 +143,35 @@ struct ProblemInstance
 		 */
 		template <
 			typename KernelPolicy,
-			typename OpaquePolicy = KernelPolicy>
+			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
 			// Initialize fields
-			kernel_ptr 			= upsweep::Kernel<OpaquePolicy>;
+			kernel_func 			= spine::Kernel<OpaquePolicy>;
 			bind_tex_func 		= spine::TexSpine<SizeT>::BindTexture;
 			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
 
 			// Initialize super class
 			return util::KernelProps::Init(
-				kernel_ptr,
+				kernel_func,
 				KernelPolicy::THREADS,
 				sm_arch,
 				sm_count);
 		}
 
-		// Bind related textures
-		cudaErrorT BindTexture(SizeT *spine, int spine_elements)
+		/**
+		 * Initializer
+		 */
+		template <typename KernelPolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		}
+
+		/**
+		 * Bind related textures
+		 */
+		cudaError_t BindTexture(SizeT *spine, int spine_elements) const
 		{
 			return bind_tex_func(spine, sizeof(SizeT) * spine_elements);
 		}
@@ -156,13 +184,21 @@ struct ProblemInstance
 	struct DownsweepKernelProps : util::KernelProps
 	{
 		// Downsweep kernel function type
-		typedef void (*KernelFunc)(SizeT*, ConvertedKeyType*, ConvertedKeyType*, ValueType*, ValueType*, IngressOp, EgressOp, util::CtaWorkDistribution<SizeT>);
+		typedef void (*KernelFunc)(
+			SizeT*,
+			ConvertedKeyType*,
+			ConvertedKeyType*,
+			ValueType*,
+			ValueType*,
+			IngressOp,
+			EgressOp,
+			util::CtaWorkDistribution<SizeT>);
 
 		// Downsweep texture binding function type
 		typedef cudaError_t (*BindTexFunc)(void *, void *, size_t);
 
 		// Fields
-		KernelFunc 		kernel_ptr;
+		KernelFunc 		kernel_func;
 		BindTexFunc		keys_tex_func;
 		BindTexFunc		values_tex_func;
 		int 			log_tile_elements;
@@ -173,7 +209,7 @@ struct ProblemInstance
 		 */
 		template <
 			typename KernelPolicy,
-			typename OpaquePolicy = KernelPolicy>
+			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
 			const int THREAD_ELEMENTS = 1 << KernelPolicy::LOG_THREAD_ELEMENTS;
@@ -188,7 +224,7 @@ struct ProblemInstance
 			typedef typename DownsweepTextures::ValueTexType ValueTexType;
 
 			// Initialize fields
-			kernel_ptr 			= downsweep::Kernel<OpaquePolicy>;
+			kernel_func 			= downsweep::Kernel<OpaquePolicy>;
 			keys_tex_func 		= downsweep::TexKeys<KeyTexType>::BindTexture;
 			values_tex_func 	= downsweep::TexValues<ValueTexType>::BindTexture;
 			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
@@ -196,21 +232,32 @@ struct ProblemInstance
 
 			// Initialize super class
 			return util::KernelProps::Init(
-				kernel_ptr,
+				kernel_func,
 				KernelPolicy::THREADS,
 				sm_arch,
 				sm_count);
 		}
 
-		// Bind related textures
-		cudaErrorT BindTexture(
+		/**
+		 * Initializer
+		 */
+		template <typename KernelPolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		}
+
+		/**
+		 * Bind related textures
+		 */
+		cudaError_t BindTexture(
 			KeyType *d_keys0,
 			KeyType *d_keys1,
 			ValueType *d_values0,
 			ValueType *d_values1,
-			SizeT num_elements)
+			SizeT num_elements) const
 		{
-			cudaError error = cudaSucces;
+			cudaError_t error = cudaSuccess;
 			do {
 				// Bind key texture
 				error = keys_tex_func(d_keys0, d_keys1, sizeof(KeyType) * num_elements);
@@ -252,11 +299,13 @@ struct ProblemInstance
 	ProblemInstance(
 		DoubleBuffer	&storage,
 		SizeT			num_elements,
+		cudaStream_t	stream,
 		util::Spine		&spine,
 		int			 	max_grid_size,
 		bool			debug) :
 			storage(storage),
 			num_elements(num_elements),
+			stream(stream),
 			spine(spine),
 			max_grid_size(max_grid_size),
 			debug(debug)
@@ -288,8 +337,8 @@ struct ProblemInstance
 
 			// Compute spine elements (rounded up to nearest tile size)
 			SizeT spine_elements = CUB_ROUND_UP_NEAREST(
-				sweep_grid_size << radix_bits,
-				spine_props.tile_elements);
+				(sweep_grid_size << radix_bits),		// Each CTA produces a partial for every radix digit
+				(1 << spine_props.log_tile_elements));		// Number of partials per tile
 
 			// Make sure our spine is big enough
 			error = spine.Setup(sizeof(SizeT) * spine_elements);
@@ -302,7 +351,9 @@ struct ProblemInstance
 				log_schedule_granularity);
 
 			// Bind spine textures
-			error = spine_props.BindTexture(spine(), spine_elements);
+			error = spine_props.BindTexture(
+				(SizeT*) spine(),
+				spine_elements);
 			if (error) break;
 
 			// Bind downsweep textures
@@ -351,9 +402,9 @@ struct ProblemInstance
 					"Upsweep:   tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
 					"Spine:     tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
 					"Downsweep: tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n",
-					upsweep_props.tile_elements, upsweep_props.max_cta_occupancy, grid_size[0], upsweep_props.threads, dynamic_smem[0],
-					spine_props.tile_elements, spine_props.max_cta_occupancy, grid_size[1], spine_props.threads, dynamic_smem[1],
-					downsweep_props.tile_elements, downsweep_props.max_cta_occupancy, grid_size[2], downsweep_props.threads, dynamic_smem[2]);
+					(1 << upsweep_props.log_tile_elements), upsweep_props.max_cta_occupancy, grid_size[0], upsweep_props.threads, dynamic_smem[0],
+					(1 << spine_props.log_tile_elements), spine_props.max_cta_occupancy, grid_size[1], spine_props.threads, dynamic_smem[1],
+					(1 << downsweep_props.log_tile_elements), downsweep_props.max_cta_occupancy, grid_size[2], downsweep_props.threads, dynamic_smem[2]);
 				fflush(stdout);
 			}
 
@@ -364,7 +415,7 @@ struct ProblemInstance
 			// Set shared mem bank mode
 			enum cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			cudaDeviceSetSharedMemConfig(smem_8byte_banks ?
+			cudaDeviceSetSharedMemConfig(upsweep_props.smem_8byte_banks ?
 				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
 				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
@@ -404,9 +455,8 @@ struct ProblemInstance
 			//
 
 			// Set shared mem bank mode
-			enum cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			cudaDeviceSetSharedMemConfig(smem_8byte_banks ?
+			cudaDeviceSetSharedMemConfig(downsweep_props.smem_8byte_banks ?
 				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
 				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 

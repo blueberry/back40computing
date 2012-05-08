@@ -26,7 +26,10 @@
 #pragma once
 
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/spine.cuh>
+#include <b40c/util/cuda_properties.cuh>
 #include <b40c/radix_sort/problem_instance.cuh>
+#include <b40c/radix_sort/tuned_pass_policy.cuh>
 
 namespace b40c {
 namespace radix_sort {
@@ -57,7 +60,6 @@ struct Enactor
 	 * Helper structure for iterating passes.
 	 */
 	template <
-		typename 		CompilerTuneArch,
 		typename 		ProblemInstance,
 		ProblemSize 	PROBLEM_SIZE,
 		int 			BITS_REMAINING,
@@ -65,8 +67,21 @@ struct Enactor
 		int 			CURRENT_PASS>
 	struct IteratePasses
 	{
+		// The appropriate tuning arch-id from the arch-id targeted by the
+		// active compiler pass.
+		enum {
+			COMPILER_TUNE_ARCH = 200,
+/*
+			VALUE = (__CUB_CUDA_ARCH__ >= 200) ?
+				200 :
+				(__CUB_CUDA_ARCH__ >= 130) ?
+					130 :
+					100
+*/
+		};
+
 		typedef TunedPassPolicy<
-			CompilerTuneArch::VALUE,
+			COMPILER_TUNE_ARCH,
 			ProblemInstance,
 			PROBLEM_SIZE,
 			BITS_REMAINING,
@@ -81,7 +96,9 @@ struct Enactor
 		 * DispatchPass pass
 		 */
 		template <int TUNE_ARCH>
-		static cudaError_t DispatchPass(ProblemInstance &problem_instance)
+		static cudaError_t DispatchPass(
+			ProblemInstance &problem_instance,
+			Enactor &enactor)
 		{
 			typedef TunedPassPolicy<
 				TUNE_ARCH,
@@ -91,35 +108,43 @@ struct Enactor
 				CURRENT_BIT,
 				CURRENT_PASS> TunedPolicy;
 
+			typedef typename TunedPolicy::UpsweepPolicy 	TunedUpsweepPolicy;
+			typedef typename TunedPolicy::SpinePolicy 		TunedSpinePolicy;
+			typedef typename TunedPolicy::DownsweepPolicy 	TunedDownsweepPolicy;
+
+
 			static const int RADIX_BITS = TunedPolicy::DispatchPolicy::RADIX_BITS;
 
 			cudaError_t error = cudaSuccess;
 			do {
-				if (debug) {
+				if (problem_instance.debug) {
 					printf("\nCurrent bit(%d), Pass(%d), Radix bits(%d), tuned arch(%d), SM arch(%d)\n",
-						CURRENT_BIT, CURRENT_PASS, RADIX_BITS, TUNE_ARCH, cuda_props.device_sm_version);
+						CURRENT_BIT, CURRENT_PASS, RADIX_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
 					fflush(stdout);
 				}
 
-				ProblemInstance::UpsweepKernelProps upsweep_props;
-				error = upsweep_props.Init<TunedPolicy::UpsweepPolicy, OpaqueUpsweepPolicy>(
-					cuda_props.device_sm_version,
-					cuda_props.device_props.cuda_props.device_props.multiProcessorCount);
+				// Upsweep kernel props
+				typename ProblemInstance::UpsweepKernelProps upsweep_props;
+				error = upsweep_props.template Init<TunedUpsweepPolicy, OpaqueUpsweepPolicy>(
+					enactor.cuda_props.device_sm_version,
+					enactor.cuda_props.device_props.multiProcessorCount);
 				if (error) break;
 
-				ProblemInstance::SpineKernelProps spine_props;
-				error = spine_props.Init<TunedPolicy::SpinePolicy, OpaqueSpinePolicy>(
-					cuda_props.device_sm_version,
-					cuda_props.device_props.cuda_props.device_props.multiProcessorCount);
+				// Spine kernel props
+				typename ProblemInstance::SpineKernelProps spine_props;
+				error = spine_props.template Init<TunedSpinePolicy, OpaqueSpinePolicy>(
+					enactor.cuda_props.device_sm_version,
+					enactor.cuda_props.device_props.multiProcessorCount);
 				if (error) break;
 
-				ProblemInstance::DownsweepKernelProps downsweep_props;
-				error = downsweep_props.Init<TunedPolicy::DownsweepPolicy, OpaqueDownsweepPolicy>(
-					cuda_props.device_sm_version,
-					cuda_props.device_props.cuda_props.device_props.multiProcessorCount);
+				// Downsweep kernel props
+				typename ProblemInstance::DownsweepKernelProps downsweep_props;
+				error = downsweep_props.template Init<TunedDownsweepPolicy, OpaqueDownsweepPolicy>(
+					enactor.cuda_props.device_sm_version,
+					enactor.cuda_props.device_props.multiProcessorCount);
 				if (error) break;
 
-				// DispatchPass current pass
+				// Dispatch current pass
 				error = problem_instance.DispatchPass(
 					RADIX_BITS,
 					upsweep_props,
@@ -132,10 +157,10 @@ struct Enactor
 				// DispatchPass next pass
 				error = IteratePasses<
 					ProblemInstance,
-					TUNE_ARCH,
+					PROBLEM_SIZE,
 					BITS_REMAINING - RADIX_BITS,
 					CURRENT_BIT + RADIX_BITS,
-					CURRENT_PASS + 1>::template DispatchPass<TUNE_ARCH>(problem_instance);
+					CURRENT_PASS + 1>::template DispatchPass<TUNE_ARCH>(problem_instance, enactor);
 				if (error) break;
 
 			} while (0);
@@ -148,14 +173,16 @@ struct Enactor
 	/**
 	 * Helper structure for iterating passes. (Termination)
 	 */
-	template <typename ProblemInstance, typename CompilerTuneArch, ProblemSize PROBLEM_SIZE, int CURRENT_BIT, int NUM_PASSES>
-	struct IteratePasses<ProblemInstance, CompilerTuneArch, PROBLEM_SIZE, 0, CURRENT_BIT, NUM_PASSES>
+	template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int CURRENT_BIT, int NUM_PASSES>
+	struct IteratePasses<ProblemInstance, PROBLEM_SIZE, 0, CURRENT_BIT, NUM_PASSES>
 	{
 		/**
 		 * DispatchPass pass
 		 */
 		template <int TUNE_ARCH>
-		static cudaError_t DispatchPass(ProblemInstance &problem_instance)
+		static cudaError_t DispatchPass(
+			ProblemInstance &problem_instance,
+			Enactor &enactor)
 		{
 			// We moved data between storage buffers at every pass
 			problem_instance.storage.selector =
@@ -206,35 +233,30 @@ struct Enactor
 			problem_storage,
 			num_elements,
 			stream,
+			spine,
 			max_grid_size,
 			debug);
 
-		// The appropriate tuning arch-id from the arch-id targeted by the
-		// active compiler pass.
-		struct CompilerTuneArch
-		{
-			static const int VALUE 	=
-				(__CUB_CUDA_ARCH__ >= 200) ?
-					200 :
-					(__CUB_CUDA_ARCH__ >= 130) ?
-						130 :
-						100;
-		};
-
-		typedef IteratePasses<CompilerTuneArch, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0> IteratePasses;
-
+/*
 		if (cuda_props.kernel_ptx_version >= 200)
 		{
-			return IteratePasses::template DispatchPass<200>(problem_instance);
+			return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
+				template DispatchPass<200>(problem_instance, *this);
 		}
 		else if (cuda_props.kernel_ptx_version >= 130)
 		{
-			return IteratePasses::template DispatchPass<130>(problem_instance);
+			return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
+				template DispatchPass<130>(problem_instance, *this);
 		}
 		else
 		{
-			return IteratePasses::template DispatchPass<100>(problem_instance);
+			return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
+				template DispatchPass<100>(problem_instance, *this);
 		}
+*/
+		return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
+			template DispatchPass<200>(problem_instance, *this);
+
 	}
 };
 
