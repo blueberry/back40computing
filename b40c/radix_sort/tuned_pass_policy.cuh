@@ -29,6 +29,11 @@
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
 
+#include <b40c/radix_sort/pass_policy.cuh>
+#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
+#include <b40c/radix_sort/spine/kernel_policy.cuh>
+#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
+
 namespace b40c {
 namespace radix_sort {
 
@@ -66,11 +71,11 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, ((BITS_REMAINING + 4) % 5 > 3) ? 5 : 4),
 		SMEM_8BYTE_BANKS	= false,
 		EARLY_EXIT 			= false,
-		LARGE_DATA			= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
+		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
 	};
 
 	// Dispatch policy
-	typedef radix_sort::DispatchPolicy <
+	typedef DispatchPolicy <
 		TUNE_ARCH,							// TUNE_ARCH
 		RADIX_BITS,							// RADIX_BITS
 		false, 								// UNIFORM_SMEM_ALLOCATION

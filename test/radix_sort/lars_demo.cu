@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 //	typedef unsigned int			ValueType;
 
 	const int 		START_BIT			= 0;
-	const int 		KEY_BITS 			= 5; //sizeof(KeyType) * 8;
+	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
 	const bool 		KEYS_ONLY			= b40c::util::Equals<ValueType, b40c::util::NullType>::VALUE;
     int 			num_elements 		= 1024 * 1024 * 8;			// 8 million pairs
     unsigned int 	max_ctas 			= 0;						// default: let the enactor decide how many CTAs to launch based upon device properties
@@ -174,7 +174,9 @@ int main(int argc, char** argv)
 			cudaMemcpyHostToDevice);
 	}
 
-	enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas, true);
+	// Sort
+	enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
+		double_buffer, num_elements, 0, max_ctas, true);
 
 	printf("\nRestricted-range %s sort (selector %d): ",
 		(KEYS_ONLY) ? "keys-only" : "key-value",
@@ -252,7 +254,11 @@ int main(int argc, char** argv)
 				elements = scale * num_elements;						// uniform bias
 
 			gpu_timer.Start();
-			enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas);
+
+			// Sort
+			enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
+				double_buffer, num_elements, 0, max_ctas);
+
 			gpu_timer.Stop();
 
 			float millis = gpu_timer.ElapsedMillis();
@@ -267,7 +273,11 @@ int main(int argc, char** argv)
 
 			// Regular iteration
 			gpu_timer.Start();
-			enactor.Sort<KEY_BITS, START_BIT>(double_buffer, num_elements, max_ctas);
+
+			// Sort
+			enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
+				double_buffer, num_elements, 0, max_ctas);
+
 			gpu_timer.Stop();
 
 			elapsed += gpu_timer.ElapsedMillis();

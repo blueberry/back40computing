@@ -41,14 +41,16 @@ namespace upsweep {
 template <
 	typename KernelPolicy,
 	typename SizeT,
-	typename KeyType>
+	typename KeyType,
+	typename IngressOp>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
 	SizeT 		*d_spine,
 	KeyType 	*d_in_keys,
-	KeyType 	*d_out_keys,
+	KeyType 	*d_out_keIngressOp	ingress_op,
 	util::CtaWorkDistribution<SizeT> work_decomposition)
+{n)
 {
 
 	// CTA abstraction type
@@ -68,12 +70,4 @@ void Kernel(
 		work_limits,
 		KernelPolicy::LOG_TILE_ELEMENTS);
 
-	Cta cta(smem_storage, d_keys, d_spine);
-	cta.ProcessWorkRange(work_limits);
-}
-
-
-} // namespace upsweep
-} // namespace radix_sort
-} // namespace b40c
-
+	Cta cta(smem_storage, d_keys, d_

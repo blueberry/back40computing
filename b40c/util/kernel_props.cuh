@@ -22,7 +22,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Enactor base class
+ * Kernel function properties
  ******************************************************************************/
 
 #pragma once
@@ -35,7 +35,9 @@
 namespace b40c {
 namespace util {
 
-
+/**
+ * Kernel function properties
+ */
 struct KernelProps
 {
 	int 							threads;
@@ -52,16 +54,16 @@ struct KernelProps
 		KernelFunc kernel_func,
 		int threads,
 		int sm_arch,
-		int sm_count) :
-			kernel_func(kernel_func),
-			threads(threads),
-			sm_arch(sm_arch),
-			sm_count(sm_count),
-			max_cta_occupancy(0)
+		int sm_count)
 	{
 		cudaError_t error = cudaSuccess;
 
 		do {
+			// Initialize fields
+			this->threads = threads;
+			this->sm_arch = sm_arch;
+			this->sm_count = sm_count;
+
 			// Get kernel attributes
 			error = util::B40CPerror(
 				cudaFuncGetAttributes(&kernel_attrs, kernel_func),
@@ -99,7 +101,7 @@ struct KernelProps
 	int OversubscribedGridSize(
 		int schedule_granularity,
 		int num_elements,
-		int max_grid_size = 0)
+		int max_grid_size = 0) const
 	{
 		int grid_size;
 		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
@@ -172,7 +174,7 @@ struct KernelProps
 	/**
 	 * Return dynamic padding to reduce occupancy to a multiple of the specified base_occupancy
 	 */
-	int SmemPadding(int base_occupancy)
+	int SmemPadding(int base_occupancy) const
 	{
 		div_t div_result = div(max_cta_occupancy, base_occupancy);
 		if ((!div_result.quot) || (!div_result.rem)) {

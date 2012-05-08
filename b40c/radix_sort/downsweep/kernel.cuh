@@ -63,8 +63,8 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
-	if (threadIdx.x == 0) {
-
+	if (threadIdx.x == 0)
+	{
 		// Determine our threadblock's work range
 		work_decomposition.GetCtaWorkLimits(
 			smem_storage.work_limits,
