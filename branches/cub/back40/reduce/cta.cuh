@@ -153,7 +153,7 @@ struct Cta
 			this->NextTile();
 
 			// Process any further full tiles
-			while (HasTile()) {
+			while (this->HasTile()) {
 				ProcessFullTile(false);
 				this->NextTile();
 			}

@@ -79,7 +79,7 @@ struct WorkDistribution
 template <
 	typename 	SizeT,
 	int 		TILE_ELEMENTS,
-	bool 		WORK_STEALING>
+	bool 		WORK_STEALING = false>
 struct CtaProgress
 {
 	// Even share parameters

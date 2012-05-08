@@ -18,31 +18,46 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CUB umbrella include file
+ * Radix sort spine scan kernel
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/cta/cta_load.cuh>
-#include <cub/cta/cta_progress.cuh>
-#include <cub/cta/cta_reduce.cuh>
-#include <cub/cta/cta_scan.cuh>
-#include <cub/cta/cta_store.cuh>
+#include <back40/radix_sort/spine/cta.cuh>
 
-#include <cub/host/cuda_props.cuh>
-#include <cub/host/kernel_props.cuh>
-#include <cub/host/spinlock.cuh>
+namespace back40 {
+namespace radix_sort {
+namespace spine {
 
-#include <cub/thread/load.cuh>
-#include <cub/thread/reduce.cuh>
-#include <cub/thread/scan.cuh>
-#include <cub/thread/store.cuh>
 
-#include <cub/basic_utils.cuh>
-#include <cub/debug.cuh>
-#include <cub/device_props.cuh>
-#include <cub/operators.cuh>
-#include <cub/ptx_intrinsics.cuh>
-#include <cub/tex_vector.cuh>
-#include <cub/type_utils.cuh>
+/**
+ * Consecutive removal spine scan kernel entry point
+ */
+template <
+	typename KernelPolicy,
+	typename T,
+	typename SizeT>
+__launch_bounds__ (KernelPolicy::THREADS, 1)
+__global__ 
+void Kernel(
+	T			*d_in,
+	T			*d_out,
+	SizeT 		spine_elements)
+{
+	// CTA abstraction type
+	typedef Cta<KernelPolicy, T, SizeT> Cta;
+
+	// Shared memory pool
+	__shared__ typename Cta::SmemStorage smem_storage;
+
+	// Only CTA-0 needs to run
+	if (blockIdx.x > 0) return;
+
+	Cta cta(smem_storage, d_in, d_out);
+	cta.ProcessWorkRange(spine_elements);
+}
+
+} // namespace spine
+} // namespace radix_sort
+} // namespace back40
 

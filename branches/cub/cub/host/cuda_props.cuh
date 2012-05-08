@@ -23,12 +23,9 @@
 
 #pragma once
 
-#include <cub/cub.cuh>
+#include <cub/device_props.cuh>
 
-namespace back40 {
-
-using namespace cub;	// Fold cub namespace into back40
-
+namespace cub {
 
 /**
  * Invalid CUDA gpu device ordinal
@@ -99,10 +96,9 @@ public:
 	/**
 	 * Initializer.  Properties are retrieved for the specified GPU ordinal.
 	 */
-	static cudaError_t Init(CudaProps *cuda_props, int gpu_ordinal)
+	cudaError_t Init(int gpu_ordinal)
 	{
 		cudaError_t error = cudaSuccess;
-
 		do {
 			// Obtain SM version and count
 			cudaDeviceProp device_props;
@@ -126,17 +122,28 @@ public:
 		return error;
 	}
 
+	/**
+	 * Initializer.  Properties are retrieved for the current GPU ordinal.
+	 */
+	cudaError_t Init()
+	{
+		cudaError_t error = cudaSuccess;
+		do {
+			int gpu_ordinal;
+			if (error = Debug(cudaGetDevice(&gpu_ordinal),
+				"cudaGetDevice failed", __FILE__, __LINE__)) break;
+
+			if (error = Init(gpu_ordinal)) break;
+		} while (0);
+		return error;
+	}
 
 	/**
 	 * Constructor.  Properties are retrieved for the current GPU ordinal.
 	 */
 	CudaProps()
 	{
-		do {
-			int gpu_ordinal;
-			if (cudaGetDevice(&gpu_ordinal)) break;
-			if (Init(this, gpu_ordinal)) break;
-		} while (0);
+		Init();
 	}
 
 	/**
@@ -144,7 +151,7 @@ public:
 	 */
 	CudaProps(int gpu_ordinal)
 	{
-		Init(this, gpu_ordinal);
+		Init(gpu_ordinal);
 	}
 };
 
@@ -152,5 +159,5 @@ public:
 
 
 
-} // namespace back40
+} // namespace cub
 

@@ -46,6 +46,27 @@ namespace cub {
 
 
 /**
+ * Serial reduction with the specified operator and seed
+ */
+template <
+	int LENGTH,
+	typename T,
+	typename ReductionOp>
+__host__ __device__ __forceinline__ T Reduce(
+	T* data,
+	ReductionOp reduction_op,
+	T seed)
+{
+	#pragma unroll
+	for (int i = 0; i < LENGTH; ++i) {
+		seed = reduction_op(seed, data[i]);
+	}
+
+	return seed;
+}
+
+
+/**
  * Serial reduction with the specified operator
  */
 template <
@@ -56,14 +77,23 @@ __host__ __device__ __forceinline__ T Reduce(
 	T* data,
 	ReductionOp reduction_op)
 {
-	T result = data[0];
+	T seed = data[0];
+	return Reduce<LENGTH - 1>(data + 1, reduction_op, seed);
+}
 
-	#pragma unroll
-	for (int i = 1; i < LENGTH; ++i) {
-		result = reduction_op(result, data[i]);
-	}
 
-	return result;
+/**
+ * Serial reduction with the addition operator and seed
+ */
+template <
+	int LENGTH,
+	typename T>
+__host__ __device__ __forceinline__ T Reduce(
+	T* data,
+	T seed)
+{
+	Sum<T> reduction_op;
+	return Reduce<LENGTH>(data, reduction_op, seed);
 }
 
 
@@ -81,6 +111,23 @@ __host__ __device__ __forceinline__ T Reduce(T* data)
 
 
 /**
+ * Serial reduction with the specified operator and seed
+ */
+template <
+	typename ArrayType,
+	typename ReductionOp,
+	typename T>
+__host__ __device__ __forceinline__ T Reduce(
+	ArrayType &data,
+	ReductionOp reduction_op,
+	T seed)
+{
+	T* linear_array = reinterpret_cast<T*>(data);
+	return Reduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
+}
+
+
+/**
  * Serial reduction with the specified operator
  */
 template <
@@ -93,6 +140,19 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce
 	typedef typename ArrayTraits<ArrayType>::Type T;
 	T* linear_array = reinterpret_cast<T*>(data);
 	return Reduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
+}
+
+
+/**
+ * Serial reduction with the addition operator and seed
+ */
+template <typename ArrayType, typename T>
+__host__ __device__ __forceinline__ T Reduce(
+	ArrayType &data,
+	T seed)
+{
+	Sum<T> reduction_op;
+	return Reduce(data, reduction_op, seed);
 }
 
 

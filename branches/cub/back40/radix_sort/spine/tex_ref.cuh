@@ -18,16 +18,53 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Back40 umbrella include file
+ * Texture references for spine kernels
  ******************************************************************************/
 
 #pragma once
 
-// Back40 common
-#include <back40/common/cuda_props.cuh>
-#include <back40/common/kernel_props.cuh>
-#include <back40/common/spinlock.cuh>
+#include <cub/cub.cuh>
 
-// Primitives
-#include <back40/reduce/reduce.cuh>
+namespace back40 {
+namespace radix_sort {
+namespace spine {
+
+/**
+ * Templated texture reference for spine
+ */
+template <typename SizeT>
+struct TexSpine
+{
+	typedef texture<SizeT, cudaTextureType1D, cudaReadModeElementType> TexRef;
+
+	static TexRef ref;
+
+	/**
+	 * Bind textures
+	 */
+	static cudaError_t BindTexture(void *d_spine, size_t bytes)
+	{
+		cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<SizeT>();
+
+		// Bind key texture ref0
+		cudaError_t error = cudaBindTexture(0, ref, d_spine, tex_desc, bytes);
+		error = cub::Debug(error, "cudaBindTexture TexSpine failed", __FILE__, __LINE__);
+
+		return error;
+	}
+
+};
+
+// Reference definition
+template <typename SizeT>
+typename TexSpine<SizeT>::TexRef TexSpine<SizeT>::ref;
+
+
+
+
+
+
+} // namespace spine
+} // namespace radix_sort
+} // namespace back40
 
