@@ -39,7 +39,6 @@
 #include <cub/thread/scan.cuh>
 #include <cub/thread/store.cuh>
 
-
 #include <cub/basic_utils.cuh>
 #include <cub/debug.cuh>
 #include <cub/device_props.cuh>

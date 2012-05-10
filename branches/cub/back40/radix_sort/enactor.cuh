@@ -26,7 +26,7 @@
 #include <cub/cub.cuh>
 
 #include <back40/radix_sort/problem_instance.cuh>
-#include <back40/radix_sort/tuned_pass_policy.cuh>
+#include <back40/radix_sort/pass_policy.cuh>
 
 namespace back40 {
 namespace radix_sort {
