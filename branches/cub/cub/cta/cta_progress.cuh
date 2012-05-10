@@ -29,7 +29,11 @@
 
 #pragma once
 
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
 namespace cub {
+
 
 /**
  * Description of work distribution amongst CTAs
@@ -166,4 +170,4 @@ struct CtaProgress
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

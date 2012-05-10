@@ -23,10 +23,13 @@
 
 #pragma once
 
+#include <cub/basic_utils.cuh>
 #include <cub/operators.cuh>
 #include <cub/type_utils.cuh>
 #include <cub/thread/store.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
 
 /**
@@ -53,11 +56,11 @@ private:
 		//---------------------------------------------------------------------
 
 		// Unguarded vector
-		template <typename VectorType>
+		template <typename Vector>
 		static __device__ __forceinline__ void StoreVector(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_out_vectors)
+			Vector data_vectors[],
+			Vector *d_out_vectors)
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
@@ -161,11 +164,11 @@ private:
 
 		// Segment of unguarded vectors
 		template <
-			typename VectorType,
+			typename Vector,
 			int VECTORS>
 		static __device__ __forceinline__ void StoreVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_out_vectors)
+			Vector data_vectors[][VECTORS],
+			Vector *d_out_vectors)
 		{
 			// Perform raking vector stores for this segment
 			Iterate<0, VECTORS>::StoreVector(
@@ -244,11 +247,11 @@ private:
 	struct Iterate<TOTAL, TOTAL>
 	{
 		// Unguarded vector
-		template <typename VectorType>
+		template <typename Vector>
 		static __device__ __forceinline__ void StoreVector(
 			const int SEGMENT,
-			VectorType data_vectors[],
-			VectorType *d_out_vectors) {}
+			Vector data_vectors[],
+			Vector *d_out_vectors) {}
 
 		// Guarded singleton
 		template <typename T, int ELEMENTS, typename S, typename SizeT, typename TransformOp>
@@ -276,10 +279,10 @@ private:
 			TransformOp transform_op) {}
 
 		// Segment of unguarded vectors
-		template <typename VectorType, int VECTORS>
+		template <typename Vector, int VECTORS>
 		static __device__ __forceinline__ void StoreVectorSegment(
-			VectorType data_vectors[][VECTORS],
-			VectorType *d_out_vectors) {}
+			Vector data_vectors[][VECTORS],
+			Vector *d_out_vectors) {}
 
 		// Segment of guarded singletons
 		template <typename T, int ELEMENTS, typename S, typename SizeT, typename TransformOp>
@@ -321,10 +324,10 @@ public:
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		const int VEC_ELEMENTS 		= B40C_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
+		const int VEC_ELEMENTS 		= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
 		const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
 
-		typedef typename VecType<S, VEC_ELEMENTS>::Type VectorType;
+		typedef typename VectorType<S, VEC_ELEMENTS>::Type Vector;
 
 		// Raw data to store
 		S raw[SEGMENTS][ELEMENTS];
@@ -336,11 +339,11 @@ public:
 			transform_op);
 
 		// Alias pointers
-		VectorType (*data_vectors)[VECTORS] =
-			reinterpret_cast<VectorType (*)[VECTORS]>(raw);
+		Vector (*data_vectors)[VECTORS] =
+			reinterpret_cast<Vector (*)[VECTORS]>(raw);
 
-		VectorType *d_out_vectors =
-			reinterpret_cast<VectorType *>(d_out + (threadIdx.x * ELEMENTS) + cta_offset);
+		Vector *d_out_vectors =
+			reinterpret_cast<Vector *>(d_out + (threadIdx.x * ELEMENTS) + cta_offset);
 
 		Iterate<0, SEGMENTS>::StoreVectorSegment(
 			data_vectors,
@@ -471,4 +474,4 @@ public:
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

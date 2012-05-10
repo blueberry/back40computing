@@ -24,11 +24,10 @@
 #pragma once
 
 #include <cub/cub.cuh>
+#include <cub/ns_umbrella.cuh>
 
-namespace back40 {
-
-using namespace cub;	// Fold cub namespace into back40
-
+CUB_NS_PREFIX
+namespace cub {
 
 /**
  * Encapsulation of kernel properties for a combination of {device, CTA size}
@@ -79,7 +78,7 @@ struct KernelProps
 
 			// Get kernel attributes
 			cudaFuncAttributes kernel_attrs;
-			if (error = Debug(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
+			if (error = cub::Debug(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
 				"cudaFuncGetAttributes failed", __FILE__, __LINE__)) break;
 
 			this->cta_warps = CUB_ROUND_UP_NEAREST(cta_threads / cuda_props.warp_threads, 1);
@@ -216,4 +215,4 @@ struct KernelProps
 
 
 } // namespace back40
-
+CUB_NS_POSTFIX

@@ -24,15 +24,20 @@
 #pragma once
 
 #include <stdio.h>
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
+namespace cub {
+
 
 // CUB debugging macro (prints error messages to stderr)
-#if	defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG)
-	#define CUB_DEBUG	(1)
+#ifndef CUB_STDERR
+#if (defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG))
+	#define CUB_STDERR	(1)
 #else
-	#define CUB_DEBUG	(0)
+	#define CUB_STDERR	(0)
 #endif
-
-namespace cub {
+#endif
 
 
 /**
@@ -46,7 +51,7 @@ __host__ __device__ __forceinline__ cudaError_t Debug(
 	const char *filename,
 	int line)
 {
-	if (CUB_DEBUG) {
+	if (CUB_STDERR) {
 		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
@@ -60,7 +65,7 @@ __host__ __device__ __forceinline__ cudaError_t Debug(
  */
 __host__ __device__ __forceinline__ cudaError_t Debug(cudaError_t error)
 {
-	if (CUB_DEBUG) {
+	if (CUB_STDERR) {
 		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
@@ -70,4 +75,4 @@ __host__ __device__ __forceinline__ cudaError_t Debug(cudaError_t error)
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

@@ -25,6 +25,9 @@
 
 #include <cub/type_utils.cuh>
 
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
 namespace cub {
 
 /**
@@ -55,17 +58,17 @@ struct TexVector
 			T>::Type>::Type TexBase; 				// use T for other built-in types
 
 	// Texture vector type
-	typedef typename VectorT<TexBase, TEX_VEC_SIZE>::Type VectorT;
+	typedef typename VectorType<TexBase, TEX_VEC_SIZE>::Type VectorType;
 
 	// Number of T loaded per texture load
 	enum {
-		ELEMENTS_PER_TEX = sizeof(VecType) / sizeof(T),
+		ELEMENTS_PER_TEX = sizeof(VectorType) / sizeof(T),
 	};
 
 	// Texture reference type
-	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;
+	typedef texture<VectorType, cudaTextureType1D, cudaReadModeElementType> TexRef;
 };
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

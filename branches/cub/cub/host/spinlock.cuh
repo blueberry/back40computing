@@ -21,7 +21,12 @@
  * Simple x86/x64 atomic spinlock
  ******************************************************************************/
 
-namespace back40 {
+#pragma once
+
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
+namespace cub {
 
 
 #if defined(_MSC_VER)
@@ -100,6 +105,5 @@ __forceinline__ void Unlock(volatile Spinlock *lock)
 }
 
 
-} // namespace back40
-
-
+} // namespace cub
+CUB_NS_POSTFIX

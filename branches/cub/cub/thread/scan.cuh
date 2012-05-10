@@ -26,8 +26,11 @@
 #include <cub/operators.cuh>
 #include <cub/ptx_intrinsics.cuh>
 #include <cub/type_utils.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
+
 
 /******************************************************************************
  * Exclusive scan
@@ -40,7 +43,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ExclusiveScan(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -66,7 +69,7 @@ __host__ __device__ __forceinline__ T ExclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__host__ __device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ExclusiveScan(
 	T* data,
 	T seed)
 {
@@ -82,7 +85,7 @@ template <
 	typename ArrayType,
 	typename ReductionOp,
 	typename T>
-__host__ __device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ExclusiveScan(
 	ArrayType &data,
 	ReductionOp reduction_op,
 	T seed)
@@ -96,7 +99,7 @@ __host__ __device__ __forceinline__ T ExclusiveScan(
  * Serial exclusive scan with the addition operator and seed
  */
 template <typename ArrayType, typename T>
-__host__ __device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ExclusiveScan(
 	ArrayType &data,
 	T seed)
 {
@@ -116,7 +119,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T InclusiveScan(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -138,7 +141,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T InclusiveScan(
 	T* data,
 	ReductionOp reduction_op)
 {
@@ -153,7 +156,7 @@ __host__ __device__ __forceinline__ T InclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__host__ __device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T InclusiveScan(
 	T* data,
 	T seed)
 {
@@ -168,7 +171,7 @@ __host__ __device__ __forceinline__ T InclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__host__ __device__ __forceinline__ T InclusiveScan(T* data)
+__device__ __forceinline__ T InclusiveScan(T* data)
 {
 	Sum<T> reduction_op;
 	return InclusiveScan<LENGTH>(data, reduction_op);
@@ -182,7 +185,7 @@ template <
 	typename ArrayType,
 	typename ReductionOp,
 	typename T>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename T InclusiveScan(
 	ArrayType &data,
 	ReductionOp reduction_op,
 	T seed)
@@ -198,7 +201,7 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Inclus
 template <
 	typename ArrayType,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
 	ArrayType &data,
 	ReductionOp reduction_op)
 {
@@ -212,7 +215,7 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Inclus
  * Serial inclusive scan with the addition operator and seed
  */
 template <typename ArrayType, typename T>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename T InclusiveScan(
 	ArrayType &data,
 	T seed)
 {
@@ -225,7 +228,7 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Inclus
  * Serial inclusive scan with the addition operator
  */
 template <typename ArrayType>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
 	ArrayType &data)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
@@ -235,5 +238,5 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Inclus
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX
 

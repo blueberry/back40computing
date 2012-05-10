@@ -23,6 +23,9 @@
 
 #pragma once
 
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
 namespace cub {
 
 
@@ -299,7 +302,7 @@ struct ArrayTraits<DimType[LENGTH], -1>
  *
  * For example:
  *
- *     VectorT<unsigned int, 2> pair; 			// uint2 pair;
+ *     VectorType<unsigned int, 2> pair; 			// uint2 pair;
  *
  ******************************************************************************/
 
@@ -310,13 +313,13 @@ enum {
 /**
  * Vector type
  */
-template <typename T, int vec_elements> struct VectorT;
+template <typename T, int vec_elements> struct VectorType;
 
 /**
  * Generic vector-1 type
  */
 template <typename T>
-struct VectorT<T, 1>
+struct VectorType<T, 1>
 {
 	T x;
 };
@@ -325,7 +328,7 @@ struct VectorT<T, 1>
  * Generic vector-2 type
  */
 template <typename T>
-struct VectorT<T, 2>
+struct VectorType<T, 2>
 {
 	T x;
 	T y;
@@ -335,7 +338,7 @@ struct VectorT<T, 2>
  * Generic vector-4 type
  */
 template <typename T>
-struct VectorT<T, 4>
+struct VectorType<T, 4>
 {
 	T x;
 	T y;
@@ -347,9 +350,9 @@ struct VectorT<T, 4>
  * Macro for expanding partially-specialized built-in vector types
  */
 #define CUB_DEFINE_VECTOR_TYPE(base_type,short_type)              \
-  template<> struct VectorT<base_type, 1> : short_type##1 {};     \
-  template<> struct VectorT<base_type, 2> : short_type##2 {};     \
-  template<> struct VectorT<base_type, 4> : short_type##4 {};
+  template<> struct VectorType<base_type, 1> : short_type##1 {};     \
+  template<> struct VectorType<base_type, 2> : short_type##2 {};     \
+  template<> struct VectorType<base_type, 4> : short_type##4 {};
 
 // Expand CUDA vector types for built-in primitives
 CUB_DEFINE_VECTOR_TYPE(char,               char)
@@ -371,4 +374,4 @@ CUB_DEFINE_VECTOR_TYPE(double,             double)
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

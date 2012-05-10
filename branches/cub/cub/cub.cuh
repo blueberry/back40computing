@@ -31,12 +31,14 @@
 
 #include <cub/host/cuda_props.cuh>
 #include <cub/host/kernel_props.cuh>
+#include <cub/host/multi_buffer.cuh>
 #include <cub/host/spinlock.cuh>
 
 #include <cub/thread/load.cuh>
 #include <cub/thread/reduce.cuh>
 #include <cub/thread/scan.cuh>
 #include <cub/thread/store.cuh>
+
 
 #include <cub/basic_utils.cuh>
 #include <cub/debug.cuh>

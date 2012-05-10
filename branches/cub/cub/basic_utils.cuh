@@ -23,6 +23,9 @@
 
 #pragma once
 
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
 namespace cub {
 
 
@@ -78,4 +81,4 @@ __host__ __device__ __forceinline__ int Shift(int val, const int magnitude)
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

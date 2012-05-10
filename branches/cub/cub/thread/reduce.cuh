@@ -41,8 +41,11 @@
 
 #include <cub/operators.cuh>
 #include <cub/type_utils.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
+
 
 
 /**
@@ -52,7 +55,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T Reduce(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -73,7 +76,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T Reduce(
 	T* data,
 	ReductionOp reduction_op)
 {
@@ -88,7 +91,7 @@ __host__ __device__ __forceinline__ T Reduce(
 template <
 	int LENGTH,
 	typename T>
-__host__ __device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T Reduce(
 	T* data,
 	T seed)
 {
@@ -103,7 +106,7 @@ __host__ __device__ __forceinline__ T Reduce(
 template <
 	int LENGTH,
 	typename T>
-__host__ __device__ __forceinline__ T Reduce(T* data)
+__device__ __forceinline__ T Reduce(T* data)
 {
 	Sum<T> reduction_op;
 	return Reduce<LENGTH>(data, reduction_op);
@@ -117,7 +120,7 @@ template <
 	typename ArrayType,
 	typename ReductionOp,
 	typename T>
-__host__ __device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T Reduce(
 	ArrayType &data,
 	ReductionOp reduction_op,
 	T seed)
@@ -133,7 +136,7 @@ __host__ __device__ __forceinline__ T Reduce(
 template <
 	typename ArrayType,
 	typename ReductionOp>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
 	ArrayType &data,
 	ReductionOp reduction_op)
 {
@@ -147,7 +150,7 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce
  * Serial reduction with the addition operator and seed
  */
 template <typename ArrayType, typename T>
-__host__ __device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T Reduce(
 	ArrayType &data,
 	T seed)
 {
@@ -160,7 +163,7 @@ __host__ __device__ __forceinline__ T Reduce(
  * Serial reduction with the addition operator
  */
 template <typename ArrayType>
-__host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
 	ArrayType &data)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
@@ -171,5 +174,5 @@ __host__ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX
 

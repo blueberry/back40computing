@@ -29,8 +29,6 @@
 	#include <sys/resource.h>
 #endif
 
-
-
 #include <stdio.h>
 #include <math.h>
 #include <float.h>
@@ -41,8 +39,7 @@
 #include <sstream>
 #include <iostream>
 
-#include <cub/basic_utils.cuh>
-#include <cub/type_utils.cuh>
+#include <cub/cub.cuh>
 
 namespace back40 {
 
@@ -341,34 +338,10 @@ void PrintValue<unsigned long long>(unsigned long long val) {
 	printf("%llu", val);
 }
 
-template<>
-void PrintValue<util::NullType>(util::NullType) {
-}
-
 
 /******************************************************************************
  * Helper routines for list construction and validation 
  ******************************************************************************/
-
-template <typename T, typename S>
-bool CompareEquals(T &t, S &s)
-{
-	return t == s;
-}
-
-template <typename S>
-bool CompareEquals(util::NullType&, S &s)
-{
-	return false;
-}
-
-template <typename T>
-bool CompareEquals(T &t, util::NullType)
-{
-	return false;
-}
-
-
 
 /**
  * Compares the equivalence of two arrays
@@ -380,7 +353,7 @@ int CompareResults(T* computed, S* reference, SizeT len, bool verbose = true)
 
 		int window = 8;
 
-		if (!CompareEquals(computed[i], reference[i])) {
+		if (computed[i] != reference[i]) {
 			printf("INCORRECT: [%lu]: ", (unsigned long) i);
 			PrintValue<T>(computed[i]);
 			printf(" != ");
@@ -452,15 +425,6 @@ int CompareDeviceResults(
 	return retval;
 }
 
-int CompareDeviceResults(
-	util::NullType *h_reference,
-	util::NullType *d_data,
-	size_t num_elements,
-	bool verbose = true,
-	bool display_data = false)
-{
-	return 0;
-}
 
 /**
  * Verify the contents of a device array match those

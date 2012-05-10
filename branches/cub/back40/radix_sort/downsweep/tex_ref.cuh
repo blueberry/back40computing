@@ -153,12 +153,12 @@ struct Textures
 
 	typedef typename util::TexVector<
 		KeyType,
-		ELEMENTS_PER_TEX>::VectorT KeyTexType;
+		ELEMENTS_PER_TEX>::VectorType KeyTexType;
 
 	// Texture binding for downsweep values
 	typedef typename util::TexVector<
 		ValueType,
-		ELEMENTS_PER_TEX>::VectorT ValueTexType;
+		ELEMENTS_PER_TEX>::VectorType ValueTexType;
 };
 
 

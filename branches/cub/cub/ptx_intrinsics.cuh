@@ -23,6 +23,9 @@
 
 #pragma once
 
+#include <cub/ns_umbrella.cuh>
+
+CUB_NS_PREFIX
 namespace cub {
 
 
@@ -125,7 +128,7 @@ __device__ __forceinline__ void BFI(
 
 
 /**
- * VectorT-3 add
+ * Three-operand add
  */
 __device__ __forceinline__ unsigned int IADD3(unsigned int x, unsigned int y, unsigned int z)
 {
@@ -202,4 +205,4 @@ __device__ __forceinline__ unsigned int LaneId()
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

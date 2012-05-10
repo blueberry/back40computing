@@ -21,7 +21,7 @@ void Foo3(int2 &bar) {
 
 int main()
 {
-	VectorT<int, 2> b;
+	VectorType<int, 2> b;
 	b.x = 1;
 	b.y = 3;
 

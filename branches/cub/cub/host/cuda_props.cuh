@@ -24,8 +24,12 @@
 #pragma once
 
 #include <cub/device_props.cuh>
+#include <cub/debug.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
+
 
 /**
  * Invalid CUDA gpu device ordinal
@@ -102,20 +106,20 @@ public:
 		do {
 			// Obtain SM version and count
 			cudaDeviceProp device_props;
-			if (error = Debug(cudaGetDeviceProperties(&device_props, gpu_ordinal),
+			if (error = cub::Debug(cudaGetDeviceProperties(&device_props, gpu_ordinal),
 				"cudaGetDeviceProperties failed", __FILE__, __LINE__)) break;
-			cuda_props->sm_version = device_props.major * 100 + device_props.minor * 10;
-			cuda_props->sm_count = device_props.multiProcessorCount;
+			sm_version = device_props.major * 100 + device_props.minor * 10;
+			sm_count = device_props.multiProcessorCount;
 
 			// Obtain PTX version of the bundled kernel assemblies compiled for
 			// the current device
 			cudaFuncAttributes flush_kernel_attrs;
-			if (error = Debug(cudaFuncGetAttributes(&flush_kernel_attrs, EmptyKernel<void>),
+			if (error = cub::Debug(cudaFuncGetAttributes(&flush_kernel_attrs, EmptyKernel<void>),
 				"cudaFuncGetAttributes failed", __FILE__, __LINE__)) break;
-			cuda_props->ptx_version = flush_kernel_attrs.ptxVersion * 10;
+			ptx_version = flush_kernel_attrs.ptxVersion * 10;
 
 			// Initialize our device properties via callback from static device properties
-			StaticDeviceProps<100>::Callback(*cuda_props, cuda_props->sm_version);
+			StaticDeviceProps<100>::Callback(*this, sm_version);
 
 		} while (0);
 
@@ -130,7 +134,7 @@ public:
 		cudaError_t error = cudaSuccess;
 		do {
 			int gpu_ordinal;
-			if (error = Debug(cudaGetDevice(&gpu_ordinal),
+			if (error = cub::Debug(cudaGetDevice(&gpu_ordinal),
 				"cudaGetDevice failed", __FILE__, __LINE__)) break;
 
 			if (error = Init(gpu_ordinal)) break;
@@ -160,4 +164,4 @@ public:
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX

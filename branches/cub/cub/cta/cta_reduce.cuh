@@ -26,9 +26,12 @@
 #include <cub/device_props.cuh>
 #include <cub/type_utils.cuh>
 #include <cub/operators.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
 
 
-} // namespace cub
 
+} // namespace cub
+CUB_NS_POSTFIX

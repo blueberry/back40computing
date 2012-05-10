@@ -85,7 +85,7 @@ endif
 
 THRUST_INC = "../../../Thrust"
 CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I$(CUDA_INC) -I.. -I../.. 
+INC = -I$(CUDA_INC) -I.. -I../.. -I../../.. 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -134,41 +134,11 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				../b40c_test_util.h \
-				$(wildcard ../../b40c/util/*.cuh) \
-				$(wildcard ../../b40c/util/**/*.cuh) \
-				$(wildcard ../../b40c/scan/*.cuh) \
-				$(wildcard ../../b40c/scan/**/*.cuh) \
-				$(wildcard ../../b40c/partition/*.cuh) \
-				$(wildcard ../../b40c/partition/**/*.cuh) \
-				$(wildcard ../../b40c/radix_sort/*.cuh) \
-				$(wildcard ../../b40c/radix_sort/**/*.cuh) 
+				../test_util.h \
 				 
 
 
-#-------------------------------------------------------------------------------
-# (make simple) Simple example driver for 
-#-------------------------------------------------------------------------------
 
-simple: bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : simple_sort.cu $(DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/simple_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) simple_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
-
-
-
-#-------------------------------------------------------------------------------
-# (make test) Test driver for 
-#-------------------------------------------------------------------------------
-
-test: bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_sort.cu $(DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
-
-	
 #-------------------------------------------------------------------------------
 # (make lars) Test driver for Lars
 #-------------------------------------------------------------------------------
@@ -179,28 +149,7 @@ bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) : lars_demo.cu $(DEPS)
 	mkdir -p bin
 	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) lars_demo.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 	
-	
-#-------------------------------------------------------------------------------
-# (make harris) Test driver for Harris
-#-------------------------------------------------------------------------------
 
-harris: bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX) : harris.cu $(DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/harris_$(NVCC_VERSION)_$(ARCH_SUFFIX) harris.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  	
-
-
-#-------------------------------------------------------------------------------
-# (make grid) Evaluates grid sizes
-#-------------------------------------------------------------------------------
-
-grid: bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX)
-
-bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) : grid_size.cu $(DEPS)
-	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/grid_size_$(NVCC_VERSION)_$(ARCH_SUFFIX) grid_size.cu $(NVCCFLAGS) $(ARCH) $(INC) -I$(THRUST_INC) -O3
-	
 	
 
 #-------------------------------------------------------------------------------

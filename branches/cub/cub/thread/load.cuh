@@ -45,8 +45,11 @@
 #pragma once
 
 #include <cub/ptx_intrinsics.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
 namespace cub {
+
 
 
 /**
@@ -296,4 +299,4 @@ CUB_LOADS_4L(double4, double2);
 
 
 } // namespace cub
-
+CUB_NS_POSTFIX
