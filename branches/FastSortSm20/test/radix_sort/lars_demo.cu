@@ -1,10 +1,11 @@
 /******************************************************************************
  *
- * Copyright 2010-2011 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
- * You may obtain a scan of the License at
+ * You may obtain a copy of the License at
  * 
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
@@ -13,9 +14,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
  * 
  ******************************************************************************/
 
@@ -119,7 +117,7 @@ int main(int argc, char** argv)
 	}
 
 	if (verbose) printf("Original: ");
-	for (size_t i = 0; i < num_elements; ++i) {
+	for (int i = 0; i < num_elements; ++i) {
 
 		if (regular) {
 			h_keys[i] = i & ((1ull << effective_bits) - 1);
@@ -201,7 +199,7 @@ int main(int argc, char** argv)
 			cudaMemcpyDeviceToHost);
 
 		bool correct = true;
-		for (size_t i = 0; i < num_elements; ++i) {
+		for (int i = 0; i < num_elements; ++i) {
 			if (h_keys[CastInt(h_values[i])] != h_reference_keys[i])
 			{
 				printf("Incorrect: [%d]: %d != %d\n",

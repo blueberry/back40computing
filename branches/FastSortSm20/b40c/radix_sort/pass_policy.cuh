@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,9 +14,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- *
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
  * 
  ******************************************************************************/
 
@@ -28,12 +26,14 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
 #include <b40c/radix_sort/pass_policy.cuh>
 #include <b40c/radix_sort/upsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/spine/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 

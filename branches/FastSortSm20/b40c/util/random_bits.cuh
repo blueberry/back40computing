@@ -1,6 +1,8 @@
 /******************************************************************************
- * Copyright 2010-2012 Duane Merrill
  * 
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
@@ -13,10 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
- * Thanks!
  ******************************************************************************/
 
 /******************************************************************************
@@ -26,7 +24,9 @@
 #pragma once
 
 #include <stdlib.h>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace util {
 
@@ -82,3 +82,4 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 
 } // namespace util
 } // namespace b40c
+B40C_NS_POSTFIX

@@ -32,7 +32,9 @@
 
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/operators.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace util {
 namespace reduction {
@@ -178,4 +180,4 @@ struct WarpReduce
 } // namespace reduction
 } // namespace util
 } // namespace b40c
-
+B40C_NS_POSTFIX

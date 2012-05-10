@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,12 +14,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License. 
- *
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
  * 
  ******************************************************************************/
-
 /******************************************************************************
  * Common utilities for radix sorting
  ******************************************************************************/
@@ -27,7 +24,9 @@
 
 #include <functional>
 #include <b40c/util/device_intrinsics.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 
