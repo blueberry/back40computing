@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
  ******************************************************************************/
 
 /******************************************************************************
@@ -27,7 +25,9 @@
 
 #include <b40c/util/io/modified_load.cuh>
 #include <b40c/util/io/modified_store.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 namespace downsweep {

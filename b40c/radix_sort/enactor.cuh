@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
  ******************************************************************************/
 
 /******************************************************************************
@@ -25,12 +23,14 @@
 
 #pragma once
 
+#include <b40c/radix_sort/problem_instance.cuh>
+#include <b40c/radix_sort/pass_policy.cuh>
 #include <b40c/util/error_utils.cuh>
 #include <b40c/util/spine.cuh>
 #include <b40c/util/cuda_properties.cuh>
-#include <b40c/radix_sort/problem_instance.cuh>
-#include <b40c/radix_sort/pass_policy.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 
@@ -257,6 +257,38 @@ struct Enactor
 		return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
 			template DispatchPass<200>(problem_instance, *this);
 
+	}
+
+
+	/**
+	 * Enact a sort.
+	 *
+	 * @param problem_storage
+	 * 		Instance of b40c::util::DoubleBuffer
+	 * @param num_elements
+	 * 		The number of elements in problem_storage to sort (starting at offset 0)
+	 * @param max_grid_size
+	 * 		Optional upper-bound on the number of CTAs to launch.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <typename DoubleBuffer>
+	cudaError_t Sort(
+		DoubleBuffer& 	problem_storage,
+		int 			num_elements,
+		cudaStream_t	stream 			= 0,
+		int 			max_grid_size 	= 0,
+		bool 			debug 			= false)
+	{
+		return Sort<
+			LARGE_PROBLEM,
+			sizeof(typename DoubleBuffer::KeyType) * 8,			// BITS_REMAINING
+			0>(													// CURRENT_BIT
+				problem_storage,
+				num_elements,
+				stream,
+				max_grid_size,
+				debug);
 	}
 };
 

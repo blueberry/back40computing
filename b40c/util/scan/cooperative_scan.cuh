@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2011 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,13 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
- * Thanks!
- * 
  ******************************************************************************/
-
 /******************************************************************************
  * Cooperative tile reduction and scanning within CTAs
  ******************************************************************************/
@@ -32,7 +27,9 @@
 #include <b40c/util/reduction/cooperative_reduction.cuh>
 #include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/scan/warp_scan.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
+B40C_NS_PREFIX
 namespace b40c {
 namespace util {
 namespace scan {
@@ -502,4 +499,4 @@ struct CooperativeGridScan
 } // namespace scan
 } // namespace util
 } // namespace b40c
-
+B40C_NS_POSTFIX
