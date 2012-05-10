@@ -38,7 +38,7 @@ namespace upsweep {
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
 	int 							_CURRENT_BIT,			// The bit offset of the current radix digit place
-	int 							_CURRENT_PASS,			// The number of previous passes
+	int 							_CURRENT_PASS,			// The current pass iteration
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_LOG_THREADS,			// The number of threads per CTA
 	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load

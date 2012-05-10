@@ -68,10 +68,6 @@ struct ProblemInstance
 	typedef typename DoubleBuffer::ValueType 				ValueType;
 	typedef _SizeT 											SizeT;
 
-	typedef typename KeyTraits<KeyType>::IngressOp 			IngressOp;
-	typedef typename KeyTraits<KeyType>::EgressOp 			EgressOp;
-	typedef typename KeyTraits<KeyType>::ConvertedKeyType 	ConvertedKeyType;
-
 	/**
 	 * Upsweep kernel properties
 	 */
@@ -80,9 +76,8 @@ struct ProblemInstance
 		// Upsweep kernel function type
 		typedef void (*KernelFunc)(
 			SizeT*,
-			ConvertedKeyType*,
-			ConvertedKeyType*,
-			IngressOp,
+			KeyType*,
+			KeyType*,
 			util::CtaWorkDistribution<SizeT>);
 
 		// Fields
@@ -186,12 +181,10 @@ struct ProblemInstance
 		// Downsweep kernel function type
 		typedef void (*KernelFunc)(
 			SizeT*,
-			ConvertedKeyType*,
-			ConvertedKeyType*,
+			KeyType*,
+			KeyType*,
 			ValueType*,
 			ValueType*,
-			IngressOp,
-			EgressOp,
 			util::CtaWorkDistribution<SizeT>);
 
 		// Downsweep texture binding function type
@@ -224,7 +217,7 @@ struct ProblemInstance
 			typedef typename DownsweepTextures::ValueTexType ValueTexType;
 
 			// Initialize fields
-			kernel_func 			= downsweep::Kernel<OpaquePolicy>;
+			kernel_func 		= downsweep::Kernel<OpaquePolicy>;
 			keys_tex_func 		= downsweep::TexKeys<KeyTexType>::BindTexture;
 			values_tex_func 	= downsweep::TexValues<ValueTexType>::BindTexture;
 			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
@@ -280,8 +273,6 @@ struct ProblemInstance
 
 	DoubleBuffer		&storage;
 	SizeT				num_elements;
-	IngressOp			ingress_op;
-	EgressOp			egress_op;
 
 	util::Spine			&spine;
 	cudaStream_t		stream;
@@ -422,9 +413,8 @@ struct ProblemInstance
 			// Upsweep reduction into spine
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
 				(SizeT*) spine(),
-				(ConvertedKeyType *) storage.d_keys[storage.selector],
-				(ConvertedKeyType *) storage.d_keys[storage.selector ^ 1],
-				ingress_op,
+				storage.d_keys[storage.selector],
+				storage.d_keys[storage.selector ^ 1],
 				work);
 
 			// Restore smem bank mode
@@ -463,12 +453,10 @@ struct ProblemInstance
 			// Downsweep scan from spine
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
 				(SizeT *) spine(),
-				(ConvertedKeyType *) storage.d_keys[storage.selector],
-				(ConvertedKeyType *) storage.d_keys[storage.selector ^ 1],
+				storage.d_keys[storage.selector],
+				storage.d_keys[storage.selector ^ 1],
 				storage.d_values[storage.selector],
 				storage.d_values[storage.selector ^ 1],
-				ingress_op,
-				egress_op,
 				work);
 
 			if (debug) {

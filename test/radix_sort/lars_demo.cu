@@ -63,6 +63,7 @@ int CastInt(b40c::util::NullType)
 int main(int argc, char** argv)
 {
 //	typedef unsigned long long		KeyType;
+//	typedef float					KeyType;
 	typedef unsigned int 			KeyType;
 	typedef b40c::util::NullType 	ValueType;
 //	typedef unsigned long long 		ValueType;
@@ -127,7 +128,7 @@ int main(int argc, char** argv)
 		} else {
 			b40c::util::RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
 		}
-		h_keys[i] <<= START_BIT;
+		h_keys[i] *= (1 << START_BIT);
 
 		h_reference_keys[i] = h_keys[i];
 
@@ -136,7 +137,8 @@ int main(int argc, char** argv)
 		}
 
 		if (verbose) {
-			printf("%d, ", h_keys[i]);
+			b40c::PrintValue(h_keys[i]);
+			printf(", ");
 			if ((i & 255) == 255) printf("\n\n");
 		}
 	}

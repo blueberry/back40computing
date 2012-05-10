@@ -35,7 +35,8 @@ namespace downsweep {
 /**
  * Types of scattering strategies
  */
-enum ScatterStrategy {
+enum ScatterStrategy
+{
 	SCATTER_DIRECT = 0,			// Scatter directly from registers to global bins
 	SCATTER_TWO_PHASE,			// First scatter from registers into shared memory bins, then into global bins
 	SCATTER_WARP_TWO_PHASE,		// Similar to SCATTER_TWO_PHASE, but with the additional constraint that each warp only perform segment-aligned global writes
@@ -48,7 +49,7 @@ enum ScatterStrategy {
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
 	int 							_CURRENT_BIT,			// The bit offset of the current radix digit place
-	int 							_CURRENT_PASS,			// The number of previous passes
+	int 							_CURRENT_PASS,			// The current pass iteration
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_LOG_THREADS,			// The number of threads per CTA
 	int 							_LOG_THREAD_ELEMENTS,	// The number of consecutive keys to process per thread per tile

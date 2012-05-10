@@ -41,15 +41,13 @@ namespace upsweep {
 template <
 	typename KernelPolicy,
 	typename SizeT,
-	typename KeyType,
-	typename IngressOp>
+	typename KeyType>
 __launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
 	SizeT 		*d_spine,
 	KeyType 	*d_in_keys,
-	KeyType 	*d_out_keIngressOp	ingress_op,
-	util::CtaWorkDistribution<SizeT> work_decomposition)
+	KeyType 	*d_out_keutil::CtaWorkDistribution<SizeT> work_decomposition)
 {n)
 {
 

@@ -47,7 +47,7 @@ struct BaseTraits
 {
 	enum {
 		REPRESENTATION 		= R,
-		BUILT_IN			= (R == NOT_A_NUMBER),
+		BUILT_IN			= (R != NOT_A_NUMBER),
 	};
 };
 

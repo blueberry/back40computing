@@ -29,7 +29,7 @@
 #include <b40c/util/spine.cuh>
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/radix_sort/problem_instance.cuh>
-#include <b40c/radix_sort/tuned_pass_policy.cuh>
+#include <b40c/radix_sort/pass_policy.cuh>
 
 namespace b40c {
 namespace radix_sort {

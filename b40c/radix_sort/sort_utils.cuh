@@ -20,12 +20,12 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Types and subroutines utilities that are common across all B40C LSB radix 
- * sorting kernels and host enactors  
+ * Common utilities for radix sorting
  ******************************************************************************/
 
 #pragma once
 
+#include <functional>
 #include <b40c/util/device_intrinsics.cuh>
 
 namespace b40c {
@@ -33,92 +33,74 @@ namespace radix_sort {
 
 
 /******************************************************************************
- * Bit-field extraction kernel subroutines
+ * Bit-field extraction utilities
  ******************************************************************************/
 
 /**
- * Bit extraction, specialized for non-64bit key types
+ * Bitfield-extract, left-shift
  */
-template <
-	typename T,
-	int BIT_OFFSET,
-	int NUM_BITS,
-	int LEFT_SHIFT>
-struct Extract
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT, typename T>
+__device__ __forceinline__ unsigned int Extract(
+	T source)
 {
-	/**
-	 * Super bitfield-extract (BFE, then left-shift).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		T source)
-	{
-		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+	const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
 
-		T bits = (source & MASK);
-		if (SHIFT == 0) {
-			return bits;
-		} else {
-			return util::MagnitudeShift<SHIFT>::Shift(bits);
-		}
-	}
-
-	/**
-	 * Super bitfield-extract (BFE, then left-shift, then add).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		T source,
-		unsigned int addend)
-	{
-		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-		T bits = (source & MASK);
-		if (SHIFT == 0) {
-			return bits + addend;
-		} else {
-			bits = (SHIFT > 0) ?
-				(util::SHL_ADD(bits, SHIFT, addend)) :
-				(util::SHR_ADD(bits, SHIFT * -1, addend));
-			return bits;
-		}
-	}
-
-};
-
-
-/**
- * Bit extraction, specialized for 64bit key types
- */
-template <
-	int BIT_OFFSET,
-	int NUM_BITS,
-	int LEFT_SHIFT>
-struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
-{
-	/**
-	 * Super bitfield-extract (BFE, then left-shift).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		unsigned long long source)
-	{
-		const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-		unsigned long long bits = (source & MASK);
+	T bits = (source & MASK);
+	if (SHIFT == 0) {
+		return bits;
+	} else {
 		return util::MagnitudeShift<SHIFT>::Shift(bits);
 	}
+}
 
-	/**
-	 * Super bitfield-extract (BFE, then left-shift, then add).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		unsigned long long source,
-		unsigned int addend)
-	{
-		return SuperBFE(source) + addend;
+/**
+ * Bitfield-extract, left-shift, add
+ */
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT, typename T>
+__device__ __forceinline__ unsigned int Extract(
+	T source,
+	unsigned int addend)
+{
+	const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+	T bits = (source & MASK);
+	if (SHIFT == 0) {
+		return bits + addend;
+	} else {
+		bits = (SHIFT > 0) ?
+			(util::SHL_ADD(bits, SHIFT, addend)) :
+			(util::SHR_ADD(bits, SHIFT * -1, addend));
+		return bits;
 	}
-};
+}
+
+/**
+ * Bitfield-extract, left-shift (64-bit)
+ */
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
+__device__ __forceinline__ unsigned int Extract(
+	unsigned long long source)
+{
+	const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+	unsigned long long bits = (source & MASK);
+	return util::MagnitudeShift<SHIFT>::Shift(bits);
+}
+
+/**
+ * Bitfield-extract, left-shift, add (64-bit)
+ */
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
+__device__ __forceinline__ unsigned int Extract(
+	unsigned long long source,
+	unsigned int addend)
+{
+	return Extract<BIT_OFFSET, NUM_BITS, LEFT_SHIFT>(source) + addend;
+}
+
 
 
 
@@ -132,26 +114,24 @@ struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
 /**
  * Specialization for unsigned signed integers
  */
-template <typename UnsignedBits>
+template <typename _ConvertedKeyType>
 struct UnsignedKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _ConvertedKeyType 	ConvertedKeyType;
 
-	static const bool MUST_APPLY = false;
-
-	struct IngressOp
+	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
 		{
 			return key;
 		}
 	};
 
-	struct EgressOp
+	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
 		{
-			return key;
+			return converted_key;
 		}
 	};
 };
@@ -160,27 +140,26 @@ struct UnsignedKeyTraits
 /**
  * Specialization for signed integers
  */
-template <typename UnsignedBits>
+template <typename _ConvertedKeyType>
 struct SignedKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _ConvertedKeyType 	ConvertedKeyType;
 
-	static const bool MUST_APPLY 			= true;
-	static const UnsignedBits HIGH_BIT 		= ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const ConvertedKeyType HIGH_BIT = ConvertedKeyType(1) << ((sizeof(ConvertedKeyType) * 8) - 1);
 
-	struct IngressOp
+	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
 		{
 			return key ^ HIGH_BIT;
 		}
 	};
 
-	struct EgressOp
+	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
 		{
-			return key ^ HIGH_BIT;
+			return converted_key ^ HIGH_BIT;
 		}
 	};
 };
@@ -189,29 +168,28 @@ struct SignedKeyTraits
 /**
  * Specialization for floating point
  */
-template <typename UnsignedBits>
+template <typename _ConvertedKeyType>
 struct FloatKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _ConvertedKeyType 	ConvertedKeyType;
 
-	static const bool MUST_APPLY 			= true;
-	static const UnsignedBits HIGH_BIT 		= ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const ConvertedKeyType HIGH_BIT = ConvertedKeyType(1) << ((sizeof(ConvertedKeyType) * 8) - 1);
 
-	struct IngressOp
+	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
 		{
-			UnsignedBits mask = (key & HIGH_BIT) ? (UnsignedBits) -1 : HIGH_BIT;
+			ConvertedKeyType mask = (key & HIGH_BIT) ? ConvertedKeyType(-1) : HIGH_BIT;
 			return key ^ mask;
 		}
 	};
 
-	struct EgressOp
+	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
+		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
 		{
-			UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : (UnsignedBits) -1;
-			return key ^ mask;
+			ConvertedKeyType mask = (converted_key & HIGH_BIT) ? HIGH_BIT : ConvertedKeyType(-1);
+			return converted_key ^ mask;
 		}
 	};
 };
