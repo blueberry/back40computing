@@ -70,14 +70,11 @@ struct Enactor
 		// The appropriate tuning arch-id from the arch-id targeted by the
 		// active compiler pass.
 		enum {
-			COMPILER_TUNE_ARCH = 200,
-/*
-			VALUE = (__CUB_CUDA_ARCH__ >= 200) ?
-				200 :
-				(__CUB_CUDA_ARCH__ >= 130) ?
-					130 :
-					100
-*/
+			COMPILER_TUNE_ARCH 		= (__CUB_CUDA_ARCH__ >= 200) ?
+										200 :
+										(__CUB_CUDA_ARCH__ >= 130) ?
+											130 :
+											100
 		};
 
 		typedef TunedPassPolicy<
@@ -237,7 +234,6 @@ struct Enactor
 			max_grid_size,
 			debug);
 
-/*
 		if (cuda_props.kernel_ptx_version >= 200)
 		{
 			return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
@@ -253,10 +249,6 @@ struct Enactor
 			return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
 				template DispatchPass<100>(problem_instance, *this);
 		}
-*/
-		return IteratePasses<ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, 0>::
-			template DispatchPass<200>(problem_instance, *this);
-
 	}
 
 

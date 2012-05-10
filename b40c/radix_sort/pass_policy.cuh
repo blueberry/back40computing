@@ -173,6 +173,136 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 };
 
 
+/**
+ * SM13
+ */
+template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+{
+	enum {
+		TUNE_ARCH			= 130,
+		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
+		PREFERRED_BITS		= 5,
+		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
+		SMEM_8BYTE_BANKS	= false,
+		EARLY_EXIT 			= false,
+		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
+	};
+
+	// Dispatch policy
+	typedef DispatchPolicy <
+		TUNE_ARCH,									// TUNE_ARCH
+		RADIX_BITS,									// RADIX_BITS
+		true, 										// UNIFORM_SMEM_ALLOCATION
+		true> 										// UNIFORM_GRID_SIZE
+			DispatchPolicy;
+
+	// Upsweep kernel policy
+	typedef upsweep::KernelPolicy<
+		RADIX_BITS,									// RADIX_BITS
+		CURRENT_BIT,								// CURRENT_BIT
+		CURRENT_PASS,								// CURRENT_PASS
+		(RADIX_BITS > 4 ? 3 : 6),					// MIN_CTA_OCCUPANCY
+		7,											// LOG_THREADS
+		0,											// LOG_LOAD_VEC_SIZE
+		(!LARGE_DATA ? 2 : 1),						// LOG_LOADS_PER_TILE
+		b40c::util::io::ld::NONE,					// LOAD_MODIFIER
+		b40c::util::io::st::NONE,					// STORE_MODIFIER
+		SMEM_8BYTE_BANKS,							// SMEM_8BYTE_BANKS
+		EARLY_EXIT>									// EARLY_EXIT
+			UpsweepPolicy;
+
+	// Spine-scan kernel policy
+	typedef spine::KernelPolicy<
+		8,											// LOG_THREADS
+		2,											// LOG_LOAD_VEC_SIZE
+		0,											// LOG_LOADS_PER_TILE
+		b40c::util::io::ld::NONE,					// LOAD_MODIFIER
+		b40c::util::io::st::NONE>					// STORE_MODIFIER
+			SpinePolicy;
+
+	// Downsweep kernel policy
+	typedef downsweep::KernelPolicy<
+			RADIX_BITS,								// RADIX_BITS
+			CURRENT_BIT,							// CURRENT_BIT
+			CURRENT_PASS,							// CURRENT_PASS
+			(KEYS_ONLY ? 3 : 2),					// MIN_CTA_OCCUPANCY
+			6,										// LOG_THREADS
+			(!LARGE_DATA ? 4 : 3),					// LOG_ELEMENTS_PER_TILE
+			b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+			b40c::util::io::st::NONE,				// STORE_MODIFIER
+			downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
+			SMEM_8BYTE_BANKS,						// SMEM_8BYTE_BANKS
+			EARLY_EXIT>								// EARLY_EXIT
+				DownsweepPolicy;
+};
+
+
+/**
+ * SM10
+ */
+template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
+struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+{
+	enum {
+		TUNE_ARCH			= 100,
+		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
+		PREFERRED_BITS		= 5,
+		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
+		SMEM_8BYTE_BANKS	= false,
+		EARLY_EXIT 			= false,
+		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
+	};
+
+	// Dispatch policy
+	typedef DispatchPolicy <
+		TUNE_ARCH,									// TUNE_ARCH
+		RADIX_BITS,									// RADIX_BITS
+		false, 										// UNIFORM_SMEM_ALLOCATION
+		true> 										// UNIFORM_GRID_SIZE
+			DispatchPolicy;
+
+	// Upsweep kernel policy
+	typedef upsweep::KernelPolicy<
+		RADIX_BITS,									// RADIX_BITS
+		CURRENT_BIT,								// CURRENT_BIT
+		CURRENT_PASS,								// CURRENT_PASS
+		2,											// MIN_CTA_OCCUPANCY
+		7,											// LOG_THREADS
+		0,											// LOG_LOAD_VEC_SIZE
+		0,											// LOG_LOADS_PER_TILE
+		b40c::util::io::ld::NONE,					// LOAD_MODIFIER
+		b40c::util::io::st::NONE,					// STORE_MODIFIER
+		SMEM_8BYTE_BANKS,							// SMEM_8BYTE_BANKS
+		EARLY_EXIT>									// EARLY_EXIT
+			UpsweepPolicy;
+
+	// Spine-scan kernel policy
+	typedef spine::KernelPolicy<
+		7,											// LOG_THREADS
+		2,											// LOG_LOAD_VEC_SIZE
+		0,											// LOG_LOADS_PER_TILE
+		b40c::util::io::ld::NONE,					// LOAD_MODIFIER
+		b40c::util::io::st::NONE>					// STORE_MODIFIER
+			SpinePolicy;
+
+	// Downsweep kernel policy
+	typedef downsweep::KernelPolicy<
+			RADIX_BITS,								// RADIX_BITS
+			CURRENT_BIT,							// CURRENT_BIT
+			CURRENT_PASS,							// CURRENT_PASS
+			2,										// MIN_CTA_OCCUPANCY
+			6,										// LOG_THREADS
+			(!LARGE_DATA ? 4 : 3),					// LOG_ELEMENTS_PER_TILE
+			b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+			b40c::util::io::st::NONE,				// STORE_MODIFIER
+			downsweep::SCATTER_WARP_TWO_PHASE,		// SCATTER_STRATEGY
+			SMEM_8BYTE_BANKS,						// SMEM_8BYTE_BANKS
+			EARLY_EXIT>								// EARLY_EXIT
+				DownsweepPolicy;
+};
+
+
 
 }// namespace radix_sort
 }// namespace b40c
