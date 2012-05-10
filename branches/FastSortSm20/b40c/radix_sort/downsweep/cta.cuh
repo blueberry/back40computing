@@ -57,6 +57,10 @@ struct Cta
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
+	typedef typename KeyTraits<KeyType>::IngressOp 			IngressOp;
+	typedef typename KeyTraits<KeyType>::EgressOp 			EgressOp;
+	typedef typename KeyTraits<KeyType>::ConvertedKeyType 	ConvertedKeyType;
+
 	// Integer type for digit counters (to be packed into words of PackedCounters)
 	typedef unsigned short DigitCounter;
 
@@ -93,6 +97,9 @@ struct Cta
 
 		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_THREAD_ELEMENTS,
 		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
+
+		BYTES_PER_SIZET				= sizeof(SizeT),
+		LOG_BYTES_PER_SIZET			= util::Log2<BYTES_PER_SIZET>::VALUE,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
 		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
@@ -159,7 +166,7 @@ struct Cta
 			unsigned char			counter_base[1];
 			DigitCounter			digit_counters[COUNTER_LANES + 1][THREADS][PACKING_RATIO];
 			PackedCounter			raking_grid[THREADS][RAKING_SEGMENT];
-			KeyType 				key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
+			ConvertedKeyType		key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 			ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
 		};
 	};
@@ -170,12 +177,12 @@ struct Cta
 	 */
 	struct Tile
 	{
-		KeyType 		keys[THREAD_ELEMENTS];					// Keys for this tile
-		ValueType 		values[THREAD_ELEMENTS];				// Values for this tile
-		DigitCounter	thread_prefixes[THREAD_ELEMENTS];		// For each key, the count of previous keys in this tile having the same digit
-		int 			ranks[THREAD_ELEMENTS];					// For each key, the local rank within the tile
-		unsigned int 	counter_offsets[THREAD_ELEMENTS];		// For each key, the byte-offset of its corresponding digit counter in smem
-		SizeT			global_digit_base[THREAD_ELEMENTS];		// For each key, the global base scatter offset for the corresponding digit
+		ConvertedKeyType	keys[THREAD_ELEMENTS];					// Keys for this tile
+		ValueType 			values[THREAD_ELEMENTS];				// Values for this tile
+		DigitCounter		thread_prefixes[THREAD_ELEMENTS];		// For each key, the count of previous keys in this tile having the same digit
+		int 				ranks[THREAD_ELEMENTS];					// For each key, the local rank within the tile
+		unsigned int 		counter_offsets[THREAD_ELEMENTS];		// For each key, the byte-offset of its corresponding digit counter in smem
+		SizeT				global_digit_base[THREAD_ELEMENTS];		// For each key, the global base scatter offset for the corresponding digit
 	};
 
 
@@ -184,23 +191,27 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
-	SmemStorage &smem_storage;
+	SmemStorage 				&smem_storage;
 
-	KeyType *d_in_keys;
-	KeyType	 *d_out_keys;
+	// Input and output device pointers
+	ConvertedKeyType 			*d_in_keys;
+	ConvertedKeyType			*d_out_keys;
+	ValueType 					*d_in_values;
+	ValueType 					*d_out_values;
 
-	ValueType *d_in_values;
-	ValueType *d_out_values;
+	// Bit-twiddling operator needed to make keys suitable for radix sorting
+	IngressOp					ingress_op;
+	EgressOp					egress_op;
 
-	PackedCounter *raking_segment;
-	DigitCounter *bin_counter;
+	PackedCounter 				*raking_segment;
+	DigitCounter 				*bin_counter;
 
 	// The global scatter base offset for each digit (valid in the
 	// first RADIX_DIGITS threads)
-	SizeT global_digit_base;
+	SizeT 						global_digit_base;
 
-	int warp_id;
-	volatile PackedCounter *warpscan;
+	int 						warp_id;
+	volatile PackedCounter 		*warpscan;
 
 
 	//---------------------------------------------------------------------
@@ -214,28 +225,25 @@ struct Cta
 	struct Iterate
 	{
 		// DecodeKeys
-		static __device__ __forceinline__ void DecodeKeys(Cta &cta,	Tile &tile)
+		static __device__ __forceinline__ void DecodeKeys( ta &cta,	Tile &tile)
 		{
 			// Compute byte offset of smem counter, starting with offset
 			// of the thread's packed counter column
-			unsigned int counter_offset = (threadIdx.x << (LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER));
+			unsigned int counter_offset = (threadIdx.x << (LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTEConvertedKeyType converted_key = cta.ingress_op(tile.keys[COUNT]);
 
 			// Add in sub-counter offset
 			counter_offset = Extract<
-				KeyType,
 				CURRENT_BIT + LOG_COUNTER_LANES,
 				LOG_PACKING_RATIO,
-				LOG_BYTES_PER_COUNTER>::SuperBFE(
-					tile.keys[COUNT],
+				LOG_BYTES_PER_COUNTER>(
+					converted_keyys[COUNT],
 					counter_offset);
 
 			// Add in row offset
-			counter_offset = Extract<
-				KeyType,
-				CURRENT_BIT,
+			counter_offset = ExtrCURRENT_BIT,
 				LOG_COUNTER_LANES,
-				LOG_THREADS + LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER>::SuperBFE(
-					tile.keys[COUNT],
+				LOG_THREADS + LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER>(
+					converted_keyys[COUNT],
 					counter_offset);
 
 			DigitCounter* counter =
@@ -309,15 +317,14 @@ struct Cta
 		}
 
 		// DecodeBinOffsets
-		static __device__ __forceinline__ void DecodeBinOffsets(Cta &cta, Tile &tile)
+		static __device__ __forceinline__ void DecodeBinOffsets(Cta &cta, Tile &tileConvertedKeyType converted_key = cta.ingress_op(tile.keys[COUNT]);
+tile)
 		{
 			// Decode address of bin-offset in smem
-			unsigned int byte_offset = Extract<
-				KeyType,
-				CURRENT_BIT,
+			unsigned int byte_offset = ExtrCURRENT_BIT,
 				RADIX_BITS,
-				util::Log2<sizeof(SizeT)>::VALUE>::SuperBFE(
-					tile.keys[COUNT]);
+				LOG_BYTES_PER_SIZET>(
+					converted_keyys[COUNT]);
 
 			// Lookup global bin offset
 			tile.global_digit_base[COUNT] = *(SizeT *)(((char *) cta.smem_storage.base_digit_offset) + byte_offset);
@@ -478,10 +485,8 @@ struct Cta
 			// Unguarded loads through tex
 			KeyTexType *vectors = (KeyTexType *) tile.keys;
 
-			#pragma unroll
-			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++) {
-
-				vectors[PACK] = tex1Dfetch(
+			#pragma unreinterpret_cast<ConvertedKeyType*>(FLOP_TURN ? d_keys1 : d_keys0)),
+			d_out_keys(reinterpret_cast<ConvertedKeyType*>(FLOP_TURN ? d_keys0 : d_keys1)PACK] = tex1Dfetch(
 					(Cta::FLOP_TURN) ?
 						TexKeys<KeyTexType>::ref1 :
 						TexKeys<KeyTexType>::ref0,
@@ -546,11 +551,10 @@ struct Cta
 	/**
 	 * Scan shared memory counters
 	 LO
-	__device__ __forceinline__ void ScanCounters(Tile &tile)
+	__device__ __forceinline__ void ScanCounConvertedters(Tile &tile)
 	{
 		// Upsweep reduce
-		PackedCounter raking_partial = util::reduction::SerialReduce<RAKING_SEGMENT>::Invoke(
-			raking_segment);
+		PackedCounter raking_partial = util::reduction::SerialReduce<RAKING_SEGMENT>::Invegress_op(ConvertedKeyType(-1)king_segment);
 
 		// Warpscan
 		PackedCounter partial = raking_partial;
