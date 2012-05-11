@@ -101,7 +101,7 @@ struct Cta
 		// is assigned to a warp for aggregation.  Each lane is therefore equivalent to
 		// four = CUB_MAX(0, LOG_COUNTER_LANES - LOG_WARPS),
 		LANES_PER_WARP ES_PER_WARP					= CUB_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
-		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,= 127 / THREAD_ELEMENTS,
+		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,= CUB_MIN(64, 255 / THREAD_ELEMENTS),
 		UNROLLED_ELEMENTS ER_LANE - LOG_WARP_THREADS,		// Number of partials per thread to aggregate
 		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_LANE_PER_THREAD,
 
@@ -148,9 +148,11 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
-	SmemStorage 	&smem_storage;
-
-	// Thread-local counters for periodically aggregating compositConvertedKeyType keys[THREAD_ELEMENTSs[LANES_PER_WARP][4];
+	SmemStoraenum {
+			HALF = MAX / 2,
+		};
+te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
+	struct Iteraregating compositConvertedKeyType keys[THREAD_ELEMENTSs[LANES_PER_WARP][4];
 
 	// Input and output device pointers
 	KeyType			*d_in_keys;
@@ -162,9 +164,9 @@ struct Cta
 	char 			*base;
 
 
-	//---------------------------------------------------------------------
-	// Helper structure for counter aggregation
-	//---------------------------------------------------------------------
+	//--------------------------------------------------// Next
+			Iterate<1, HALF>::ProcessTiles(cta, cta_offset);
+			Iterate<1, MAX - HALF>::ProcessTiles(cta, cta_offset + (HALF * TILE_ELEMENTS)--------------------
 
 	/**
 	 * Iterate next composite counter
@@ -180,7 +182,10 @@ struct Cta
 	char 			*base;
 
 
-	//------------------------------------------ {}
+	//------------------------------------------
+		{
+			cta.ProcessFullTile(cta_offset);
+		}
 	};
 
 
@@ -188,8 +193,7 @@ struct Cta
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
---
-	// Methods
+ CO	// Methods
 	//EAD,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};

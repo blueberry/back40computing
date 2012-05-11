@@ -323,20 +323,20 @@ int CompareResults(T* computed, S* reference, SizeT len, bool verbose = true)
 
 		if (!CompareEquals(computed[i], reference[i])) {
 			printf("INCORRECT: [%lu]: ", (unsigned long) i);
-			PrintValue<T>(computed[i]);
+			PrintValue(computed[i]);
 			printf(" != ");
-			PrintValue<S>(reference[i]);
+			PrintValue(reference[i]);
 
 			if (verbose) {
 				printf("\nresult[...");
 				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
-					PrintValue<T>(computed[j]);
+					PrintValue(computed[j]);
 					printf(", ");
 				}
 				printf("...]");
 				printf("\nreference[...");
 				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
-					PrintValue<S>(reference[j]);
+					PrintValue(reference[j]);
 					printf(", ");
 				}
 				printf("...]");

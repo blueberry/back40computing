@@ -279,7 +279,7 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 
 	// Spine-scan kernel policy
 	typedef spine::KernelPolicy<
-		7,											// LOG_THREADS
+		8,											// LOG_THREADS
 		2,											// LOG_LOAD_VEC_SIZE
 		0,											// LOG_LOADS_PER_TILE
 		b40c::util::io::ld::NONE,					// LOAD_MODIFIER
