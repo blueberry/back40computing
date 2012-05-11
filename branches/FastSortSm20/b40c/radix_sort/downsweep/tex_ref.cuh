@@ -152,7 +152,11 @@ struct Textures
 	enum {
 		KEY_ELEMENTS_PER_TEX		= util::TexVector<KeyType, THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
 		VALUE_ELEMENTS_PER_TEX		= util::TexVector<ValueType, THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
-		ELEMENTS_PER_TEX			= CUB_MIN(int(KEY_ELEMENTS_PER_TEX), int(VALUE_ELEMENTS_PER_TEX))
+
+		// If values are also going through tex, make sure the tex vector size is the same for both the key and value texture vector types
+		ELEMENTS_PER_TEX			= util::NumericTraits<ValueType>::BUILT_IN ?
+											CUB_MIN(int(KEY_ELEMENTS_PER_TEX), int(VALUE_ELEMENTS_PER_TEX)) :
+											KEY_ELEMENTS_PER_TEX
 	};
 
 	typedef typename util::TexVector<

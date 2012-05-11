@@ -62,9 +62,11 @@ int main(int argc, char** argv)
 {
 //	typedef unsigned long long		KeyType;
 //	typedef float					KeyType;
+//	typedef int						KeyType;
 	typedef unsigned int 			KeyType;
 	typedef b40c::util::NullType 	ValueType;
 //	typedef unsigned long long 		ValueType;
+//	typedef unsigned int			ValueType;
 //	typedef unsigned int			ValueType;
 
 	const int 		START_BIT			= 0;
@@ -146,12 +148,18 @@ int main(int argc, char** argv)
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
 
 	// Allocate device data.
+	cudaError_t error;
 	b40c::util::DoubleBuffer<KeyType, ValueType> double_buffer;
-	cudaMalloc((void**) &double_buffer.d_keys[0], sizeof(KeyType) * num_elements);
-	cudaMalloc((void**) &double_buffer.d_keys[1], sizeof(KeyType) * num_elements);
+
+	error = cudaMalloc((void**) &double_buffer.d_keys[0], sizeof(KeyType) * num_elements);
+	if (b40c::util::B40CPerror(error)) exit(1);
+	error = cudaMalloc((void**) &double_buffer.d_keys[1], sizeof(KeyType) * num_elements);
+	if (b40c::util::B40CPerror(error)) exit(1);
 	if (!KEYS_ONLY) {
-		cudaMalloc((void**) &double_buffer.d_values[0], sizeof(ValueType) * num_elements);
-		cudaMalloc((void**) &double_buffer.d_values[1], sizeof(ValueType) * num_elements);
+		error = cudaMalloc((void**) &double_buffer.d_values[0], sizeof(ValueType) * num_elements);
+		if (b40c::util::B40CPerror(error)) exit(1);
+		error = cudaMalloc((void**) &double_buffer.d_values[1], sizeof(ValueType) * num_elements);
+		if (b40c::util::B40CPerror(error)) exit(1);
 	}
 
 	// Create a scan enactor
@@ -175,8 +183,17 @@ int main(int argc, char** argv)
 	}
 
 	// Sort
-	enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
-		double_buffer, num_elements, 0, max_ctas, true);
+	error = enactor.Sort<
+		b40c::radix_sort::LARGE_PROBLEM,
+		KEY_BITS,
+		START_BIT>(
+			double_buffer,
+			num_elements,
+			0,
+			max_ctas,
+			true);
+
+	if (error) exit(1);
 
 	printf("\nRestricted-range %s sort (selector %d): ",
 		(KEYS_ONLY) ? "keys-only" : "key-value",
@@ -190,13 +207,23 @@ int main(int argc, char** argv)
 		true,
 		verbose); printf("\n");
 
-	if (!KEYS_ONLY) {
-
+	if (!KEYS_ONLY)
+	{
 		cudaMemcpy(
 			h_values,
 			double_buffer.d_values[double_buffer.selector],
 			sizeof(ValueType) * num_elements,
 			cudaMemcpyDeviceToHost);
+
+		printf("\n\nValues: ");
+		if (verbose) {
+			for (int i = 0; i < num_elements; ++i)
+			{
+				b40c::PrintValue(h_values[i]);
+				printf(", ");
+			}
+			printf("\n\n");
+		}
 
 		bool correct = true;
 		for (int i = 0; i < num_elements; ++i) {

@@ -381,8 +381,14 @@ struct ProblemInstance
 			}
 			else
 			{
-				// Compute smem padding for upsweep to make upsweep occupancy a multiple of downsweep occupancy
-				dynamic_smem[0] = upsweep_props.SmemPadding(downsweep_props.max_cta_occupancy);
+				// Compute smem padding to make each kernel occupancy a multiple of the lowest occupancy
+				int min_occupancy = CUB_MIN(
+					upsweep_props.max_cta_occupancy,
+					CUB_MIN(spine_props.max_cta_occupancy, downsweep_props.max_cta_occupancy));
+
+				dynamic_smem[0] = upsweep_props.SmemPadding(min_occupancy);
+				dynamic_smem[1] = spine_props.SmemPadding(min_occupancy);
+				dynamic_smem[2] = downsweep_props.SmemPadding(min_occupancy);
 			}
 
 			// Print debug info
@@ -411,7 +417,7 @@ struct ProblemInstance
 				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
 			// Upsweep reduction into spine
-			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0]>>>(
+			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0], stream>>>(
 				(SizeT*) spine(),
 				storage.d_keys[storage.selector],
 				storage.d_keys[storage.selector ^ 1],
@@ -430,7 +436,7 @@ struct ProblemInstance
 			//
 
 			// Spine scan
-			spine_props.kernel_func<<<grid_size[1], spine_props.threads, dynamic_smem[1]>>>(
+			spine_props.kernel_func<<<grid_size[1], spine_props.threads, dynamic_smem[1], stream>>>(
 				(SizeT*) spine(),
 				(SizeT*) spine(),
 				spine_elements);
@@ -451,7 +457,7 @@ struct ProblemInstance
 				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
 
 			// Downsweep scan from spine
-			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2]>>>(
+			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2], stream>>>(
 				(SizeT *) spine(),
 				storage.d_keys[storage.selector],
 				storage.d_keys[storage.selector ^ 1],

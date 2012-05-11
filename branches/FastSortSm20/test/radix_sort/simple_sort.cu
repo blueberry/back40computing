@@ -32,14 +32,20 @@
 #include "b40c_test_util.h"
 
 
+struct Foo
+{
+	int a[5];
+};
+
+
 /******************************************************************************
  * Main
  ******************************************************************************/
 
 int main(int argc, char** argv)
 {
-	typedef float 	KeyType;
-	typedef int 	ValueType;
+	typedef float KeyType;
+	typedef double ValueType;
 
     unsigned int num_elements = 15;
 
@@ -63,12 +69,18 @@ int main(int argc, char** argv)
 	KeyType *h_reference_keys = new KeyType[num_elements];
 
 	// Initialize host problem data
+	if (verbose) printf("Initial problem:\n\n");
 	for (int i = 0; i < num_elements; ++i)
 	{
 		b40c::util::RandomBits(h_keys[i]);
 		h_values[i] = i;
 		h_reference_keys[i] = h_keys[i];
+
+		if (verbose) {
+			b40c::PrintValue(h_keys[i]); printf("("); b40c::PrintValue(h_values[i]); printf("), ");
+		}
 	}
+	if (verbose) printf("\n\n");
 
     // Compute reference solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
@@ -82,7 +94,7 @@ int main(int argc, char** argv)
 
 	// Copy host data to device data
 	cudaMemcpy(d_keys, h_keys, sizeof(KeyType) * num_elements, cudaMemcpyHostToDevice);
-	cudaMemcpy(d_values, h_values, sizeof(KeyType) * num_elements, cudaMemcpyHostToDevice);
+	cudaMemcpy(d_values, h_values, sizeof(ValueType) * num_elements, cudaMemcpyHostToDevice);
 
 	// Create a reusable sorting enactor
 	b40c::radix_sort::Enactor enactor;
@@ -102,13 +114,11 @@ int main(int argc, char** argv)
 		enactor.Sort(double_buffer, num_elements);
 
 		// Check keys answer
-		printf("Simple keys-only sort: ");
+		printf("Simple keys-only sort:\n\n");
 		b40c::CompareDeviceResults(
 			h_reference_keys,
 			double_buffer.d_keys[double_buffer.selector],
-			num_elements,
-			verbose,
-			verbose);
+			num_elements, verbose, verbose);
 		printf("\n");
 
 		// Cleanup "pong" storage
@@ -133,33 +143,38 @@ int main(int argc, char** argv)
 		enactor.Sort(double_buffer, num_elements);
 
 		// Check keys answer
-		printf("Simple key-value sort: ");
+		printf("Simple key-value sort:\n\n: ");
 		b40c::CompareDeviceResults(
 			h_reference_keys,
 			double_buffer.d_keys[double_buffer.selector],
-			num_elements,
-			verbose,
-			verbose);
-		printf("\n");
+			num_elements, verbose, verbose);
+
+		// Copy out values
+		printf("\n\nValues: ");
+		cudaMemcpy(h_values, double_buffer.d_values[double_buffer.selector], sizeof(ValueType) * num_elements, cudaMemcpyDeviceToHost);
+		if (verbose) {
+			for (int i = 0; i < num_elements; ++i)
+			{
+				b40c::PrintValue(h_values[i]);
+				printf(", ");
+			}
+			printf("\n\n");
+		}
 
 		// Check values answer
 		bool correct = true;
-		cudaMemcpy(h_values, double_buffer.d_values[double_buffer.selector], sizeof(ValueType) * num_elements, cudaMemcpyDeviceToHost);
 		for (int i = 0; i < num_elements; ++i)
 		{
-			if (h_keys[h_values[i]] != h_reference_keys[i])
+			if (h_keys[int(h_values[i])] != h_reference_keys[i])
 			{
-				printf("Incorrect: [%d]: %d != %d\n",
-					i,
-					h_keys[h_values[i]],
-					h_reference_keys[i]);
+				printf("Incorrect: [%d]: ", i);
+				b40c::PrintValue(h_keys[int(h_values[i])]); printf(" != ");
+				b40c::PrintValue(h_reference_keys[i]); printf("\n\n");
 				correct = false;
 				break;
 			}
 		}
-		if (correct) {
-			printf("Correct\n\n");
-		}
+		if (correct) printf("Correct\n\n");
 
 		// Cleanup "pong" storage
 		if (double_buffer.d_keys[double_buffer.selector ^ 1]) {
