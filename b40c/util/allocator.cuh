@@ -18,7 +18,8 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Work Management Datastructures
+ * Simple caching allocator for device memory allocations. The allocator is
+ * thread-safe and capable of managing device allocations on multiple GPUs.
  ******************************************************************************/
 
 #pragma once
@@ -30,59 +31,113 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/ns_umbrella.cuh>
 #include <b40c/util/spinlock.cuh>
+#include <b40c/util/error_utils.cuh>
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace util {
 
+
+/**
+ * Simple caching allocator for device memory allocations. The allocator is
+ * thread-safe and capable of managing cached device allocations on multiple GPUs.
+ *
+ * Allocations are rounded up to and categorized by bin size.  Bin sizes progress
+ * geometrically in accordance with the growth factor "bin_growth" provided during
+ * construction.  Unused device allocations within a larger bin cache are not
+ * reused for allocation requests that categorize to smaller bin sizes.
+ *
+ * Allocation requests below (bin_growth ^ min_bin) are rounded up to
+ * (bin_growth ^ min_bin).
+ *
+ * Allocations above (bin_growth ^ max_bin) are not rounded up to the nearest
+ * bin and are simply freed when they are deallocated instead of being returned
+ * to a bin-cache.
+ *
+ * If the total storage of cached allocations on a given GPU will exceed
+ * (max_cached_bytes), allocations for that GPU are simply freed when they are
+ * deallocated instead of being returned to their bin-cache.
+ *
+ * For example, a CachedAllocator configured with (bin_growth = 8), (min_bin = 3),
+ * and (max_bin = 7) delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, 2MB
+ *
+ */
 struct CachedAllocator
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
+	typedef int GpuOrdinal;
+
 	enum
 	{
-		LOG8_MIN 				= 3, 		// Minimum bin size: 512 bytes
-		INVALID_GPU_ORDINAL		= -1,
+		INVALID_GPU_ORDINAL = -1,
 	};
 
 
-	// Block descriptor
+	/**
+	 * Integer pow function for unsigned base and exponent
+	 */
+	static __forceinline__ unsigned int IntPow(
+		unsigned int base,
+		unsigned int exp)
+	{
+		unsigned int retval = 1;
+		while (exp > 0)
+		{
+			if (exp & 1) {
+				retval = retval * base;		// multiply the result by the current base
+			}
+			base = base * base;				// square the base
+			exp = exp >> 1;					// divide the exponent in half
+		}
+		return retval;
+	}
+
+
+	/**
+	 * Round up to the nearest power-of
+	 */
+	static __forceinline__ void NearestPowerOf(
+		unsigned int &power,
+		size_t &rounded_bytes,
+		unsigned int base,
+		size_t value)
+	{
+		power = 0;
+		rounded_bytes = 1;
+
+		while (rounded_bytes < value)
+		{
+			rounded_bytes *= base;
+			power++;
+		}
+	}
+
+	/**
+	 * Descriptor for device memory allocations
+	 */
 	struct BlockDescriptor
 	{
-		int			gpu;		// GPU ordinal
-		void* 		d_ptr;		// Device pointer
-		int			bin;		// Bin category
-		size_t		bytes;		// Size of allocation in bytes
-
-		static int ComputeBin(size_t bytes)
-		{
-			return (bytes > 0) ?
-				CUB_MIN(LOG8_MIN, log(bytes) / log(8)) :
-				LOG8_MIN;
-		}
+		GpuOrdinal			gpu;		// GPU ordinal
+		void* 				d_ptr;		// Device pointer
+		size_t				bytes;		// Size of allocation in bytes
+		unsigned int		bin;		// Bin enumeration
 
 		// Constructor
-		BlockDescriptor(int gpu, size_t bytes, void *d_ptr) :
-			gpu(gpu),
+		BlockDescriptor(void *d_ptr, GpuOrdinal gpu) :
 			d_ptr(d_ptr),
-			bin(ComputeBin(bytes)),
-			bytes(bytes) {}
-
-		// Constructor
-		BlockDescriptor(int gpu, void *d_ptr) :
-			gpu(gpu),
-			d_ptr(d_ptr),
+			bytes(0),
 			bin(0),
-			bytes(0) {}
+			gpu(gpu) {}
 
 		// Constructor
-		BlockDescriptor(int gpu, size_t bytes) :
-			gpu(gpu),
+		BlockDescriptor(size_t bytes, unsigned int bin, GpuOrdinal gpu) :
 			d_ptr(NULL),
-			bin(ComputeBin(bytes)),
-			bytes(bytes) {}
+			bytes(bytes),
+			bin(bin),
+			gpu(gpu) {}
 
 		// Comparison functor for comparing device pointers
 		static bool PtrCompare(const BlockDescriptor &a, const BlockDescriptor &b)
@@ -109,26 +164,37 @@ struct CachedAllocator
 		}
 	};
 
-	// Set type for free blocks (ordered by size)
-	typedef std::set<BlockDescriptor, BlockDescriptor::SizeCompare> FreeBlocks;
+	// BlockDescriptor comparator function interface
+	typedef bool (*Compare)(const BlockDescriptor &, const BlockDescriptor &);
 
-	// Set type for used blocks (ordered by ptr)
-	typedef std::set<BlockDescriptor, BlockDescriptor::PtrCompare> UsedBlocks;
+	// Set type for cached blocks (ordered by size)
+	typedef std::set<BlockDescriptor, Compare> CachedBlocks;
 
-	// Map type of gpu ordinals to the number of free bytes cached by each
-	typedef std::map<int, size_t> FreeBytes;
+	// Set type for live blocks (ordered by ptr)
+	typedef std::set<BlockDescriptor, Compare> BusyBlocks;
+
+	// Map type of gpu ordinals to the number of cached bytes cached by each GPU
+	typedef std::map<GpuOrdinal, size_t> GpuCachedBytes;
 
 
 	//---------------------------------------------------------------------
 	// Fields
 	//---------------------------------------------------------------------
 
-	SpinLock 		spin_lock;
-	FreeBlocks 		free_blocks;
-	UsedBlocks 		used_blocks;
+	Spinlock 		spin_lock;			// Spinlock for thread-safety
 
-	size_t 			max_free_bytes;
-	FreeBytes		free_bytes;
+	CachedBlocks 	cached_blocks;		// Set of cached device allocations available for reuse
+	BusyBlocks 		live_blocks;		// Set of live device allocations currently in use
+
+	unsigned int 	bin_growth;			// Geometric growth factor for bin-sizes
+	unsigned int 	min_bin;			// Minimum bin enumeration
+	unsigned int 	max_bin;			// Maximum bin enumeration
+
+	size_t			min_bin_bytes;		// Minimum bin size
+	size_t 			max_bin_bytes;		// Maximum bin size
+	size_t 			max_cached_bytes;	// Maximum aggregate cached bytes per GPU
+
+	GpuCachedBytes	cached_bytes;		// Map of GPU ordinal to aggregate cached bytes on that GPU
 
 
 	//---------------------------------------------------------------------
@@ -136,25 +202,58 @@ struct CachedAllocator
 	//---------------------------------------------------------------------
 
 	/**
-	 * Constructor.  Sets the limit on the number of unused device bytes
-	 * this allocator is allowed to cache on each GPU
+	 * Constructor.
 	 */
-	CachedAllocator(size_t max_free_bytes = (1024 * 1024)) :
-		spin_lock(0),
-		max_free_bytes(max_free_bytes)
+	CachedAllocator(
+		unsigned int bin_growth,		// Geometric growth factor for bin-sizes
+		unsigned int min_bin,			// Minimum bin
+		unsigned int max_bin,			// Maximum bin
+		size_t max_cached_bytes) :		// Maximum aggregate cached bytes per GPU
+			spin_lock(0),
+			cached_blocks(BlockDescriptor::SizeCompare),
+			live_blocks(BlockDescriptor::PtrCompare),
+			bin_growth(bin_growth),
+			min_bin(min_bin),
+			max_bin(max_bin),
+			min_bin_bytes(IntPow(bin_growth, min_bin)),
+			max_bin_bytes(IntPow(bin_growth, max_bin)),
+			max_cached_bytes(max_cached_bytes)
 	{}
 
 
 	/**
-	 * Sets the limit on the number of unused device bytes this allocator
-	 * is allowed to cache.
+	 * Constructor.  Configured with:
+	 * 		bin_growth = 8
+	 * 		min_bin = 3
+	 * 		max_bin = 7
+	 * 		max_cached_bytes = (bin_growth ^ max_bin) * 3) - 1 = 6,291,455 bytes
+	 *
+	 * 	which delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, and 2MB
+	 * 	and sets a maximum of 6,291,455 cached bytes per GPU
 	 */
-	void SetMaxFreeBytes(size_t max_free_bytes)
+	CachedAllocator() :
+		spin_lock(0),
+		cached_blocks(BlockDescriptor::SizeCompare),
+		live_blocks(BlockDescriptor::PtrCompare),
+		bin_growth(8),
+		min_bin(3),
+		max_bin(7),
+		min_bin_bytes(IntPow(bin_growth, min_bin)),
+		max_bin_bytes(IntPow(bin_growth, max_bin)),
+		max_cached_bytes((max_bin_bytes * 3) - 1)
+	{}
+
+
+	/**
+	 * Sets the limit on the number bytes this allocator is allowed to
+	 * cache per GPU.
+	 */
+	void SetMaxCachedBytes(size_t max_cached_bytes)
 	{
 		// Lock
 		Lock(&spin_lock);
 
-		this->max_free_bytes = max_free_bytes;
+		this->max_cached_bytes = max_cached_bytes;
 
 		// Unlock
 		Unlock(&spin_lock);
@@ -165,13 +264,30 @@ struct CachedAllocator
 	 * Return a suitable allocation of device memory for the given size
 	 * on the specified GPU ordinal
 	 */
-	cudaError_t Allocate(int gpu, void** d_ptr, size_t bytes)
+	cudaError_t Allocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 	{
-		bool locked 			= false;
-		int previous_gpu 		= INVALID_GPU_ORDINAL;
-		cudaError_t error 		= cudaSuccess;
+		bool locked 					= false;
+		GpuOrdinal entrypoint_gpu 		= INVALID_GPU_ORDINAL;
+		cudaError_t error 				= cudaSuccess;
 
-		BlockDescriptor search_key(gpu, bytes);
+		// Round up to nearest bin size
+		unsigned int bin;
+		size_t bin_bytes;
+		NearestPowerOf(bin, bin_bytes, bin_growth, bytes);
+		if (bin < min_bin) {
+			bin = min_bin;
+			bin_bytes = min_bin_bytes;
+		}
+
+		// Check if bin is greater than our maximum bin
+		if (bin > max_bin)
+		{
+			// Allocate the request exactly and give out-of-range bin
+			bin = (unsigned int) -1;
+			bin_bytes = bytes;
+		}
+
+		BlockDescriptor search_key(bin_bytes, bin, gpu);
 
 		// Lock
 		if (!locked) {
@@ -180,20 +296,19 @@ struct CachedAllocator
 		}
 
 		do {
-			// Find a free block big enough within the same bin
-			FreeBlocks::iterator block_itr = free_blocks.upper_bound(search_key);
-
-			if ((block_itr != free_blocks.end()) &&
+			// Find a free block big enough within the same bin on the same GPU
+			CachedBlocks::iterator block_itr = cached_blocks.lower_bound(search_key);
+			if ((block_itr != cached_blocks.end()) &&
 				(block_itr->gpu == gpu) &&
 				(block_itr->bin == search_key.bin))
 			{
-				// Reuse existing cache block.  Insert into used blocks.
+				// Reuse existing cache block.  Insert into live blocks.
 				search_key = *block_itr;
-				used_blocks.insert(search_key);
+				live_blocks.insert(search_key);
 
 				// Remove from free blocks
-				free_blocks.erase(block_itr);
-				free_bytes[gpu] -= search_key.bytes;
+				cached_blocks.erase(block_itr);
+				cached_bytes[gpu] -= search_key.bytes;
 			}
 			else
 			{
@@ -204,13 +319,13 @@ struct CachedAllocator
 				}
 
 				// Set to specified GPU
-				error = cudaGetDevice(&previous_gpu);
+				error = cudaGetDevice(&entrypoint_gpu);
 				if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
 				error = cudaSetDevice(gpu);
 				if (util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__)) break;
 
 				// Allocate
-				error = cudaMalloc(&search_key.d_ptr, bytes);
+				error = cudaMalloc(&search_key.d_ptr, search_key.bytes);
 				if (util::B40CPerror(error, "cudaMalloc failed ", __FILE__, __LINE__)) break;
 
 				// Lock
@@ -219,8 +334,8 @@ struct CachedAllocator
 					locked = true;
 				}
 
-				// Insert into used blocks
-				used_blocks.insert(search_key);
+				// Insert into live blocks
+				live_blocks.insert(search_key);
 			}
 		} while(0);
 
@@ -231,9 +346,9 @@ struct CachedAllocator
 		}
 
 		// Attempt to revert back to previous GPU if necessary
-		if (previous_gpu != INVALID_GPU_ORDINAL)
+		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
 		{
-			error = cudaSetDevice(previous_gpu);
+			error = cudaSetDevice(entrypoint_gpu);
 			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
 		}
 
@@ -250,25 +365,26 @@ struct CachedAllocator
 	 */
 	cudaError_t Allocate(void** d_ptr, size_t bytes)
 	{
-		int current_gpu;
+		GpuOrdinal current_gpu;
 		cudaError_t error = cudaGetDevice(&current_gpu);
 		if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__))
 			return error;
 
-		return Allocate(current_gpu, d_ptr, bytes, current_gpu);
+		return Allocate(d_ptr, bytes, current_gpu);
 	}
 
 
 	/**
-	 * Return a used allocation of GPU memory on the specified gpu
+	 * Return a live allocation of GPU memory on the specified gpu
 	 * ordinal to the allocator
 	 */
-	cudaError_t Deallocate(int gpu, void* d_ptr)
+	cudaError_t Deallocate(void* d_ptr, GpuOrdinal gpu)
 	{
-		bool locked 			= false;
-		cudaError_t error 		= cudaSuccess;
+		bool locked 					= false;
+		GpuOrdinal entrypoint_gpu 		= INVALID_GPU_ORDINAL;
+		cudaError_t error 				= cudaSuccess;
 
-		BlockDescriptor search_key(gpu, d_ptr);
+		BlockDescriptor search_key(d_ptr, gpu);
 
 		// Lock
 		if (!locked) {
@@ -278,8 +394,8 @@ struct CachedAllocator
 
 		do {
 			// Find corresponding block descriptor
-			UsedBlocks::iterator block_itr = used_blocks.find(search_key);
-			if (block_itr == used_blocks.end())
+			BusyBlocks::iterator block_itr = live_blocks.find(search_key);
+			if (block_itr == live_blocks.end())
 			{
 				// Cannot find pointer
 				error = util::B40CPerror(cudaErrorUnknown, "Deallocate failed ", __FILE__, __LINE__);
@@ -287,15 +403,35 @@ struct CachedAllocator
 			}
 			else
 			{
-				// Remove from used blocks
+				// Remove from live blocks
 				search_key = *block_itr;
-				used_blocks.erase(block_itr);
+				live_blocks.erase(block_itr);
 
-				// Insert into free blocks if we can fit it
-				if (free_blocks[gpu] + search_key.bytes <= max_free_bytes)
+				// Check if we should keep the returned allocation
+				if ((search_key.bytes <= max_bin_bytes) &&
+					(cached_bytes[gpu] + search_key.bytes <= max_cached_bytes))
 				{
-					free_blocks.insert(search_key);
-					free_bytes[gpu] += search_key.bytes;
+					// Insert returned allocation into free blocks
+					cached_blocks.insert(search_key);
+					cached_bytes[gpu] += search_key.bytes;
+				}
+				else
+				{
+					// Free the returned allocation.  Unlock.
+					if (locked) {
+						Unlock(&spin_lock);
+						locked = false;
+					}
+
+					// Set to specified GPU
+					error = cudaGetDevice(&entrypoint_gpu);
+					if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
+					error = cudaSetDevice(gpu);
+					if (util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__)) break;
+
+					// Free device memory
+					error = cudaFree(d_ptr);
+					if (util::B40CPerror(error, "cudaFree failed ", __FILE__, __LINE__)) break;
 				}
 			}
 		} while (0);
@@ -306,31 +442,41 @@ struct CachedAllocator
 			locked = false;
 		}
 
+		// Attempt to revert back to entry-point GPU if necessary
+		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
+		{
+			error = cudaSetDevice(entrypoint_gpu);
+			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
+		}
+
 		return error;
 	}
 
 
 	/**
-	 * Return a used allocation of device memory on the current GPU
+	 * Return a live allocation of device memory on the current GPU
 	 * ordinal to the allocator
 	 */
 	cudaError_t Deallocate(void* d_ptr)
 	{
-		int current_gpu;
+		GpuOrdinal current_gpu;
 		cudaError_t error = cudaGetDevice(&current_gpu);
 		if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__))
 			return error;
 
-		return Deallocate(current_gpu, d_ptr);
+		return Deallocate(d_ptr, current_gpu);
 	}
 
 
+	/**
+	 * Frees all cached device allocations on all GPUs
+	 */
 	cudaError_t FreeAllCached()
 	{
-		cudaError_t error 		= cudaSuccess;
-		bool locked 			= false;
-		int previous_gpu 		= INVALID_GPU_ORDINAL;
-		int current_gpu			= INVALID_GPU_ORDINAL;
+		cudaError_t error 				= cudaSuccess;
+		bool locked 					= false;
+		GpuOrdinal entrypoint_gpu 		= INVALID_GPU_ORDINAL;
+		GpuOrdinal current_gpu			= INVALID_GPU_ORDINAL;
 
 		// Lock
 		if (!locked) {
@@ -338,15 +484,15 @@ struct CachedAllocator
 			locked = true;
 		}
 
-		while (!free_blocks.empty())
+		while (!cached_blocks.empty())
 		{
 			// Get first block
-			FreeBlocks::iterator begin = free_blocks.begin();
+			CachedBlocks::iterator begin = cached_blocks.begin();
 
-			// Get original GPU ordinal if necessary
-			if (previous_gpu == INVALID_GPU_ORDINAL)
+			// Get entry-point GPU ordinal if necessary
+			if (entrypoint_gpu == INVALID_GPU_ORDINAL)
 			{
-				error = cudaGetDevice(&previous_gpu);
+				error = cudaGetDevice(&entrypoint_gpu);
 				if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
 			}
 
@@ -363,8 +509,8 @@ struct CachedAllocator
 			if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
 
 			// Reduce balance and erase entry
-			free_bytes[current_gpu] -= begin->bytes;
-			free_blocks.erase(begin);
+			cached_bytes[current_gpu] -= begin->bytes;
+			cached_blocks.erase(begin);
 		}
 
 		// Unlock
@@ -373,10 +519,10 @@ struct CachedAllocator
 			locked = false;
 		}
 
-		// Attempt to revert back to previous GPU if necessary
-		if (previous_gpu != INVALID_GPU_ORDINAL)
+		// Attempt to revert back to entry-point GPU if necessary
+		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
 		{
-			error = cudaSetDevice(previous_gpu);
+			error = cudaSetDevice(entrypoint_gpu);
 			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
 		}
 
