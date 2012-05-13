@@ -40,7 +40,7 @@ namespace util {
 
 /**
  * Simple caching allocator for device memory allocations. The allocator is
- * thread-safe and capable of managing cached device allocations on multiple GPUs.
+ * thread-safe and is capable of managing cached device allocations on multiple GPUs.
  *
  * Allocations are rounded up to and categorized by bin size.  Bin sizes progress
  * geometrically in accordance with the growth factor "bin_growth" provided during
@@ -408,7 +408,7 @@ struct CachedAllocator
 				live_blocks.erase(block_itr);
 
 				// Check if we should keep the returned allocation
-				if ((search_key.bytes <= max_bin_bytes) &&
+				if ((search_key.bin <= max_bin) &&
 					(cached_bytes[gpu] + search_key.bytes <= max_cached_bytes))
 				{
 					// Insert returned allocation into free blocks
