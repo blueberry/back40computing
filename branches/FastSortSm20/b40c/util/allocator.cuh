@@ -267,8 +267,8 @@ struct CachedAllocator
 
 
 	/**
-	 * Return a suitable allocation of device memory for the given size
-	 * on the specified GPU ordinal
+	 * Provides a suitable allocation of device memory for the given size
+	 * on the specified GPU
 	 */
 	cudaError_t Allocate(void** d_ptr, size_t bytes, GpuOrdinal gpu)
 	{
@@ -366,8 +366,8 @@ struct CachedAllocator
 
 
 	/**
-	 * Return a suitable allocation of device memory for the given size
-	 * on the current GPU ordinal
+	 * Provides a suitable allocation of device memory for the given size
+	 * on the current GPU
 	 */
 	cudaError_t Allocate(void** d_ptr, size_t bytes)
 	{
@@ -381,8 +381,8 @@ struct CachedAllocator
 
 
 	/**
-	 * Return a live allocation of GPU memory on the specified gpu
-	 * ordinal to the allocator
+	 * Returns a live allocation of GPU memory on the specified GPU to
+	 * the allocator
 	 */
 	cudaError_t Deallocate(void* d_ptr, GpuOrdinal gpu)
 	{
@@ -460,8 +460,8 @@ struct CachedAllocator
 
 
 	/**
-	 * Return a live allocation of device memory on the current GPU
-	 * ordinal to the allocator
+	 * Returns a live allocation of device memory on the current GPU to the
+	 * allocator
 	 */
 	cudaError_t Deallocate(void* d_ptr)
 	{
