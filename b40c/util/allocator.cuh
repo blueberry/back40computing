@@ -58,8 +58,14 @@ namespace util {
  * (max_cached_bytes), allocations for that GPU are simply freed when they are
  * deallocated instead of being returned to their bin-cache.
  *
- * For example, a CachedAllocator configured with (bin_growth = 8), (min_bin = 3),
- * and (max_bin = 7) delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, 2MB
+ * For example, the default-constructed CachedAllocator is configured with:
+ * 		bin_growth = 8
+ * 		min_bin = 3
+ * 		max_bin = 7
+ * 		max_cached_bytes = (bin_growth ^ max_bin) * 3) - 1 = 6,291,455 bytes
+ *
+ * which delineates five bin-sizes: 512B, 4KB, 32KB, 256KB, and 2MB
+ * and sets a maximum of 6,291,455 cached bytes per GPU
  *
  */
 struct CachedAllocator
