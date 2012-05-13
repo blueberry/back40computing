@@ -23,6 +23,18 @@
 
 #pragma once
 
+#if defined(_WIN32) || defined(_WIN64)
+	#include <intrin.h>
+	#include <windows.h>
+	#undef small			// Windows is terrible for polluting macro namespace
+
+	/**
+	 * Compiler read/write barrier
+	 */
+	#pragma intrinsic(_ReadWriteBarrier)
+
+#endif
+
 #include <b40c/util/ns_umbrella.cuh>
 
 B40C_NS_PREFIX
@@ -34,14 +46,6 @@ namespace util {
 
 	// Microsoft VC++
 	typedef long Spinlock;
-
-	#include <intrin.h>
-	#include <windows.h>
-
-	/**
-	 * Compiler read/write barrier
-	 */
-	#pragma intrinsic(_ReadWriteBarrier)
 
 #else
 
