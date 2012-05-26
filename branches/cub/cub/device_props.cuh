@@ -61,6 +61,12 @@ struct StaticDeviceProps;
 
 
 /**
+ * Device properties for the arch-id targeted by the active compiler pass.
+ */
+struct DeviceProps : StaticDeviceProps<PTX_ARCH> {};
+
+
+/**
  * Device properties for SM30
  */
 template <>
@@ -217,10 +223,6 @@ template <int SM_ARCH>
 struct StaticDeviceProps : StaticDeviceProps<100> {};			// Derives from SM10
 
 
-/**
- * Device properties for the arch-id targeted by the active compiler pass.
- */
-struct DeviceProps : StaticDeviceProps<PTX_ARCH> {};
 
 
 } // namespace cub

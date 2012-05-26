@@ -36,7 +36,7 @@ namespace cub {
  * Load a tile of items
  */
 template <
-	int ACTIVE_THREADS,						// Active threads that will be loading
+	int CTA_THREADS,						// Active threads that will be loading
 	LoadModifier MODIFIER = LOAD_NONE>		// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
 class CtaLoad
 {
@@ -61,7 +61,7 @@ private:
 			Vector data_vectors[],
 			Vector *d_in_vectors)
 		{
-			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
+			const int OFFSET = (SEGMENT * CTA_THREADS * TOTAL) + CURRENT;
 
 			data_vectors[CURRENT] = Load<MODIFIER>(d_in_vectors + OFFSET);
 
@@ -80,7 +80,7 @@ private:
 			texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 			unsigned int base_thread_offset)
 		{
-			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
+			const int OFFSET = (SEGMENT * CTA_THREADS * TOTAL) + CURRENT;
 
 			data_vectors[CURRENT] = tex1Dfetch(
 				ref,
@@ -111,7 +111,7 @@ private:
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
-			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
+			const int OFFSET = (SEGMENT * CTA_THREADS * TOTAL) + CURRENT;
 
 			valid[CURRENT] = ((threadIdx.x * ELEMENTS) + OFFSET) < guarded_elements;
 

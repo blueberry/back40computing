@@ -33,40 +33,59 @@ namespace cub {
 /**
  * Texture vector types for reading ELEMENTS consecutive elements of T per thread
  */
-template <typename T, int ELEMENTS>
+template <typename T, int ELEMENTS, bool BUILT_IN = NumericTraits<T>::BUILT_IN>
 struct TexVector
 {
 	enum {
-		TEX_VEC_SIZE = (NumericTraits<T>::BUILT_IN) ?
-			4 : 								// cast as vec-4 for non-built-ins (don't actually use!)
-			(sizeof(T) > 4) ?
-				(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
-					2 : 								// cast as vec-2 ints (odd)
-					4 :									// cast as vec-4 ints (multiple of two)
-				(ELEMENTS % 2 == 1) ?			// 32-bit built-in types
-					1 : 								// vec-1 (odd)
-					(ELEMENTS % 4 == 0) ?
-						4 :								// vec-4 (multiple of 4)
-						2,								// vec-2 (multiple of 2)
+		TEX_VEC_SIZE = (sizeof(T) > 4) ?
+							(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
+								2 : 								// cast as vec-2 ints (odd)
+								4 :									// cast as vec-4 ints (multiple of two)
+							(ELEMENTS % 2 == 1) ?			// 32-bit built-in types
+								1 : 								// vec-1 (odd)
+								(ELEMENTS % 4 == 0) ?
+									4 :								// vec-4 (multiple of 4)
+									2,								// vec-2 (multiple of 2)
 	};
 
 	// Texture base type
-	typedef typename If<(NumericTraits<T>::BUILT_IN),
-		char,										// use char for non-built-ins (don't actually use!)
-		typename If<(sizeof(T) > 4),
-			int,									// use int for 64-bit built-in types
-			T>::Type>::Type TexBase; 				// use T for other built-in types
+	typedef typename If<(sizeof(T) > 4),
+		unsigned int,							// use int for 64-bit built-in types
+		T>::Type								// use T for other built-in types
+			TexBase;
 
 	// Texture vector type
-	typedef typename VectorType<TexBase, TEX_VEC_SIZE>::Type VectorType;
+	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
 
 	// Number of T loaded per texture load
 	enum {
-		ELEMENTS_PER_TEX = sizeof(VectorType) / sizeof(T),
+		ELEMENTS_PER_TEX = sizeof(VecType) / sizeof(T),
 	};
 
 	// Texture reference type
-	typedef texture<VectorType, cudaTextureType1D, cudaReadModeElementType> TexRef;
+	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;
+};
+
+
+/**
+ * Dummy values specialized for non-built-in types
+ */
+template <typename T, int ELEMENTS>
+struct TexVector<T, ELEMENTS, false>
+{
+	enum {
+		TEX_VEC_SIZE 		= 1,
+		ELEMENTS_PER_TEX 	= 1,
+	};
+
+	// Texture base type
+	typedef char TexBase;
+
+	// Texture vector type
+	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
+
+	// Texture reference type
+	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;
 };
 
 
