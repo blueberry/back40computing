@@ -47,16 +47,14 @@ struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
-	//---------------------------------------typedef typename KeyTraits<KeyType>::IngressOp 			IngressOp;
-	typedef typename KeyTraits<KeyType>::ConvertedKeyType 	ConvertedKeyType;---------------------------------
+	//---------------------------------------typedef typename KeyTraits<KeyType>::UnsignedBits 	UnsignedBits;---------------------------------
 
 	enum {
 		MIN_CTA_OCCUPANCY  				= KernelPolicy::MIN_CTA_OCCUPANCY,
 		CURRENT_BIT 					= KernelPolicy::CURRENT_BIT,
 		CURRENT_PASS 					= KernelPolicy::CURRENT_PASS,
 
-		RADIX_BITS						= KernelPolicy::RADIX_BITS,
-		RADIX_DIGITS 					= 1 << RADIX_BITS,
+		RADIX_BITS						= Kern(KernelPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByteTS 					= 1 << RADIX_BITS,
 
 		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
 		THREADS				= KernelPolicy::CURRENT_BIT,
@@ -68,13 +66,13 @@ struct Cta
 		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
 		LOAD_VEC_S= KernelPolicy::CURRENT_PASS & 0x1,
 
-		LOG_THREADS 				= KernelPolicy::LOG_THREADS,
-		THREADS						= 1 << LOG_THREADS,
+		LOG_CTA_THREADS 				= KernelPolicy::LOG_CTA_THREADS,
+		CTA_THREADS						= 1 << LOG_CTA_THREADS,
 
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
-		LOG_WARPS					= LOG_THREADS - LOG_WARP_THREADS,
+		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
 		LOG_LOAD_VEC_SIZE  			= KernelPolicy::LOG_LOAD_VEC_SIZE,
@@ -86,7 +84,7 @@ struct Cta
 		LOG_THREAD_ELEMENTS			= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 		THREAD_ELEMENTS				= 1 << LOG_THREAD_ELEMENTS,
 
-		LOG_TILE_ELEMENTS 			= LOG_THREAD_ELEMENTS + LOG_THREADS,
+		LOG_TILE_ELEMENTS 			= LOG_THREAD_ELEMENTS + LOG_CTA_THREADS,
 		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
@@ -106,8 +104,8 @@ struct Cta
 		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_LANE_PER_THREAD,
 
 		AGGREGATED_ROWS						= RADIX_DIGITS,
-		AGGREGATED_PARTIALS_PER_ROW 		= WARP_THREADS,
-		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIALS_PER_ROW + 1,
+		AGGREGATED_PARTIALS_PER_ROW 	CTA_	= WARP_THREADS,
+		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIACTA_LS_PER_ROW + 1,
 
 		// Unroll tiles in batches of X elements per thread (X = log(255) is maximum without risking overflow)
 		LOG_UNROLL_COUNT 					= 6 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
@@ -127,11 +125,8 @@ struct Cta
 				cha	local_counts[LANES_PER_WARP][PACKING_RATIO];
 
 	// Input and output device pointers
-	ConvertedKeyType	*d_in_keys;
+	UnsignedBits		*d_in_keys;
 	SizeT				*d_spine;
-
-	// Bit-twiddling operator needed to make keys suitable for radix sorting
-	IngressOp			ingress_op;
 
 	int 				warp_id;
 	int 				warp_tid;
@@ -149,10 +144,13 @@ struct Cta
 
 	// Shared storage for this CTA
 	SmemStoraenum {
-			HALF = MAX / 2,
+			HALF = (MAX / 2),
 		};
-te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
-	struct Iteraregating compositConvertedKeyType keys[THREAD_ELEMENTSs[LANES_PER_WARP][4];
+
+		// BucketKeys
+		static __device__ __forceinline__ void BucketKeys(
+			Cta &cta,
+			UnsignedBits keys[THREAD_ELEMENTSs[LANES_PER_WARP][4];
 
 	// Input and output device pointers
 	KeyType			*d_in_keys;
@@ -174,7 +172,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 	template <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 	struct Iterate
 	{
-		//ConvertedKeyType keys[THREAD_ELEMENTS]) {;
+		//UnsignedBits keys[THREAD_ELEMENTS]) {;
 
 	int 			warp_id;
 	int 			warp_idx;
@@ -201,7 +199,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
  COMPOSITE_OFFSET + 0);
 			cta.local_counts[WARP_LANE][1] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 1);
 			cta.local_counts[WARP_LANE][2] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 2);
-			ctareinterpret_cast<ConvertedKeyType*>(FLOP_TURN ? d_keys1 : d_keys0)= *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 3);
+			ctareinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys1 : d_keys0)= *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 3);
 
 			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::ExtractComposites(cta);
 		}
@@ -213,7 +211,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 	template <int WARP_LANE, int dummy>
 	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
-		// ExtractComConvertedposites
+		// ExtractComUnsignedBits
 		static __device__ __forceinline__ void ExtractComposites(Cta &cta)
 		{
 			Iterate<WARP_LANE + 1, 0>::ExtractComposites(cta);
@@ -221,14 +219,14 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 
 		// ShareCounters
 		static __device__Perform transform op
-		ConvertedKeyType converted_key = ingress_op(key);
+		UnsignedBits converted_key = KeyTraits<KeyType>::TwiddleIn(key);
 
 		// Add in sub-counter byte_offset
 		byte_offset = Extract<
 			CURRENT_BIT,
 			LOG_PACKING_RATIO,
 			LOG_BYTES_PER_COUNTER>(
-				converted_cta.smem_storage.aggregate[row + 0][cta.warp_idx] = cta.local_counts[WARP_LANE][mem_storage.aggregate[row + 1][cta.warp_idx] = cta.local_counts[WARP_LANE][1];
+				converted_cta.smem_storage.aggregate[row + 0][cta.warp_idx] = cta.local_counts[WARP_LANE][mem_storage.aggregate[row + 1][cta.warp_idx] = cta.local_countCTAts[WARP_LANE][1];
 			cta.smem_storage.aggregate[row + 2(
 				converted_= cta.local_counts[WARP_LANE][2];
 			cta.smem_storage.aggregate[row + 3][cta.warp_idx] = cta.local_counts[WARP_LANE][3];
@@ -273,7 +271,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 
 
 	//---------------------------------------------------------------------
-	// Helper structure for tile unrolling
+	// HCTA_elper structure for tile unrolling
 	//---------------------------------------------------------------------
 
 	/**
@@ -282,7 +280,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 	struct UnrollTiles
 	{
 		// Recurse over counts
-		template <int UNROLL_COUNT, int __dummy = 0>
+		template CTA_<int UNROLL_COUNT, int __dummy = 0>
 		struct Iterate
 		{
 			static const int HALF = UNROLL_COUNT / 2;
@@ -341,7 +339,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 		unsigned int offset = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
 
 		// Add in sub-counter offset
-		offConvertedset = Extract<
+		offUnsignedBitsxtract<
 			KeyType,
 			CURRENT_BIT,
 			LOG_PACKED_COUNTERS,
@@ -349,10 +347,10 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 				key,
 				offset);
 
-		// Add in row offset
-		offset = ExtrLOt<
-			KeyType,
-			CURRENT_BIT + LOG_PACKConvertedED_COUNTERS,
+		// Add in CTA_THREADS,
+			KernelPolicy::LOAD_MODIFIER,
+			false>::LoadValid(
+				(UnsignedBitsTERS,
 			LOG_COMPOSITE_LANES,
 			LOG_THREADS + (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER)>::SuperBFE(
 				key,
@@ -365,7 +363,7 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 
 
 	template <int COUNT, int MAX>
-	struct IterateKeysHREAD_ELEMENTS>::BucketKeys(*this, (ConvertedBucket(
+	struct IterateKeysHREAD_ELEMENTS>::BucketKeys(*this, (UnsignedBits
 			Cta &cta, KeyType keys[LOADS_PER_TILE * LOAD_VEC_SIZE])
 		{
 			cta.Bucket(keys[COUNT]);
@@ -383,10 +381,9 @@ te <int WARP_LANE, int THREAD_COMPOSITE, int dummy = 0>
 
 
 	/**
-	 * Reset composite couConvertednters
-	 */
-	__device__ __forceinline__ void ResetCompositeCounters()
-	{
+	 * Reset composite couUnsignedBits key = d_in_keys[cta_offset];
+			Bucket(key);
+			cta_offset += CTA_{
 		#pragma unroll
 		for (int LANE = 0; LANE < COMPOSITE_LANES; ++LANE) {
 			smem_storage.words[LANE][threadIdx.x] = 0;

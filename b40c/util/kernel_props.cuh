@@ -25,8 +25,11 @@
 
 #include <stdlib.h>
 
+#include <map>
+
 #include <b40c/util/cuda_properties.cuh>
 #include <b40c/util/error_utils.cuh>
+#include <b40c/util/spinlock.cuh>
 #include <b40c/util/ns_umbrella.cuh>
 
 B40C_NS_PREFIX
@@ -38,11 +41,14 @@ namespace util {
  */
 struct KernelProps
 {
-	int 							threads;
-	int								sm_arch;
-	int								sm_count;
-	cudaFuncAttributes 				kernel_attrs;
-	int 							max_cta_occupancy;
+	int 									threads;
+	int										sm_arch;
+	int										sm_count;
+	cudaFuncAttributes 						kernel_attrs;
+	int 									max_cta_occupancy;
+
+	static std::map<void*, KernelProps> 	cache_map;			// Cache map of function ptr -> kernel properties
+	static Spinlock 						spin_lock;			// Spinlock for thread-safety
 
 	/**
 	 * Initializer
@@ -54,36 +60,71 @@ struct KernelProps
 		int sm_arch,
 		int sm_count)
 	{
-		cudaError_t error = cudaSuccess;
+		bool locked 			= false;
+		cudaError_t error 		= cudaSuccess;
+
+		// Lock
+		if (!locked) {
+			Lock(&spin_lock);
+			locked = true;
+		}
 
 		do {
-			// Initialize fields
-			this->threads = threads;
-			this->sm_arch = sm_arch;
-			this->sm_count = sm_count;
+			if (cache_map.find((void*) kernel_func) != cache_map.end())
+			{
+				*this = cache_map[(void*) kernel_func];
+			}
+			else
+			{
+				// Unlock
+				if (locked) {
+					Unlock(&spin_lock);
+					locked = false;
+				}
 
-			// Get kernel attributes
-			error = util::B40CPerror(
-				cudaFuncGetAttributes(&kernel_attrs, kernel_func),
-				"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
-				__FILE__,
-				__LINE__);
-			if (error) break;
+				// Initialize fields
+				this->threads = threads;
+				this->sm_arch = sm_arch;
+				this->sm_count = sm_count;
 
-			// Compute SM CTA occupancy by resource
-			int max_block_occupancy = CUB_SM_CTAS(sm_arch);
-			int max_thread_occupancy = CUB_SM_THREADS(sm_arch) / threads;
-			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
-					(CUB_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
-					max_block_occupancy;
-			int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
+				// Get kernel attributes
+				error = util::B40CPerror(
+					cudaFuncGetAttributes(&kernel_attrs, kernel_func),
+					"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
+					__FILE__,
+					__LINE__);
+				if (error) break;
 
-			// Determine overall SM CTA occupancy
-			max_cta_occupancy = CUB_MIN(
-				CUB_MIN(max_block_occupancy, max_thread_occupancy),
-				CUB_MIN(max_smem_occupancy, max_reg_occupancy));
+				// Compute SM CTA occupancy by resource
+				int max_block_occupancy = CUB_SM_CTAS(sm_arch);
+				int max_thread_occupancy = CUB_SM_THREADS(sm_arch) / threads;
+				int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+						(CUB_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
+						max_block_occupancy;
+				int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
+
+				// Determine overall SM CTA occupancy
+				max_cta_occupancy = CUB_MIN(
+					CUB_MIN(max_block_occupancy, max_thread_occupancy),
+					CUB_MIN(max_smem_occupancy, max_reg_occupancy));
+
+				// Lock
+				if (!locked) {
+					Lock(&spin_lock);
+					locked = true;
+				}
+
+				// Insert into cache_map
+				cache_map[(void*) kernel_func] = *this;
+			}
 
 		} while (0);
+
+		// Unlock
+		if (locked) {
+			Unlock(&spin_lock);
+			locked = false;
+		}
 
 		return error;
 	}
@@ -186,6 +227,12 @@ struct KernelProps
 		return padding;
 	}
 };
+
+
+// Static member definitions
+std::map<void*, KernelProps> KernelProps::cache_map;
+Spinlock KernelProps::spin_lock = 0;
+
 
 
 } // namespace util

@@ -44,6 +44,7 @@ namespace ld {
 		cg,					// cache global
 		ca,					// cache all
 		cs, 				// cache streaming
+		tex,				// texture
 
 		LIMIT
 	};
@@ -110,6 +111,16 @@ struct ModifiedLoad
 	template <>
 	template <typename T>
 	__device__ __forceinline__ void ModifiedLoad<ld::NONE>::Ld(T &val, T *ptr)
+	{
+		val = *ptr;
+	}
+
+	/**
+	 * Specialization for tex modifier
+	 */
+	template <>
+	template <typename T>
+	__device__ __forceinline__ void ModifiedLoad<ld::tex>::Ld(T &val, T *ptr)
 	{
 		val = *ptr;
 	}

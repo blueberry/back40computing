@@ -42,15 +42,14 @@ template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT, typename T>
 __device__ __forceinline__ unsigned int Extract(
 	T source)
 {
-	const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+	const T MASK 		= ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT 	= LEFT_SHIFT - BIT_OFFSET;
 
 	T bits = (source & MASK);
-	if (SHIFT == 0) {
-		return bits;
-	} else {
-		return util::MagnitudeShift<SHIFT>::Shift(bits);
+	if (SHIFT != 0) {
+		bits = util::MagnitudeShift<SHIFT>::Shift(bits);
 	}
+	return bits;
 }
 
 /**
@@ -61,18 +60,18 @@ __device__ __forceinline__ unsigned int Extract(
 	T source,
 	unsigned int addend)
 {
-	const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+	const T MASK 		= ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT 	= LEFT_SHIFT - BIT_OFFSET;
 
 	T bits = (source & MASK);
 	if (SHIFT == 0) {
-		return bits + addend;
+		bits += addend;
+	} else if (SHIFT > 0) {
+		bits = util::SHL_ADD(bits, (unsigned int) (SHIFT), addend);
 	} else {
-		bits = (SHIFT > 0) ?
-			(util::SHL_ADD(bits, SHIFT, addend)) :
-			(util::SHR_ADD(bits, SHIFT * -1, addend));
-		return bits;
+		bits = util::SHR_ADD(bits, (unsigned int) (SHIFT * -1), addend);
 	}
+	return bits;
 }
 
 /**
@@ -113,53 +112,46 @@ __device__ __forceinline__ unsigned int Extract(
 /**
  * Specialization for unsigned signed integers
  */
-template <typename _ConvertedKeyType>
+template <typename _UnsignedBits>
 struct UnsignedKeyTraits
 {
-	typedef _ConvertedKeyType 	ConvertedKeyType;
+	typedef _UnsignedBits UnsignedBits;
 
-	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
-	{
-		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
-		{
-			return key;
-		}
-	};
+	static const UnsignedBits MIN_KEY = UnsignedBits(0);
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1);
 
-	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
-		{
-			return converted_key;
-		}
-	};
+		return key;
+	}
+
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
+	{
+		return key;
+	}
 };
 
 
 /**
  * Specialization for signed integers
  */
-template <typename _ConvertedKeyType>
+template <typename _UnsignedBits>
 struct SignedKeyTraits
 {
-	typedef _ConvertedKeyType 	ConvertedKeyType;
+	typedef _UnsignedBits UnsignedBits;
 
-	static const ConvertedKeyType HIGH_BIT = ConvertedKeyType(1) << ((sizeof(ConvertedKeyType) * 8) - 1);
+	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits MIN_KEY = HIGH_BIT;
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
-		{
-			return key ^ HIGH_BIT;
-		}
+		return key ^ HIGH_BIT;
 	};
 
-	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
-		{
-			return converted_key ^ HIGH_BIT;
-		}
+		return key ^ HIGH_BIT;
 	};
 };
 
@@ -167,30 +159,27 @@ struct SignedKeyTraits
 /**
  * Specialization for floating point
  */
-template <typename _ConvertedKeyType>
+template <typename _UnsignedBits>
 struct FloatKeyTraits
 {
-	typedef _ConvertedKeyType 	ConvertedKeyType;
+	typedef _UnsignedBits 	UnsignedBits;
 
-	static const ConvertedKeyType HIGH_BIT = ConvertedKeyType(1) << ((sizeof(ConvertedKeyType) * 8) - 1);
+	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits MIN_KEY = UnsignedBits(-1);
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	struct IngressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType key)
-		{
-			ConvertedKeyType mask = (key & HIGH_BIT) ? ConvertedKeyType(-1) : HIGH_BIT;
-			return key ^ mask;
-		}
+		UnsignedBits mask = (key & HIGH_BIT) ? UnsignedBits(-1) : HIGH_BIT;
+		return key ^ mask;
 	};
 
-	struct EgressOp : std::unary_function<ConvertedKeyType, ConvertedKeyType>
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ ConvertedKeyType operator()(ConvertedKeyType converted_key)
-		{
-			ConvertedKeyType mask = (converted_key & HIGH_BIT) ? HIGH_BIT : ConvertedKeyType(-1);
-			return converted_key ^ mask;
-		}
+		UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : UnsignedBits(-1);
+		return key ^ mask;
 	};
+
 };
 
 

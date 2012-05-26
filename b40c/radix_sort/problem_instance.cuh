@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Radix sorting enactor
+ * Radix sorting problem instance
  ******************************************************************************/
 
 #pragma once
@@ -31,12 +31,13 @@
 #include <b40c/util/ns_umbrella.cuh>
 
 #include <b40c/radix_sort/sort_utils.cuh>
+#include <b40c/radix_sort/pass_policy.cuh>
+
 #include <b40c/radix_sort/upsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/upsweep/kernel.cuh>
 
 #include <b40c/radix_sort/spine/kernel_policy.cuh>
 #include <b40c/radix_sort/spine/kernel.cuh>
-#include <b40c/radix_sort/spine/tex_ref.cuh>
 
 #include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/kernel.cuh>
@@ -81,9 +82,9 @@ struct ProblemInstance
 			util::CtaWorkDistribution<SizeT>);
 
 		// Fields
-		KernelFunc 	kernel_func;
-		int 		log_tile_elements;
-		bool 		smem_8byte_banks;
+		KernelFunc 					kernel_func;
+		int 						log_tile_elements;
+		cudaSharedMemConfig 		sm_bank_config;
 
 		/**
 		 * Initializer
@@ -95,13 +96,13 @@ struct ProblemInstance
 		{
 			// Initialize fields
 			kernel_func 			= upsweep::Kernel<OpaquePolicy>;
-			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
-			smem_8byte_banks 	= KernelPolicy::SMEM_8BYTE_BANKS;
+			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
 			// Initialize super class
 			return util::KernelProps::Init(
 				kernel_func,
-				KernelPolicy::THREADS,
+				KernelPolicy::CTA_THREADS,
 				sm_arch,
 				sm_count);
 		}
@@ -125,13 +126,10 @@ struct ProblemInstance
 		// Spine kernel function type
 		typedef void (*KernelFunc)(SizeT*, SizeT*, int);
 
-		// Spine texture binding function type
-		typedef cudaError_t (*BindTexFunc)(void *, size_t);
-
 		// Fields
-		KernelFunc 		kernel_func;
-		BindTexFunc		bind_tex_func;
-		int 			log_tile_elements;
+		KernelFunc 					kernel_func;
+		int 						log_tile_elements;
+		cudaSharedMemConfig 		sm_bank_config;
 
 		/**
 		 * Initializer
@@ -143,13 +141,13 @@ struct ProblemInstance
 		{
 			// Initialize fields
 			kernel_func 			= spine::Kernel<OpaquePolicy>;
-			bind_tex_func 		= spine::TexSpine<SizeT>::BindTexture;
-			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
+			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
 			// Initialize super class
 			return util::KernelProps::Init(
 				kernel_func,
-				KernelPolicy::THREADS,
+				KernelPolicy::CTA_THREADS,
 				sm_arch,
 				sm_count);
 		}
@@ -161,14 +159,6 @@ struct ProblemInstance
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
 			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
-		}
-
-		/**
-		 * Bind related textures
-		 */
-		cudaError_t BindTexture(SizeT *spine, int spine_elements) const
-		{
-			return bind_tex_func(spine, sizeof(SizeT) * spine_elements);
 		}
 	};
 
@@ -191,11 +181,11 @@ struct ProblemInstance
 		typedef cudaError_t (*BindTexFunc)(void *, void *, size_t);
 
 		// Fields
-		KernelFunc 		kernel_func;
-		BindTexFunc		keys_tex_func;
-		BindTexFunc		values_tex_func;
-		int 			log_tile_elements;
-		bool 			smem_8byte_banks;
+		KernelFunc 					kernel_func;
+		BindTexFunc					keys_tex_func;
+		BindTexFunc					values_tex_func;
+		int 						log_tile_elements;
+		cudaSharedMemConfig 		sm_bank_config;
 
 		/**
 		 * Initializer
@@ -217,16 +207,20 @@ struct ProblemInstance
 			typedef typename DownsweepTextures::ValueTexType ValueTexType;
 
 			// Initialize fields
-			kernel_func 		= downsweep::Kernel<OpaquePolicy>;
-			keys_tex_func 		= downsweep::TexKeys<KeyTexType>::BindTexture;
-			values_tex_func 	= downsweep::TexValues<ValueTexType>::BindTexture;
-			log_tile_elements 	= KernelPolicy::LOG_TILE_ELEMENTS;
-			smem_8byte_banks	= KernelPolicy::SMEM_8BYTE_BANKS;
+			kernel_func 			= downsweep::Kernel<OpaquePolicy>;
+			keys_tex_func 			= (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex) ?
+											downsweep::TexKeys<KeyTexType>::BindTexture :
+											NULL;
+			values_tex_func 		= (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex) ?
+											downsweep::TexValues<ValueTexType>::BindTexture :
+											NULL;
+			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
 			// Initialize super class
 			return util::KernelProps::Init(
 				kernel_func,
-				KernelPolicy::THREADS,
+				KernelPolicy::CTA_THREADS,
 				sm_arch,
 				sm_count);
 		}
@@ -253,11 +247,11 @@ struct ProblemInstance
 			cudaError_t error = cudaSuccess;
 			do {
 				// Bind key texture
-				error = keys_tex_func(d_keys0, d_keys1, sizeof(KeyType) * num_elements);
+				if (keys_tex_func) error = keys_tex_func(d_keys0, d_keys1, sizeof(KeyType) * num_elements);
 				if (error) break;
 
 				// Bind value texture
-				error = values_tex_func(d_values0, d_values1, sizeof(ValueType) * num_elements);
+				if (values_tex_func) error = values_tex_func(d_values0, d_values1, sizeof(ValueType) * num_elements);
 				if (error) break;
 
 			} while (0);
@@ -312,7 +306,8 @@ struct ProblemInstance
 		const SpineKernelProps			&spine_props,
 		const DownsweepKernelProps		&downsweep_props,
 		bool							unform_grid_size,
-		bool							uniform_smem_allocation)
+		DynamicSmemConfig				dynamic_smem_config,
+		int 							current_pass = 0)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -328,33 +323,30 @@ struct ProblemInstance
 
 			// Compute spine elements (rounded up to nearest tile size)
 			SizeT spine_elements = CUB_ROUND_UP_NEAREST(
-				(sweep_grid_size << radix_bits),		// Each CTA produces a partial for every radix digit
+				(sweep_grid_size << radix_bits),			// Each CTA produces a partial for every radix digit
 				(1 << spine_props.log_tile_elements));		// Number of partials per tile
 
 			// Make sure our spine is big enough
 			error = spine.Setup(sizeof(SizeT) * spine_elements);
 			if (error) break;
 
+			// Bind downsweep textures on first pass
+			if (current_pass == 0)
+			{
+				error = downsweep_props.BindTexture(
+					storage.d_keys[storage.selector],
+					storage.d_keys[storage.selector ^ 1],
+					storage.d_values[storage.selector],
+					storage.d_values[storage.selector ^ 1],
+					num_elements);
+				if (error) break;
+			}
+
 			// Obtain a CTA work distribution
 			util::CtaWorkDistribution<SizeT> work(
 				num_elements,
 				sweep_grid_size,
 				log_schedule_granularity);
-
-			// Bind spine textures
-			error = spine_props.BindTexture(
-				(SizeT*) spine(),
-				spine_elements);
-			if (error) break;
-
-			// Bind downsweep textures
-			error = downsweep_props.BindTexture(
-				storage.d_keys[storage.selector],
-				storage.d_keys[storage.selector ^ 1],
-				storage.d_values[storage.selector],
-				storage.d_values[storage.selector ^ 1],
-				num_elements);
-			if (error) break;
 
 			// Grid size tuning
 			int grid_size[3] = {sweep_grid_size, 1, sweep_grid_size};
@@ -366,9 +358,10 @@ struct ProblemInstance
 
 			// Smem allocation tuning
 			int dynamic_smem[3] = {0, 0, 0};
-			if (uniform_smem_allocation)
+
+			if (dynamic_smem_config == DYNAMIC_SMEM_UNIFORM)
 			{
-				// Make sure all kernels have the same overall smem allocation
+				// Pad with dynamic smem so all kernels get the same total smem allocation
 				int max_static_smem = CUB_MAX(
 					upsweep_props.kernel_attrs.sharedSizeBytes,
 					CUB_MAX(
@@ -379,15 +372,11 @@ struct ProblemInstance
 				dynamic_smem[1] = max_static_smem - spine_props.kernel_attrs.sharedSizeBytes;
 				dynamic_smem[2] = max_static_smem - downsweep_props.kernel_attrs.sharedSizeBytes;
 			}
-			else
+			else if (dynamic_smem_config == DYNAMIC_SMEM_LCM)
 			{
-				// Compute smem padding to make each kernel occupancy a multiple of the lowest occupancy
-				int min_occupancy = CUB_MIN(
-					upsweep_props.max_cta_occupancy,
-					CUB_MIN(spine_props.max_cta_occupancy, downsweep_props.max_cta_occupancy));
-
+				// Pad upsweep/downsweep with dynamic smem so kernel occupancy a multiple of the lowest occupancy
+				int min_occupancy = CUB_MIN(upsweep_props.max_cta_occupancy, downsweep_props.max_cta_occupancy);
 				dynamic_smem[0] = upsweep_props.SmemPadding(min_occupancy);
-				dynamic_smem[1] = spine_props.SmemPadding(min_occupancy);
 				dynamic_smem[2] = downsweep_props.SmemPadding(min_occupancy);
 			}
 
@@ -410,11 +399,10 @@ struct ProblemInstance
 			//
 
 			// Set shared mem bank mode
-			enum cudaSharedMemConfig old_sm_config;
+			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			cudaDeviceSetSharedMemConfig(upsweep_props.smem_8byte_banks ?
-				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
-				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
+			if (old_sm_config != upsweep_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(upsweep_props.sm_bank_config);
 
 			// Upsweep reduction into spine
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0], stream>>>(
@@ -422,9 +410,6 @@ struct ProblemInstance
 				storage.d_keys[storage.selector],
 				storage.d_keys[storage.selector ^ 1],
 				work);
-
-			// Restore smem bank mode
-			cudaDeviceSetSharedMemConfig(old_sm_config);
 
 			if (debug) {
 				error = cudaThreadSynchronize();
@@ -434,6 +419,10 @@ struct ProblemInstance
 			//
 			// Spine
 			//
+
+			// Set shared mem bank mode
+			if (spine_props.sm_bank_config != upsweep_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(spine_props.sm_bank_config);
 
 			// Spine scan
 			spine_props.kernel_func<<<grid_size[1], spine_props.threads, dynamic_smem[1], stream>>>(
@@ -451,10 +440,8 @@ struct ProblemInstance
 			//
 
 			// Set shared mem bank mode
-			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			cudaDeviceSetSharedMemConfig(downsweep_props.smem_8byte_banks ?
-				cudaSharedMemBankSizeEightByte :		// 64-bit bank mode
-				cudaSharedMemBankSizeFourByte);			// 32-bit bank mode
+			if (downsweep_props.sm_bank_config != spine_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(downsweep_props.sm_bank_config);
 
 			// Downsweep scan from spine
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2], stream>>>(
@@ -471,7 +458,8 @@ struct ProblemInstance
 			}
 
 			// Restore smem bank mode
-			cudaDeviceSetSharedMemConfig(old_sm_config);
+			if (old_sm_config != downsweep_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(old_sm_config);
 
 		} while(0);
 

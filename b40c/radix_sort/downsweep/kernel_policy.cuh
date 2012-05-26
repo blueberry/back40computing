@@ -51,12 +51,12 @@ template <
 	int 							_CURRENT_BIT,			// The bit offset of the current radix digit place
 	int 							_CURRENT_PASS,			// The current pass iteration
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
-	int 							_LOG_THREADS,			// The number of threads per CTA
+	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
 	int 							_LOG_THREAD_ELEMENTS,	// The number of consecutive keys to process per thread per tile
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
-	bool							_SMEM_8BYTE_BANKS,		// Shared memory bank size
+	cudaSharedMemConfig				_SMEM_CONFIG,			// Shared memory bank size
 	bool						 	_EARLY_EXIT>			// Whether or not to short-circuit passes if the upsweep determines homogoneous digits in the current digit place
 struct KernelPolicy
 {
@@ -65,19 +65,18 @@ struct KernelPolicy
 		CURRENT_BIT 				= _CURRENT_BIT,
 		CURRENT_PASS 				= _CURRENT_PASS,
 		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
-		LOG_THREADS 				= _LOG_THREADS,
+		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
 		LOG_THREAD_ELEMENTS 		= _LOG_THREAD_ELEMENTS,
-		SMEM_8BYTE_BANKS			= _SMEM_8BYTE_BANKS,
 		EARLY_EXIT					= _EARLY_EXIT,
 
-		THREADS						= 1 << LOG_THREADS,
-		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_THREAD_ELEMENTS,
+		CTA_THREADS					= 1 << LOG_CTA_THREADS,
+		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_THREAD_ELEMENTS,
 	};
 
 	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
 	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
 	static const ScatterStrategy 				SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
-
 };
 
 

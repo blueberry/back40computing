@@ -24,6 +24,7 @@
 
 #include <stdio.h> 
 #include <algorithm>
+#include <iostream>
 
 // Sorting includes
 #include <b40c/util/multi_buffer.cuh>
@@ -67,7 +68,8 @@ int main(int argc, char** argv)
 	typedef b40c::util::NullType 	ValueType;
 //	typedef unsigned long long 		ValueType;
 //	typedef unsigned int			ValueType;
-//	typedef unsigned int			ValueType;
+
+	static const b40c::radix_sort::ProblemSize PROBLEM_SIZE = b40c::radix_sort::LARGE_PROBLEM;
 
 	const int 		START_BIT			= 0;
 	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
@@ -183,15 +185,8 @@ int main(int argc, char** argv)
 	}
 
 	// Sort
-	error = enactor.Sort<
-		b40c::radix_sort::LARGE_PROBLEM,
-		KEY_BITS,
-		START_BIT>(
-			double_buffer,
-			num_elements,
-			0,
-			max_ctas,
-			true);
+	error = enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
+		double_buffer, num_elements, 0, max_ctas, true);
 
 	if (error) exit(1);
 
@@ -229,10 +224,7 @@ int main(int argc, char** argv)
 		for (int i = 0; i < num_elements; ++i) {
 			if (h_keys[CastInt(h_values[i])] != h_reference_keys[i])
 			{
-				printf("Incorrect: [%d]: %d != %d\n",
-					i,
-					h_keys[CastInt(h_values[i])],
-					h_reference_keys[i]);
+				std::cout << "Incorrect: [" << i << "]: " << h_keys[CastInt(h_values[i])] << " != " << h_reference_keys[i] << std::endl << std::endl;
 				correct = false;
 				break;
 			}
@@ -283,7 +275,7 @@ int main(int argc, char** argv)
 			gpu_timer.Start();
 
 			// Sort
-			enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
+			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
 				double_buffer, num_elements, 0, max_ctas);
 
 			gpu_timer.Stop();
@@ -302,7 +294,7 @@ int main(int argc, char** argv)
 			gpu_timer.Start();
 
 			// Sort
-			enactor.Sort<b40c::radix_sort::LARGE_PROBLEM, KEY_BITS, START_BIT>(
+			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
 				double_buffer, num_elements, 0, max_ctas);
 
 			gpu_timer.Stop();
