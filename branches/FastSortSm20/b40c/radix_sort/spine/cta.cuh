@@ -51,8 +51,8 @@ struct Cta
 	//---------------------------------------------------------------------
 
 	enum {
-		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
-		THREADS							= 1 << LOG_THREADS,
+		LOG_CTA_THREADS 					= KernelPolicy::LOG_CTA_THREADS,
+		CTA_THREADS							= 1 << LOG_CTA_THREADS,
 
 		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
 		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
@@ -63,13 +63,13 @@ struct Cta
 		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS					= 1 << LOG_WARP_THREADS,
 
-		LOG_WARPS						= LOG_THREADS - LOG_WARP_THREADS,
+		LOG_WARPS						= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS							= 1 << LOG_WARPS,
 
 		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
 
-		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_THREADS,
+		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_CTA_THREADS,
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 	};
 
@@ -78,7 +78,7 @@ struct Cta
 	 */
 	typedef util::RakingGrid<
 		T,										// Partial type
-		LOG_THREADS,							// Depositing threads (the CTA size)
+		LOG_CTA_THREADS,							// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_WARP_THREADS,						// 1 warp of raking threads
 		true>									// There are prefix dependences between lanes
@@ -156,7 +156,7 @@ struct Cta
 		util::io::LoadTile<
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
-			THREADS,
+			CTA_THREADS,
 			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				partials,
@@ -176,7 +176,7 @@ struct Cta
 		util::io::StoreTile<
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
-			THREADS,
+			CTA_THREADS,
 			KernelPolicy::STORE_MODIFIER,
 			false>::Store(
 				partials,

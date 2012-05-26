@@ -41,7 +41,7 @@ template <
 	typename KernelPolicy,
 	typename SizeT,
 	typename KeyType>
-__launch_bounds__ (KernelPolicy::THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
+__launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
 	SizeT 		*d_spine,

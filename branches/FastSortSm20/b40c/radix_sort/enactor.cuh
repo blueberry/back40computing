@@ -148,7 +148,8 @@ struct Enactor
 					spine_props,
 					downsweep_props,
 					TunedPolicy::DispatchPolicy::UNIFORM_GRID_SIZE,
-					TunedPolicy::DispatchPolicy::UNIFORM_SMEM_ALLOCATION);
+					TunedPolicy::DispatchPolicy::DYNAMIC_SMEM_CONFIG,
+					CURRENT_PASS);
 				if (error) break;
 
 				// DispatchPass next pass
@@ -274,6 +275,38 @@ struct Enactor
 	{
 		return Sort<
 			LARGE_PROBLEM,
+			sizeof(typename DoubleBuffer::KeyType) * 8,			// BITS_REMAINING
+			0>(													// CURRENT_BIT
+				problem_storage,
+				num_elements,
+				stream,
+				max_grid_size,
+				debug);
+	}
+
+
+	/**
+	 * Enact a sort on a small problem (0 < n < 100,000 elements)
+	 *
+	 * @param problem_storage
+	 * 		Instance of b40c::util::DoubleBuffer
+	 * @param num_elements
+	 * 		The number of elements in problem_storage to sort (starting at offset 0)
+	 * @param max_grid_size
+	 * 		Optional upper-bound on the number of CTAs to launch.
+	 *
+	 * @return cudaSuccess on success, error enumeration otherwise
+	 */
+	template <typename DoubleBuffer>
+	cudaError_t SmallSort(
+		DoubleBuffer& 	problem_storage,
+		int 			num_elements,
+		cudaStream_t	stream 			= 0,
+		int 			max_grid_size 	= 0,
+		bool 			debug 			= false)
+	{
+		return Sort<
+			SMALL_PROBLEM,
 			sizeof(typename DoubleBuffer::KeyType) * 8,			// BITS_REMAINING
 			0>(													// CURRENT_BIT
 				problem_storage,

@@ -26,15 +26,13 @@
 #include <b40c/util/basic_utils.cuh>
 #include <b40c/util/cta_work_distribution.cuh>
 #include <b40c/util/tex_vector.cuh>
-#include <b40c/util/reduction/serial_reduce.cuh>
-#include <b40c/util/scan/serial_scan.cuh>
 #include <b40c/util/io/load_tile.cuh>
+#include <b40c/util/ns_umbrella.cuh>
 
 #include <b40c/radix_sort/sort_utils.cuh>
+#include <b40c/radix_sort/cta_radix_rank.cuh>
 #include <b40c/radix_sort/downsweep/kernel_policy.cuh>
 #include <b40c/radix_sort/downsweep/tex_ref.cuh>
-#include <b40c/radix_sort/spine/tex_ref.cuh>
-#include <b40c/util/ns_umbrella.cuh>
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -56,132 +54,99 @@ struct Cta
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
-	typedef typename KeyTraits<KeyType>::IngressOp 			IngressOp;
-	typedef typename KeyTraits<KeyType>::EgressOp 			EgressOp;
-	typedef typename KeyTraits<KeyType>::ConvertedKeyType 	ConvertedKeyType;
+	// Appropriate unsigned-bits representation of KeyType
+	typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;
 
-	// Integer type for digit counters (to be packed into words of PackedCounters)
-	typedef unsigned short DigitCounter;
-
-	// Integer type for packing DigitCounters into columns of shared memory banks
-	typedef typename util::If<
-		(KernelPolicy::SMEM_8BYTE_BANKS),
-		unsigned long long,
-		unsigned int>::Type PackedCounter;
-
+	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
+	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
 	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= KernelPolicy::LOAD_MODIFIER;
 	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= KernelPolicy::STORE_MODIFIER;
 	static const ScatterStrategy 				SCATTER_STRATEGY 	= KernelPolicy::SCATTER_STRATEGY;
 
 	enum {
-		CURRENT_BIT 				= KernelPolicy::CURRENT_BIT,
-		CURRENT_PASS 				= KernelPolicy::CURRENT_PASS,
 		RADIX_BITS					= KernelPolicy::RADIX_BITS,
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
 
+		CURRENT_BIT 				= KernelPolicy::CURRENT_BIT,
+		CURRENT_PASS 				= KernelPolicy::CURRENT_PASS,
+
 		// Direction of flow though ping-pong buffers: (FLOP_TURN) ? (d_keys1 --> d_keys0) : (d_keys0 --> d_keys1)
 		FLOP_TURN					= KernelPolicy::CURRENT_PASS & 0x1,
 
-		// Whether or not to insert padding for exchanging keys
-		BANK_PADDING 				= (SCATTER_STRATEGY != SCATTER_WARP_TWO_PHASE),		// Padding is worse than bank conflicts on GPUs that need two-phase scattering
-
-		LOG_THREADS 				= KernelPolicy::LOG_THREADS,
-		THREADS						= 1 << LOG_THREADS,
+		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
+		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
-		LOG_WARPS					= LOG_THREADS - LOG_WARP_THREADS,
+		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
 		LOG_THREAD_ELEMENTS 		= KernelPolicy::LOG_THREAD_ELEMENTS,
-		THREAD_ELEMENTS				= 1 << LOG_THREAD_ELEMENTS,
+		KEYS_PER_THREAD				= 1 << LOG_THREAD_ELEMENTS,
 
-		LOG_TILE_ELEMENTS			= LOG_THREADS + LOG_THREAD_ELEMENTS,
+		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_THREAD_ELEMENTS,
 		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),
 		LOG_BYTES_PER_SIZET			= util::Log2<BYTES_PER_SIZET>::VALUE,
 
-		BYTES_PER_COUNTER			= sizeof(DigitCounter),
-		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
-
-		PACKING_RATIO				= sizeof(PackedCounter) / sizeof(DigitCounter),
-		LOG_PACKING_RATIO			= util::Log2<PACKING_RATIO>::VALUE,
-
-		LOG_COUNTER_LANES			= CUB_MAX((RADIX_BITS - LOG_PACKING_RATIO), 0),				// Always at least one lane
-		COUNTER_LANES				= 1 << LOG_COUNTER_LANES,
-
-		// The number of packed counters per thread (plus one for padding)
-		RAKING_SEGMENT				= COUNTER_LANES + 1,
-
 		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 
-		DIGITS_PER_SCATTER_PASS 	= THREADS / MEM_BANKS,
+		// Whether or not to insert padding for exchanging keys. (Padding is
+		// worse than bank conflicts on GPUs that need two-phase scattering)
+		PADDED_EXCHANGE 			= (SCATTER_STRATEGY != SCATTER_WARP_TWO_PHASE),
+		PADDING_ELEMENTS			= (PADDED_EXCHANGE) ? (TILE_ELEMENTS >> LOG_MEM_BANKS) : 0,
+
+		DIGITS_PER_SCATTER_PASS 	= CTA_THREADS / MEM_BANKS,
 		SCATTER_PASSES 				= RADIX_DIGITS / DIGITS_PER_SCATTER_PASS,
 
 		LOG_STORE_TXN_THREADS 		= LOG_MEM_BANKS,
 		STORE_TXN_THREADS 			= 1 << LOG_STORE_TXN_THREADS,
 
-		ELEMENTS_PER_TEX			= Textures<KeyType, ValueType, THREAD_ELEMENTS>::ELEMENTS_PER_TEX,
+		ELEMENTS_PER_TEX			= Textures<KeyType, ValueType, KEYS_PER_THREAD>::ELEMENTS_PER_TEX,
 
-		THREAD_TEX_LOADS	 		= THREAD_ELEMENTS / ELEMENTS_PER_TEX,
+		THREAD_TEX_LOADS	 		= KEYS_PER_THREAD / ELEMENTS_PER_TEX,
 
-		TILE_TEX_LOADS				= THREADS * THREAD_TEX_LOADS,
+		TILE_TEX_LOADS				= CTA_THREADS * THREAD_TEX_LOADS,
 	};
 
-	// Key texture type
-	typedef typename Textures<
-		KeyType,
-		ValueType,
-		THREAD_ELEMENTS>::KeyTexType KeyTexType;
+	// Texture types
+	typedef Textures<KeyType, ValueType, KEYS_PER_THREAD> 	Textures;
+	typedef typename Textures::KeyTexType 					KeyTexType;
+	typedef typename Textures::ValueTexType 				ValueTexType;
 
-	// Value texture type
-	typedef typename Textures<
-		KeyType,
-		ValueType,
-		THREAD_ELEMENTS>::ValueTexType ValueTexType;
-
+	// CtaRadixRank utility type
+	typedef CtaRadixRank<
+		LOG_CTA_THREADS,
+		RADIX_BITS,
+		CURRENT_BIT,
+		KernelPolicy::SMEM_CONFIG> CtaRadixRank;
 
 	/**
 	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
-		SizeT						tex_offset;
-		SizeT						tex_offset_limit;
+		SizeT							tex_offset;
+		SizeT							tex_offset_limit;
 
-		bool 						non_trivial_pass;
-		util::CtaWorkLimits<SizeT> 	work_limits;
+		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		SizeT 						base_digit_offset[RADIX_DIGITS];
-
-		// Storage for scanning local ranks
-		volatile PackedCounter		warpscan[WARPS][WARP_THREADS * 3 / 2];
-
-		union {
-			unsigned char			counter_base[1];
-			DigitCounter			digit_counters[COUNTER_LANES + 1][THREADS][PACKING_RATIO];
-			PackedCounter			raking_grid[THREADS][RAKING_SEGMENT];
-			ConvertedKeyType		key_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
-			ValueType 				value_exchange[TILE_ELEMENTS + (TILE_ELEMENTS >> LOG_MEM_BANKS)];
+		union
+		{
+			unsigned char				digit_offset_bytes[1];
+			SizeT 						digit_offsets[RADIX_DIGITS];
 		};
-	};
 
-
-	/**
-	 * Tile state
-	 */
-	struct Tile
-	{
-		ConvertedKeyType	keys[THREAD_ELEMENTS];					// Keys for this tile
-		ValueType 			values[THREAD_ELEMENTS];				// Values for this tile
-		DigitCounter		thread_prefixes[THREAD_ELEMENTS];		// For each key, the count of previous keys in this tile having the same digit
-		int 				ranks[THREAD_ELEMENTS];					// For each key, the local rank within the tile
-		unsigned int 		counter_offsets[THREAD_ELEMENTS];		// For each key, the byte-offset of its corresponding digit counter in smem
-		SizeT				global_digit_base[THREAD_ELEMENTS];		// For each key, the global base scatter offset for the corresponding digit
+		union
+		{
+			typename CtaRadixRank::SmemStorage	ranking_storage;
+			UnsignedBits						key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+			ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+		};
 	};
 
 
@@ -193,161 +158,71 @@ struct Cta
 	SmemStorage 				&smem_storage;
 
 	// Input and output device pointers
-	ConvertedKeyType 			*d_in_keys;
-	ConvertedKeyType			*d_out_keys;
+	UnsignedBits 				*d_in_keys;
+	UnsignedBits				*d_out_keys;
 	ValueType 					*d_in_values;
 	ValueType 					*d_out_values;
 
-	// Bit-twiddling operator needed to make keys suitable for radix sorting
-	IngressOp					ingress_op;
-	EgressOp					egress_op;
-
-	PackedCounter 				*raking_segment;
-	DigitCounter 				*bin_counter;
-
-	// The global scatter base offset for each digit (valid in the
-	// first RADIX_DIGITS threads)
-	SizeT 						global_digit_base;
-
-	int 						warp_id;
-	volatile PackedCounter 		*warpscan;
+	// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
+	SizeT 						my_digit_offset;
 
 
 	//---------------------------------------------------------------------
-	// Helper structure for templated iteration
-	//---------------------------------------------------------------------
+	// Helper structure for templated iteration.  (NVCC currently won't
+	// unroll loops with "unexpected control flow".)zeT>::ref, spine_bin_offset);
+		}
+	}
+
 
 	/**
-	 * Iteration helper
+	 * Load tile of keys
+	 */
+	__device__ _Iterate
 	 */
 	template <int COUNT, int MAX>
 	struct Iterate
 	{
-		// DecodeKeys
-		static __device__ __forceinline__ void DecodeKeys( ta &cta,	Tile &tile)
-		{
-			// Compute byte offset of smem counter, starting with offset
-			// of the thread's packed counter column
-			unsigned int counter_offset = (threadIdx.x << (LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTEConvertedKeyType converted_key = cta.ingress_op(tile.keys[COUNT]);
-
-			// Add in sub-counter offset
-			counter_offset = Extract<
-				CURRENT_BIT + LOG_COUNTER_LANES,
-				LOG_PACKING_RATIO,
-				LOG_BYTES_PER_COUNTER>(
-					converted_keyys[COUNT],
-					counter_offset);
-
-			// Add in row offset
-			counter_offset = ExtrCURRENT_BIT,
-				LOG_COUNTER_LANES,
-				LOG_THREADS + LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER>(
-					converted_keyys[COUNT],
-					counter_offset);
-
-			DigitCounter* counter =
-				(DigitCounter*) (cta.smem_storage.counter_base + counter_offset);
-
-			// Load thread-exclusive prefix
-			tile.thread_prefixes[COUNT] = *counter;
-
-			// Store inclusive prefix
-			*counter = tile.thread_prefixes[COUNT] + 1;
-
-			// Remember counter offset
-			tile.counter_offsets[COUNT] = counter_offset;
-
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::DecodeKeys(cta, tile);
-		}
-
-
-		// ComputeLocalRanks
-		static __device__ __forceinline__ void ComputeLocalRanks(Cta &cta, Tile &tile)
-		{
-			DigitCounter* counter =
-				(DigitCounter*) (cta.smem_storage.counter_base + tile.counter_offsets[COUNT]);
-
-			// Add in CTA exclusive prefix
-			tile.ranks[COUNT] = tile.thread_prefixes[COUNT] + *counter;
-
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::ComputeLocalRanks(cta, tile);
-		}
-
-
-		// ScatterRanked
-		template <typename T>
-		static __device__ __forceinline__ void ScatterRanked(
-			Cta &cta,
-			Tile &tile,
-			T items[THREAD_ELEMENTS])
-		{
-			int offset = (BANK_PADDING) ?
-				util::SHR_ADD(tile.ranks[COUNT], LOG_MEM_BANKS, tile.ranks[COUNT]) :
-				tile.ranks[COUNT];
-
-			((T*) cta.smem_storage.key_exchange)[offset] = items[COUNT];
-
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::ScatterRanked(cta, tile, items);
-		}
-
-		// GatherShared
-		template <typename T>
-		static __device__ __forceinline__ void GatherShared(
-			Cta &cta,
-			Tile &tile,
-			T items[THREAD_ELEMENTS])
-		{
-			int gather (BANK_PADDING) ?
-				util::SHR_ADD(threadIdx.x, LOG_MEM_BANKS, threadIdx.x) + (COUNT * THREADS) + ((COUNT * THREADS) >> LOG_MEM_BANKS) :
-				threadIdx.x + (COUNT * THREADS THREADS));
-
-			items[COUNT] = ((T*) cta.smem_storage.key_exchange)[gather_offset];
-
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::GatherShared(cta, tile, items);
-		}
-
-		// DecodeBinOffsets
-		static __device__ __forceinline__ void DecodeBinOffsets(Cta &cta, Tile &tileConvertedKeyType converted_key = cta.ingress_op(tile.keys[COUNT]);
-tile)
-		{
-			// Decode address of bin-offset in smem
-			unsigned int byte_offset = ExtrCURRENT_BIT,
-				RADIX_BITS,
-				LOG_BYTES_PER_SIZET>(
-					converted_keyys[COUNT]);
-
-			// Lookup global bin offset
-			tile.global_digit_base[COUNT] = *(SizeT *)(((char *) cta.smem_storage.base_digit_offset) + byte_offset);
-
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::DecodeBinOffsets(cta, tile);
-		}
-
-		// ScatterGlobal
+		/**
+		 * Scatter items to global memory
+		 */
 		template <typename T>
 		static __device__ __forceinline__ void ScatterGlobal(
-			Cta &cta,
-			Tile &tile,
-			T items[THREAD_ELEMENTS],
-			T *d_out,
-			const SizeT &guarded_elements)
+			T 				items[KEYS_PER_THREAD],
+			SizeT			digit_offsets[KEYS_PER_THREAD],
+			T 				*d_out,
+			const SizeT 	&guarded_elements)
 		{
-			int tile_element = threadIdx.x + (COUNT * THREADS);
-
-			// Distribute if not out-of-bounds
+			// Scatter if not out-of-bounds
+			int tile_element = threadIdx.x + (COUNT * CTA_THREADS);
+			T* scatter = d_out + threadIdx.x + (COUNT * CTA_THREADS) + digit_offsets[COUNT];
+of-bounds
 			if ((guarded_elements >= TILE_ELEMENTS) || (tile_element < guarded_e
-			{ents)) {
-
-				T* scatter = d_out + threadIdx.x + (THREADS * COUNT) + tile.global_digit_base[COUNT];
+			{ents)NT];
 				util::io::ModifSTORtore<WRITE_MODIFIER>::St(items[COUNT], scatter);
-			}
+			Iterate next element
+			Iterate<COUNT + 1, MAX>::ScatterGlobal(items, digit_offsets, d_out, guarded_elements);
+		}
 
-			// Next vector element
-			Iterate<COUNT + 1, MAX>::ScatterGlobal(cta, tile, items, d_out, guarded_elements);
+
+		/**
+		 * Scatter items to global memory
+		 */
+		template <typename T>
+		static __device__ __forceinline__ void ScatterGlobal(
+			T 				items[KEYS_PER_THREAD],
+			unsigned int 	ranks[KEYS_PER_THREAD],
+			SizeT			digit_offsets[KEYS_PER_THREAD],
+			T 				*d_out,
+			const SizeT 	&guarded_elements)
+		{
+			// Scatter if not out-of-bounds
+			T* scatter = d_out + ranks[COUNT] + digit_offsets[COUNT];
+
+			if ((guarded_elements >= TILE_ELEMENTS) || (ranks[COUNT] < guarded_elements))
+			{e[COUNT];
+				util::io::ModifSTORtore<WRITE_MODIFIER>::St(items[COUNT], scatter);
+			Iterate next element
+			Iterate<COUNT + 1, MAX>::ScatterGlobal(items, ranks, digit_offsetile, items, d_out, guarded_elements);
 		}
 
 
@@ -356,35 +231,34 @@ tile)
 		 * coalescing rules
 		 */
 		template <typename T>
-		static __device__ __forceinline__ void AlignedScatterPass(
-			Cta &cta,
-			T *exchange,
-			T *d_out,
-			const SizeT &valid_elements)
+		static __device__ __forceinline__ void AlignedScatterSmemStorage 	&smem_storage,
+			T 				*buffer,
+			T 				*d_out,
+			const SizeT 	&valid_elements)
 		{
-			int store_txn_idx = threadIdx.x & (STORE_TXN_THREADS - 1);
-			int store_txn_digit = threadIdx.x >> LOG_STORE_TXN_THREADS;
+			typedef typename CtaRadixRank::PackedCounter PackedCounter;
 
-			int my_digit = (COUNT * DIGITS_PER_SCATTER_PASS) + store_txn_digit;
+			int store_txn_idx 		= threadIdx.x & (STORE_TXN_THREADS - 1);
+			int store_txn_digit 	= threadIdx.x >> LOG_STORE_TXN_THREADS;
+			int my_digit 			my_digit = (COUNT * DIGITS_PER_SCATTER_PASS) + store_txn_digit;
 
 			if (my_digit < RADI
 			{IGITS) {
 
-				int my_exclusive_scan = cta.smem_storage.warpscan[0][16 + my_digit - 1];
-				int my_inclusive_scan = cta.smem_storage.warpscan[0][16 + my_digit];
-				int my_digit_count = my_inclusive_scan - my_exclusive_scan;
-
-				int my_carry = cta.smem_storage.base_digit_offset[my_digit] + my_exclusive_scan;
-				int my_aligned_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
+				int my_exclus	= smem_storage.ranking_storage.warpscan[0][(WARP_THREADS / 2) + my_digit - 1];
+				int my_inclusive_scan 	= smem_storage.ranking_storage.warpscan[0][(WARP_THREADS / 2) + my_digit];
+				int my_digit_count 		= my_inclusive_scan - my_exclusive_scan;
+				int my_carry 			= smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
+				int my_aligned_offset 	d_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
 
 				while (my_aligned_offset < my_dig
 				{
 					if ((my_aligned_offset >= 0) && (my_exclusive_scan + my_aligned_offset < valid_elements))
 					{
 						int gather_offset = my_exclusive_scan + my_aligned_offset;
-						if (BANK_PADDING) gather_offset = util::SHR_ADD(gather_offset, LOG_MEM_BANKS, gather_offset);ments)) {
+						if (PADDED_EXCHANGE) gather_offset = util::SHR_ADD(gather_offset, LOG_MEM_BANKS, gather_offset);ments)) {
 
-						T datum = exchange[my_exclusive_scan + my_aligned_offset];
+						Tbuffer exchange[my_exclusive_scan + my_aligned_offset];
 						d_out[my_carry + my_aligned_offset] = datum;
 					}
 					my_aligned_offset += STORE_TXN_THREADS;
@@ -392,7 +266,7 @@ tile)
 			}
 
 			// Next scatter pass
-			Iterate<COUNT + 1, MAX>::AlignedScatterPass(cta, exchange, d_out, valid_elements);
+			Iterate<COUNT + 1, MAX>::AlignedScasmem_storage, buffer, d_out, valid_elements);
 		}
 	};
 
@@ -403,71 +277,19 @@ tile)
 	template <int MAX>
 	struct Iterate<MAX, MAX>
 	{
-		// DecodeKeys
-		static __device__ __forceinline__ void DecodeKeys(Cta &cta, Tile &tile) {}
-
-		// ComputeLocalRanks
-		static __device__ __forceinline__ void ComputeLocalRanks(Cta &cta, Tile &tile) {}
-
-		// ScatterRanked
+		// ScatterGlobal
 		template <typename T>
-		static __device__ __forceinline__ void ScatterRanked(Cta &cta, Tile &tile, T items[THREAD_ELEMENTS]) {}
-
-		// GatherShared
-		template <typename T>
-		static __device__ __forceinline__ void GatherShared(Cta &cta, Tile &tile, T items[THREAD_ELEMENTS]) {}
-
-		// DecodeBinOffsets
-		static __device__ __forceinline__ void DecodeBinOffsets(Cta &cta, Tile &tile) {}
+		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, const SizeT &) {}
 
 		// ScatterGlobal
-		templa			}
-			else
-			{T>
-		static __device__ __forceinline__ void ScatterGlobal(Cta &cta, Tile &tile, T items[THREAD_ELEMENTS], T *d_out, const SizeT &guarded_elements) {}
-
-		// AlignedScatterPass
 		template <typename T>
-		static __device__ __forceinline__ void AlignedScatterPass(Cta &cta, T *exchange, T *d_out, const SizeT &valid_elements) {}
-	};
+		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], unsigned int[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, const SizeT &) {}
 
-
-
-
-	//---------------------------------------------------------------------
-	// Methods
-	//---------------------------------------------------------------------
-
-	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ Cta(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys0,
-		KeyType 		*d_keys1,
-		ValueType 		*d_values0,
-		ValueType 		*d_values1,
-		SizeT 			*d_spine) :
-			smem_storage(smem_storage),
-			d_in_keys(FLOP_TURN ? d_keys1 : d_keys0),
-			d_out_keys(FLOP_TURN ? d_keys0 : d_keys1),
-			d_in_values(FLOP_TURN ? d_values1 : d_values0),
-			d_out_values(FLOP_TURN ? d_values0 : d_values1),
-			raking_segment(smem_storage.raking_grid[threadIdx.x])
-	{
-		int counter_lane = threadIdx.x & (COUNTER_LANES - 1);
-		int sub_counter = threadIdx.x >> (LOG_COUNTER_LANES);
-		bin_counter = &smem_storage.digit_counters[counter_lane][0][sub_counter];
-
-		// Initialize warpscan identity regions
-		warp_id = threadIdx.x >> 5;
-		warpscan = &smem_storage.warpscan[warp_id][16 + (threadIdx.x & 31)];
-		warpscan[-16] = 0;
-
-		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
-
-			// Read base_digit_offset in parallel
-			int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+		// AlignedScatterPassles
+		 */
+		template <typename T>
+		static __device__ __forceinline__ void AlignedScaSmemStorage&, T*, T*, const SizeT&) {}
+	};Dim.x * threadIdx.x) + blockIdx.x;
 			global_digit_base = tex1Dfetch(spine::TexSpine<SizeT>::ref, spine_bin_offset);
 		}
 	}
@@ -486,66 +308,180 @@ tile)
 			// Unguarded loads through tex
 			KeyTexType *vectors = (KeyTexType *) tile.keys;
 
-			#pragma unreinterpret_cast<ConvertedKeyType*>(FLOP_TURN ? d_keys1 : d_keys0)),
-			d_out_keys(reinterpret_cast<ConvertedKeyType*>(FLOP_TURN ? d_keys0 : d_keys1)PACK] = tex1Dfetch(
+			#pragma unreinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys1 : d_keys0)),
+			d_out_keys(reinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys0 : d_keys1)PACK] = tex1Dfetch(
 					(Cta::FLOP_TURN) ?
 						TexKeys<KeyTexType>::ref1 :
-						TexKeys<KeyTexType>::ref0,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
-			}
-		} else {
+						TexKeys<KeyTexType>:
+	{
+		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
+		{
+			// Read digit scatter base (in parallel)
+			int spine_digit_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+			my_digit_offset = d_spine[spine_digit_offset];
+		}
+	}
 
-			// Guarded loads with default assignment of -1 to out-of-bound keys
-			util::io::LoadTile<
-				0,									// log loads per tile
-				LOG_THREAD_ELEMENTS,
-				THREADS,
-				READ_MODIFIER,
-				false>::LoadValid(
-					(KeyType (*)[THREAD_ELEMENTS]) tile.keys,
-					d_in_keys,
-					(tex_offset * ELEMENTS_PER_TEX),
-					guarded_elements,
-					KeyType(-1));
+
+	/**
+	 * Perform a bit-wise twiddling transformation on keys
+	 */
+	template <UnsignedBits TwiddleOp(UnsignedBits)>
+	__device__ __forceinline__ void TwiddleKeys(
+		UnsignedBits converted_keys[KEYS_PER_THREAD])
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			converted_keys[KEY] = TwiddleOp(converted_keys[KEY]);
+		}
+	}
+
+
+	/**
+	 * Scatter ranked items to shared memory buffer
+	 */
+	template <typename T>
+	__device__ __forceinline__ void ScatterRanked(
+		unsigned int 	ranks[KEYS_PER_THREAD],
+		T 				items[KEYS_PER_THREAD],
+		T 				*buffer)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int offset = (PADDED_EXCHANGE) ?
+				util::SHR_ADD(ranks[KEY], LOG_MEM_BANKS, ranks[KEY]) :
+				ranks[KEY];
+
+			buffer[offset] = items[KEY];
+		}
+	}
+
+
+	/**
+	 * Gather items from shared memory buffer
+	 */
+	template <typename T>
+	__device__ __forceinline__ void GatherShared(
+		T items[KEYS_PER_THREAD],
+		T *buffer)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int gather_offset = (PADDED_EXCHANGE) ?
+				(util::SHR_ADD(threadIdx.x, LOG_MEM_BANKS, threadIdx.x) +
+					(KEY * CTA_THREADS) +
+					((KEY * CTA_THREADS) >> LOG_MEM_BANKS)) :
+				(threadIdx.x + (KEY * CTA_THREADS));
+
+			items[KEY] = buffer[gather_offset];
+		}
+	}
+
+
+	/**
+	 * Decodes given keys to lookup digit offsets in shared memory
+	 */
+	__device__ __forceinline__ void DecodeDigitOffsets(
+		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		SizeT 			digit_offsets[KEYS_PER_THREAD])
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{tile)
+		{
+			// Decode address of bin-offset in smem
+			unsigned int byte_offset = ExtrCURRENT_BIT,
+				RADIX_BITS,
+				LOG_BYTES_PER_SIZET>(converted_keys[KEY]);
+
+			// Lookup base digit offset from shared memory
+			digit_offsets[KEY] = *(SizeT *)(smem_storage.digit_offset_bytes + byte_offset);
 		}
 	}
 
 	/**
-	 * Load tile of values
+	 * Load tile of keys from global memory
 	 */
-
-		{device__ __forceinline__ void LoadValues(
-		SizeT tex_offset,
-		const SizeT &guarded_elements,
-		Tile &tile)
+	__device__ __forceinline__ void LoadKeys(
+		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		SizeT 			tex_offset,
+		const SizeT 	&guarded_elements)
 	{
-		if (guarded_elements >= TILE_ELEMENTS) {
-
+		if ((LOAD_MODIFIER == util::io::ld::tex) && (guarded_elements >= TILE_ELEMENTS))
+		{
 			// Unguarded loads through tex
-			ValueTexType *vectors = (ValueTexType*) tile.values;
-
-			#pragma unroll
-			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++) {
-
-				vectors[PACK] = tex1Dfetch(
-					(Cta::FLOP_TURN) ?
-					
-		{xValues<ValueTexType>::ref1 :
-						TexValues<ValueTexType>::ref0,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+			KeyTexType *vectors = (KeyTexType *) converted_et + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 			}
 
 		} else {
 			// Guarded l
 			{s with default assignment of -1 to out-of-bound values
-			util::io::LoadTile<
-				0,									// log loads per tile
+	 TexKeys<KeyTexType>::ref1 : og loads per tile
 				LOG_THREAD_ELEMENTS,
 				THREADS,
 				READ_MODIFIER,
 				false>::LoadVali
 		else
 		{(ValueType (*)[THREAD_ELEMENTS]) tile.values,
+		MAX_KEY	d_in_values,
+					(tex_offset * ELEMENTS_PER_TEX),
+					guarded_elements);
+		}
+	}
+
+
+	/**
+	 * Scan shared memorCTA_THREADS,
+				LOAD_MODIFIER,
+				false>::LoadValid(
+					(UnsignedBits (*)[KEYS_PER_THREAD]) converted_keys,
+					d_in_keys,
+					(tex_offset * ELEMENTS_PER_TEX),
+					guarded_elements,
+					MAX_KEY);
+		}
+	}
+
+
+	/**
+	 * Load tile of values from global memory
+	 */
+	__device__ __forceinline__ void LoadValues(
+		ValueType 		values[KEYS_PER_THREAD],
+		SizeT 			tex_offset,
+		const SizeT 	&guarded_elements)
+	{
+		if ((LOAD_MODIFIER == util::io::ld::tex) &&
+			(util::NumericTraits<ValueType>::BUILT_IN) &&
+			(guarded_elements >= TILE_ELEMENTS))
+		{- 2];
+		warpscan[0] = partial =
+			partial + warpscan[0 - 4];
+		warpscan[0] = value+ (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+			}
+
+		} else {
+			// Guarded l
+			{s with default assignment of -1 to out-of-bound values
+	 TexValues<ValueTexType>::ref1 : TexValues<Valuer tile
+				LOG_THREAD_ELEMENTS,
+				THREADS,
+				READ_MODIFIER,
+				false>::LoadVali
+		else
+		{(ValueType (*)[THREAD_ELEMENTS]) tile.values,
+					d_in_values,
+			values
+			util::io::LoadTile<
+				0,									// log loads per tile
+				LOG_THREAD_ELEMENTS,
+				CTA_THREADS,
+				LOAD_MODIFIER,
+				false>::LoadValid(
+					(ValueType (*)[KEYS_PER_THREAD]) values,
 					d_in_values,
 					(tex_offset * ELEMENTS_PER_TEX),
 					guarded_elements);
@@ -554,234 +490,183 @@ tile)
 
 
 	/**
-	 * Scan shared memory counters
-	 LO
-	__device__ __forceinline__ void ScanCounConvertedters(Tile &tile)
+	 * Gather keys from smem, decode base digit offsets for keys,4
+	 * and scatter to global
+	 */
+	__device__ __forceinline__ void ScatterKeys(
+		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		SizeT 			digit_offsets[KEYS_PER_THREAD],		// (out parameter)
+		unsigned int 	ranks[KEYS_PER_THREAD],
+		const SizeT 	&guarded_elements)
 	{
-		// Upsweep reduce
-		PackedCounter raking_partial = util::reduction::SerialReduce<RAKING_SEGMENT>::Invegress_op(ConvertedKeyType(-1)king_segment);
+		if (SCATTER_STRATEGY == SCATTER_DIRECT)
+		{
+			// Compute scatter offsets
+			DecodeDigitOffsets(converted_keys, digit_offsets);
 
-		// Warpscan
-		PackedCounter partial = raking_partial;
-		warpscan[0] = partial;
+			// Twiddle keys before outputting
+			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
 
-		warpscan[0] = partial =
-			partial + warpscan[0 - 1];
-		warpscan[0](util::NumericTraits<ValueType>::BUILT_IN) &&
-			(guarded_elements >= TILE_ELEMENTS))
-		{- 2];
-		warpscan[0] = partial =
-			partial + warpscan[0 - 4];
-		warpscan[0] = partial =
-			partial + warpscan[0 - 8];
-		warpscan[0] = partial =
-			partial + warpsca
-			{ - 16];
-
-		// Barrier
-		__syncthreads();
-
-		// Scan across warpscan totals
-		PackedCounter warpscan_totals = 0;
-
-		#pragma unroll
-		for (int WARP = 0; WARP < WARPS; WARP++) {
-
-			// Add totals from		}
+			// Scatter keys directly to global memory
+			Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
+				converted_keys,
+				ranks,
+				digit_offsets,
+				d_out_keys,
+				guarded_elements);
+		}
 		else
-		ous warpscans into our partial
-			PackedCounter warpscan_total = smem_storage.warpscan[WARP][(WARP_THREADS * 3 / 2) - 1];
-			if (warp_id == WARP) {
-				partial += warpscan_totalLO
-			}
-
-			// Increment warpscan totals
-			warpscan_totals += warpscan_total;
-		}
-
-		// Add lower totals from all warpscans into partial's upper
-		#pragma unroll
-		for (int PACKED = 1; PACKED < PACKING_RATIO; PACKED++) {
-			partial += warpscan_totals << (16 * PACKED);
-		}
-
-		// Downsweep scan with exclusive partial
-		PackedCounter exclusive_partial = partial - raking_partial;
-		util::scan::SerialScan<RAKING_SEGMENT>::Invoke(
-			raking_segment,
-			exclusive_partial);
-	}
-
-
-	/**
-	 * Truck along associated values.  (Specialized for key-value passes.)
-	 */
-	template <bool IS_KEYS_ONLY, int DUMMY = 0>
-	struct TruckValues
-	{
-		static __device__ __forceinline__ void Invoke(
-			SizeT tex_offset,
-			const SizeT &guarded_elements,
-			Cta &cta,
-			Tile &tile)
 		{
-			// Load tile of values
-			cta.LoadValues(tex_offset, guarded_elements, tile);
+			__syncthreads();
+
+			// Exchange keys through shared memory for better write-coalescing
+			ScatterRanked(ranks, converted_keys, smem_storage.key_exchange);
 
 			__syncthreads();
 
-			// Scatter values shared
-			Iterate<0, THREAD_ELEMENTS>::ScatterRanked(cta, tile, tile.values);
+			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
+			{
+				// Twiddle keys before outputting
+				TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
 
-			__syncthreads();
-
-			// Gather values from shared memory and scatter to global
-			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
-
-				// Use explicitly warp-aligned scattering of values from smem
+				// Use explicitly warp-aligned scattering of keys from shared memory
 				Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-					cta,
-					cta.smem_storage.value_exchange,
-					cta.d_out_values,
+					smem_storage,
+					smem_storage.key_exchange,
+					d_out_keys,
 					guarded_elements);
+			}
+			else
+			{
+				// Gather keys from shared memory
+				GatherShared(converted_keys, smem_storage.key_exchange);
 
-			} else {
+				// Compute scatter offsets
+				DecodeDigitOffsets(converted_keys, digit_offsets);
 
-				// Gather values shared
-				Iterate<0, THREAD_ELEMENTS>::GatherShared(cta, tile, tile.values);
+				// Twiddle keys before outputting
+				TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
 
-				// Scatter to global
-				Iterate<0, THREAD_ELEMENTS>::ScatterGlobal(
-					cta,
-					tile,
-					tile.values,
-					cta.d_out_values,
+				// Scatter keys to global memory
+				Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
+					converted_keys,
+					digit_offsets,
+					d_out_keys,
 					guarded_elements);
 			}
 		}
-	};
+	}
 
 
 	/**
-	 * Truck along associated values.  (Specialized for keys-only passes.)
+	 * Truck along associated values
 	 */
-	template <int DUMMY>
-	struct TruckValues<true, DUMMY>
+	template <typename _ValueType>
+	__device__ __forceinline__ void GatherScatterValues(
+		_ValueType 		values[KEYS_PER_THREAD],
+		SizeT 			digit_offsets[KEYS_PER_THREAD],
+		unsigned int 	ranks[KEYS_PER_THREAD],
+		SizeT 			tex_offset,
+		const SizeT 	&guarded_elements)
 	{
-		static __device__ __forceinline__ void Invoke(
-			SizeT tex_offset,
-			const SizeT &guarded_elements,
-			Cta &cta,
-			Tile &tile)
+		// Load tile of values
+		LoadValues(values, tex_offset, guarded_elements);
+
+		if (SCATTER_STRATEGY == SCATTER_DIRECT)
 		{
-			// do nothing
+			// Scatter values directly to global memory
+			Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
+				values,
+				ranks,
+				digit_offsets,
+				d_out_values,
+				guarded_elements);
 		}
-	};
+		else
+		{
+			__syncthreads();
 
+			// Exchange values through shared memory for better write-coalescing
+			ScatterRanked(ranks, values, smem_storage.value_exchange);
 
-	/**
-	 * Gather keys from smem and scatter to global
-	 */
-	__device__ __forceinline__ void GatherScatterKeys(
-		Tile &tile,
-		const SizeT &guarded_elements)
-	{
-		if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE) {
+			__syncthreads();
+Shared
+		template <typename T>
+		static __device__ __forceinline__ void GatherShared(Cta &cta, Tile &tile, T items[THREhared memory
+				Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
+					smem_storage,
+					smem_storage.value_exchange,
+					d_out_values,
+					guarded_elements);
+			}
+			else
+			{
+				// Gather values from shared
+				GatherShared(values, smem_storage.value_exchange);
 
-			// Use explicitly warp-aligned scattering of keys from smem
-			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-				*this,
-				smem_storage.key_exchange,
-				d_out_keys,
-				guarded_elements);
-
-		} else {
-
-			// Gather keys
-			Iterate<0, THREAD_ELEMENTS>::GatherShared(*this, tile, tile.keys);
-
-			// Decode global scatter offsets
-			Iterate<0, THREAD_ELEMENTS>::DecodeBinOffsets(*this, tile);
-
-			// Scatter to global
-			Iterate<0, THREAD_ELEMENTS>::ScatterGlobal(
-				*this,
-				tile,
-				tile.keys,
-				d_out_keys,
-				guarded_elements);
+				// Scatter to global memory
+				Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
+					values,
+					digit_offsets,
+					d_out_values,
+					guarded_elements);
+			}
 		}
 	}
 
 
 	/**
-	 * Reset shared memory digit counters
+	 * Truck along associated values (specialized for key-only sorting)
 	 */
-	__device__ __forceinline__ void ResetCounters()
-	{
-		#pragma unroll
-		for (int LANE = 0; LANE < COUNTER_LANES + 1; LANE++) {
-			*((PackedCounter*) smem_storage.digit_counters[LANE][threadIdx.x]) = 0;
-		}
-	}
-
-
-	/**
-	 * Update global scatter offsets for each digit
-	 */
-	__device__ __forceinline__ void UpdateDigitScatterOffsets()
-	{
-		if ((THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS)) {
-
-			DigitCounter bin_inclusive = bin_counter[THREADS * PACKING_RATIO];
-			smem_storage.warpscan[0][16 + threadIdx.x] = bin_inclusive;
+	__device__ __forceinline__ void GatherScatterValues(
+		util::NullType	values[KEYS_PER_THREAD],
+		SizeT 			digit_offsets[KEYS_PER_THREAD],
+		unsigned int 	ranks[KEYS_PER_THREAD],
+		SizeT 			tex_offset,
+		const SizeT 	&guarded_elements)
+	{n[0][16 + threadIdx.x] = bin_inclusive;
 			PackedCounter bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
 
-			global_digit_base -= bin_exclusive;
-			smem_storage.base_digit_offset[threadIdx.x] = global_digit_base;
-			global_digit_base += bin_inclusive;
+			global_digit_base -= bin_exclTile data
+		UnsignedBits 	converted_keys[KEYS_PER_THREAD];		// Keys
+		ValueType 		values[KEYS_PER_THREAD];				// Values
+		unsigned int	ranks[KEYS_PER_THREAD];					// For each key, the local rank within the CTA
+		SizeT 			digit_offsets[KEYS_PER_THREAD];			// For each key, the global scatter base offset of the corresponding digit
+
+		// Load tile of keys and twiddle bits if necessary
+		LoadKeys(converted_keys, tex_offset, guarded_elements);
+
+		__syncthreads();
+
+		// Twiddle keys
+		TwiddleKeys<KeyTraits<KeyType>::TwiddleIn>(converted_keys);
+
+		// Rank keys
+		unsigned int inclusive_digit_count;						// Inclusive digit count for each digit (corresponding to thread-id)
+		unsigned int exclusive_digit_count;						// Exclusive digit count for each digit (corresponding to thread-id)
+
+		CtaRadixRank::RankKeys(
+			smem_storage.ranking_storage,
+			converted_keys,
+			ranks,
+			inclusive_digit_count,
+			exclusive_digit_count);
+
+		// Update global scatter base offsets for each digit
+		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
+		{
+			my_digit_offset -= exclusive_digit_count;
+			smem_storage.digit_offsets[threadIdx.x] = my_digit_offset;
+			my_digit_offset += inclusive_digit_count;
 		}
-	}
-
-
-	/**
-	 * Process tile
-	 */
-	__device__ __forceinline__ void ProcessTile(
-		SizeT tex_offset,
-		const SizeT &guarded_elements = TILE_ELEMENTS)
-	{
-		// State for the current tile
-		Tile tile;
-
-		// Load tile of keys
-		LoadKeys(tex_offset, guarded_elements, tile);
 
 		__syncthreads();
 
-		// Reset shared memory digit counters
-		ResetCounters();
+		// Scatter keys
+		ScatterKeys(converted_keys, digit_offsets, ranks, guarded_elements);
 
-		// Decode bins and update counters
-		Iterate<0, THREAD_ELEMENTS>::DecodeKeys(*this, tile);
-
-		__syncthreads();
-
-		// Scan shared memory counters
-		ScanCounters(tile);
-
-		__syncthreads();
-
-		// Update global scatter offsets for each digit
-		UpdateDigitScatterOffsets();
-
-		// Extract the local ranks of each key
-		Iterate<0, THREAD_ELEMENTS>::ComputeLocalRanks(*this, tile);
-
-		__syncthreads();
-
-		// Scatter keys to shared memory in sorted order
-		Iterate<0, THREAD_ELEMENTS>::ScatterRanked(*this, tile, tile.keys);
+		// Gather/scatter values
+		GatherScatterValues(values, digit_offsets, ranks, tex_offset, guarded_elementsked(*this, tile, tile.keys);
 
 		__syncthreads();
 

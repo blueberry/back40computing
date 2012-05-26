@@ -39,7 +39,7 @@ template <
 	typename KernelPolicy,
 	typename T,
 	typename SizeT>
-__launch_bounds__ (KernelPolicy::THREADS, 1)
+__launch_bounds__ (KernelPolicy::CTA_THREADS, 1)
 __global__ 
 void Kernel(
 	T			*d_in,
