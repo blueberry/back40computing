@@ -39,22 +39,43 @@ bool g_verbose = false;
 /**
  * Test unguarded load/store kernel.
  */
-template <int CTA_THREADS, typename T, typename ReductionOp>
+template <
+	int CTA_THREADS,
+	int CTA_STRIDES,
+	typename T,
+	typename ReductionOp>
 __global__ void UnguardedKernel(
 	T *d_in,
 	T *d_out,
-	ReductionOp reduction_op)
+	ReductionOp reduction_op,
+	int iterations)
 {
 	typedef CtaLoad<CTA_THREADS> CtaLoad;
-	typedef CtaReduce<CTA_THREADS, T> CtaReduce;
+	typedef CtaReduce<CTA_THREADS, T, CTA_STRIDES> CtaReduce;
 
 	__shared__ typename CtaReduce::SmemStorage smem_storage;
 
+	// Data
+	T data[CTA_STRIDES][1];
+
 	// Load data
-	T partial = d_in[threadIdx.x];
+	int cta_offset = 0;
+	CtaLoad::LoadUnguarded(data, d_in, cta_offset);
+	cta_offset += CTA_THREADS;
 
 	// Cooperative reduce
-	partial = CtaReduce::Reduce(smem_storage, partial, reduction_op);
+	T partial = CtaReduce::Reduce(smem_storage, data, reduction_op);
+
+	while (cta_offset < CTA_THREADS * iterations)
+	{
+		// Load data
+		T next = d_in[cta_offset + threadIdx.x];
+		cta_offset += CTA_THREADS;
+
+		// Cooperative reduce
+		next = CtaReduce::Reduce(smem_storage, data, reduction_op);
+		partial = reduction_op(partial, next);
+	}
 
 	// Store data
 	if (threadIdx.x == 0)
@@ -128,6 +149,8 @@ void Initialize(
 	for (int i = 0; i < num_elements; ++i)
 	{
 		RandomBits(h_in[i]);
+//		h_in[i] = 1;
+//		h_in[i] = i;
 		if (i == 0)
 			h_result[0] = h_in[0];
 		else
@@ -139,10 +162,10 @@ void Initialize(
 /**
  * Test reduction
  */
-template <int CTA_THREADS, typename T, typename ReductionOp>
+template <int CTA_THREADS, int CTA_STRIDES, typename T, typename ReductionOp>
 void Test(int num_elements, ReductionOp reduction_op)
 {
-	const int TILE_SIZE = CTA_THREADS;
+	const int TILE_SIZE = CTA_THREADS * CTA_STRIDES;
 
 	// Allocate host arrays
 	T h_in[TILE_SIZE];
@@ -159,15 +182,15 @@ void Test(int num_elements, ReductionOp reduction_op)
 	DebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	if (num_elements == CTA_THREADS)
+	if (num_elements == TILE_SIZE)
 	{
 		// Test unguarded
-		printf("Unguarded test CTA_THREADS(%d) sizeof(T)(%d):\n\t ",
-			CTA_THREADS, (int) sizeof(T));
+		printf("Unguarded test CTA_THREADS(%d) CTA_STRIDES(%d) sizeof(T)(%d):\n\t ",
+			CTA_THREADS, CTA_STRIDES, (int) sizeof(T));
 		fflush(stdout);
 
-		UnguardedKernel<CTA_THREADS><<<1, CTA_THREADS>>>(
-			d_in, d_out, reduction_op);
+		UnguardedKernel<CTA_THREADS, CTA_STRIDES><<<1, CTA_THREADS>>>(
+			d_in, d_out, reduction_op, 1);
 	}
 	else
 	{
@@ -191,6 +214,7 @@ void Test(int num_elements, ReductionOp reduction_op)
 	if (d_out) DebugExit(cudaFree(d_out));
 }
 
+
 /**
  * Main
  */
@@ -201,18 +225,23 @@ int main(int argc, char** argv)
     DeviceInit(args);
     g_verbose = args.CheckCmdLineFlag("v");
 
-    Test<32, 	int>(32, 	Sum<int>());
-    Test<8, 	int>(8, 	Sum<int>());
-    Test<23, 	int>(23, 	Sum<int>());
-    Test<512, 	int>(512, 	Max<int>());
-    Test<121,	int>(121, 	Sum<int>());
-    Test<133, 	int>(133, 	Sum<int>());
-    Test<96, 	int>(96, 	Sum<int>());
-    Test<32, 	int>(12, 	Sum<int>());
-    Test<512, 	int>(509,	Sum<int>());
-    Test<32,	uint2>(32, 	Uint2Sum());
-    Test<512,	uint2>(512, Uint2Sum());
-    Test<512, 	uint2>(509,	Uint2Sum());
+    Test<32, 	1, int>(32, 	Sum<int>());
+    Test<8, 	1, int>(8, 		Sum<int>());
+    Test<23, 	1, int>(23, 	Sum<int>());
+    Test<512, 	1, int>(512, 	Sum<int>());
+    Test<121,	1, int>(121, 	Sum<int>());
+    Test<133, 	1, int>(133, 	Sum<int>());
+    Test<96, 	1, int>(96, 	Sum<int>());
+    Test<32, 	1, int>(12, 	Sum<int>());
+    Test<512, 	1, int>(509,	Sum<int>());
+    Test<32,	1, uint2>(32, 	Uint2Sum());
+    Test<512,	1, uint2>(512, 	Uint2Sum());
+    Test<512, 	1, uint2>(509,	Uint2Sum());
+    Test<128, 	2, int>(256, 	Sum<int>());
+    Test<32, 	2, int>(64, 	Sum<int>());
+    Test<16, 	2, int>(32, 	Sum<int>());
+    Test<55, 	2, int>(110, 	Sum<int>());
+    Test<23, 	2, int>(46, 	Sum<int>());
 
 	return 0;
 }
