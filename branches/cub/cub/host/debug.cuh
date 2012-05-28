@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -31,12 +31,8 @@ namespace cub {
 
 
 // CUB debugging macro (prints error messages to stderr)
-#ifndef CUB_STDERR
 #if (defined(__THRUST_SYNCHRONOUS) || defined(DEBUG) || defined(_DEBUG))
-	#define CUB_STDERR	(1)
-#else
-	#define CUB_STDERR	(0)
-#endif
+	#define CUB_STDERR
 #endif
 
 
@@ -45,16 +41,38 @@ namespace cub {
  * error message is printed to stderr along with the supplied source context.  Returns
  * the CUDA error.
  */
-__host__ __device__ __forceinline__ cudaError_t Debug(
+__forceinline__ cudaError_t Debug(
 	cudaError_t error,
 	const char *message,
 	const char *filename,
 	int line)
 {
-	if (CUB_STDERR) {
+	#ifdef CUB_STDERR
+	if (error) {
 		fprintf(stderr, "[%s, %d] %s (CUDA error %d: %s)\n", filename, line, message, error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
+	#endif
+	return error;
+}
+
+
+/**
+ * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
+ * error message is printed to stderr along with the supplied source context.  Returns
+ * the CUDA error.
+ */
+__forceinline__ cudaError_t Debug(
+	cudaError_t error,
+	const char *filename,
+	int line)
+{
+	#ifdef CUB_STDERR
+	if (error) {
+		fprintf(stderr, "[%s, %d] (CUDA error %d: %s)\n", filename, line, error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	#endif
 	return error;
 }
 
@@ -63,12 +81,14 @@ __host__ __device__ __forceinline__ cudaError_t Debug(
  * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
  * error message is printed to stderr.  Returns the CUDA error.
  */
-__host__ __device__ __forceinline__ cudaError_t Debug(cudaError_t error)
+__forceinline__ cudaError_t Debug(cudaError_t error)
 {
-	if (CUB_STDERR) {
+	#ifdef CUB_STDERR
+	if (error) {
 		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
 		fflush(stderr);
 	}
+	#endif
 	return error;
 }
 

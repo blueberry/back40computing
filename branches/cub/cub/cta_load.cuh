@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@
 #include <cub/basic_utils.cuh>
 #include <cub/operators.cuh>
 #include <cub/type_utils.cuh>
-#include <cub/thread/load.cuh>
+#include <cub/thread_load.cuh>
 #include <cub/ns_umbrella.cuh>
 
 CUB_NS_PREFIX
@@ -63,7 +63,7 @@ private:
 		{
 			const int OFFSET = (SEGMENT * CTA_THREADS * TOTAL) + CURRENT;
 
-			data_vectors[CURRENT] = Load<MODIFIER>(d_in_vectors + OFFSET);
+			data_vectors[CURRENT] = ThreadLoad<MODIFIER>(d_in_vectors + OFFSET);
 
 			// Next vector in segment
 			Iterate<CURRENT + 1, TOTAL>::LoadVector(
@@ -118,7 +118,7 @@ private:
 			if (valid[CURRENT])
 			{
 				// Load and transform
-				S raw_data = Load<MODIFIER>(d_in + OFFSET);
+				S raw_data = ThreadLoad<MODIFIER>(d_in + OFFSET);
 				data[CURRENT] = transform_op(raw_data);
 			}
 
@@ -136,20 +136,16 @@ private:
 		template <
 			typename T,
 			typename S,
-			typename Flag,
 			typename TransformOp>
 		static __device__ __forceinline__ void TransformRaw(
-			Flag valid[],
 			T data[],
 			S raw[],
 			TransformOp transform_op)
 		{
-			valid[CURRENT] = 1;
 			data[CURRENT] = transform_op(raw[CURRENT]);
 
 			// Next load in segment
 			Iterate<CURRENT + 1, TOTAL>::TransformRaw(
-				valid,
 				data,
 				raw,
 				transform_op);
@@ -276,9 +272,8 @@ private:
 			TransformOp transform_op) {}
 
 		// Initialize valid flag within an unguarded segment
-		template <typename T, typename S, typename Flag, typename TransformOp>
+		template <typename T, typename S, typename TransformOp>
 		static __device__ __forceinline__ void TransformRaw(
-			Flag valid[],
 			T data[],
 			S raw[],
 			TransformOp transform_op) {}
@@ -318,7 +313,6 @@ public:
 	 * Load a tile unguarded
 	 */
 	template <
-		typename Flag,
 		int SEGMENTS,
 		int ELEMENTS,
 		typename T,
@@ -326,14 +320,17 @@ public:
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		Flag (&valid)[SEGMENTS][ELEMENTS],
 		T (&data)[SEGMENTS][ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		const int VEC_ELEMENTS 		= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
-		const int VECTORS 			= ELEMENTS / (CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS));
+		enum
+		{
+			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS),
+			VEC_ELEMENTS		= (ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
+			VECTORS 			= ELEMENTS / VEC_ELEMENTS,
+		};
 
 		typedef typename VectorType<S, VEC_ELEMENTS>::Type Vector;
 
@@ -354,7 +351,6 @@ public:
 
 		// Transform from raw and initialize valid
 		Iterate<0, SEGMENTS * ELEMENTS>::TransformRaw(
-			(Flag*) valid,
 			(T*) data,
 			(S*) raw,
 			transform_op);
@@ -365,23 +361,20 @@ public:
 	 * Load a tile unguarded
 	 */
 	template <
-		typename Flag,
 		int ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		Flag (&valid)[ELEMENTS],
 		T (&data)[ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		Flag (&valid_2d)[1][ELEMENTS] = reinterpret_cast<Flag (&)[1][ELEMENTS]>(valid);
 		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 
-		return LoadUnguarded(valid_2d, data_2d, d_in, cta_offset, transform_op);
+		return LoadUnguarded(data_2d, d_in, cta_offset, transform_op);
 	}
 
 
@@ -399,9 +392,8 @@ public:
 		S *d_in,
 		SizeT cta_offset)
 	{
-		int valid[SEGMENTS][ELEMENTS];
 		CastTransformOp<T, S> transform_op;
-		LoadUnguarded(valid, data, d_in, cta_offset, transform_op);
+		LoadUnguarded(data, d_in, cta_offset, transform_op);
 	}
 
 
@@ -418,9 +410,8 @@ public:
 		S *d_in,
 		SizeT cta_offset)
 	{
-		int valid[ELEMENTS];
 		CastTransformOp<T, S> transform_op;
-		LoadUnguarded(valid, data, d_in, cta_offset, transform_op);
+		LoadUnguarded(data, d_in, cta_offset, transform_op);
 	}
 
 
@@ -428,7 +419,6 @@ public:
 	 * Load a unguarded tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
-		typename Flag,
 		int SEGMENTS,
 		int ELEMENTS,
 		typename T,
@@ -437,7 +427,6 @@ public:
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		Flag (&valid)[SEGMENTS][ELEMENTS],
 		T (&data)[SEGMENTS][ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
@@ -467,7 +456,6 @@ public:
 
 			// Transform raw and initialize
 			Iterate<0, SEGMENTS * ELEMENTS>::TransformRaw(
-				(Flag*) valid,
 				(T*) data,
 				(S*) raw,
 				transform_op);
@@ -475,7 +463,7 @@ public:
 		else
 		{
 			// Use normal loads
-			LoadUnguarded(valid, data, d_in, cta_offset, transform_op);
+			LoadUnguarded(data, d_in, cta_offset, transform_op);
 		}
 	}
 
@@ -484,7 +472,6 @@ public:
 	 * Load a unguarded tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
-		typename Flag,
 		int ELEMENTS,
 		typename T,
 		typename Vector,
@@ -492,17 +479,15 @@ public:
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		Flag (&valid)[ELEMENTS],
 		T (&data)[ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		Flag (&valid_2d)[1][ELEMENTS] = reinterpret_cast<Flag (&)[1][ELEMENTS]>(valid);
 		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 
-		return LoadUnguarded(valid_2d, data_2d, ref, d_in, cta_offset, transform_op);
+		return LoadUnguarded(data_2d, ref, d_in, cta_offset, transform_op);
 	}
 
 
@@ -522,9 +507,8 @@ public:
 		S *d_in,
 		SizeT cta_offset)
 	{
-		int valid[SEGMENTS][ELEMENTS];
 		CastTransformOp<T, S> transform_op;
-		LoadUnguarded(valid, data, ref, d_in, cta_offset, transform_op);
+		LoadUnguarded(data, ref, d_in, cta_offset, transform_op);
 	}
 
 
@@ -543,9 +527,8 @@ public:
 		S *d_in,
 		SizeT cta_offset)
 	{
-		int valid[ELEMENTS];
 		CastTransformOp<T, S> transform_op;
-		LoadUnguarded(valid, data, ref, d_in, cta_offset, transform_op);
+		LoadUnguarded(data, ref, d_in, cta_offset, transform_op);
 	}
 
 
@@ -603,6 +586,49 @@ public:
 		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 
 		LoadGuarded(valid_2d, data_2d, d_in, cta_offset, guarded_elements, transform_op);
+	}
+
+
+	/**
+	 * Load a guarded tile
+	 */
+	template <
+		typename Flag,
+		int SEGMENTS,
+		int ELEMENTS,
+		typename T,
+		typename S,
+		typename SizeT>
+	static __device__ __forceinline__ void LoadGuarded(
+		Flag (&valid)[SEGMENTS][ELEMENTS],
+		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_in,
+		SizeT cta_offset,
+		const SizeT &guarded_elements)
+	{
+		CastTransformOp<T, S> transform_op;
+		LoadGuarded(valid, data, d_in, cta_offset, guarded_elements, transform_op);
+	}
+
+
+	/**
+	 * Load a guarded tile
+	 */
+	template <
+		typename Flag,
+		int ELEMENTS,
+		typename T,
+		typename S,
+		typename SizeT>
+	static __device__ __forceinline__ void LoadGuarded(
+		Flag (&valid)[ELEMENTS],
+		T (&data)[ELEMENTS],
+		S *d_in,
+		SizeT cta_offset,
+		const SizeT &guarded_elements)
+	{
+		CastTransformOp<T, S> transform_op;
+		LoadGuarded(valid, data, d_in, cta_offset, guarded_elements);
 	}
 
 

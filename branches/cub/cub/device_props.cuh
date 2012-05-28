@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -61,30 +61,26 @@ struct StaticDeviceProps;
 
 
 /**
- * Device properties for the arch-id targeted by the active compiler pass.
- */
-struct DeviceProps : StaticDeviceProps<PTX_ARCH> {};
-
-
-/**
  * Device properties for SM30
  */
 template <>
 struct StaticDeviceProps<300>
 {
 	enum {
-		WARP_THREADS				= 32,			// 32 threads per warp
-		SMEM_BANK_BYTES				= 4,			// 4 byte bank words
-		SMEM_BANKS					= 32, 			// 32 banks
-		SMEM_BYTES					= 48 * 1024,	// 48KB shared memory
-		SMEM_ALLOC_UNIT				= 256,			// 256B smem allocation segment size
-		REGS_BY_BLOCK				= false,		// Allocates registers by warp
-		REG_ALLOC_UNIT				= 256,			// 256 registers allocated at a time per warp
-		WARP_ALLOC_UNIT				= 4,			// Registers are allocated at a granularity of every 4 warps per CTA
-		MAX_SM_THREADS				= 2048,			// 2K max threads per SM
-		MAX_SM_CTAS					= 16,			// 16 max CTAs per SM
-		MAX_CTA_THREADS				= 1024,			// 1024 max threads per CTA
-		MAX_SM_REGISTERS			= 64 * 1024,	// 64K max registers per SM
+		LOG_WARP_THREADS	= 5,						// 32 threads per warp
+		WARP_THREADS		= 1 << LOG_WARP_THREADS,
+
+		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
+		SMEM_BANKS			= 32, 						// 32 banks
+		SMEM_BYTES			= 48 * 1024,				// 48KB shared memory
+		SMEM_ALLOC_UNIT		= 256,						// 256B smem allocation segment size
+		REGS_BY_BLOCK		= false,					// Allocates registers by warp
+		REG_ALLOC_UNIT		= 256,						// 256 registers allocated at a time per warp
+		WARP_ALLOC_UNIT		= 4,						// Registers are allocated at a granularity of every 4 warps per CTA
+		MAX_SM_THREADS		= 2048,						// 2K max threads per SM
+		MAX_SM_CTAS			= 16,						// 16 max CTAs per SM
+		MAX_CTA_THREADS		= 1024,						// 1024 max threads per CTA
+		MAX_SM_REGISTERS	= 64 * 1024,				// 64K max registers per SM
 	};
 
 	// Callback utility
@@ -103,18 +99,20 @@ template <>
 struct StaticDeviceProps<200>
 {
 	enum {
-		WARP_THREADS				= 32,			// 32 threads per warp
-		SMEM_BANK_BYTES				= 4,			// 4 byte bank words
-		SMEM_BANKS					= 32, 			// 32 banks
-		SMEM_BYTES					= 48 * 1024,	// 48KB shared memory
-		SMEM_ALLOC_UNIT				= 128,			// 128B smem allocation segment size
-		REGS_BY_BLOCK				= false,		// Allocates registers by warp
-		REG_ALLOC_UNIT				= 64,			// 64 registers allocated at a time per warp
-		WARP_ALLOC_UNIT				= 2,			// Registers are allocated at a granularity of every 2 warps per CTA
-		MAX_SM_THREADS				= 1536,			// 1536 max threads per SM
-		MAX_SM_CTAS					= 8,			// 8 max CTAs per SM
-		MAX_CTA_THREADS				= 1024,			// 1024 max threads per CTA
-		MAX_SM_REGISTERS			= 32 * 1024,	// 32K max registers per SM
+		LOG_WARP_THREADS	= 5,						// 32 threads per warp
+		WARP_THREADS		= 1 << LOG_WARP_THREADS,
+
+		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
+		SMEM_BANKS			= 32, 						// 32 banks
+		SMEM_BYTES			= 48 * 1024,				// 48KB shared memory
+		SMEM_ALLOC_UNIT		= 128,						// 128B smem allocation segment size
+		REGS_BY_BLOCK		= false,					// Allocates registers by warp
+		REG_ALLOC_UNIT		= 64,						// 64 registers allocated at a time per warp
+		WARP_ALLOC_UNIT		= 2,						// Registers are allocated at a granularity of every 2 warps per CTA
+		MAX_SM_THREADS		= 1536,						// 1536 max threads per SM
+		MAX_SM_CTAS			= 8,						// 8 max CTAs per SM
+		MAX_CTA_THREADS		= 1024,						// 1024 max threads per CTA
+		MAX_SM_REGISTERS	= 32 * 1024,				// 32K max registers per SM
 	};
 
 	// Callback utility
@@ -137,18 +135,20 @@ template <>
 struct StaticDeviceProps<120>
 {
 	enum {
-		WARP_THREADS				= 32,			// 32 threads per warp
-		SMEM_BANK_BYTES				= 4,			// 4 byte bank words
-		SMEM_BANKS					= 16, 			// 16 banks
-		SMEM_BYTES					= 16 * 1024,	// 16KB shared memory
-		SMEM_ALLOC_UNIT				= 512,			// 512B smem allocation segment size
-		REGS_BY_BLOCK				= true,			// Allocates registers by CTA
-		REG_ALLOC_UNIT				= 512,			// 512 registers allocated at time per CTA
-		WARP_ALLOC_UNIT				= 2,			// Registers are allocated at a granularity of every 2 warps per CTA
-		MAX_SM_THREADS				= 1024,			// 1024 max threads per SM
-		MAX_SM_CTAS					= 8,			// 8 max CTAs per SM
-		MAX_CTA_THREADS				= 512,			// 512 max threads per CTA
-		MAX_SM_REGISTERS			= 16 * 1024,	// 16K max registers per SM
+		LOG_WARP_THREADS	= 5,						// 32 threads per warp
+		WARP_THREADS		= 1 << LOG_WARP_THREADS,
+
+		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
+		SMEM_BANKS			= 16, 						// 16 banks
+		SMEM_BYTES			= 16 * 1024,				// 16KB shared memory
+		SMEM_ALLOC_UNIT		= 512,						// 512B smem allocation segment size
+		REGS_BY_BLOCK		= true,						// Allocates registers by CTA
+		REG_ALLOC_UNIT		= 512,						// 512 registers allocated at time per CTA
+		WARP_ALLOC_UNIT		= 2,						// Registers are allocated at a granularity of every 2 warps per CTA
+		MAX_SM_THREADS		= 1024,						// 1024 max threads per SM
+		MAX_SM_CTAS			= 8,						// 8 max CTAs per SM
+		MAX_CTA_THREADS		= 512,						// 512 max threads per CTA
+		MAX_SM_REGISTERS	= 16 * 1024,				// 16K max registers per SM
 	};
 
 	// Callback utility
@@ -171,18 +171,20 @@ template <>
 struct StaticDeviceProps<100>
 {
 	enum {
-		WARP_THREADS				= 32,			// 32 threads per warp
-		SMEM_BANK_BYTES				= 4,			// 4 byte bank words
-		SMEM_BANKS					= 16, 			// 16 banks
-		SMEM_BYTES					= 16 * 1024,	// 16KB shared memory
-		SMEM_ALLOC_UNIT				= 512,			// 512B smem allocation segment size
-		REGS_BY_BLOCK				= true,			// Allocates registers by CTA
-		REG_ALLOC_UNIT				= 256,			// 256 registers allocated at time per CTA
-		WARP_ALLOC_UNIT				= 2,			// Registers are allocated at a granularity of every 2 warps per CTA
-		MAX_SM_THREADS				= 768,			// 768 max threads per SM
-		MAX_SM_CTAS					= 8,			// 8 max CTAs per SM
-		MAX_CTA_THREADS				= 512,			// 512 max threads per CTA
-		MAX_SM_REGISTERS			= 8 * 1024,		// 8K max registers per SM
+		LOG_WARP_THREADS	= 5,						// 32 threads per warp
+		WARP_THREADS		= 1 << LOG_WARP_THREADS,
+
+		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
+		SMEM_BANKS			= 16, 						// 16 banks
+		SMEM_BYTES			= 16 * 1024,				// 16KB shared memory
+		SMEM_ALLOC_UNIT		= 512,						// 512B smem allocation segment size
+		REGS_BY_BLOCK		= true,						// Allocates registers by CTA
+		REG_ALLOC_UNIT		= 256,						// 256 registers allocated at time per CTA
+		WARP_ALLOC_UNIT		= 2,						// Registers are allocated at a granularity of every 2 warps per CTA
+		MAX_SM_THREADS		= 768,						// 768 max threads per SM
+		MAX_SM_CTAS			= 8,						// 8 max CTAs per SM
+		MAX_CTA_THREADS		= 512,						// 512 max threads per CTA
+		MAX_SM_REGISTERS	= 8 * 1024,					// 8K max registers per SM
 	};
 
 	// Callback utility
@@ -222,6 +224,12 @@ struct StaticDeviceProps<110> : StaticDeviceProps<100> {};		// Derives from SM10
 template <int SM_ARCH>
 struct StaticDeviceProps : StaticDeviceProps<100> {};			// Derives from SM10
 
+
+
+/**
+ * Device properties for the arch-id targeted by the active compiler pass.
+ */
+struct DeviceProps : StaticDeviceProps<PTX_ARCH> {};
 
 
 

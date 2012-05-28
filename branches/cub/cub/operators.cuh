@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -71,6 +71,20 @@ struct Sum
 	__host__ __device__ __forceinline__ T operator()()
 	{
 		return (T) 0;
+	}
+};
+
+
+/**
+ * Default sum functor
+ */
+template <typename T>
+struct Max
+{
+	// Binary reduction
+	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
+	{
+		return CUB_MAX(a, b);
 	}
 };
 

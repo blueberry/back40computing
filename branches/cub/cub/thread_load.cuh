@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,19 +26,19 @@
  *
  *     // 32-bit load using cache-global modifier
  *     int *d_in;
- *     int data = Load<LOAD_CG>(d_in + threadIdx.x);
+ *     int data = ThreadLoad<LOAD_CG>(d_in + threadIdx.x);
  *
  *     // 16-bit load using default modifier
  *     short *d_in;
- *     short data = Load(d_in + threadIdx.x);
+ *     short data = ThreadLoad(d_in + threadIdx.x);
 
  *     // 256-bit load using cache-volatile modifier
  *     double4 *d_in;
- *     double4 data = Load<LOAD_CV>(d_in + threadIdx.x);
+ *     double4 data = ThreadLoad<LOAD_CV>(d_in + threadIdx.x);
  *
  *     // 96-bit load using default cache modifier (ignoring LOAD_CS)
  *     struct Foo { bool a; short b; } *d_struct = NULL;
- *     Foo data = Load<LOAD_CS>(d_in + threadIdx.x);
+ *     Foo data = ThreadLoad<LOAD_CS>(d_in + threadIdx.x);
  *
  ******************************************************************************/
 
@@ -55,7 +55,8 @@ namespace cub {
 /**
  * Enumeration of read cache modifiers.
  */
-enum LoadModifier {
+enum LoadModifier
+{
 	LOAD_NONE,		// Default (currently LOAD_CA for global loads, nothing for smem loads)
 	LOAD_CA,		// Cache at all levels
 	LOAD_CG,		// Cache at global level
@@ -68,22 +69,34 @@ enum LoadModifier {
 
 
 /**
- * Generic Load() operation
+ * Structure to type error when using cache modifiers on non-built-in types.
  */
-template <typename T>
-__device__ __forceinline__ T Load(T *ptr)
-{
-	return *ptr;
-}
-
+template <LoadModifier MODIFIER> struct GenericLoad;
 
 /**
- * Generic Load() operation (ignores LOAD_MODIFIER)
+ * Specialization for LOAD_NONE
  */
-template <LoadModifier LOAD_MODIFIER, typename T>
-__device__ __forceinline__ T Load(T *ptr)
+template <> struct GenericLoad<LOAD_NONE>
 {
-	return *ptr;
+	template <typename T>
+	static __device__ __forceinline__ T ThreadLoad(T *ptr)
+	{
+		return *ptr;
+	}
+};
+
+/**
+ * Specialization for LOAD_TEX
+ */
+template <> struct GenericLoad<LOAD_TEX> : GenericLoad<LOAD_NONE> {};
+
+/**
+ * Generic ThreadLoad() operation
+ */
+template <LoadModifier MODIFIER, typename T>
+__device__ __forceinline__ T ThreadLoad(T *ptr)
+{
+	return GenericLoad<MODIFIER>::ThreadLoad(ptr);
 }
 
 
@@ -93,11 +106,11 @@ __device__ __forceinline__ T Load(T *ptr)
 #if __CUDA_ARCH__ >= 200
 
 /**
- * Define a Load() specialization for the built-in (non-vector) "type"
+ * Define a ThreadLoad() specialization for the built-in (non-vector) "type"
  */
 #define CUB_LOAD_0(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)		\
 	template<>																			\
-	type Load<cub_modifier, type>(type* ptr) 											\
+	type ThreadLoad<cub_modifier, type>(type* ptr) 											\
 	{																					\
 		raw_type raw;																	\
 		asm("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :							\
@@ -109,11 +122,11 @@ __device__ __forceinline__ T Load(T *ptr)
 
 
 /**
- * Define a Load() specialization for the built-in vector-1 "type"
+ * Define a ThreadLoad() specialization for the built-in vector-1 "type"
  */
 #define CUB_LOAD_1(type, base_type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
 	template<>																			\
-	type Load<cub_modifier, type>(type* ptr) 											\
+	type ThreadLoad<cub_modifier, type>(type* ptr) 											\
 	{																					\
 		raw_type raw;																	\
 		asm("ld.global."#ptx_modifier"."#ptx_type" %0, [%1];" :							\
@@ -124,11 +137,11 @@ __device__ __forceinline__ T Load(T *ptr)
 	}
 
 /**
- * Define a Load() specialization for the built-in vector-2 "type"
+ * Define a ThreadLoad() specialization for the built-in vector-2 "type"
  */
 #define CUB_LOAD_2(type, base_type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
 	template<>																			\
-	type Load<cub_modifier, type>(type* ptr) 											\
+	type ThreadLoad<cub_modifier, type>(type* ptr) 											\
 	{																					\
 		raw_type raw_x, raw_y;															\
 		asm("ld.global."#ptx_modifier".v2."#ptx_type" {%0, %1}, [%2];" :				\
@@ -142,11 +155,11 @@ __device__ __forceinline__ T Load(T *ptr)
 	}
 
 /**
- * Define a Load() specialization for the built-in vector-4 "type"
+ * Define a ThreadLoad() specialization for the built-in vector-4 "type"
  */
 #define CUB_LOAD_4(type, base_type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
 	template<>																			\
-	type Load<cub_modifier, type>(type* ptr) 											\
+	type ThreadLoad<cub_modifier, type>(type* ptr) 											\
 	{																					\
 		raw_type raw_x, raw_y, raw_z, raw_w;											\
 		asm("ld.global."#ptx_modifier".v4."#ptx_type" {%0, %1, %2, %3}, [%4];" :		\
@@ -164,22 +177,22 @@ __device__ __forceinline__ T Load(T *ptr)
 	}
 
 /**
- * Define a Load() specialization for the built-in 64-bit vector-4 "type"
+ * Define a ThreadLoad() specialization for the built-in 64-bit vector-4 "type"
  */
 #define CUB_LOAD_4L(type, half_type, cub_modifier)										\
 	template<>																			\
-	type Load<cub_modifier, type>(type* ptr) 											\
+	type ThreadLoad<cub_modifier, type>(type* ptr) 											\
 	{																					\
 		type val; 																		\
 		half_type* half_val = reinterpret_cast<half_type*>(&val);						\
 		half_type* half_ptr = reinterpret_cast<half_type*>(ptr);						\
-		half_val[0] = Load<cub_modifier>(half_ptr);										\
-		half_val[1] = Load<cub_modifier>(half_ptr + 1);									\
+		half_val[0] = ThreadLoad<cub_modifier>(half_ptr);										\
+		half_val[1] = ThreadLoad<cub_modifier>(half_ptr + 1);									\
 		return val;																		\
 	}
 
 /**
- * Define Load() specializations for the built-in (non-vector) "base_type"
+ * Define ThreadLoad() specializations for the built-in (non-vector) "base_type"
  */
 #define CUB_LOADS_0(base_type, raw_type, ptx_type, reg_mod)								\
 	CUB_LOAD_0(base_type, raw_type, ptx_type, reg_mod, LOAD_CA, ca)						\
@@ -188,7 +201,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOAD_0(base_type, raw_type, ptx_type, reg_mod, LOAD_CV, cv)
 
 /**
- * Define Load() specializations for the built-in vector-1 "vector-type"
+ * Define ThreadLoad() specializations for the built-in vector-1 "vector-type"
  */
 #define CUB_LOADS_1(type, base_type, raw_type, ptx_type, reg_mod)						\
 	CUB_LOAD_1(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CA, ca)				\
@@ -197,7 +210,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOAD_1(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CV, cv)
 
 /**
- * Define Load() specializations for the built-in vector-2 "vector-type"
+ * Define ThreadLoad() specializations for the built-in vector-2 "vector-type"
  */
 #define CUB_LOADS_2(type, base_type, raw_type, ptx_type, reg_mod)						\
 	CUB_LOAD_2(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CA, ca)				\
@@ -206,7 +219,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOAD_2(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CV, cv)
 
 /**
- * Define Load() specializations for the built-in vector-4 "vector-type"
+ * Define ThreadLoad() specializations for the built-in vector-4 "vector-type"
  */
 #define CUB_LOADS_4(type, base_type, raw_type, ptx_type, reg_mod)						\
 	CUB_LOAD_4(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CA, ca)				\
@@ -215,7 +228,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOAD_4(type, base_type, raw_type, ptx_type, reg_mod, LOAD_CV, cv)
 
 /**
- * Define Load() specializations for the built-in 256-bit vector-4 "vector-type"
+ * Define ThreadLoad() specializations for the built-in 256-bit vector-4 "vector-type"
  */
 #define CUB_LOADS_4L(type, half_type)					\
 	CUB_LOAD_4L(type, half_type, LOAD_CA)				\
@@ -224,7 +237,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOAD_4L(type, half_type, LOAD_CV)
 
 /**
- * Define base and vector-1/2 Load() specializations for "type"
+ * Define base and vector-1/2 ThreadLoad() specializations for "type"
  */
 #define CUB_LOADS_012(type, prefix, raw_type, ptx_type, reg_mod)		\
 	CUB_LOADS_0(type, raw_type, ptx_type, reg_mod)						\
@@ -232,7 +245,7 @@ __device__ __forceinline__ T Load(T *ptr)
 	CUB_LOADS_2(prefix##2, type, raw_type, ptx_type, reg_mod)
 
 /**
- * Define base and vector-1/2/4 Load() specializations for "type"
+ * Define base and vector-1/2/4 ThreadLoad() specializations for "type"
  */
 #define CUB_LOADS_0124(type, prefix, raw_type, ptx_type, reg_mod)		\
 	CUB_LOADS_012(type, prefix, raw_type, ptx_type, reg_mod)			\
@@ -240,7 +253,7 @@ __device__ __forceinline__ T Load(T *ptr)
 
 
 /**
- * Expand Load() implementations for all built-in types.
+ * Expand ThreadLoad() implementations for all built-in types.
  */
 
 // Signed
@@ -252,6 +265,7 @@ CUB_LOADS_012(long long, longlong, long long, u64, l)
 CUB_LOADS_4L(longlong4, longlong2);
 
 // Unsigned
+CUB_LOADS_0(bool, short, u8, h)
 CUB_LOADS_0124(unsigned char, uchar, unsigned short, u8, h)
 CUB_LOADS_0124(unsigned short, ushort, unsigned short, u16, h)
 CUB_LOADS_0124(unsigned int, uint, unsigned int, u32, r)

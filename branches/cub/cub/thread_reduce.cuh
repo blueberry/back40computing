@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,18 +22,18 @@
  *
  * For example:
  *
- * 	int a[4] 		= {1, 2, 3, 4};
- * 	Reduce(a));		// 10
+ * 	int a[4] = {1, 2, 3, 4};
+ * 	ThreadReduce(a));						// 10
  *
- *  int b[2][2] 	= {{1, 2}, {3, 4}};
- * 	Reduce(b));		// 10
+ *  int b[2][2] = {{1, 2}, {3, 4}};
+ * 	ThreadReduce(b));						// 10
  *
- * 	int *c 			= a + 1;
- * 	Reduce(c));		// 2
- * 	Reduce<2>(c));	// 5
+ * 	int *c = &a[1];
+ * 	ThreadReduce(c));						// 2
+ * 	ThreadReduce<2>(c));					// 5
  *
- * 	int (*d)[2] 	= b + 1;
- * 	Reduce(d));		// 7
+ * 	int (*d)[2] = &b[1];
+ * 	ThreadReduce(d));						// 7
  *
  ******************************************************************************/
 
@@ -46,8 +46,6 @@
 CUB_NS_PREFIX
 namespace cub {
 
-
-
 /**
  * Serial reduction with the specified operator and seed
  */
@@ -55,7 +53,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T ThreadReduce(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -76,12 +74,12 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T ThreadReduce(
 	T* data,
 	ReductionOp reduction_op)
 {
 	T seed = data[0];
-	return Reduce<LENGTH - 1>(data + 1, reduction_op, seed);
+	return ThreadReduce<LENGTH - 1>(data + 1, reduction_op, seed);
 }
 
 
@@ -91,12 +89,12 @@ __device__ __forceinline__ T Reduce(
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T Reduce(
+__device__ __forceinline__ T ThreadReduce(
 	T* data,
 	T seed)
 {
 	Sum<T> reduction_op;
-	return Reduce<LENGTH>(data, reduction_op, seed);
+	return ThreadReduce<LENGTH>(data, reduction_op, seed);
 }
 
 
@@ -106,10 +104,10 @@ __device__ __forceinline__ T Reduce(
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T Reduce(T* data)
+__device__ __forceinline__ T ThreadReduce(T* data)
 {
 	Sum<T> reduction_op;
-	return Reduce<LENGTH>(data, reduction_op);
+	return ThreadReduce<LENGTH>(data, reduction_op);
 }
 
 
@@ -118,15 +116,15 @@ __device__ __forceinline__ T Reduce(T* data)
  */
 template <
 	typename ArrayType,
-	typename ReductionOp,
-	typename T>
-__device__ __forceinline__ T Reduce(
+	typename ReductionOp>
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
 	ArrayType &data,
 	ReductionOp reduction_op,
-	T seed)
+	typename ArrayTraits<ArrayType>::Type seed)
 {
+	typedef typename ArrayTraits<ArrayType>::Type T;
 	T* linear_array = reinterpret_cast<T*>(data);
-	return Reduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
+	return ThreadReduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
 }
 
 
@@ -136,26 +134,27 @@ __device__ __forceinline__ T Reduce(
 template <
 	typename ArrayType,
 	typename ReductionOp>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
 	ArrayType &data,
 	ReductionOp reduction_op)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
 	T* linear_array = reinterpret_cast<T*>(data);
-	return Reduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
+	return ThreadReduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
 }
 
 
 /**
  * Serial reduction with the addition operator and seed
  */
-template <typename ArrayType, typename T>
-__device__ __forceinline__ T Reduce(
+template <typename ArrayType>
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
 	ArrayType &data,
-	T seed)
+	typename ArrayTraits<ArrayType>::Type seed)
 {
+	typedef typename ArrayTraits<ArrayType>::Type T;
 	Sum<T> reduction_op;
-	return Reduce(data, reduction_op, seed);
+	return ThreadReduce(data, reduction_op, seed);
 }
 
 
@@ -163,12 +162,12 @@ __device__ __forceinline__ T Reduce(
  * Serial reduction with the addition operator
  */
 template <typename ArrayType>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type Reduce(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
 	ArrayType &data)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
 	Sum<T> reduction_op;
-	return Reduce(data, reduction_op);
+	return ThreadReduce(data, reduction_op);
 }
 
 

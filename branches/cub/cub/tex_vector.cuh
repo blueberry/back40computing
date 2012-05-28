@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,19 +33,22 @@ namespace cub {
 /**
  * Texture vector types for reading ELEMENTS consecutive elements of T per thread
  */
-template <typename T, int ELEMENTS, bool BUILT_IN = NumericTraits<T>::BUILT_IN>
+template <
+	typename T,
+	int ELEMENTS,
+	bool BUILT_IN = NumericTraits<T>::BUILT_IN>
 struct TexVector
 {
 	enum {
 		TEX_VEC_SIZE = (sizeof(T) > 4) ?
-							(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
-								2 : 								// cast as vec-2 ints (odd)
-								4 :									// cast as vec-4 ints (multiple of two)
-							(ELEMENTS % 2 == 1) ?			// 32-bit built-in types
-								1 : 								// vec-1 (odd)
-								(ELEMENTS % 4 == 0) ?
-									4 :								// vec-4 (multiple of 4)
-									2,								// vec-2 (multiple of 2)
+			(ELEMENTS % 2 == 1) ?			// 64-bit built-in types
+				2 : 								// cast as vec-2 ints (odd)
+				4 :									// cast as vec-4 ints (multiple of two)
+			(ELEMENTS % 2 == 1) ?			// 32-bit built-in types
+				1 : 								// vec-1 (odd)
+				(ELEMENTS % 4 == 0) ?
+					4 :								// vec-4 (multiple of 4)
+					2,								// vec-2 (multiple of 2)
 	};
 
 	// Texture base type
@@ -55,11 +58,11 @@ struct TexVector
 			TexBase;
 
 	// Texture vector type
-	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
+	typedef VectorType<TexBase, TEX_VEC_SIZE> VectorType;
 
 	// Number of T loaded per texture load
 	enum {
-		ELEMENTS_PER_TEX = sizeof(VecType) / sizeof(T),
+		ELEMENTS_PER_TEX = sizeof(VectorType) / sizeof(T),
 	};
 
 	// Texture reference type
@@ -82,7 +85,7 @@ struct TexVector<T, ELEMENTS, false>
 	typedef char TexBase;
 
 	// Texture vector type
-	typedef typename util::VecType<TexBase, TEX_VEC_SIZE>::Type VecType;
+	typedef VectorType<TexBase, TEX_VEC_SIZE> VectorType;
 
 	// Texture reference type
 	typedef texture<TexVector, cudaTextureType1D, cudaReadModeElementType> TexRef;

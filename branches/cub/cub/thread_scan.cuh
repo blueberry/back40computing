@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ThreadScanExcl(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -69,12 +69,12 @@ __device__ __forceinline__ T ExclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ThreadScanExcl(
 	T* data,
 	T seed)
 {
 	Sum<T> reduction_op;
-	return ExclusiveScan<LENGTH>(data, reduction_op, seed);
+	return ThreadScanExcl<LENGTH>(data, reduction_op, seed);
 }
 
 
@@ -85,13 +85,13 @@ template <
 	typename ArrayType,
 	typename ReductionOp,
 	typename T>
-__device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ThreadScanExcl(
 	ArrayType &data,
 	ReductionOp reduction_op,
 	T seed)
 {
 	T* linear_array = reinterpret_cast<T*>(data);
-	return ExclusiveScan<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
+	return ThreadScanExcl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
 }
 
 
@@ -99,12 +99,12 @@ __device__ __forceinline__ T ExclusiveScan(
  * Serial exclusive scan with the addition operator and seed
  */
 template <typename ArrayType, typename T>
-__device__ __forceinline__ T ExclusiveScan(
+__device__ __forceinline__ T ThreadScanExcl(
 	ArrayType &data,
 	T seed)
 {
 	Sum<T> reduction_op;
-	return ExclusiveScan(data, reduction_op, seed);
+	return ThreadScanExcl(data, reduction_op, seed);
 }
 
 
@@ -119,7 +119,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T ThreadScanIncl(
 	T* data,
 	ReductionOp reduction_op,
 	T seed)
@@ -141,12 +141,12 @@ template <
 	int LENGTH,
 	typename T,
 	typename ReductionOp>
-__device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T ThreadScanIncl(
 	T* data,
 	ReductionOp reduction_op)
 {
 	T seed = data[0];
-	return InclusiveScan<LENGTH - 1>(data + 1, reduction_op, seed);
+	return ThreadScanIncl<LENGTH - 1>(data + 1, reduction_op, seed);
 }
 
 
@@ -156,12 +156,12 @@ __device__ __forceinline__ T InclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T InclusiveScan(
+__device__ __forceinline__ T ThreadScanIncl(
 	T* data,
 	T seed)
 {
 	Sum<T> reduction_op;
-	return InclusiveScan<LENGTH>(data, reduction_op, seed);
+	return ThreadScanIncl<LENGTH>(data, reduction_op, seed);
 }
 
 
@@ -171,10 +171,10 @@ __device__ __forceinline__ T InclusiveScan(
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T InclusiveScan(T* data)
+__device__ __forceinline__ T ThreadScanIncl(T* data)
 {
 	Sum<T> reduction_op;
-	return InclusiveScan<LENGTH>(data, reduction_op);
+	return ThreadScanIncl<LENGTH>(data, reduction_op);
 }
 
 
@@ -185,13 +185,13 @@ template <
 	typename ArrayType,
 	typename ReductionOp,
 	typename T>
-__device__ __forceinline__ typename T InclusiveScan(
+__device__ __forceinline__ T ThreadScanIncl(
 	ArrayType &data,
 	ReductionOp reduction_op,
 	T seed)
 {
 	T* linear_array = reinterpret_cast<T*>(data);
-	return InclusiveScan<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
+	return ThreadScanIncl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
 }
 
 
@@ -201,13 +201,13 @@ __device__ __forceinline__ typename T InclusiveScan(
 template <
 	typename ArrayType,
 	typename ReductionOp>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadScanIncl(
 	ArrayType &data,
 	ReductionOp reduction_op)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
 	T* linear_array = reinterpret_cast<T*>(data);
-	return InclusiveScan<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
+	return ThreadScanIncl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
 }
 
 
@@ -215,12 +215,12 @@ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
  * Serial inclusive scan with the addition operator and seed
  */
 template <typename ArrayType, typename T>
-__device__ __forceinline__ typename T InclusiveScan(
+__device__ __forceinline__ T ThreadScanIncl(
 	ArrayType &data,
 	T seed)
 {
 	Sum<T> reduction_op;
-	return InclusiveScan(data, reduction_op, seed);
+	return ThreadScanIncl(data, reduction_op, seed);
 }
 
 
@@ -228,12 +228,12 @@ __device__ __forceinline__ typename T InclusiveScan(
  * Serial inclusive scan with the addition operator
  */
 template <typename ArrayType>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type InclusiveScan(
+__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadScanIncl(
 	ArrayType &data)
 {
 	typedef typename ArrayTraits<ArrayType>::Type T;
 	Sum<T> reduction_op;
-	return InclusiveScan(data, reduction_op);
+	return ThreadScanIncl(data, reduction_op);
 }
 
 

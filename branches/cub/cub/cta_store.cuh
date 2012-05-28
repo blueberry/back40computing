@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -26,7 +26,7 @@
 #include <cub/basic_utils.cuh>
 #include <cub/operators.cuh>
 #include <cub/type_utils.cuh>
-#include <cub/thread/store.cuh>
+#include <cub/thread_store.cuh>
 #include <cub/ns_umbrella.cuh>
 
 CUB_NS_PREFIX
@@ -64,7 +64,7 @@ private:
 		{
 			const int OFFSET = (SEGMENT * ACTIVE_THREADS * TOTAL) + CURRENT;
 
-			Store<MODIFIER>(d_out_vectors + OFFSET, data_vectors[CURRENT]);
+			ThreadStore<MODIFIER>(d_out_vectors + OFFSET, data_vectors[CURRENT]);
 
 			// Next vector in segment
 			Iterate<CURRENT + 1, TOTAL>::StoreVector(
@@ -94,7 +94,7 @@ private:
 			{
 				// Transform and store
 				S raw = transform_op(data[CURRENT]);
-				Store<MODIFIER>(d_out + OFFSET, raw);
+				ThreadStore<MODIFIER>(d_out + OFFSET, raw);
 			}
 
 			// Next store in segment
@@ -126,15 +126,15 @@ private:
 			{
 				// Transform and store
 				S raw = transform_op(data[CURRENT]);
-				Store<MODIFIER>(d_out + OFFSET, raw[CURRENT]);
+				ThreadStore<MODIFIER>(d_out + OFFSET, raw[CURRENT]);
 			}
 
 			// Next store in segment
 			Iterate<CURRENT + 1, TOTAL>::StoreGuardedByFlag(
 				SEGMENT,
+				valid,
 				data,
 				d_out,
-				guarded_elements,
 				transform_op);
 		}
 
@@ -324,8 +324,12 @@ public:
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		const int VEC_ELEMENTS 		= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS);
-		const int VECTORS 			= ELEMENTS / VEC_ELEMENTS;
+		enum
+		{
+			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS),
+			VEC_ELEMENTS		= (ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
+			VECTORS 			= ELEMENTS / VEC_ELEMENTS,
+		};
 
 		typedef typename VectorType<S, VEC_ELEMENTS>::Type Vector;
 
@@ -358,10 +362,48 @@ public:
 		typename T,
 		typename S,
 		typename SizeT,
+		typename TransformOp,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreUnguarded(
+		T (&data)[ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		TransformOp transform_op)
+	{
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		StoreUnguarded(data_2d, d_out, cta_offset, transform_op);
+	}
+
+
+	/**
+	 * Store a unguarded tile
+	 */
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
 		int SEGMENTS,
 		int ELEMENTS>
 	static __device__ __forceinline__ void StoreUnguarded(
 		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset)
+	{
+		CastTransformOp<T, S> transform_op;
+		StoreUnguarded(data, d_out, cta_offset, transform_op);
+	}
+
+
+	/**
+	 * Store a unguarded tile
+	 */
+	template <
+		typename T,
+		typename S,
+		typename SizeT,
+		int ELEMENTS>
+	static __device__ __forceinline__ void StoreUnguarded(
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{
@@ -404,12 +446,52 @@ public:
 	 */
 	template <
 		typename T,
+		int ELEMENTS,
+		typename S,
+		typename SizeT,
+		typename TransformOp>
+	static __device__ __forceinline__ void StoreGuarded(
+		T (&data)[ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		const SizeT &guarded_elements,
+		TransformOp transform_op)
+	{
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		StoreGuarded(data_2d, d_out, cta_offset, guarded_elements, transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by range
+	 */
+	template <
+		typename T,
 		int SEGMENTS,
 		int ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreGuarded(
 		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		const SizeT &guarded_elements)
+	{
+		CastTransformOp<T, S> transform_op;
+		StoreGuarded(data, d_out, cta_offset, guarded_elements, transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by range
+	 */
+	template <
+		typename T,
+		int ELEMENTS,
+		typename S,
+		typename SizeT>
+	static __device__ __forceinline__ void StoreGuarded(
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -435,7 +517,7 @@ public:
 		T (&data)[SEGMENTS][ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
-		TransformOp transform_op = CastTransformOp<T, S>())
+		TransformOp transform_op)
 	{
 		// Data to store
 		S raw[SEGMENTS][ELEMENTS];
@@ -454,6 +536,29 @@ public:
 	 */
 	template <
 		typename Flag,
+		int ELEMENTS,
+		typename T,
+		typename S,
+		typename SizeT,
+		typename TransformOp>
+	static __device__ __forceinline__ void StoreGuarded(
+		Flag (&valid)[ELEMENTS],
+		T (&data)[ELEMENTS],
+		S *d_out,
+		SizeT cta_offset,
+		TransformOp transform_op)
+	{
+		Flag (&valid_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(valid);
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		StoreGuarded(valid_2d, data_2d, d_out, cta_offset, transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by flag
+	 */
+	template <
+		typename Flag,
 		int SEGMENTS,
 		int ELEMENTS,
 		typename T,
@@ -462,6 +567,26 @@ public:
 	static __device__ __forceinline__ void StoreGuarded(
 		Flag (&valid)[SEGMENTS][ELEMENTS],
 		T (&data)[SEGMENTS][ELEMENTS],
+		S *d_out,
+		SizeT cta_offset)
+	{
+		CastTransformOp<T, S> transform_op;
+		StoreGuarded(valid, data, d_out, cta_offset, transform_op);
+	}
+
+
+	/**
+	 * Store a tile guarded by flag
+	 */
+	template <
+		typename Flag,
+		int ELEMENTS,
+		typename T,
+		typename S,
+		typename SizeT>
+	static __device__ __forceinline__ void StoreGuarded(
+		Flag (&valid)[ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{

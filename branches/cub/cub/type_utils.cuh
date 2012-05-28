@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -322,6 +322,8 @@ template <typename T>
 struct VectorType<T, 1>
 {
 	T x;
+
+	typedef VectorType<T, 1> Type;
 };
 
 /**
@@ -332,6 +334,21 @@ struct VectorType<T, 2>
 {
 	T x;
 	T y;
+
+	typedef VectorType<T, 2> Type;
+};
+
+/**
+ * Generic vector-3 type
+ */
+template <typename T>
+struct VectorType<T, 3>
+{
+	T x;
+	T y;
+	T z;
+
+	typedef VectorType<T, 3> Type;
 };
 
 /**
@@ -344,15 +361,18 @@ struct VectorType<T, 4>
 	T y;
 	T z;
 	T w;
+
+	typedef VectorType<T, 4> Type;
 };
 
 /**
  * Macro for expanding partially-specialized built-in vector types
  */
-#define CUB_DEFINE_VECTOR_TYPE(base_type,short_type)              \
-  template<> struct VectorType<base_type, 1> : short_type##1 {};     \
-  template<> struct VectorType<base_type, 2> : short_type##2 {};     \
-  template<> struct VectorType<base_type, 4> : short_type##4 {};
+#define CUB_DEFINE_VECTOR_TYPE(base_type,short_type)              					\
+  template<> struct VectorType<base_type, 1> { typedef short_type##1 Type; };		\
+  template<> struct VectorType<base_type, 2> { typedef short_type##2 Type; };		\
+  template<> struct VectorType<base_type, 3> { typedef short_type##3 Type; };		\
+  template<> struct VectorType<base_type, 4> { typedef short_type##4 Type; };
 
 // Expand CUDA vector types for built-in primitives
 CUB_DEFINE_VECTOR_TYPE(char,               char)
@@ -368,6 +388,7 @@ CUB_DEFINE_VECTOR_TYPE(unsigned long,      ulong)
 CUB_DEFINE_VECTOR_TYPE(unsigned long long, ulonglong)
 CUB_DEFINE_VECTOR_TYPE(float,              float)
 CUB_DEFINE_VECTOR_TYPE(double,             double)
+CUB_DEFINE_VECTOR_TYPE(bool,               uchar)
 
 // Undefine macros
 #undef CUB_DEFINE_VECTOR_TYPE

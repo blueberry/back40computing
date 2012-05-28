@@ -1,6 +1,6 @@
 /******************************************************************************
  * 
- * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,24 +23,24 @@
 
 #pragma once
 
-#include <cub/cta/cta_load.cuh>
-#include <cub/cta/cta_progress.cuh>
-#include <cub/cta/cta_reduce.cuh>
-#include <cub/cta/cta_scan.cuh>
-#include <cub/cta/cta_store.cuh>
+#include <cub/cta_load.cuh>
+#include <cub/cta_progress.cuh>
+#include <cub/cta_reduce.cuh>
+#include <cub/cta_scan.cuh>
+#include <cub/cta_store.cuh>
 
 #include <cub/host/cuda_props.cuh>
+#include <cub/host/debug.cuh>
 #include <cub/host/kernel_props.cuh>
 #include <cub/host/multi_buffer.cuh>
 #include <cub/host/spinlock.cuh>
 
-#include <cub/thread/load.cuh>
-#include <cub/thread/reduce.cuh>
-#include <cub/thread/scan.cuh>
-#include <cub/thread/store.cuh>
+#include <cub/thread_load.cuh>
+#include <cub/thread_reduce.cuh>
+#include <cub/thread_scan.cuh>
+#include <cub/thread_store.cuh>
 
 #include <cub/basic_utils.cuh>
-#include <cub/debug.cuh>
 #include <cub/device_props.cuh>
 #include <cub/operators.cuh>
 #include <cub/ptx_intrinsics.cuh>
