@@ -32,11 +32,15 @@
 CUB_NS_PREFIX
 namespace cub {
 
-
-
 /**
- * Cooperative reduction abstraction for CTAs.  The aggregate is
- * returned in thread-0 (and is undefined for other threads).
+ * Cooperative reduction abstraction for CTAs. The aggregate is returned in
+ * thread-0 (and is undefined for other threads).
+ *
+ * Features:
+ * 		- Very efficient (only one synchronization barrier)
+ * 		- Zero bank conflicts for most types
+ * 		- Supports non-commutative reduction operators
+ * 		- Supports partially-full CTAs (i.e., high-order threads having undefined values)
  *
  * Is most efficient when:
  * 		- CTA_THREADS is a multiple of the warp size
@@ -64,10 +68,10 @@ struct CtaReduce
 		// Number of bytes per shared memory segment
 		SEGMENT_BYTES = DeviceProps::SMEM_BANKS * DeviceProps::SMEM_BANK_BYTES,
 
-		// Number of elements per shared memory segment (insert a padding block after each)
+		// Number of elements per shared memory segment
 		SEGMENT_ELEMENTS = (SEGMENT_BYTES + sizeof(T) - 1) / sizeof(T),
 
-		// Stride in elements between padding blocks
+		// Stride in elements between padding blocks (insert a padding block after each)
 		PADDING_STRIDE = CUB_ROUND_UP_NEAREST(SEGMENT_ELEMENTS, RAKING_ELEMENTS),
 
 		// Number of elements per padding block
@@ -100,11 +104,7 @@ struct CtaReduce
 	struct SmemStorage
 	{
 		WarpT 	warp_buffer[DeviceProps::WARP_THREADS];
-		union
-		{
-			char 	raking_bytes[1];
-			T		raking_grid[SMEM_ELEMENTS];
-		};
+		T		raking_grid[SMEM_ELEMENTS];
 	};
 
 
