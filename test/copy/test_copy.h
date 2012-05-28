@@ -38,130 +38,23 @@
  * Utility Routines
  ******************************************************************************/
 
-
 /**
- * Timed copy.  Uses the GPU to copy the specified vector of elements for the given
- * number of iterations, displaying runtime information.
+ * Timed copy.
  */
 template <
 	b40c::copy::ProbSizeGenre PROB_SIZE_GENRE,
 	typename T,
 	typename SizeT>
 double TimedCopy(
-	T *d_src,
-	T *d_dest,
-	SizeT num_elements,
-	int max_ctas,
-	int iterations)
-{
-	using namespace b40c;
-
-	// Create enactor
-	copy::Enactor copy_enactor;
-
-	// Perform the timed number of iterations
-	GpuTimer timer;
-
-	double elapsed = 0;
-	for (int i = 0; i < iterations; i++) {
-
-		// Start timing record
-		timer.Start();
-
-		// Call the copy API routine
-		copy_enactor.template Copy<PROB_SIZE_GENRE>(
-			d_dest, d_src, num_elements * sizeof(T), max_ctas);
-
-		// End timing record
-		timer.Stop();
-		elapsed += (double) timer.ElapsedMillis();
-	}
-
-	double avg_runtime = elapsed / iterations;
-	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-
-	return throughput;
-}
-
-template <
-	typename Policy,
-	typename T,
-	typename SizeT>
-double TimedCopy(
-	T *d_src,
-	T *d_dest,
-	SizeT num_elements,
-	int max_ctas,
-	int iterations)
-{
-	using namespace b40c;
-
-	SizeT bytes = num_elements * sizeof(T);
-	SizeT elements = bytes / sizeof(typename Policy::T);
-	SizeT extra_bytes = bytes - (elements * sizeof(typename Policy::T));
-
-	// Create enactor
-	copy::Enactor copy_enactor;
-
-/*
-	copy_enactor.ENACTOR_DEBUG = true;
-	copy_enactor.template Copy<Policy>(
-		(typename Policy::T *) d_dest,
-		(typename Policy::T *) d_src,
-		elements,
-		extra_bytes,
-		max_ctas);
-	copy_enactor.ENACTOR_DEBUG = false;
-*/
-
-	// Perform the timed number of iterations
-	GpuTimer timer;
-
-	double elapsed = 0;
-	for (int i = 0; i < iterations; i++) {
-
-		// Start timing record
-		timer.Start();
-
-		// Call the copy API routine
-		copy_enactor.template Copy<Policy>(
-			(typename Policy::T *) d_dest,
-			(typename Policy::T *) d_src,
-			elements,
-			extra_bytes,
-			max_ctas);
-
-		// End timing record
-		timer.Stop();
-		elapsed += (double) timer.ElapsedMillis();
-
-	}
-
-	double avg_runtime = elapsed / iterations;
-	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
-
-	return throughput;
-}
-
-
-
-/**
- * Timed copy.  Uses the GPU to copy the specified vector of elements for the given
- * number of iterations, displaying runtime information.
- */
-template <
-	b40c::copy::ProbSizeGenre PROB_SIZE_GENRE,
-	typename T,
-	typename SizeT>
-double TimedCopy(
-	T *d_src,
-	T *d_dest,
 	T *h_reference,
+	T *d_src,
+	T *d_dest,
 	SizeT num_elements,
 	int max_ctas,
 	bool verbose,
 	int iterations,
-	bool same_device = true)
+	bool same_device = true,
+	bool warmup = true)
 {
 	using namespace b40c;
 
@@ -169,10 +62,12 @@ double TimedCopy(
 	copy::Enactor copy_enactor;
 
 	// Perform a single iteration to allocate any memory if needed, prime code caches, etc.
-	copy_enactor.ENACTOR_DEBUG = true;
-	copy_enactor.template Copy<PROB_SIZE_GENRE>(
-		d_dest, d_src, num_elements * sizeof(T), max_ctas);
-	copy_enactor.ENACTOR_DEBUG = false;
+	if (warmup) {
+		copy_enactor.ENACTOR_DEBUG = true;
+		copy_enactor.template Copy<PROB_SIZE_GENRE>(
+			d_dest, d_src, num_elements * sizeof(T), max_ctas);
+		copy_enactor.ENACTOR_DEBUG = false;
+	}
 
 	// Perform the timed number of iterations
 	GpuTimer timer;
@@ -196,34 +91,26 @@ double TimedCopy(
 	double avg_runtime = elapsed / iterations;
 	double throughput = ((double) num_elements) / avg_runtime / 1000.0 / 1000.0;
 	int bytes_per_element = (same_device) ? sizeof(T) * 2 : sizeof(T);
-	printf("\nB40C copy: %d iterations, %lu bytes, ", iterations, (unsigned long) num_elements);
-    printf("%f GPU ms, %f x10^9 B/sec, ",
-		avg_runtime, throughput * bytes_per_element);
 
-    // Copy out data
-	T *h_dest = (T*) malloc(num_elements * sizeof(T));
-    if (util::B40CPerror(cudaMemcpy(h_dest, d_dest, sizeof(T) * num_elements, cudaMemcpyDeviceToHost),
-		"TimedScan cudaMemcpy d_dest failed: ", __FILE__, __LINE__)) exit(1);
+	printf("%lu, %lu, %d, %.3f, %.2f, ",
+		(unsigned long) num_elements,
+		(unsigned long) num_elements * sizeof(T),
+		iterations,
+		avg_runtime,
+		throughput * bytes_per_element);
 
 	// Flushes any stdio from the GPU
 	cudaThreadSynchronize();
 
-	// Display copied data
-	if (verbose) {
-		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue<T>(h_dest[i]);
-			printf(", ");
-		}
-		printf("\n\n");
-	}
-
-    // Verify solution
-	CompareResults(h_dest, h_reference, num_elements, true);
+	// Check for correctness
+	b40c::CompareDeviceResults(
+		h_reference,
+		d_dest,
+		num_elements,
+		true,
+		verbose);
 	printf("\n");
 	fflush(stdout);
-
-	if (h_dest) free(h_dest);
 
 	return throughput;
 }
