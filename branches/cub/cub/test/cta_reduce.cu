@@ -51,7 +51,7 @@ __global__ void UnguardedKernel(
 	int iterations)
 {
 	typedef CtaLoad<CTA_THREADS> CtaLoad;
-	typedef CtaReduce<CTA_THREADS, T, CTA_STRIDES> CtaReduce;
+	typedef CtaReduce<CTA_THREADS, T, true, CTA_STRIDES> CtaReduce;
 
 	__shared__ typename CtaReduce::SmemStorage smem_storage;
 
@@ -78,7 +78,7 @@ __global__ void UnguardedKernel(
 	}
 
 	// Store data
-	if (threadIdx.x == 0)
+	if (threadIdx.x == 1)
 	{
 		d_out[0] = partial;
 	}

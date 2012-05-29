@@ -31,66 +31,104 @@
 CUB_NS_PREFIX
 namespace cub {
 
+
 /**
- * Performs STEPS steps of a Kogge-Stone style prefix scan.
- *
- * Requires a 2D "warpscan" structure of smem storage having dimensions [2][NUM_ELEMENTS].
+ * Performs a warp-synchronous Kogge-Stone style prefix scan.
  */
 template <
-	int LOG_NUM_ELEMENTS,					// Log of number of elements to warp-reduce
-	bool EXCLUSIVE = true,					// Whether or not this is an exclusive scan
-	int STEPS = LOG_NUM_ELEMENTS>			// Number of steps to run, i.e., produce scanned segments of (1 << STEPS) elements
+	int 		WARPS,			// The number of warps performing a warp scan
+	typename 	T>				// The reduction type
 struct WarpScan
 {
-	enum {
-		NUM_ELEMENTS = 1 << LOG_NUM_ELEMENTS,
+	//---------------------------------------------------------------------
+	// Constants and typedefs
+	//---------------------------------------------------------------------
+
+	enum
+	{
+		// Whether or not the reduction type is a built-in primitive
+		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
+
+		// The number of threads in half a warp
+		HALF_WARP_THREADS = DeviceProps::WARP_THREADS / 2,
+
+		// The number of shared memory elements per warp
+		WARP_SMEM_ELEMENTS =  DeviceProps::WARP_THREADS + HALF_WARP_THREADS,
+
+		// The number of warp scan steps
+		STEPS = DeviceProps::LOG_WARP_THREADS,
 	};
 
+
+	/**
+	 * Qualified type of T to use for warp-synchronous storage.  For
+	 * built-in primitive types, we can use volatile qualifier (and can omit
+	 * syncthreads when warp-synchronous)
+	 */
+	typedef typename If<(CtaRakingGrid::PRIMITIVE), volatile T, T>::Type WarpT;
+
+
+	/**
+	 * Shared memory storage type
+	 */
+	typedef WarpT SmemStorage[WARPS][WARP_SMEM_ELEMENTS];
+
+
 	//---------------------------------------------------------------------
-	// Helper Structures
+	// Iteration structures
 	//---------------------------------------------------------------------
 
 	// General iteration
-	template <int OFFSET_LEFT, int WIDTH>
+	template <int COUNT, int MAX, bool HAS_IDENTITY>
 	struct Iterate
 	{
-		template <typename T, typename WarpscanT, typename ReductionOp>
-		static __device__ __forceinline__ T Invoke(
-			T exclusive_partial,
-			WarpscanT warpscan[][NUM_ELEMENTS],
-			ReductionOp scan_op,
-			int warpscan_tid)
+		// InclusiveWarpScan
+		template <typename ScanOp>
+		static __device__ __forceinline__ T InclusiveWarpScan(
+			SmemStorage 	&smem_storage,		// SmemStorage reference
+			unsigned int 	warp_id,			// Warp id
+			unsigned int 	lane_id,			// Lane id
+			T 				partial, 			// Calling thread's input partial reduction
+			ScanOp 			scan_op)			// Scan operator
 		{
-			warpscan[1][warpscan_tid] = exclusive_partial;
+			const int OFFSET = 1 << COUNT;
 
-			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
+			// Share partial into buffer
+			smem_storage[warp_id][HALF_WARP_THREADS + lane_id] = partial;
 
-			T offset_partial = warpscan[1][warpscan_tid - OFFSET_LEFT];
+			// Prevent compiler from hoisting variables between rounds
+			if (!PRIMITIVE) __threadfence_block();
 
-			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
+			// Update partial if addend is in range
+			if (HAS_IDENTITY || (lane_id <= OFFSET))
+			{
+				T addend = smem_storage[warp_id][HALF_WARP_THREADS + lane_id - OFFSET];
+				partial = scan_op(partial, addend);
+			}
 
-			T inclusive_partial = scan_op(offset_partial, exclusive_partial);
-
-			return Iterate<OFFSET_LEFT * 2, WIDTH>::Invoke(
-				inclusive_partial,
-				warpscan,
-				scan_op,
-				warpscan_tid);
+			return Iterate<COUNT + 1, MAX, UNGUARDED>::InclusiveWarpScan(
+				smem_storage,
+				warp_id,
+				lane_id,
+				partial,
+				scan_op);
 		}
 	};
 
 	// Termination
-	template <int WIDTH>
-	struct Iterate<WIDTH, WIDTH>
+	template <int MAX, bool UNGUARDED>
+	struct Iterate<MAX, MAX, UNGUARDED>
 	{
-		template <typename T, typename WarpscanT, typename ReductionOp>
-		static __device__ __forceinline__ T Invoke(
-			T exclusive_partial,
-			WarpscanT warpscan[][NUM_ELEMENTS],
-			ReductionOp scan_op,
-			int warpscan_tid)
+		// InclusiveWarpScan
+		template <typename ScanOp>
+		static __device__ __forceinline__ T InclusiveWarpScan(
+			SmemStorage 	&smem_storage,		// SmemStorage reference
+			unsigned int 	warp_id,			// Warp id
+			unsigned int 	lane_id,			// Lane id
+			T 				partial, 			// Calling thread's input partial reduction
+			ScanOp 			scan_op)			// Scan operator
 		{
-			return exclusive_partial;
+			return partial;
 		}
 	};
 
@@ -99,109 +137,205 @@ struct WarpScan
 	// Interface
 	//---------------------------------------------------------------------
 
+
 	/**
-	 * Warpscan with the specified operator
+	 * Inclusive prefix sum
 	 */
-	template <typename T, typename WarpscanT, typename ReductionOp>
-	static __device__ __forceinline__ T Invoke(
-		T current_partial,							// Input partial
-		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		ReductionOp scan_op,						// Scan operator
-		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	static __device__ __forceinline__ T InclusiveSum(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial) 			// Calling thread's input partial reduction
 	{
-		const int WIDTH = 1 << STEPS;
-		T inclusive_partial = Iterate<1, WIDTH>::Invoke(
-			current_partial,
-			warpscan,
-			scan_op,
-			warpscan_tid);
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
 
-		if (EXCLUSIVE) {
-			// Write out our inclusive partial
-			warpscan[1][warpscan_tid] = inclusive_partial;
+		// Lane id
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
 
-			if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
+		// Initialize identity region
+		smem_storage[warp_id][lane_id] = 0;
 
-			// Return exclusive partial
-			return warpscan[1][warpscan_tid - 1];
-
-		} else {
-			return inclusive_partial;
-		}
+		// Inclusive warp scan
+		return Iterate<0, STEPS, true>::InclusiveWarpScan(
+			smem_storage,
+			warp_id,
+			lane_id,
+			partial,
+			Sum<T>());
 	}
 
 
 	/**
-	 * Warpscan with the addition operator
+	 * Inclusive prefix sum
 	 */
-	template <typename T, typename WarpscanT>
-	static __device__ __forceinline__ T Invoke(
-		T current_partial,							// Input partial
-		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	static __device__ __forceinline__ T InclusiveSum(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial) 			// Calling thread's input partial reduction
 	{
-		Sum<T> scan_op;
-		return Invoke(
-			current_partial,
-			warpscan,
-			scan_op,
-			warpscan_tid);
+		// Inclusive warp scan
+		partial = InclusiveSum(smem_storage, partial);
+
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+
+		// Share partial into buffer
+		smem_storage[warp_id][HALF_WARP_THREADS + lane_id] = partial;
+
+		// Retrieve aggregate
+		aggregate = smem_storage[warp][WARP_SMEM_ELEMENTS - 1];
+
+		return partial;
 	}
 
 
 	/**
-	 * Warpscan with the specified operator, returning the cumulative reduction
+	 * Exclusive prefix sum
 	 */
-	template <typename T, typename WarpscanT, typename ReductionOp>
-	static __device__ __forceinline__ T Invoke(
-		T current_partial,							// Input partial
-		T &total_reduction,							// Total reduction (out param)
-		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		ReductionOp scan_op,						// Scan operator
-		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	static __device__ __forceinline__ T ExclusiveSum(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial) 			// Calling thread's input partial reduction
 	{
-		const int WIDTH = 1 << STEPS;
-		T inclusive_partial = Iterate<1, WIDTH>::Invoke(
-			current_partial,
-			warpscan,
-			scan_op,
-			warpscan_tid);
-
-		// Write our inclusive partial and then set total to the last thread's inclusive partial
-		warpscan[1][warpscan_tid] = inclusive_partial;
-
-		if (!IsVolatile<WarpscanT>::VALUE) __threadfence_block();
-
-		// Get total
-		total_reduction = warpscan[1][NUM_ELEMENTS - 1];
-
-		if (EXCLUSIVE) {
-
-			// Return exclusive partial
-			return warpscan[1][warpscan_tid - 1];
-
-		} else {
-			return inclusive_partial;
-		}
+		// Compute exclusive warp scan from inclusive warp scan
+		return InclusiveSum(smem_storage, partial) - partial;
 	}
 
+
 	/**
-	 * Warpscan with the addition operator, returning the cumulative reduction
+	 * Exclusive prefix sum
 	 */
-	template <typename T, typename WarpscanT>
-	static __device__ __forceinline__ T Invoke(
-		T current_partial,							// Input partial
-		T &total_reduction,							// Total reduction (out param)
-		WarpscanT warpscan[][NUM_ELEMENTS],		// Smem for warpscanning.  Contains at least two segments of size NUM_ELEMENTS (the first being initialized to identity)
-		int warpscan_tid = threadIdx.x)				// Thread's local index into a segment of NUM_ELEMENTS items
+	static __device__ __forceinline__ T ExclusiveSum(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial, 			// Calling thread's input partial reduction
+		T				&aggregate)			// Total aggregate (out parameter)
 	{
-		Sum<T> scan_op;
-		return Invoke(
-			current_partial,
-			total_reduction,
-			warpscan,
-			scan_op,
-			warpscan_tid);
+		// Inclusive warp scan
+		partial = InclusiveSum(smem_storage, partial);
+
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+
+		// Share partial into buffer
+		smem_storage[warp_id][HALF_WARP_THREADS + lane_id] = partial;
+
+		// Retrieve exclusive scan
+		return smem_storage[warp_id][HALF_WARP_THREADS + lane_id - 1];
+
+		// Retrieve aggregate
+		aggregate = smem_storage[warp][WARP_SMEM_ELEMENTS - 1];
+
+		return partial;
+	}
+
+
+	/**
+	 * Inclusive scan
+	 */
+	template <typename ScanOp>
+	static __device__ __forceinline__ T InclusiveScan(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial, 			// Calling thread's input partial reduction
+		ScanOp 			scan_op)			// Scan operator
+	{
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+
+		// Lane id
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+
+		// Inclusive warp scan
+		return Iterate<0, STEPS, false>::Invoke(
+			smem_storage,
+			warp_id,
+			lane_id,
+			partial,
+			scan_op);
+	}
+
+
+	/**
+	 * Inclusive scan
+	 */
+	template <typename ScanOp>
+	static __device__ __forceinline__ T InclusiveScan(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial, 			// Calling thread's input partial reduction
+		ScanOp 			scan_op,			// Scan operator
+		T				&aggregate)			// Total aggregate (out parameter)
+	{
+		// Inclusive warp scan
+		partial = InclusiveScan(smem_storage, partial, scan_op);
+
+		// Share partial into buffer
+		smem_storage[warp_id][HALF_WARP_THREADS + lane_id] = partial;
+
+		// Prevent compiler from hoisting variables between rounds
+		if (!PRIMITIVE) __threadfence_block();
+
+		// Retrieve aggregate
+		aggregate = smem_storage[warp][WARP_SMEM_ELEMENTS - 1];
+
+		return partial;
+	}
+
+
+	/**
+	 * Exclusive scan
+	 */
+	template <typename ScanOp>
+	static __device__ __forceinline__ T ExclusiveScan(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial, 			// Calling thread's input partial reduction
+		T 				identity, 			// Identity element
+		ScanOp 			scan_op)			// Scan operator
+	{
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+
+		// Lane id
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+
+		// Initialize identity region
+		smem_storage[warp_id][lane_id] = identity;
+
+		// Inclusive warp scan
+		partial = Iterate<0, STEPS, true>::Invoke(
+			smem_storage,
+			warp_id,
+			lane_id,
+			partial,
+			scan_op);
+
+		// Share partial into buffer
+		smem_storage[warp_id][HALF_WARP_THREADS + lane_id] = partial;
+
+		// Prevent compiler from hoisting variables between rounds
+		if (!PRIMITIVE) __threadfence_block();
+
+		// Retrieve exclusive scan
+		return smem_storage[warp_id][HALF_WARP_THREADS + lane_id - 1];
+	}
+
+
+	/**
+	 * Exclusive scan
+	 */
+	template <typename ScanOp>
+	static __device__ __forceinline__ T ExclusiveScan(
+		SmemStorage 	&smem_storage,		// SmemStorage reference
+		T 				partial, 			// Calling thread's input partial reduction
+		T 				identity, 			// Identity element
+		ScanOp 			scan_op,			// Scan operator
+		T				&aggregate)			// Total aggregate (out parameter)
+	{
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+
+		// Exclusive warp scan
+		partial = ExclusiveScan(partial, scan_op, identity);
+
+		// Retrieve aggregate
+		aggregate = smem_storage[warp][WARP_SMEM_ELEMENTS - 1];
+
+		return partial;
 	}
 };
 
