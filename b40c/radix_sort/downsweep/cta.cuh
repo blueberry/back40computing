@@ -135,6 +135,8 @@ struct Cta
 
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
+		int digit_scan[RADIX_DIGITS + 1];
+
 		union
 		{
 			unsigned char				digit_offset_bytes[1];
@@ -245,20 +247,19 @@ of-bounds
 			if (my_digit < RADI
 			{IGITS) {
 
-				int my_exclus	= smem_storage.ranking_storage.warpscan[0][(WARP_THREADS / 2) + my_digit - 1];
-				int my_inclusive_scan 	= smem_storage.ranking_storage.warpscan[0][(WARP_THREADS / 2) + my_digit];
-				int my_digit_count 		= my_inclusive_scan - my_exclusive_scan;
+				int my_exclus	= smem_storage.digit_scan[my_digit];
+				int my_inclusive_scan 	= smem_storage.digit_scan[my_digit + 1];
 				int my_carry 			= smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
-				int my_aligned_offset 	d_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
-
-				while (my_aligned_offset < my_dig
+				int my_aligned_offset 	d_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1int gather_offset;
+				while ((gather_offset = my_aligned_offset + my_exclusive_scan) < my_inclusive_scan)
 				{
-					if ((my_aligned_offset >= 0) && (my_exclusive_scan + my_aligned_offset < valid_elements))
+					if ((my_aligned_offset >= 0) && (gather_offset < valid_elements))
 					{
-						int gather_offset = my_exclusive_scan + my_aligned_offset;
-						if (PADDED_EXCHANGE) gather_offset = util::SHR_ADD(gather_offset, LOG_MEM_BANKS, gather_offset);ments)) {
+						int padded_gather_offset = (PADDED_EXCHANGE) ?
+							gather_offset = util::SHR_ADD(gather_offset, LOG_MEM_BANKS, gather_offset) :
+							gather_offset;
 
-						Tbuffer exchange[my_exclusive_scan + my_aligned_offset];
+						T datum = buffer[padded_gathery_aligned_offset];
 						d_out[my_carry + my_aligned_offset] = datum;
 					}
 					my_aligned_offset += STORE_TXN_THREADS;
@@ -658,6 +659,14 @@ Shared
 			my_digit_offset -= exclusive_digit_count;
 			smem_storage.digit_offsets[threadIdx.x] = my_digit_offset;
 			my_digit_offset += inclusive_digit_count;
+
+			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
+			{
+				// Also save in/exclusive digit scans in shared memory for
+				// special AlignedScatterPass() global scattering
+				smem_storage.digit_scan[threadIdx.x] 		= exclusive_digit_count;
+				smem_storage.digit_scan[threadIdx.x + 1] 	= inclusive_digit_count;
+			}
 		}
 
 		__syncthreads();
