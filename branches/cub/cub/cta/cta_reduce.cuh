@@ -23,11 +23,11 @@
 
 #pragma once
 
-#include <cub/cta_raking_grid.cuh>
+#include <cub/cta/cta_raking_grid.cuh>
 #include <cub/device_props.cuh>
 #include <cub/type_utils.cuh>
 #include <cub/operators.cuh>
-#include <cub/thread_reduce.cuh>
+#include <cub/thread/thread_reduce.cuh>
 #include <cub/ns_umbrella.cuh>
 
 CUB_NS_PREFIX

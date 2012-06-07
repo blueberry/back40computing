@@ -33,47 +33,55 @@ bool g_verbose = false;
 
 
 //---------------------------------------------------------------------
-// Kernels
+// Reduction test kernels
 //---------------------------------------------------------------------
 
 /**
- * Test unguarded load/store kernel.
+ * Test full-tile (unguarded load/store) kernel.
  */
 template <
-	int CTA_THREADS,
-	int CTA_STRIDES,
-	typename T,
-	typename ReductionOp>
-__global__ void UnguardedKernel(
-	T *d_in,
-	T *d_out,
-	ReductionOp reduction_op,
-	int iterations)
+	int 		CTA_THREADS,
+	int 		CTA_STRIPS,
+	int 		THREAD_STRIP_ELEMENTS,
+	typename 	T,
+	typename 	ReductionOp>
+__global__ void FullTileReduceKernel(
+	T 				*d_in,
+	T 				*d_out,
+	ReductionOp 	reduction_op,
+	int 			iterations)
 {
-	typedef CtaLoad<CTA_THREADS> CtaLoad;
-	typedef CtaReduce<CTA_THREADS, T, true, CTA_STRIDES> CtaReduce;
+	// Cooperative CTA tile-loading utility type
+	typedef CtaLoad<CTA_THREADS, CTA_STRIPS> CtaLoad;
 
+	// Cooperative CTA reduction utility type (returns aggregate in all threads)
+	typedef CtaReduce<CTA_THREADS, T, true, CTA_STRIPS> CtaReduce;
+
+	// Shared memory
 	__shared__ typename CtaReduce::SmemStorage smem_storage;
 
-	// Data
-	T data[CTA_STRIDES][1];
+	// Per-thread tile data
+	T data[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
 
-	// Load data
+	// Load first tile of data
 	int cta_offset = 0;
-	CtaLoad::LoadUnguarded(data, d_in, cta_offset);
+	CtaLoad::LoadFullTile(data, d_in, cta_offset);
 	cta_offset += CTA_THREADS;
 
-	// Cooperative reduce
-	T partial = CtaReduce::Reduce(smem_storage, data, reduction_op);
+	// Cooperative reduce first tile
+	T cta_aggregate = CtaReduce::Reduce(smem_storage, data, reduction_op);
 
+	// Loop over input tiles
 	while (cta_offset < CTA_THREADS * iterations)
 	{
-		// Load data
-		T next = d_in[cta_offset + threadIdx.x];
+		// Load tile of data
+		CtaLoad::LoadFullTile(data, d_in, cta_offset);
 		cta_offset += CTA_THREADS;
 
-		// Cooperative reduce
-		next = CtaReduce::Reduce(smem_storage, data, reduction_op);
+		// Cooperatively reduce the tile's aggregate
+		T tile_aggregate = CtaReduce::Reduce(smem_storage, data, reduction_op);
+
+		// Reduce CTA aggregate
 		partial = reduction_op(partial, next);
 	}
 
@@ -85,30 +93,41 @@ __global__ void UnguardedKernel(
 }
 
 
+
 /**
  * Test guarded load/store kernel.
  */
-template <int CTA_THREADS, typename T, typename ReductionOp>
-__global__ void GuardedKernel(
-	T *d_in,
-	T *d_out,
-	int num_elements,
-	ReductionOp reduction_op)
+template <
+	int 		CTA_THREADS,
+	typename 	T,
+	typename 	ReductionOp>
+__global__ void PartialTileReduceKernel(
+	T 				*d_in,
+	T 				*d_out,
+	int 			num_elements,
+	ReductionOp 	reduction_op)
 {
-	typedef CtaLoad<CTA_THREADS> CtaLoad;
+	// Cooperative CTA reduction utility type (returns aggregate only in thread-0)
 	typedef CtaReduce<CTA_THREADS, T> CtaReduce;
 
+	// Shared memory
 	__shared__ typename CtaReduce::SmemStorage smem_storage;
 
+	// Per-thread tile data
 	T partial;
 
-	// Load data
-	if (threadIdx.x < num_elements) {
+	// Load partial tile data
+	if (threadIdx.x < num_elements)
+	{
 		partial = d_in[threadIdx.x];
 	}
 
-	// Cooperative reduce
-	partial = CtaReduce::Reduce(smem_storage, partial, num_elements, reduction_op);
+	// Cooperatively reduce the tile's aggregate
+	partial = CtaReduce::Reduce(
+		smem_storage,
+		partial,
+		num_elements,
+		reduction_op);
 
 	// Store data
 	if (threadIdx.x == 0)
@@ -162,10 +181,17 @@ void Initialize(
 /**
  * Test reduction
  */
-template <int CTA_THREADS, int CTA_STRIDES, typename T, typename ReductionOp>
-void Test(int num_elements, ReductionOp reduction_op)
+template <
+	int 		CTA_THREADS,
+	int 		CTA_STRIPS,
+	int			THREAD_STRIP_ELEMENTS,
+	typename 	T,
+	typename 	ReductionOp>
+void Test(
+	int num_elements,
+	ReductionOp reduction_op)
 {
-	const int TILE_SIZE = CTA_THREADS * CTA_STRIDES;
+	const int TILE_SIZE = CTA_THREADS * CTA_STRIPS * THREAD_STRIP_ELEMENTS;
 
 	// Allocate host arrays
 	T h_in[TILE_SIZE];
@@ -185,12 +211,15 @@ void Test(int num_elements, ReductionOp reduction_op)
 	if (num_elements == TILE_SIZE)
 	{
 		// Test unguarded
-		printf("Unguarded test CTA_THREADS(%d) CTA_STRIDES(%d) sizeof(T)(%d):\n\t ",
-			CTA_THREADS, CTA_STRIDES, (int) sizeof(T));
+		printf("FullTile test CTA_THREADS(%d) CTA_STRIPS(%d) THREAD_STRIP_ELEMENTS(%d) sizeof(T)(%d):\n\t ",
+			CTA_THREADS, CTA_STRIPS, THREAD_STRIP_ELEMENTS, (int) sizeof(T));
 		fflush(stdout);
 
-		UnguardedKernel<CTA_THREADS, CTA_STRIDES><<<1, CTA_THREADS>>>(
-			d_in, d_out, reduction_op, 1);
+		FullTileReduceKernel<CTA_THREADS, CTA_STRIPS, THREAD_STRIP_ELEMENTS><<<1, CTA_THREADS>>>(
+			d_in,
+			d_out,
+			reduction_op,
+			1);
 	}
 	else
 	{
@@ -199,8 +228,11 @@ void Test(int num_elements, ReductionOp reduction_op)
 			CTA_THREADS, num_elements, (int) sizeof(T));
 		fflush(stdout);
 
-		GuardedKernel<CTA_THREADS><<<1, CTA_THREADS>>>(
-			d_in, d_out, num_elements, reduction_op);
+		PartialTileReduceKernel<CTA_THREADS><<<1, CTA_THREADS>>>(
+			d_in,
+			d_out,
+			num_elements,
+			reduction_op);
 	}
 
 	DebugExit(cudaDeviceSynchronize());
@@ -225,23 +257,26 @@ int main(int argc, char** argv)
     DeviceInit(args);
     g_verbose = args.CheckCmdLineFlag("v");
 
-    Test<32, 	1, int>(32, 	Sum<int>());
-    Test<8, 	1, int>(8, 		Sum<int>());
-    Test<23, 	1, int>(23, 	Sum<int>());
-    Test<512, 	1, int>(512, 	Sum<int>());
-    Test<121,	1, int>(121, 	Sum<int>());
-    Test<133, 	1, int>(133, 	Sum<int>());
-    Test<96, 	1, int>(96, 	Sum<int>());
-    Test<32, 	1, int>(12, 	Sum<int>());
-    Test<512, 	1, int>(509,	Sum<int>());
-    Test<32,	1, uint2>(32, 	Uint2Sum());
-    Test<512,	1, uint2>(512, 	Uint2Sum());
-    Test<512, 	1, uint2>(509,	Uint2Sum());
-    Test<128, 	2, int>(256, 	Sum<int>());
-    Test<32, 	2, int>(64, 	Sum<int>());
-    Test<16, 	2, int>(32, 	Sum<int>());
-    Test<55, 	2, int>(110, 	Sum<int>());
-    Test<23, 	2, int>(46, 	Sum<int>());
+    // Full-tile tests
+    Test<32, 	1, 1, int>(32, 		Sum<int>());
+    Test<8, 	1, 1, int>(8, 		Sum<int>());
+    Test<23, 	1, 1, int>(23, 		Sum<int>());
+    Test<512, 	1, 1, int>(512, 	Sum<int>());
+    Test<121,	1, 1, int>(121, 	Sum<int>());
+    Test<133, 	1, 1, int>(133, 	Sum<int>());
+    Test<96, 	1, 1, int>(96, 		Sum<int>());
+    Test<32,	1, 1, uint2>(32, 	Uint2Sum());
+    Test<512,	1, 1, uint2>(512, 	Uint2Sum());
+    Test<128, 	2, 1, int>(256, 	Sum<int>());
+    Test<32, 	2, 1, int>(64, 		Sum<int>());
+    Test<16, 	2, 1, int>(32, 		Sum<int>());
+    Test<55, 	2, 1, int>(110, 	Sum<int>());
+    Test<23, 	2, 1, int>(46, 		Sum<int>());
+
+    // Partial-tile tests
+    Test<32, 	1, 1, int>(12, 		Sum<int>());
+    Test<512, 	1, 1, int>(509,		Sum<int>());
+    Test<512, 	1, 1, uint2>(509,	Uint2Sum());
 
 	return 0;
 }

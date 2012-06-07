@@ -24,21 +24,29 @@
  *
  * For example:
  *
- *     // 32-bit load using cache-global modifier
- *     int *d_in;
- *     int data = ThreadLoad<LOAD_CG>(d_in + threadIdx.x);
+ *     // 32-bit load using cache-global modifier:
+ *
+ *     		int *d_in;
+ *     		int data = ThreadLoad<LOAD_CG>(d_in + threadIdx.x);
+ *
  *
  *     // 16-bit load using default modifier
- *     short *d_in;
- *     short data = ThreadLoad(d_in + threadIdx.x);
-
+ *
+ *     		short *d_in;
+ *     		short data = ThreadLoad(d_in + threadIdx.x);
+ *
+ *
  *     // 256-bit load using cache-volatile modifier
- *     double4 *d_in;
- *     double4 data = ThreadLoad<LOAD_CV>(d_in + threadIdx.x);
+ *
+ *     		double4 *d_in;
+ *     		double4 data = ThreadLoad<LOAD_CV>(d_in + threadIdx.x);
+ *
  *
  *     // 96-bit load using default cache modifier (ignoring LOAD_CS)
- *     struct Foo { bool a; short b; } *d_struct = NULL;
- *     Foo data = ThreadLoad<LOAD_CS>(d_in + threadIdx.x);
+ *
+ *     		struct Foo { bool a; short b; } *d_struct = NULL;
+ *     		Foo data = ThreadLoad<LOAD_CS>(d_in + threadIdx.x);
+ *
  *
  ******************************************************************************/
 

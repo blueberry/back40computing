@@ -245,15 +245,18 @@ void RandomBits(
 
 	do {
 
-		for (int j = 0; j < NUM_UCHARS; j++) {
+		for (int j = 0; j < NUM_UCHARS; j++)
+		{
 			unsigned char quarterword = 0xff;
-			for (int i = 0; i <= entropy_reduction; i++) {
+			for (int i = 0; i <= entropy_reduction; i++)
+			{
 				quarterword &= (rand() >> 7);
 			}
 			key_bits[j] = quarterword;
 		}
 
-		if (lower_key_bits < sizeof(K) * 8) {
+		if (lower_key_bits < sizeof(K) * 8)
+		{
 			unsigned long long base = 0;
 			memcpy(&base, key_bits, sizeof(K));
 			base &= (1ull << lower_key_bits) - 1;

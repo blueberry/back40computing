@@ -23,11 +23,11 @@
 
 #pragma once
 
-#include <cub/basic_utils.cuh>
+#include <cub/macro_utils.cuh>
 #include <cub/operators.cuh>
 #include <cub/type_utils.cuh>
-#include <cub/thread_load.cuh>
 #include <cub/ns_umbrella.cuh>
+#include <cub/thread/thread_load.cuh>
 
 CUB_NS_PREFIX
 namespace cub {
@@ -36,8 +36,8 @@ namespace cub {
  * Load a tile of items
  */
 template <
-	int CTA_THREADS,						// Active threads that will be loading
-	LoadModifier MODIFIER = LOAD_NONE>		// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
+	int 			CTA_THREADS,				// Active threads that will be loading
+	LoadModifier 	MODIFIER = LOAD_NONE>		// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
 class CtaLoad
 {
 private:
@@ -100,20 +100,20 @@ private:
 			typename Flag,
 			typename T,
 			typename S,
-			int ELEMENTS,
+			int THREAD_STRIP_ELEMENTS,
 			typename SizeT,
 			typename TransformOp>
 		static __device__ __forceinline__ void LoadGuarded(
 			const int STRIP,
-			Flag (&valid)[ELEMENTS],
-			T (&data)[ELEMENTS],
+			Flag (&valid)[THREAD_STRIP_ELEMENTS],
+			T (&data)[THREAD_STRIP_ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
 			const int OFFSET = (STRIP * CTA_THREADS * TOTAL) + CURRENT;
 
-			valid[CURRENT] = ((threadIdx.x * ELEMENTS) + OFFSET) < guarded_elements;
+			valid[CURRENT] = ((threadIdx.x * THREAD_STRIP_ELEMENTS) + OFFSET) < guarded_elements;
 
 			if (valid[CURRENT])
 			{
@@ -180,13 +180,13 @@ private:
 		template <
 			typename T,
 			typename S,
-			int ELEMENTS,
+			int THREAD_STRIP_ELEMENTS,
 			typename Vector,
 			typename SizeT,
 			int VECTORS>
 		static __device__ __forceinline__ void LoadTexVectorSegment(
-			T data[][ELEMENTS],
-			S raw[][ELEMENTS],
+			T data[][THREAD_STRIP_ELEMENTS],
+			S raw[][THREAD_STRIP_ELEMENTS],
 			Vector data_vectors[][VECTORS],
 			texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 			SizeT base_thread_offset)
@@ -212,18 +212,18 @@ private:
 			typename Flag,
 			typename T,
 			typename S,
-			int ELEMENTS,
+			int THREAD_STRIP_ELEMENTS,
 			typename SizeT,
 			typename TransformOp>
 		static __device__ __forceinline__ void LoadSegmentGuarded(
-			Flag valid[][ELEMENTS],
-			T data[][ELEMENTS],
+			Flag valid[][THREAD_STRIP_ELEMENTS],
+			T data[][THREAD_STRIP_ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
 			// Perform guarded, transforming raking vector loads for this segment
-			Iterate<0, ELEMENTS>::LoadGuarded(
+			Iterate<0, THREAD_STRIP_ELEMENTS>::LoadGuarded(
 				CURRENT,
 				valid[CURRENT],
 				data[CURRENT],
@@ -262,11 +262,11 @@ private:
 			unsigned int base_thread_offset) {}
 
 		// Guarded singleton
-		template <typename Flag, typename T, typename S, int ELEMENTS, typename SizeT, typename TransformOp>
+		template <typename Flag, typename T, typename S, int THREAD_STRIP_ELEMENTS, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void LoadGuarded(
 			const int STRIP,
-			Flag (&valid)[ELEMENTS],
-			T (&data)[ELEMENTS],
+			Flag (&valid)[THREAD_STRIP_ELEMENTS],
+			T (&data)[THREAD_STRIP_ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
@@ -285,19 +285,19 @@ private:
 			Vector *d_in_vectors) {}
 
 		// Segment of unguarded tex vectors
-		template <typename T, typename S, int ELEMENTS, typename Vector, typename SizeT, int VECTORS>
+		template <typename T, typename S, int THREAD_STRIP_ELEMENTS, typename Vector, typename SizeT, int VECTORS>
 		static __device__ __forceinline__ void LoadTexVectorSegment(
-			T data[][ELEMENTS],
-			S raw[][ELEMENTS],
+			T data[][THREAD_STRIP_ELEMENTS],
+			S raw[][THREAD_STRIP_ELEMENTS],
 			Vector data_vectors[][VECTORS],
 			texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 			SizeT base_thread_offset) {}
 
 		// Segment of guarded singletons
-		template <typename Flag, typename T, typename S, int ELEMENTS, typename SizeT, typename TransformOp>
+		template <typename Flag, typename T, typename S, int THREAD_STRIP_ELEMENTS, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void LoadSegmentGuarded(
-			Flag valid[][ELEMENTS],
-			T data[][ELEMENTS],
+			Flag valid[][THREAD_STRIP_ELEMENTS],
+			T data[][THREAD_STRIP_ELEMENTS],
 			S *d_in,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
@@ -314,35 +314,35 @@ public:
 	 */
 	template <
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
 		enum
 		{
-			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, ELEMENTS),
-			VEC_ELEMENTS		= (ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
-			VECTORS 			= ELEMENTS / VEC_ELEMENTS,
+			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, THREAD_STRIP_ELEMENTS),
+			VEC_ELEMENTS		= (THREAD_STRIP_ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
+			VECTORS 			= THREAD_STRIP_ELEMENTS / VEC_ELEMENTS,
 		};
 
 		typedef typename VectorType<S, VEC_ELEMENTS>::Type Vector;
 
 		// Raw data to load
-		S raw[CTA_STRIPS][ELEMENTS];
+		S raw[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
 
 		// Alias pointers
 		Vector (*data_vectors)[VECTORS] =
 			reinterpret_cast<Vector (*)[VECTORS]>(raw);
 
 		Vector *d_in_vectors =
-			reinterpret_cast<Vector *>(d_in + (threadIdx.x * ELEMENTS) + cta_offset);
+			reinterpret_cast<Vector *>(d_in + (threadIdx.x * THREAD_STRIP_ELEMENTS) + cta_offset);
 
 		// Load raw data
 		Iterate<0, CTA_STRIPS>::LoadVectorSegment(
@@ -350,7 +350,7 @@ public:
 			d_in_vectors);
 
 		// Transform from raw and initialize valid
-		Iterate<0, CTA_STRIPS * ELEMENTS>::TransformRaw(
+		Iterate<0, CTA_STRIPS * THREAD_STRIP_ELEMENTS>::TransformRaw(
 			(T*) data,
 			(S*) raw,
 			transform_op);
@@ -361,18 +361,18 @@ public:
 	 * Load a full tile
 	 */
 	template <
-		int ELEMENTS,
 		typename T,
+		int THREAD_ELEMENTS,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
 
 		return LoadUnguarded(data_2d, d_in, cta_offset, transform_op);
 	}
@@ -384,11 +384,11 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset)
 	{
@@ -402,11 +402,11 @@ public:
 	 */
 	template <
 		typename T,
-		int ELEMENTS,
+		int THREAD_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset)
 	{
@@ -419,15 +419,15 @@ public:
 	 * Load a full, strip-mined tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
-		int CTA_STRIPS,
-		int ELEMENTS,
 		typename T,
+		int CTA_STRIPS,
+		int THREAD_STRIP_ELEMENTS,
 		typename Vector,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset,
@@ -437,10 +437,10 @@ public:
 		{
 			// Use tex
 			const int VEC_ELEMENTS 		= sizeof(Vector) / sizeof(S);
-			const int VECTORS 			= ELEMENTS / (sizeof(Vector) / sizeof(S));
+			const int VECTORS 			= THREAD_STRIP_ELEMENTS / (sizeof(Vector) / sizeof(S));
 
 			// Data to load
-			S raw[CTA_STRIPS][ELEMENTS];
+			S raw[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
 
 			// Use an aliased pointer to raw array
 			Vector (*data_vectors)[VECTORS] = (Vector (*)[VECTORS]) raw;
@@ -455,7 +455,7 @@ public:
 				base_thread_offset + (threadIdx.x * VECTORS));
 
 			// Transform raw and initialize
-			Iterate<0, CTA_STRIPS * ELEMENTS>::TransformRaw(
+			Iterate<0, CTA_STRIPS * THREAD_STRIP_ELEMENTS>::TransformRaw(
 				(T*) data,
 				(S*) raw,
 				transform_op);
@@ -472,20 +472,20 @@ public:
 	 * Load a full tile (optionally using tex if READ_MODIFIER == ld::tex)
 	 */
 	template <
-		int ELEMENTS,
 		typename T,
+		int THREAD_ELEMENTS,
 		typename Vector,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
 
 		return LoadUnguarded(data_2d, ref, d_in, cta_offset, transform_op);
 	}
@@ -497,12 +497,12 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename Vector,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset)
@@ -517,12 +517,12 @@ public:
 	 */
 	template <
 		typename T,
-		int ELEMENTS,
+		int THREAD_ELEMENTS,
 		typename Vector,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadUnguarded(
-		T (&data)[ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		texture<Vector, cudaTextureType1D, cudaReadModeElementType> ref,
 		S *d_in,
 		SizeT cta_offset)
@@ -542,14 +542,14 @@ public:
 	template <
 		typename Flag,
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadGuarded(
-		Flag (&valid)[CTA_STRIPS][ELEMENTS],
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		Flag (&valid)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
@@ -558,7 +558,7 @@ public:
 		Iterate<0, CTA_STRIPS>::LoadSegmentGuarded(
 			valid,
 			data,
-			d_in + (threadIdx.x * ELEMENTS) + cta_offset,
+			d_in + (threadIdx.x * THREAD_STRIP_ELEMENTS) + cta_offset,
 			guarded_elements,
 			transform_op);
 	}
@@ -569,21 +569,21 @@ public:
 	 */
 	template <
 		typename Flag,
-		int ELEMENTS,
+		int THREAD_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void LoadGuarded(
-		Flag (&valid)[ELEMENTS],
-		T (&data)[ELEMENTS],
+		Flag (&valid)[THREAD_ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
 		TransformOp transform_op)
 	{
-		Flag (&valid_2d)[1][ELEMENTS] = reinterpret_cast<Flag (&)[1][ELEMENTS]>(valid);
-		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
+		Flag (&valid_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<Flag (&)[1][THREAD_ELEMENTS]>(valid);
+		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
 
 		LoadGuarded(valid_2d, data_2d, d_in, cta_offset, guarded_elements, transform_op);
 	}
@@ -595,13 +595,13 @@ public:
 	template <
 		typename Flag,
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadGuarded(
-		Flag (&valid)[CTA_STRIPS][ELEMENTS],
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		Flag (&valid)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -616,13 +616,13 @@ public:
 	 */
 	template <
 		typename Flag,
-		int ELEMENTS,
+		int THREAD_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadGuarded(
-		Flag (&valid)[ELEMENTS],
-		T (&data)[ELEMENTS],
+		Flag (&valid)[THREAD_ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -638,16 +638,16 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int ELEMENTS,
+		int THREAD_STRIP_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadGuarded(
-		T (&data)[CTA_STRIPS][ELEMENTS],
+		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
 	{
-		int valid[CTA_STRIPS][ELEMENTS];
+		int valid[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
 		CastTransformOp<T, S> transform_op;
 		LoadGuarded(valid, data, d_in, cta_offset, guarded_elements, transform_op);
 	}
@@ -658,16 +658,16 @@ public:
 	 */
 	template <
 		typename T,
-		int ELEMENTS,
+		int THREAD_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void LoadGuarded(
-		T (&data)[ELEMENTS],
+		T (&data)[THREAD_ELEMENTS],
 		S *d_in,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
 	{
-		int valid[ELEMENTS];
+		int valid[THREAD_ELEMENTS];
 		CastTransformOp<T, S> transform_op;
 		LoadGuarded(valid, data, d_in, cta_offset, guarded_elements, transform_op);
 	}

@@ -18,34 +18,42 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CUB umbrella include file
+ * Common C/C++ macro utilities
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/cta/cta_load.cuh>
-#include <cub/cta/cta_progress.cuh>
-#include <cub/cta/cta_reduce.cuh>
-#include <cub/cta/cta_scan.cuh>
-#include <cub/cta/cta_store.cuh>
+#include <cub/ns_umbrella.cuh>
 
-#include <cub/host/cuda_props.cuh>
-#include <cub/host/debug.cuh>
-#include <cub/host/kernel_props.cuh>
-#include <cub/host/multi_buffer.cuh>
-#include <cub/host/spinlock.cuh>
+CUB_NS_PREFIX
+namespace cub {
 
-#include <cub/thread/thread_load.cuh>
-#include <cub/thread/thread_reduce.cuh>
-#include <cub/thread/thread_scan.cuh>
-#include <cub/thread/thread_store.cuh>
 
-#include <cub/warp/warp_scan.cuh>
+/**
+ * Select maximum(a, b)
+ */
+#define CUB_MAX(a, b) (((a) > (b)) ? (a) : (b))
 
-#include <cub/macro_utils.cuh>
-#include <cub/device_props.cuh>
-#include <cub/operators.cuh>
-#include <cub/ptx_intrinsics.cuh>
-#include <cub/tex_vector.cuh>
-#include <cub/type_utils.cuh>
 
+/**
+ * Select minimum(a, b)
+ */
+#define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
+
+
+/**
+ * x rounded up to the nearest multiple of y
+ */
+#define CUB_ROUND_UP_NEAREST(x, y) ((((x) + (y) - 1) / (y)) * y)
+
+
+/**
+ * x rounded down to the nearest multiple of y
+ */
+#define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
+
+
+
+
+} // namespace cub
+CUB_NS_POSTFIX

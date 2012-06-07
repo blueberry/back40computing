@@ -18,34 +18,53 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CUB umbrella include file
+ * Cooperative scan abstraction for CTAs.
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/cta/cta_load.cuh>
-#include <cub/cta/cta_progress.cuh>
-#include <cub/cta/cta_reduce.cuh>
-#include <cub/cta/cta_scan.cuh>
-#include <cub/cta/cta_store.cuh>
-
-#include <cub/host/cuda_props.cuh>
-#include <cub/host/debug.cuh>
-#include <cub/host/kernel_props.cuh>
-#include <cub/host/multi_buffer.cuh>
-#include <cub/host/spinlock.cuh>
-
-#include <cub/thread/thread_load.cuh>
-#include <cub/thread/thread_reduce.cuh>
-#include <cub/thread/thread_scan.cuh>
-#include <cub/thread/thread_store.cuh>
-
-#include <cub/warp/warp_scan.cuh>
-
-#include <cub/macro_utils.cuh>
 #include <cub/device_props.cuh>
-#include <cub/operators.cuh>
-#include <cub/ptx_intrinsics.cuh>
-#include <cub/tex_vector.cuh>
 #include <cub/type_utils.cuh>
+#include <cub/operators.cuh>
+#include <cub/ns_umbrella.cuh>
 
+CUB_NS_PREFIX
+namespace cub {
+
+
+/**
+ * Policy for default radix bits (based upon key type and the target
+ * architecture).
+ */
+template <typename KeyType, int TARGET_ARCH>
+struct RadixBitsPolicy
+{
+	enum
+	{
+		VALUE = 5,
+	};
+};
+
+
+
+/**
+ * Cooperative radix sorting abstraction for CTAs.
+ */
+template <
+	int 					CTA_THREADS,
+	int 					BITS_REMAINING,
+	int 					CURRENT_BIT,
+	typename 				KeyType,
+	typename 				ValueType 			= NullType,
+	int 					RADIX_BITS			= DefaultRadixBits<KeyType, PTX_ARCH>::VALUE,
+	cudaSharedMemConfig 	SMEM_CONFIG 		= cudaSharedMemBankSizeFourByte>				// Shared memory bank size
+struct CtaRadixSort
+{
+
+
+};
+
+
+
+} // namespace cub
+CUB_NS_POSTFIX
