@@ -63,7 +63,7 @@ __device__ __forceinline__ unsigned int Extract(
 	const T MASK 		= ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
 	const int SHIFT 	= LEFT_SHIFT - BIT_OFFSET;
 
-	T bits = (source & MASK);
+	unsigned int bits = (source & MASK);
 	if (SHIFT == 0) {
 		bits += addend;
 	} else if (SHIFT > 0) {

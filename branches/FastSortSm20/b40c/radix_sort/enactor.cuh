@@ -227,6 +227,11 @@ struct Enactor
 	{
 		typedef ProblemInstance<DoubleBuffer, int> ProblemInstance;
 
+		if (num_elements <= 1) {
+			// Nothing to do
+			return cudaSuccess;
+		}
+
 		ProblemInstance problem_instance(
 			problem_storage,
 			num_elements,
