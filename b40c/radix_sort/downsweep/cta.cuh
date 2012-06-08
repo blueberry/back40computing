@@ -329,12 +329,13 @@ of-bounds
 	 */
 	template <UnsignedBits TwiddleOp(UnsignedBits)>
 	__device__ __forceinline__ void TwiddleKeys(
-		UnsignedBits converted_keys[KEYS_PER_THREAD])
+		UnsignedBits keys[KEYS_PER_THREAD],
+		UnsignedBits twiddled_keys[KEYS_PER_THREAD])		// out parameter
 	{
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			converted_keys[KEY] = TwiddleOp(converted_keys[KEY]);
+			twiddled_keys[KEY] = TwiddleOp(keys[KEY]);
 		}
 	}
 
@@ -386,7 +387,7 @@ of-bounds
 	 * Decodes given keys to lookup digit offsets in shared memory
 	 */
 	__device__ __forceinline__ void DecodeDigitOffsets(
-		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD],
 		SizeT 			digit_offsets[KEYS_PER_THREAD])
 	{
 		#pragma unroll
@@ -396,7 +397,7 @@ of-bounds
 			// Decode address of bin-offset in smem
 			unsigned int byte_offset = ExtrCURRENT_BIT,
 				RADIX_BITS,
-				LOG_BYTES_PER_SIZET>(converted_keys[KEY]);
+				LOG_BYTES_PER_SIZET>(twiddled_keys[KEY]);
 
 			// Lookup base digit offset from shared memory
 			digit_offsets[KEY] = *(SizeT *)(smem_storage.digit_offset_bytes + byte_offset);
@@ -407,14 +408,14 @@ of-bounds
 	 * Load tile of keys from global memory
 	 */
 	__device__ __forceinline__ void LoadKeys(
-		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		UnsignedBits 	keys[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
 		const SizeT 	&guarded_elements)
 	{
 		if ((LOAD_MODIFIER == util::io::ld::tex) && (guarded_elements >= TILE_ELEMENTS))
 		{
 			// Unguarded loads through tex
-			KeyTexType *vectors = (KeyTexType *) converted_et + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+			KeyTexType *vectors = (KeyTexType *) et + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 			}
 
 		} else {
@@ -438,7 +439,7 @@ of-bounds
 	 * Scan shared memorCTA_THREADS,
 				LOAD_MODIFIER,
 				false>::LoadValid(
-					(UnsignedBits (*)[KEYS_PER_THREAD]) converted_keys,
+					(UnsignedBits (*)[KEYS_PER_THREAD]) keys,
 					d_in_keys,
 					(tex_offset * ELEMENTS_PER_TEX),
 					guarded_elements,
@@ -495,66 +496,80 @@ of-bounds
 	 * and scatter to global
 	 */
 	__device__ __forceinline__ void ScatterKeys(
-		UnsignedBits 	converted_keys[KEYS_PER_THREAD],
+		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD],
 		SizeT 			digit_offsets[KEYS_PER_THREAD],		// (out parameter)
 		unsigned int 	ranks[KEYS_PER_THREAD],
 		const SizeT 	&guarded_elements)
 	{
 		if (SCATTER_STRATEGY == SCATTER_DIRECT)
 		{
-			// Compute scatter offsets
-			DecodeDigitOffsets(converted_keys, digit_offsets);
-
-			// Twiddle keys before outputting
-			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
-
 			// Scatter keys directly to global memory
+
+			// Compute scatter offsets
+			DecodeDigitOffsets(twiddled_keys, digit_offsets);
+
+			// Untwiddle keys before outputting
+			UnsignedBits keys[KEYS_PER_THREAD];
+			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(twiddled_keys, keys);
+
+			// Scatter to global
 			Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
-				converted_keys,
+				keys,
 				ranks,
 				digit_offsets,
 				d_out_keys,
 				guarded_elements);
 		}
+		else if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
+		{
+			// Use warp-aligned scattering of sorted keys from shared memory
+
+			// Untwiddle keys before outputting
+			UnsignedBits keys[KEYS_PER_THREAD];
+			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(twiddled_keys, keys);
+
+			__syncthreads();
+
+			// Scatter to shared memory first
+			ScatterRanked(ranks, keys, smem_storage.key_exchange);
+
+			__syncthreads();
+
+			// Gather sorted keys from smem and scatter to global using warp-aligned scattering
+			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
+				smem_storage,
+				smem_storage.key_exchange,
+				d_out_keys,
+				guarded_elements);
+		}
 		else
 		{
-			__syncthreads();
-
-			// Exchange keys through shared memory for better write-coalescing
-			ScatterRanked(ranks, converted_keys, smem_storage.key_exchange);
+			// Normal two-phase scatter: exchange through shared memory, then
+			// scatter sorted keys to global
 
 			__syncthreads();
 
-			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
-			{
-				// Twiddle keys before outputting
-				TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
+			// Scatter to shared memory first (for better write-coalescing during global scatter)
+			ScatterRanked(ranks, twiddled_keys, smem_storage.key_exchange);
 
-				// Use explicitly warp-aligned scattering of keys from shared memory
-				Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-					smem_storage,
-					smem_storage.key_exchange,
-					d_out_keys,
-					guarded_elements);
-			}
-			else
-			{
-				// Gather keys from shared memory
-				GatherShared(converted_keys, smem_storage.key_exchange);
+			__syncthreads();
 
-				// Compute scatter offsets
-				DecodeDigitOffsets(converted_keys, digit_offsets);
+			// Gather sorted keys from shared memory
+			GatherShared(twiddled_keys, smem_storage.key_exchange);
 
-				// Twiddle keys before outputting
-				TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(converted_keys);
+			// Compute scatter offsets
+			DecodeDigitOffsets(twiddled_keys, digit_offsets);
 
-				// Scatter keys to global memory
-				Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
-					converted_keys,
-					digit_offsets,
-					d_out_keys,
-					guarded_elements);
-			}
+			// Untwiddle keys before outputting
+			UnsignedBits keys[KEYS_PER_THREAD];
+			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(twiddled_keys, keys);
+
+			// Scatter keys to global memory
+			Iterate<0, KEYS_PER_THREAD>::ScatterGlobal(
+				keys,
+				digit_offsets,
+				d_out_keys,
+				guarded_elements);
 		}
 	}
 
@@ -629,26 +644,27 @@ Shared
 			PackedCounter bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
 
 			global_digit_base -= bin_exclTile data
-		UnsignedBits 	converted_keys[KEYS_PER_THREAD];		// Keys
+		UnsignedBits 	keys[KEYS_PER_THREAD];					// Keys
+		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD];			// Twiddled (if necessary) keys
 		ValueType 		values[KEYS_PER_THREAD];				// Values
 		unsigned int	ranks[KEYS_PER_THREAD];					// For each key, the local rank within the CTA
 		SizeT 			digit_offsets[KEYS_PER_THREAD];			// For each key, the global scatter base offset of the corresponding digit
 
+		unsigned int inclusive_digit_count;						// Inclusive digit count for each digit (corresponding to thread-id)
+		unsigned int exclusive_digit_count;						// Exclusive digit count for each digit (corresponding to thread-id)
+
 		// Load tile of keys and twiddle bits if necessary
-		LoadKeys(converted_keys, tex_offset, guarded_elements);
+		LoadKeys(keys, tex_offset, guarded_elements);
 
 		__syncthreads();
 
 		// Twiddle keys
-		TwiddleKeys<KeyTraits<KeyType>::TwiddleIn>(converted_keys);
+		TwiddleKeys<KeyTraits<KeyType>::TwiddleIn>(keys, twiddled_keys);
 
-		// Rank keys
-		unsigned int inclusive_digit_count;						// Inclusive digit count for each digit (corresponding to thread-id)
-		unsigned int exclusive_digit_count;						// Exclusive digit count for each digit (corresponding to thread-id)
-
+		// Rank the twiddled keys
 		CtaRadixRank::RankKeys(
 			smem_storage.ranking_storage,
-			converted_keys,
+			twiddled_keys,
 			ranks,
 			inclusive_digit_count,
 			exclusive_digit_count);
@@ -672,7 +688,7 @@ Shared
 		__syncthreads();
 
 		// Scatter keys
-		ScatterKeys(converted_keys, digit_offsets, ranks, guarded_elements);
+		ScatterKeys(twiddled_keys, digit_offsets, ranks, guarded_elements);
 
 		// Gather/scatter values
 		GatherScatterValues(values, digit_offsets, ranks, tex_offset, guarded_elementsked(*this, tile, tile.keys);
