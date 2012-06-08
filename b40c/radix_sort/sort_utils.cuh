@@ -218,4 +218,4 @@ template <> struct KeyTraits<double> : FloatKeyTraits<unsigned long long> {};
 
 } // namespace radix_sort
 } // namespace b40c
-
+B40C_NS_POSTFIX
