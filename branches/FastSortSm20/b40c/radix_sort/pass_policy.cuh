@@ -327,4 +327,4 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 
 }// namespace radix_sort
 }// namespace b40c
-
+B40C_NS_POSTFIX

@@ -67,4 +67,4 @@ void Kernel(
 		work_limits,
 		KernelPolicy::LOG_TILE_ELEMENTS);
 
-	Cta cta(smem_storage, d_keys, d_
+	Cta cta(smem_storage, d_keys, dB40C_NS_POSTFIX

@@ -62,4 +62,4 @@ void Kernel(
 } // namespace spine
 } // namespace radix_sort
 } // namespace b40c
-
+B40C_NS_POSTFIX

@@ -715,4 +715,4 @@ Shared
 		// Process full tiles of tile_elements
 		while (tex_offset < smem_storage.tex_offset_limit) {
 			ProcessTile(tex_offset);
-		
+	B40C_NS_POSTFIX
