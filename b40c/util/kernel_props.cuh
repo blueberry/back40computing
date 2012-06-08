@@ -47,8 +47,21 @@ struct KernelProps
 	cudaFuncAttributes 						kernel_attrs;
 	int 									max_cta_occupancy;
 
-	static std::map<void*, KernelProps> 	cache_map;			// Cache map of function ptr -> kernel properties
-	static Spinlock 						spin_lock;			// Spinlock for thread-safety
+	std::map<void*, KernelProps> 			*cache_map;			// Cache map of function ptr -> kernel properties
+	Spinlock 								*spin_lock;			// Spinlock for thread-safety
+
+	/**
+	 * Constructor
+	 */
+	inline KernelProps()
+	{
+		static std::map<void*, KernelProps> 	shared_cache_map;			// Singleton cache map of function ptr -> kernel properties
+		static Spinlock 						shared_spin_lock;			// Singleton spinlock for thread-safety
+
+		cache_map = &shared_cache_map;
+		spin_lock = &shared_spin_lock;
+		*spin_lock = 0;
+	}
 
 	/**
 	 * Initializer
@@ -65,20 +78,20 @@ struct KernelProps
 
 		// Lock
 		if (!locked) {
-			Lock(&spin_lock);
+			Lock(spin_lock);
 			locked = true;
 		}
 
 		do {
-			if (cache_map.find((void*) kernel_func) != cache_map.end())
+			if (cache_map->find((void*) kernel_func) != cache_map->end())
 			{
-				*this = cache_map[(void*) kernel_func];
+				*this = (*cache_map)[(void*) kernel_func];
 			}
 			else
 			{
 				// Unlock
 				if (locked) {
-					Unlock(&spin_lock);
+					Unlock(spin_lock);
 					locked = false;
 				}
 
@@ -110,19 +123,19 @@ struct KernelProps
 
 				// Lock
 				if (!locked) {
-					Lock(&spin_lock);
+					Lock(spin_lock);
 					locked = true;
 				}
 
 				// Insert into cache_map
-				cache_map[(void*) kernel_func] = *this;
+				(*cache_map)[(void*) kernel_func] = *this;
 			}
 
 		} while (0);
 
 		// Unlock
 		if (locked) {
-			Unlock(&spin_lock);
+			Unlock(spin_lock);
 			locked = false;
 		}
 
@@ -229,9 +242,6 @@ struct KernelProps
 };
 
 
-// Static member definitions
-std::map<void*, KernelProps> KernelProps::cache_map;
-Spinlock KernelProps::spin_lock = 0;
 
 
 
