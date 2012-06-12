@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include <b40c/util/numeric_traits.cuh>
-#include <b40c/util/vector_types.cuh>
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/numeric_traits.cuh"
+#include "../util/vector_types.cuh"
+#include "../util/io/modified_load.cuh"
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include <b40c/radix_sort/downsweep/cta.cuh>
-#include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../radix_sort/downsweep/cta.cuh"
+#include "../../util/cta_work_distribution.cuh"
+#include "../../util/device_intrinsics.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

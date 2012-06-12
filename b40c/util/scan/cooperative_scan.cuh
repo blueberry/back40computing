@@ -22,12 +22,12 @@
 
 #pragma once
 
-#include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/srts_grid.cuh>
-#include <b40c/util/reduction/cooperative_reduction.cuh>
-#include <b40c/util/scan/serial_scan.cuh>
-#include <b40c/util/scan/warp_scan.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/device_intrinsics.cuh"
+#include "../../util/srts_grid.cuh"
+#include "../../util/reduction/cooperative_reduction.cuh"
+#include "../../util/scan/serial_scan.cuh"
+#include "../../util/scan/warp_scan.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

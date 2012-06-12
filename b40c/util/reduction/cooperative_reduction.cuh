@@ -27,10 +27,10 @@
 
 #pragma once
 
-#include <b40c/util/srts_grid.cuh>
-#include <b40c/util/reduction/serial_reduce.cuh>
-#include <b40c/util/reduction/warp_reduce.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/srts_grid.cuh"
+#include "../../util/reduction/serial_reduce.cuh"
+#include "../../util/reduction/warp_reduce.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

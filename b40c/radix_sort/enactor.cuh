@@ -23,12 +23,12 @@
 
 #pragma once
 
-#include <b40c/radix_sort/problem_instance.cuh>
-#include <b40c/radix_sort/pass_policy.cuh>
-#include <b40c/util/error_utils.cuh>
-#include <b40c/util/spine.cuh>
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../radix_sort/problem_instance.cuh"
+#include "../radix_sort/pass_policy.cuh"
+#include "../util/error_utils.cuh"
+#include "../util/spine.cuh"
+#include "../util/cuda_properties.cuh"
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

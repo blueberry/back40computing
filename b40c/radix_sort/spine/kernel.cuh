@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <b40c/radix_sort/spine/cta.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../radix_sort/spine/cta.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

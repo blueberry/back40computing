@@ -23,8 +23,8 @@
 #pragma once
 
 #include <functional>
-#include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/device_intrinsics.cuh"
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

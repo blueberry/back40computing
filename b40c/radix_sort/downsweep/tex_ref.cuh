@@ -23,10 +23,10 @@
 
 #pragma once
 
-#include <b40c/util/error_utils.cuh>
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/tex_vector.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/error_utils.cuh"
+#include "../../util/basic_utils.cuh"
+#include "../../util/tex_vector.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
