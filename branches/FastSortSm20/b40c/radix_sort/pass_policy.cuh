@@ -23,15 +23,15 @@
 
 #pragma once
 
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/io/modified_store.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/basic_utils.cuh"
+#include "../util/io/modified_load.cuh"
+#include "../util/io/modified_store.cuh"
+#include "../util/ns_umbrella.cuh"
 
-#include <b40c/radix_sort/pass_policy.cuh>
-#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
-#include <b40c/radix_sort/spine/kernel_policy.cuh>
-#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
+#include "../radix_sort/pass_policy.cuh"
+#include "../radix_sort/upsweep/kernel_policy.cuh"
+#include "../radix_sort/spine/kernel_policy.cuh"
+#include "../radix_sort/downsweep/kernel_policy.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

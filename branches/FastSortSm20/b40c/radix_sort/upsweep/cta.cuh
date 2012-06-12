@@ -23,12 +23,12 @@
 
 #pragma once
 
-#include <b40c/radix_sort/sort_utils.cuh>
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/device_intrinsics.cuh>
-#include <b40c/util/io/load_tile.cuh>
-#include <b40c/util/io/scatter_tile.cuh>
-#include#include <b40c/util/ns_umbrella.cuh>
+#include "../../radix_sort/sort_utils.cuh"
+#include "../../util/basic_utils.cuh"
+#include "../../util/device_intrinsics.cuh"
+#include "../../util/io/load_tile.cuh"
+#include "../../util/reduction/serial_reduce.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIXinclude <b40c/radix_sort/sort_utils.cuh>
 

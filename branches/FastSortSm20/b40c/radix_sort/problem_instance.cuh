@@ -23,25 +23,25 @@
 
 #pragma once
 
-#include <b40c/util/spine.cuh>
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/kernel_props.cuh>
-#include <b40c/util/error_utils.cuh>
-#include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/spine.cuh"
+#include "../util/basic_utils.cuh"
+#include "../util/kernel_props.cuh"
+#include "../util/error_utils.cuh"
+#include "../util/cta_work_distribution.cuh"
+#include "../util/ns_umbrella.cuh"
 
-#include <b40c/radix_sort/sort_utils.cuh>
-#include <b40c/radix_sort/pass_policy.cuh>
+#include "../radix_sort/sort_utils.cuh"
+#include "../radix_sort/pass_policy.cuh"
 
-#include <b40c/radix_sort/upsweep/kernel_policy.cuh>
-#include <b40c/radix_sort/upsweep/kernel.cuh>
+#include "../radix_sort/upsweep/kernel_policy.cuh"
+#include "../radix_sort/upsweep/kernel.cuh"
 
-#include <b40c/radix_sort/spine/kernel_policy.cuh>
-#include <b40c/radix_sort/spine/kernel.cuh>
+#include "../radix_sort/spine/kernel_policy.cuh"
+#include "../radix_sort/spine/kernel.cuh"
 
-#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
-#include <b40c/radix_sort/downsweep/kernel.cuh>
-#include <b40c/radix_sort/downsweep/tex_ref.cuh>
+#include "../radix_sort/downsweep/kernel_policy.cuh"
+#include "../radix_sort/downsweep/kernel.cuh"
+#include "../radix_sort/downsweep/tex_ref.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -195,10 +195,11 @@ struct ProblemInstance
 			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
-			const int THREAD_ELEMENTS = 1 << KernelPolicy::LOG_THREAD_ELEMENTS;
-
 			// Wrapper of downsweep texture types
-			typedef downsweep::Textures<KeyType, ValueType, THREAD_ELEMENTS> DownsweepTextures;
+			typedef downsweep::Textures<
+				KeyType,
+				ValueType,
+				(1 << KernelPolicy::LOG_THREAD_ELEMENTS)> DownsweepTextures;
 
 			// Key texture type
 			typedef typename DownsweepTextures::KeyTexType KeyTexType;

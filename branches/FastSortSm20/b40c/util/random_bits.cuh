@@ -24,7 +24,7 @@
 #pragma once
 
 #include <stdlib.h>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

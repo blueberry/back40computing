@@ -27,10 +27,10 @@
 
 #include <map>
 
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/error_utils.cuh>
-#include <b40c/util/spinlock.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../util/cuda_properties.cuh"
+#include "../util/error_utils.cuh"
+#include "../util/spinlock.cuh"
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

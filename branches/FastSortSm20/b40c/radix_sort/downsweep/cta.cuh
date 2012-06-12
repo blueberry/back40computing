@@ -23,16 +23,16 @@
 
 #pragma once
 
-#include <b40c/util/basic_utils.cuh>
-#include <b40c/util/cta_work_distribution.cuh>
-#include <b40c/util/tex_vector.cuh>
-#include <b40c/util/io/load_tile.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/basic_utils.cuh"
+#include "../../util/cta_work_distribution.cuh"
+#include "../../util/tex_vector.cuh"
+#include "../../util/io/load_tile.cuh"
+#include "../../util/ns_umbrella.cuh"
 
-#include <b40c/radix_sort/sort_utils.cuh>
-#include <b40c/radix_sort/cta_radix_rank.cuh>
-#include <b40c/radix_sort/downsweep/kernel_policy.cuh>
-#include <b40c/radix_sort/downsweep/tex_ref.cuh>
+#include "../../radix_sort/sort_utils.cuh"
+#include "../../radix_sort/cta_radix_rank.cuh"
+#include "../../radix_sort/downsweep/kernel_policy.cuh"
+#include "../../radix_sort/downsweep/tex_ref.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

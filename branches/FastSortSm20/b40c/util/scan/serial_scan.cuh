@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <b40c/util/operators.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/operators.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

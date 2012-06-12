@@ -23,16 +23,16 @@
 
 #pragma once
 
-#include <b40c/util/cuda_properties.cuh>
-#include <b40c/util/srts_grid.cuh>
-#include <b40c/util/srts_details.cuh>
-#include <b40c/util/operators.cuh>
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/io/modified_store.cuh>
-#include <b40c/util/io/load_tile.cuh>
-#include <b40c/util/io/store_tile.cuh>
-#include <b40c/util/scan/cooperative_scan.cuh>
-#include <b40c/util/ns_umbrella.cuh>
+#include "../../util/cuda_properties.cuh"
+#include "../../util/srts_grid.cuh"
+#include "../../util/srts_details.cuh"
+#include "../../util/operators.cuh"
+#include "../../util/io/modified_load.cuh"
+#include "../../util/io/modified_store.cuh"
+#include "../../util/io/load_tile.cuh"
+#include "../../util/io/store_tile.cuh"
+#include "../../util/scan/cooperative_scan.cuh"
+#include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
