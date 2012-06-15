@@ -32,6 +32,7 @@ B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 namespace downsweep {
+namespace {
 
 /******************************************************************************
  * Key textures
@@ -61,29 +62,62 @@ struct TexKeys
 		do {
 			cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<KeyVectorType>();
 
-			if (d0) {
+			size_t offset;
+			if (d0)
+			{
 				// Bind key texture ref0
-				retval = cudaBindTexture(0, ref0, d0, tex_desc, bytes);
+				retval = cudaBindTexture(&offset, ref0, d0, tex_desc, bytes);
 				if (retval = util::B40CPerror(retval, "cudaBindTexture failed", __FILE__, __LINE__)) break;
+
+				// We need texture-segment aligned input
+				if (offset)
+				{
+					retval = util::B40CPerror(cudaErrorTextureNotBound , "cudaBindTexture failed", __FILE__, __LINE__);
+					break;
+				}
 			}
-			if (d1) {
+			if (d1)
+			{
 				// Bind key texture ref1
 				retval = cudaBindTexture(0, ref1, d1, tex_desc, bytes);
 				if (retval = util::B40CPerror(retval, "cudaBindTexture failed", __FILE__, __LINE__)) break;
+
+				// We need texture-segment aligned input
+				if (offset)
+				{
+					retval = util::B40CPerror(cudaErrorTextureNotBound , "cudaBindTexture failed", __FILE__, __LINE__);
+					break;
+				}
 			}
 		} while (0);
 
 		return retval;
 	}
 
+	/**
+	 * Unbind textures
+	 */
+	static cudaError_t UnbindTexture()
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			retval = cudaUnbindTexture(ref0);
+			if (util::B40CPerror(retval , "cudaUnbindTexture failed", __FILE__, __LINE__)) break;
+
+			retval = cudaUnbindTexture(ref1);
+			if (util::B40CPerror(retval , "cudaUnbindTexture failed", __FILE__, __LINE__)) break;
+		} while (0);
+
+		return retval;
+	}
 };
 
 // Texture reference definitions
 template <typename KeyVectorType>
-typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref0;
+typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref0 = 0;
 
 template <typename KeyVectorType>
-typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref1;
+typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref1 = 0;
 
 
 
@@ -115,29 +149,62 @@ struct TexValues
 		do {
 			cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<ValueVectorType>();
 
-			if (d0) {
+			size_t offset;
+			if (d0)
+			{
 				// Bind key texture ref0
-				retval = cudaBindTexture(0, ref0, d0, tex_desc, bytes);
+				retval = cudaBindTexture(&offset, ref0, d0, tex_desc, bytes);
 				if (retval = util::B40CPerror(retval, "cudaBindTexture failed", __FILE__, __LINE__)) break;
+
+				// We need texture-segment aligned input
+				if (offset)
+				{
+					retval = util::B40CPerror(cudaErrorTextureNotBound , "cudaBindTexture failed", __FILE__, __LINE__);
+					break;
+				}
 			}
-			if (d1) {
+			if (d1)
+			{
 				// Bind key texture ref1
-				retval = cudaBindTexture(0, ref1, d1, tex_desc, bytes);
+				retval = cudaBindTexture(&offset, ref1, d1, tex_desc, bytes);
 				if (retval = util::B40CPerror(retval, "cudaBindTexture failed", __FILE__, __LINE__)) break;
+
+				// We need texture-segment aligned input
+				if (offset)
+				{
+					retval = util::B40CPerror(cudaErrorTextureNotBound , "cudaBindTexture failed", __FILE__, __LINE__);
+					break;
+				}
 			}
 		} while (0);
 
 		return retval;
 	}
 
+	/**
+	 * Unbind textures
+	 */
+	static cudaError_t UnbindTexture()
+	{
+		cudaError_t retval = cudaSuccess;
+		do {
+			retval = cudaUnbindTexture(ref0);
+			if (util::B40CPerror(retval , "cudaUnbindTexture failed", __FILE__, __LINE__)) break;
+
+			retval = cudaUnbindTexture(ref1);
+			if (util::B40CPerror(retval , "cudaUnbindTexture failed", __FILE__, __LINE__)) break;
+		} while (0);
+
+		return retval;
+	}
 };
 
 // Texture reference definitions
 template <typename ValueVectorType>
-typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref0;
+typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref0 = 0;
 
 template <typename ValueVectorType>
-typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref1;
+typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref1 = 0;
 
 
 
@@ -169,8 +236,7 @@ struct Textures
 		ELEMENTS_PER_TEX>::VecType ValueTexType;
 };
 
-
-
+} // namespace (anonymous)
 } // namespace downsweep
 } // namespace radix_sort
 } // namespace b40c
