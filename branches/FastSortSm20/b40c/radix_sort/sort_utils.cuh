@@ -102,6 +102,35 @@ __device__ __forceinline__ unsigned int Extract(
 }
 
 
+#if defined(__LP64__)
+// longs are 64-bit on non-Windows 64-bit compilers
+
+/**
+ * Bitfield-extract, left-shift (64-bit)
+ */
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
+__device__ __forceinline__ unsigned int Extract(
+	unsigned long source)
+{
+	const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
+	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+
+	unsigned long long bits = (source & MASK);
+	return util::MagnitudeShift<SHIFT>::Shift(bits);
+}
+
+/**
+ * Bitfield-extract, left-shift, add (64-bit)
+ */
+template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
+__device__ __forceinline__ unsigned int Extract(
+	unsigned long source,
+	unsigned int addend)
+{
+	return Extract<BIT_OFFSET, NUM_BITS, LEFT_SHIFT>(source) + addend;
+}
+
+#endif
 
 
 
