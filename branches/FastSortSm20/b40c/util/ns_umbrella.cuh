@@ -30,3 +30,35 @@
 
 #define B40C_NS_PREFIX
 #define B40C_NS_POSTFIX
+
+
+
+/******************************************************************************
+ * Placeholder for CUDART additions that need to be defined for old compiler
+ * versions
+ ******************************************************************************/
+
+namespace b40c {
+
+#if CUDA_VERSION < 4200
+
+enum cudaSharedMemConfig
+{
+    cudaSharedMemBankSizeDefault   = 0,
+    cudaSharedMemBankSizeFourByte  = 1,
+    cudaSharedMemBankSizeEightByte = 2
+};
+
+inline cudaError_t cudaDeviceGetSharedMemConfig(enum cudaSharedMemConfig *pConfig)
+{
+	return cudaSuccess;
+}
+
+inline cudaError_t cudaDeviceSetSharedMemConfig(enum cudaSharedMemConfig config)
+{
+	return cudaSuccess;
+}
+
+#endif
+
+} // namespace b40c
