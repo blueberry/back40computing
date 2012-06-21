@@ -341,8 +341,7 @@ struct CtaRadixRank
 		SmemStorage		&smem_storage,						// Shared memory storage
 		UnsignedBits	(&keys)[KEYS_PER_THREAD],			// Keys for this tile
 		unsigned int 	(&ranks)[KEYS_PER_THREAD],			// For each key, the local rank within the tile (out parameter)
-		unsigned int	&inclusive_digit_count,				// Sum of keys having the radix digit less than or equal to the calling thread-id (out parameter)
-		unsigned int	&exclusive_digit_count)				// Sum of keys having the radix digit less than the calling thread-id (out parameter)
+		unsigned int 	digit_prefixes[RADIX_DIGITS])
 	{
 		// Rank keys
 		RankKeys(smem_storage, keys, ranks);
@@ -350,12 +349,14 @@ struct CtaRadixRank
 		// Get the inclusive and exclusive digit totals corresponding to the calling thread.
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
+			// Initialize digit scan's identity value
+			digit_prefixes[threadIdx.x] = 0;
+
 			// Obtain ex/inclusive digit counts.  (Unfortunately these all reside in the
 			// first counter column, resulting in unavoidable bank conflicts.)
 			int counter_lane = (threadIdx.x & (COUNTER_LANES - 1));
 			int sub_counter = threadIdx.x >> (LOG_COUNTER_LANES);
-			exclusive_digit_count = smem_storage.digit_counters[counter_lane][0][sub_counter];
-			inclusive_digit_count = smem_storage.digit_counters[counter_lane + 1][0][sub_counter];
+			digit_prefixes[threadIdx.x + 1] = smem_storage.digit_counters[counter_lane + 1][0][sub_counter];
 		}
 	}
 };

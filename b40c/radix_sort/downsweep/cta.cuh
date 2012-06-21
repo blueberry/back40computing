@@ -135,7 +135,7 @@ struct Cta
 
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		int digit_scan[RADIX_DIGITS + 1];
+		unsigned int 			digit_prefixes[RADIX_DIGITS + 1];
 
 		union
 		{
@@ -248,8 +248,8 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			if (my_digit < RADI
 			{IGITS) {
 
-				int my_exclus	= smem_storage.digit_scan[my_digit];
-				int my_inclusive_scan 	= smem_storage.digit_scan[my_digit + 1];
+				int my_exclus	= smem_storage.digit_prefixes[my_digit];
+				int my_inclusive_scan 	= smem_storage.digit_prefixes[my_digit + 1];
 				int my_carry 			= smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
 				int my_aligned_offset 	d_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1int gather_offset;
 				while ((gather_offset = my_aligned_offset + my_exclusive_scan) < my_inclusive_scan)
@@ -353,9 +353,15 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			int offset = (PADDED_EXCHANGE) ?
-				util::SHR_ADD(ranks[KEY], LOG_MEM_BANKS, ranks[KEY]) :
-				ranks[KEY];
+			int offset = ranks[KEY];
+
+			if (PADDED_EXCHANGE)
+			{
+				// Workaround for (CUAD4.2+NVCC+abi+m64) bug when sorting 16-bit key-value pairs
+				offset = (sizeof(ValueType) == 2) ?
+					(offset >> LOG_MEM_BANKS) + offset :
+					util::SHR_ADD(offset, LOG_MEM_BANKS, offset);
+			}
 
 			buffer[offset] = items[KEY];
 		}
@@ -585,8 +591,6 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		SizeT 			tex_offset,
 		const SizeT 	&guarded_elements)
 	{
-		__syncthreads();
-
 		// Load tile of values
 		LoadValues<FULL_TILE>(values, tex_offset, guarded_elements);
 
@@ -602,6 +606,8 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		}
 		else if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
 		{
+			__syncthreads();
+
 			// Exchange values through shared memory for better write-coalescing
 			ScatterRanked(ranks, values, smem_storage.value_exchange);
 
@@ -615,6 +621,8 @@ Shar// Use explicitly warp-aligned scattering of values from shared memory
 		}
 		else
 		{
+			__syncthreads();
+
 			// Exchange values through shared memory for better write-coalescing
 			ScatterRanked(ranks, values, smem_storage.value_exchange);
 
@@ -645,15 +653,12 @@ Shar// Gather values from shared
 	{n[0][16 + threadIdx.x] = bin_inctemplate <bool FULL_TILE>nclusive;
 			PackedCounter bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
 
-			global_digit_base -= bin_exclTile data
+			global_digit_base -= bin_exclPer-thread tile data
 		UnsignedBits 	keys[KEYS_PER_THREAD];					// Keys
 		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD];			// Twiddled (if necessary) keys
 		ValueType 		values[KEYS_PER_THREAD];				// Values
 		unsigned int	ranks[KEYS_PER_THREAD];					// For each key, the local rank within the CTA
 		SizeT 			digit_offsets[KEYS_PER_THREAD];			// For each key, the global scatter base offset of the corresponding digit
-
-		unsigned int inclusive_digit_count;						// Inclusive digit count for each digit (corresponding to thread-id)
-		unsigned int exclusive_digit_count;						// Exclusive digit count for each digit (corresponding to thread-id)
 
 		// Load tile of keys and twiddle bits if necessary
 		LoadKeys<FULL_TILE>(keys, tex_offset, guarded_elements);
@@ -668,23 +673,16 @@ Shar// Gather values from shared
 			smem_storage.ranking_storage,
 			twiddled_keys,
 			ranks,
-			inclusive_digit_count,
-			exclusive_digit_count);
+			smem_storage.digit_prefixes);
+
+		__syncthreads();
 
 		// Update global scatter base offsets for each digit
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
-			my_digit_offset -= exclusive_digit_count;
+			my_digit_offset -= smem_storage.digit_prefixes[threadIdx.x];
 			smem_storage.digit_offsets[threadIdx.x] = my_digit_offset;
-			my_digit_offset += inclusive_digit_count;
-
-			if (SCATTER_STRATEGY == SCATTER_WARP_TWO_PHASE)
-			{
-				// Also save in/exclusive digit scans in shared memory for
-				// special AlignedScatterPass() global scattering
-				smem_storage.digit_scan[threadIdx.x] 		= exclusive_digit_count;
-				smem_storage.digit_scan[threadIdx.x + 1] 	= inclusive_digit_count;
-			}
+			my_digit_offset += smem_storage.digit_prefixes[threadIdx.x + 1];
 		}
 
 		__syncthreads();
