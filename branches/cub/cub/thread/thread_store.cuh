@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <cub/ptx_intrinsics.cuh>
-#include <cub/ns_umbrella.cuh>
+#include "../ptx_intrinsics.cuh"
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

@@ -24,8 +24,8 @@
 
 #pragma once
 
-#include <cub/type_utils.cuh>
-#include <cub/ns_umbrella.cuh>
+#include "../type_utils.cuh"
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

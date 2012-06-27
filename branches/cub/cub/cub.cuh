@@ -23,29 +23,29 @@
 
 #pragma once
 
-#include <cub/cta/cta_load.cuh>
-#include <cub/cta/cta_progress.cuh>
-#include <cub/cta/cta_reduce.cuh>
-#include <cub/cta/cta_scan.cuh>
-#include <cub/cta/cta_store.cuh>
+#include "cta/cta_load.cuh"
+#include "cta/cta_progress.cuh"
+#include "cta/cta_reduce.cuh"
+#include "cta/cta_scan.cuh"
+#include "cta/cta_store.cuh"
 
-#include <cub/host/cuda_props.cuh>
-#include <cub/host/debug.cuh>
-#include <cub/host/kernel_props.cuh>
-#include <cub/host/multi_buffer.cuh>
-#include <cub/host/spinlock.cuh>
+#include "host/cuda_props.cuh"
+#include "host/debug.cuh"
+#include "host/kernel_props.cuh"
+#include "host/multi_buffer.cuh"
+#include "host/spinlock.cuh"
 
-#include <cub/thread/thread_load.cuh>
-#include <cub/thread/thread_reduce.cuh>
-#include <cub/thread/thread_scan.cuh>
-#include <cub/thread/thread_store.cuh>
+#include "thread/thread_load.cuh"
+#include "thread/thread_reduce.cuh"
+#include "thread/thread_scan.cuh"
+#include "thread/thread_store.cuh"
 
-#include <cub/warp/warp_scan.cuh>
+#include "warp/warp_scan.cuh"
 
-#include <cub/macro_utils.cuh>
-#include <cub/device_props.cuh>
-#include <cub/operators.cuh>
-#include <cub/ptx_intrinsics.cuh>
-#include <cub/tex_vector.cuh>
-#include <cub/type_utils.cuh>
+#include "macro_utils.cuh"
+#include "device_props.cuh"
+#include "operators.cuh"
+#include "ptx_intrinsics.cuh"
+#include "tex_vector.cuh"
+#include "type_utils.cuh"
 

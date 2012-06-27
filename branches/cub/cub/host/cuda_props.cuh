@@ -23,9 +23,9 @@
 
 #pragma once
 
-#include <cub/device_props.cuh>
-#include <cub/host/debug.cuh>
-#include <cub/ns_umbrella.cuh>
+#include "../device_props.cuh"
+#include "../host/debug.cuh"
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

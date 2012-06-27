@@ -25,7 +25,7 @@
 
 #include <stdio.h>
 #include <test_util.h>
-#include <cub/cub.cuh>
+#include "../cub.cuh"
 
 using namespace cub;
 
@@ -273,16 +273,21 @@ int main(int argc, char** argv)
     {
     	typedef int T;
     	Sum<T> scan_op;
-    	NullType identity;
-    	Test<T>(32, scan_op, identity);
+    	Test<T>(32, scan_op, NullType());
     }
 
-    // int inclusive max
+    // uint exclusive max
     {
-    	typedef int T;
+    	typedef unsigned int T;
     	Max<T> scan_op;
-    	NullType identity;
-    	Test<T>(32, scan_op, identity);
+    	Test<T>(32, scan_op, (unsigned int) -1);
+    }
+
+    // uint inclusive max
+    {
+    	typedef unsigned int T;
+    	Max<T> scan_op;
+    	Test<T>(32, scan_op, NullType());
     }
 
     // uint2 exclusive sum
@@ -297,8 +302,7 @@ int main(int argc, char** argv)
     {
     	typedef uint2 T;
     	Uint2Sum scan_op;
-    	NullType identity;
-    	Test<T>(32, scan_op, identity);
+    	Test<T>(32, scan_op, NullType());
     }
 
     return 0;

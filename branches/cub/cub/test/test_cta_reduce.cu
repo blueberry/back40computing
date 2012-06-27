@@ -24,7 +24,7 @@
 #define CUB_STDERR
 
 #include <stdio.h>
-#include <cub/cub.cuh>
+#include "../cub.cuh"
 #include <test_util.h>
 
 using namespace cub;

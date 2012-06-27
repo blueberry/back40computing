@@ -28,10 +28,10 @@
 #include <set>
 #include <map>
 
-#include <cub/macro_utils.cuh>
-#include <cub/ns_umbrella.cuh>
-#include <cub/host/spinlock.cuh>
-#include <cub/host/debug.cuh>
+#include "../macro_utils.cuh"
+#include "../ns_umbrella.cuh"
+#include "../host/spinlock.cuh"
+#include "../host/debug.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

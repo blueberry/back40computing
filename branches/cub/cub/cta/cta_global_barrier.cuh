@@ -27,8 +27,8 @@
 
 #pragma once
 
-#include <b40c/util/io/modified_load.cuh>
-#include <b40c/util/error_utils.cuh>
+#include <b40c/util/io/modified_load.cuh"
+#include <b40c/util/error_utils.cuh"
 
 namespace b40c {
 namespace util {

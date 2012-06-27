@@ -39,7 +39,7 @@
 #include <sstream>
 #include <iostream>
 
-#include <cub/cub.cuh>
+#include "../cub.cuh"
 
 
 /******************************************************************************

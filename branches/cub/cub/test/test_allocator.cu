@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 #include <iostream>
-#include <cub/host/allocator.cuh>
+#include "../host/allocator.cuh"
 
 #include "test_util.h"
 

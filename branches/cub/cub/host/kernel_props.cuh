@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include <cub/cub.cuh>
-#include <cub/ns_umbrella.cuh>
+#include "../cub.cuh"
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

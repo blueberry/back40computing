@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include <cub/ns_umbrella.cuh>
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
