@@ -161,7 +161,7 @@ struct Uint2Sum
 template <typename T, typename ReductionOp>
 void Initialize(
 	T *h_in,
-	T h_result[1],
+	T h_reference[1],
 	ReductionOp reduction_op,
 	int num_elements)
 {
@@ -171,9 +171,9 @@ void Initialize(
 //		h_in[i] = 1;
 //		h_in[i] = i;
 		if (i == 0)
-			h_result[0] = h_in[0];
+			h_reference[0] = h_in[0];
 		else
-			h_result[0] = reduction_op(h_result[0], h_in[i]);
+			h_reference[0] = reduction_op(h_reference[0], h_in[i]);
 	}
 }
 
@@ -195,10 +195,10 @@ void Test(
 
 	// Allocate host arrays
 	T h_in[TILE_SIZE];
-	T h_result[1];
+	T h_reference[1];
 
 	// Initialize problem
-	Initialize(h_in, h_result, reduction_op, num_elements);
+	Initialize(h_in, h_reference, reduction_op, num_elements);
 
 	// Initialize device arrays
 	T *d_in = NULL;
@@ -238,7 +238,7 @@ void Test(
 	DebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
-	AssertEquals(0, CompareDeviceResults(h_result, d_out, 1, g_verbose, g_verbose));
+	AssertEquals(0, CompareDeviceResults(h_reference, d_out, 1, g_verbose, g_verbose));
 	printf("\n");
 
 	// Cleanup

@@ -35,7 +35,7 @@ namespace cub {
 template <typename T, typename S>
 struct CastTransformOp
 {
-	__device__ __forceinline__ T operator ()(const S &item)
+	__host__ __device__ __forceinline__ T operator ()(const S &item)
 	{
 		return (T) item;
 	}

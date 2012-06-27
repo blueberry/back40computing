@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, Duane Merrill.  All rights reserved.
  * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,7 +23,19 @@
 
 #pragma once
 
-#include <cub/ns_umbrella.cuh>
+#if defined(_WIN32) || defined(_WIN64)
+	#include <intrin.h>
+	#include <windows.h>
+	#undef small			// Windows is terrible for polluting macro namespace
+
+	/**
+	 * Compiler read/write barrier
+	 */
+	#pragma intrinsic(_ReadWriteBarrier)
+
+#endif
+
+#include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
@@ -33,21 +45,6 @@ namespace cub {
 
 	// Microsoft VC++
 	typedef long Spinlock;
-
-	#include <intrin.h>
-
-	/**
-	 * Compiler read/write barrier
-	 */
-	#pragma intrinsic(_ReadWriteBarrier)
-
-	/**
-	 * Pause instruction to prevent excess processor bus usage
-	 */
-	__forceinline__ void CpuRelax()
-	{
-		__nop(); // YieldProcessor(); is reputed to generate pause instrs (instead of nops), but requires windows.h
-	}
 
 #else
 
@@ -75,7 +72,7 @@ namespace cub {
 	/**
 	 * Pause instruction to prevent excess processor bus usage
 	 */
-	__forceinline__ void CpuRelax()
+	__forceinline__ void YieldProcessor()
 	{
 		asm volatile("pause\n": : :"memory");
 	}
@@ -88,9 +85,10 @@ namespace cub {
  */
 __forceinline__ void Lock(volatile Spinlock *lock)
 {
-	while (1) {
+	while (1)
+	{
 		if (!_InterlockedExchange(lock, 1)) return;
-		while(*lock) CpuRelax();
+		while (*lock) YieldProcessor();
 	}
 }
 
