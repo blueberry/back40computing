@@ -41,27 +41,20 @@ namespace util {
  */
 struct KernelProps
 {
+	//---------------------------------------------------------------------
+	// Fields
+	//---------------------------------------------------------------------
+
 	int 									threads;
 	int										sm_arch;
 	int										sm_count;
 	cudaFuncAttributes 						kernel_attrs;
 	int 									max_cta_occupancy;
 
-	std::map<void*, KernelProps> 			*cache_map;			// Cache map of function ptr -> kernel properties
-	Spinlock 								*spin_lock;			// Spinlock for thread-safety
 
-	/**
-	 * Constructor
-	 */
-	inline KernelProps()
-	{
-		static std::map<void*, KernelProps> 	shared_cache_map;			// Singleton cache map of function ptr -> kernel properties
-		static Spinlock 						shared_spin_lock;			// Singleton spinlock for thread-safety
-
-		cache_map = &shared_cache_map;
-		spin_lock = &shared_spin_lock;
-		*spin_lock = 0;
-	}
+	//---------------------------------------------------------------------
+	// Methods
+	//---------------------------------------------------------------------
 
 	/**
 	 * Initializer
@@ -73,71 +66,36 @@ struct KernelProps
 		int sm_arch,
 		int sm_count)
 	{
-		bool locked 			= false;
 		cudaError_t error 		= cudaSuccess;
 
-		// Lock
-		if (!locked) {
-			Lock(spin_lock);
-			locked = true;
-		}
-
 		do {
-			if (cache_map->find((void*) kernel_func) != cache_map->end())
-			{
-				*this = (*cache_map)[(void*) kernel_func];
-			}
-			else
-			{
-				// Unlock
-				if (locked) {
-					Unlock(spin_lock);
-					locked = false;
-				}
+			// Initialize fields
+			this->threads = threads;
+			this->sm_arch = sm_arch;
+			this->sm_count = sm_count;
 
-				// Initialize fields
-				this->threads = threads;
-				this->sm_arch = sm_arch;
-				this->sm_count = sm_count;
+			// Get kernel attributes
+			error = util::B40CPerror(
+				cudaFuncGetAttributes(&kernel_attrs, kernel_func),
+				"cudaFuncGetAttributes failed",
+				__FILE__,
+				__LINE__);
+			if (error) break;
 
-				// Get kernel attributes
-				error = util::B40CPerror(
-					cudaFuncGetAttributes(&kernel_attrs, kernel_func),
-					"EnactorBase cudaFuncGetAttributes kernel_attrs failed",
-					__FILE__,
-					__LINE__);
-				if (error) break;
+			// Compute SM CTA occupancy by resource
+			int max_block_occupancy = CUB_SM_CTAS(sm_arch);
+			int max_thread_occupancy = CUB_SM_THREADS(sm_arch) / threads;
+			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+					(CUB_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
+					max_block_occupancy;
+			int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
 
-				// Compute SM CTA occupancy by resource
-				int max_block_occupancy = CUB_SM_CTAS(sm_arch);
-				int max_thread_occupancy = CUB_SM_THREADS(sm_arch) / threads;
-				int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
-						(CUB_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
-						max_block_occupancy;
-				int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
-
-				// Determine overall SM CTA occupancy
-				max_cta_occupancy = CUB_MIN(
-					CUB_MIN(max_block_occupancy, max_thread_occupancy),
-					CUB_MIN(max_smem_occupancy, max_reg_occupancy));
-
-				// Lock
-				if (!locked) {
-					Lock(spin_lock);
-					locked = true;
-				}
-
-				// Insert into cache_map
-				(*cache_map)[(void*) kernel_func] = *this;
-			}
+			// Determine overall SM CTA occupancy
+			max_cta_occupancy = CUB_MIN(
+				CUB_MIN(max_block_occupancy, max_thread_occupancy),
+				CUB_MIN(max_smem_occupancy, max_reg_occupancy));
 
 		} while (0);
-
-		// Unlock
-		if (locked) {
-			Unlock(spin_lock);
-			locked = false;
-		}
 
 		return error;
 	}
