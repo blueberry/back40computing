@@ -49,6 +49,22 @@ inline cudaError_t B40CPerror(
 }
 
 /**
+ * Displays error message in accordance with debug mode
+ */
+inline cudaError_t B40CPerror(
+	cudaError_t error,
+	const char *filename,
+	int line,
+	bool print = true)
+{
+	if (error && print) {
+		fprintf(stderr, "[%s, %d] (CUDA error %d: %s)\n", filename, line, error, cudaGetErrorString(error));
+		fflush(stderr);
+	}
+	return error;
+}
+
+/**
  * Checks and resets last CUDA error.  If set, displays last error message in accordance with debug mode.
  */
 inline cudaError_t B40CPerror(

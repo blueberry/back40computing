@@ -29,7 +29,6 @@
 
 #include "../util/cuda_properties.cuh"
 #include "../util/error_utils.cuh"
-#include "../util/spinlock.cuh"
 #include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
@@ -66,7 +65,7 @@ struct KernelProps
 		int sm_arch,
 		int sm_count)
 	{
-		cudaError_t error 		= cudaSuccess;
+		cudaError_t error = cudaSuccess;
 
 		do {
 			// Initialize fields
@@ -88,7 +87,9 @@ struct KernelProps
 			int max_smem_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
 					(CUB_SMEM_BYTES(sm_arch) / kernel_attrs.sharedSizeBytes) :
 					max_block_occupancy;
-			int max_reg_occupancy = CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads);
+			int max_reg_occupancy = (kernel_attrs.sharedSizeBytes > 0) ?
+					CUB_SM_REGISTERS(sm_arch) / (kernel_attrs.numRegs * threads) :
+					max_block_occupancy;
 
 			// Determine overall SM CTA occupancy
 			max_cta_occupancy = CUB_MIN(
@@ -116,13 +117,14 @@ struct KernelProps
 		int grid_size;
 		int grains = (num_elements + schedule_granularity - 1) / schedule_granularity;
 
-		if (sm_arch < 120) {
-
+		if (sm_arch < 120)
+		{
 			// G80/G90: double CTA occupancy times SM count
 			grid_size = 2 * max_cta_occupancy * sm_count;
 
-		} else if (sm_arch < 200) {
-
+		}
+		else if (sm_arch < 200)
+		{
 			// GT200: Special sauce.  Start with with full occupancy of all SMs
 			grid_size = max_cta_occupancy * sm_count;
 
@@ -162,14 +164,14 @@ struct KernelProps
 
 				break;
 			}
-
-		} else if (sm_arch < 300) {
-
+		}
+		else if (sm_arch < 300)
+		{
 			// Fermi: quadruple CTA occupancy times SM count
 			grid_size = 4 * max_cta_occupancy * sm_count;
-
-		} else {
-
+		}
+		else
+		{
 			// Kepler: quadruple CTA occupancy times SM count
 			grid_size = 4 * max_cta_occupancy * sm_count;
 		}
