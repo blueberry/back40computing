@@ -32,7 +32,11 @@ B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 namespace downsweep {
+
+// Anonymous namespace in host code for linking
+#if (__CUB_CUDA_ARCH__ == 0)
 namespace {
+#endif
 
 /******************************************************************************
  * Key textures
@@ -236,7 +240,10 @@ struct Textures
 		ELEMENTS_PER_TEX>::VecType ValueTexType;
 };
 
+#if (__CUB_CUDA_ARCH__ == 0)
 } // namespace (anonymous)
+#endif
+
 } // namespace downsweep
 } // namespace radix_sort
 } // namespace b40c

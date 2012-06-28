@@ -250,7 +250,7 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 		(KEYS_ONLY ? 3 : 2),					// MIN_CTA_OCCUPANCY
 		6,										// LOG_CTA_THREADS
 		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
@@ -315,7 +315,7 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 		2,										// MIN_CTA_OCCUPANCY
 		6,										// LOG_CTA_THREADS
 		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		downsweep::SCATTER_WARP_TWO_PHASE,		// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
