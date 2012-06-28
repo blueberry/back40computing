@@ -64,7 +64,7 @@ struct CtaReduce
 	//---------------------------------------------------------------------
 
 	/**
-	 * Layout description for padded CTA raking grid
+	 * Layout type for padded CTA raking grid
 	 */
 	typedef CtaRakingGrid<CTA_THREADS, T, CTA_STRIPS> CtaRakingGrid;
 
@@ -199,7 +199,7 @@ struct CtaReduce
 
 		if (WARP_SYNCHRONOUS)
 		{
-			// Short-circuit directly to warp synchronous reduction
+			// Short-circuit directly to warp synchronous reduction (there is only one strip)
 			partial = Iterate<0, WARP_SYNCH_STEPS, UNGUARDED>::WarpReduce(
 				smem_storage,
 				partial,

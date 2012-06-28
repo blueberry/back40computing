@@ -37,16 +37,18 @@ namespace cub {
  ******************************************************************************/
 
 /**
- * Serial exclusive scan with the specified operator and seed
+ * Computes an exclusive scan across the input array, storing the results into
+ * the specified output array.  Returns the aggregate.
  */
 template <
-	int LENGTH,
-	typename T,
-	typename ReductionOp>
-__device__ __forceinline__ T ThreadScanExcl(
-	T* data,
-	ReductionOp reduction_op,
-	T seed)
+	int LENGTH,				// Length of input/output arrays
+	typename T,				// Input/output type
+	typename ScanOp>		// Binary scan operator type (parameters of type T)
+__device__ __forceinline__ T ThreadScanExclusive(
+	T			*input,		// Input array
+	T			*output,	// Output array (may be aliased to input)
+	ScanOp 		scan_op,
+	T 			seed)
 {
 	T exclusive_partial = seed;
 	T inclusive_partial = seed;
@@ -54,8 +56,8 @@ __device__ __forceinline__ T ThreadScanExcl(
 	#pragma unroll
 	for (int i = 0; i < LENGTH; ++i)
 	{
-		T inclusive_partial = reduction_op(exclusive_partial, data[i]);
-		data[i] = exclusive_partial;
+		inclusive_partial = scan_op(exclusive_partial, input[i]);
+		output[i] = (T) exclusive_partial;
 		exclusive_partial = inclusive_partial;
 	}
 
@@ -64,48 +66,50 @@ __device__ __forceinline__ T ThreadScanExcl(
 
 
 /**
+ * Serial exclusive scan with the specified operator and seed
+ */
+template <
+	int LENGTH,				// Length of input/output arrays
+	typename T,				// Source type
+	typename T,				// Target type
+	typename ScanOp>		// Binary scan operator type (parameters of type T)
+__device__ __forceinline__ T ThreadScanExclusive(
+	T			(&input)[LENGTH],		// Input array
+	T			(&output)[LENGTH],		// Output array (may be aliased to input)
+	ScanOp 		scan_op,
+	T 			seed)
+{
+	return ThreadScanExclusive<LENGTH>((T*) input, (T*) output, scan_op, seed);
+}
+
+
+/**
  * Serial exclusive scan with the addition operator and seed
  */
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T ThreadScanExcl(
-	T* data,
-	T seed)
+__device__ __forceinline__ T ThreadSumExclusive(
+	T			*data,
+	T 			seed)
 {
-	Sum<T> reduction_op;
-	return ThreadScanExcl<LENGTH>(data, reduction_op, seed);
+	Sum<T> scan_op;
+	return ThreadScanExclusive<LENGTH>(data, scan_op, seed);
 }
-
-
-/**
- * Serial exclusive scan with the specified operator and seed
- */
-template <
-	typename ArrayType,
-	typename ReductionOp,
-	typename T>
-__device__ __forceinline__ T ThreadScanExcl(
-	ArrayType &data,
-	ReductionOp reduction_op,
-	T seed)
-{
-	T* linear_array = reinterpret_cast<T*>(data);
-	return ThreadScanExcl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
-}
-
 
 /**
  * Serial exclusive scan with the addition operator and seed
  */
-template <typename ArrayType, typename T>
-__device__ __forceinline__ T ThreadScanExcl(
-	ArrayType &data,
-	T seed)
+template <
+	int LENGTH,
+	typename T>
+__device__ __forceinline__ T ThreadSumExclusive(
+	T			(&data)[LENGTH],
+	T 			seed)
 {
-	Sum<T> reduction_op;
-	return ThreadScanExcl(data, reduction_op, seed);
+	return ThreadScanExclusive<LENGTH>((T*) data, seed);
 }
+
 
 
 /******************************************************************************
@@ -113,20 +117,31 @@ __device__ __forceinline__ T ThreadScanExcl(
  ******************************************************************************/
 
 /**
- * Serial inclusive scan with the specified operator and seed
+ * Serial inclusive scan with the specified operator, optionally seeding with
+ * a given prefix
  */
 template <
 	int LENGTH,
 	typename T,
-	typename ReductionOp>
-__device__ __forceinline__ T ThreadScanIncl(
-	T* data,
-	ReductionOp reduction_op,
-	T seed)
+	typename ScanOp>
+__device__ __forceinline__ T ThreadScanInclusive(
+	T* 			data,
+	ScanOp 		scan_op,
+	T 			seed = data[0],			// Prefix to seed scan with
+	bool		apply_seed = true)		// Whether or not the calling thread should apply the seed
 {
+	// Apply seed if appropriate
+	if ((LENGTH > 0) && (apply_seed))
+	{
+		seed = scan_op(seed, data[0]);
+		data[0] = seed;
+	}
+
+	// Continue scan
 	#pragma unroll
-	for (int i = 0; i < LENGTH; ++i) {
-		seed = reduction_op(seed, data[i]);
+	for (int i = 1; i < LENGTH; ++i)
+	{
+		seed = scan_op(seed, data[i]);
 		data[i] = seed;
 	}
 
@@ -135,106 +150,22 @@ __device__ __forceinline__ T ThreadScanIncl(
 
 
 /**
- * Serial inclusive scan with the specified operator
- */
-template <
-	int LENGTH,
-	typename T,
-	typename ReductionOp>
-__device__ __forceinline__ T ThreadScanIncl(
-	T* data,
-	ReductionOp reduction_op)
-{
-	T seed = data[0];
-	return ThreadScanIncl<LENGTH - 1>(data + 1, reduction_op, seed);
-}
-
-
-/**
- * Serial inclusive scan with the addition operator and seed
+ * Serial inclusive scan with the addition operator, optionally seeding with
+ * a given prefix
  */
 template <
 	int LENGTH,
 	typename T>
-__device__ __forceinline__ T ThreadScanIncl(
-	T* data,
-	T seed)
+__device__ __forceinline__ T ThreadSumInclusive(
+	T* 			data,
+	T 			seed = data[0],			// Prefix to seed scan with
+	bool		apply_seed = true)		// Whether or not the calling thread should apply the seed
 {
-	Sum<T> reduction_op;
-	return ThreadScanIncl<LENGTH>(data, reduction_op, seed);
+	Sum<T> scan_op;
+	return ThreadScanInclusive<LENGTH>(data, scan_op, seed, apply_seed);
 }
 
 
-/**
- * Serial inclusive scan with the addition operator
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadScanIncl(T* data)
-{
-	Sum<T> reduction_op;
-	return ThreadScanIncl<LENGTH>(data, reduction_op);
-}
-
-
-/**
- * Serial inclusive scan with the specified operator and seed
- */
-template <
-	typename ArrayType,
-	typename ReductionOp,
-	typename T>
-__device__ __forceinline__ T ThreadScanIncl(
-	ArrayType &data,
-	ReductionOp reduction_op,
-	T seed)
-{
-	T* linear_array = reinterpret_cast<T*>(data);
-	return ThreadScanIncl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op, seed);
-}
-
-
-/**
- * Serial inclusive scan with the specified operator
- */
-template <
-	typename ArrayType,
-	typename ReductionOp>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadScanIncl(
-	ArrayType &data,
-	ReductionOp reduction_op)
-{
-	typedef typename ArrayTraits<ArrayType>::Type T;
-	T* linear_array = reinterpret_cast<T*>(data);
-	return ThreadScanIncl<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
-}
-
-
-/**
- * Serial inclusive scan with the addition operator and seed
- */
-template <typename ArrayType, typename T>
-__device__ __forceinline__ T ThreadScanIncl(
-	ArrayType &data,
-	T seed)
-{
-	Sum<T> reduction_op;
-	return ThreadScanIncl(data, reduction_op, seed);
-}
-
-
-/**
- * Serial inclusive scan with the addition operator
- */
-template <typename ArrayType>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadScanIncl(
-	ArrayType &data)
-{
-	typedef typename ArrayTraits<ArrayType>::Type T;
-	Sum<T> reduction_op;
-	return ThreadScanIncl(data, reduction_op);
-}
 
 
 } // namespace cub

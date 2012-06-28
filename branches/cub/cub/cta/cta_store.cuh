@@ -80,17 +80,17 @@ private:
 			typename S,
 			typename SizeT,
 			typename TransformOp,
-			int THREAD_STRIP_ELEMENTS>
+			int STRIP_ELEMENTS>
 		static __device__ __forceinline__ void StoreGuarded(
 			const int STRIP,
-			T (&data)[THREAD_STRIP_ELEMENTS],
+			T (&data)[STRIP_ELEMENTS],
 			S *d_out,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
 			const int OFFSET = (STRIP * ACTIVE_THREADS * TOTAL) + CURRENT;
 
-			if ((threadIdx.x * THREAD_STRIP_ELEMENTS) + OFFSET < guarded_elements)
+			if ((threadIdx.x * STRIP_ELEMENTS) + OFFSET < guarded_elements)
 			{
 				// Transform and store
 				S raw = transform_op(data[CURRENT]);
@@ -109,14 +109,14 @@ private:
 		// Guarded singleton by flag
 		template <
 			typename Flag,
-			int THREAD_STRIP_ELEMENTS,
+			int STRIP_ELEMENTS,
 			typename T,
 			typename S,
 			typename TransformOp>
 		static __device__ __forceinline__ void StoreGuardedByFlag(
 			const int STRIP,
-			Flag (&valid)[THREAD_STRIP_ELEMENTS],
-			T (&data)[THREAD_STRIP_ELEMENTS],
+			Flag (&valid)[STRIP_ELEMENTS],
+			T (&data)[STRIP_ELEMENTS],
 			S *d_out,
 			TransformOp transform_op)
 		{
@@ -185,18 +185,18 @@ private:
 		// Segment of guarded singletons
 		template <
 			typename T,
-			int THREAD_STRIP_ELEMENTS,
+			int STRIP_ELEMENTS,
 			typename S,
 			typename SizeT,
 			typename TransformOp>
 		static __device__ __forceinline__ void StoreSegmentGuarded(
-			T data[][THREAD_STRIP_ELEMENTS],
+			T data[][STRIP_ELEMENTS],
 			S *d_out,
 			const SizeT &guarded_elements,
 			TransformOp transform_op)
 		{
 			// Perform guarded, transforming raking vector stores for this segment
-			Iterate<0, THREAD_STRIP_ELEMENTS>::StoreGuarded(
+			Iterate<0, STRIP_ELEMENTS>::StoreGuarded(
 				CURRENT,
 				data[CURRENT],
 				d_out,
@@ -214,18 +214,18 @@ private:
 		// Segment of guarded singletons by flag
 		template <
 			typename Flag,
-			int THREAD_STRIP_ELEMENTS,
+			int STRIP_ELEMENTS,
 			typename T,
 			typename S,
 			typename TransformOp>
 		static __device__ __forceinline__ void StoreSegmentGuardedByFlag(
-			Flag valid[][THREAD_STRIP_ELEMENTS],
-			T data[][THREAD_STRIP_ELEMENTS],
+			Flag valid[][STRIP_ELEMENTS],
+			T data[][STRIP_ELEMENTS],
 			S *d_out,
 			TransformOp transform_op)
 		{
 			// Perform guarded, transforming raking vector stores for this segment
-			Iterate<0, THREAD_STRIP_ELEMENTS>::StoreGuardedByFlag(
+			Iterate<0, STRIP_ELEMENTS>::StoreGuardedByFlag(
 				CURRENT,
 				valid[CURRENT],
 				data[CURRENT],
@@ -254,20 +254,20 @@ private:
 			Vector *d_out_vectors) {}
 
 		// Guarded singleton
-		template <typename T, int THREAD_STRIP_ELEMENTS, typename S, typename SizeT, typename TransformOp>
+		template <typename T, int STRIP_ELEMENTS, typename S, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void StoreGuarded(
 			const int STRIP,
-			T (&data)[THREAD_STRIP_ELEMENTS],
+			T (&data)[STRIP_ELEMENTS],
 			S *d_out,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
 
 		// Guarded singleton by flag
-		template <typename Flag, int THREAD_STRIP_ELEMENTS, typename T, typename S, typename TransformOp>
+		template <typename Flag, int STRIP_ELEMENTS, typename T, typename S, typename TransformOp>
 		static __device__ __forceinline__ void StoreGuardedByFlag(
 			const int STRIP,
-			Flag (&valid)[THREAD_STRIP_ELEMENTS],
-			T (&data)[THREAD_STRIP_ELEMENTS],
+			Flag (&valid)[STRIP_ELEMENTS],
+			T (&data)[STRIP_ELEMENTS],
 			S *d_out,
 			TransformOp transform_op) {}
 
@@ -285,18 +285,18 @@ private:
 			Vector *d_out_vectors) {}
 
 		// Segment of guarded singletons
-		template <typename T, int THREAD_STRIP_ELEMENTS, typename S, typename SizeT, typename TransformOp>
+		template <typename T, int STRIP_ELEMENTS, typename S, typename SizeT, typename TransformOp>
 		static __device__ __forceinline__ void StoreSegmentGuarded(
-			T data[][THREAD_STRIP_ELEMENTS],
+			T data[][STRIP_ELEMENTS],
 			S *d_out,
 			const SizeT &guarded_elements,
 			TransformOp transform_op) {}
 
 		// Segment of guarded singletons by flag
-		template <typename Flag, int THREAD_STRIP_ELEMENTS, typename T, typename S, typename TransformOp>
+		template <typename Flag, int STRIP_ELEMENTS, typename T, typename S, typename TransformOp>
 		static __device__ __forceinline__ void StoreSegmentGuardedByFlag(
-			Flag valid[][THREAD_STRIP_ELEMENTS],
-			T data[][THREAD_STRIP_ELEMENTS],
+			Flag valid[][STRIP_ELEMENTS],
+			T data[][STRIP_ELEMENTS],
 			S *d_out,
 			TransformOp transform_op) {}
 
@@ -314,30 +314,30 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreUnguarded(
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
 		enum
 		{
-			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, THREAD_STRIP_ELEMENTS),
-			VEC_ELEMENTS		= (THREAD_STRIP_ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
-			VECTORS 			= THREAD_STRIP_ELEMENTS / VEC_ELEMENTS,
+			MAX_VEC_ELEMENTS 	= CUB_MIN(MAX_VEC_ELEMENTS, STRIP_ELEMENTS),
+			VEC_ELEMENTS		= (STRIP_ELEMENTS % MAX_VEC_ELEMENTS == 0) ? MAX_VEC_ELEMENTS : 1,	// Elements must be an even multiple of vector size
+			VECTORS 			= STRIP_ELEMENTS / VEC_ELEMENTS,
 		};
 
 		typedef typename VectorType<S, VEC_ELEMENTS>::Type Vector;
 
 		// Raw data to store
-		S raw[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
+		S raw[CTA_STRIPS][STRIP_ELEMENTS];
 
 		// Transform into raw
-		Iterate<0, CTA_STRIPS * THREAD_STRIP_ELEMENTS>::TransformRaw(
+		Iterate<0, CTA_STRIPS * STRIP_ELEMENTS>::TransformRaw(
 			(T*) data,
 			(S*) raw,
 			transform_op);
@@ -347,7 +347,7 @@ public:
 			reinterpret_cast<Vector (*)[VECTORS]>(raw);
 
 		Vector *d_out_vectors =
-			reinterpret_cast<Vector *>(d_out + (threadIdx.x * THREAD_STRIP_ELEMENTS) + cta_offset);
+			reinterpret_cast<Vector *>(d_out + (threadIdx.x * STRIP_ELEMENTS) + cta_offset);
 
 		Iterate<0, CTA_STRIPS>::StoreVectorSegment(
 			data_vectors,
@@ -360,17 +360,17 @@ public:
 	 */
 	template <
 		typename T,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreUnguarded(
-		T (&data)[THREAD_ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 		StoreUnguarded(data_2d, d_out, cta_offset, transform_op);
 	}
 
@@ -381,11 +381,11 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreUnguarded(
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{
@@ -399,11 +399,11 @@ public:
 	 */
 	template <
 		typename T,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreUnguarded(
-		T (&data)[THREAD_ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{
@@ -422,12 +422,12 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreGuarded(
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
@@ -435,7 +435,7 @@ public:
 	{
 		Iterate<0, CTA_STRIPS>::StoreSegmentGuarded(
 			data,
-			d_out + (threadIdx.x * THREAD_STRIP_ELEMENTS) + cta_offset,
+			d_out + (threadIdx.x * STRIP_ELEMENTS) + cta_offset,
 			guarded_elements,
 			transform_op);
 	}
@@ -446,18 +446,18 @@ public:
 	 */
 	template <
 		typename T,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreGuarded(
-		T (&data)[THREAD_ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements,
 		TransformOp transform_op)
 	{
-		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 		StoreGuarded(data_2d, d_out, cta_offset, guarded_elements, transform_op);
 	}
 
@@ -468,11 +468,11 @@ public:
 	template <
 		typename T,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreGuarded(
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -487,11 +487,11 @@ public:
 	 */
 	template <
 		typename T,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreGuarded(
-		T (&data)[THREAD_ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		const SizeT &guarded_elements)
@@ -507,26 +507,26 @@ public:
 	template <
 		typename Flag,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreGuarded(
-		Flag (&valid)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		Flag (&valid)[CTA_STRIPS][STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
 		// Data to store
-		S raw[CTA_STRIPS][THREAD_STRIP_ELEMENTS];
+		S raw[CTA_STRIPS][STRIP_ELEMENTS];
 
 		Iterate<0, CTA_STRIPS>::StoreSegmentGuardedByFlag(
 			valid,
 			data,
 			raw,
-			d_out + (threadIdx.x * THREAD_STRIP_ELEMENTS) + cta_offset,
+			d_out + (threadIdx.x * STRIP_ELEMENTS) + cta_offset,
 			transform_op);
 	}
 
@@ -536,20 +536,20 @@ public:
 	 */
 	template <
 		typename Flag,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT,
 		typename TransformOp>
 	static __device__ __forceinline__ void StoreGuarded(
-		Flag (&valid)[THREAD_ELEMENTS],
-		T (&data)[THREAD_ELEMENTS],
+		Flag (&valid)[ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset,
 		TransformOp transform_op)
 	{
-		Flag (&valid_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(valid);
-		T (&data_2d)[1][THREAD_ELEMENTS] = reinterpret_cast<T (&)[1][THREAD_ELEMENTS]>(data);
+		Flag (&valid_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(valid);
+		T (&data_2d)[1][ELEMENTS] = reinterpret_cast<T (&)[1][ELEMENTS]>(data);
 		StoreGuarded(valid_2d, data_2d, d_out, cta_offset, transform_op);
 	}
 
@@ -560,13 +560,13 @@ public:
 	template <
 		typename Flag,
 		int CTA_STRIPS,
-		int THREAD_STRIP_ELEMENTS,
+		int STRIP_ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreGuarded(
-		Flag (&valid)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
-		T (&data)[CTA_STRIPS][THREAD_STRIP_ELEMENTS],
+		Flag (&valid)[CTA_STRIPS][STRIP_ELEMENTS],
+		T (&data)[CTA_STRIPS][STRIP_ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{
@@ -580,13 +580,13 @@ public:
 	 */
 	template <
 		typename Flag,
-		int THREAD_ELEMENTS,
+		int ELEMENTS,
 		typename T,
 		typename S,
 		typename SizeT>
 	static __device__ __forceinline__ void StoreGuarded(
-		Flag (&valid)[THREAD_ELEMENTS],
-		T (&data)[THREAD_ELEMENTS],
+		Flag (&valid)[ELEMENTS],
+		T (&data)[ELEMENTS],
 		S *d_out,
 		SizeT cta_offset)
 	{

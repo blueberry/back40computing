@@ -59,7 +59,8 @@ __device__ __forceinline__ T ThreadReduce(
 	T seed)
 {
 	#pragma unroll
-	for (int i = 0; i < LENGTH; ++i) {
+	for (int i = 0; i < LENGTH; ++i)
+	{
 		seed = reduction_op(seed, data[i]);
 	}
 
