@@ -22,18 +22,20 @@
  *
  * For example:
  *
+ *	Sum<T> op;
+ *
  * 	int a[4] = {1, 2, 3, 4};
- * 	ThreadReduce(a));						// 10
+ * 	ThreadReduce(a, op));						// 10
  *
  *  int b[2][2] = {{1, 2}, {3, 4}};
- * 	ThreadReduce(b));						// 10
+ * 	ThreadReduce(b, op));						// 10
  *
  * 	int *c = &a[1];
- * 	ThreadReduce(c));						// 2
- * 	ThreadReduce<2>(c));					// 5
+ * 	ThreadReduce(c, op));						// 2
+ * 	ThreadReduce<2>(c, op));					// 5
  *
  * 	int (*d)[2] = &b[1];
- * 	ThreadReduce(d));						// 7
+ * 	ThreadReduce(d, op));						// 7
  *
  ******************************************************************************/
 
@@ -85,34 +87,6 @@ __device__ __forceinline__ T ThreadReduce(
 
 
 /**
- * Serial reduction with the addition operator and seed
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadReduce(
-	T* data,
-	T seed)
-{
-	Sum<T> reduction_op;
-	return ThreadReduce<LENGTH>(data, reduction_op, seed);
-}
-
-
-/**
- * Serial reduction with the addition operator
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadReduce(T* data)
-{
-	Sum<T> reduction_op;
-	return ThreadReduce<LENGTH>(data, reduction_op);
-}
-
-
-/**
  * Serial reduction with the specified operator and seed
  */
 template <
@@ -143,34 +117,6 @@ __device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
 	T* linear_array = reinterpret_cast<T*>(data);
 	return ThreadReduce<ArrayTraits<ArrayType>::ELEMENTS>(linear_array, reduction_op);
 }
-
-
-/**
- * Serial reduction with the addition operator and seed
- */
-template <typename ArrayType>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
-	ArrayType &data,
-	typename ArrayTraits<ArrayType>::Type seed)
-{
-	typedef typename ArrayTraits<ArrayType>::Type T;
-	Sum<T> reduction_op;
-	return ThreadReduce(data, reduction_op, seed);
-}
-
-
-/**
- * Serial reduction with the addition operator
- */
-template <typename ArrayType>
-__device__ __forceinline__ typename ArrayTraits<ArrayType>::Type ThreadReduce(
-	ArrayType &data)
-{
-	typedef typename ArrayTraits<ArrayType>::Type T;
-	Sum<T> reduction_op;
-	return ThreadReduce(data, reduction_op);
-}
-
 
 
 } // namespace cub

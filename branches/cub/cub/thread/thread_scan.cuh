@@ -33,137 +33,123 @@ namespace cub {
 
 
 /******************************************************************************
- * Exclusive scan
+ * Exclusive prefix scan
  ******************************************************************************/
 
 /**
- * Computes an exclusive scan across the input array, storing the results into
- * the specified output array.  Returns the aggregate.
+ * Exclusive prefix scan across a thread-local array (with specified prefix).
+ * Returns the aggregate.
  */
 template <
-	int LENGTH,				// Length of input/output arrays
-	typename T,				// Input/output type
-	typename ScanOp>		// Binary scan operator type (parameters of type T)
-__device__ __forceinline__ T ThreadScanExclusive(
-	T			*input,		// Input array
-	T			*output,	// Output array (may be aliased to input)
-	ScanOp 		scan_op,
-	T 			seed)
+	int LENGTH,					// Length of input/output arrays
+	typename T,					// Input/output type
+	typename ScanOp>			// Binary scan operator type (parameters of type T)
+__host__ __device__ __forceinline__ T ThreadScanExclusive(
+	T		*input,				// Input array
+	T		*output,			// Output array (may be aliased to input)
+	ScanOp	scan_op,			// Scan operator
+	T 		prefix)				// Prefix to prefix scan with
 {
-	T exclusive_partial = seed;
-	T inclusive_partial = seed;
+	T exclusive = prefix;
+	T inclusive = prefix;
 
 	#pragma unroll
 	for (int i = 0; i < LENGTH; ++i)
 	{
-		inclusive_partial = scan_op(exclusive_partial, input[i]);
-		output[i] = (T) exclusive_partial;
-		exclusive_partial = inclusive_partial;
+		inclusive = scan_op(exclusive, input[i]);
+		output[i] = (T) exclusive;
+		exclusive = inclusive;
 	}
 
-	return inclusive_partial;
+	return inclusive;
 }
 
 
 /**
- * Serial exclusive scan with the specified operator and seed
+ * Exclusive prefix scan across a thread-local array (with specified seed prefix).
+ * Returns the aggregate.
  */
 template <
-	int LENGTH,				// Length of input/output arrays
-	typename T,				// Source type
-	typename T,				// Target type
-	typename ScanOp>		// Binary scan operator type (parameters of type T)
-__device__ __forceinline__ T ThreadScanExclusive(
-	T			(&input)[LENGTH],		// Input array
-	T			(&output)[LENGTH],		// Output array (may be aliased to input)
-	ScanOp 		scan_op,
-	T 			seed)
+	int LENGTH,					// Length of input/output arrays
+	typename T,					// Input/output type
+	typename ScanOp>			// Binary scan operator type (parameters of type T)
+__host__ __device__ __forceinline__ T ThreadScanExclusive(
+	T		(&input)[LENGTH],	// Input array
+	T		(&output)[LENGTH],	// Output array (may be aliased to input)
+	ScanOp	scan_op,			// Scan operator
+	T 		prefix)				// Prefix to prefix scan with
 {
-	return ThreadScanExclusive<LENGTH>((T*) input, (T*) output, scan_op, seed);
-}
-
-
-/**
- * Serial exclusive scan with the addition operator and seed
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadSumExclusive(
-	T			*data,
-	T 			seed)
-{
-	Sum<T> scan_op;
-	return ThreadScanExclusive<LENGTH>(data, scan_op, seed);
-}
-
-/**
- * Serial exclusive scan with the addition operator and seed
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadSumExclusive(
-	T			(&data)[LENGTH],
-	T 			seed)
-{
-	return ThreadScanExclusive<LENGTH>((T*) data, seed);
+	return ThreadScanExclusive<LENGTH>((T*) input, (T*) output, scan_op, prefix);
 }
 
 
 
 /******************************************************************************
- * Inclusive scan
+ * Inclusive prefix scan
  ******************************************************************************/
 
 /**
- * Serial inclusive scan with the specified operator, optionally seeding with
- * a given prefix
+ * Inclusive prefix scan across a thread-local array. Returns the aggregate.
+ */
+template <
+	int LENGTH,					// Length of input/output arrays
+	typename T,					// Input/output type
+	typename ScanOp>			// Scan operator type (functor)
+__host__ __device__ __forceinline__ T ThreadScanInclusive(
+	T		*input,				// Input array
+	T		*output,			// Output array (may be aliased to input)
+	ScanOp 	scan_op)			// Scan operator
+{
+	T inclusive = input[0];
+	output[0] = inclusive;
+
+	// Continue scan
+	#pragma unroll
+	for (int i = 0; i < LENGTH; ++i)
+	{
+		inclusive = scan_op(inclusive, input[i]);
+		output[i] = inclusive;
+	}
+
+	return inclusive;
+}
+
+
+/**
+ * Inclusive prefix scan across a thread-local array (with specified seed prefix).
+ * Returns the aggregate.
  */
 template <
 	int LENGTH,
 	typename T,
-	typename ScanOp>
-__device__ __forceinline__ T ThreadScanInclusive(
-	T* 			data,
-	ScanOp 		scan_op,
-	T 			seed = data[0],			// Prefix to seed scan with
-	bool		apply_seed = true)		// Whether or not the calling thread should apply the seed
+	typename ScanOp>				// Scan operator type (functor)
+__host__ __device__ __forceinline__ T ThreadScanInclusive(
+	T		*input,					// Input array
+	T		*output,				// Output array (may be aliased to input)
+	ScanOp 	scan_op,				// Scan operator
+	T 		prefix,					// Prefix to prefix scan with (if non-null)
+	bool 	apply_prefix = true)	// Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
 {
-	// Apply seed if appropriate
-	if ((LENGTH > 0) && (apply_seed))
+	T inclusive = input[0];
+
+	// Apply prefix if appropriate
+	if (apply_prefix)
 	{
-		seed = scan_op(seed, data[0]);
-		data[0] = seed;
+		inclusive = scan_op(prefix, inclusive);
 	}
+	output[0] = inclusive;
 
 	// Continue scan
 	#pragma unroll
 	for (int i = 1; i < LENGTH; ++i)
 	{
-		seed = scan_op(seed, data[i]);
-		data[i] = seed;
+		inclusive = scan_op(inclusive, input[i]);
+		output[i] = inclusive;
 	}
 
-	return seed;
+	return inclusive;
 }
 
-
-/**
- * Serial inclusive scan with the addition operator, optionally seeding with
- * a given prefix
- */
-template <
-	int LENGTH,
-	typename T>
-__device__ __forceinline__ T ThreadSumInclusive(
-	T* 			data,
-	T 			seed = data[0],			// Prefix to seed scan with
-	bool		apply_seed = true)		// Whether or not the calling thread should apply the seed
-{
-	Sum<T> scan_op;
-	return ThreadScanInclusive<LENGTH>(data, scan_op, seed, apply_seed);
-}
 
 
 
