@@ -40,13 +40,26 @@ bool g_verbose = false;
 
 
 /**
- * Type of primitive to test
+ * Primitive variant to test
  */
 enum TestMode
 {
 	BASIC,
 	AGGREGATE,
 	PREFIX_AGGREGATE,
+};
+
+
+/**
+ * Test problem generation options
+ */
+enum GenMode
+{
+	UNIFORM,			// All 1s
+	SEQ_INC,			// Sequentially incrementing
+	RANDOM,				// Random
+
+	GEN_MODE_END,
 };
 
 
@@ -81,6 +94,7 @@ struct Uint2Sum
  * Exclusive WarpScan test kernel.
  */
 template <
+	int 		LOGICAL_WARP_THREADS,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp,
@@ -93,7 +107,7 @@ __global__ void WarpScanKernel(
 	T			prefix)
 {
 	// Cooperative warp-scan utility type (1 warp)
-	typedef WarpScan<T, 1> WarpScan;
+	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
 
 	// Shared memory
 	__shared__ typename WarpScan::SmemStorage smem_storage;
@@ -133,6 +147,7 @@ __global__ void WarpScanKernel(
  * Inclusive WarpScan test kernel.
  */
 template <
+	int 		LOGICAL_WARP_THREADS,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp>
@@ -144,7 +159,7 @@ __global__ void WarpScanKernel(
 	T			prefix)
 {
 	// Cooperative warp-scan utility type (1 warp)
-	typedef WarpScan<T, 1> WarpScan;
+	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
 
 	// Shared memory
 	__shared__ typename WarpScan::SmemStorage smem_storage;
@@ -188,22 +203,28 @@ __global__ void WarpScanKernel(
  * Initialize value at a given index
  */
 template <typename T>
-void InitValue(T &value, int index)
+void InitValue(int gen_mode, T &value, int index)
 {
-//	RandomBits(value);
-//	value = 1;
-	value = index;
+	switch (gen_mode)
+	{
+	case UNIFORM:
+		value = 1;
+		break;
+	case SEQ_INC:
+		value = index;
+		break;
+	case RANDOM:
+	default:
+		RandomBits(value);
+	}
 }
 
 /**
  * Initialize value at a given index.  Specialized for uint2.
  */
-void InitValue(uint2 &value, int index)
+void InitValue(int gen_mode, uint2 &value, int index)
 {
-//	RandomBits(value.x);
-//	value.x = 1;
-	value.x = index;
-
+	InitValue(gen_mode, value.x, index);
 	value.y = value.x;
 }
 
@@ -216,6 +237,7 @@ template <
 	typename 	ScanOp,
 	typename 	IdentityT>
 T Initialize(
+	int		 	gen_mode,
 	T 			*h_in,
 	T 			*h_reference,
 	int 		num_elements,
@@ -227,7 +249,7 @@ T Initialize(
 
 	for (int i = 0; i < num_elements; ++i)
 	{
-		InitValue(h_in[i], i);
+		InitValue(gen_mode, h_in[i], i);
 		h_reference[i] = inclusive;
 		inclusive = scan_op(inclusive, h_in[i]);
 	}
@@ -243,6 +265,7 @@ template <
 	typename 	T,
 	typename 	ScanOp>
 T Initialize(
+	int		 	gen_mode,
 	T 			*h_in,
 	T 			*h_reference,
 	int 		num_elements,
@@ -253,7 +276,7 @@ T Initialize(
 	T inclusive;
 	for (int i = 0; i < num_elements; ++i)
 	{
-		InitValue(h_in[i], i);
+		InitValue(gen_mode, h_in[i], i);
 		if (i == 0)
 		{
 			inclusive = (prefix != NULL) ?
@@ -275,79 +298,74 @@ T Initialize(
  * Test warp scan
  */
 template <
+	int 		LOGICAL_WARP_THREADS,
 	TestMode 	TEST_MODE,
 	typename 	ScanOp,
-	typename 	IdentityT,		// NullType for inclusive-scan
+	typename 	IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
 	typename 	T>
 void Test(
-	int 		warp_size,
+	int 		gen_mode,
 	ScanOp 		scan_op,
 	IdentityT 	identity,
 	T			prefix)
 {
 	// Allocate host arrays
-	T *h_in = new T[warp_size];
-	T *h_reference = new T[warp_size];
+	T *h_in = new T[LOGICAL_WARP_THREADS];
+	T *h_reference = new T[LOGICAL_WARP_THREADS];
 
 	// Initialize problem
 	T *p_prefix = (TEST_MODE == PREFIX_AGGREGATE) ? &prefix : NULL;
-	T aggregate = Initialize(h_in, h_reference, warp_size, scan_op, identity, p_prefix);
+	T aggregate = Initialize(gen_mode, h_in, h_reference, LOGICAL_WARP_THREADS, scan_op, identity, p_prefix);
 
 	// Initialize device arrays
 	T *d_in = NULL;
 	T *d_out = NULL;
-	DebugExit(cudaMalloc((void**)&d_in, sizeof(T) * warp_size));
-	DebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (warp_size + 1)));
-	DebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * warp_size, cudaMemcpyHostToDevice));
+	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * LOGICAL_WARP_THREADS));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (LOGICAL_WARP_THREADS + 1)));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * LOGICAL_WARP_THREADS, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	printf("%s warpscan warp_size(%d) sizeof(T)(%d):\n",
+	printf("%s warpscan LOGICAL_WARP_THREADS(%d) sizeof(T)(%d):\n",
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
-		warp_size,
+		LOGICAL_WARP_THREADS,
 		(int) sizeof(T));
 	fflush(stdout);
 
 	// Run aggregate/prefix kernel
-	WarpScanKernel<TEST_MODE><<<1, warp_size>>>(
+	WarpScanKernel<LOGICAL_WARP_THREADS, TEST_MODE><<<1, LOGICAL_WARP_THREADS>>>(
 		d_in,
 		d_out,
 		scan_op,
 		identity,
 		prefix);
 
-	DebugExit(cudaDeviceSynchronize());
+	CubDebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
-	AssertEquals(0, CompareDeviceResults(h_reference, d_out, warp_size, g_verbose, g_verbose));
+	AssertEquals(0, CompareDeviceResults(h_reference, d_out, LOGICAL_WARP_THREADS, g_verbose, g_verbose));
 	printf("\n");
 
 	// Copy out and display aggregate
 	if ((TEST_MODE == AGGREGATE) || (TEST_MODE == PREFIX_AGGREGATE))
 	{
-		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + warp_size, 1, g_verbose, g_verbose));
+		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + LOGICAL_WARP_THREADS, 1, g_verbose, g_verbose));
 		printf("\n");
 	}
 
 	// Cleanup
 	if (h_in) delete h_in;
 	if (h_reference) delete h_in;
-	if (d_in) DebugExit(cudaFree(d_in));
-	if (d_out) DebugExit(cudaFree(d_out));
+	if (d_in) CubDebugExit(cudaFree(d_in));
+	if (d_out) CubDebugExit(cudaFree(d_out));
 }
 
-
 /**
- * Main
+ * Run battery of tests for different logical warp widths (which
+ * must be less than or equal to the device warp width)
  */
-int main(int argc, char** argv)
+template <int LOGICAL_WARP_THREADS>
+void Test(int gen_mode)
 {
-    // Initialize command line
-    CommandLineArgs args(argc, argv);
-    DeviceInit(args);
-    g_verbose = args.CheckCmdLineFlag("v");
-
-    const int WARP_SIZE = 32;
-
     // int sum
     {
     	typedef int T;
@@ -356,14 +374,14 @@ int main(int argc, char** argv)
     	T prefix = 99;
 
     	// Exclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
 
     	// Inclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     }
 
     // uint max
@@ -374,14 +392,14 @@ int main(int argc, char** argv)
     	T prefix = 99;
 
     	// Exclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
 
     	// Inclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
 
     }
 
@@ -393,15 +411,49 @@ int main(int argc, char** argv)
     	T prefix = {14, 21};
 
     	// Exclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
 
     	// Inclusive
-    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
-    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     }
+
+}
+
+
+/**
+ * Run battery of tests for different problem generation options
+ */
+template <int LOGICAL_WARP_THREADS>
+void Test()
+{
+	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
+	{
+		Test<LOGICAL_WARP_THREADS>(gen_mode);
+	}
+}
+
+
+/**
+ * Main
+ */
+int main(int argc, char** argv)
+{
+    // Initialize command line
+    CommandLineArgs args(argc, argv);
+    g_verbose = args.CheckCmdLineFlag("v");
+
+    // Initialize device
+    CubDebugExit(args.DeviceInit());
+
+    // Test logical warp sizes
+    Test<32>();
+    Test<16>();
+    Test<9>();
+    Test<7>();
 
     return 0;
 }

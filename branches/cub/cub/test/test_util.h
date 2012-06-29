@@ -1,5 +1,6 @@
 /******************************************************************************
  * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -41,13 +42,22 @@
 
 #include "../cub.cuh"
 
+/******************************************************************************
+ * Assertion macros
+ ******************************************************************************/
+
+/**
+ * Assert equals
+ */
+#define AssertEquals(a, b) if ((a) != (b)) { std::cerr << "\n(" << __FILE__ << ": " << __LINE__ << ")\n"; exit(1);}
+
 
 /******************************************************************************
  * Command-line parsing functionality
  ******************************************************************************/
 
 /**
- * CommandLineArgs interface
+ * Utility for parsing command line arguments
  */
 class CommandLineArgs
 {
@@ -57,7 +67,9 @@ protected:
 
 public:
 
-	// Constructor
+	/**
+	 * Constructor
+	 */
 	CommandLineArgs(int argc, char **argv)
 	{
 		using namespace std;
@@ -83,6 +95,7 @@ public:
 	    }
 	}
 
+
 	/**
 	 * Checks whether a flag "--<flag>" is present in the commandline
 	 */
@@ -96,17 +109,63 @@ public:
 		return false;
 	}
 
+
 	/**
 	 * Returns the value specified for a given commandline parameter --<flag>=<value>
 	 */
 	template <typename T>
-	void GetCmdLineArgument(const char *arg_name, T &val);
+	void GetCmdLineArgument(const char *arg_name, T &val)
+	{
+		using namespace std;
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+			istringstream str_stream(itr->second);
+			str_stream >> val;
+	    }
+	}
+
 
 	/**
 	 * Returns the values specified for a given commandline parameter --<flag>=<value>,<value>*
 	 */
 	template <typename T>
-	void GetCmdLineArguments(const char *arg_name, std::vector<T> &vals);
+	void GetCmdLineArguments(const char *arg_name, std::vector<T> &vals)
+	{
+		using namespace std;
+
+		// Recover multi-value string
+		map<string, string>::iterator itr;
+		if ((itr = pairs.find(arg_name)) != pairs.end()) {
+
+			// Clear any default values
+			vals.clear();
+
+			string val_string = itr->second;
+			istringstream str_stream(val_string);
+			string::size_type old_pos = 0;
+			string::size_type new_pos = 0;
+
+			// Iterate comma-separated values
+			T val;
+			while ((new_pos = val_string.find(',', old_pos)) != string::npos) {
+
+				if (new_pos != old_pos) {
+					str_stream.width(new_pos - old_pos);
+					str_stream >> val;
+					vals.push_back(val);
+				}
+
+				// skip over comma
+				str_stream.ignore(1);
+				old_pos = new_pos + 1;
+			}
+
+			// Read last value
+			str_stream >> val;
+			vals.push_back(val);
+		}
+	}
+
 
 	/**
 	 * The number of pairs parsed
@@ -115,97 +174,52 @@ public:
 	{
 		return pairs.size();
 	}
-};
 
+	/**
+	 * Initialize device
+	 */
+	cudaError_t DeviceInit(int dev = -1)
+	{
+		cudaError_t error = cudaSuccess;
 
-template <typename T>
-void CommandLineArgs::GetCmdLineArgument(
-	const char *arg_name,
-	T &val)
-{
-	using namespace std;
-	map<string, string>::iterator itr;
-	if ((itr = pairs.find(arg_name)) != pairs.end()) {
-		istringstream str_stream(itr->second);
-		str_stream >> val;
-    }
-}
+		do {
+			int deviceCount;
+			error = CubDebug(cudaGetDeviceCount(&deviceCount));
+			if (error) break;
 
-
-template <typename T>
-void CommandLineArgs::GetCmdLineArguments(
-	const char *arg_name,
-	std::vector<T> &vals)
-{
-	using namespace std;
-
-	// Recover multi-value string
-	map<string, string>::iterator itr;
-	if ((itr = pairs.find(arg_name)) != pairs.end()) {
-
-		// Clear any default values
-		vals.clear();
-
-		string val_string = itr->second;
-		istringstream str_stream(val_string);
-		string::size_type old_pos = 0;
-		string::size_type new_pos = 0;
-
-		// Iterate comma-separated values
-		T val;
-		while ((new_pos = val_string.find(',', old_pos)) != string::npos) {
-
-			if (new_pos != old_pos) {
-				str_stream.width(new_pos - old_pos);
-				str_stream >> val;
-				vals.push_back(val);
+			if (deviceCount == 0) {
+				fprintf(stderr, "No devices supporting CUDA.\n");
+				exit(1);
+			}
+			if (dev < 0)
+			{
+				GetCmdLineArgument("device", dev);
+			}
+			if ((dev > deviceCount - 1) || (dev < 0))
+			{
+				dev = 0;
 			}
 
-			// skip over comma
-			str_stream.ignore(1);
-			old_pos = new_pos + 1;
-		}
+			cudaDeviceProp deviceProp;
+			error = CubDebug(cudaGetDeviceProperties(&deviceProp, dev));
+			if (error) break;
 
-		// Read last value
-		str_stream >> val;
-		vals.push_back(val);
+			if (deviceProp.major < 1) {
+				fprintf(stderr, "Device does not support CUDA.\n");
+				exit(1);
+			}
+			if (!CheckCmdLineFlag("quiet")) {
+				printf("Using device %d: %s\n", dev, deviceProp.name);
+			}
+
+			error = CubDebug(cudaSetDevice(dev));
+			if (error) break;
+
+		} while (0);
+
+		return error;
 	}
-}
-
-
-
-/******************************************************************************
- * Device initialization
- ******************************************************************************/
-
-void DeviceInit(CommandLineArgs &args)
-{
-	int deviceCount;
-	cudaGetDeviceCount(&deviceCount);
-	if (deviceCount == 0) {
-		fprintf(stderr, "No devices supporting CUDA.\n");
-		exit(1);
-	}
-	int dev = 0;
-	args.GetCmdLineArgument("device", dev);
-	if (dev < 0) {
-		dev = 0;
-	}
-	if (dev > deviceCount - 1) {
-		dev = deviceCount - 1;
-	}
-	cudaDeviceProp deviceProp;
-	cudaGetDeviceProperties(&deviceProp, dev);
-	if (deviceProp.major < 1) {
-		fprintf(stderr, "Device does not support CUDA.\n");
-		exit(1);
-	}
-    if (!args.CheckCmdLineFlag("quiet")) {
-        printf("Using device %d: %s\n", dev, deviceProp.name);
-    }
-
-	cudaSetDevice(dev);
-}
+};
 
 
 /******************************************************************************
@@ -286,26 +300,18 @@ void PrintValue<uint2>(uint2 val)
 	std::cout << "(" << val.x << ", " << val.y << ")";
 }
 
+
+/******************************************************************************
+ * Helper routines for list construction and validation
+ ******************************************************************************/
+
+/**
+ * Comparison operator for uint2
+ */
 bool operator !=(const uint2 &a, const uint2 &b)
 {
 	return (a.x != b.x) && (a.y != b.y);
 }
-
-
-/******************************************************************************
- * Helper routines for list construction and validation 
- ******************************************************************************/
-
-/**
- *
- */
-#define DebugExit(f) if (Debug(f, __FILE__, __LINE__)) exit(1)
-
-
-/**
- *
- */
-#define AssertEquals(a, b) if ((a) != (b)) { std::cerr << "\n(" << __FILE__ << ": " << __LINE__ << ")\n"; exit(1);}
 
 
 /**

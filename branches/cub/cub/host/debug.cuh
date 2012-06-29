@@ -78,20 +78,15 @@ __forceinline__ cudaError_t Debug(
 
 
 /**
- * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
- * error message is printed to stderr.  Returns the CUDA error.
+ * Debug macro
  */
-__forceinline__ cudaError_t Debug(cudaError_t error)
-{
-	#ifdef CUB_STDERR
-	if (error) {
-		fprintf(stderr, "(CUDA error %d: %s)\n", error, cudaGetErrorString(error));
-		fflush(stderr);
-	}
-	#endif
-	return error;
-}
+#define CubDebug(f) cub::Debug(f, __FILE__, __LINE__)
 
+
+/**
+ * Debug macro with exit
+ */
+#define CubDebugExit(f) if (cub::Debug(f, __FILE__, __LINE__)) exit(1)
 
 
 } // namespace cub

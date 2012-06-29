@@ -52,9 +52,9 @@ namespace cub {
  * 		  sum does not).
  */
 template <
-	typename 	T,											// The reduction type
-	int 		WARPS,										// The number of warps performing a warp scan
-	int 		WARP_THREADS = DeviceProps::WARP_THREADS>	// The number of threads per "warp" (may be less than the number of hardware warp threads)
+	typename 	T,													// The reduction type
+	int 		WARPS,												// The number of warps performing a warp scan
+	int 		LOGICAL_WARP_THREADS = DeviceProps::WARP_THREADS>	// The number of threads per "warp" (may be less than the number of hardware warp threads)
 class WarpScan
 {
 	//---------------------------------------------------------------------
@@ -65,17 +65,18 @@ private:
 
 	enum
 	{
+		// The number of warp scan steps
+		STEPS = Log2<LOGICAL_WARP_THREADS>::VALUE,
+
 		// Whether or not the reduction type is a built-in primitive
 		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
 
 		// The number of threads in half a warp
-		HALF_WARP_THREADS = WARP_THREADS / 2,
+		HALF_WARP_THREADS = 1 << (STEPS - 1),
 
 		// The number of shared memory elements per warp
-		WARP_SMEM_ELEMENTS =  WARP_THREADS + HALF_WARP_THREADS,
+		WARP_SMEM_ELEMENTS =  LOGICAL_WARP_THREADS + HALF_WARP_THREADS,
 
-		// The number of warp scan steps
-		STEPS = DeviceProps::LOG_WARP_THREADS,
 	};
 
 
@@ -185,8 +186,8 @@ public:
 		T				&output)			// (out) Calling thread's output.  May be aliased with input.
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
 		smem_storage.warp_scan[warp_id][lane_id] = 0;
@@ -211,8 +212,8 @@ public:
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
 		smem_storage.warp_scan[warp_id][lane_id] = 0;
@@ -242,7 +243,7 @@ public:
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
 	{
 		// Lane-IDs
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
 		if (lane_id == 0)
@@ -302,7 +303,7 @@ public:
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
 	{
 		// Warp, lane-IDs
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
 		T partial = input;
@@ -333,8 +334,8 @@ public:
 		ScanOp 			scan_op)			// (in) Scan operator.
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Compute inclusive warp scan (no identity, don't share final)
 		output = Iterate<0, STEPS, false, false>::InclusiveScan(
@@ -371,8 +372,8 @@ public:
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Compute inclusive warp scan (no identity, share final)
 		output = Iterate<0, STEPS, false, true>::InclusiveScan(
@@ -416,7 +417,7 @@ public:
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
 		if (lane_id == 0)
@@ -461,8 +462,8 @@ public:
 		T				identity)			// (in) Identity value.
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
 		smem_storage.warp_scan[warp_id][lane_id] = identity;
@@ -507,7 +508,7 @@ public:
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
 		// Warp id
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / LOGICAL_WARP_THREADS);
 
 		// Exclusive warp scan
 		ExclusiveScan(smem_storage, input, output, scan_op, identity);
@@ -548,7 +549,7 @@ public:
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
 		if (lane_id == 0)
