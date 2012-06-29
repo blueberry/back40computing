@@ -396,7 +396,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>,								// (in) Scan operator.
+		Sum<T, true>,						// (in) Scan operator.
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
 		InclusiveSum(smem_storage, input, output, aggregate);
@@ -438,7 +438,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>,								// (in) Scan operator.
+		Sum<T, true>,						// (in) Scan operator.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
@@ -488,7 +488,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>,								// (in) Scan operator.
+		Sum<T, true>,						// (in) Scan operator.
 		T)									// (in) Identity value.
 	{
 		ExclusiveSum(smem_storage, input, output);
@@ -526,7 +526,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>,								// (in) Scan operator.
+		Sum<T, true>,						// (in) Scan operator.
 		T,									// (in) Identity value.
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
@@ -576,7 +576,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>,								// (in) Scan operator.
+		Sum<T, true>,						// (in) Scan operator.
 		T,									// (in) Identity value.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).

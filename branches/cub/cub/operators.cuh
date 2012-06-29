@@ -23,7 +23,9 @@
 
 #pragma once
 
+#include "type_utils.cuh"
 #include "ns_umbrella.cuh"
+
 
 CUB_NS_PREFIX
 namespace cub {
@@ -58,19 +60,15 @@ struct Equality
 /**
  * Default sum functor
  */
-template <typename T>
+template <
+	typename T,
+	bool PRIMITIVE = Traits<T>::PRIMITIVE>
 struct Sum
 {
 	// Binary reduction
 	__host__ __device__ __forceinline__ T operator()(const T &a, const T &b)
 	{
 		return a + b;
-	}
-
-	// Identity
-	__host__ __device__ __forceinline__ T operator()()
-	{
-		return (T) 0;
 	}
 };
 

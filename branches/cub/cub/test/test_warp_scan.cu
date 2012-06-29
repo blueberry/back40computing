@@ -64,26 +64,15 @@ enum GenMode
 
 
 /**
- * Uint2 reduction operator
+ * Uint2 summation operator
  */
-struct Uint2Sum
+__host__ __device__ __forceinline__ uint2 operator+(uint2 a, uint2 b)
 {
-	// Scan op
-	__host__ __device__ __forceinline__ uint2 operator()(uint2 a, uint2 b)
-	{
-		a.x += b.x;
-		a.y += b.y;
-		return a;
-	}
+	a.x += b.x;
+	a.y += b.y;
+	return a;
+}
 
-	// Identity
-	__host__ __device__ __forceinline__ uint2 operator()()
-	{
-		uint2 retval;
-		retval.x = retval.y = 0;
-		return retval;
-	}
-};
 
 
 //---------------------------------------------------------------------
@@ -366,6 +355,7 @@ void Test(
 template <int LOGICAL_WARP_THREADS>
 void Test(int gen_mode)
 {
+/*
     // int sum
     {
     	typedef int T;
@@ -402,16 +392,17 @@ void Test(int gen_mode)
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
 
     }
-
+*/
     // uint2 sum
-    {
+//    {
     	typedef uint2 T;
-    	Uint2Sum scan_op;
-    	T identity = scan_op();
+    	Sum<T> scan_op;
+    	T identity = {0, 0};
     	T prefix = {14, 21};
 
     	// Exclusive
     	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+/*
     	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
 
@@ -420,7 +411,7 @@ void Test(int gen_mode)
     	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     }
-
+*/
 }
 
 
@@ -430,7 +421,11 @@ void Test(int gen_mode)
 template <int LOGICAL_WARP_THREADS>
 void Test()
 {
-	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
+	for (
+		int gen_mode = UNIFORM;
+		gen_mode < UNIFORM + 1;
+//		gen_mode < GEN_MODE_END;
+		gen_mode++)
 	{
 		Test<LOGICAL_WARP_THREADS>(gen_mode);
 	}
@@ -451,9 +446,9 @@ int main(int argc, char** argv)
 
     // Test logical warp sizes
     Test<32>();
-    Test<16>();
-    Test<9>();
-    Test<7>();
+//    Test<16>();
+//    Test<9>();
+//    Test<7>();
 
     return 0;
 }
