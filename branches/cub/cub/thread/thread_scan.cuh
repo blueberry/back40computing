@@ -44,7 +44,7 @@ template <
 	int LENGTH,					// Length of input/output arrays
 	typename T,					// Input/output type
 	typename ScanOp>			// Binary scan operator type (parameters of type T)
-__host__ __device__ __forceinline__ T ThreadScanExclusive(
+__device__ __forceinline__ T ThreadScanExclusive(
 	T		*input,				// Input array
 	T		*output,			// Output array (may be aliased to input)
 	ScanOp	scan_op,			// Scan operator
@@ -73,7 +73,7 @@ template <
 	int LENGTH,					// Length of input/output arrays
 	typename T,					// Input/output type
 	typename ScanOp>			// Binary scan operator type (parameters of type T)
-__host__ __device__ __forceinline__ T ThreadScanExclusive(
+__device__ __forceinline__ T ThreadScanExclusive(
 	T		(&input)[LENGTH],	// Input array
 	T		(&output)[LENGTH],	// Output array (may be aliased to input)
 	ScanOp	scan_op,			// Scan operator
@@ -95,7 +95,7 @@ template <
 	int LENGTH,					// Length of input/output arrays
 	typename T,					// Input/output type
 	typename ScanOp>			// Scan operator type (functor)
-__host__ __device__ __forceinline__ T ThreadScanInclusive(
+__device__ __forceinline__ T ThreadScanInclusive(
 	T		*input,				// Input array
 	T		*output,			// Output array (may be aliased to input)
 	ScanOp 	scan_op)			// Scan operator
@@ -123,7 +123,7 @@ template <
 	int LENGTH,
 	typename T,
 	typename ScanOp>				// Scan operator type (functor)
-__host__ __device__ __forceinline__ T ThreadScanInclusive(
+__device__ __forceinline__ T ThreadScanInclusive(
 	T		*input,					// Input array
 	T		*output,				// Output array (may be aliased to input)
 	ScanOp 	scan_op,				// Scan operator

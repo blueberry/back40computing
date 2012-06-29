@@ -33,11 +33,28 @@ namespace cub {
 
 
 /**
+ * Cooperative scan abstraction for warps.
+ *
  * Performs a warp-synchronous Kogge-Stone style prefix scan.
+ *
+ * Features:
+ * 		- Supports non-commutative scan operators.
+ * 		- Supports concurrent scans within multiple warps.
+ * 		- Supports logical warps smaller than the physical warp size (e.g., 8 threads)
+ * 		- Zero bank conflicts for most types.
+ *
+ * Is most efficient when:
+ * 		- The scan type T is a built-in primitive type (int, float, double,
+ * 		  etc.).  Memory fences *may* be required to prevent reference reordering
+ *        of non-primitive types.
+ * 		- Performing exclusive scans (where an identity element is provided).
+ * 		  Inclusive scans *may* require guarded loads (although inclusive prefix
+ * 		  sum does not).
  */
 template <
-	int 		WARPS,			// The number of warps performing a warp scan
-	typename 	T>				// The reduction type
+	typename 	T,											// The reduction type
+	int 		WARPS,										// The number of warps performing a warp scan
+	int 		WARP_THREADS = DeviceProps::WARP_THREADS>	// The number of threads per "warp" (may be less than the number of hardware warp threads)
 class WarpScan
 {
 	//---------------------------------------------------------------------
@@ -52,10 +69,10 @@ private:
 		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
 
 		// The number of threads in half a warp
-		HALF_WARP_THREADS = DeviceProps::WARP_THREADS / 2,
+		HALF_WARP_THREADS = WARP_THREADS / 2,
 
 		// The number of shared memory elements per warp
-		WARP_SMEM_ELEMENTS =  DeviceProps::WARP_THREADS + HALF_WARP_THREADS,
+		WARP_SMEM_ELEMENTS =  WARP_THREADS + HALF_WARP_THREADS,
 
 		// The number of warp scan steps
 		STEPS = DeviceProps::LOG_WARP_THREADS,
@@ -87,7 +104,7 @@ public:
 private:
 
 	// General template iteration
-	template <int COUNT, int MAX, bool HAS_IDENTITY>
+	template <int COUNT, int MAX, bool HAS_IDENTITY, bool SHARE_FINAL>
 	struct Iterate
 	{
 		/**
@@ -116,7 +133,7 @@ private:
 				partial = scan_op(partial, addend);
 			}
 
-			return Iterate<COUNT + 1, MAX, HAS_IDENTITY>::InclusiveScan(
+			return Iterate<COUNT + 1, MAX, HAS_IDENTITY, SHARE_FINAL>::InclusiveScan(
 				smem_storage,
 				warp_id,
 				lane_id,
@@ -125,9 +142,10 @@ private:
 		}
 	};
 
+
 	// Termination
-	template <int MAX, bool HAS_IDENTITY>
-	struct Iterate<MAX, MAX, HAS_IDENTITY>
+	template <int MAX, bool HAS_IDENTITY, bool SHARE_FINAL>
+	struct Iterate<MAX, MAX, HAS_IDENTITY, SHARE_FINAL>
 	{
 		// InclusiveScan
 		template <typename ScanOp>
@@ -138,16 +156,25 @@ private:
 			T 				partial, 			// Calling thread's input partial reduction
 			ScanOp 			scan_op)			// Scan operator
 		{
+			if (SHARE_FINAL)
+			{
+				// Share partial into buffer
+				smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = partial;
+
+				// Prevent compiler from reordering or omitting memory accesses between rounds
+				if (!PRIMITIVE) __threadfence_block();
+			}
+
 			return partial;
 		}
 	};
 
 
-public:
-
 	//---------------------------------------------------------------------
 	// Inclusive prefix sum interface
 	//---------------------------------------------------------------------
+
+public:
 
 	/**
 	 * Inclusive prefix sum.
@@ -158,14 +185,14 @@ public:
 		T				&output)			// (out) Calling thread's output.  May be aliased with input.
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
 		// Initialize identity region
 		smem_storage.warp_scan[warp_id][lane_id] = 0;
 
-		// Compute inclusive warp scan
-		output = Iterate<0, STEPS, true>::InclusiveScan(
+		// Compute inclusive warp scan (has identity, don't share final)
+		output = Iterate<0, STEPS, true, false>::InclusiveScan(
 			smem_storage,
 			warp_id,
 			lane_id,
@@ -184,14 +211,19 @@ public:
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
-		// Compute inclusive warp scan
-		InclusiveSum(smem_storage, input, output);
+		// Initialize identity region
+		smem_storage.warp_scan[warp_id][lane_id] = 0;
 
-		// Share partial into buffer
-		smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = output;
+		// Compute inclusive warp scan (has identity, share final)
+		output = Iterate<0, STEPS, true, true>::InclusiveScan(
+			smem_storage,
+			warp_id,
+			lane_id,
+			input,
+			Sum<T>());
 
 		// Retrieve aggregate in lane-0
 		aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
@@ -209,9 +241,8 @@ public:
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
 	{
-		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		// Lane-IDs
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
 		if (lane_id == 0)
@@ -220,13 +251,7 @@ public:
 		}
 
 		// Compute inclusive warp scan
-		InclusiveSum(smem_storage, input, output);
-
-		// Share partial into buffer
-		smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = output;
-
-		// Retrieve aggregate in lane-0
-		aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
+		InclusiveSum(smem_storage, input, output, aggregate);
 	}
 
 
@@ -260,18 +285,8 @@ public:
 	{
 		// Compute exclusive warp scan from inclusive warp scan
 		T inclusive;
-		InclusiveSum(smem_storage, input, inclusive);
+		InclusiveSum(smem_storage, input, inclusive, aggregate);
 		output = inclusive - input;
-
-		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
-
-		// Share inclusive into buffer
-		smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = inclusive;
-
-		// Retrieve aggregate
-		aggregate = smem_storage.warp_scan[warp][WARP_SMEM_ELEMENTS - 1];
 	}
 
 
@@ -287,25 +302,19 @@ public:
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
 	{
 		// Warp, lane-IDs
-		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
 		// Incorporate warp-prefix from lane-0
+		T partial = input;
 		if (lane_id == 0)
 		{
-			input = warp_prefix + input;
+			partial = warp_prefix + input;
 		}
 
 		// Compute exclusive warp scan from inclusive warp scan
 		T inclusive;
-		InclusiveSum(smem_storage, input, inclusive);
+		InclusiveSum(smem_storage, partial, inclusive, aggregate);
 		output = inclusive - input;
-
-		// Share inclusive into buffer
-		smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = inclusive;
-
-		// Retrieve aggregate
-		aggregate = smem_storage.warp_scan[warp][WARP_SMEM_ELEMENTS - 1];
 	}
 
 
@@ -317,31 +326,36 @@ public:
 	 * Inclusive prefix scan.
 	 */
 	template <typename ScanOp>
-	static __device__ __forceinline__ T InclusiveScan(
+	static __device__ __forceinline__ void InclusiveScan(
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		ScanOp 			scan_op)			// (in) Scan operator.
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
-		{
-			// Specialized for summation
-			InclusiveSum(smem_storage, input, output);
-		}
-		else
-		{
-			// Warp, lane-IDs
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-			unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		// Warp, lane-IDs
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
-			// Compute inclusive warp scan (guarded because we have no identity element)
-			output = Iterate<0, STEPS, false>::InclusiveScan(
-				smem_storage,
-				warp_id,
-				lane_id,
-				input,
-				scan_op);
-		}
+		// Compute inclusive warp scan (no identity, don't share final)
+		output = Iterate<0, STEPS, false, false>::InclusiveScan(
+			smem_storage,
+			warp_id,
+			lane_id,
+			input,
+			scan_op);
+	}
+
+
+	/**
+	 * Inclusive prefix scan (specialized for summation).
+	 */
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>)								// (in) Scan operator.
+	{
+		InclusiveSum(smem_storage, input, output);
 	}
 
 
@@ -356,29 +370,35 @@ public:
 		ScanOp 			scan_op,			// (in) Scan operator.
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
-		{
-			// Specialized for summation
-			InclusiveSum(smem_storage, input, output, aggregate);
-		}
-		else
-		{
-			// Warp, lane-IDs
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-			unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		// Warp, lane-IDs
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
-			// Compute inclusive warp scan
-			output = InclusiveScan(smem_storage, partial, scan_op);
+		// Compute inclusive warp scan (no identity, share final)
+		output = Iterate<0, STEPS, false, true>::InclusiveScan(
+			smem_storage,
+			warp_id,
+			lane_id,
+			input,
+			scan_op);
 
-			// Share partial into buffer
-			smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = output;
+		// Retrieve aggregate
+		aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
+	}
 
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
 
-			// Retrieve aggregate
-			aggregate = smem_storage.warp_scan[warp][WARP_SMEM_ELEMENTS - 1];
-		}
+	/**
+	 * Inclusive prefix scan (specialized for summation).  Also computes
+	 * warp-wide aggregate in lane-0.
+	 */
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>,								// (in) Scan operator.
+		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
+	{
+		InclusiveSum(smem_storage, input, output, aggregate);
 	}
 
 
@@ -395,35 +415,33 @@ public:
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
+		// Warp, lane-IDs
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+
+		// Incorporate warp-prefix from lane-0
+		if (lane_id == 0)
 		{
-			// Specialized for summation
-			InclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
+			input = scan_op(warp_prefix, input);
 		}
-		else
-		{
-			// Warp, lane-IDs
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-			unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
 
-			// Incorporate warp-prefix from lane-0
-			if (lane_id == 0)
-			{
-				input = warp_prefix + input;
-			}
+		// Compute inclusive warp scan
+		InclusiveScan(smem_storage, input, output, scan_op, aggregate);
+	}
 
-			// Compute inclusive warp scan
-			output = InclusiveScan(smem_storage, partial, scan_op);
 
-			// Share partial into buffer
-			smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = output;
-
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
-
-			// Retrieve aggregate
-			aggregate = smem_storage.warp_scan[warp][WARP_SMEM_ELEMENTS - 1];
-		}
+	/**
+	 * Inclusive prefix scan (specialized for summation), seeded by warp-wide
+	 * prefix from lane-0.  Also computes warp-wide aggregate in lane-0.
+	 */
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>,								// (in) Scan operator.
+		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+	{
+		InclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
 	}
 
 
@@ -435,44 +453,44 @@ public:
 	 * Exclusive prefix scan.
 	 */
 	template <typename ScanOp>
-	static __device__ __forceinline__ T ExclusiveScan(
+	static __device__ __forceinline__ void ExclusiveScan(
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		ScanOp 			scan_op,			// (in) Scan operator.
 		T				identity)			// (in) Identity value.
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
-		{
-			// Specialized for summation
-			ExclusiveSum(smem_storage, input, output);
-		}
-		else
-		{
-			// Warp, lane-IDs
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-			unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
+		// Warp, lane-IDs
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
 
-			// Initialize identity region
-			smem_storage.warp_scan[warp_id][lane_id] = identity;
+		// Initialize identity region
+		smem_storage.warp_scan[warp_id][lane_id] = identity;
 
-			// Inclusive warp scan
-			T inclusive = Iterate<0, STEPS, true>::InclusiveScan(
-				smem_storage,
-				warp_id,
-				lane_id,
-				input,
-				scan_op);
+		// Compute inclusive warp scan (identity, share final)
+		T inclusive = Iterate<0, STEPS, true, true>::InclusiveScan(
+			smem_storage,
+			warp_id,
+			lane_id,
+			input,
+			scan_op);
 
-			// Share inclusive into buffer
-			smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = inclusive;
+		// Retrieve exclusive scan
+		output = smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - 1];
+	}
 
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
 
-			// Retrieve exclusive scan
-			output = smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - 1];
-		}
+	/**
+	 * Exclusive prefix scan (specialized for summation).
+	 */
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>,								// (in) Scan operator.
+		T)									// (in) Identity value.
+	{
+		ExclusiveSum(smem_storage, input, output);
 	}
 
 
@@ -480,7 +498,7 @@ public:
 	 * Exclusive prefix scan.  Also computes warp-wide aggregate in lane-0.
 	 */
 	template <typename ScanOp>
-	static __device__ __forceinline__ T ExclusiveScan(
+	static __device__ __forceinline__ void ExclusiveScan(
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
@@ -488,22 +506,30 @@ public:
 		T				identity,			// (in) Identity value.
 		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
-		{
-			// Specialized for summation
-			ExclusiveSum(smem_storage, input, output, aggregate);
-		}
-		else
-		{
-			// Warp id
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
+		// Warp id
+		unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x / WARP_THREADS);
 
-			// Exclusive warp scan
-			output = ExclusiveScan(smem_storage, partial, scan_op, identity);
+		// Exclusive warp scan
+		ExclusiveScan(smem_storage, input, output, scan_op, identity);
 
-			// Retrieve aggregate
-			aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
-		}
+		// Retrieve aggregate
+		aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
+	}
+
+
+	/**
+	 * Exclusive prefix scan (specialized for summation).  Also computes
+	 * warp-wide aggregate in lane-0.
+	 */
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>,								// (in) Scan operator.
+		T,									// (in) Identity value.
+		T				&aggregate)			// (out) Total aggregate (valid in lane-0)
+	{
+		ExclusiveSum(smem_storage, input, output, aggregate);
 	}
 
 
@@ -521,54 +547,43 @@ public:
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
 		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
-		if (Equals<ScanOp, Sum<T> >::VALUE)
+		// Warp, lane-IDs
+		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (WARP_THREADS - 1));
+
+		// Incorporate warp-prefix from lane-0
+		if (lane_id == 0)
 		{
-			// Specialized for summation
-			ExclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
+			input = scan_op(warp_prefix, input);
 		}
-		else
+
+		// Exclusive warp scan
+		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate);
+
+		// Lane-0 gets warp_prefix (instead of identity)
+		if (lane_id == 0)
 		{
-			// Warp, lane-IDs
-			unsigned int warp_id = (WARPS == 1) ? 0 : (threadIdx.x >> DeviceProps::LOG_WARP_THREADS);
-			unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (DeviceProps::WARP_THREADS - 1));
-
-			// Initialize identity region
-			smem_storage.warp_scan[warp_id][lane_id] = identity;
-
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
-
-			// Incorporate warp-prefix from lane-0
-			if (lane_id == 0)
-			{
-				smem_storage.warp_scan[warp_id][HALF_WARP_THREADS - 1] = warp_prefix;
-			}
-
-			// Inclusive warp scan
-			T inclusive = Iterate<0, STEPS, true>::InclusiveScan(
-				smem_storage,
-				warp_id,
-				lane_id,
-				input,
-				scan_op);
-
-			// Share inclusive into buffer
-			smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = inclusive;
-
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
-
-			// Retrieve exclusive scan
-			output = smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - 1];
-
-			// Retrieve aggregate
-			aggregate = smem_storage.warp_scan[warp_id][WARP_SMEM_ELEMENTS - 1];
+			output = warp_prefix;
 		}
 	}
 
+
+	/**
+	 * Exclusive prefix scan (specialized for summation), seeded by warp-wide
+	 * prefix from lane-0.  Also computes warp-wide aggregate in lane-0.
+	 */
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
+		T 				input, 				// (in) Calling thread's input
+		T				&output,			// (out) Calling thread's output.  May be aliased with input.
+		Sum<T>,								// (in) Scan operator.
+		T,									// (in) Identity value.
+		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+	{
+		ExclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
+	}
+
 };
-
-
 
 
 } // namespace cub

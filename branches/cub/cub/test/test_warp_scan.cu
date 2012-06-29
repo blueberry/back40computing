@@ -29,151 +29,26 @@
 
 using namespace cub;
 
+//---------------------------------------------------------------------
+// Globals , constants and typedefs
+//---------------------------------------------------------------------
+
+/**
+ * Verbose output
+ */
 bool g_verbose = false;
 
 
-//---------------------------------------------------------------------
-// Warp scan test kernels
-//---------------------------------------------------------------------
-
 /**
- * Exclusive WarpScan test kernel.
+ * Type of primitive to test
  */
-template <
-	typename 	T,
-	typename 	ScanOp,
-	typename 	IdentityT>
-__global__ void WarpScanKernel(
-	T 				*d_in,
-	T 				*d_out,
-	ScanOp 			scan_op,
-	IdentityT 		identity)
+enum TestMode
 {
-	// Cooperative warp-scan utility type (returns aggregate in all threads)
-	typedef WarpScan<1, T> WarpScan;
+	BASIC,
+	AGGREGATE,
+	PREFIX_AGGREGATE,
+};
 
-	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
-
-	// Per-thread tile data
-	T data = d_in[threadIdx.x];
-
-	// Exclusive warp scan
-	WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
-
-	// Store data
-	d_out[threadIdx.x] = data;
-}
-
-/**
- * Exclusive WarpScan test kernel (with prefix and aggregate).
- */
-template <
-	typename 	T,
-	typename 	ScanOp,
-	typename 	IdentityT>
-__global__ void WarpScanKernel(
-	T 				*d_in,
-	T 				*d_out,
-	ScanOp 			scan_op,
-	IdentityT 		identity,
-	T				prefix)
-{
-	// Cooperative warp-scan utility type (returns aggregate in all threads)
-	typedef WarpScan<1, T> WarpScan;
-
-	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
-
-	// Per-thread tile data
-	T data = d_in[threadIdx.x];
-
-	// Exclusive warp scan
-	T aggregate;
-	WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
-
-	// Store data
-	d_out[threadIdx.x] = data;
-
-	// Store aggregate
-	if (threadId.x == 0)
-	{
-		d_out[blockDim.x] = aggregate;
-	}
-}
-
-
-/**
- * Inclusive WarpScan test kernel.
- */
-template <
-	typename 	T,
-	typename 	ScanOp>
-__global__ void WarpScanKernel(
-	T 				*d_in,
-	T 				*d_out,
-	ScanOp 			scan_op,
-	NullType)
-{
-	// Cooperative warp-scan utility type (returns aggregate in all threads)
-	typedef WarpScan<1, T> WarpScan;
-
-	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
-
-	// Per-thread tile data
-	T data = d_in[threadIdx.x];
-
-	// Inclusive warp scan
-	WarpScan::InclusiveScan(smem_storage, data, data, scan_op);
-
-	// Store data
-	d_out[threadIdx.x] = data;
-}
-
-
-/**
- * Inclusive WarpScan test kernel (with prefix and aggregate).
- */
-template <
-	typename 	T,
-	typename 	ScanOp>
-__global__ void WarpScanKernel(
-	T 				*d_in,
-	T 				*d_out,
-	ScanOp 			scan_op,
-	NullType,
-	T				prefix)
-{
-	// Cooperative warp-scan utility type (returns aggregate in all threads)
-	typedef WarpScan<1, T> WarpScan;
-
-	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
-
-	// Per-thread tile data
-	T data = d_in[threadIdx.x];
-
-	// Inclusive warp scan
-	T aggregate;
-	WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
-
-	// Store data
-	d_out[threadIdx.x] = data;
-
-	// Store aggregate
-	if (threadId.x == 0)
-	{
-		d_out[blockDim.x] = aggregate;
-	}
-}
-
-
-
-
-//---------------------------------------------------------------------
-// Test routines
-//---------------------------------------------------------------------
 
 /**
  * Uint2 reduction operator
@@ -198,15 +73,126 @@ struct Uint2Sum
 };
 
 
+//---------------------------------------------------------------------
+// Test kernels
+//---------------------------------------------------------------------
+
+/**
+ * Exclusive WarpScan test kernel.
+ */
+template <
+	TestMode	TEST_MODE,
+	typename 	T,
+	typename 	ScanOp,
+	typename 	IdentityT>
+__global__ void WarpScanKernel(
+	T 			*d_in,
+	T 			*d_out,
+	ScanOp 		scan_op,
+	IdentityT 	identity,
+	T			prefix)
+{
+	// Cooperative warp-scan utility type (1 warp)
+	typedef WarpScan<T, 1> WarpScan;
+
+	// Shared memory
+	__shared__ typename WarpScan::SmemStorage smem_storage;
+
+	// Per-thread tile data
+	T data = d_in[threadIdx.x];
+
+	T aggregate;
+	if (TEST_MODE == BASIC)
+	{
+		// Test basic warp scan
+		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
+	}
+	else if (TEST_MODE == AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
+	}
+	else if (TEST_MODE == PREFIX_AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
+	}
+
+	// Store data
+	d_out[threadIdx.x] = data;
+
+	// Store aggregate
+	if (threadIdx.x == 0)
+	{
+		d_out[blockDim.x] = aggregate;
+	}
+}
+
+
+/**
+ * Inclusive WarpScan test kernel.
+ */
+template <
+	TestMode	TEST_MODE,
+	typename 	T,
+	typename 	ScanOp>
+__global__ void WarpScanKernel(
+	T 			*d_in,
+	T 			*d_out,
+	ScanOp 		scan_op,
+	NullType,
+	T			prefix)
+{
+	// Cooperative warp-scan utility type (1 warp)
+	typedef WarpScan<T, 1> WarpScan;
+
+	// Shared memory
+	__shared__ typename WarpScan::SmemStorage smem_storage;
+
+	// Per-thread tile data
+	T data = d_in[threadIdx.x];
+
+	T aggregate;
+	if (TEST_MODE == BASIC)
+	{
+		// Test basic warp scan
+		WarpScan::InclusiveScan(smem_storage, data, data, scan_op);
+	}
+	else if (TEST_MODE == AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate);
+	}
+	else if (TEST_MODE == PREFIX_AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
+	}
+
+	// Store data
+	d_out[threadIdx.x] = data;
+
+	// Store aggregate
+	if (threadIdx.x == 0)
+	{
+		d_out[blockDim.x] = aggregate;
+	}
+}
+
+
+//---------------------------------------------------------------------
+// Host utility subroutines
+//---------------------------------------------------------------------
+
 /**
  * Initialize value at a given index
  */
 template <typename T>
 void InitValue(T &value, int index)
 {
-	RandomBits(value);
+//	RandomBits(value);
 //	value = 1;
-//	value = index;
+	value = index;
 }
 
 /**
@@ -214,9 +200,10 @@ void InitValue(T &value, int index)
  */
 void InitValue(uint2 &value, int index)
 {
-	RandomBits(value.x);
+//	RandomBits(value.x);
 //	value.x = 1;
-//	value.x = index;
+	value.x = index;
+
 	value.y = value.x;
 }
 
@@ -267,13 +254,20 @@ T Initialize(
 	for (int i = 0; i < num_elements; ++i)
 	{
 		InitValue(h_in[i], i);
-		if (i == 0) {
-			inclusive = (prefix != null) ? scan_op(*prefix, h_in[0]) : h_in[0];
-		} else {
+		if (i == 0)
+		{
+			inclusive = (prefix != NULL) ?
+				scan_op(*prefix, h_in[0]) :
+				h_in[0];
+		}
+		else
+		{
 			inclusive = scan_op(inclusive, h_in[i]);
 		}
 		h_reference[i] = inclusive;
 	}
+
+	return inclusive;
 }
 
 
@@ -281,21 +275,23 @@ T Initialize(
  * Test warp scan
  */
 template <
-	typename 	T,
+	TestMode 	TEST_MODE,
 	typename 	ScanOp,
-	typename 	IdentityT>		// NullType for inclusive-scan
+	typename 	IdentityT,		// NullType for inclusive-scan
+	typename 	T>
 void Test(
 	int 		warp_size,
 	ScanOp 		scan_op,
 	IdentityT 	identity,
-	T			*prefix)
+	T			prefix)
 {
 	// Allocate host arrays
 	T *h_in = new T[warp_size];
 	T *h_reference = new T[warp_size];
 
 	// Initialize problem
-	T aggregate = Initialize(h_in, h_reference, warp_size, scan_op, identity, prefix);
+	T *p_prefix = (TEST_MODE == PREFIX_AGGREGATE) ? &prefix : NULL;
+	T aggregate = Initialize(h_in, h_reference, warp_size, scan_op, identity, p_prefix);
 
 	// Initialize device arrays
 	T *d_in = NULL;
@@ -305,37 +301,32 @@ void Test(
 	DebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * warp_size, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	printf("%s warpscan warp_size(%d) sizeof(T)(%d):\n\t ",
+	printf("%s warpscan warp_size(%d) sizeof(T)(%d):\n",
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
 		warp_size,
 		(int) sizeof(T));
 	fflush(stdout);
 
-	if (prefix == NULL)
-	{
-		// Run simple kernel
-		WarpScanKernel<<<1, warp_size>>>(
-			d_in,
-			d_out,
-			scan_op,
-			identity);
-	}
-	else
-	{
-		// Run aggregate/prefix kernel
-		WarpScanKernel<<<1, warp_size>>>(
-			d_in,
-			d_out,
-			scan_op,
-			identity,
-			*prefix);
-	}
+	// Run aggregate/prefix kernel
+	WarpScanKernel<TEST_MODE><<<1, warp_size>>>(
+		d_in,
+		d_out,
+		scan_op,
+		identity,
+		prefix);
 
 	DebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
 	AssertEquals(0, CompareDeviceResults(h_reference, d_out, warp_size, g_verbose, g_verbose));
 	printf("\n");
+
+	// Copy out and display aggregate
+	if ((TEST_MODE == AGGREGATE) || (TEST_MODE == PREFIX_AGGREGATE))
+	{
+		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + warp_size, 1, g_verbose, g_verbose));
+		printf("\n");
+	}
 
 	// Cleanup
 	if (h_in) delete h_in;
@@ -357,62 +348,61 @@ int main(int argc, char** argv)
 
     const int WARP_SIZE = 32;
 
-    // int exclusive sum
+    // int sum
     {
     	typedef int T;
     	Sum<T> scan_op;
-    	T identity = scan_op();
+    	T identity = 0;
     	T prefix = 99;
-    	Test<T>(WARP_SIZE, scan_op, identity, NULL);
-    	Test<T>(WARP_SIZE, scan_op, identity, &prefix);
-    }
-/*
-    // int inclusive sum
-    {
-    	typedef int T;
-    	Sum<T> scan_op;
-    	T prefix = 99;
-    	Test<T>(WARP_SIZE, scan_op, NullType(), NULL);
-    	Test<T>(WARP_SIZE, scan_op, NullType(), &prefix);
+
+    	// Exclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+
+    	// Inclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
     }
 
-    // uint exclusive max
-    {
-    	typedef unsigned int T;
-    	Max<T> scan_op;
-    	T prefix = 99;
-    	Test<T>(WARP_SIZE, scan_op, (unsigned int) -1, NULL);
-    	Test<T>(WARP_SIZE, scan_op, (unsigned int) -1, &prefix);
-    }
-
-    // uint inclusive max
+    // uint max
     {
     	typedef unsigned int T;
     	Max<T> scan_op;
+    	T identity = 0;
     	T prefix = 99;
-    	Test<T>(WARP_SIZE, scan_op, NullType(), NULL);
-    	Test<T>(WARP_SIZE, scan_op, NullType(), &prefix);
+
+    	// Exclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+
+    	// Inclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
+
     }
 
-    // uint2 exclusive sum
+    // uint2 sum
     {
     	typedef uint2 T;
     	Uint2Sum scan_op;
     	T identity = scan_op();
     	T prefix = {14, 21};
-    	Test<T>(WARP_SIZE, scan_op, identity, NULL);
-    	Test<T>(WARP_SIZE, scan_op, identity, &prefix);
+
+    	// Exclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, identity, prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, identity, prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, identity, prefix);
+
+    	// Inclusive
+    	Test<BASIC>(			WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<AGGREGATE>(		WARP_SIZE, scan_op, NullType(), prefix);
+    	Test<PREFIX_AGGREGATE>(	WARP_SIZE, scan_op, NullType(), prefix);
     }
 
-    // uint2 inclusive sum
-    {
-    	typedef uint2 T;
-    	Uint2Sum scan_op;
-    	T prefix = {14, 21};
-    	Test<T>(WARP_SIZE, scan_op, NullType(), NULL);
-    	Test<T>(WARP_SIZE, scan_op, NullType(), &prefix);
-    }
-*/
     return 0;
 }
 

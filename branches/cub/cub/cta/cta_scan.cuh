@@ -54,7 +54,6 @@ namespace cub {
 template <
 	int 		CTA_THREADS,			// The CTA size in threads
 	typename 	T,						// The scan type
-	bool 		RETURN_ALL = false, 	// Whether to return the reduced aggregate in all threads (or just thread-0).
 	int 		CTA_STRIPS = 1>			// When strip-mining, the number of CTA-strips per tile
 struct CtaScan
 {
@@ -82,7 +81,7 @@ struct CtaScan
 	/**
 	 * Warp-scan utility type
 	 */
-	typedef WarpScan<WARPS, T> WarpScan;
+	typedef WarpScan<T, WARPS> WarpScan;
 
 	/**
 	 * Shared memory storage type
@@ -112,69 +111,12 @@ struct CtaScan
 	{
 		if (WARP_SYNCHRONOUS)
 		{
-			// Short-circuit directly to warp synchronous reduction (there
-			// is only one strip)
-			partials[0] = WarpScan::InclusiveScan(
-				smem_storage.warp_scan,
-				partials[0],
-				scan_op);
-
-			if (RETURN_ALL)
-			{
-				// Load result from thread-0
-				partial = smem_storage.warp_buffer[0];
-			}
+			// Short-circuit directly to warp synchronous reduction (there is only one strip)
 		}
 		else
 		{
-			// Raking reduction.  Place CTA-strided partials into raking grid.
-			#pragma unroll
-			for (int STRIP = 0; STRIP < CTA_STRIPS; STRIP++)
-			{
-				// Place partial into shared memory grid.
-				*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP) = partials[STRIP];
-			}
 
-			__syncthreads();
-
-			// Reduce parallelism to one warp
-			if (threadIdx.x < RAKING_THREADS)
-			{
-				// Raking reduction. Compute pointer to raking segment and load first element.
-				T *raking_segment 	= CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-				partial 			= *raking_segment;
-
-				#pragma unroll
-				for (int ELEMENT = 1; ELEMENT < RAKING_LENGTH; ELEMENT++)
-				{
-					// Determine logical index of partial
-					unsigned int logical_partial = (threadIdx.x * RAKING_LENGTH) + ELEMENT;
-
-					if (UNGUARDED || (logical_partial < num_valid))
-					{
-						partial = reduction_op(partial, raking_segment[ELEMENT]);
-					}
-				}
-
-				// Warp synchronous reduction
-				partial = Iterate<0, WARP_SYNCH_STEPS, UNGUARDED>::WarpReduce(
-					smem_storage,
-					partial,
-					num_valid,
-					reduction_op);
-			}
-
-			if (RETURN_ALL)
-			{
-				// Barrier and load result from thread-0
-				__syncthreads();
-				partial = smem_storage.warp_buffer[0];
-			}
 		}
-
-		return partial;
-	}
-
 	}
 
 
@@ -194,43 +136,12 @@ struct CtaScan
 	template <
 		int ELEMENTS,
 		typename ScanOp>
-	static __device__ __forceinline__ T InclusiveScan(
+	static __device__ __forceinline__ void InclusiveScan(
 		SmemStorage	&smem_storage,		// SmemStorage reference
-		T (&input)[LENGTH],				// Input array
-		T (&output)[LENGTH],			// Output array (may be aliased to input)
+		T (&input)[ELEMENTS],				// Input array
+		T (&output)[ELEMENTS],			// Output array (may be aliased to input)
 		ScanOp scan_op)					// Reduction operator
 	{
-		// Compute thread partial reductions
-		T partial = ThreadReduce(input, scan_op);
-
-		if (!WARP_SYNCHRONOUS)
-		{
-			// Raking upsweep: place partial into grid
-
-		}
-
-
-		return Reduce(smem_storage, partial, CTA_THREADS, scan_op);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan using the specified
-	 * scan operator.
-	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	template <
-		int ELEMENTS,
-		typename ScanOp>
-	static __device__ __forceinline__ T InclusiveScan(
-		SmemStorage	&smem_storage,		// SmemStorage reference
-		T (&data)[ELEMENTS],			// Calling thread's input input
-		ScanOp scan_op)		// Reduction operator
-	{
-		return Reduce(smem_storage, partial, CTA_THREADS, scan_op);
 	}
 
 

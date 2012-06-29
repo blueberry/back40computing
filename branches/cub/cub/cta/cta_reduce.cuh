@@ -36,16 +36,19 @@ namespace cub {
 /**
  * Cooperative reduction abstraction for CTAs.
  *
+ * Performs a raking upsweep followed by a warp-synchronous Kogge-Stone
+ * style reduction.
+ *
  * Features:
- * 		- Very efficient (only one synchronization barrier).
- * 		- Zero bank conflicts for most types.
  * 		- Supports non-commutative reduction operators.
  * 		- Supports partially-full CTAs (i.e., high-order threads having
  * 			undefined values).
  * 		- Supports reduction over strip-mined CTA tiles.  (For a given tile of
- * 			input, each thread acquires STRIPS "strips" of ELEMENTS consecutive
- * 			inputs, where the stride between a given thread's strips is
+ * 			input, each thread acquires STRIPS arrays of ELEMENTS consecutive
+ * 			inputs, where the logical stride between a given thread's strips is
  * 			(ELEMENTS * CTA_THREADS) elements.)
+ * 		- Very efficient (only one synchronization barrier).
+ * 		- Zero bank conflicts for most types.
  *
  * Is most efficient when:
  * 		- CTA_THREADS is a multiple of the warp size
@@ -53,11 +56,10 @@ namespace cub {
  * 		- The reduction type T is a built-in primitive type (int, float, double, etc.)
  */
 template <
-	int 		CTA_THREADS,			// The CTA size in threads
-	typename 	T,						// The reduction type
-	bool 		RETURN_ALL = false, 	// Whether to return the reduced aggregate in all threads (or just thread-0).
-	int 		CTA_STRIPS = 1>			// When strip-mining, the number of CTA-strips per tile
-struct CtaReduce
+	typename 	T,					// The reduction type
+	int 		CTA_THREADS,		// The CTA size in threads
+	int 		STRIPS = 1>			// When strip-mining, the number of CTA-strips per tile
+class CtaReduce
 {
 	//---------------------------------------------------------------------
 	// Constants and typedefs
@@ -66,7 +68,7 @@ struct CtaReduce
 	/**
 	 * Layout type for padded CTA raking grid
 	 */
-	typedef CtaRakingGrid<CTA_THREADS, T, CTA_STRIPS> CtaRakingGrid;
+	typedef CtaRakingGrid<CTA_THREADS, T, STRIPS> CtaRakingGrid;
 
 
 	enum
@@ -75,7 +77,7 @@ struct CtaReduce
 		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
 
 		// The total number of elements that need to be cooperatively reduced
-		SHARED_ELEMENTS = CTA_THREADS * CTA_STRIPS,
+		SHARED_ELEMENTS = CTA_THREADS * STRIPS,
 
 		// Number of raking threads
 		RAKING_THREADS = CtaRakingGrid::RAKING_THREADS,
@@ -126,10 +128,10 @@ struct CtaReduce
 		// WarpReduce
 		template <typename ReductionOp>
 		static __device__ __forceinline__ T WarpReduce(
-			SmemStorage		&smem_storage,				// SmemStorage reference
-			T 				partial,					// Calling thread's input partial reduction
-			unsigned int 	num_valid,					// Number of threads containing valid elements (may be less than CTA_THREADS)
-			ReductionOp 	reduction_op)				// Reduction operator
+			SmemStorage		&smem_storage,			// SmemStorage reference
+			T 				partial,				// Calling thread's input partial reduction
+			unsigned int 	num_valid,				// Number of threads containing valid elements (may be less than CTA_THREADS)
+			ReductionOp 	reduction_op)			// Reduction operator
 		{
 			const int OFFSET = 1 << COUNT;
 
@@ -162,16 +164,11 @@ struct CtaReduce
 	{
 		template <typename ReductionOp>
 		static __device__ __forceinline__ T WarpReduce(
-			SmemStorage		&smem_storage,				// SmemStorage reference
-			T 				partial,					// Calling thread's input partial reduction
-			unsigned int 	num_valid,					// Number of threads containing valid elements (may be less than CTA_THREADS)
-			ReductionOp 	reduction_op)				// Reduction operator
+			SmemStorage		&smem_storage,			// SmemStorage reference
+			T 				partial,				// Calling thread's input partial reduction
+			unsigned int 	num_valid,				// Number of threads containing valid elements (may be less than CTA_THREADS)
+			ReductionOp 	reduction_op)			// Reduction operator
 		{
-			if (RETURN_ALL)
-			{
-				// Share partial into buffer
-				smem_storage.warp_buffer[threadIdx.x] = partial;
-			}
 			return partial;
 		}
 	};
@@ -183,15 +180,17 @@ struct CtaReduce
 
 	/**
 	 * Perform a cooperative, CTA-wide reduction. The first num_valid
-	 * threads each contribute one reduction partial. The aggregate is
-	 * returned in thread-0 (and is undefined for other threads).
+	 * threads each contribute one reduction partial.
+	 *
+	 * The return value is only valid for thread-0 (and is undefined for
+	 * other threads).
 	 */
 	template <
 		bool UNGUARDED,								// Whether we can skip bounds-checking
 		typename ReductionOp>						// Reduction operator type
 	static __device__ __forceinline__ T Reduce(
 		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partials[CTA_STRIPS],		// Calling thread's input partial reductions
+		T 				partials[STRIPS],			// Calling thread's input partial reductions
 		unsigned int 	num_valid,					// Number of threads containing valid elements (may be less than CTA_THREADS)
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
@@ -205,18 +204,12 @@ struct CtaReduce
 				partial,
 				num_valid,
 				reduction_op);
-
-			if (RETURN_ALL)
-			{
-				// Load result from thread-0
-				partial = smem_storage.warp_buffer[0];
-			}
 		}
 		else
 		{
 			// Raking reduction.  Place CTA-strided partials into raking grid.
 			#pragma unroll
-			for (int STRIP = 0; STRIP < CTA_STRIPS; STRIP++)
+			for (int STRIP = 0; STRIP < STRIPS; STRIP++)
 			{
 				// Place partial into shared memory grid.
 				*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP) = partials[STRIP];
@@ -250,13 +243,6 @@ struct CtaReduce
 					num_valid,
 					reduction_op);
 			}
-
-			if (RETURN_ALL)
-			{
-				// Barrier and load result from thread-0
-				__syncthreads();
-				partial = smem_storage.warp_buffer[0];
-			}
 		}
 
 		return partial;
@@ -271,8 +257,7 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction. The first num_valid
 	 * threads each contribute one reduction partial.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <typename ReductionOp>
@@ -298,8 +283,7 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction. The first num_valid
 	 * threads each contribute one reduction partial.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	static __device__ __forceinline__ T Reduce(
@@ -320,15 +304,14 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction over a full tile using the
 	 * specified reduction operator.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <typename ReductionOp>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,					// SmemStorage reference
-		T 				partial,						// Calling thread's input partial reduction
-		ReductionOp 	reduction_op)					// Reduction operator
+		SmemStorage		&smem_storage,				// SmemStorage reference
+		T 				partial,					// Calling thread's input partial reduction
+		ReductionOp 	reduction_op)				// Reduction operator
 	{
 		return Reduce(smem_storage, partial, CTA_THREADS, reduction_op);
 	}
@@ -337,8 +320,7 @@ struct CtaReduce
 	/**
 	 * Perform a cooperative, CTA-wide reduction (sum) over a full tile.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	static __device__ __forceinline__ T Reduce(
@@ -353,15 +335,14 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction over a full tile using the
 	 * specified reduction operator.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <int ELEMENTS, typename ReductionOp>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,					// SmemStorage reference
-		T 				(&tile)[ELEMENTS],				// Calling thread's input
-		ReductionOp 	reduction_op)					// Reduction operator
+		SmemStorage		&smem_storage,				// SmemStorage reference
+		T 				(&tile)[ELEMENTS],			// Calling thread's input
+		ReductionOp 	reduction_op)				// Reduction operator
 	{
 		const int TILE_SIZE = CTA_THREADS * ELEMENTS;
 
@@ -374,14 +355,13 @@ struct CtaReduce
 	/**
 	 * Perform a cooperative, CTA-wide reduction (sum) over a full tile.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <int ELEMENTS>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,					// SmemStorage reference
-		T 				(&tile)[ELEMENTS])				// Calling thread's input
+		SmemStorage		&smem_storage,				// SmemStorage reference
+		T 				(&tile)[ELEMENTS])			// Calling thread's input
 	{
 		Sum<T> reduction_op;
 		return Reduce(smem_storage, tile, reduction_op);
@@ -392,21 +372,20 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction over a full,
 	 * strip-mined tile using the specified reduction operator.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <int ELEMENTS, typename ReductionOp>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,					// SmemStorage reference
-		T 				tile[CTA_STRIPS][ELEMENTS],		// Calling thread's input
-		ReductionOp 	reduction_op)					// Reduction operator
+		SmemStorage		&smem_storage,				// SmemStorage reference
+		T 				tile[STRIPS][ELEMENTS],		// Calling thread's input
+		ReductionOp 	reduction_op)				// Reduction operator
 	{
-		const int TILE_SIZE = CTA_THREADS * CTA_STRIPS * ELEMENTS;
+		const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
 
 		// Reduce partials within each segment
-		T segment_partials[CTA_STRIPS];
-		for (int STRIP = 0; STRIP < CTA_STRIPS; STRIP++)
+		T segment_partials[STRIPS];
+		for (int STRIP = 0; STRIP < STRIPS; STRIP++)
 		{
 			segment_partials[STRIP] = ThreadReduce(tile[STRIP], reduction_op);
 		}
@@ -427,14 +406,13 @@ struct CtaReduce
 	 * Perform a cooperative, CTA-wide reduction (sum) over a full,
 	 * strip-mined tile.
 	 *
-	 * If RETURN_ALL, the aggregate is returned in all threads.  Otherwise
-	 * the return value is only valid for thread-0 (and is undefined for
+	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <int ELEMENTS>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,					// SmemStorage reference
-		T 				tile[CTA_STRIPS][ELEMENTS])		// Calling thread's input
+		SmemStorage		&smem_storage,				// SmemStorage reference
+		T 				tile[STRIPS][ELEMENTS])		// Calling thread's input
 	{
 		Sum<T> reduction_op;
 		return Reduce(smem_storage, tile, reduction_op);
