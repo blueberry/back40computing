@@ -42,6 +42,8 @@ enum StoreModifier
 	STORE_CS, 		// Cache streaming (likely to be accessed once)
 	STORE_WT, 		// Cache write-through (to system memory)
 
+	STORE_VS,	// Shared volatile
+
 	STORE_LIMIT
 };
 
@@ -50,6 +52,7 @@ enum StoreModifier
  * Structure to type error when using cache modifiers on non-built-in types.
  */
 template <StoreModifier MODIFIER> struct GenericStore;
+
 
 /**
  * Specialization for STORE_NONE
@@ -60,6 +63,22 @@ template <> struct GenericStore<STORE_NONE>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
 		*ptr = val;
+	}
+};
+
+
+/**
+ * Specialization for STORE_VS
+ */
+template <> struct GenericStore<STORE_VS>
+{
+	template <typename T>
+	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
+	{
+		*ptr = val;
+
+		// Prevent compiler from reordering or omitting memory accesses between rounds
+		__threadfence_block();
 	}
 };
 
@@ -80,11 +99,11 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 #if __CUDA_ARCH__ >= 200
 
 /**
- * Define a ThreadStore() specialization for the built-in (non-vector) "type"
+ * Define a global ThreadStore() specialization for the built-in (non-vector) "type"
  */
-#define CUB_STORE_0(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)		\
+#define CUB_G_STORE_0(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
 	template<>																			\
-	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)							\
+	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)						\
 	{																					\
 		const raw_type raw = reinterpret_cast<const raw_type&>(val);					\
 		asm("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
@@ -92,13 +111,26 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 			#reg_mod(raw)); 															\
 	}
 
+/**
+ * Define a volatile shared ThreadStore() specialization for the built-in (non-vector) "type"
+ */
+#define CUB_VS_STORE_0(type, raw_type, ptx_type, reg_mod)								\
+	template<>																			\
+	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
+	{																					\
+		const raw_type raw = reinterpret_cast<const raw_type&>(val);					\
+		asm("st.volatile.shared."#ptx_type" [%0], %1;" : :								\
+			_CUB_ASM_PTR_(ptr),															\
+			#reg_mod(raw)); 															\
+	}
+
 
 /**
- * Define a ThreadStore() specialization for the built-in vector-1 "type"
+ * Define a global ThreadStore() specialization for the built-in vector-1 "type"
  */
-#define CUB_STORE_1(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)		\
+#define CUB_G_STORE_1(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
 	template<>																			\
-	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)							\
+	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
 		asm("st.global."#ptx_modifier"."#ptx_type" [%0], %1;" : :						\
@@ -107,11 +139,24 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	}
 
 /**
- * Define a ThreadStore() specialization for the built-in vector-2 "type"
+ * Define a volatile shared ThreadStore() specialization for the built-in vector-1 "type"
  */
-#define CUB_STORE_2(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)		\
+#define CUB_VS_STORE_1(type, raw_type, ptx_type, reg_mod)								\
 	template<>																			\
-	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)							\
+	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
+	{																					\
+		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
+		asm("st.volatile.shared."#ptx_type" [%0], %1;" : :								\
+			_CUB_ASM_PTR_(ptr),															\
+			#reg_mod(raw_x));															\
+	}
+
+/**
+ * Define a global ThreadStore() specialization for the built-in vector-2 "type"
+ */
+#define CUB_G_STORE_2(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
+	template<>																			\
+	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
 		const raw_type raw_y = reinterpret_cast<const raw_type&>(val.y);				\
@@ -122,11 +167,26 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	}
 
 /**
- * Define a ThreadStore() specialization for the built-in vector-4 "type"
+ * Define a volatile shared ThreadStore() specialization for the built-in vector-2 "type"
  */
-#define CUB_STORE_4(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)		\
+#define CUB_VS_STORE_2(type, raw_type, ptx_type, reg_mod)								\
 	template<>																			\
-	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)							\
+	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
+	{																					\
+		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
+		const raw_type raw_y = reinterpret_cast<const raw_type&>(val.y);				\
+		asm("st.shared.volatile.v2."#ptx_type" [%0], {%1, %2};" : :						\
+			_CUB_ASM_PTR_(ptr),															\
+			#reg_mod(raw_x), 															\
+			#reg_mod(raw_y));															\
+	}
+
+/**
+ * Define a global ThreadStore() specialization for the built-in vector-4 "type"
+ */
+#define CUB_G_STORE_4(type, raw_type, ptx_type, reg_mod, cub_modifier, ptx_modifier)	\
+	template<>																			\
+	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
 		const raw_type raw_y = reinterpret_cast<const raw_type&>(val.y);				\
@@ -141,54 +201,77 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	}
 
 /**
+ * Define a volatile shared ThreadStore() specialization for the built-in vector-4 "type"
+ */
+#define CUB_VS_STORE_4(type, raw_type, ptx_type, reg_mod)								\
+	template<>																			\
+	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
+	{																					\
+		const raw_type raw_x = reinterpret_cast<const raw_type&>(val.x);				\
+		const raw_type raw_y = reinterpret_cast<const raw_type&>(val.y);				\
+		const raw_type raw_z = reinterpret_cast<const raw_type&>(val.z);				\
+		const raw_type raw_w = reinterpret_cast<const raw_type&>(val.w);				\
+		asm("st.volatile.shared.v4."#ptx_type" [%0], {%1, %2, %3, %4};" : :				\
+			_CUB_ASM_PTR_(ptr),															\
+			#reg_mod(raw_x), 															\
+			#reg_mod(raw_y), 															\
+			#reg_mod(raw_z), 															\
+			#reg_mod(raw_w));															\
+	}
+
+/**
  * Define a ThreadStore() specialization for the built-in 64-bit vector-4 "type".
  * Uses two vector-2 Stores.
  */
 #define CUB_STORE_4L(type, half_type, cub_modifier)										\
 	template<>																			\
-	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)							\
+	void ThreadStore<cub_modifier, type>(type* ptr, const type& val)					\
 	{																					\
 		const half_type* half_val = reinterpret_cast<const half_type*>(&val);			\
 		half_type* half_ptr = reinterpret_cast<half_type*>(ptr);						\
-		ThreadStore<cub_modifier>(half_ptr, half_val[0]);										\
-		ThreadStore<cub_modifier>(half_ptr + 1, half_val[1]);									\
+		ThreadStore<cub_modifier>(half_ptr, half_val[0]);								\
+		ThreadStore<cub_modifier>(half_ptr + 1, half_val[1]);							\
 	}
 
 /**
  * Define ThreadStore() specializations for the built-in (non-vector) "type"
  */
 #define CUB_STORES_0(type, raw_type, ptx_type, reg_mod)									\
-	CUB_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)						\
-	CUB_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)						\
-	CUB_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)						\
-	CUB_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
+	CUB_VS_STORE_0(type, raw_type, ptx_type, reg_mod)									\
+	CUB_G_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)						\
+	CUB_G_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)						\
+	CUB_G_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)						\
+	CUB_G_STORE_0(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
 
 /**
  * Define ThreadStore() specializations for the built-in vector-1 "type"
  */
 #define CUB_STORES_1(type, raw_type, ptx_type, reg_mod)					\
-	CUB_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
-	CUB_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
-	CUB_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
-	CUB_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
+	CUB_VS_STORE_1(type, raw_type, ptx_type, reg_mod)					\
+	CUB_G_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
+	CUB_G_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
+	CUB_G_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
+	CUB_G_STORE_1(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
 
 /**
  * Define ThreadStore() specializations for the built-in vector-2 "type"
  */
 #define CUB_STORES_2(type, raw_type, ptx_type, reg_mod)					\
-	CUB_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
-	CUB_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
-	CUB_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
-	CUB_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
+	CUB_VS_STORE_2(type, raw_type, ptx_type, reg_mod)					\
+	CUB_G_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
+	CUB_G_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
+	CUB_G_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
+	CUB_G_STORE_2(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
 
 /**
  * Define ThreadStore() specializations for the built-in vector-4 "type"
  */
 #define CUB_STORES_4(type, raw_type, ptx_type, reg_mod)					\
-	CUB_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
-	CUB_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
-	CUB_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
-	CUB_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
+	CUB_VS_STORE_4(type, raw_type, ptx_type, reg_mod)					\
+	CUB_G_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_WB, wb)		\
+	CUB_G_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_CG, cg)		\
+	CUB_G_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_CS, cs)		\
+	CUB_G_STORE_4(type, raw_type, ptx_type, reg_mod, STORE_WT, wt)
 
 /**
  * Define ThreadStore() specializations for the built-in 256-bit vector-4 "type"
@@ -258,10 +341,14 @@ CUB_STORES_4L(double4, double2);
  * Undefine macros
  */
 
-#undef CUB_STORE_0
-#undef CUB_STORE_1
-#undef CUB_STORE_2
-#undef CUB_STORE_4
+#undef CUB_G_STORE_0
+#undef CUB_G_STORE_1
+#undef CUB_G_STORE_2
+#undef CUB_G_STORE_4
+#undef CUB_SV_STORE_0
+#undef CUB_SV_STORE_1
+#undef CUB_SV_STORE_2
+#undef CUB_SV_STORE_4
 #undef CUB_STORE_4L
 #undef CUB_STORES_0
 #undef CUB_STORES_1

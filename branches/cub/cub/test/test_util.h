@@ -78,7 +78,8 @@ public:
 	    {
 	        string arg = argv[i];
 
-	        if ((arg[0] != '-') || (arg[1] != '-')) {
+	        if ((arg[0] != '-') || (arg[1] != '-'))
+	        {
 	        	continue;
 	        }
 
@@ -285,66 +286,93 @@ void RandomBits(
 
 
 /******************************************************************************
- * Templated routines for printing keys/values to the console 
+ * Comparison and ostream operators for CUDA vector types
  ******************************************************************************/
 
-template<typename T> 
-void PrintValue(T val)
-{
-	std::cout << val;
-}
+/**
+ * Vector2 overloads
+ */
+#define CUB_VEC_OVERLOAD_2(T)							\
+	std::ostream& operator<<(std::ostream& os, const T& val)		\
+	{													\
+		os << '(' << val.x << ',' << val.y << ')';		\
+		return os;										\
+	}													\
+	bool operator !=(const T &a, const T &b)			\
+	{													\
+		return (a.x != b.x) && (a.y != b.y);			\
+	}
 
-template <>
-void PrintValue<uint2>(uint2 val)
-{
-	std::cout << "(" << val.x << ", " << val.y << ")";
-}
+
+/**
+ * Vector3 overloads
+ */
+#define CUB_VEC_OVERLOAD_3(T)							\
+	std::ostream& operator<<(std::ostream& os, const T& val)		\
+	{													\
+		os << '(' << val.x << ',' << val.y << ',' << val.z << ')';		\
+		return os;										\
+	}													\
+	bool operator !=(const T &a, const T &b)			\
+	{													\
+		return (a.x != b.x) && (a.y != b.y) && (a.z != b.z);			\
+	}
+
+/**
+ * Vector4 overloads
+ */
+#define CUB_VEC_OVERLOAD_4(T)							\
+	std::ostream& operator<<(std::ostream& os, const T& val)		\
+	{													\
+		os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << val.w << ')';		\
+		return os;										\
+	}													\
+	bool operator !=(const T &a, const T &b)			\
+	{													\
+		return (a.x != b.x) && (a.y != b.y) && (a.z != b.z) && (a.w != b.w);			\
+	}
+
+/**
+ * All vector overloads
+ */
+#define CUB_VEC_OVERLOAD(BASE_T)							\
+	CUB_VEC_OVERLOAD_2(BASE_T##2)							\
+	CUB_VEC_OVERLOAD_3(BASE_T##3)							\
+	CUB_VEC_OVERLOAD_4(BASE_T##4)
+
+/**
+ * Define for types
+ */
+CUB_VEC_OVERLOAD(char)
+CUB_VEC_OVERLOAD(short)
+CUB_VEC_OVERLOAD(int)
+CUB_VEC_OVERLOAD(long)
+CUB_VEC_OVERLOAD(longlong)
+CUB_VEC_OVERLOAD(uchar)
+CUB_VEC_OVERLOAD(ushort)
+CUB_VEC_OVERLOAD(uint)
+CUB_VEC_OVERLOAD(ulong)
+CUB_VEC_OVERLOAD(ulonglong)
+CUB_VEC_OVERLOAD(float)
+CUB_VEC_OVERLOAD(double)
 
 
 /******************************************************************************
  * Helper routines for list construction and validation
  ******************************************************************************/
 
-/**
- * Comparison operator for uint2
- */
-bool operator !=(const uint2 &a, const uint2 &b)
-{
-	return (a.x != b.x) && (a.y != b.y);
-}
-
 
 /**
  * Compares the equivalence of two arrays
  */
 template <typename S, typename T, typename SizeT>
-int CompareResults(T* computed, S* reference, SizeT len, bool verbose = true)
+int CompareResults(T* computed, S* reference, SizeT len)
 {
-	for (SizeT i = 0; i < len; i++) {
-
-		int window = 8;
-
-		if (computed[i] != reference[i]) {
-			printf("INCORRECT: [%lu]: ", (unsigned long) i);
-			PrintValue<T>(computed[i]);
-			printf(" != ");
-			PrintValue<S>(reference[i]);
-
-			if (verbose) {
-				printf("\nresult[...");
-				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
-					PrintValue<T>(computed[j]);
-					printf(", ");
-				}
-				printf("...]");
-				printf("\nreference[...");
-				for (size_t j = (i >= window) ? i - window : 0; (j < i + window) && (j < len); j++) {
-					PrintValue<S>(reference[j]);
-					printf(", ");
-				}
-				printf("...]");
-			}
-
+	for (SizeT i = 0; i < len; i++)
+	{
+		if (computed[i] != reference[i])
+		{
+			std::cout << "INCORRECT: [" << i << "]: " << computed[i] << " != " << reference[i];
 			return 1;
 		}
 	}
@@ -373,22 +401,23 @@ int CompareDeviceResults(
 	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
 
 	// Display data
-	if (display_data) {
+	if (display_data)
+	{
 		printf("Reference:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_reference[i]);
-			printf(", ");
+		for (int i = 0; i < num_elements; i++)
+		{
+			std::cout << h_reference[i] << ", ";
 		}
 		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
+		for (int i = 0; i < num_elements; i++)
+		{
+			std::cout << h_data[i] << ", ";
 		}
 		printf("\n\n");
 	}
 
 	// Check
-	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
+	int retval = CompareResults(h_data, h_reference, num_elements);
 
 	// Cleanup
 	if (h_data) free(h_data);
@@ -420,20 +449,20 @@ int CompareDeviceDeviceResults(
 	// Display data
 	if (display_data) {
 		printf("Reference:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_reference[i]);
-			printf(", ");
+		for (int i = 0; i < num_elements; i++)
+		{
+			std::cout << h_reference[i] << ", ";
 		}
 		printf("\n\nData:\n");
-		for (int i = 0; i < num_elements; i++) {
-			PrintValue(h_data[i]);
-			printf(", ");
+		for (int i = 0; i < num_elements; i++)
+		{
+			std::cout << h_data[i] << ", ";
 		}
 		printf("\n\n");
 	}
 
 	// Check
-	int retval = CompareResults(h_data, h_reference, num_elements, verbose);
+	int retval = CompareResults(h_data, h_reference, num_elements);
 
 	// Cleanup
 	if (h_reference) free(h_reference);
@@ -460,9 +489,9 @@ void DisplayDeviceResults(
 
 	// Display data
 	printf("\n\nData:\n");
-	for (int i = 0; i < num_elements; i++) {
-		PrintValue(h_data[i]);
-		printf(", ");
+	for (int i = 0; i < num_elements; i++)
+	{
+		std::cout << h_data[i] << ", ";
 	}
 	printf("\n\n");
 

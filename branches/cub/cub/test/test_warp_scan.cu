@@ -24,13 +24,14 @@
 #define CUB_STDERR
 
 #include <stdio.h>
+#include <iostream>
 #include <test_util.h>
 #include "../cub.cuh"
 
 using namespace cub;
 
 //---------------------------------------------------------------------
-// Globals , constants and typedefs
+// Globals, constants and typedefs
 //---------------------------------------------------------------------
 
 /**
@@ -64,16 +65,28 @@ enum GenMode
 
 
 /**
- * Uint2 summation operator
+ * Special scan data type
  */
-__host__ __device__ __forceinline__ uint2 operator+(uint2 a, uint2 b)
+struct Foo
 {
-	a.x += b.x;
-	a.y += b.y;
-	return a;
-}
+	long long 	x;
+	int 		y;
+	short 		z;
+	char 		w;
 
+	// Summation operator
+	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
+	{
+		Foo retval = {x + b.x, y + b.y, z + b.z, w + b.w};
+		return retval;
+	}
 
+	// Inequality operator
+	bool operator !=(const Foo &b)
+	{
+		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
+	}
+};
 
 //---------------------------------------------------------------------
 // Test kernels
@@ -189,6 +202,26 @@ __global__ void WarpScanKernel(
 //---------------------------------------------------------------------
 
 /**
+ * Foo ostream operator
+ */
+std::ostream& operator<<(std::ostream& os, const Foo& val)
+{
+	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << val.w << ')';
+	return os;
+}
+
+/**
+ * Uint2 summation operator
+ */
+__host__ __device__ __forceinline__ uint2 operator+(
+	const uint2 &a, const uint2 &b)
+{
+	uint2 retval = {a.x + b.x, a.y + b.y};
+	return retval;
+}
+
+
+/**
  * Initialize value at a given index
  */
 template <typename T>
@@ -208,13 +241,25 @@ void InitValue(int gen_mode, T &value, int index)
 	}
 }
 
+
 /**
  * Initialize value at a given index.  Specialized for uint2.
  */
 void InitValue(int gen_mode, uint2 &value, int index)
 {
 	InitValue(gen_mode, value.x, index);
-	value.y = value.x;
+	InitValue(gen_mode, value.y, index);
+}
+
+
+/**
+ * Initialize value at a given index.  Specialized for Foo.
+ */
+void InitValue(int gen_mode, Foo &value, int index)
+{
+	InitValue(gen_mode, value.x, index);
+	InitValue(gen_mode, value.y, index);
+	InitValue(gen_mode, value.z, index);
 }
 
 
@@ -348,6 +393,7 @@ void Test(
 	if (d_out) CubDebugExit(cudaFree(d_out));
 }
 
+
 /**
  * Run battery of tests for different logical warp widths (which
  * must be less than or equal to the device warp width)
@@ -355,7 +401,6 @@ void Test(
 template <int LOGICAL_WARP_THREADS>
 void Test(int gen_mode)
 {
-/*
     // int sum
     {
     	typedef int T;
@@ -392,9 +437,9 @@ void Test(int gen_mode)
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
 
     }
-*/
+
     // uint2 sum
-//    {
+    {
     	typedef uint2 T;
     	Sum<T> scan_op;
     	T identity = {0, 0};
@@ -402,7 +447,6 @@ void Test(int gen_mode)
 
     	// Exclusive
     	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
-/*
     	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
 
@@ -411,7 +455,24 @@ void Test(int gen_mode)
     	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
     }
-*/
+
+    // Foo sum
+    {
+    	typedef Foo T;
+    	Sum<T> scan_op;
+    	T identity = {0, 0, 0};
+    	T prefix = {14, 21, 81};
+
+    	// Exclusive
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
+
+    	// Inclusive
+    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+    }
 }
 
 
@@ -423,8 +484,7 @@ void Test()
 {
 	for (
 		int gen_mode = UNIFORM;
-		gen_mode < UNIFORM + 1;
-//		gen_mode < GEN_MODE_END;
+		gen_mode < GEN_MODE_END;
 		gen_mode++)
 	{
 		Test<LOGICAL_WARP_THREADS>(gen_mode);
@@ -446,9 +506,9 @@ int main(int argc, char** argv)
 
     // Test logical warp sizes
     Test<32>();
-//    Test<16>();
-//    Test<9>();
-//    Test<7>();
+    Test<16>();
+    Test<9>();
+    Test<7>();
 
     return 0;
 }

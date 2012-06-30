@@ -23,6 +23,8 @@
 
 #pragma once
 
+#include "../thread/thread_load.cuh"
+#include "../thread/thread_store.cuh"
 #include "../device_props.cuh"
 #include "../type_utils.cuh"
 #include "../operators.cuh"
@@ -44,12 +46,12 @@ namespace cub {
  * 		- Zero bank conflicts for most types.
  *
  * Is most efficient when:
- * 		- The scan type T is a built-in primitive type (int, float, double,
- * 		  etc.).  Memory fences *may* be required to prevent reference reordering
- *        of non-primitive types.
- * 		- Performing exclusive scans (where an identity element is provided).
- * 		  Inclusive scans *may* require guarded loads (although inclusive prefix
- * 		  sum does not).
+ * 		- ... the scan type T is a built-in primitive or CUDA vector type (e.g.,
+ * 		  short, int2, double, float2, etc.)  Memory fences may be used
+ * 		  to prevent reference reordering of non-primitive types.
+ * 		- ... performing exclusive scans. Inclusive scans (other than prefix sum)
+ *		  may use guarded memory accesses because no identity element is
+ *		  provided.
  */
 template <
 	typename 	T,													// The reduction type
@@ -68,24 +70,12 @@ private:
 		// The number of warp scan steps
 		STEPS = Log2<LOGICAL_WARP_THREADS>::VALUE,
 
-		// Whether or not the reduction type is a built-in primitive
-		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
-
 		// The number of threads in half a warp
 		HALF_WARP_THREADS = 1 << (STEPS - 1),
 
 		// The number of shared memory elements per warp
 		WARP_SMEM_ELEMENTS =  LOGICAL_WARP_THREADS + HALF_WARP_THREADS,
-
 	};
-
-
-	/**
-	 * Qualified type of T to use for warp-synchronous storage.  For
-	 * built-in primitive types, we can use volatile qualifier (and can omit
-	 * syncthreads when warp-synchronous)
-	 */
-	typedef typename If<PRIMITIVE, volatile T, T>::Type WarpT;
 
 public:
 
@@ -94,7 +84,7 @@ public:
 	 */
 	typedef struct SmemStorage
 	{
-		WarpT warp_scan[WARPS][WARP_SMEM_ELEMENTS];
+		T warp_scan[WARPS][WARP_SMEM_ELEMENTS];
 	};
 
 
@@ -122,15 +112,13 @@ private:
 			const int OFFSET = 1 << COUNT;
 
 			// Share partial into buffer
-			smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = partial;
-
-			// Prevent compiler from reordering or omitting memory accesses between rounds
-			if (!PRIMITIVE) __threadfence_block();
+			ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id], partial);
 
 			// Update partial if addend is in range
 			if (HAS_IDENTITY || (lane_id >= OFFSET))
 			{
-				T addend = smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - OFFSET];
+				T addend = ThreadLoad<LOAD_VS>(&smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - OFFSET]);
+
 				partial = scan_op(partial, addend);
 			}
 
@@ -160,10 +148,7 @@ private:
 			if (SHARE_FINAL)
 			{
 				// Share partial into buffer
-				smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id] = partial;
-
-				// Prevent compiler from reordering or omitting memory accesses between rounds
-				if (!PRIMITIVE) __threadfence_block();
+				ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id], partial);
 			}
 
 			return partial;
@@ -190,7 +175,7 @@ public:
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
-		smem_storage.warp_scan[warp_id][lane_id] = 0;
+		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], 0);
 
 		// Compute inclusive warp scan (has identity, don't share final)
 		output = Iterate<0, STEPS, true, false>::InclusiveScan(
@@ -216,7 +201,7 @@ public:
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
-		smem_storage.warp_scan[warp_id][lane_id] = 0;
+		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], 0);
 
 		// Compute inclusive warp scan (has identity, share final)
 		output = Iterate<0, STEPS, true, true>::InclusiveScan(
@@ -354,7 +339,7 @@ public:
 		SmemStorage 	&smem_storage,		// (in) SmemStorage reference
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
-		Sum<T>)								// (in) Scan operator.
+		Sum<T, true>)						// (in) Scan operator.
 	{
 		InclusiveSum(smem_storage, input, output);
 	}
@@ -466,7 +451,7 @@ public:
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
-		smem_storage.warp_scan[warp_id][lane_id] = identity;
+		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], identity);
 
 		// Compute inclusive warp scan (identity, share final)
 		T inclusive = Iterate<0, STEPS, true, true>::InclusiveScan(
@@ -477,7 +462,7 @@ public:
 			scan_op);
 
 		// Retrieve exclusive scan
-		output = smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - 1];
+		output = ThreadLoad<LOAD_VS>(&smem_storage.warp_scan[warp_id][HALF_WARP_THREADS + lane_id - 1]);
 	}
 
 
