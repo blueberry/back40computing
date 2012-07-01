@@ -286,56 +286,227 @@ void RandomBits(
 
 
 /******************************************************************************
+ * Test value initialization utilities
+ ******************************************************************************/
+
+/**
+ * Helper for casting types for cout printing
+ */
+template <typename T>
+T CoutCast(T val) { return val; }
+
+int CoutCast(char val) { return val; }
+
+int CoutCast(unsigned char val) { return val; }
+
+int CoutCast(signed char val) { return val; }
+
+
+/**
+ * Test problem generation options
+ */
+enum GenMode
+{
+	UNIFORM,			// All 1s
+	SEQ_INC,			// Sequentially incrementing
+	RANDOM,				// Random
+
+	GEN_MODE_END,
+};
+
+/**
+ * Initialize value
+ */
+template <typename T>
+void InitValue(int gen_mode, T &value, int index = 0)
+{
+	switch (gen_mode)
+	{
+	case UNIFORM:
+		value = 1;
+		break;
+	case SEQ_INC:
+		value = index;
+		break;
+	case RANDOM:
+	default:
+		RandomBits(value);
+	}
+}
+
+
+/******************************************************************************
  * Comparison and ostream operators for CUDA vector types
  ******************************************************************************/
 
 /**
+ * Vector1 overloads
+ */
+#define CUB_VEC_OVERLOAD_1(T)								\
+	/* Ostream output */									\
+	std::ostream& operator<<(								\
+		std::ostream& os,									\
+		const T& val)										\
+	{														\
+		os << '(' << CoutCast(val.x) << ')'; 				\
+		return os;											\
+	}														\
+	/* Inequality */										\
+	__host__ __device__ __forceinline__ bool operator!=(	\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		return (a.x != b.x);								\
+	}														\
+	/* Test initialization */								\
+	void InitValue(int gen_mode, T &value, int index = 0)	\
+	{														\
+		InitValue(gen_mode, value.x, index);				\
+	}														\
+	/* Summation */											\
+	__host__ __device__ __forceinline__ T operator+(		\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		T retval = {a.x + b.x};								\
+		return retval;										\
+	}
+
+/**
  * Vector2 overloads
  */
-#define CUB_VEC_OVERLOAD_2(T)							\
-	std::ostream& operator<<(std::ostream& os, const T& val)		\
-	{													\
-		os << '(' << val.x << ',' << val.y << ')';		\
-		return os;										\
-	}													\
-	bool operator !=(const T &a, const T &b)			\
-	{													\
-		return (a.x != b.x) && (a.y != b.y);			\
+#define CUB_VEC_OVERLOAD_2(T)								\
+	/* Ostream output */									\
+	std::ostream& operator<<(								\
+		std::ostream& os,									\
+		const T& val)										\
+	{														\
+		os << '('											\
+			<< CoutCast(val.x) << ','						\
+			<< CoutCast(val.y) << ')'; 						\
+		return os;											\
+	}														\
+	/* Inequality */										\
+	__host__ __device__ __forceinline__ bool operator!=(	\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		return (a.x != b.x) && 								\
+			(a.y != b.y);									\
+	}														\
+	/* Test initialization */								\
+	void InitValue(int gen_mode, T &value, int index = 0)	\
+	{														\
+		InitValue(gen_mode, value.x, index);				\
+		InitValue(gen_mode, value.y, index);				\
+	}														\
+	/* Summation */											\
+	__host__ __device__ __forceinline__ T operator+(		\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		T retval = {										\
+			a.x + b.x, 										\
+			a.y + b.y};										\
+		return retval;										\
 	}
 
 
 /**
  * Vector3 overloads
  */
-#define CUB_VEC_OVERLOAD_3(T)							\
-	std::ostream& operator<<(std::ostream& os, const T& val)		\
-	{													\
-		os << '(' << val.x << ',' << val.y << ',' << val.z << ')';		\
-		return os;										\
-	}													\
-	bool operator !=(const T &a, const T &b)			\
-	{													\
-		return (a.x != b.x) && (a.y != b.y) && (a.z != b.z);			\
+#define CUB_VEC_OVERLOAD_3(T)								\
+	/* Ostream output */									\
+	std::ostream& operator<<(								\
+		std::ostream& os,									\
+		const T& val)										\
+	{														\
+		os << '(' 											\
+			<< CoutCast(val.x) << ','						\
+			<< CoutCast(val.y) << ',' 						\
+			<< CoutCast(val.z) << ')';						\
+		return os;											\
+	}														\
+	/* Inequality */										\
+	__host__ __device__ __forceinline__ bool operator!=(	\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		return (a.x != b.x) && 								\
+			(a.y != b.y) && 								\
+			(a.z != b.z);									\
+	}														\
+	/* Test initialization */								\
+	void InitValue(int gen_mode, T &value, int index = 0)	\
+	{														\
+		InitValue(gen_mode, value.x, index);				\
+		InitValue(gen_mode, value.y, index);				\
+		InitValue(gen_mode, value.z, index);				\
+	}														\
+	/* Summation */											\
+	__host__ __device__ __forceinline__ T operator+(		\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		T retval = {										\
+			a.x + b.x, 										\
+			a.y + b.y,										\
+			a.z + b.z};										\
+		return retval;										\
 	}
 
 /**
  * Vector4 overloads
  */
-#define CUB_VEC_OVERLOAD_4(T)							\
-	std::ostream& operator<<(std::ostream& os, const T& val)		\
-	{													\
-		os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << val.w << ')';		\
-		return os;										\
-	}													\
-	bool operator !=(const T &a, const T &b)			\
-	{													\
-		return (a.x != b.x) && (a.y != b.y) && (a.z != b.z) && (a.w != b.w);			\
+#define CUB_VEC_OVERLOAD_4(T)								\
+	/* Ostream output */									\
+	std::ostream& operator<<(								\
+		std::ostream& os,									\
+		const T& val)										\
+	{														\
+		os << '(' 											\
+			<< CoutCast(val.x) << ','						\
+			<< CoutCast(val.y) << ',' 						\
+			<< CoutCast(val.z) << ',' 						\
+			<< CoutCast(val.w) << ')';						\
+		return os;											\
+	}														\
+	/* Inequality */										\
+	__host__ __device__ __forceinline__ bool operator!=(	\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		return (a.x != b.x) && 								\
+			(a.y != b.y) && 								\
+			(a.z != b.z) && 								\
+			(a.w != b.w);									\
+	}														\
+	/* Test initialization */								\
+	void InitValue(int gen_mode, T &value, int index = 0)	\
+	{														\
+		InitValue(gen_mode, value.x, index);				\
+		InitValue(gen_mode, value.y, index);				\
+		InitValue(gen_mode, value.z, index);				\
+		InitValue(gen_mode, value.w, index);				\
+	}														\
+	/* Summation */											\
+	__host__ __device__ __forceinline__ T operator+(		\
+		const T &a, 										\
+		const T &b)											\
+	{														\
+		T retval = {										\
+			a.x + b.x, 										\
+			a.y + b.y,										\
+			a.z + b.z,										\
+			a.w + b.w};										\
+		return retval;										\
 	}
 
 /**
  * All vector overloads
  */
 #define CUB_VEC_OVERLOAD(BASE_T)							\
+	CUB_VEC_OVERLOAD_1(BASE_T##1)							\
 	CUB_VEC_OVERLOAD_2(BASE_T##2)							\
 	CUB_VEC_OVERLOAD_3(BASE_T##3)							\
 	CUB_VEC_OVERLOAD_4(BASE_T##4)
@@ -372,7 +543,9 @@ int CompareResults(T* computed, S* reference, SizeT len)
 	{
 		if (computed[i] != reference[i])
 		{
-			std::cout << "INCORRECT: [" << i << "]: " << computed[i] << " != " << reference[i];
+			std::cout << "INCORRECT: [" << i << "]: "
+				<< CoutCast(computed[i]) << " != "
+				<< CoutCast(reference[i]);
 			return 1;
 		}
 	}
@@ -406,12 +579,12 @@ int CompareDeviceResults(
 		printf("Reference:\n");
 		for (int i = 0; i < num_elements; i++)
 		{
-			std::cout << h_reference[i] << ", ";
+			std::cout << CoutCast(h_reference[i]) << ", ";
 		}
 		printf("\n\nData:\n");
 		for (int i = 0; i < num_elements; i++)
 		{
-			std::cout << h_data[i] << ", ";
+			std::cout << CoutCast(h_data[i]) << ", ";
 		}
 		printf("\n\n");
 	}
@@ -451,12 +624,12 @@ int CompareDeviceDeviceResults(
 		printf("Reference:\n");
 		for (int i = 0; i < num_elements; i++)
 		{
-			std::cout << h_reference[i] << ", ";
+			std::cout << CoutCast(h_reference[i]) << ", ";
 		}
 		printf("\n\nData:\n");
 		for (int i = 0; i < num_elements; i++)
 		{
-			std::cout << h_data[i] << ", ";
+			std::cout << CoutCast(h_data[i]) << ", ";
 		}
 		printf("\n\n");
 	}
@@ -488,12 +661,11 @@ void DisplayDeviceResults(
 	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
 
 	// Display data
-	printf("\n\nData:\n");
 	for (int i = 0; i < num_elements; i++)
 	{
-		std::cout << h_data[i] << ", ";
+		std::cout << CoutCast(h_data[i]) << ", ";
 	}
-	printf("\n\n");
+	printf("\n");
 
 	// Cleanup
 	if (h_data) free(h_data);

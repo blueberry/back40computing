@@ -145,6 +145,38 @@ struct RemoveQualifiers<Tp, const volatile Up>
 };
 
 
+/**
+ * Allows the definition of structures that will detect the presence
+ * of the specified type name within other classes
+ */
+#define CUB_HAS_NESTED_TYPE(detect_struct, nested_type_name)			\
+	template <typename T>												\
+	struct detect_struct												\
+	{																	\
+		template <typename C>											\
+		static char& test(typename C::nested_type_name*);				\
+		template <typename>												\
+		static int& test(...);											\
+		enum															\
+		{																\
+			VALUE = sizeof(test<T>(0)) < sizeof(int)					\
+		};																\
+	};
+
+
+/**
+ * Simple enable-if (similar to Boost)
+ */
+template <bool Condition, class T = void>
+struct EnableIf
+{
+	typedef T Type;
+};
+
+template <class T>
+struct EnableIf<false, T> {};
+
+
 /******************************************************************************
  * Simple type traits utilities.
  *

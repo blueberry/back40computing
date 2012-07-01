@@ -175,7 +175,7 @@ public:
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
-		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], 0);
+		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], T(0));
 
 		// Compute inclusive warp scan (has identity, don't share final)
 		output = Iterate<0, STEPS, true, false>::InclusiveScan(
@@ -201,7 +201,7 @@ public:
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
 
 		// Initialize identity region
-		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], 0);
+		ThreadStore<STORE_VS>(&smem_storage.warp_scan[warp_id][lane_id], T(0));
 
 		// Compute inclusive warp scan (has identity, share final)
 		output = Iterate<0, STEPS, true, true>::InclusiveScan(

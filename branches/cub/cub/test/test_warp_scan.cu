@@ -50,22 +50,12 @@ enum TestMode
 	PREFIX_AGGREGATE,
 };
 
+//---------------------------------------------------------------------
+// Complex scan data type Foo
+//---------------------------------------------------------------------
 
 /**
- * Test problem generation options
- */
-enum GenMode
-{
-	UNIFORM,			// All 1s
-	SEQ_INC,			// Sequentially incrementing
-	RANDOM,				// Random
-
-	GEN_MODE_END,
-};
-
-
-/**
- * Special scan data type
+ * Foo complex data type
  */
 struct Foo
 {
@@ -74,19 +64,125 @@ struct Foo
 	short 		z;
 	char 		w;
 
+	// Constructor
+	__host__ __device__ __forceinline__ Foo() : x(0), y(0), z(0), w(0) {}
+
+	// Constructor
+	__host__ __device__ __forceinline__ Foo(long long x, int y, short z, char w) : x(x), y(y), z(z), w(w) {}
+
 	// Summation operator
 	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
 	{
-		Foo retval = {x + b.x, y + b.y, z + b.z, w + b.w};
-		return retval;
+		return Foo(x + b.x, y + b.y, z + b.z, w + b.w);
 	}
 
 	// Inequality operator
-	bool operator !=(const Foo &b)
+	__host__ __device__ __forceinline__ bool operator !=(const Foo &b)
 	{
 		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
 	}
 };
+
+/**
+ * Foo ostream operator
+ */
+std::ostream& operator<<(std::ostream& os, const Foo& val)
+{
+	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << CoutCast(val.w) << ')';
+	return os;
+}
+
+/**
+ * Foo test initialization
+ */
+void InitValue(int gen_mode, Foo &value, int index = 0)
+{
+	InitValue(gen_mode, value.x, index);
+	InitValue(gen_mode, value.y, index);
+	InitValue(gen_mode, value.z, index);
+	InitValue(gen_mode, value.w, index);
+}
+
+
+//---------------------------------------------------------------------
+// Complex scan data type Bar (with optimizations for fence-free scan)
+//---------------------------------------------------------------------
+
+/**
+ * Bar complex data type
+ */
+struct Bar
+{
+	typedef void ThreadLoadTag;
+	typedef void ThreadStoreTag;
+
+	long long 	x;
+	int 		y;
+
+	// Constructor
+	__host__ __device__ __forceinline__ Bar() : x(0), y(0){}
+
+	// Constructor
+	__host__ __device__ __forceinline__ Bar(long long x, int y) : x(x), y(y) {}
+
+	// Summation operator
+	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
+	{
+		return Bar(x + b.x, y + b.y);
+	}
+
+	// Inequality operator
+	__host__ __device__ __forceinline__ bool operator !=(const Bar &b)
+	{
+		return (x != b.x) && (y != b.y);
+	}
+
+	// Volatile shared load
+	template <LoadModifier MODIFIER>
+	__device__ __forceinline__
+	typename EnableIf<(MODIFIER == LOAD_VS), void>::Type ThreadLoad(Bar *ptr)
+	{
+		volatile long long *x_ptr = &(ptr->x);
+		volatile int *y_ptr = &(ptr->y);
+
+		x = *x_ptr;
+		y = *y_ptr;
+	}
+
+	 // Volatile shared store
+	template <StoreModifier MODIFIER>
+	__device__ __forceinline__
+	typename EnableIf<(MODIFIER == STORE_VS), void>::Type ThreadStore(Bar *ptr) const
+	{
+		volatile long long *x_ptr = &(ptr->x);
+		volatile int *y_ptr = &(ptr->y);
+
+		*x_ptr = x;
+		*y_ptr = y;
+	}
+};
+
+/**
+ * Bar ostream operator
+ */
+std::ostream& operator<<(std::ostream& os, const Bar& val)
+{
+	os << '(' << val.x << ',' << val.y << ')';
+	return os;
+}
+
+/**
+ * Bar test initialization
+ */
+void InitValue(int gen_mode, Bar &value, int index = 0)
+{
+	InitValue(gen_mode, value.x, index);
+	InitValue(gen_mode, value.y, index);
+}
+
+
+
+
 
 //---------------------------------------------------------------------
 // Test kernels
@@ -106,7 +202,8 @@ __global__ void WarpScanKernel(
 	T 			*d_out,
 	ScanOp 		scan_op,
 	IdentityT 	identity,
-	T			prefix)
+	T			prefix,
+	clock_t		*d_elapsed)
 {
 	// Cooperative warp-scan utility type (1 warp)
 	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
@@ -117,6 +214,10 @@ __global__ void WarpScanKernel(
 	// Per-thread tile data
 	T data = d_in[threadIdx.x];
 
+	// Record elapsed clocks
+	clock_t start = clock();
+
+	// Test scan
 	T aggregate;
 	if (TEST_MODE == BASIC)
 	{
@@ -134,6 +235,9 @@ __global__ void WarpScanKernel(
 		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
 	}
 
+	// Record elapsed clocks
+	*d_elapsed = clock() - start;
+
 	// Store data
 	d_out[threadIdx.x] = data;
 
@@ -142,6 +246,7 @@ __global__ void WarpScanKernel(
 	{
 		d_out[blockDim.x] = aggregate;
 	}
+
 }
 
 
@@ -158,7 +263,8 @@ __global__ void WarpScanKernel(
 	T 			*d_out,
 	ScanOp 		scan_op,
 	NullType,
-	T			prefix)
+	T			prefix,
+	clock_t		*d_elapsed)
 {
 	// Cooperative warp-scan utility type (1 warp)
 	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
@@ -168,6 +274,9 @@ __global__ void WarpScanKernel(
 
 	// Per-thread tile data
 	T data = d_in[threadIdx.x];
+
+	// Record elapsed clocks
+	clock_t start = clock();
 
 	T aggregate;
 	if (TEST_MODE == BASIC)
@@ -186,6 +295,9 @@ __global__ void WarpScanKernel(
 		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
 	}
 
+	// Record elapsed clocks
+	*d_elapsed = clock() - start;
+
 	// Store data
 	d_out[threadIdx.x] = data;
 
@@ -200,68 +312,6 @@ __global__ void WarpScanKernel(
 //---------------------------------------------------------------------
 // Host utility subroutines
 //---------------------------------------------------------------------
-
-/**
- * Foo ostream operator
- */
-std::ostream& operator<<(std::ostream& os, const Foo& val)
-{
-	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << val.w << ')';
-	return os;
-}
-
-/**
- * Uint2 summation operator
- */
-__host__ __device__ __forceinline__ uint2 operator+(
-	const uint2 &a, const uint2 &b)
-{
-	uint2 retval = {a.x + b.x, a.y + b.y};
-	return retval;
-}
-
-
-/**
- * Initialize value at a given index
- */
-template <typename T>
-void InitValue(int gen_mode, T &value, int index)
-{
-	switch (gen_mode)
-	{
-	case UNIFORM:
-		value = 1;
-		break;
-	case SEQ_INC:
-		value = index;
-		break;
-	case RANDOM:
-	default:
-		RandomBits(value);
-	}
-}
-
-
-/**
- * Initialize value at a given index.  Specialized for uint2.
- */
-void InitValue(int gen_mode, uint2 &value, int index)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-}
-
-
-/**
- * Initialize value at a given index.  Specialized for Foo.
- */
-void InitValue(int gen_mode, Foo &value, int index)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-	InitValue(gen_mode, value.z, index);
-}
-
 
 /**
  * Initialize exclusive-scan problem (and solution)
@@ -354,12 +404,16 @@ void Test(
 	// Initialize device arrays
 	T *d_in = NULL;
 	T *d_out = NULL;
+	clock_t *d_elapsed = NULL;
 	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * LOGICAL_WARP_THREADS));
 	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (LOGICAL_WARP_THREADS + 1)));
+	CubDebugExit(cudaMalloc((void**)&d_elapsed, sizeof(clock_t)));
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * LOGICAL_WARP_THREADS, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	printf("%s warpscan LOGICAL_WARP_THREADS(%d) sizeof(T)(%d):\n",
+	printf("Test-mode %d, gen-mode %d, %s warpscan, %d warp threads, %d-byte elements:\n",
+		TEST_MODE,
+		gen_mode,
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
 		LOGICAL_WARP_THREADS,
 		(int) sizeof(T));
@@ -371,17 +425,26 @@ void Test(
 		d_out,
 		scan_op,
 		identity,
-		prefix);
+		prefix,
+		d_elapsed);
+
+	if (g_verbose)
+	{
+		printf("\tElapsed clocks: ");
+		DisplayDeviceResults(d_elapsed, 1);
+	}
 
 	CubDebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
+	printf("\tScan results: ");
 	AssertEquals(0, CompareDeviceResults(h_reference, d_out, LOGICAL_WARP_THREADS, g_verbose, g_verbose));
 	printf("\n");
 
 	// Copy out and display aggregate
 	if ((TEST_MODE == AGGREGATE) || (TEST_MODE == PREFIX_AGGREGATE))
 	{
+		printf("\tScan aggregate: ");
 		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + LOGICAL_WARP_THREADS, 1, g_verbose, g_verbose));
 		printf("\n");
 	}
@@ -395,84 +458,64 @@ void Test(
 
 
 /**
- * Run battery of tests for different logical warp widths (which
- * must be less than or equal to the device warp width)
+ * Run battery of tests for different primitive variants
+ */
+template <
+	int 		LOGICAL_WARP_THREADS,
+	typename 	ScanOp,
+	typename 	T>
+void Test(
+	int 		gen_mode,
+	ScanOp 		scan_op,
+	T 			identity,
+	T			prefix)
+{
+	// Exclusive
+	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
+	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
+	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
+
+	// Inclusive
+	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
+	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
+}
+
+
+/**
+ * Run battery of tests for different data types and scan ops
  */
 template <int LOGICAL_WARP_THREADS>
 void Test(int gen_mode)
 {
-    // int sum
-    {
-    	typedef int T;
-    	Sum<T> scan_op;
-    	T identity = 0;
-    	T prefix = 99;
 
-    	// Exclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
+	// primitive
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned int>(), (unsigned int) 0, (unsigned int) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99);
 
-    	// Inclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    }
+	// primitive (alternative scan op)
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned char>(), (unsigned char) 0, (unsigned char) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned short>(), (unsigned short) 0, (unsigned short) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned int>(), (unsigned int) 0, (unsigned int) 99);
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99);
 
-    // uint max
-    {
-    	typedef unsigned int T;
-    	Max<T> scan_op;
-    	T identity = 0;
-    	T prefix = 99;
+	// vec-2
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uchar2>(), make_uchar2(0, 0), make_uchar2(17, 21));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ushort2>(), make_ushort2(0, 0), make_ushort2(17, 21));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uint2>(), make_uint2(0, 0), make_uint2(17, 21));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong2>(), make_ulonglong2(0, 0), make_ulonglong2(17, 21));
 
-    	// Exclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
+	// vec-4
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uchar4>(), make_uchar4(0, 0, 0, 0), make_uchar4(17, 21, 32, 85));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ushort4>(), make_ushort4(0, 0, 0, 0), make_ushort4(17, 21, 32, 85));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uint4>(), make_uint4(0, 0, 0, 0), make_uint4(17, 21, 32, 85));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85));
 
-    	// Inclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-
-    }
-
-    // uint2 sum
-    {
-    	typedef uint2 T;
-    	Sum<T> scan_op;
-    	T identity = {0, 0};
-    	T prefix = {14, 21};
-
-    	// Exclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
-
-    	// Inclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    }
-
-    // Foo sum
-    {
-    	typedef Foo T;
-    	Sum<T> scan_op;
-    	T identity = {0, 0, 0};
-    	T prefix = {14, 21, 81};
-
-    	// Exclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix);
-
-    	// Inclusive
-    	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix);
-    }
+	// complex
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo(), Foo(17, 21, 32, 85));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar(), Bar(17, 21));
 }
 
 
