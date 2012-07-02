@@ -28,7 +28,6 @@
 #include <set>
 #include <map>
 
-#include "../util/basic_utils.cuh"
 #include "../util/ns_umbrella.cuh"
 #include "../util/spinlock.cuh"
 #include "../util/error_utils.cuh"
