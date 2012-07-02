@@ -51,7 +51,7 @@ enum TestMode
 };
 
 //---------------------------------------------------------------------
-// Complex scan data type Foo
+// Complex data type Foo
 //---------------------------------------------------------------------
 
 /**
@@ -65,7 +65,7 @@ struct Foo
 	char 		w;
 
 	// Constructor
-	__host__ __device__ __forceinline__ Foo() : x(0), y(0), z(0), w(0) {}
+	__host__ __device__ __forceinline__ Foo() {}
 
 	// Constructor
 	__host__ __device__ __forceinline__ Foo(long long x, int y, short z, char w) : x(x), y(y), z(z), w(w) {}
@@ -105,7 +105,7 @@ void InitValue(int gen_mode, Foo &value, int index = 0)
 
 
 //---------------------------------------------------------------------
-// Complex scan data type Bar (with optimizations for fence-free scan)
+// Complex data type Bar (with optimizations for fence-free warp-synchrony)
 //---------------------------------------------------------------------
 
 /**
@@ -120,7 +120,7 @@ struct Bar
 	int 		y;
 
 	// Constructor
-	__host__ __device__ __forceinline__ Bar() : x(0), y(0){}
+	__host__ __device__ __forceinline__ Bar() {}
 
 	// Constructor
 	__host__ __device__ __forceinline__ Bar(long long x, int y) : x(x), y(y) {}
@@ -514,8 +514,8 @@ void Test(int gen_mode)
 	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85));
 
 	// complex
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo(), Foo(17, 21, 32, 85));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar(), Bar(17, 21));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo(0, 0, 0, 0), Foo(17, 21, 32, 85));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar(0, 0), Bar(17, 21));
 }
 
 
@@ -525,10 +525,7 @@ void Test(int gen_mode)
 template <int LOGICAL_WARP_THREADS>
 void Test()
 {
-	for (
-		int gen_mode = UNIFORM;
-		gen_mode < GEN_MODE_END;
-		gen_mode++)
+	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
 	{
 		Test<LOGICAL_WARP_THREADS>(gen_mode);
 	}
@@ -543,15 +540,24 @@ int main(int argc, char** argv)
     // Initialize command line
     CommandLineArgs args(argc, argv);
     g_verbose = args.CheckCmdLineFlag("v");
+    bool quick = args.CheckCmdLineFlag("quick");
 
     // Initialize device
     CubDebugExit(args.DeviceInit());
 
-    // Test logical warp sizes
-    Test<32>();
-    Test<16>();
-    Test<9>();
-    Test<7>();
+    if (quick)
+    {
+        // Quick test
+        Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10));
+    }
+    else
+    {
+        // Test logical warp sizes
+        Test<32>();
+        Test<16>();
+        Test<9>();
+        Test<7>();
+    }
 
     return 0;
 }

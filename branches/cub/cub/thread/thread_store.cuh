@@ -337,6 +337,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 /**
  * Expand ThreadStore() implementations for primitive types.
  */
+
 // Signed
 CUB_STORES_0124(char, char, short, s8, h)
 CUB_STORES_0(signed char, short, s8, h)

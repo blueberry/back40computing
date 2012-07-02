@@ -28,6 +28,8 @@
 #include "../type_utils.cuh"
 #include "../operators.cuh"
 #include "../thread/thread_reduce.cuh"
+#include "../thread/thread_load.cuh"
+#include "../thread/thread_store.cuh"
 #include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
@@ -61,6 +63,8 @@ template <
 	int 		STRIPS = 1>			// When strip-mining, the number of CTA-strips per tile
 class CtaReduce
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Constants and typedefs
 	//---------------------------------------------------------------------
@@ -73,9 +77,6 @@ class CtaReduce
 
 	enum
 	{
-		// Whether or not the reduction type is a built-in primitive
-		PRIMITIVE = NumericTraits<T>::PRIMITIVE,
-
 		// The total number of elements that need to be cooperatively reduced
 		SHARED_ELEMENTS = CTA_THREADS * STRIPS,
 
@@ -98,24 +99,18 @@ class CtaReduce
 		FULL_UNGUARDED = (POWER_OF_TWO || CtaRakingGrid::FULL_UNGUARDED),
 	};
 
-
-	/**
-	 * Qualified type of T to use for warp-synchronous storage.  For
-	 * built-in primitive types, we can use volatile qualifier (and can omit
-	 * syncthreads when warp-synchronous)
-	 */
-	typedef typename If<(PRIMITIVE), volatile T, T>::Type WarpT;
-
+public:
 
 	/**
 	 * Shared memory storage type
 	 */
 	struct SmemStorage
 	{
-		WarpT 									warp_buffer[RAKING_THREADS];	// Buffer for warp-synchronous reduction
+		T 										warp_buffer[RAKING_THREADS];	// Buffer for warp-synchronous reduction
 		typename CtaRakingGrid::SmemStorage 	raking_grid;					// Padded CTA raking grid
 	};
 
+private:
 
 	//---------------------------------------------------------------------
 	// Iteration structures
@@ -136,15 +131,12 @@ class CtaReduce
 			const int OFFSET = 1 << COUNT;
 
 			// Share partial into buffer
-			smem_storage.warp_buffer[threadIdx.x] = partial;
-
-			// Prevent compiler from hoisting variables between rounds
-			if (!PRIMITIVE) __threadfence_block();
+			ThreadStore<STORE_VS>(&smem_storage.warp_buffer[threadIdx.x], partial);
 
 			// Update partial if addend is in range
 			if (UNGUARDED || ((threadIdx.x + OFFSET) * RAKING_LENGTH < num_valid))
 			{
-				T addend = smem_storage.warp_buffer[threadIdx.x + OFFSET];
+				T addend = ThreadLoad<LOAD_VS>(&smem_storage.warp_buffer[threadIdx.x + OFFSET]);
 				partial = reduction_op(partial, addend);
 			}
 
@@ -188,10 +180,10 @@ class CtaReduce
 	template <
 		bool UNGUARDED,								// Whether we can skip bounds-checking
 		typename ReductionOp>						// Reduction operator type
-	static __device__ __forceinline__ T Reduce(
+	static __device__ __forceinline__ T ReduceHelper(
 		SmemStorage		&smem_storage,				// SmemStorage reference
 		T 				partials[STRIPS],			// Calling thread's input partial reductions
-		unsigned int 	num_valid,					// Number of threads containing valid elements (may be less than CTA_THREADS)
+		unsigned int 	num_valid,					// Number of valid elements (may be less than CTA_THREADS)
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
 		T partial = partials[0];
@@ -220,9 +212,10 @@ class CtaReduce
 			// Reduce parallelism to one warp
 			if (threadIdx.x < RAKING_THREADS)
 			{
+
 				// Raking reduction. Compute pointer to raking segment and load first element.
-				T *raking_segment 	= CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-				partial 			= *raking_segment;
+				T *raking_segment = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+				partial = raking_segment[0];
 
 				#pragma unroll
 				for (int ELEMENT = 1; ELEMENT < RAKING_LENGTH; ELEMENT++)
@@ -248,6 +241,7 @@ class CtaReduce
 		return partial;
 	}
 
+public:
 
 	//---------------------------------------------------------------------
 	// Partial-tile reduction interface
@@ -270,11 +264,11 @@ class CtaReduce
 		// Determine if we don't need bounds checking
 		if (FULL_UNGUARDED && (num_valid == CTA_THREADS))
 		{
-			return Reduce<true>(smem_storage, &partial, num_valid, reduction_op);
+			return ReduceHelper<true>(smem_storage, &partial, num_valid, reduction_op);
 		}
 		else
 		{
-			return Reduce<false>(smem_storage, &partial, num_valid, reduction_op);
+			return ReduceHelper<false>(smem_storage, &partial, num_valid, reduction_op);
 		}
 	}
 
@@ -381,8 +375,6 @@ class CtaReduce
 		T 				tile[STRIPS][ELEMENTS],		// Calling thread's input
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
-		const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
-
 		// Reduce partials within each segment
 		T segment_partials[STRIPS];
 		for (int STRIP = 0; STRIP < STRIPS; STRIP++)
@@ -393,11 +385,11 @@ class CtaReduce
 		// Determine if we don't need bounds checking
 		if (FULL_UNGUARDED)
 		{
-			return Reduce<true>(smem_storage, segment_partials, TILE_SIZE, reduction_op);
+			return ReduceHelper<true>(smem_storage, segment_partials, CTA_THREADS * STRIPS, reduction_op);
 		}
 		else
 		{
-			return Reduce<false>(smem_storage, segment_partials, TILE_SIZE, reduction_op);
+			return ReduceHelper<false>(smem_storage, segment_partials, CTA_THREADS * STRIPS, reduction_op);
 		}
 	}
 
