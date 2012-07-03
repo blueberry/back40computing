@@ -323,14 +323,11 @@ struct CachedAllocator
 				}
 
 				// Set to specified GPU
-				error = cudaGetDevice(&entrypoint_gpu);
-				if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
-				error = cudaSetDevice(gpu);
-				if (util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__)) break;
+				if (error = CubDebug(cudaGetDevice(&entrypoint_gpu))) break;
+				if (error = CubDebug(cudaSetDevice(gpu))) break;
 
 				// Allocate
-				error = cudaMalloc(&search_key.d_ptr, search_key.bytes);
-				if (util::B40CPerror(error, "cudaMalloc failed ", __FILE__, __LINE__)) break;
+				if (error = CubDebug(cudaMalloc(&search_key.d_ptr, search_key.bytes))) break;
 
 				// Lock
 				if (!locked) {
@@ -349,15 +346,14 @@ struct CachedAllocator
 			locked = false;
 		}
 
+		// Copy device pointer to output parameter (NULL on error)
+		*d_ptr = search_key.d_ptr;
+
 		// Attempt to revert back to previous GPU if necessary
 		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
 		{
-			error = cudaSetDevice(entrypoint_gpu);
-			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
+			if (error = CubDebug(cudaSetDevice(entrypoint_gpu))) return error;
 		}
-
-		// Copy device pointer to output parameter
-		*d_ptr = search_key.d_ptr;
 
 		return error;
 	}
@@ -369,12 +365,14 @@ struct CachedAllocator
 	 */
 	cudaError_t Allocate(void** d_ptr, size_t bytes)
 	{
-		GpuOrdinal current_gpu;
-		cudaError_t error = cudaGetDevice(&current_gpu);
-		if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__))
-			return error;
+		cudaError_t error = cudaSuccess;
+		do {
+			GpuOrdinal current_gpu;
+			if (error = CubDebug(cudaGetDevice(&current_gpu))) break;
+			if (error = Allocate(d_ptr, bytes, current_gpu)) break;
+		} while(0);
 
-		return Allocate(d_ptr, bytes, current_gpu);
+		return error;
 	}
 
 
@@ -402,8 +400,7 @@ struct CachedAllocator
 			if (block_itr == live_blocks.end())
 			{
 				// Cannot find pointer
-				error = util::B40CPerror(cudaErrorUnknown, "Deallocate failed ", __FILE__, __LINE__);
-				break;
+				if (error = CubDebug(cudaErrorUnknown)) break;
 			}
 			else
 			{
@@ -428,14 +425,11 @@ struct CachedAllocator
 					}
 
 					// Set to specified GPU
-					error = cudaGetDevice(&entrypoint_gpu);
-					if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
-					error = cudaSetDevice(gpu);
-					if (util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__)) break;
+					if (error = CubDebug(cudaGetDevice(&entrypoint_gpu))) break;
+					if (error = CubDebug(cudaSetDevice(gpu))) break;
 
 					// Free device memory
-					error = cudaFree(d_ptr);
-					if (util::B40CPerror(error, "cudaFree failed ", __FILE__, __LINE__)) break;
+					if (error = CubDebug(cudaFree(d_ptr))) break;
 				}
 			}
 		} while (0);
@@ -449,8 +443,7 @@ struct CachedAllocator
 		// Attempt to revert back to entry-point GPU if necessary
 		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
 		{
-			error = cudaSetDevice(entrypoint_gpu);
-			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
+			if (error = CubDebug(cudaSetDevice(entrypoint_gpu))) return error;
 		}
 
 		return error;
@@ -464,11 +457,14 @@ struct CachedAllocator
 	cudaError_t Deallocate(void* d_ptr)
 	{
 		GpuOrdinal current_gpu;
-		cudaError_t error = cudaGetDevice(&current_gpu);
-		if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__))
-			return error;
+		cudaError_t error = cudaSuccess;
 
-		return Deallocate(d_ptr, current_gpu);
+		do {
+			if (error = CubDebug(cudaGetDevice(&current_gpu))) break;
+			if (error = Deallocate(d_ptr, current_gpu)) break;
+		} while(0);
+
+		return error;
 	}
 
 
@@ -496,21 +492,18 @@ struct CachedAllocator
 			// Get entry-point GPU ordinal if necessary
 			if (entrypoint_gpu == INVALID_GPU_ORDINAL)
 			{
-				error = cudaGetDevice(&entrypoint_gpu);
-				if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
+				if (error = CubDebug(cudaGetDevice(&entrypoint_gpu))) break;
 			}
 
 			// Set current GPU ordinal if necessary
 			if (begin->gpu != current_gpu)
 			{
-				error = cudaSetDevice(begin->gpu);
-				if (util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__)) break;
+				if (error = CubDebug(cudaSetDevice(begin->gpu))) break;
 				current_gpu = begin->gpu;
 			}
 
 			// Free device memory
-			error = cudaFree(begin->d_ptr);
-			if (util::B40CPerror(error, "cudaGetDevice failed ", __FILE__, __LINE__)) break;
+			if (error = CubDebug(cudaFree(begin->d_ptr))) break;
 
 			// Reduce balance and erase entry
 			cached_bytes[current_gpu] -= begin->bytes;
@@ -526,8 +519,7 @@ struct CachedAllocator
 		// Attempt to revert back to entry-point GPU if necessary
 		if (entrypoint_gpu != INVALID_GPU_ORDINAL)
 		{
-			error = cudaSetDevice(entrypoint_gpu);
-			util::B40CPerror(error, "cudaSetDevice failed ", __FILE__, __LINE__);
+			if (error = CubDebug(cudaSetDevice(entrypoint_gpu))) return error;
 		}
 
 		return error;

@@ -318,7 +318,8 @@ template <
 void TestFullTile(
 	int 			gen_mode,
 	int 			tiles,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
 	const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
 
@@ -339,12 +340,13 @@ void TestFullTile(
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * num_elements, cudaMemcpyHostToDevice));
 
 	// Test multi-tile (unguarded)
-	printf("TestFullTile gen-mode %d, num_elements(%d), CTA_THREADS(%d) STRIPS(%d) ELEMENTS(%d) sizeof(T)(%d):\n",
+	printf("TestFullTile, gen-mode %d, num_elements(%d), CTA_THREADS(%d), STRIPS(%d), ELEMENTS(%d), %s (%d bytes) elements:\n",
 		gen_mode,
 		num_elements,
 		CTA_THREADS,
 		STRIPS,
 		ELEMENTS,
+		type_string,
 		(int) sizeof(T));
 	fflush(stdout);
 
@@ -378,11 +380,11 @@ template <
 void TestFullTile(
 	int 			gen_mode,
 	int 			tiles,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
-	TestFullTile<CTA_THREADS, STRIPS, 1, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<CTA_THREADS, STRIPS, 2, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<CTA_THREADS, STRIPS, 4, T>(gen_mode, tiles, reduction_op);
+	TestFullTile<CTA_THREADS, STRIPS, 1, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<CTA_THREADS, STRIPS, 4, T>(gen_mode, tiles, reduction_op, type_string);
 }
 
 
@@ -396,11 +398,11 @@ template <
 void TestFullTile(
 	int 			gen_mode,
 	int 			tiles,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
-	TestFullTile<CTA_THREADS, 1, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<CTA_THREADS, 2, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<CTA_THREADS, 4, T>(gen_mode, tiles, reduction_op);
+	TestFullTile<CTA_THREADS, 1, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<CTA_THREADS, 4, T>(gen_mode, tiles, reduction_op, type_string);
 }
 
 
@@ -413,14 +415,14 @@ template <
 void TestFullTile(
 	int 			gen_mode,
 	int 			tiles,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
-	TestFullTile<7, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<31, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<32, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<65, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<96, T>(gen_mode, tiles, reduction_op);
-	TestFullTile<128, T>(gen_mode, tiles, reduction_op);
+	TestFullTile<7, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<32, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<63, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<65, T>(gen_mode, tiles, reduction_op, type_string);
+	TestFullTile<128, T>(gen_mode, tiles, reduction_op, type_string);
 }
 
 
@@ -432,11 +434,12 @@ template <
 	typename 	ReductionOp>
 void TestFullTile(
 	int 			gen_mode,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
 	for (int tiles = 1; tiles < 3; tiles++)
 	{
-		TestFullTile<T>(gen_mode, tiles, reduction_op);
+		TestFullTile<T>(gen_mode, tiles, reduction_op, type_string);
 	}
 }
 
@@ -455,7 +458,8 @@ template <
 void TestPartialTile(
 	int 			gen_mode,
 	int 			num_elements,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
 	const int TILE_SIZE = CTA_THREADS;
 
@@ -473,10 +477,11 @@ void TestPartialTile(
 	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * 1));
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
-	printf("TestPartialTile gen-mode %d, num_elements(%d), CTA_THREADS(%d) sizeof(T)(%d):\n",
+	printf("TestPartialTile, gen-mode %d, num_elements(%d), CTA_THREADS(%d), %s (%d bytes) elements:\n",
 		gen_mode,
 		num_elements,
 		CTA_THREADS,
+		type_string,
 		(int) sizeof(T));
 	fflush(stdout);
 
@@ -509,14 +514,15 @@ template <
 	typename 	ReductionOp>
 void TestPartialTile(
 	int 			gen_mode,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
 	for (
 		int num_elements = 1;
 		num_elements < CTA_THREADS;
 		num_elements += CUB_MAX(1, CTA_THREADS / 5))
 	{
-		TestPartialTile<CTA_THREADS, T>(gen_mode, num_elements, reduction_op);
+		TestPartialTile<CTA_THREADS, T>(gen_mode, num_elements, reduction_op, type_string);
 	}
 }
 
@@ -529,14 +535,14 @@ template <
 	typename 	ReductionOp>
 void TestPartialTile(
 	int 			gen_mode,
-	ReductionOp 	reduction_op)
+	ReductionOp 	reduction_op,
+	char			*type_string)
 {
-	TestPartialTile<7, T>(gen_mode, reduction_op);
-	TestPartialTile<31, T>(gen_mode, reduction_op);
-	TestPartialTile<32, T>(gen_mode, reduction_op);
-	TestPartialTile<65, T>(gen_mode, reduction_op);
-	TestPartialTile<96, T>(gen_mode, reduction_op);
-	TestPartialTile<128, T>(gen_mode, reduction_op);
+	TestPartialTile<7, T>(gen_mode, reduction_op, type_string);
+	TestPartialTile<32, T>(gen_mode, reduction_op, type_string);
+	TestPartialTile<63, T>(gen_mode, reduction_op, type_string);
+	TestPartialTile<65, T>(gen_mode, reduction_op, type_string);
+	TestPartialTile<128, T>(gen_mode, reduction_op, type_string);
 }
 
 
@@ -548,12 +554,12 @@ void TestPartialTile(
  * Run battery of full-tile tests for different gen modes
  */
 template <typename T, typename ReductionOp>
-void Test(ReductionOp reduction_op)
+void Test(ReductionOp reduction_op, char *type_string)
 {
 	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
 	{
-		TestFullTile<T>(gen_mode, reduction_op);
-		TestPartialTile<T>(gen_mode, reduction_op);
+		TestFullTile<T>(gen_mode, reduction_op, type_string);
+		TestPartialTile<T>(gen_mode, reduction_op, type_string);
 	}
 }
 
@@ -569,8 +575,13 @@ int main(int argc, char** argv)
     bool quick = args.CheckCmdLineFlag("quick");
 
     // Print usage
-    if (args.CheckCmdLineFlag("help")) {
-    	printf("%s --device=<device-id> [--v] [--quick]\n", argv[0]);
+    if (args.CheckCmdLineFlag("help"))
+    {
+    	printf("%s "
+    		"[--device=<device-id>] "
+    		"[--v] "
+    		"[--quick]"
+    		"\n", argv[0]);
     	exit(0);
     }
 
@@ -580,30 +591,30 @@ int main(int argc, char** argv)
     if (quick)
     {
         // Quick test
-        Test<int>(Sum<int>());
+        Test<int>(Sum<int>(), CUB_TYPE_STRING(int));
     }
     else
     {
 		// primitives
-		Test<char>(Sum<char>());
-		Test<short>(Sum<short>());
-		Test<int>(Sum<int>());
-		Test<long long>(Sum<long long>());
+		Test<char>(Sum<char>(), CUB_TYPE_STRING(char));
+		Test<short>(Sum<short>(), CUB_TYPE_STRING(short));
+		Test<int>(Sum<int>(), CUB_TYPE_STRING(int));
+		Test<long long>(Sum<long long>(), CUB_TYPE_STRING(long long));
 
 		// vector types
-		Test<char2>(Sum<char2>());
-		Test<short2>(Sum<short2>());
-		Test<int2>(Sum<int2>());
-		Test<longlong2>(Sum<longlong2>());
+		Test<char2>(Sum<char2>(), CUB_TYPE_STRING(char2));
+		Test<short2>(Sum<short2>(), CUB_TYPE_STRING(short2));
+		Test<int2>(Sum<int2>(), CUB_TYPE_STRING(int2));
+		Test<longlong2>(Sum<longlong2>(), CUB_TYPE_STRING(longlong2));
 
-		Test<char4>(Sum<char4>());
-		Test<short4>(Sum<short4>());
-		Test<int4>(Sum<int4>());
-		Test<longlong4>(Sum<longlong4>());
+		Test<char4>(Sum<char4>(), CUB_TYPE_STRING(char4));
+		Test<short4>(Sum<short4>(), CUB_TYPE_STRING(short4));
+		Test<int4>(Sum<int4>(), CUB_TYPE_STRING(int4));
+		Test<longlong4>(Sum<longlong4>(), CUB_TYPE_STRING(longlong4));
 
 		// Complex types
-		Test<Foo>(Sum<Foo>());
-		Test<Bar>(Sum<Bar>());
+		Test<Foo>(Sum<Foo>(), CUB_TYPE_STRING(Foo));
+		Test<Bar>(Sum<Bar>(), CUB_TYPE_STRING(Bar));
     }
 
     return 0;

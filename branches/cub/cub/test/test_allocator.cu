@@ -1,40 +1,69 @@
+/******************************************************************************
+ *
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ ******************************************************************************/
 
+/******************************************************************************
+ * Test evaluation for caching allocator of device memory
+ ******************************************************************************/
+
+// Ensure printing of CUDA runtime errors to console
+#define CUB_STDERR
 
 #include <stdio.h>
-#include <iostream>
-#include "../host/allocator.cuh"
 
-#include "test_util.h"
+#include <stdio.h>
+#include "../cub.cuh"
+#include <test_util.h>
 
-template <typename A, typename B>
-void AssertEquals(int line, A a, B b)
-{
-	if (a != b) {
-    	std::cerr << "Line " << line << ": " << a << " != " << b << std::endl;
-    	exit(1);
-	}
-}
+using namespace cub;
 
+
+//---------------------------------------------------------------------
+// Main
+//---------------------------------------------------------------------
 
 /**
  * Main
  */
 int main(int argc, char** argv)
 {
-    b40c::CommandLineArgs args(argc, argv);
+    // Initialize command line
+    CommandLineArgs args(argc, argv);
 
-    // Parse commandline arguments
-    b40c::DeviceInit(args);
+    // Print usage
+    if (args.CheckCmdLineFlag("help"))
+    {
+    	printf("%s "
+    		"[--device=<device-id>]"
+    		"\n", argv[0]);
+    	exit(0);
+    }
 
-    // Get current gpu
-    int initial_gpu;
-	if (b40c::util::B40CPerror(cudaGetDevice(&initial_gpu))) exit(1);
+    // Initialize device
+    CubDebugExit(args.DeviceInit());
 
-	int num_gpus;
-	if (b40c::util::B40CPerror(cudaGetDeviceCount(&num_gpus))) exit(1);
+    // Get number of GPUs and current GPU
+    int num_gpus, initial_gpu;
+	if (CubDebug(cudaGetDeviceCount(&num_gpus))) exit(1);
+	if (CubDebug(cudaGetDevice(&initial_gpu))) exit(1);
 
-	// Create allocator with default 6MB-1B allowance
-    b40c::util::CachedAllocator allocator;
+	// Create default allocator (caches up to 6MB in device allocations per GPU)
+    CachedAllocator allocator;
 
 	printf("Running single-gpu tests...\n"); fflush(stdout);
 
@@ -47,10 +76,10 @@ int main(int argc, char** argv)
     allocator.Allocate((void **) &d_5B, 5);
 
     // Check that that we have zero bytes allocated on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], 0);
+    AssertEquals(allocator.cached_bytes[initial_gpu], 0);
 
     // Check that that we have 1 live block on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 1);
+    AssertEquals(allocator.live_blocks.size(), 1);
 
     //
     // Test2
@@ -61,7 +90,7 @@ int main(int argc, char** argv)
     allocator.Allocate((void **) &d_4096B, 4096);
 
     // Check that that we have 2 live blocks on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 2);
+    AssertEquals(allocator.live_blocks.size(), 2);
 
     //
     // Test3
@@ -71,13 +100,13 @@ int main(int argc, char** argv)
     allocator.Deallocate(d_5B);
 
     // Check that that we have min_bin_bytes free bytes cached on the initial gpu
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
+    AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
 
     // Check that that we have 1 live block on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 1);
+    AssertEquals(allocator.live_blocks.size(), 1);
 
     // Check that that we have 1 cached block on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 1);
+    AssertEquals(allocator.cached_blocks.size(), 1);
 
     //
     // Test4
@@ -87,13 +116,13 @@ int main(int argc, char** argv)
     allocator.Deallocate(d_4096B);
 
     // Check that that we have the 4096 + min_bin free bytes cached on the initial gpu
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes + 4096);
+    AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes + 4096);
 
     // Check that that we have 0 live block on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 0);
+    AssertEquals(allocator.live_blocks.size(), 0);
 
     // Check that that we have 2 cached block on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 2);
+    AssertEquals(allocator.cached_blocks.size(), 2);
 
     //
     // Test5
@@ -104,13 +133,13 @@ int main(int argc, char** argv)
     allocator.Allocate((void **) &d_768B, 768);
 
     // Check that that we have the min_bin free bytes cached on the initial gpu (4096 was reused)
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
+    AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
 
     // Check that that we have 1 live block on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 1);
+    AssertEquals(allocator.live_blocks.size(), 1);
 
     // Check that that we have 1 cached block on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 1);
+    AssertEquals(allocator.cached_blocks.size(), 1);
 
     //
     // Test6
@@ -124,13 +153,13 @@ int main(int argc, char** argv)
     allocator.Deallocate(d_max_cached);
 
     // Check that that we have the min_bin free bytes cached on the initial gpu (max cached was not returned because we went over)
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
+    AssertEquals(allocator.cached_bytes[initial_gpu], allocator.min_bin_bytes);
 
     // Check that that we have 1 live block on the initial GPU
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 1);
+    AssertEquals(allocator.live_blocks.size(), 1);
 
     // Check that that we still have 1 cached block on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 1);
+    AssertEquals(allocator.cached_blocks.size(), 1);
 
     //
     // Test7
@@ -140,13 +169,13 @@ int main(int argc, char** argv)
     allocator.FreeAllCached();
 
     // Check that that we have 0 bytes cached on the initial GPU
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], 0);
+    AssertEquals(allocator.cached_bytes[initial_gpu], 0);
 
     // Check that that we have 0 cached blocks across all GPUs
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 0);
+    AssertEquals(allocator.cached_blocks.size(), 0);
 
     // Check that that still we have 1 live block across all GPUs
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 1);
+    AssertEquals(allocator.live_blocks.size(), 1);
 
     //
     // Test8
@@ -166,13 +195,13 @@ int main(int argc, char** argv)
     allocator.NearestPowerOf(power, rounded_bytes, allocator.bin_growth, 768);
 
     // Check that that we have 4096 free bytes cached on the initial gpu
-    AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], rounded_bytes);
+    AssertEquals(allocator.cached_bytes[initial_gpu], rounded_bytes);
 
     // Check that that we have 1 cached blocks across all GPUs
-    AssertEquals(__LINE__, allocator.cached_blocks.size(), 1);
+    AssertEquals(allocator.cached_blocks.size(), 1);
 
     // Check that that still we have 0 live block across all GPUs
-    AssertEquals(__LINE__, allocator.live_blocks.size(), 0);
+    AssertEquals(allocator.live_blocks.size(), 0);
 
     if (num_gpus > 1)
     {
@@ -191,16 +220,16 @@ int main(int argc, char** argv)
 		allocator.Deallocate(d_768B_2, next_gpu);
 
 		// Check that that we have 4096 free bytes cached on the initial gpu
-		AssertEquals(__LINE__, allocator.cached_bytes[initial_gpu], rounded_bytes);
+		AssertEquals(allocator.cached_bytes[initial_gpu], rounded_bytes);
 
 		// Check that that we have 4096 free bytes cached on the second gpu
-		AssertEquals(__LINE__, allocator.cached_bytes[next_gpu], rounded_bytes);
+		AssertEquals(allocator.cached_bytes[next_gpu], rounded_bytes);
 
 	    // Check that that we have 2 cached blocks across all GPUs
-	    AssertEquals(__LINE__, allocator.cached_blocks.size(), 2);
+	    AssertEquals(allocator.cached_blocks.size(), 2);
 
 	    // Check that that still we have 0 live block across all GPUs
-	    AssertEquals(__LINE__, allocator.live_blocks.size(), 0);
+	    AssertEquals(allocator.live_blocks.size(), 0);
     }
 
     printf("Success\n");

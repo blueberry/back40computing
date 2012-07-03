@@ -98,42 +98,63 @@ SUFFIX = $(PTX_SUFFIX)_$(NVCC_VERSION)_$(ABI_SUFFIX)_$(ARCH_SUFFIX)
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				./test_util.h 
+				./test_util.h \
+				$(wildcard ../*.cuh) \
+				$(wildcard ../cta/*.cuh) \
+				$(wildcard ../host/*.cuh) \
+				$(wildcard ../thread/*.cuh) \
+				$(wildcard ../warp/*.cuh) 
 
+#-------------------------------------------------------------------------------
+# make allocator 
+#-------------------------------------------------------------------------------
+
+allocator: bin/allocator_$(SUFFIX)
+
+bin/allocator_$(SUFFIX) : test_allocator.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/allocator_$(SUFFIX) test_allocator.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	
+	
+#-------------------------------------------------------------------------------
+# make cta_global_barrier 
+#-------------------------------------------------------------------------------
+
+cta_global_barrier: bin/cta_global_barrier_$(SUFFIX)
+
+bin/cta_global_barrier_$(SUFFIX) : test_cta_global_barrier.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_global_barrier_$(SUFFIX) test_cta_global_barrier.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	
 
 #-------------------------------------------------------------------------------
 # make cta_reduce 
 #-------------------------------------------------------------------------------
 
-ALLOCATOR = bin/cta_reduce_$(SUFFIX)
+cta_reduce: bin/cta_reduce_$(SUFFIX)
 
-cta_reduce: $(ALLOCATOR)
-
-$(ALLOCATOR) : test_cta_reduce.cu $(DEPS)
+bin/cta_reduce_$(SUFFIX) : test_cta_reduce.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o $(ALLOCATOR) test_cta_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_reduce_$(SUFFIX) test_cta_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------
 # make warp_scan 
 #-------------------------------------------------------------------------------
 
-ALLOCATOR = bin/warp_scan_$(SUFFIX)
+warp_scan: bin/warp_scan_$(SUFFIX)
 
-warp_scan: $(ALLOCATOR)
-
-$(ALLOCATOR) : test_warp_scan.cu $(DEPS)
+bin/warp_scan_$(SUFFIX) : test_warp_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o $(ALLOCATOR) test_warp_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/warp_scan_$(SUFFIX) test_warp_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
-	
 
 #-------------------------------------------------------------------------------
 # make clean
 #-------------------------------------------------------------------------------
 
 clean :
-	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*$(ARCH_SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 

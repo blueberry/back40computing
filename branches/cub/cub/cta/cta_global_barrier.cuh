@@ -15,11 +15,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License. 
  * 
- * For more information, see our Google Code project site: 
- * http://code.google.com/p/back40computing/
- * 
- * Thanks!
- * 
  ******************************************************************************/
 
 /******************************************************************************
@@ -28,11 +23,12 @@
 
 #pragma once
 
-#include "../thread/thread_load.cuh"
 #include "../host/debug.cuh"
+#include "../ns_umbrella.cuh"
+#include "../thread/thread_load.cuh"
 
-namespace b40c {
-namespace util {
+CUB_NS_PREFIX
+namespace cub {
 
 
 /**
@@ -79,7 +75,7 @@ public:
 			// Wait for everyone else to report in
 			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x)
 			{
-				while (LoadCG(d_sync + peer_block) == 0)
+				while (ThreadLoad<LOAD_CG>(d_sync + peer_block) == 0)
 				{
 					__threadfence_block();
 				}
@@ -101,7 +97,7 @@ public:
 				d_sync[blockIdx.x] = 1;
 
 				// Wait for acknowledgement
-				while (LoadCG(d_sync + blockIdx.x) == 1)
+				while (ThreadLoad<LOAD_CG>(d_sync + blockIdx.x) == 1)
 				{
 					__threadfence_block();
 				}
@@ -116,10 +112,10 @@ public:
 /**
  * Version of global barrier with storage lifetime management.
  *
- * We can use this in host enactors, and pass the base CtaGlobalBarrier
- * as parameters to kernels.
+ * Uses RAII for lifetime, i.e., device resources are reclaimed when
+ * the destructor is called (e.g., when the logical scope ends).
  */
-class GlobalBarrierLifetime : public CtaGlobalBarrier
+class CtaGlobalBarrierLifetime : public CtaGlobalBarrier
 {
 protected:
 
@@ -131,7 +127,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	GlobalBarrierLifetime() : CtaGlobalBarrier(), sync_bytes(0) {}
+	CtaGlobalBarrierLifetime() : CtaGlobalBarrier(), sync_bytes(0) {}
 
 
 	/**
@@ -153,7 +149,7 @@ public:
 	/**
 	 * Destructor
 	 */
-	virtual ~GlobalBarrierLifetime()
+	virtual ~CtaGlobalBarrierLifetime()
 	{
 		HostReset();
 	}
@@ -188,8 +184,5 @@ public:
 };
 
 
-
-
-} // namespace util
-} // namespace b40c
-
+} // namespace cub
+CUB_NS_POSTFIX

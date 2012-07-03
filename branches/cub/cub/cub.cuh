@@ -23,12 +23,14 @@
 
 #pragma once
 
+#include "cta/cta_global_barrier.cuh"
 #include "cta/cta_load.cuh"
 #include "cta/cta_progress.cuh"
 #include "cta/cta_reduce.cuh"
 #include "cta/cta_scan.cuh"
 #include "cta/cta_store.cuh"
 
+#include "host/allocator.cuh"
 #include "host/cuda_props.cuh"
 #include "host/debug.cuh"
 #include "host/kernel_props.cuh"

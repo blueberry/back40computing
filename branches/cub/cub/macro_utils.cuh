@@ -52,6 +52,10 @@ namespace cub {
  */
 #define CUB_ROUND_DOWN_NEAREST(x, y) (((x) / (y)) * y)
 
+/**
+ * Return character string for given type
+ */
+#define CUB_TYPE_STRING(type) ""#type
 
 
 

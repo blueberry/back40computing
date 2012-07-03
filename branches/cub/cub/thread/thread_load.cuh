@@ -54,6 +54,7 @@
 
 #include "../device_props.cuh"
 #include "../ptx_intrinsics.cuh"
+#include "../type_utils.cuh"
 #include "../ns_umbrella.cuh"
 
 CUB_NS_PREFIX
