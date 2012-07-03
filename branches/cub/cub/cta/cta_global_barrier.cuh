@@ -1,6 +1,7 @@
 /******************************************************************************
  * 
- * Copyright 2010-2012 Duane Merrill
+ * Copyright (c) 2010-2012, Duane Merrill.  All rights reserved.
+ * Copyright (c) 2011-2012, NVIDIA CORPORATION.  All rights reserved.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +23,13 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Software Global Barrier
+ * Software global barrier for CTAs
  ******************************************************************************/
 
 #pragma once
 
-#include <b40c/util/io/modified_load.cuh"
-#include <b40c/util/error_utils.cuh"
+#include "../thread/thread_load.cuh"
+#include "../host/debug.cuh"
 
 namespace b40c {
 namespace util {
@@ -38,34 +39,21 @@ namespace util {
  * Manages device storage needed for implementing a global software barrier
  * between CTAs in a single grid
  */
-class GlobalBarrier
+class CtaGlobalBarrier
 {
-public:
+protected :
 
 	typedef unsigned int SyncFlag;
 
-protected :
-
-
 	// Counters in global device memory
 	SyncFlag* d_sync;
-
-	/**
-	 * Simple wrapper for returning a CG-loaded SyncFlag at the specified pointer
-	 */
-	__device__ __forceinline__ SyncFlag LoadCG(SyncFlag* d_ptr) const
-	{
-		SyncFlag retval;
-		util::io::ModifiedLoad<util::io::ld::cg>::Ld(retval, d_ptr);
-		return retval;
-	}
 
 public:
 
 	/**
 	 * Constructor
 	 */
-	GlobalBarrier() : d_sync(NULL) {}
+	CtaGlobalBarrier() : d_sync(NULL) {}
 
 
 	/**
@@ -78,18 +66,21 @@ public:
 		__threadfence();
 		__syncthreads();
 
-		if (blockIdx.x == 0) {
-
+		if (blockIdx.x == 0)
+		{
 			// Report in ourselves
-			if (threadIdx.x == 0) {
+			if (threadIdx.x == 0)
+			{
 				d_sync[blockIdx.x] = 1;
 			}
 
 			__syncthreads();
 
 			// Wait for everyone else to report in
-			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x) {
-				while (LoadCG(d_sync + peer_block) == 0) {
+			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x)
+			{
+				while (LoadCG(d_sync + peer_block) == 0)
+				{
 					__threadfence_block();
 				}
 			}
@@ -97,18 +88,21 @@ public:
 			__syncthreads();
 
 			// Let everyone know it's safe to read their prefix sums
-			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x) {
+			for (int peer_block = threadIdx.x; peer_block < gridDim.x; peer_block += blockDim.x)
+			{
 				d_sync[peer_block] = 0;
 			}
-
-		} else {
-
-			if (threadIdx.x == 0) {
+		}
+		else
+		{
+			if (threadIdx.x == 0)
+			{
 				// Report in
 				d_sync[blockIdx.x] = 1;
 
 				// Wait for acknowledgement
-				while (LoadCG(d_sync + blockIdx.x) == 1) {
+				while (LoadCG(d_sync + blockIdx.x) == 1)
+				{
 					__threadfence_block();
 				}
 			}
@@ -122,10 +116,10 @@ public:
 /**
  * Version of global barrier with storage lifetime management.
  *
- * We can use this in host enactors, and pass the base GlobalBarrier
+ * We can use this in host enactors, and pass the base CtaGlobalBarrier
  * as parameters to kernels.
  */
-class GlobalBarrierLifetime : public GlobalBarrier
+class GlobalBarrierLifetime : public CtaGlobalBarrier
 {
 protected:
 
@@ -137,7 +131,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	GlobalBarrierLifetime() : GlobalBarrier(), sync_bytes(0) {}
+	GlobalBarrierLifetime() : CtaGlobalBarrier(), sync_bytes(0) {}
 
 
 	/**
@@ -146,8 +140,9 @@ public:
 	cudaError_t HostReset()
 	{
 		cudaError_t retval = cudaSuccess;
-		if (d_sync) {
-			retval = util::B40CPerror(cudaFree(d_sync), "GlobalBarrier cudaFree d_sync failed: ", __FILE__, __LINE__);
+		if (d_sync)
+		{
+			retval = CubDebug(cudaFree(d_sync));
 			d_sync = NULL;
 		}
 		sync_bytes = 0;
@@ -173,23 +168,18 @@ public:
 		cudaError_t retval = cudaSuccess;
 		do {
 			size_t new_sync_bytes = sweep_grid_size * sizeof(SyncFlag);
-			if (new_sync_bytes > sync_bytes) {
-
-				if (d_sync) {
-					if (retval = util::B40CPerror(cudaFree(d_sync),
-						"GlobalBarrierLifetime cudaFree d_sync failed", __FILE__, __LINE__)) break;
+			if (new_sync_bytes > sync_bytes)
+			{
+				if (d_sync)
+				{
+					if (retval = CubDebug(cudaFree(d_sync))) break;
 				}
 
 				sync_bytes = new_sync_bytes;
 
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_sync, sync_bytes),
-					"GlobalBarrierLifetime cudaMalloc d_sync failed", __FILE__, __LINE__)) break;
-
-				// Initialize to zero
-				util::MemsetKernel<SyncFlag><<<(sweep_grid_size + 128 - 1) / 128, 128>>>(
-					d_sync, 0, sweep_grid_size);
-				if (retval = util::B40CPerror(cudaThreadSynchronize(),
-					"GlobalBarrierLifetime MemsetKernel d_sync failed", __FILE__, __LINE__)) break;
+				// Allocate and initialize to zero
+				if (retval = CubDebug(cudaMalloc((void**) &d_sync, sync_bytes))) break;
+				if (retval = CubDebug(cudaMemset(d_sync, 0, new_sync_bytes))) break;
 			}
 		} while (0);
 

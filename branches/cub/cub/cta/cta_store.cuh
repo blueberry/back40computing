@@ -24,10 +24,11 @@
 #pragma once
 
 #include "../macro_utils.cuh"
-#include "../operators.cuh"
-#include "../type_utils.cuh"
 #include "../ns_umbrella.cuh"
+#include "../operators.cuh"
 #include "../thread/thread_store.cuh"
+#include "../type_utils.cuh"
+#include "../vector_type.cuh"
 
 CUB_NS_PREFIX
 namespace cub {

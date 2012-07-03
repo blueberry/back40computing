@@ -21,6 +21,7 @@
  * Test of CtaReduce utilities
  ******************************************************************************/
 
+// Ensure printing of CUDA runtime errors to console
 #define CUB_STDERR
 
 #include <stdio.h>
@@ -124,28 +125,21 @@ struct Bar
 		return (x != b.x) && (y != b.y);
 	}
 
-	// Volatile shared load
+	// ThreadLoad
 	template <LoadModifier MODIFIER>
 	__device__ __forceinline__
-	typename EnableIf<(MODIFIER == LOAD_VS), void>::Type ThreadLoad(Bar *ptr)
+	void ThreadLoad(Bar *ptr)
 	{
-		volatile long long *x_ptr = &(ptr->x);
-		volatile int *y_ptr = &(ptr->y);
-
-		x = *x_ptr;
-		y = *y_ptr;
+		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
+		y = cub::ThreadLoad<MODIFIER>(&(ptr->y));
 	}
 
-	 // Volatile shared store
+	 // ThreadStore
 	template <StoreModifier MODIFIER>
-	__device__ __forceinline__
-	typename EnableIf<(MODIFIER == STORE_VS), void>::Type ThreadStore(Bar *ptr) const
+	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
 	{
-		volatile long long *x_ptr = &(ptr->x);
-		volatile int *y_ptr = &(ptr->y);
-
-		*x_ptr = x;
-		*y_ptr = y;
+		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
+		cub::ThreadStore<MODIFIER>(&(ptr->y), y);
 	}
 };
 
@@ -166,8 +160,6 @@ void InitValue(int gen_mode, Bar &value, int index = 0)
 	InitValue(gen_mode, value.x, index);
 	InitValue(gen_mode, value.y, index);
 }
-
-
 
 
 //---------------------------------------------------------------------
@@ -575,6 +567,12 @@ int main(int argc, char** argv)
     CommandLineArgs args(argc, argv);
     g_verbose = args.CheckCmdLineFlag("v");
     bool quick = args.CheckCmdLineFlag("quick");
+
+    // Print usage
+    if (args.CheckCmdLineFlag("help")) {
+    	printf("%s --device=<device-id> [--v] [--quick]\n", argv[0]);
+    	exit(0);
+    }
 
     // Initialize device
     CubDebugExit(args.DeviceInit());
