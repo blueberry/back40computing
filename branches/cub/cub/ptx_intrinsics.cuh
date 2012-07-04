@@ -40,10 +40,12 @@ namespace cub {
 	#define __CUB_LP64__ 1
 	// 64-bit register modifier for inlined asm
 	#define _CUB_ASM_PTR_ "l"
+	#define _CUB_ASM_PTR_SIZE_ "u64"
 #else
 	#define __CUB_LP64__ 0
 	// 32-bit register modifier for inlined asm
 	#define _CUB_ASM_PTR_ "r"
+	#define _CUB_ASM_PTR_SIZE_ "u32"
 #endif
 
 

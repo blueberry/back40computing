@@ -52,6 +52,7 @@
 
 #pragma once
 
+#include <cuda.h>
 #include "../device_props.cuh"
 #include "../ptx_intrinsics.cuh"
 #include "../type_utils.cuh"
@@ -236,7 +237,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<LOAD_VS, type>(type* ptr) 											\
 	{																					\
 		type val;																		\
-		if (sizeof(component_type) == 1)												\
+		if ((sizeof(component_type) == 1) || (CUDA_VERSION < 4100))												\
 		{																				\
 			component_type *base_ptr = (component_type*) ptr;							\
 			val.x = ThreadLoad<LOAD_VS>(base_ptr);										\
@@ -245,7 +246,11 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 		else																			\
 		{																				\
 			asm_type raw_x, raw_y;														\
-			asm("ld.volatile.shared.v2."#ptx_type" {%0, %1}, [%2];" :					\
+			asm("{"																		\
+				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
+				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %2;"						\
+				"	ld.volatile.shared.v2."#ptx_type" {%0, %1}, [t1];"					\
+				"}" :																	\
 				"="#reg_mod(raw_x), 													\
 				"="#reg_mod(raw_y) :													\
 				_CUB_ASM_PTR_(ptr));													\
@@ -287,7 +292,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<LOAD_VS, type>(type* ptr) 											\
 	{																					\
 		type val;																		\
-		if (sizeof(component_type) == 1)												\
+		if ((sizeof(component_type) == 1) || (CUDA_VERSION < 4100))												\
 		{																				\
 			component_type *base_ptr = (component_type*) ptr;							\
 			val.x = ThreadLoad<LOAD_VS>(base_ptr);										\
@@ -298,7 +303,11 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 		else																			\
 		{																				\
 			asm_type raw_x, raw_y, raw_z, raw_w;										\
-			asm("ld.volatile.shared.v4."#ptx_type" {%0, %1, %2, %3}, [%4];" :			\
+			asm("{"																		\
+				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
+				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %4;"						\
+				"	ld.volatile.shared.v4."#ptx_type" {%0, %1, %2, %3}, [t1];"			\
+				"}" :																	\
 				"="#reg_mod(raw_x), 													\
 				"="#reg_mod(raw_y), 													\
 				"="#reg_mod(raw_z), 													\

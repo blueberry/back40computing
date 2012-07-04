@@ -52,16 +52,17 @@ struct Foo
 	short 		z;
 	char 		w;
 
-	// Constructor
-	__host__ __device__ __forceinline__ Foo() {}
-
-	// Constructor
-	__host__ __device__ __forceinline__ Foo(long long x, int y, short z, char w) : x(x), y(y), z(z), w(w) {}
+	// Factory
+	static __host__ __device__ __forceinline__ Foo MakeFoo(long long x, int y, short z, char w)
+	{
+		Foo retval = {x, y, z, w};
+		return retval;
+	}
 
 	// Summation operator
 	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
 	{
-		return Foo(x + b.x, y + b.y, z + b.z, w + b.w);
+		return MakeFoo(x + b.x, y + b.y, z + b.z, w + b.w);
 	}
 
 	// Inequality operator
@@ -107,16 +108,17 @@ struct Bar
 	long long 	x;
 	int 		y;
 
-	// Constructor
-	__host__ __device__ __forceinline__ Bar() {}
-
-	// Constructor
-	__host__ __device__ __forceinline__ Bar(long long x, int y) : x(x), y(y) {}
+	// Factory
+	static __host__ __device__ __forceinline__ Bar MakeBar(long long x, int y)
+	{
+		Bar retval = {x, y};
+		return retval;
+	}
 
 	// Summation operator
 	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
 	{
-		return Bar(x + b.x, y + b.y);
+		return MakeBar(x + b.x, y + b.y);
 	}
 
 	// Inequality operator
@@ -384,7 +386,7 @@ void TestFullTile(
 	char			*type_string)
 {
 	TestFullTile<CTA_THREADS, STRIPS, 1, T>(gen_mode, tiles, reduction_op, type_string);
-	TestFullTile<CTA_THREADS, STRIPS, 4, T>(gen_mode, tiles, reduction_op, type_string);
+//	TestFullTile<CTA_THREADS, STRIPS, 4, T>(gen_mode, tiles, reduction_op, type_string);
 }
 
 
@@ -506,7 +508,7 @@ void TestPartialTile(
 
 
 /**
- *  Run battery of full-tile tests for different numbers of effective threads
+ *  Run battery of partial-tile tests for different numbers of effective threads
  */
 template <
 	int 		CTA_THREADS,

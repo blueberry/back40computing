@@ -23,6 +23,7 @@
 
 #pragma once
 
+#include <cuda.h>
 #include "../ptx_intrinsics.cuh"
 #include "../ns_umbrella.cuh"
 
@@ -188,7 +189,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	template<>																			\
 	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
 	{																					\
-	if (sizeof(component_type) == 1)													\
+		if ((sizeof(component_type) == 1) || (CUDA_VERSION < 4100))												\
 		{																				\
 			component_type *base_ptr = (component_type*) ptr;							\
 			ThreadStore<STORE_VS>(base_ptr, (component_type) val.x);					\
@@ -198,7 +199,11 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 		{																				\
 			const asm_type raw_x = reinterpret_cast<const asm_type&>(val.x);			\
 			const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);			\
-			asm("st.shared.volatile.v2."#ptx_type" [%0], {%1, %2};" : :					\
+			asm("{"																		\
+				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
+				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %0;"						\
+				"	st.shared.volatile.v2."#ptx_type" [t1], {%1, %2};"					\
+				"}" : :																	\
 				_CUB_ASM_PTR_(ptr),														\
 				#reg_mod(raw_x), 														\
 				#reg_mod(raw_y));														\
@@ -233,7 +238,7 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	template<>																			\
 	void ThreadStore<STORE_VS, type>(type* ptr, const type& val)						\
 	{																					\
-		if (sizeof(component_type) == 1)												\
+		if ((sizeof(component_type) == 1) || (CUDA_VERSION < 4100))												\
 		{																				\
 			component_type *base_ptr = (component_type*) ptr;							\
 			ThreadStore<STORE_VS>(base_ptr, (component_type) val.x);					\
@@ -247,7 +252,11 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 			const asm_type raw_y = reinterpret_cast<const asm_type&>(val.y);			\
 			const asm_type raw_z = reinterpret_cast<const asm_type&>(val.z);			\
 			const asm_type raw_w = reinterpret_cast<const asm_type&>(val.w);			\
-			asm("st.volatile.shared.v4."#ptx_type" [%0], {%1, %2, %3, %4};" : :			\
+			asm("{"																		\
+				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
+				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %0;"						\
+				"	st.volatile.shared.v4."#ptx_type" [t1], {%1, %2, %3, %4};"			\
+				"}" : :																	\
 				_CUB_ASM_PTR_(ptr),														\
 				#reg_mod(raw_x), 														\
 				#reg_mod(raw_y), 														\

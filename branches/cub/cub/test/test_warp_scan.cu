@@ -65,16 +65,17 @@ struct Foo
 	short 		z;
 	char 		w;
 
-	// Constructor
-	__host__ __device__ __forceinline__ Foo() {}
-
-	// Constructor
-	__host__ __device__ __forceinline__ Foo(long long x, int y, short z, char w) : x(x), y(y), z(z), w(w) {}
+	// Factory
+	static __host__ __device__ __forceinline__ Foo MakeFoo(long long x, int y, short z, char w)
+	{
+		Foo retval = {x, y, z, w};
+		return retval;
+	}
 
 	// Summation operator
 	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
 	{
-		return Foo(x + b.x, y + b.y, z + b.z, w + b.w);
+		return MakeFoo(x + b.x, y + b.y, z + b.z, w + b.w);
 	}
 
 	// Inequality operator
@@ -120,16 +121,17 @@ struct Bar
 	long long 	x;
 	int 		y;
 
-	// Constructor
-	__host__ __device__ __forceinline__ Bar() {}
-
-	// Constructor
-	__host__ __device__ __forceinline__ Bar(long long x, int y) : x(x), y(y) {}
+	// Factory
+	static __host__ __device__ __forceinline__ Bar MakeBar(long long x, int y)
+	{
+		Bar retval = {x, y};
+		return retval;
+	}
 
 	// Summation operator
 	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
 	{
-		return Bar(x + b.x, y + b.y);
+		return MakeBar(x + b.x, y + b.y);
 	}
 
 	// Inequality operator
@@ -208,6 +210,9 @@ __global__ void WarpScanKernel(
 	// Per-thread tile data
 	T data = d_in[threadIdx.x];
 
+	// Initialize identity region
+	ThreadStore<STORE_VS>(&smem_storage.warp_scan[0][threadIdx.x], identity);
+
 	// Record elapsed clocks
 	clock_t start = clock();
 
@@ -240,7 +245,6 @@ __global__ void WarpScanKernel(
 	{
 		d_out[blockDim.x] = aggregate;
 	}
-
 }
 
 
@@ -485,7 +489,6 @@ void Test(
 template <int LOGICAL_WARP_THREADS>
 void Test(int gen_mode)
 {
-
 	// primitive
 	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
 	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
@@ -511,8 +514,8 @@ void Test(int gen_mode)
 	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
 
 	// complex
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo(0, 0, 0, 0), Foo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar(0, 0), Bar(17, 21), CUB_TYPE_STRING(Bar));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
+	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
 }
 
 
