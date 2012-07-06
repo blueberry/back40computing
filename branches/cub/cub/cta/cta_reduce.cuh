@@ -46,7 +46,7 @@ namespace cub {
  * 		- Supports partially-full CTAs (i.e., high-order threads having
  * 			undefined values).
  * 		- Supports reduction over strip-mined CTA tiles.  (For a given tile of
- * 			input, each thread acquires STRIPS arrays of ELEMENTS consecutive
+ * 			input, each thread acquires SUB_TILES arrays of ELEMENTS consecutive
  * 			inputs, where the logical stride between a given thread's strips is
  * 			(ELEMENTS * CTA_THREADS) elements.)
  * 		- Very efficient (only one synchronization barrier).
@@ -60,7 +60,7 @@ namespace cub {
 template <
 	typename 	T,					// The reduction type
 	int 		CTA_THREADS,		// The CTA size in threads
-	int 		STRIPS = 1>			// When strip-mining, the number of CTA-strips per tile
+	int 		SUB_TILES = 1>		// The number of consecutive subtiles strip-mined for a larger CTA-wide tile
 class CtaReduce
 {
 private:
@@ -72,13 +72,13 @@ private:
 	/**
 	 * Layout type for padded CTA raking grid
 	 */
-	typedef CtaRakingGrid<CTA_THREADS, T, STRIPS> CtaRakingGrid;
+	typedef CtaRakingGrid<CTA_THREADS, T, SUB_TILES> CtaRakingGrid;
 
 
 	enum
 	{
 		// The total number of elements that need to be cooperatively reduced
-		SHARED_ELEMENTS = CTA_THREADS * STRIPS,
+		SHARED_ELEMENTS = CTA_THREADS * SUB_TILES,
 
 		// Number of raking threads
 		RAKING_THREADS = CtaRakingGrid::RAKING_THREADS,
@@ -113,10 +113,12 @@ public:
 private:
 
 	//---------------------------------------------------------------------
-	// Iteration structures
+	// Template iteration structures.  (Regular iteration cannot always be
+	// unrolled due to conditionals or ABI procedure calls within
+	// functors).
 	//---------------------------------------------------------------------
 
-	// General iteration
+	// General template iteration
 	template <int COUNT, int MAX, bool UNGUARDED>
 	struct Iterate
 	{
@@ -182,7 +184,7 @@ private:
 		typename ReductionOp>						// Reduction operator type
 	static __device__ __forceinline__ T ReduceHelper(
 		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partials[STRIPS],			// Calling thread's input partial reductions
+		T 				partials[SUB_TILES],			// Calling thread's input partial reductions
 		unsigned int 	num_valid,					// Number of valid elements (may be less than CTA_THREADS)
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
@@ -201,7 +203,7 @@ private:
 		{
 			// Raking reduction.  Place CTA-strided partials into raking grid.
 			#pragma unroll
-			for (int STRIP = 0; STRIP < STRIPS; STRIP++)
+			for (int STRIP = 0; STRIP < SUB_TILES; STRIP++)
 			{
 				// Place partial into shared memory grid.
 				*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP) = partials[STRIP];
@@ -372,12 +374,12 @@ public:
 	template <int ELEMENTS, typename ReductionOp>
 	static __device__ __forceinline__ T Reduce(
 		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				tile[STRIPS][ELEMENTS],		// Calling thread's input
+		T 				tile[SUB_TILES][ELEMENTS],		// Calling thread's input
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
 		// Reduce partials within each segment
-		T segment_partials[STRIPS];
-		for (int STRIP = 0; STRIP < STRIPS; STRIP++)
+		T segment_partials[SUB_TILES];
+		for (int STRIP = 0; STRIP < SUB_TILES; STRIP++)
 		{
 			segment_partials[STRIP] = ThreadReduce(tile[STRIP], reduction_op);
 		}
@@ -385,11 +387,11 @@ public:
 		// Determine if we don't need bounds checking
 		if (FULL_UNGUARDED)
 		{
-			return ReduceHelper<true>(smem_storage, segment_partials, CTA_THREADS * STRIPS, reduction_op);
+			return ReduceHelper<true>(smem_storage, segment_partials, CTA_THREADS * SUB_TILES, reduction_op);
 		}
 		else
 		{
-			return ReduceHelper<false>(smem_storage, segment_partials, CTA_THREADS * STRIPS, reduction_op);
+			return ReduceHelper<false>(smem_storage, segment_partials, CTA_THREADS * SUB_TILES, reduction_op);
 		}
 	}
 
@@ -404,7 +406,7 @@ public:
 	template <int ELEMENTS>
 	static __device__ __forceinline__ T Reduce(
 		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				tile[STRIPS][ELEMENTS])		// Calling thread's input
+		T 				tile[SUB_TILES][ELEMENTS])		// Calling thread's input
 	{
 		Sum<T> reduction_op;
 		return Reduce(smem_storage, tile, reduction_op);

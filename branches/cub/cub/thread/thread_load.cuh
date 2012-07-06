@@ -246,7 +246,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 		else																			\
 		{																				\
 			asm_type raw_x, raw_y;														\
-			asm("{"																		\
+			asm volatile ("{"																		\
 				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
 				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %2;"						\
 				"	ld.volatile.shared.v2."#ptx_type" {%0, %1}, [t1];"					\
@@ -268,7 +268,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 	type ThreadLoad<cub_modifier, type>(type* ptr) 										\
 	{																					\
 		asm_type raw_x, raw_y, raw_z, raw_w;											\
-		asm("ld.global."#ptx_modifier".v4."#ptx_type" {%0, %1, %2, %3}, [%4];" :		\
+		asm volatile ("ld.global."#ptx_modifier".v4."#ptx_type" {%0, %1, %2, %3}, [%4];" :		\
 			"="#reg_mod(raw_x), 														\
 			"="#reg_mod(raw_y), 														\
 			"="#reg_mod(raw_z), 														\
@@ -303,7 +303,7 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 		else																			\
 		{																				\
 			asm_type raw_x, raw_y, raw_z, raw_w;										\
-			asm("{"																		\
+			asm volatile ("{"																		\
 				"	.reg ."_CUB_ASM_PTR_SIZE_" t1;"										\
 				"	cvta.to.shared."_CUB_ASM_PTR_SIZE_" t1, %4;"						\
 				"	ld.volatile.shared.v4."#ptx_type" {%0, %1, %2, %3}, [t1];"			\

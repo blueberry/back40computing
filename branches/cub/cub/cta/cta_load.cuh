@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Cooperative load abstraction for CTAs.
+ * Cooperative tile-loading abstraction for CTAs.
  ******************************************************************************/
 
 #pragma once
@@ -34,11 +34,26 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
- * Load a tile of items
+ * Cooperative tile-loading abstraction for CTAs.
+ *
+ * Features:
+ * 		- Vectorizes loads where possible, e.g., uses 128-bit loads when
+ *        loading four or more consecutive uints per thread.)
+ *      - Exposes sophisticated cache modifiers, e.g., cache-global (LOAD_CG),
+ *        cache-streaming (LOAD_CS), etc.
+ * 		- Can read large numbers of consecutive elements per thread without
+ * 		  suffering uncoalesced loads or replays.  (If necessary, CtaLoad
+ * 		  will perform a synchronization-free transform in shared memory.)
+ * 		- Supports iterator access (in addition to traditional pointers)
+ * 		- Supports strip-mining CTA tiles.  (For a given tile of
+ * 			input, each thread acquires SUB_TILES arrays of ELEMENTS consecutive
+ * 			inputs, where the logical stride between a given thread's strips is
+ * 			(ELEMENTS * CTA_THREADS) elements.)
+ *
  */
 template <
 	int 			CTA_THREADS,				// Active threads that will be loading
-	LoadModifier 	MODIFIER = LOAD_NONE>		// Cache modifier (e.g., TEX/CA/CG/CS/NONE/etc.)
+	LoadModifier 	MODIFIER = LOAD_NONE>		// Cache modifier (e.g., LOAD_NONE|LOAD_CA|LOAD_CG|LOAD_CS|LOAD_CV|LOAD_TEX)
 class CtaLoad
 {
 private:

@@ -89,7 +89,9 @@ public:
 
 
 	//---------------------------------------------------------------------
-	// Iteration structures
+	// Template iteration structures.  (Regular iteration cannot always be
+	// unrolled due to conditionals or ABI procedure calls within
+	// functors).
 	//---------------------------------------------------------------------
 
 private:

@@ -593,7 +593,8 @@ int main(int argc, char** argv)
     if (quick)
     {
         // Quick test
-        Test<int>(Sum<int>(), CUB_TYPE_STRING(int));
+    	typedef int T;
+    	TestFullTile<128, 1, 4, T>(UNIFORM, 1, Sum<T>(), CUB_TYPE_STRING(T));
     }
     else
     {
