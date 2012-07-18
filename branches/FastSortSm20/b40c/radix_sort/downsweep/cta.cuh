@@ -26,7 +26,8 @@
 #include "../../util/basic_utils.cuh"
 #include "../../util/cta_work_distribution.cuh"
 #include "../../util/tex_vector.cuh"
-#include "../../util/io/load_tile.cuh"
+#include "../../util/io/modified_load.cuh"
+#include "../../util/io/modified_store.cuh"
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
@@ -68,12 +69,6 @@ struct Cta
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
 
-		CURRENT_BIT 				= KernelPolicy::CURRENT_BIT,
-		CURRENT_PASS 				= KernelPolicy::CURRENT_PASS,
-
-		// Direction of flow though ping-pong buffers: (FLOP_TURN) ? (d_keys1 --> d_keys0) : (d_keys0 --> d_keys1)
-		FLOP_TURN					= KernelPolicy::CURRENT_PASS & 0x1,
-
 		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
@@ -114,15 +109,19 @@ struct Cta
 	};
 
 	// Texture types
-	typedef Textures<KeyType, ValueType, KEYS_PER_THREAD> 	Textures;
-	typedef typename Textures::KeyTexType 					KeyTexType;
-	typedef typename Textures::ValueTexType 				ValueTexType;
+	typedef Textures<KeyType, ValueType, KEYS_PER_THREAD> 					Textures;
+	typedef typename Textures::KeyTexType 									KeyTexType;
+	typedef typename Textures::ValueTexType 								ValueTexType;
+
+	// Corresponding texture vector types (we may have a different tex vector type than item vector type)
+	typedef typename util::VecType<UnsignedBits, ELEMENTS_PER_TEX>::Type 	KeyVectorType;
+	typedef typename util::VecType<ValueType, ELEMENTS_PER_TEX>::Type 		ValueVectorType;
+
 
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
 		LOG_CTA_THREADS,
 		RADIX_BITS,
-		CURRENT_BIT,
 		KernelPolicy::SMEM_CONFIG> CtaRadixRank;
 
 	/**
@@ -135,11 +134,10 @@ struct Cta
 
 		util::CtaWorkLimits<SizeT> 		work_limits;
 
-		unsigned int 			digit_prefixes[RADIX_DIGITS + 1];
+		unsigned int 					digit_prefixes[RADIX_DIGITS + 1];
 
 		union
 		{
-			unsigned char				digit_offset_bytes[1];
 			SizeT 						digit_offsets[RADIX_DIGITS];
 		};
 
@@ -168,6 +166,9 @@ struct Cta
 	// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
 	SizeT 						my_digit_offset;
 
+	// The least-significant bit position of the current digit to extract
+	unsigned int 				current_bit;
+
 
 	//---------------------------------------------------------------------
 	// Helper structure for templated iteration.  (NVCC currently won't
@@ -192,7 +193,7 @@ struct Cta
 			T 				items[KEYS_PER_THREAD],
 			SizeT			digit_offsets[KEYS_PER_THREAD],
 			T 				*d_out,
-			const SizeT 	&guarded_elements)
+			SizeT 			guarded_elements)
 		{
 			// Scatter if not out-of-bounds
 			int tile_element = threadIdx.x + (COUNT * CTA_THREADS);
@@ -215,7 +216,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			unsigned int 	ranks[KEYS_PER_THREAD],
 			SizeT			digit_offsets[KEYS_PER_THREAD],
 			T 				*d_out,
-			const SizeT 	&guarded_elements)
+			SizeT 			guarded_elements)
 		{
 			// Scatter if not out-of-bounds
 			T* scatter = d_out + ranks[COUNT] + digit_offsets[COUNT];
@@ -237,7 +238,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		static __device__ __forceinline__ void AlignedScatterSmemStorage 	&smem_storage,
 			T 				*buffer,
 			T 				*d_out,
-			const SizeT 	&valid_elements)
+			SizeT 			valid_elements)
 		{
 			typedef typename CtaRadixRank::PackedCounter PackedCounter;
 
@@ -281,16 +282,16 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	{
 		// ScatterGlobal
 		template <bool FULL_TILE, typename T>
-		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, const SizeT &) {}
+		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, SizeT) {}
 
 		// ScatterGlobal
 		template <bool FULL_TILE, typename T>
-		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], unsigned int[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, const SizeT &) {}
+		static __device__ __forceinline__ void ScatterGlobal(T[KEYS_PER_THREAD], unsigned int[KEYS_PER_THREAD], SizeT[KEYS_PER_THREAD], T*, SizeT) {}
 
 		// AlignedScatterPassles
 		 */
 		template <typename T>
-		static __device__ __forceinline__ void AlignedScaSmemStorage&, T*, T*, const SizeT&) {}
+		static __device__ __forceinline__ void AlignedScaSmemStorage&, T*, T*, SizeT) {}
 	};Dim.x * threadIdx.x) + blockIdx.x;
 			global_digit_base = tex1Dfetch(spine::TexSpine<SizeT>::ref, spine_bin_offset);
 		}
@@ -303,18 +304,18 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	__device__ __forceinline__ void LoadKeys(
 		SizeT tex_offset,
 		const SizeT &guarded_elements,
-		Tile &tile)
-	{
-		if (guarded_elements >= TILE_ELEMENTS) {
-
-			// Unguarded loads through tex
-			KeyTexType *vectors = (KeyTexType *) tile.keys;
-
-			#pragma unreinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys1 : d_keys0)),
-			d_out_keys(reinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys0 : d_keys1)PACK] = tex1Dfetch(
-					(Cta::FLOP_TURN) ?
-						TexKeys<KeyTexType>::ref1 :
-						TexKeys<KeyTexType>:
+		Tile &tilein_keys,
+		KeyType 		*d_out_keys,
+		ValueType 		*d_in_values,
+		ValueType 		*d_out_values,
+		SizeT 			*d_spine,
+		unsigned int 	current_bit) :
+			smem_storage(smem_storage),
+			d_in_keys(d_in_keys),
+			d_out_keys(d_out_keys),
+			d_in_values(d_in_values),
+			d_out_values(d_out_values),
+			current_bit(current_bit:
 	{
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
@@ -401,13 +402,10 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{tile)
 		{
-			// Decode address of bin-offset in smem
-			unsigned int byte_offset = ExtrCURRENT_BIT,
-				RADIX_BITS,
-				LOG_BYTES_PER_SIZET>(twiddled_keys[KEY]);
+			// Decode address of bin-offset inUnsignedBits digit = util::BFE(twiddled_keys[KEY], current_bit, RADIX_BITS);
 
 			// Lookup base digit offset from shared memory
-			digit_offsets[KEY] = *(SizeT *)(smem_storage.digit_offset_bytes + byte_offset);
+			digit_offsets[KEY] = smem_storage.digit_offsets[digit];
 		}
 	}
 
@@ -418,40 +416,37 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	__device__ __forceinline__ void LoadKeys(
 		UnsignedBits 	keys[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		const SizeT 	&guarded_elements)
+		SizeT 			guarded_elements)
 	{
 		if ((LOAD_MODIFIER == util::io::ld::tex) && FULL_TILE)
 		{
 			// Unguarded loads through tex
-			KeyTexType *vectors = (KeyTexType *) et + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+			#pragma unroll
+			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
+			{
+				// Load tex vector
+				KeyTexType vector = tex1Dfetch(
+					TexKeys<KeyTexType>::ref,
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+
+				// Copy fields
+				util::VecCopy(
+					keys + (PACK * ELEMENTS_PER_TEX),
+					reinterpret_cast<KeyVectorType&>(vector));
 			}
-
-		} else {
-			// Guarded l
-			{s with default assignment of -1 to out-of-bound values
-	 TexKeys<KeyTexType>::ref1 : og loads per tile
-				LOG_THREAD_ELEMENTS,
-				THREADS,
-				READ_MODIFIER,
-				false>::LoadVali
-		else
-		{(ValueType (*)[THREAD_ELEMENTS]) tile.values,
-		MAX_KEY	d_in_values,
-					(tex_offset * ELEMENTS_PER_TEX),
-					guarded_elements);
 		}
-	}
+		else
+		{
+			// We have a partial-tile.  Need to perform guarded loads.
+			#pragma unroll
+			for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+			{
+				int thread_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
 
-
-	/**
-	 * Scan shared memorCTA_THREADS,
-				LOAD_MODIFIER,
-				false>::LoadValid(
-					(UnsignedBits (*)[KEYS_PER_THREAD]) keys,
-					d_in_keys,
-					(tex_offset * ELEMENTS_PER_TEX),
-					guarded_elements,
-					MAX_KEY);
+				keys[KEY] = (thread_offset < guarded_elements) ?
+					*(d_in_keys + (tex_offset * THREAD_TEX_LOADS) + guarded_elements) :
+					MAX_KEY;
+			}
 		}
 	}
 
@@ -463,39 +458,40 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	__device__ __forceinline__ void LoadValues(
 		ValueType 		values[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		const SizeT 	&guarded_elements)
+		SizeT 			guarded_elements)
 	{
 		if ((LOAD_MODIFIER == util::io::ld::tex) &&
 			(util::NumericTraits<ValueType>::BUILT_IN) &&
 			FULL_TILE)
-		{- 2];
-		warpscan[0] = partial =
-			partial + warpscan[0 - 4];
-		warpscan[0] = value+ (threadIdx.x * THREAD_TEX_LOADS) + PACK);
-			}
+		{-
+			// Unguarded loads through tex
+			#pragma unroll
+			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
+			{
+				// Load tex vector
+				ValueTexType vector = tex1Dfetch(
+					TexValues<ValueTexType>::ref,
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
-		} else {
-			// Guarded l
-			{s with default assignment of -1 to out-of-bound values
-	 TexValues<ValueTexType>::ref1 : TexValues<Valuer tile
-				LOG_THREAD_ELEMENTS,
-				THREADS,
-				READ_MODIFIER,
-				false>::LoadVali
+				// Copy fields
+				util::VecCopy(
+					values + (PACK * ELEMENTS_PER_TEX),
+					reinterpret_cast<ValueVectorType&>(vector));
+			}
+		}
 		else
-		{(ValueType (*)[THREAD_ELEMENTS]) tile.values,
-					d_in_values,
-			values
-			util::io::LoadTile<
-				0,									// log loads per tile
-				LOG_THREAD_ELEMENTS,
-				CTA_THREADS,
-				LOAD_MODIFIER,
-				false>::LoadValid(
-					(ValueType (*)[KEYS_PER_THREAD]) values,
-					d_in_values,
-					(tex_offset * ELEMENTS_PER_TEX),
-					guarded_elements);
+		{
+			// We have a partial-tile.  Need to perform guarded loads.
+			#pragma unroll
+			for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+			{
+				int thread_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
+
+				if (thread_offset < guarded_elements)
+				{
+					values[KEY] = *(d_in_values + (tex_offset * THREAD_TEX_LOADS) + guarded_elements);
+				}
+			}
 		}
 	}
 
@@ -509,7 +505,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD],
 		SizeT 			digit_offsets[KEYS_PER_THREAD],		// (out parameter)
 		unsigned int 	ranks[KEYS_PER_THREAD],
-		const SizeT 	&guarded_elements)
+		SizeT 			guarded_elements)
 	{
 		if (SCATTER_STRATEGY == SCATTER_DIRECT)
 		{
@@ -589,7 +585,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		SizeT 			digit_offsets[KEYS_PER_THREAD],
 		unsigned int 	ranks[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		const SizeT 	&guarded_elements)
+		SizeT 			guarded_elements)
 	{
 		// Load tile of values
 		LoadValues<FULL_TILE>(values, tex_offset, guarded_elements);
@@ -649,9 +645,9 @@ Shar// Gather values from shared
 		SizeT 			digit_offsets[KEYS_PER_THREAD],
 		unsigned int 	ranks[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		const SizeT 	&guarded_elements)
+		SizeT 			guarded_elements)
 	{n[0][16 + threadIdx.x] = bin_inctemplate <bool FULL_TILE>nclusive;
-			PackedCounter bin_exclusive = smem_storage.warpscan[0][16 + threadIdx.x - 1];
+			PackedCounter bin_exclusive = smem_storage.warpscan[0][1SizeT .x - 1];
 
 			global_digit_base -= bin_exclPer-thread tile data
 		UnsignedBits 	keys[KEYS_PER_THREAD];					// Keys
@@ -673,7 +669,8 @@ Shar// Gather values from shared
 			smem_storage.ranking_storage,
 			twiddled_keys,
 			ranks,
-			smem_storage.digit_prefixes);
+			smem_storage.digit_prefixes,
+			current_bit);
 
 		__syncthreads();
 
@@ -695,8 +692,7 @@ Shar// Gather values from shared
 
 		__syncthreads();
 
-		// Gather keys from shared memory and scatter to global
-		GatherScatterKeys(tile, guarded_elements);
+		// Gather keys from shared memory and scatter toSizeT guarded_elemend_elements);
 
 		// Truck along values (if applicable)
 		TruckValues<KEYS_ONLY>::Invoke(tex_offset, guarded_elements, *this, tile);
@@ -709,10 +705,9 @@ Shar// Gather values from shared
 	__device__ __forceinline__ void ProcessWorkRange(
 		util::CtaWorkLimits<true><SizeT> &work_limits)
 	{
-		// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
-		SizeT tex_offset = smem_storage.tex_offset;<false>
-
-		// Process full tiles of tile_elements
+		// Make sure we get a local copy of the cta's offset (work_limits may be in smeguarded_elements)
+		{
+			ProcessTile<false>(tex_offset,  of tile_elements
 		while (tex_offset < smem_storage.tex_offset_limit) {
 			ProcessTile(tex_offset);
 	B40C_NS_POSTFIX

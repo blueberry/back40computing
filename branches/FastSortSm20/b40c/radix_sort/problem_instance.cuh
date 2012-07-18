@@ -75,11 +75,7 @@ struct ProblemInstance
 	struct UpsweepKernelProps : util::KernelProps
 	{
 		// Upsweep kernel function type
-		typedef void (*KernelFunc)(
-			SizeT*,
-			KeyType*,
-			KeyType*,
-			util::CtaWorkDistribution<SizeT>);
+		typedef void (*KernelFunc)(SizeT*, KeyType*, util::CtaWorkDistribution<SizeT>, unsigned int);
 
 		// Fields
 		KernelFunc 					kernel_func;
@@ -175,10 +171,11 @@ struct ProblemInstance
 			KeyType*,
 			ValueType*,
 			ValueType*,
-			util::CtaWorkDistribution<SizeT>);
+			util::CtaWorkDistribution<SizeT>,
+			unsigned int);
 
 		// Downsweep texture binding function type
-		typedef cudaError_t (*BindTexFunc)(void *, void *, size_t);
+		typedef cudaError_t (*BindTexFunc)(void *, size_t);
 
 		// Fields
 		KernelFunc 					kernel_func;
@@ -239,20 +236,18 @@ struct ProblemInstance
 		 * Bind related textures
 		 */
 		cudaError_t BindTexture(
-			KeyType *d_keys0,
-			KeyType *d_keys1,
-			ValueType *d_values0,
-			ValueType *d_values1,
+			KeyType *d_in_keys,
+			ValueType *d_in_values,
 			SizeT num_elements) const
 		{
 			cudaError_t error = cudaSuccess;
 			do {
 				// Bind key texture
-				if (keys_tex_func) error = keys_tex_func(d_keys0, d_keys1, sizeof(KeyType) * num_elements);
+				if (keys_tex_func) error = keys_tex_func(d_in_keys, sizeof(KeyType) * num_elements);
 				if (error) break;
 
 				// Bind value texture
-				if (values_tex_func) error = values_tex_func(d_values0, d_values1, sizeof(ValueType) * num_elements);
+				if (values_tex_func) error = values_tex_func(d_in_values, sizeof(ValueType) * num_elements);
 				if (error) break;
 
 			} while (0);
@@ -303,12 +298,12 @@ struct ProblemInstance
 	 */
 	cudaError_t DispatchPass(
 		int 							radix_bits,
+		int								current_bit,
 		const UpsweepKernelProps 		&upsweep_props,
 		const SpineKernelProps			&spine_props,
 		const DownsweepKernelProps		&downsweep_props,
 		bool							unform_grid_size,
-		DynamicSmemConfig				dynamic_smem_config,
-		int 							current_pass = 0)
+		DynamicSmemConfig				dynamic_smem_config)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -331,17 +326,12 @@ struct ProblemInstance
 			error = spine.Setup(sizeof(SizeT) * spine_elements);
 			if (error) break;
 
-			// Bind downsweep textures on first pass
-			if (current_pass == 0)
-			{
-				error = downsweep_props.BindTexture(
-					storage.d_keys[storage.selector],
-					storage.d_keys[storage.selector ^ 1],
-					storage.d_values[storage.selector],
-					storage.d_values[storage.selector ^ 1],
-					num_elements);
-				if (error) break;
-			}
+			// Bind downsweep textures
+			error = downsweep_props.BindTexture(
+				storage.d_keys[storage.selector],
+				storage.d_values[storage.selector],
+				num_elements);
+			if (error) break;
 
 			// Obtain a CTA work distribution
 			util::CtaWorkDistribution<SizeT> work(
@@ -409,8 +399,8 @@ struct ProblemInstance
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0], stream>>>(
 				(SizeT*) spine(),
 				storage.d_keys[storage.selector],
-				storage.d_keys[storage.selector ^ 1],
-				work);
+				work,
+				current_bit);
 
 			if (debug) {
 				error = cudaThreadSynchronize();
@@ -451,7 +441,8 @@ struct ProblemInstance
 				storage.d_keys[storage.selector ^ 1],
 				storage.d_values[storage.selector],
 				storage.d_values[storage.selector ^ 1],
-				work);
+				work,
+				current_bit);
 
 			if (debug) {
 				error = cudaThreadSynchronize();
@@ -461,6 +452,9 @@ struct ProblemInstance
 			// Restore smem bank mode
 			if (old_sm_config != downsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
+
+			// Update selector
+			storage.selector ^= 1;
 
 		} while(0);
 

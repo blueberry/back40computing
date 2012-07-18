@@ -56,18 +56,11 @@ struct Cta
 
 		RADIX_BITS						= Kern(KernelPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByteTS 					= 1 << RADIX_BITS,
 
-		LOG_THREADS 					= KernelPolicy::LOG_THREADS,
-		THREADS				= KernelPolicy::CURRENT_BIT,
-		CURRENT_PASS 				= KernelPolicy::CURRENT_PASS,
-		RADIX_BITS					= KernelPolicy::RADIX_BITS,
-		RADIX_DIGITS ARPS						= LOG_THREADS - LOG_WARP_THREADS,
-		WARPS							= 1 << LOG_WARPS,
+		LOG_THREADS 					= KernelPolicy::LOG_THREADRADIX_BITS					= KernelPolicy::RADIX_BITS,
+		RADIX_DIGITS 				= 1 << RADIX_BITS,
 
-		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
-		LOAD_VEC_S= KernelPolicy::CURRENT_PASS & 0x1,
-
-		LOG_CTA_THREADS 				= KernelPolicy::LOG_CTA_THREADS,
-		CTA_THREADS						= 1 << LOG_CTA_THREADS,
+		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
+		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
@@ -128,15 +121,22 @@ struct Cta
 	UnsignedBits		*d_in_keys;
 	SizeT				*d_spine;
 
+	// Warp-id and lane-id
 	int 				warp_id;
 	int 				warp_tid;
 
 	DigitCounter		*base_counter;
 
+	// The least-significant bit position of the current digit to extract
+	unsigned int 		current_bit;
 
-	//EAD,		// X = 128
+
+
+	//		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
+
+ C
 
 ----------------------------------------------------------
 	// Fields
@@ -198,10 +198,14 @@ struct Cta
 
  COMPOSITE_OFFSET + 0);
 			cta.local_counts[WARP_LANE][1] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 1);
-			cta.local_counts[WARP_LANE][2] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 2);
-			ctareinterpret_cast<UnsignedBits*>(FLOP_TURN ? d_keys1 : d_keys0)= *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 3);
-
-			Iterate<WARP_LANE, THREAD_COMPOSITE + 1>::ExtractComposites(cta);
+			cta.local_countin_keys,
+		unsigned int 	current_bit) :
+			smem_storage(smem_storage),
+			d_in_keys(d_in_keys),
+			d_spine(d_spine),
+			warp_id(threadIdx.x >> LOG_WARP_THREADS),
+			warp_tid(util::LaneId()),
+			current_bit(current_bit>::ExtractComposites(cta);
 		}
 	};
 
@@ -212,26 +216,18 @@ struct Cta
 	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
 		// ExtractComUnsignedBits
-		static __device__ __forceinline__ void ExtractComposites(Cta &cta)
-		{
-			Iterate<WARP_LANE + 1, 0>::ExtractComposites(cta);
-		}
-
-		// ShareCounters
-		static __device__Perform transform op
+		static __dePerform transform op
 		UnsignedBits converted_key = KeyTraits<KeyType>::TwiddleIn(key);
 
-		// Add in sub-counter byte_offset
-		byte_offset = Extract<
-			CURRENT_BIT,
-			LOG_PACKING_RATIO,
-			LOG_BYTES_PER_COUNTER>(
-				converted_cta.smem_storage.aggregate[row + 0][cta.warp_idx] = cta.local_counts[WARP_LANE][mem_storage.aggregate[row + 1][cta.warp_idx] = cta.local_countCTAts[WARP_LANE][1];
-			cta.smem_storage.aggregate[row + 2(
-				converted_= cta.local_counts[WARP_LANE][2];
-			cta.smem_storage.aggregate[row + 3][cta.warp_idx] = cta.local_counts[WARP_LANE][3];
+		// Add in sub-counter offset
+		UnsignedBits sub_counter = util::BFE(converted_key, current_bit, LOG_PACKING_RATIO);
 
-			Iterate<WARP_LANE + 1, COMPOSITES_PER_LANE_PER_THREAD>::ShareCounters(cta);
+		// Add in row offset
+		UnsignedBits row_offset = util::BFE(converted_key, current_bit + LOG_PACKING_RATIO, LOG_COUNTER_LANES);
+
+		// Increment counter
+		smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
+ COMPOSITES_PER_LANE_PER_THREAD>::ShareCounters(cta);
 		}
 
 		// ResetCounters
@@ -350,8 +346,7 @@ struct Cta
 		// Add in CTA_THREADS,
 			KernelPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
-				(UnsignedBitsTERS,
-			LOG_COMPOSITE_LANES,
+				E_LANES,
 			LOG_THREADS + (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER)>::SuperBFE(
 				key,
 				offset);
