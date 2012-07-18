@@ -201,7 +201,7 @@ struct Cta
 			cta.local_countin_keys,
 		unsigned int 	current_bit) :
 			smem_storage(smem_storage),
-			d_in_keys(d_in_keys),
+			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
 			d_spine(d_spine),
 			warp_id(threadIdx.x >> LOG_WARP_THREADS),
 			warp_tid(util::LaneId()),
