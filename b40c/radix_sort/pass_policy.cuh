@@ -48,8 +48,8 @@ namespace radix_sort {
 enum DynamicSmemConfig
 {
 	DYNAMIC_SMEM_NONE,			// No dynamic smem for kernels
-	DYNAMIC_SMEM_UNIFORM,		// Pad with dynamic smem so all kernels get the same total smem allocation
-	DYNAMIC_SMEM_LCM,			// Pad with dynamic smem so kernel occupancy a multiple of the lowest occupancy
+	DYNAMIC_SMEM_UNIFORM,		// Uniform: pad with dynamic smem so all kernels get the same total smem allocation
+	DYNAMIC_SMEM_LCM,			// Least-common-multiple: pad with dynamic smem so kernel occupancy a multiple of the lowest occupancy
 };
 
 
@@ -57,15 +57,11 @@ enum DynamicSmemConfig
  * Dispatch policy
  */
 template <
-	int					_TUNE_ARCH,
-	int 				_RADIX_BITS,
 	DynamicSmemConfig 	_DYNAMIC_SMEM_CONFIG,
 	bool 				_UNIFORM_GRID_SIZE>
 struct DispatchPolicy
 {
 	enum {
-		TUNE_ARCH					= _TUNE_ARCH,
-		RADIX_BITS					= _RADIX_BITS,
 		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
 	};
 
@@ -109,37 +105,43 @@ enum ProblemSize
 
 
 /**
+ * Preferred radix digit bits policy
+ */
+template <int TUNE_ARCH>
+struct PreferredDigitBits
+{
+	enum {
+		PREFERRED_BITS = 5,		// All architectures currently prefer 5-bit passes
+	};
+};
+
+
+/**
  * Tuned pass policy specializations
  */
 template <
 	int 			TUNE_ARCH,
 	typename 		ProblemInstance,
 	ProblemSize 	PROBLEM_SIZE,
-	int 			BITS_REMAINING,
-	int 			CURRENT_BIT,
-	int 			CURRENT_PASS>
+	int				RADIX_BITS>
 struct TunedPassPolicy;
 
 
 /**
  * SM20
  */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
-struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
+struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 {
 	enum {
 		TUNE_ARCH			= 200,
 		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
-		PREFERRED_BITS		= 5,
-		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
-		EARLY_EXIT 			= false,
 		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
+		EARLY_EXIT			= false,
 	};
 
 	// Dispatch policy
 	typedef DispatchPolicy <
-		TUNE_ARCH,								// TUNE_ARCH
-		RADIX_BITS,								// RADIX_BITS
 		DYNAMIC_SMEM_NONE, 						// UNIFORM_SMEM_ALLOCATION
 		true> 									// UNIFORM_GRID_SIZE
 			DispatchPolicy;
@@ -147,8 +149,6 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Upsweep kernel policy
 	typedef upsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		8,										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
 		((PROBLEM_SIZE == SMALL_PROBLEM) ? 		// LOG_LOAD_VEC_SIZE
@@ -174,8 +174,6 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Downsweep kernel policy
 	typedef downsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		(KEYS_ONLY && !LARGE_DATA ? 4 : 2), 	// MIN_CTA_OCCUPANCY
 		((PROBLEM_SIZE == SMALL_PROBLEM) ?		// LOG_CTA_THREADS
 			7 :
@@ -197,22 +195,18 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 /**
  * SM13
  */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
-struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
+struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 {
 	enum {
 		TUNE_ARCH			= 130,
 		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
-		PREFERRED_BITS		= 5,
-		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
-		EARLY_EXIT 			= false,
 		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
+		EARLY_EXIT			= false,
 	};
 
 	// Dispatch policy
 	typedef DispatchPolicy <
-		TUNE_ARCH,								// TUNE_ARCH
-		RADIX_BITS,								// RADIX_BITS
 		DYNAMIC_SMEM_UNIFORM, 					// UNIFORM_SMEM_ALLOCATION
 		true> 									// UNIFORM_GRID_SIZE
 			DispatchPolicy;
@@ -220,8 +214,6 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Upsweep kernel policy
 	typedef upsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		(RADIX_BITS > 4 ? 3 : 6),				// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
 		0,										// LOG_LOAD_VEC_SIZE
@@ -245,8 +237,6 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Downsweep kernel policy
 	typedef downsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		(KEYS_ONLY ? 3 : 2),					// MIN_CTA_OCCUPANCY
 		6,										// LOG_CTA_THREADS
 		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS
@@ -262,22 +252,18 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 /**
  * SM10
  */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int BITS_REMAINING, int CURRENT_BIT, int CURRENT_PASS>
-struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRENT_BIT, CURRENT_PASS>
+template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
+struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 {
 	enum {
 		TUNE_ARCH			= 100,
 		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
-		PREFERRED_BITS		= 5,
-		RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
-		EARLY_EXIT 			= false,
 		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
+		EARLY_EXIT			= false,
 	};
 
 	// Dispatch policy
 	typedef DispatchPolicy <
-		TUNE_ARCH,								// TUNE_ARCH
-		RADIX_BITS,								// RADIX_BITS
 		DYNAMIC_SMEM_LCM, 						// UNIFORM_SMEM_ALLOCATION
 		true> 									// UNIFORM_GRID_SIZE
 			DispatchPolicy;
@@ -285,8 +271,6 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Upsweep kernel policy
 	typedef upsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		2,										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
 		0,										// LOG_LOAD_VEC_SIZE
@@ -310,8 +294,6 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, BITS_REMAINING, CURRE
 	// Downsweep kernel policy
 	typedef downsweep::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		CURRENT_BIT,							// CURRENT_BIT
-		CURRENT_PASS,							// CURRENT_PASS
 		2,										// MIN_CTA_OCCUPANCY
 		6,										// LOG_CTA_THREADS
 		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS

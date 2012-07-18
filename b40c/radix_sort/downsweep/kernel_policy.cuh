@@ -48,8 +48,6 @@ enum ScatterStrategy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
-	int 							_CURRENT_BIT,			// The bit offset of the current radix digit place
-	int 							_CURRENT_PASS,			// The current pass iteration
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
 	int 							_LOG_THREAD_ELEMENTS,	// The number of consecutive keys to process per thread per tile
@@ -62,8 +60,6 @@ struct KernelPolicy
 {
 	enum {
 		RADIX_BITS					= _RADIX_BITS,
-		CURRENT_BIT 				= _CURRENT_BIT,
-		CURRENT_PASS 				= _CURRENT_PASS,
 		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
 		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
 		LOG_THREAD_ELEMENTS 		= _LOG_THREAD_ELEMENTS,

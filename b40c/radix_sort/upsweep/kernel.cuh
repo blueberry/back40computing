@@ -46,7 +46,8 @@ __global__
 void Kernel(
 	SizeT 		*d_spine,
 	KeyType 	*d_in_keys,
-	KeyType 	*d_out_keutil::CtaWorkDistribution<SizeT> work_decomposition)
+	util::CtaWorkDistribution<SizeT> work_decomposition,
+	unsigned int current_bit)
 {n)
 {
 
@@ -62,8 +63,8 @@ void Kernel(
 		d_in_keys;
 
 	// Determine our threadblock's work range
-	util::CtaWorkLimits<SizeT> work_limits;
-	work_decomposition.GetCtaWorkLimits(
+	util::CtaWorkLimits<SizeT> work_limiin_keys, current_bit);
+osition.GetCtaWorkLimits(
 		work_limits,
 		KernelPolicy::LOG_TILE_ELEMENTS);
 

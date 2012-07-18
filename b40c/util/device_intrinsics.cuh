@@ -65,6 +65,8 @@ __device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shi
 	return ret;
 }
 
+
+#if __CUDA_ARCH__ >= 200
 /**
  * BFE (bitfield extract).   Extracts a bit field from source and places the
  * zero or sign-extended result in extract
@@ -72,14 +74,31 @@ __device__ __forceinline__ unsigned int SHL_ADD(unsigned int x, unsigned int shi
 __device__ __forceinline__ unsigned int BFE(unsigned int source, unsigned int bit_start, unsigned int num_bits)
 {
 	unsigned int bits;
-#if __CUDA_ARCH__ >= 200
 	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
-#else
-	const unsigned int MASK = (1 << num_bits) - 1;
-	bits = (source >> bit_start) & MASK;
-#endif
 	return bits;
 }
+#endif
+
+/**
+ * BFE (bitfield extract).   Extracts a bit field from source and places the
+ * zero or sign-extended result in extract
+ */
+template <typename T>
+__device__ __forceinline__ T BFE(T source, unsigned int bit_start, unsigned int num_bits)
+{
+	const T MASK = (T(1) << num_bits) - 1;
+	return (source >> bit_start) & MASK;
+}
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -66,6 +66,7 @@ int main(int argc, char** argv)
 //	typedef char					KeyType;
 //	typedef int						KeyType;
 	typedef unsigned int 			KeyType;
+//	typedef unsigned short 			KeyType;
 	typedef b40c::util::NullType 	ValueType;
 //	typedef unsigned long long 		ValueType;
 //	typedef unsigned int			ValueType;
