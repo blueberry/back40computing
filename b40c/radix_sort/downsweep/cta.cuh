@@ -444,7 +444,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 				int thread_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
 
 				keys[KEY] = (thread_offset < guarded_elements) ?
-					*(d_in_keys + (tex_offset * THREAD_TEX_LOADS) + thread_offset) :
+					*(d_in_keys + (tex_offset * ELEMENTS_PER_TEX) + thread_offset) :
 					MAX_KEY;
 			}
 		}
@@ -489,7 +489,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 
 				if (thread_offset < guarded_elements)
 				{
-					values[KEY] = *(d_in_values + (tex_offset * THREAD_TEX_LOADS) + thread_offset);
+					values[KEY] = *(d_in_values + (tex_offset * ELEMENTS_PER_TEX) + thread_offset);
 				}
 			}
 		}
