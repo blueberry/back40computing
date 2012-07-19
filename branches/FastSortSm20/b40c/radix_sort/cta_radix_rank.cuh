@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for radix sort downsweep scan kernels
+ * CTA collective abstraction for ranking keys (unsigned bits) by radix digit.
  ******************************************************************************/
 
 #pragma once
@@ -45,8 +45,10 @@ template <
 	int 					LOG_CTA_THREADS,
 	int 					RADIX_BITS,
 	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
-struct CtaRadixRank
+class CtaRadixRank
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
@@ -86,6 +88,7 @@ struct CtaRadixRank
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 	};
 
+public:
 
 	/**
 	 * Shared memory storage layout
@@ -102,32 +105,15 @@ struct CtaRadixRank
 		};
 	};
 
+private :
 
 	//---------------------------------------------------------------------
-	// Methods
+	// Template iteration structures.  (Regular iteration cannot always be
+	// unrolled due to conditionals or ABI procedure calls within
+	// functors).
 	//---------------------------------------------------------------------
 
-	/**
-	 * Reset shared memory digit counters
-	 */
-	static __device__ __forceinline__ void ResetCounters(SmemStorage &smem_storage)
-	{
-		// Reset shared memory digit counters
-		#pragma unroll
-		for (int LANE = 0; LANE < COUNTER_LANES + 1; LANE++)
-		{
-			*((PackedCounter*) smem_storage.digit_counters[LANE][threadIdx.x]) = 0;
-		}
-	}
-
-	//---------------------------------------------------------------------
-	// Helper structure for templated iteration.  (NVCC currently won't
-	// unroll loops with "unexpected control flow".)
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate
-	 */
+	// General template iteration
 	template <int COUNT, int MAX>
 	struct Iterate
 	{
@@ -145,7 +131,7 @@ struct CtaRadixRank
 			SmemStorage		&smem_storage,							// Shared memory storage
 			UnsignedBits 	(&keys)[KEYS_PER_THREAD],				// Key to decode
 			DigitCounter 	(&thread_prefixes)[KEYS_PER_THREAD],	// Prefix counter value (out parameter)
-			DigitCounter* 	(&digit_counters)[KEYS_PER_THREAD],	// Counter smem offset (out parameter)
+			DigitCounter* 	(&digit_counters)[KEYS_PER_THREAD],		// Counter smem offset (out parameter)
 			unsigned int 	current_bit)							// The least-significant bit position of the current digit to extract
 		{
 			// Add in sub-counter offset
@@ -168,10 +154,7 @@ struct CtaRadixRank
 		}
 
 
-		/**
-		 * Compute rank.  Returns the rank of a key given its shared memory
-		 * counter offset and its prefix counter value.
-		 */
+		// Termination
 		template <int KEYS_PER_THREAD>
 		static __device__ __forceinline__ void UpdateRanks(
 			SmemStorage		&smem_storage,							// Shared memory storage
@@ -187,9 +170,8 @@ struct CtaRadixRank
 		}
 	};
 
-	/**
-	 * Terminate iteration
-	 */
+
+	// Termination
 	template <int MAX>
 	struct Iterate<MAX, MAX>
 	{
@@ -212,6 +194,23 @@ struct CtaRadixRank
 			DigitCounter*	(&digit_counters)[KEYS_PER_THREAD]) {}
 	};
 
+
+	//---------------------------------------------------------------------
+	// Utility methods
+	//---------------------------------------------------------------------
+
+	/**
+	 * Reset shared memory digit counters
+	 */
+	static __device__ __forceinline__ void ResetCounters(SmemStorage &smem_storage)
+	{
+		// Reset shared memory digit counters
+		#pragma unroll
+		for (int LANE = 0; LANE < COUNTER_LANES + 1; LANE++)
+		{
+			*((PackedCounter*) smem_storage.digit_counters[LANE][threadIdx.x]) = 0;
+		}
+	}
 
 
 	/**
@@ -276,6 +275,7 @@ struct CtaRadixRank
 			exclusive_partial);
 	}
 
+public:
 
 	//---------------------------------------------------------------------
 	// Interface

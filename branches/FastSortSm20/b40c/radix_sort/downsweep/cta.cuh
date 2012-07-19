@@ -240,8 +240,6 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			T 				*d_out,
 			SizeT 			valid_elements)
 		{
-			typedef typename CtaRadixRank::PackedCounter PackedCounter;
-
 			int store_txn_idx 		= threadIdx.x & (STORE_TXN_THREADS - 1);
 			int store_txn_digit 	= threadIdx.x >> LOG_STORE_TXN_THREADS;
 			int my_digit 			my_digit = (COUNT * DIGITS_PER_SCATTER_PASS) + store_txn_digit;
@@ -497,11 +495,8 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 
 
 	/**
-	 * Gather keys from smem, decode base digit offsets for keys,4
-	 * and scatter to global
-	 */
-	template <bool FULL_TILE>
-	__device__ __forceinline__ void ScatterKeys(
+	 * Scatter ranked keys to global memorybin_inctemplate <bool FULL_TILE>nclusive;
+			PackedCounter bin_excScatterKeys(
 		UnsignedBits 	twiddled_keys[KEYS_PER_THREAD],
 		SizeT 			digit_offsets[KEYS_PER_THREAD],		// (out parameter)
 		unsigned int 	ranks[KEYS_PER_THREAD],
