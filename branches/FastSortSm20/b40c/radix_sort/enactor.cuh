@@ -132,6 +132,21 @@ struct Enactor
 				int sm_version = enactor.cuda_props.device_sm_version;
 				int sm_count = enactor.cuda_props.device_props.multiProcessorCount;
 
+/*
+				// Single kernel props
+				typename ProblemInstance::SingleKernelProps single_props;
+				error = single_props.template Init<
+					typename TunedPassPolicy::DownsweepPolicy,
+					typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
+				if (error) break;
+
+				// Dispatch current pass
+				error = problem_instance.DispatchPass(
+					CURRENT_BIT,
+					BITS_REMAINING,
+					single_props);
+				if (error) break;
+*/
 				// Upsweep kernel props
 				typename ProblemInstance::UpsweepKernelProps upsweep_props;
 				error = upsweep_props.template Init<

@@ -94,81 +94,55 @@ public:
 private:
 
 	//---------------------------------------------------------------------
-	// Utility methods
+	// Template iteration
 	//---------------------------------------------------------------------
 
-	/**
-	 * Scatter ranked items to shared memory buffer
-	 */
-	template <typename T>
-	static __device__ __forceinline__ void ScatterRanked(
-		unsigned int 	ranks[KEYS_PER_THREAD],
-		T 				items[KEYS_PER_THREAD],
-		T 				*buffer)
+	template <int COUNT, int MAX>
+	struct Iterate
 	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		template <typename T>
+		static __device__ __forceinline__ void Gather(
+			T items[KEYS_PER_THREAD],
+			T *buffer)
 		{
-			int offset = ranks[KEY];
+			int shared_offset = (threadIdx.x * KEYS_PER_THREAD) + COUNT;
+			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
 
-			// Workaround for (CUAD4.2+NVCC+abi+m64) bug when sorting 16-bit key-value pairs
-			offset = (sizeof(ValueType) == 2) ?
-				(offset >> LOG_MEM_BANKS) + offset :
-				util::SHR_ADD(offset, LOG_MEM_BANKS, offset);
+			items[COUNT] = buffer[shared_offset];
 
-			buffer[offset] = items[KEY];
+			Iterate<COUNT + 1, MAX>::Gather(items, buffer);
 		}
-	}
 
-
-	/**
-	 * Gather items from shared memory buffer
-	 */
-	template <typename T>
-	static __device__ __forceinline__ void GatherShared(
-		T items[KEYS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		template <typename T>
+		static __device__ __forceinline__ void Scatter(
+			unsigned int 	ranks[KEYS_PER_THREAD],
+			T 				items[KEYS_PER_THREAD],
+			T 				*buffer)
 		{
-			int gather_offset = (util::SHR_ADD(threadIdx.x, LOG_MEM_BANKS, threadIdx.x) +
-				(KEY * CTA_THREADS) + ((KEY * CTA_THREADS) >> LOG_MEM_BANKS));
+			int shared_offset = ranks[COUNT];
+			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
 
-			items[KEY] = buffer[gather_offset];
+			buffer[shared_offset] = items[COUNT];
+
+			Iterate<COUNT + 1, MAX>::Scatter(ranks, items, buffer);
 		}
-	}
+	};
 
-
-	/**
-	 * Exchange ranked items through shared memory
-	 */
-	template <typename T>
-	static __device__ __forceinline__ void ScatterGather(
-		T 				items[KEYS_PER_THREAD],
-		T 				*buffer,
-		unsigned int 	ranks[KEYS_PER_THREAD])
+	template <int MAX>
+	struct Iterate<MAX, MAX>
 	{
-		// Scatter to shared memory first (for better write-coalescing during global scatter)
-		ScatterRanked(ranks, items, buffer);
+		template <typename T>
+		static __device__ __forceinline__ void Gather(
+			T items[KEYS_PER_THREAD],
+			T *buffer) {}
 
-		__syncthreads();
+		template <typename T>
+		static __device__ __forceinline__ void Scatter(
+			unsigned int 	ranks[KEYS_PER_THREAD],
+			T 				items[KEYS_PER_THREAD],
+			T 				*buffer) {}
+	};
 
-		// Gather sorted keys from shared memory
-		GatherShared(items, buffer);
-
-		__syncthreads();
-	}
-
-
-	/**
-	 * Exchange ranked items through shared memory (specialized for key-only sorting)
-	 */
-	static __device__ __forceinline__ void ScatterGather(
-		util::NullType	items[KEYS_PER_THREAD],
-		util::NullType	*buffer,
-		unsigned int 	ranks[KEYS_PER_THREAD])
-	{}
 
 public:
 
@@ -178,57 +152,41 @@ public:
 	//---------------------------------------------------------------------
 
 	/**
-	 * Key-value sorting
-	 */
-	static __device__ __forceinline__ void Sort(
-		SmemStorage		&smem_storage,									// Shared memory storage
-		UnsignedBits 	keys[KEYS_PER_THREAD],							// Calling thread's keys
-		ValueType 		values[KEYS_PER_THREAD],						// Calling thread's values
-		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
-		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
-	{
-		// Radix sorting passes
-		while (current_bit < bits_remaining)
-		{
-			// Rank the keys within the CTA
-			unsigned int ranks[KEYS_PER_THREAD];
-			CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, current_bit);
-
-			__syncthreads();
-
-			// Exchange keys
-			ScatterGather(keys, smem_storage.key_exchange, ranks);
-
-			// Exchange values
-			ScatterGather(values, smem_storage.value_exchange, ranks);
-
-			current_bit += RADIX_BITS;
-		}
-	}
-
-
-	/**
 	 * Keys-only sorting
 	 */
 	static __device__ __forceinline__ void Sort(
 		SmemStorage		&smem_storage,									// Shared memory storage
-		UnsignedBits 	keys[KEYS_PER_THREAD],							// Calling thread's keys
 		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
 		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
 	{
 		// Radix sorting passes
-		while (current_bit < bits_remaining)
+
+		for (
+			unsigned int bit = current_bit;
+			bit < bits_remaining;
+			bit += RADIX_BITS)
 		{
-			// Rank the keys within the CTA
+			UnsignedBits keys[KEYS_PER_THREAD];
 			unsigned int ranks[KEYS_PER_THREAD];
-			CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, current_bit);
+
+			// Gather keys from shared memory
+			Iterate<0, KEYS_PER_THREAD>::Gather(keys, smem_storage.key_exchange);
 
 			__syncthreads();
 
-			// Exchange keys
-			ScatterGather(keys, smem_storage.key_exchange, ranks);
+			// Rank the keys within the CTA
+			CtaRadixRank::RankKeys(
+				smem_storage.ranking_storage,
+				keys,
+				ranks,
+				bit);
 
-			current_bit += RADIX_BITS;
+			__syncthreads();
+
+			// Scatter keys to shared memory
+			Iterate<0, KEYS_PER_THREAD>::Scatter(ranks, keys, smem_storage.key_exchange);
+
+			__syncthreads();
 		}
 	}
 };

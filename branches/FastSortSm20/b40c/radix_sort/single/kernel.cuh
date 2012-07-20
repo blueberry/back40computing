@@ -23,9 +23,7 @@
 
 #pragma once
 
-#include "../../radix_sort/downsweep/cta.cuh"
-#include "../../util/cta_work_distribution.cuh"
-#include "../../util/device_intrinsics.cuh"
+#include "../../radix_sort/single/cta.cuh"
 #include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
@@ -39,7 +37,6 @@ namespace single {
  */
 template <
 	typename KernelPolicy,
-	typename SizeT,
 	typename KeyType,
 	typename ValueType>
 __launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
@@ -50,14 +47,15 @@ void Kernel(
 	ValueType 							*d_in_values,
 	ValueType 							*d_out_values,
 	unsigned int 						current_bit,
-	unsigned int						bits_remaining)
+	unsigned int						bits_remaining,
+	unsigned int 						num_elements)
 {
 	// CTA abstraction type
-	typedef Cta<KernelPolicy, SizeT, KeyType, ValueType> Cta;
+	typedef Cta<KernelPolicy, KeyType, ValueType> Cta;
 
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
-
+/*
 	Cta::ProcessTile(
 		smem_storage,
 		d_in_keys,
@@ -65,7 +63,20 @@ void Kernel(
 		d_in_values,
 		d_out_values,
 		current_bit,
-		bits_remaining);
+		bits_remaining,
+		num_elements);
+*/
+	int offset = blockIdx.x << KernelPolicy::LOG_TILE_ELEMENTS;
+
+	Cta::ProcessTile(
+		smem_storage,
+		d_in_keys + offset,
+		d_out_keys + offset,
+		d_in_values + offset,
+		d_out_values + offset,
+		current_bit,
+		bits_remaining,
+		num_elements);
 }
 
 
