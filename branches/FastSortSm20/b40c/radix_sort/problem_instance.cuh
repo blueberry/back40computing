@@ -265,18 +265,11 @@ struct ProblemInstance
 	struct SingleKernelProps : util::KernelProps
 	{
 		// Single kernel function type
-		typedef void (*KernelFunc)(
-			KeyType*,
-			KeyType*,
-			ValueType*,
-			ValueType*,
-			unsigned int,
-			unsigned int,
-			unsigned int);
+		typedef void (*KernelFunc)(KeyType*, ValueType*, unsigned int, unsigned int, unsigned int);
 
 		// Fields
 		KernelFunc 					kernel_func;
-		int 						log_tile_elements;
+		int 						tile_elements;
 		cudaSharedMemConfig 		sm_bank_config;
 
 		/**
@@ -289,7 +282,7 @@ struct ProblemInstance
 		{
 			// Initialize fields
 			kernel_func 			= single::Kernel<OpaquePolicy>;
-			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+			tile_elements 			= KernelPolicy::TILE_ELEMENTS;
 			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
 			// Initialize super class
@@ -530,13 +523,13 @@ struct ProblemInstance
 
 			// Compute grid size
 //			int grid_size = 1;
-			int grid_size = num_elements >> single_props.log_tile_elements;
+			int grid_size = (num_elements  + single_props.tile_elements - 1) / single_props.tile_elements;
 
 			// Print debug info
 			if (debug)
 			{
 				printf("Single: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
-					(1 << single_props.log_tile_elements),
+					single_props.tile_elements,
 					single_props.max_cta_occupancy,
 					grid_size,
 					single_props.threads);
@@ -552,8 +545,6 @@ struct ProblemInstance
 			// Single-CTA sorting kernel
 			single_props.kernel_func<<<grid_size, single_props.threads, 0, stream>>>(
 				storage.d_keys[storage.selector],
-				storage.d_keys[storage.selector],
-				storage.d_values[storage.selector],
 				storage.d_values[storage.selector],
 				current_bit,
 				bits_remaining,

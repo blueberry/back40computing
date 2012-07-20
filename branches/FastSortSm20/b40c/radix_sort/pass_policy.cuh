@@ -32,6 +32,7 @@
 #include "../radix_sort/upsweep/kernel_policy.cuh"
 #include "../radix_sort/spine/kernel_policy.cuh"
 #include "../radix_sort/downsweep/kernel_policy.cuh"
+#include "../radix_sort/single/kernel_policy.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -80,12 +81,14 @@ template <
 	typename 	_UpsweepPolicy,
 	typename 	_SpinePolicy,
 	typename 	_DownsweepPolicy,
+	typename 	_SinglePolicy,
 	typename 	_DispatchPolicy>
 struct PassPolicy
 {
 	typedef _UpsweepPolicy			UpsweepPolicy;
 	typedef _SpinePolicy 			SpinePolicy;
 	typedef _DownsweepPolicy 		DownsweepPolicy;
+	typedef _SinglePolicy 			SinglePolicy;
 	typedef _DispatchPolicy 		DispatchPolicy;
 };
 
@@ -189,6 +192,17 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
 		EARLY_EXIT>								// EARLY_EXIT
 			DownsweepPolicy;
+
+	// Single kernel policy
+	typedef single::KernelPolicy<
+		RADIX_BITS,								// RADIX_BITS
+		4, 										// MIN_CTA_OCCUPANCY
+		128,									// CTA_THREADS
+		17, 									// THREAD_ELEMENTS
+		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		b40c::util::io::st::NONE,				// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			SinglePolicy;
 };
 
 
@@ -246,6 +260,18 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
 		EARLY_EXIT>								// EARLY_EXIT
 			DownsweepPolicy;
+
+	// Single kernel policy
+	typedef single::KernelPolicy<
+		RADIX_BITS,								// RADIX_BITS
+		3, 										// MIN_CTA_OCCUPANCY
+		64,										// CTA_THREADS
+		16, 									// THREAD_ELEMENTS
+		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		b40c::util::io::st::NONE,				// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			SinglePolicy;
+
 };
 
 
@@ -303,6 +329,18 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
 		EARLY_EXIT>								// EARLY_EXIT
 			DownsweepPolicy;
+
+	// Single kernel policy
+	typedef single::KernelPolicy<
+		RADIX_BITS,								// RADIX_BITS
+		2, 										// MIN_CTA_OCCUPANCY
+		64,										// CTA_THREADS
+		16,										// THREAD_ELEMENTS
+		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		b40c::util::io::st::NONE,				// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			SinglePolicy;
+
 };
 
 

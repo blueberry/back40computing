@@ -18,12 +18,13 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Radix sort single-CTA sort kernel
+ * Configuration policy for single-CTA radix sort
  ******************************************************************************/
 
 #pragma once
 
-#include "../../radix_sort/single/cta.cuh"
+#include "../../util/io/modified_load.cuh"
+#include "../../util/io/modified_store.cuh"
 #include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
@@ -31,48 +32,37 @@ namespace b40c {
 namespace radix_sort {
 namespace single {
 
-
 /**
- * Radix sort single-CTA sort kernel entry point
+ * Single tuning policy.
  */
 template <
-	typename KernelPolicy,
-	typename KeyType,
-	typename ValueType>
-__launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
-__global__ 
-void Kernel(
-	KeyType 							*d_keys,
-	ValueType 							*d_values,
-	unsigned int 						current_bit,
-	unsigned int						bits_remaining,
-	unsigned int 						num_elements)
+	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
+	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
+	int 							_CTA_THREADS,			// The number of threads per CTA
+	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
+	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+struct KernelPolicy
 {
-	// CTA abstraction type
-	typedef Cta<KernelPolicy, KeyType, ValueType> Cta;
+	enum
+	{
+		RADIX_BITS					= _RADIX_BITS,
+		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
+		CTA_THREADS 				= _CTA_THREADS,
+		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
 
-	// Shared memory pool
-	__shared__ typename Cta::SmemStorage smem_storage;
+		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
+	};
 
-//	int cta_offset = 0;
-//	int guarded_elements = num_elements;
-
-	int cta_offset = blockIdx.x * KernelPolicy::TILE_ELEMENTS;
-	int guarded_elements = CUB_MIN(num_elements - cta_offset, KernelPolicy::TILE_ELEMENTS);
-
-	Cta::ProcessTile(
-		smem_storage,
-		d_keys,
-		d_values,
-		current_bit,
-		bits_remaining,
-		cta_offset,
-		guarded_elements);
-}
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+};
 
 
 
 } // namespace single
-} // namespace radix_sort
+} // namespace partition
 } // namespace b40c
 B40C_NS_POSTFIX
