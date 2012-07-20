@@ -42,7 +42,7 @@ namespace radix_sort {
  * Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
  */
 template <
-	int 					LOG_CTA_THREADS,
+	int 					CTA_THREADS,
 	int 					RADIX_BITS,
 	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
 class CtaRadixRank
@@ -64,13 +64,9 @@ private:
 	enum {
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
-
-		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS						= 1 << LOG_WARPS,
+		WARPS						= (CTA_THREADS + WARP_THREADS - 1) / WARP_THREADS,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
 		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,

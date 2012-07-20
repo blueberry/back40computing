@@ -88,6 +88,7 @@ struct Enactor
 		struct UpsweepPolicy 	: TunedPassPolicy::UpsweepPolicy {};
 		struct SpinePolicy 		: TunedPassPolicy::SpinePolicy {};
 		struct DownsweepPolicy 	: TunedPassPolicy::DownsweepPolicy {};
+		struct SinglePolicy 	: TunedPassPolicy::SinglePolicy {};
 	};
 
 
@@ -102,14 +103,6 @@ struct Enactor
 		int 			CURRENT_BIT>
 	struct IteratePasses
 	{
-		enum {
-			PREFERRED_BITS		= PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
-			RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
-		};
-
-		// Tuned and opaque pass policies
-		typedef TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
-		typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>				OpaquePassPolicy;
 
 		/**
 		 * DispatchPass pass
@@ -118,75 +111,108 @@ struct Enactor
 			ProblemInstance &problem_instance,
 			Enactor &enactor)
 		{
-			// Print debug info
-			if (problem_instance.debug)
-			{
-				printf("\nCurrent bit(%d), Radix bits(%d), tuned arch(%d), SM arch(%d)\n",
-					CURRENT_BIT, RADIX_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
-				fflush(stdout);
-			}
-
 			cudaError_t error = cudaSuccess;
 			do {
 
 				int sm_version = enactor.cuda_props.device_sm_version;
 				int sm_count = enactor.cuda_props.device_props.multiProcessorCount;
 
-/*
-				// Single kernel props
-				typename ProblemInstance::SingleKernelProps single_props;
-				error = single_props.template Init<
-					typename TunedPassPolicy::DownsweepPolicy,
-					typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
-				if (error) break;
+				if (false)
+				{
+					// Single CTA pass
+					enum {
+						RADIX_BITS = PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
+					};
 
-				// Dispatch current pass
-				error = problem_instance.DispatchPass(
-					CURRENT_BIT,
-					BITS_REMAINING,
-					single_props);
-				if (error) break;
-*/
-				// Upsweep kernel props
-				typename ProblemInstance::UpsweepKernelProps upsweep_props;
-				error = upsweep_props.template Init<
-					typename TunedPassPolicy::UpsweepPolicy,
-					typename OpaquePassPolicy::UpsweepPolicy>(sm_version, sm_count);
-				if (error) break;
+					// Print debug info
+					if (problem_instance.debug)
+					{
+						printf("\nCurrent bit(%d), Radix bits(%d), tuned arch(%d), SM arch(%d)\n",
+							CURRENT_BIT, RADIX_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
+						fflush(stdout);
+					}
 
-				// Spine kernel props
-				typename ProblemInstance::SpineKernelProps spine_props;
-				error = spine_props.template Init<
-					typename TunedPassPolicy::SpinePolicy,
-					typename OpaquePassPolicy::SpinePolicy>(sm_version, sm_count);
-				if (error) break;
+					// Tuned and opaque pass policies
+					typedef TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
+					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>				OpaquePassPolicy;
 
-				// Downsweep kernel props
-				typename ProblemInstance::DownsweepKernelProps downsweep_props;
-				error = downsweep_props.template Init<
-					typename TunedPassPolicy::DownsweepPolicy,
-					typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
-				if (error) break;
+					// Single kernel props
+					typename ProblemInstance::SingleKernelProps single_props;
+					error = single_props.template Init<
+						typename TunedPassPolicy::SinglePolicy,
+						typename OpaquePassPolicy::SinglePolicy>(sm_version, sm_count);
+					if (error) break;
 
-				// Dispatch current pass
-				error = problem_instance.DispatchPass(
-					RADIX_BITS,
-					CURRENT_BIT,
-					upsweep_props,
-					spine_props,
-					downsweep_props,
-					TunedPassPolicy::DispatchPolicy::UNIFORM_GRID_SIZE,
-					TunedPassPolicy::DispatchPolicy::DYNAMIC_SMEM_CONFIG);
-				if (error) break;
+					// Dispatch current pass
+					error = problem_instance.DispatchPass(
+						CURRENT_BIT,
+						BITS_REMAINING,
+						single_props);
+					if (error) break;
 
-				// DispatchPass next pass
-				error = IteratePasses<
-					TUNE_ARCH,
-					ProblemInstance,
-					PROBLEM_SIZE,
-					BITS_REMAINING - RADIX_BITS,
-					CURRENT_BIT + RADIX_BITS>::DispatchPass(problem_instance, enactor);
-				if (error) break;
+				}
+				else
+				{
+					// Multi-CTA pass
+					enum {
+						PREFERRED_BITS		= PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
+						RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
+					};
+
+					// Print debug info
+					if (problem_instance.debug)
+					{
+						printf("\nCurrent bit(%d), Radix bits(%d), tuned arch(%d), SM arch(%d)\n",
+							CURRENT_BIT, RADIX_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
+						fflush(stdout);
+					}
+
+					// Tuned and opaque pass policies
+					typedef TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
+					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>				OpaquePassPolicy;
+
+
+					// Upsweep kernel props
+					typename ProblemInstance::UpsweepKernelProps upsweep_props;
+					error = upsweep_props.template Init<
+						typename TunedPassPolicy::UpsweepPolicy,
+						typename OpaquePassPolicy::UpsweepPolicy>(sm_version, sm_count);
+					if (error) break;
+
+					// Spine kernel props
+					typename ProblemInstance::SpineKernelProps spine_props;
+					error = spine_props.template Init<
+						typename TunedPassPolicy::SpinePolicy,
+						typename OpaquePassPolicy::SpinePolicy>(sm_version, sm_count);
+					if (error) break;
+
+					// Downsweep kernel props
+					typename ProblemInstance::DownsweepKernelProps downsweep_props;
+					error = downsweep_props.template Init<
+						typename TunedPassPolicy::DownsweepPolicy,
+						typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
+					if (error) break;
+
+					// Dispatch current pass
+					error = problem_instance.DispatchPass(
+						RADIX_BITS,
+						CURRENT_BIT,
+						upsweep_props,
+						spine_props,
+						downsweep_props,
+						TunedPassPolicy::DispatchPolicy::UNIFORM_GRID_SIZE,
+						TunedPassPolicy::DispatchPolicy::DYNAMIC_SMEM_CONFIG);
+					if (error) break;
+
+					// DispatchPass next pass
+					error = IteratePasses<
+						TUNE_ARCH,
+						ProblemInstance,
+						PROBLEM_SIZE,
+						BITS_REMAINING - RADIX_BITS,
+						CURRENT_BIT + RADIX_BITS>::DispatchPass(problem_instance, enactor);
+					if (error) break;
+				}
 
 			} while (0);
 

@@ -119,7 +119,7 @@ struct Cta
 
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
-		LOG_CTA_THREADS,
+		CTA_THREADS,
 		RADIX_BITS,
 		KernelPolicy::SMEM_CONFIG> CtaRadixRank;
 

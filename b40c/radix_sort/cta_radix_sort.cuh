@@ -43,8 +43,8 @@ namespace radix_sort {
  */
 template <
 	typename				UnsignedBits,
-	int 					LOG_CTA_THREADS,
-	int						LOG_KEYS_PER_THREAD,
+	int 					CTA_THREADS,
+	int						KEYS_PER_THREAD,
 	int 					RADIX_BITS,
 	typename 				ValueType = util::NullType,
 	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
@@ -58,21 +58,20 @@ private:
 
 	enum
 	{
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-		KEYS_PER_THREAD				= 1 << LOG_KEYS_PER_THREAD,
-
-		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_KEYS_PER_THREAD,
-		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
+		TILE_ELEMENTS				= CTA_THREADS * KEYS_PER_THREAD,
 
 		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 
-		PADDING_ELEMENTS			= TILE_ELEMENTS >> LOG_MEM_BANKS
+		// Insert padding if the number of keys per thread is a power of two
+		PADDING  					= ((KEYS_PER_THREAD & (KEYS_PER_THREAD - 1)) == 0),
+
+		PADDING_ELEMENTS			= (PADDING) ? (TILE_ELEMENTS >> LOG_MEM_BANKS) : 0,
 	};
 
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
-		LOG_CTA_THREADS,
+		CTA_THREADS,
 		RADIX_BITS,
 		SMEM_CONFIG> CtaRadixRank;
 
@@ -106,7 +105,7 @@ private:
 			T *buffer)
 		{
 			int shared_offset = (threadIdx.x * KEYS_PER_THREAD) + COUNT;
-			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
+			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
 
 			items[COUNT] = buffer[shared_offset];
 
@@ -120,7 +119,7 @@ private:
 			T 				*buffer)
 		{
 			int shared_offset = ranks[COUNT];
-			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
+			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
 
 			buffer[shared_offset] = items[COUNT];
 

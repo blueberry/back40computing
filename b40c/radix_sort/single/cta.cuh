@@ -65,33 +65,28 @@ struct Cta
 
 		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
 
-		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
-		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS						= 1 << LOG_WARPS,
+		CTA_THREADS 				= KernelPolicy::CTA_THREADS,
+		WARPS						= CTA_THREADS / WARP_THREADS,
 
-		LOG_KEYS_PER_THREAD 		= KernelPolicy::LOG_THREAD_ELEMENTS,
-		KEYS_PER_THREAD				= 1 << LOG_KEYS_PER_THREAD,
-
-		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_KEYS_PER_THREAD,
-		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
+		KEYS_PER_THREAD				= KernelPolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= KernelPolicy::TILE_ELEMENTS,
 
 		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__),
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 
-		PADDING_ELEMENTS			= TILE_ELEMENTS >> LOG_MEM_BANKS,
+		// Insert padding if the number of keys per thread is a power of two
+		PADDING  					= ((KEYS_PER_THREAD & (KEYS_PER_THREAD - 1)) == 0),
 	};
 
 
 	// CtaRadixSort utility type
 	typedef CtaRadixSort<
 		UnsignedBits,
-		LOG_CTA_THREADS,
-		LOG_KEYS_PER_THREAD,
+		CTA_THREADS,
+		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
 		KernelPolicy::SMEM_CONFIG> CtaRadixSort;
@@ -110,53 +105,6 @@ struct Cta
 
 
 	//---------------------------------------------------------------------
-	// Template iteration
-	//---------------------------------------------------------------------
-
-	template <int COUNT, int MAX>
-	struct Iterate
-	{
-		template <typename T>
-		static __device__ __forceinline__ void GatherScatterIn(
-			T *d_in,
-			T *buffer)
-		{
-			int global_offset 	= (COUNT * CTA_THREADS) + threadIdx.x;
-			int shared_offset 	= global_offset;
-			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
-
-			T key = buffer[shared_offset] = d_in[global_offset];
-
-			Iterate<COUNT + 1, MAX>::GatherScatterIn(d_in, buffer);
-		}
-
-		template <typename T>
-		static __device__ __forceinline__ void GatherScatterOut(
-			T *d_out,
-			T *buffer)
-		{
-			int global_offset 	= (COUNT * CTA_THREADS) + threadIdx.x;
-			int shared_offset 	= global_offset;
-			shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
-
-			d_out[global_offset] = buffer[shared_offset];
-
-			Iterate<COUNT + 1, MAX>::GatherScatterOut(d_out, buffer);
-		}
-	};
-
-	template <int MAX>
-	struct Iterate<MAX, MAX>
-	{
-		template <typename T>
-		static __device__ __forceinline__ void GatherScatterIn(T*, T*) {}
-
-		template <typename T>
-		static __device__ __forceinline__ void GatherScatterOut(T*, T*) {}
-	};
-
-
-	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
 
@@ -164,20 +112,47 @@ struct Cta
 	/**
 	 * ProcessTile
 	 */
+	template <typename SizeT>
 	static __device__ __forceinline__ void ProcessTile(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_in_keys,
-		KeyType 		*d_out_keys,
-		ValueType 		*d_in_values,
-		ValueType 		*d_out_values,
+		KeyType 		*d_keys,
+		ValueType 		*d_values,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
-		unsigned int 	num_elements)
+		SizeT			cta_offset,
+		int 			guarded_elements)
 	{
-		// Load items into shared memory
-		Iterate<0, KEYS_PER_THREAD>::GatherScatterIn(
-			reinterpret_cast<UnsignedBits*>(d_in_keys),
-			smem_storage.sorting_storage.key_exchange);
+		UnsignedBits keys[KEYS_PER_THREAD];
+
+		// Initialize keys
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			keys[KEY] = MAX_KEY;;
+		}
+
+		// Load keys
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (global_offset < guarded_elements)
+			{
+				keys[KEY] = d_keys[cta_offset + global_offset];
+			}
+		}
+
+		__syncthreads();
+
+		// Store keys
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
+
+			smem_storage.sorting_storage.key_exchange[shared_offset] = keys[KEY];
+		}
 
 		__syncthreads();
 
@@ -187,10 +162,26 @@ struct Cta
 			current_bit,
 			bits_remaining);
 
-		// Store items from shared memory
-		Iterate<0, KEYS_PER_THREAD>::GatherScatterOut(
-			reinterpret_cast<UnsignedBits*>(d_out_keys),
-			smem_storage.sorting_storage.key_exchange);
+		// Load keys
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
+
+			keys[KEY] = smem_storage.sorting_storage.key_exchange[shared_offset];
+		}
+
+		// Store keys
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (global_offset < guarded_elements)
+			{
+				d_keys[cta_offset + global_offset] = keys[KEY];;
+			}
+		}
 	}
 
 };
