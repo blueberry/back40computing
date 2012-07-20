@@ -32,7 +32,6 @@
 
 #include "../../radix_sort/sort_utils.cuh"
 #include "../../radix_sort/cta_radix_rank.cuh"
-#include "../../radix_sort/downsweep/kernel_policy.cuh"
 #include "../../radix_sort/downsweep/tex_ref.cuh"
 
 B40C_NS_PREFIX
@@ -78,10 +77,10 @@ struct Cta
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
-		LOG_THREAD_ELEMENTS 		= KernelPolicy::LOG_THREAD_ELEMENTS,
-		KEYS_PER_THREAD				= 1 << LOG_THREAD_ELEMENTS,
+		LOG_KEYS_PER_THREAD 		= KernelPolicy::LOG_THREAD_ELEMENTS,
+		KEYS_PER_THREAD				= 1 << LOG_KEYS_PER_THREAD,
 
-		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_THREAD_ELEMENTS,
+		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_KEYS_PER_THREAD,
 		TILE_ELEMENTS				= 1 << LOG_TILE_ELEMENTS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),

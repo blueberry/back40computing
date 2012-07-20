@@ -43,6 +43,8 @@
 #include "../radix_sort/downsweep/kernel.cuh"
 #include "../radix_sort/downsweep/tex_ref.cuh"
 
+#include "../radix_sort/single/kernel.cuh"
+
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
@@ -257,6 +259,58 @@ struct ProblemInstance
 	};
 
 
+	/**
+	 * Single kernel props
+	 */
+	struct SingleKernelProps : util::KernelProps
+	{
+		// Single kernel function type
+		typedef void (*KernelFunc)(
+			KeyType*,
+			KeyType*,
+			ValueType*,
+			ValueType*,
+			unsigned int,
+			unsigned int,
+			unsigned int);
+
+		// Fields
+		KernelFunc 					kernel_func;
+		int 						log_tile_elements;
+		cudaSharedMemConfig 		sm_bank_config;
+
+		/**
+		 * Initializer
+		 */
+		template <
+			typename KernelPolicy,
+			typename OpaquePolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			// Initialize fields
+			kernel_func 			= single::Kernel<OpaquePolicy>;
+			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+
+			// Initialize super class
+			return util::KernelProps::Init(
+				kernel_func,
+				KernelPolicy::CTA_THREADS,
+				sm_arch,
+				sm_count);
+		}
+
+		/**
+		 * Initializer
+		 */
+		template <typename KernelPolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		}
+	};
+
+
 	//---------------------------------------------------------------------
 	// Fields
 	//---------------------------------------------------------------------
@@ -297,8 +351,8 @@ struct ProblemInstance
 	 * DispatchPass
 	 */
 	cudaError_t DispatchPass(
-		int 							radix_bits,
-		int								current_bit,
+		unsigned int 					radix_bits,
+		unsigned int					current_bit,
 		const UpsweepKernelProps 		&upsweep_props,
 		const SpineKernelProps			&spine_props,
 		const DownsweepKernelProps		&downsweep_props,
@@ -455,6 +509,64 @@ struct ProblemInstance
 
 			// Update selector
 			storage.selector ^= 1;
+
+		} while(0);
+
+		return error;
+	}
+
+
+	/**
+	 * DispatchPass.  (Single cta version)
+	 */
+	cudaError_t DispatchPass(
+		unsigned int 					current_bit,
+		unsigned int					bits_remaining,
+		const SingleKernelProps 		&single_props)
+	{
+		cudaError_t error = cudaSuccess;
+
+		do {
+
+			// Compute grid size
+//			int grid_size = 1;
+			int grid_size = num_elements >> single_props.log_tile_elements;
+
+			// Print debug info
+			if (debug)
+			{
+				printf("Single: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
+					(1 << single_props.log_tile_elements),
+					single_props.max_cta_occupancy,
+					grid_size,
+					single_props.threads);
+				fflush(stdout);
+			}
+
+			// Set shared mem bank mode
+			cudaSharedMemConfig old_sm_config;
+			cudaDeviceGetSharedMemConfig(&old_sm_config);
+			if (old_sm_config != single_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(single_props.sm_bank_config);
+
+			// Single-CTA sorting kernel
+			single_props.kernel_func<<<grid_size, single_props.threads, 0, stream>>>(
+				storage.d_keys[storage.selector],
+				storage.d_keys[storage.selector],
+				storage.d_values[storage.selector],
+				storage.d_values[storage.selector],
+				current_bit,
+				bits_remaining,
+				num_elements);
+
+			if (debug) {
+				error = cudaThreadSynchronize();
+				if (error = util::B40CPerror(error, "Single kernel failed ", __FILE__, __LINE__)) break;
+			}
+
+			// Restore smem bank mode
+			if (old_sm_config != single_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(old_sm_config);
 
 		} while(0);
 

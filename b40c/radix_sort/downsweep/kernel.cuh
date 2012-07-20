@@ -25,7 +25,6 @@
 
 #include "../../radix_sort/downsweep/cta.cuh"
 #include "../../util/cta_work_distribution.cuh"
-#include "../../util/device_intrinsics.cuh"
 #include "../../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
