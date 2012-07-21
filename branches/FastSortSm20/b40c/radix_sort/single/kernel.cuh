@@ -54,11 +54,19 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
+	__shared__ int guarded_elements;
+	__shared__ int cta_offset;
+
 //	int cta_offset = 0;
 //	int guarded_elements = num_elements;
 
-	int cta_offset = blockIdx.x * KernelPolicy::TILE_ELEMENTS;
-	int guarded_elements = CUB_MIN(num_elements - cta_offset, KernelPolicy::TILE_ELEMENTS);
+	if (threadIdx.x == 0)
+	{
+		cta_offset = blockIdx.x * KernelPolicy::TILE_ELEMENTS;
+		guarded_elements = CUB_MIN(num_elements - cta_offset, KernelPolicy::TILE_ELEMENTS);
+	}
+
+	__syncthreads();
 
 	Cta::ProcessTile(
 		smem_storage,

@@ -38,6 +38,34 @@ namespace single {
 
 
 /**
+ * Templated texture reference for downsweep keys
+ */
+template <typename T>
+struct TexKeys
+{
+	// Texture reference type
+	typedef texture<T, cudaTextureType1D, cudaReadModeElementType> TexRef;
+	static TexRef ref;
+
+	static cudaError_t BindTextures(T* d_in)
+	{
+		cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<T>();
+
+		size_t offset;
+		cudaError_t error = cudaBindTexture(&offset, ref, d_in, tex_desc);
+		error = util::B40CPerror(error, "cudaBindTexture failed", __FILE__, __LINE__);
+		return error;
+	}
+};
+
+// Texture reference definitions
+template <typename T>
+typename TexKeys<T>::TexRef TexKeys<T>::ref = 0;
+
+
+
+
+/**
  * Partitioning downsweep scan CTA
  */
 template <
@@ -119,67 +147,42 @@ struct Cta
 		ValueType 		*d_values,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
-		SizeT			cta_offset,
-		int 			guarded_elements)
+		const SizeT		&cta_offset,
+		const int 		&guarded_elements)
 	{
 		UnsignedBits keys[KEYS_PER_THREAD];
-
-		// Initialize keys
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = MAX_KEY;;
-		}
 
 		// Load keys
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (global_offset < guarded_elements)
-			{
-				keys[KEY] = d_keys[cta_offset + global_offset];
-			}
+			keys[KEY] = (global_offset < guarded_elements) ?
+				keys[KEY] = tex1Dfetch(TexKeys<KeyType>::ref, cta_offset + global_offset) :
+				MAX_KEY;
 		}
-
-		__syncthreads();
-
-		// Store keys
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
-
-			smem_storage.sorting_storage.key_exchange[shared_offset] = keys[KEY];
-		}
-
-		__syncthreads();
 
 		// Sort
 		CtaRadixSort::Sort(
 			smem_storage.sorting_storage,
+			keys,
 			current_bit,
 			bits_remaining);
 
-		// Load keys
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (PADDING) shared_offset = util::SHR_ADD(shared_offset, LOG_MEM_BANKS, shared_offset);
-
-			keys[KEY] = smem_storage.sorting_storage.key_exchange[shared_offset];
-		}
-
-		// Store keys
+		// Load/store keys
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			int shared_offset = (PADDING) ?
+				util::SHR_ADD(global_offset, LOG_MEM_BANKS, global_offset) :
+				global_offset;
+
+			UnsignedBits key = smem_storage.sorting_storage.key_exchange[shared_offset];
+
 			if (global_offset < guarded_elements)
 			{
-				d_keys[cta_offset + global_offset] = keys[KEY];;
+				d_keys[cta_offset + global_offset] = key;
 			}
 		}
 	}

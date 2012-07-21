@@ -536,6 +536,9 @@ struct ProblemInstance
 				fflush(stdout);
 			}
 
+			// Bind keys tex
+			if (error = single::TexKeys<KeyType>::BindTextures(storage.d_keys[storage.selector])) break;
+
 			// Set shared mem bank mode
 			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
