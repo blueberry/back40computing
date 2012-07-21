@@ -155,35 +155,38 @@ public:
 	 */
 	static __device__ __forceinline__ void Sort(
 		SmemStorage		&smem_storage,									// Shared memory storage
+		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
 		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
 		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 
-		for (
-			unsigned int bit = current_bit;
-			bit < bits_remaining;
-			bit += RADIX_BITS)
+		while (true)
 		{
-			UnsignedBits keys[KEYS_PER_THREAD];
 			unsigned int ranks[KEYS_PER_THREAD];
-
-			// Gather keys from shared memory
-			Iterate<0, KEYS_PER_THREAD>::Gather(keys, smem_storage.key_exchange);
-
-			__syncthreads();
 
 			// Rank the keys within the CTA
 			CtaRadixRank::RankKeys(
 				smem_storage.ranking_storage,
 				keys,
 				ranks,
-				bit);
+				current_bit);
 
 			__syncthreads();
 
 			// Scatter keys to shared memory
 			Iterate<0, KEYS_PER_THREAD>::Scatter(ranks, keys, smem_storage.key_exchange);
+
+			__syncthreads();
+
+			current_bit += RADIX_BITS;
+			if (current_bit >= bits_remaining)
+			{
+				break;
+			}
+
+			// Gather keys from shared memory
+			Iterate<0, KEYS_PER_THREAD>::Gather(keys, smem_storage.key_exchange);
 
 			__syncthreads();
 		}
