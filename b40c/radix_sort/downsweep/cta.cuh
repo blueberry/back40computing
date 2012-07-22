@@ -415,21 +415,23 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		SizeT 			tex_offset,
 		SizeT 			guarded_elements)
 	{
+
 		if ((LOAD_MODIFIER == util::io::ld::tex) && FULL_TILE)
 		{
 			// Unguarded loads through tex
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
+				KeyVectorType vector;
+				KeyTexType *tex_vector = reinterpret_cast<KeyTexType*>(&vector);
+
 				// Load tex vector
-				KeyTexType vector = tex1Dfetch(
+				tex_vector[0] = tex1Dfetch(
 					TexKeys<KeyTexType>::ref,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
 				// Copy fields
-				util::VecCopy(
-					keys + (PACK * ELEMENTS_PER_TEX),
-					reinterpret_cast<KeyVectorType&>(vector));
+				util::VecCopy(keys + (PACK * ELEMENTS_PER_TEX), vector);
 			}
 		}
 		else
@@ -465,15 +467,16 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
+				ValueVectorType vector;
+				ValueTexType *tex_vector = reinterpret_cast<ValueTexType*>(&vector);
+
 				// Load tex vector
-				ValueTexType vector = tex1Dfetch(
+				tex_vector[0] = tex1Dfetch(
 					TexValues<ValueTexType>::ref,
 					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
 				// Copy fields
-				util::VecCopy(
-					values + (PACK * ELEMENTS_PER_TEX),
-					reinterpret_cast<ValueVectorType&>(vector));
+				util::VecCopy(values + (PACK * ELEMENTS_PER_TEX), vector);
 			}
 		}
 		else
