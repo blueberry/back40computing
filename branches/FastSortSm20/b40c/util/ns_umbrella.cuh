@@ -25,8 +25,8 @@
 #pragma once
 
 // For example:
-//#define B40C_NS_PREFIX namespace thrust{ namespace detail {
-//#define B40C_NS_POSTFIX } }
+//#define B40C_NS_PREFIX  namespace __thrust_b40c{
+//#define B40C_NS_POSTFIX }
 
 #define B40C_NS_PREFIX
 #define B40C_NS_POSTFIX

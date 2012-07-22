@@ -116,7 +116,7 @@ struct Enactor
 
 				int sm_version = enactor.cuda_props.device_sm_version;
 				int sm_count = enactor.cuda_props.device_props.multiProcessorCount;
-
+/*
 				if (false)
 				{
 					// Single CTA pass
@@ -152,7 +152,7 @@ struct Enactor
 
 				}
 				else
-				{
+*/				{
 					// Multi-CTA pass
 					enum {
 						PREFERRED_BITS		= PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
