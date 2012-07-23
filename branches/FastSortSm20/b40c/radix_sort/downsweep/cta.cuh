@@ -112,11 +112,6 @@ struct Cta
 	typedef typename Textures::KeyTexType 									KeyTexType;
 	typedef typename Textures::ValueTexType 								ValueTexType;
 
-	// Corresponding texture vector types (we may have a different tex vector type than item vector type)
-	typedef typename util::VecType<UnsignedBits, ELEMENTS_PER_TEX>::Type 	KeyVectorType;
-	typedef typename util::VecType<ValueType, ELEMENTS_PER_TEX>::Type 		ValueVectorType;
-
-
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
 		CTA_THREADS,
@@ -413,7 +408,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	__device__ __forceinline__ void LoadKeys(
 		UnsignedBits 	keys[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		SizeT 			guarded_elements)
+		const SizeT 	&guarded_elements)
 	{
 
 		if ((LOAD_MODIFIER == util::io::ld::tex) && FULL_TILE)
@@ -422,16 +417,18 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
-				KeyVectorType vector;
-				KeyTexType *tex_vector = reinterpret_cast<KeyTexType*>(&vector);
-
 				// Load tex vector
-				tex_vector[0] = tex1Dfetch(
-					TexKeys<KeyTexType>::ref,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+				KeyTexType tex_vector = tex1Dfetch(
+						TexKeys<KeyTexType>::ref,
+						tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
-				// Copy fields
-				util::VecCopy(keys + (PACK * ELEMENTS_PER_TEX), vector);
+				UnsignedBits *vector = reinterpret_cast<UnsignedBits*>(&tex_vector);
+
+				#pragma unroll
+				for (int KEY = 0; KEY < ELEMENTS_PER_TEX; KEY++)
+				{
+					keys[(PACK * ELEMENTS_PER_TEX) + KEY] = vector[KEY];
+				}
 			}
 		}
 		else
@@ -457,26 +454,27 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	__device__ __forceinline__ void LoadValues(
 		ValueType 		values[KEYS_PER_THREAD],
 		SizeT 			tex_offset,
-		SizeT 			guarded_elements)
+		const SizeT 	&guarded_elements)
 	{
 		if ((LOAD_MODIFIER == util::io::ld::tex) &&
 			(util::NumericTraits<ValueType>::BUILT_IN) &&
 			FULL_TILE)
-		{-
-			// Unguarded loads through tex
+		{-			// Unguarded loads through tex
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
-				ValueVectorType vector;
-				ValueTexType *tex_vector = reinterpret_cast<ValueTexType*>(&vector);
-
 				// Load tex vector
-				tex_vector[0] = tex1Dfetch(
-					TexValues<ValueTexType>::ref,
-					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
+				ValueTexType tex_vector = tex1Dfetch(
+						TexValues<ValueTexType>::ref,
+						tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
-				// Copy fields
-				util::VecCopy(values + (PACK * ELEMENTS_PER_TEX), vector);
+				ValueType *vector = reinterpret_cast<ValueType*>(&tex_vector);
+
+				#pragma unroll
+				for (int KEY = 0; KEY < ELEMENTS_PER_TEX; KEY++)
+				{
+					values[(PACK * ELEMENTS_PER_TEX) + KEY] = vector[KEY];
+				}
 			}
 		}
 		else
@@ -644,7 +642,7 @@ Shar// Gather values from shared
 		SizeT 			tex_offset,
 		SizeT 			guarded_elements)
 	{n[0][16 + threadIdx.x] = bin_inctemplate <bool FULL_TILE>nclusive;
-			PackedCounter bin_exclusive = smem_storage.warpscan[0][1SizeT .x - 1];
+			PackedCounter bin_exclusive = smem_storage.warpscan[0][1const SizeT &.x - 1];
 
 			global_digit_base -= bin_exclPer-thread tile data
 		UnsignedBits 	keys[KEYS_PER_THREAD];					// Keys
@@ -689,7 +687,7 @@ Shar// Gather values from shared
 
 		__syncthreads();
 
-		// Gather keys from shared memory and scatter toSizeT guarded_elemend_elements);
+		// Gather keys from shared memory and scatter toconst SizeT &guarded_elemend_elements);
 
 		// Truck along values (if applicable)
 		TruckValues<KEYS_ONLY>::Invoke(tex_offset, guarded_elements, *this, tile);
