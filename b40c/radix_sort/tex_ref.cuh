@@ -18,20 +18,19 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Texture references for downsweep kernels
+ * Texture references for radix sort kernels
  ******************************************************************************/
 
 #pragma once
 
-#include "../../util/error_utils.cuh"
-#include "../../util/basic_utils.cuh"
-#include "../../util/tex_vector.cuh"
-#include "../../util/ns_umbrella.cuh"
+#include "../util/error_utils.cuh"
+#include "../util/basic_utils.cuh"
+#include "../util/tex_vector.cuh"
+#include "../util/ns_umbrella.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace downsweep {
 
 // Anonymous namespace in host code for linking
 #if (__CUB_CUDA_ARCH__ == 0)
@@ -43,7 +42,7 @@ namespace {
  ******************************************************************************/
 
 /**
- * Templated texture reference for downsweep keys
+ * Templated texture reference for radix sort keys
  */
 template <typename KeyVectorType>
 struct TexKeys
@@ -112,7 +111,7 @@ typename TexKeys<KeyVectorType>::TexRef TexKeys<KeyVectorType>::ref = 0;
  ******************************************************************************/
 
 /**
- * Templated texture reference for downsweep values
+ * Templated texture reference for radix sort values
  */
 template <typename ValueVectorType>
 struct TexValues
@@ -176,7 +175,7 @@ typename TexValues<ValueVectorType>::TexRef TexValues<ValueVectorType>::ref = 0;
 
 
 /******************************************************************************
- * Texture types for downsweep kernel
+ * Texture types for radix sort kernel
  ******************************************************************************/
 
 template <typename KeyType, typename ValueType, int THREAD_ELEMENTS>
@@ -197,7 +196,7 @@ struct Textures
 		KeyType,
 		ELEMENTS_PER_TEX>::VecType KeyTexType;
 
-	// Texture binding for downsweep values
+	// Texture binding for radix sort values
 	typedef typename util::TexVector<
 		ValueType,
 		ELEMENTS_PER_TEX>::VecType ValueTexType;
@@ -207,7 +206,6 @@ struct Textures
 } // namespace (anonymous)
 #endif
 
-} // namespace downsweep
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

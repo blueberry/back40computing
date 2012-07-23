@@ -116,25 +116,26 @@ struct Enactor
 
 				int sm_version = enactor.cuda_props.device_sm_version;
 				int sm_count = enactor.cuda_props.device_props.multiProcessorCount;
-/*
-				if (false)
+
+				enum {
+					PREFERRED_BITS = PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
+				};
+
+				// Tuned pass policy for preferred bits
+				typedef radix_sort::TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, PREFERRED_BITS> TunedPassPolicy;
+
+				if (problem_instance.num_elements <= TunedPassPolicy::SinglePolicy::TILE_ELEMENTS)
 				{
 					// Single CTA pass
-					enum {
-						RADIX_BITS = PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
-					};
+					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, PREFERRED_BITS> OpaquePassPolicy;
 
 					// Print debug info
 					if (problem_instance.debug)
 					{
 						printf("\nCurrent bit(%d), Radix bits(%d), tuned arch(%d), SM arch(%d)\n",
-							CURRENT_BIT, RADIX_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
+							CURRENT_BIT, PREFERRED_BITS, TUNE_ARCH, enactor.cuda_props.device_sm_version);
 						fflush(stdout);
 					}
-
-					// Tuned and opaque pass policies
-					typedef TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
-					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>				OpaquePassPolicy;
 
 					// Single kernel props
 					typename ProblemInstance::SingleKernelProps single_props;
@@ -152,11 +153,10 @@ struct Enactor
 
 				}
 				else
-*/				{
+				{
 					// Multi-CTA pass
 					enum {
-						PREFERRED_BITS		= PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
-						RADIX_BITS 			= CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
+						RADIX_BITS = CUB_MIN(BITS_REMAINING, (BITS_REMAINING % PREFERRED_BITS == 0) ? PREFERRED_BITS : PREFERRED_BITS - 1),
 					};
 
 					// Print debug info
@@ -167,10 +167,9 @@ struct Enactor
 						fflush(stdout);
 					}
 
-					// Tuned and opaque pass policies
-					typedef TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
-					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>				OpaquePassPolicy;
-
+					// Redefine tuned and opaque pass policies
+					typedef radix_sort::TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
+					typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>							OpaquePassPolicy;
 
 					// Upsweep kernel props
 					typename ProblemInstance::UpsweepKernelProps upsweep_props;

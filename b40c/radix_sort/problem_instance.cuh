@@ -32,6 +32,7 @@
 
 #include "../radix_sort/sort_utils.cuh"
 #include "../radix_sort/pass_policy.cuh"
+#include "../radix_sort/tex_ref.cuh"
 
 #include "../radix_sort/upsweep/kernel_policy.cuh"
 #include "../radix_sort/upsweep/kernel.cuh"
@@ -41,7 +42,6 @@
 
 #include "../radix_sort/downsweep/kernel_policy.cuh"
 #include "../radix_sort/downsweep/kernel.cuh"
-#include "../radix_sort/downsweep/tex_ref.cuh"
 
 #include "../radix_sort/single/kernel.cuh"
 
@@ -76,7 +76,7 @@ struct ProblemInstance
 	 */
 	struct UpsweepKernelProps : util::KernelProps
 	{
-		// Upsweep kernel function type
+		// Kernel function type
 		typedef void (*KernelFunc)(SizeT*, KeyType*, util::CtaWorkDistribution<SizeT>, unsigned int);
 
 		// Fields
@@ -121,7 +121,7 @@ struct ProblemInstance
 	 */
 	struct SpineKernelProps : util::KernelProps
 	{
-		// Spine kernel function type
+		// Kernel function type
 		typedef void (*KernelFunc)(SizeT*, SizeT*, int);
 
 		// Fields
@@ -166,7 +166,7 @@ struct ProblemInstance
 	 */
 	struct DownsweepKernelProps : util::KernelProps
 	{
-		// Downsweep kernel function type
+		// Kernel function type
 		typedef void (*KernelFunc)(
 			SizeT*,
 			KeyType*,
@@ -176,13 +176,16 @@ struct ProblemInstance
 			util::CtaWorkDistribution<SizeT>,
 			unsigned int);
 
-		// Downsweep texture binding function type
+		// Downsweep texture [un]binding function types
 		typedef cudaError_t (*BindTexFunc)(void *, size_t);
+		typedef cudaError_t (*UnbindTexFunc)();
 
 		// Fields
 		KernelFunc 					kernel_func;
-		BindTexFunc					keys_tex_func;
-		BindTexFunc					values_tex_func;
+		BindTexFunc					bind_keys_func;
+		BindTexFunc					bind_values_func;
+		UnbindTexFunc				unbind_keys_func;
+		UnbindTexFunc				unbind_values_func;
 		int 						log_tile_elements;
 		cudaSharedMemConfig 		sm_bank_config;
 
@@ -194,28 +197,33 @@ struct ProblemInstance
 			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
-			// Wrapper of downsweep texture types
-			typedef downsweep::Textures<
+			// Texture types
+			typedef radix_sort::Textures<
 				KeyType,
 				ValueType,
-				(1 << KernelPolicy::LOG_THREAD_ELEMENTS)> DownsweepTextures;
-
-			// Key texture type
-			typedef typename DownsweepTextures::KeyTexType KeyTexType;
-
-			// Value texture type
-			typedef typename DownsweepTextures::ValueTexType ValueTexType;
+				(1 << KernelPolicy::LOG_THREAD_ELEMENTS)> Textures;
+			typedef typename Textures::KeyTexType KeyTexType;
+			typedef typename Textures::ValueTexType ValueTexType;
 
 			// Initialize fields
 			kernel_func 			= downsweep::Kernel<OpaquePolicy>;
-			keys_tex_func 			= (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex) ?
-											downsweep::TexKeys<KeyTexType>::BindTexture :
-											NULL;
-			values_tex_func 		= (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex) ?
-											downsweep::TexValues<ValueTexType>::BindTexture :
-											NULL;
 			log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
 			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+			bind_keys_func 			= NULL;
+			bind_values_func 		= NULL;
+			unbind_keys_func 		= NULL;
+			unbind_values_func 		= NULL;
+
+			if (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex)
+			{
+				bind_keys_func 		= TexKeys<KeyTexType>::BindTexture;
+				unbind_keys_func 	= TexKeys<KeyTexType>::UnbindTexture;
+				if (!util::Equals<ValueType, util::NullType>::VALUE)
+				{
+					bind_values_func 	= TexValues<ValueTexType>::BindTexture;
+					unbind_values_func 	= TexValues<ValueTexType>::UnbindTexture;
+				}
+			}
 
 			// Initialize super class
 			return util::KernelProps::Init(
@@ -245,11 +253,31 @@ struct ProblemInstance
 			cudaError_t error = cudaSuccess;
 			do {
 				// Bind key texture
-				if (keys_tex_func) error = keys_tex_func(d_in_keys, sizeof(KeyType) * num_elements);
+				if (bind_keys_func) error = bind_keys_func(d_in_keys, sizeof(KeyType) * num_elements);
 				if (error) break;
 
 				// Bind value texture
-				if (values_tex_func) error = values_tex_func(d_in_values, sizeof(ValueType) * num_elements);
+				if (bind_values_func) error = bind_values_func(d_in_values, sizeof(ValueType) * num_elements);
+				if (error) break;
+
+			} while (0);
+
+			return error;
+		}
+
+		/**
+		 * Unbind related textures
+		 */
+		cudaError_t UnbindTexture() const
+		{
+			cudaError_t error = cudaSuccess;
+			do {
+				// Unbind key texture
+				if (unbind_keys_func) error = unbind_keys_func();
+				if (error) break;
+
+				// Unbind value texture
+				if (unbind_values_func) error = unbind_values_func();
 				if (error) break;
 
 			} while (0);
@@ -264,11 +292,19 @@ struct ProblemInstance
 	 */
 	struct SingleKernelProps : util::KernelProps
 	{
-		// Single kernel function type
+		// Kernel function type
 		typedef void (*KernelFunc)(KeyType*, ValueType*, unsigned int, unsigned int, unsigned int);
+
+		// Texture [un]binding function types
+		typedef cudaError_t (*BindTexFunc)(void *, size_t);
+		typedef cudaError_t (*UnbindTexFunc)();
 
 		// Fields
 		KernelFunc 					kernel_func;
+		BindTexFunc					bind_keys_func;
+		BindTexFunc					bind_values_func;
+		UnbindTexFunc				unbind_keys_func;
+		UnbindTexFunc				unbind_values_func;
 		int 						tile_elements;
 		cudaSharedMemConfig 		sm_bank_config;
 
@@ -280,10 +316,30 @@ struct ProblemInstance
 			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
+			// Texture types
+			typedef radix_sort::Textures<KeyType, ValueType, 1> Textures;
+			typedef typename Textures::KeyTexType KeyTexType;
+			typedef typename Textures::ValueTexType ValueTexType;
+
 			// Initialize fields
 			kernel_func 			= single::Kernel<OpaquePolicy>;
 			tile_elements 			= KernelPolicy::TILE_ELEMENTS;
 			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+			bind_keys_func 			= NULL;
+			bind_values_func 		= NULL;
+			unbind_keys_func 		= NULL;
+			unbind_values_func 		= NULL;
+
+			if (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex)
+			{
+				bind_keys_func 		= TexKeys<KeyTexType>::BindTexture;
+				unbind_keys_func 	= TexKeys<KeyTexType>::UnbindTexture;
+				if (!util::Equals<ValueType, util::NullType>::VALUE)
+				{
+					bind_values_func 	= TexValues<ValueTexType>::BindTexture;
+					unbind_values_func 	= TexValues<ValueTexType>::UnbindTexture;
+				}
+			}
 
 			// Initialize super class
 			return util::KernelProps::Init(
@@ -300,6 +356,49 @@ struct ProblemInstance
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
 			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		}
+
+		/**
+		 * Bind related textures
+		 */
+		cudaError_t BindTexture(
+			KeyType *d_in_keys,
+			ValueType *d_in_values,
+			SizeT num_elements) const
+		{
+			cudaError_t error = cudaSuccess;
+			do {
+				// Bind key texture
+				if (bind_keys_func) error = bind_keys_func(d_in_keys, sizeof(KeyType) * num_elements);
+				if (error) break;
+
+				// Bind value texture
+				if (bind_values_func) error = bind_values_func(d_in_values, sizeof(ValueType) * num_elements);
+				if (error) break;
+
+			} while (0);
+
+			return error;
+		}
+
+		/**
+		 * Unbind related textures
+		 */
+		cudaError_t UnbindTexture() const
+		{
+			cudaError_t error = cudaSuccess;
+			do {
+				// Unbind key texture
+				if (unbind_keys_func) error = unbind_keys_func();
+				if (error) break;
+
+				// Unbind value texture
+				if (unbind_values_func) error = unbind_values_func();
+				if (error) break;
+
+			} while (0);
+
+			return error;
 		}
 	};
 
@@ -371,13 +470,6 @@ struct ProblemInstance
 
 			// Make sure our spine is big enough
 			error = spine.Setup(sizeof(SizeT) * spine_elements);
-			if (error) break;
-
-			// Bind downsweep textures
-			error = downsweep_props.BindTexture(
-				storage.d_keys[storage.selector],
-				storage.d_values[storage.selector],
-				num_elements);
 			if (error) break;
 
 			// Obtain a CTA work distribution
@@ -481,6 +573,13 @@ struct ProblemInstance
 			if (downsweep_props.sm_bank_config != spine_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(downsweep_props.sm_bank_config);
 
+			// Bind downsweep textures
+			error = downsweep_props.BindTexture(
+				storage.d_keys[storage.selector],
+				storage.d_values[storage.selector],
+				num_elements);
+			if (error) break;
+
 			// Downsweep scan from spine
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2], stream>>>(
 				(SizeT *) spine(),
@@ -490,6 +589,10 @@ struct ProblemInstance
 				storage.d_values[storage.selector ^ 1],
 				work,
 				current_bit);
+
+			// Unbind downsweep textures
+			error = downsweep_props.UnbindTexture();
+			if (error) break;
 
 			if (debug) {
 				error = cudaThreadSynchronize();
@@ -522,8 +625,7 @@ struct ProblemInstance
 		do {
 
 			// Compute grid size
-//			int grid_size = 1;
-			int grid_size = (num_elements  + single_props.tile_elements - 1) / single_props.tile_elements;
+			int grid_size = 1;
 
 			// Print debug info
 			if (debug)
@@ -536,14 +638,18 @@ struct ProblemInstance
 				fflush(stdout);
 			}
 
-			// Bind keys tex
-			if (error = single::TexKeys<KeyType>::BindTextures(storage.d_keys[storage.selector])) break;
-
 			// Set shared mem bank mode
 			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
 			if (old_sm_config != single_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(single_props.sm_bank_config);
+
+			// Bind single textures
+			error = single_props.BindTexture(
+				storage.d_keys[storage.selector],
+				storage.d_values[storage.selector],
+				num_elements);
+			if (error) break;
 
 			// Single-CTA sorting kernel
 			single_props.kernel_func<<<grid_size, single_props.threads, 0, stream>>>(

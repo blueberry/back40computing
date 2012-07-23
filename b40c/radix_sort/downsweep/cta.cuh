@@ -32,7 +32,7 @@
 
 #include "../../radix_sort/sort_utils.cuh"
 #include "../../radix_sort/cta_radix_rank.cuh"
-#include "../../radix_sort/downsweep/tex_ref.cuh"
+#include "../../radix_sort/tex_ref.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
