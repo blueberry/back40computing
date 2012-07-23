@@ -38,34 +38,6 @@ namespace single {
 
 
 /**
- * Templated texture reference for downsweep keys
- */
-template <typename T>
-struct TexKeys
-{
-	// Texture reference type
-	typedef texture<T, cudaTextureType1D, cudaReadModeElementType> TexRef;
-	static TexRef ref;
-
-	static cudaError_t BindTextures(T* d_in)
-	{
-		cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<T>();
-
-		size_t offset;
-		cudaError_t error = cudaBindTexture(&offset, ref, d_in, tex_desc);
-		error = util::B40CPerror(error, "cudaBindTexture failed", __FILE__, __LINE__);
-		return error;
-	}
-};
-
-// Texture reference definitions
-template <typename T>
-typename TexKeys<T>::TexRef TexKeys<T>::ref = 0;
-
-
-
-
-/**
  * Partitioning downsweep scan CTA
  */
 template <
@@ -119,16 +91,17 @@ struct Cta
 		ValueType,
 		KernelPolicy::SMEM_CONFIG> CtaRadixSort;
 
+	// Texture types
+	typedef Textures<KeyType, ValueType, 1> 			Textures;
+	typedef typename Textures::KeyTexType 				KeyTexType;
+	typedef typename Textures::ValueTexType 			ValueTexType;
 
 	/**
 	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
-		union
-		{
-			typename CtaRadixSort::SmemStorage sorting_storage;
-		};
+		typename CtaRadixSort::SmemStorage sorting_storage;
 	};
 
 
@@ -136,15 +109,68 @@ struct Cta
 	// Methods
 	//---------------------------------------------------------------------
 
+	/**
+	 *
+	 */
+	template <typename TexT, typename TexRef, typename SizeT>
+	static __device__ __forceinline__ void LoadTile(
+		TexT 			*items,
+		TexT 			*d_in,
+		TexRef			tex_ref,
+		const SizeT		&cta_offset,
+		const int 		&guarded_elements)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			// Load item from texture if in bounds
+			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (global_offset < guarded_elements)
+			{
+				if (LOAD_MODIFIER == util::io::ld::tex)
+				{
+					items[KEY] = tex1Dfetch(
+						tex_ref,
+						cta_offset + global_offset);
+				}
+				else
+				{
+					items[KEY] = d_in[cta_offset + global_offset];
+				}
+			}
+		}
+	}
 
 	/**
-	 * ProcessTile
+	 *
+	 */
+	template <typename T, typename SizeT>
+	static __device__ __forceinline__ void StoreTile(
+		T 				*items,
+		T 				*d_out,
+		const SizeT		&cta_offset,
+		const int 		&guarded_elements)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (global_offset < guarded_elements)
+			{
+				d_out[cta_offset + global_offset] = items[KEY];
+			}
+		}
+	}
+
+
+	/**
+	 * ProcessTile.  (Specialized for keys-only sorting.)
 	 */
 	template <typename SizeT>
 	static __device__ __forceinline__ void ProcessTile(
 		SmemStorage 	&smem_storage,
 		KeyType 		*d_keys,
-		ValueType 		*d_values,
+		util::NullType 	*d_values,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
 		const SizeT		&cta_offset,
@@ -152,40 +178,128 @@ struct Cta
 	{
 		UnsignedBits keys[KEYS_PER_THREAD];
 
-		// Load keys
+		// Initialize keys to default key value
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			keys[KEY] = (global_offset < guarded_elements) ?
-				keys[KEY] = tex1Dfetch(TexKeys<KeyType>::ref, cta_offset + global_offset) :
-				MAX_KEY;
+			keys[KEY] = MAX_KEY;
+		}
+
+		// Load keys
+		LoadTile(
+			reinterpret_cast<KeyTexType*>(keys),
+			reinterpret_cast<KeyTexType*>(d_keys),
+			TexKeys<KeyTexType>::ref,
+			cta_offset,
+			guarded_elements);
+
+		// Twiddle key bits if necessary
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
 		}
 
 		// Sort
-		CtaRadixSort::Sort(
+		CtaRadixSort::SortThreadToCtaStride(
 			smem_storage.sorting_storage,
 			keys,
 			current_bit,
 			bits_remaining);
 
-		// Load/store keys
+		// Twiddle key bits if necessary
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			int shared_offset = (PADDING) ?
-				util::SHR_ADD(global_offset, LOG_MEM_BANKS, global_offset) :
-				global_offset;
-
-			UnsignedBits key = smem_storage.sorting_storage.key_exchange[shared_offset];
-
-			if (global_offset < guarded_elements)
-			{
-				d_keys[cta_offset + global_offset] = key;
-			}
+			keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
 		}
+
+		// Store keys
+		StoreTile(
+			keys,
+			reinterpret_cast<UnsignedBits*>(d_keys),
+			cta_offset,
+			guarded_elements);
 	}
+
+
+	/**
+	 * ProcessTile.  (Specialized for keys-value sorting.)
+	 */
+	template <typename SizeT, typename _ValueType>
+	static __device__ __forceinline__ void ProcessTile(
+		SmemStorage 	&smem_storage,
+		KeyType 		*d_keys,
+		_ValueType		*d_values,
+		unsigned int 	current_bit,
+		unsigned int 	bits_remaining,
+		const SizeT		&cta_offset,
+		const int 		&guarded_elements)
+	{
+		UnsignedBits 	keys[KEYS_PER_THREAD];
+		ValueType 		values[KEYS_PER_THREAD];
+
+		// Initialize keys to default key value
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			keys[KEY] = MAX_KEY;
+		}
+
+		// Load keys
+		LoadTile(
+			reinterpret_cast<KeyTexType*>(keys),
+			reinterpret_cast<KeyTexType*>(d_keys),
+			TexKeys<KeyTexType>::ref,
+			cta_offset,
+			guarded_elements);
+
+		// Twiddle key bits if necessary
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
+		}
+
+		// Load values
+		LoadTile(
+			reinterpret_cast<ValueTexType*>(values),
+			reinterpret_cast<ValueTexType*>(d_values),
+			TexValues<ValueTexType>::ref,
+			cta_offset,
+			guarded_elements);
+
+		// Sort
+		CtaRadixSort::SortThreadToCtaStride(
+			smem_storage.sorting_storage,
+			keys,
+			values,
+			current_bit,
+			bits_remaining);
+
+		// Twiddle key bits if necessary
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
+		}
+
+		// Store keys
+		StoreTile(
+			keys,
+			reinterpret_cast<UnsignedBits*>(d_keys),
+			cta_offset,
+			guarded_elements);
+
+		// Store values
+		StoreTile(
+			values,
+			d_values,
+			cta_offset,
+			guarded_elements);
+	}
+
+
 
 };
 

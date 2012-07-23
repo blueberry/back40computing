@@ -39,7 +39,7 @@ template <
 	typename KernelPolicy,
 	typename KeyType,
 	typename ValueType>
-__launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
+__launch_bounds__ (KernelPolicy::CTA_THREADS, 1)
 __global__ 
 void Kernel(
 	KeyType 							*d_keys,
@@ -54,28 +54,14 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
-	__shared__ int guarded_elements;
-	__shared__ int cta_offset;
-
-//	int cta_offset = 0;
-//	int guarded_elements = num_elements;
-
-	if (threadIdx.x == 0)
-	{
-		cta_offset = blockIdx.x * KernelPolicy::TILE_ELEMENTS;
-		guarded_elements = CUB_MIN(num_elements - cta_offset, KernelPolicy::TILE_ELEMENTS);
-	}
-
-	__syncthreads();
-
 	Cta::ProcessTile(
 		smem_storage,
 		d_keys,
 		d_values,
 		current_bit,
 		bits_remaining,
-		cta_offset,
-		guarded_elements);
+		0,
+		num_elements);
 }
 
 

@@ -196,10 +196,9 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 	// Single kernel policy
 	typedef single::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		4, 										// MIN_CTA_OCCUPANCY
-		128,									// CTA_THREADS
-		17, 									// THREAD_ELEMENTS
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		256,									// CTA_THREADS
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			SinglePolicy;
@@ -264,10 +263,9 @@ struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 	// Single kernel policy
 	typedef single::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		3, 										// MIN_CTA_OCCUPANCY
 		64,										// CTA_THREADS
-		16, 									// THREAD_ELEMENTS
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			SinglePolicy;
@@ -333,10 +331,9 @@ struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 	// Single kernel policy
 	typedef single::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		2, 										// MIN_CTA_OCCUPANCY
 		64,										// CTA_THREADS
-		16,										// THREAD_ELEMENTS
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			SinglePolicy;
