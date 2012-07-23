@@ -417,17 +417,16 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
-				// Load tex vector
-				KeyTexType tex_vector = tex1Dfetch(
-						TexKeys<KeyTexType>::ref,
-						tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
-
-				UnsignedBits *vector = reinterpret_cast<UnsignedBits*>(&tex_vector);
+                // Load tex vector
+				UnsignedBits pack[ELEMENTS_PER_TEX];
+				*reinterpret_cast<KeyTexType*>(&pack) = tex1Dfetch(
+					TexKeys<KeyTexType>::ref,
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
 				#pragma unroll
 				for (int KEY = 0; KEY < ELEMENTS_PER_TEX; KEY++)
 				{
-					keys[(PACK * ELEMENTS_PER_TEX) + KEY] = vector[KEY];
+					keys[(PACK * ELEMENTS_PER_TEX) + KEY] = pack[KEY];
 				}
 			}
 		}
@@ -463,17 +462,16 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			#pragma unroll
 			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
 			{
-				// Load tex vector
-				ValueTexType tex_vector = tex1Dfetch(
-						TexValues<ValueTexType>::ref,
-						tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
-
-				ValueType *vector = reinterpret_cast<ValueType*>(&tex_vector);
+                // Load tex vector
+				ValueType pack[ELEMENTS_PER_TEX];
+				*reinterpret_cast<ValueTexType*>(&pack) = tex1Dfetch(
+					TexValues<ValueTexType>::ref,
+					tex_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
 
 				#pragma unroll
 				for (int KEY = 0; KEY < ELEMENTS_PER_TEX; KEY++)
 				{
-					values[(PACK * ELEMENTS_PER_TEX) + KEY] = vector[KEY];
+					values[(PACK * ELEMENTS_PER_TEX) + KEY] = pack[KEY];
 				}
 			}
 		}
