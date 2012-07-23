@@ -99,32 +99,16 @@ struct VecType<T, 4> {
   {																				\
 	typedef short_type##1 Type; 												\
   };      																		\
-  __device__ __forceinline__ void VecCopy(base_type *dest, short_type##1 val) 	\
-  {																				\
-    dest[0] = val.x;															\
-  }																				\
 																				\
   template<> struct VecType<base_type, 2> 										\
   {																				\
 	typedef short_type##2 Type; 												\
   };      																		\
-  __device__ __forceinline__ void VecCopy(base_type *dest, short_type##2 val) 	\
-  {																				\
-    dest[0] = val.x;															\
-    dest[1] = val.y;															\
-  }																				\
 																				\
   template<> struct VecType<base_type, 4> 										\
   {																				\
 	typedef short_type##4 Type; 												\
-  };      																		\
-  __device__ __forceinline__ void VecCopy(base_type *dest, short_type##4 val) 	\
-  {																				\
-    dest[0] = val.x;															\
-    dest[1] = val.y;															\
-    dest[2] = val.z;															\
-    dest[3] = val.w;															\
-  }
+  };
 
 
 CUB_DEFINE_VECTOR_TYPE(char,               char)
