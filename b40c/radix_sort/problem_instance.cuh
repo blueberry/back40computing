@@ -590,14 +590,14 @@ struct ProblemInstance
 				work,
 				current_bit);
 
-			// Unbind downsweep textures
-			error = downsweep_props.UnbindTexture();
-			if (error) break;
-
 			if (debug) {
 				error = cudaThreadSynchronize();
 				if (error = util::B40CPerror(error, "Downsweep kernel failed ", __FILE__, __LINE__)) break;
 			}
+
+			// Unbind textures
+			error = downsweep_props.UnbindTexture();
+			if (error) break;
 
 			// Restore smem bank mode
 			if (old_sm_config != downsweep_props.sm_bank_config)
@@ -663,6 +663,10 @@ struct ProblemInstance
 				error = cudaThreadSynchronize();
 				if (error = util::B40CPerror(error, "Single kernel failed ", __FILE__, __LINE__)) break;
 			}
+
+			// Unbind textures
+			error = single_props.UnbindTexture();
+			if (error) break;
 
 			// Restore smem bank mode
 			if (old_sm_config != single_props.sm_bank_config)

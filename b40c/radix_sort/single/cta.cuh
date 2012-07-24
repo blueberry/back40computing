@@ -124,7 +124,7 @@ struct Cta
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			// Load item from texture if in bounds
-			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			int global_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
 			if (global_offset < guarded_elements)
 			{
 				if (LOAD_MODIFIER == util::io::ld::tex)
