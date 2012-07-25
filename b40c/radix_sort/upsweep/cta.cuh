@@ -94,9 +94,8 @@ struct Cta
 		LANES_PER_WARP ES_PER_WARP					= CUB_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
 		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,= CUB_MIN(64, 255 / THREAD_ELEMENTS),
 		UNROLLED_ELEMENTS ER_LANE - LOG_WARP_THREADS,		// Number of partials per thread to aggregate
-		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_LANE_PER_THREAD,
-
-		AGGREGATED_ROWS						= RADIX_DIGITS,
+		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_LANE
+		{	= RADIX_DIGITS,
 		AGGREGATED_PARTIALS_PER_ROW 	CTA_	= WARP_THREADS,
 		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIACTA_LS_PER_ROW + 1,
 
@@ -120,12 +119,6 @@ struct Cta
 	// Input and output device pointers
 	UnsignedBits		*d_in_keys;
 	SizeT				*d_spine;
-
-	// Warp-id and lane-id
-	int 				warp_id;
-	int 				warp_tid;
-
-	DigitCounter		*base_counter;
 
 	// The least-significant bit position of the current digit to extract
 	unsigned int 		current_bit;
@@ -203,16 +196,8 @@ struct Cta
 			smem_storage(smem_storage),
 			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
 			d_spine(d_spine),
-			warp_id(threadIdx.x >> LOG_WARP_THREADS),
-			warp_tid(util::LaneId()),
-			current_bit(current_bit>::ExtractComposites(cta);
-		}
-	};
-
-	/**
-	 * Iterate next lane
-	 */
-	template <int WARP_LANE, int dummy>
+			current_bit(current_bit)
+	{mplate <int WARP_LANE, int dummy>
 	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
 		// ExtractComUnsignedBits
@@ -259,7 +244,9 @@ struct Cta
 	struct Iterate<LANES_PER_WARP, COMPOSITES_PER_LANE_PER_THREAD, dummy>
 	{
 		// ShareCounters
-		static __device__ __forceinline__ void ShareCounters(Cta &cta) {}
+		static __device_unsigned int warp_id = threadIdx.x >> LOG_WARP_THREADS;
+		unsigned int warp_tid = threadIdx.x & (WARP_THREADS - 1);
+ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 
 		// ResetCounters
 		static __device__ __forceinline__ void ResetCounters(Cta &cta) {}
@@ -281,11 +268,13 @@ struct Cta
 		{
 			static const int HALF = UNROLL_COUNT / 2;
 
-			static __device__ __forceinline__ void ProcessTiles(
+			statsmem_storage.digit_counters[warp_id][warp_tid][OFFSET]ine__ void ProcessTiles(
 				Cta &cta, SizeT cta_offset)
 			{
 				Iterate<HALF>::ProcessTiles(cta, cta_offset);
-				Iterate<HALF>::ProcessTiles(cta, cta_offset + (TILE_ELEMENTS * HALF));
+				Iterate<HALF>::ProcessTiles(cta, cta_offset + (TIunsigned int warp_id = threadIdx.x >> LOG_WARP_THREADS;
+		unsigned int warp_tid = threadIdx.x & (WARP_THREADS - 1);
+(TILE_ELEMENTS * HALF));
 			}
 		};
 
