@@ -33,7 +33,7 @@
 #include "../radix_sort/sort_utils.cuh"
 #include "../radix_sort/pass_policy.cuh"
 
-#include "../radix_sort/upsweep/kernel.cuh"
+#include "../radix_sort/upsweep/cta.cuh"
 #include "../radix_sort/spine/kernel.cuh"
 #include "../radix_sort/downsweep/kernel.cuh"
 #include "../radix_sort/block/kernel.cuh"

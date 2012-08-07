@@ -48,7 +48,7 @@ struct Cta
 {
 	//---------------------------------------------------------------------
 	// Typedefs and Constants
-	//---------------------------------------typedef typename KeyTraits<KeyType>::UnsignedBits 	UnsignedBits;---------------------------------
+	//---------------------------------------typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;---------------------------------
 
 	enum {
 		MIN_CTA_OCCUPANCY  				= KernelPolicy::MIN_CTA_OCCUPANCY,
@@ -57,7 +57,8 @@ struct Cta
 
 		RADIX_BITS						= Kern(KernelPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByteTS 					= 1 << RADIX_BITS,
 
-		LOG_THREADS 					= KernelPolicy::LOG_THREADRADIX_BITS					= KernelPolicy::RADIX_BITS,
+		LOG_THREADS 					= KernelPolicy::LOG_T
+	READRADIX_BITS					= KernelPolicy::RADIX_BITS,
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 
 		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
@@ -112,7 +113,6 @@ PER_LANE
 
 	// Input and output device pointers
 	UnsignedBits		*d_in_keys;
-	SizeT				*d_spine;
 
 	// The least-significant bit position of the current digit to extract
 	unsigned int 		current_bit;
@@ -178,18 +178,21 @@ PER_LANE
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
- CO	// Methods
-	//EAD,		// X = 128
+ CO	// Utility methods
+	//D,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
- COMPOSITE_OFFSET + 0);
-			cta.local_counts[WARP_LANE][1] += *(cta.base + LANE_OFFSET + COMPOSITE_OFFSET + 1);
-			cta.local_countin_keys,
+ C--
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Cta(
+		SmemStorage		&smem_storag			cta.local_countin_keys,
 		unsigned int 	current_bit) :
 			smem_storage(smem_storage),
 			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
-			d_spine(d_spine),
 			current_bit(current_bit)
 	{mplate <int WARP_LANE, int dummy>
 	struct Iterate<WARP_LANE, COMPOSITES_PER_LANE_PER_THREAD, dummy>
@@ -266,9 +269,9 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 				Cta &cta, SizeT cta_offset)
 			{
 				Iterate<HALF>::ProcessTiles(cta, cta_offset);
-				Iterate<HALF>::ProcessTiles(cta, cta_offset + (TIunsigned int warp_id = threadIdx.x >> LOG_WARP_THREADS;
+				Iterate<HALF>::ProcessTiles(cta, cta_offseSizeT &bin_countdevice_unsigned int warp_id = threadIdx.x >> LOG_WARP_THREADS;
 		unsigned int warp_tid = threadIdx.x & (WARP_THREADS - 1);
-(TILE_ELEMENTS * HALF));
+ce_LE_ELEMENTS * HALF));
 			}
 		};
 
@@ -298,23 +301,13 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 	__device__ __forceinline__ Cta(
 		SmemStorage 	&smem_storage,
 		KeyType 		*d_in_keys,
-		SizeT 			*d_spine) :
-			smem_storage(smem_storage),
-			d_in_keys(d_in_keys),
-			d_spine(d_spine),
-			warp_id(threadIdx.x >> LOG_WARP_THREADS),
+		SizeT 			*d_bin_count reductions
+		if (threadIdx.x < RADIX_DIGITS)
+		{
+						warp_id(threadIdx.x >> LOG_WARP_THREADS),
 			warp_idx(util::LaneId())
 	{
-		base = (char *) (smem_storage.words[warp_id] + warp_idx);
-	}
-
-
-	/**
-	 * Bucket a key into smem counters
-	 */
-	__device__ __forceinline__ void BSTORt(KeyType key)
-	{
-		// Compute byte offset of smem counter.  Add in thread column.
+		base = (char *) (smem_storage.wordin thread column.
 		unsigned int offset = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
 
 		// Add in sub-counter offset
@@ -348,8 +341,87 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 			Bucket(key);
 			cta_offset += CTA_{
 		#pragma unroll
-		for (int LANE = 0; LANE < COMPOSITE_LANES; ++LANE) {
-			smem_storage.words[LANE][threadIdx.xconst util::CtaWorkDistribution<SizeT> &cta_work_distribution)
+	/D,		// X = 128
+		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
+	};
+
+ C--
+	// Interface
+	//D,		// X = 128
+		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
+	};
+
+ C--
+
+	/**
+	 * Process work range
+	 */
+	static __device__ __forceinline__ void ProcessWorkRange(
+		SmemStorage 	&smem_storage,
+		KeyType 		*d_in_keys,
+		unsigned int 	current_bit,
+		SizeT 			cta_offset,
+		const SizeT 	&out_of_bounds,
+		SizeT 			&bin_count)
+	{
+		// Construct CTA abstraction
+		Cta cta(smem_storage, d_in_keys, current_bit);
+
+		// Reset digit counters in smem and unpacked counters in registers
+		cta.ResetDigitCounters();
+		cta.ResetUnpackedCounters();
+
+		// Unroll batches of full tiles
+		while (cta_offset + UNROLLED_ELEMENTS <= out_of_bounds)
+		{
+			Iterate<0, UNROLL_COUNT>::ProcessTiles(ctaites()
+	{
+		if (warp_id < COMPOSITE_LANES) {
+			Iterate<0, 0>::ExtractComposites(*this);
+		}
+	}
+
+
+	/**
+	 * Places aggregate-counters into sharedcta. storage for final bin-wise reduction
+	 */
+	__device__ __forceinline__ void ShareCountcta.ResetDigitCounters();
+		}
+
+		// Unroll single full tiles
+		while (cta_offset + TILE_ELEMENTS <= out_of_bounds)
+		{
+			cta.	}
+	}
+
+
+	/**
+	 * Processes a single, full tile
+	 */
+	__device__ __forceinline__ void ProcessFullTile(SizeT cta.ProcessPartialTile(
+			cta_offset,
+			out_of_bounds);
+
+		__syncthreads();
+
+		// Aggregate back into local_count registers
+		cta.LOG_LOADS_PER_TILE,
+			LOG_LOAD_VEC_SIZE,
+			THREADS,
+			KernelPolicy::READ_MODIFIER,
+			false>::LoadValid(cta.ReduceUnpackedCounts(bin_count);
+	}
+
+
+	/**
+	 * Process work range
+	 */
+	static __device__ __forceinline__ void ProcessWorkRange(
+		SmemStorage 						&smem_storage,
+		SizeT 								*d_spine,
+		KeyType 							*d_in_keys,
+		util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
+		unsigned int 						current_bit)
 	{
 		if (threadIdx.x == 0)
 		{
@@ -359,55 +431,59 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 
 		// Sync to acquire work limits
 		__syncthreads();
-te counters
-	 */
-	__device__ __forceinline__ void ResetCounters()
-	{
-		Iterate<0, COMPOSITES_PER_LANE_PER_THREAD>::ResetCounters(*this);
-	}
+te couCompute bin-count for each radix digit (valid in threadId < RADIX_DIGITS)
+		SizeT bin_count;
+		ProcessWorkRange(
+			smem_storage,
+			d_in_keys,
+			current_bit,
+			smem_storage.cta_progress.cta_offset,
+			smem_storage.cta_progress.out_of_bounds,
+			bin_count);
 
-
-	smem_storage.cta_progress.cta_offset;
-
-		// Unroll batches of full tiles
-		while (cta_offset + UNROLLED_ELEMENTS <= smem_storage.cta_progresned by this warp
-	 */
-	__device__ __forceinline__ void ExtractComposites()
-	{
-		if (warp_id < COMPOSITE_LANES) {
-			Iterate<0, 0>::ExtractComposites(*this);
-		}
+		// Write out the bin_count reductions
+		if (threadIdx.x < RADIX_DIGITS)
+		{s[warp_id] + warp_idx);
 	}
 
 
 	/**
-	 * Places aggregate-counters into shared storage for final bin-wise reduction
+	 * Bucket a key into smem counters
 	 */
-	__device__ __forceinline__ void ShareCounters()
+	__device__ __forceinline__ void BSTORt(KeyType key)
 	{
-		if (warp_id < COMPOSITE_LANES) {
-			Iterate<0, COMPOSITES_PER_LANE+ TILE_ELEMENTS <= smem_storage.cta_progress.out_of_bounds*this);
-		}
-	}
+		// Compute byte offset of smem counter.  Add in threa};
 
 
-	/**
-	 * Processes a single, full tile
-	 */
-	__device__ __forceinline__ void ProcessFullTile(SizeT cta_offset)
-	{
-		//
-			cta_offset,
-			smem_storage.cta_progrese keys[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
-		// Read tile of keys
-		util::io::LoadTile<
-			LOG_LOADS_PER_TILE,
-			LOG_LOAD_VEC_SIZE,
-			THREADS,
-			KernelPolicy::READ_MODIFIER,
-			false>::LoadValid(
-				(KeyType (*)[LOAD_VEC_SIZE]) keys,
+/**
+ * Kernel entry point
+ */
+template <
+	typename KernelPolicy,
+	typename SizeT,
+	typename KeyType>
+__launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
+__global__
+void Kernel(
+	SizeT 								*d_spine,
+	KeyType 							*d_in_keys,
+	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
+	unsigned int 						current_bit)
+{
+	// CTA abstraction type
+	typedef Cta<KernelPolicy, SizeT, KeyType> Cta;
+
+	// Shared memory pool
+	__shared__ typename Cta::SmemStorage smem_storage;
+
+	Cta::ProcessWorkRange(
+		smem_storage,
+		d_spine,
+		d_in_keys,
+		cta_work_distribution,
+		current_bit);
+}ZE]) keys,
 				d_in_keys,
 				cta_offset);
 
