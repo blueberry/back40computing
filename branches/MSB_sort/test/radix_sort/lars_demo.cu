@@ -187,8 +187,14 @@ int main(int argc, char** argv)
 	}
 
 	// Sort
-	error = enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
-		double_buffer, num_elements, 0, max_ctas, true);
+	error = enactor.Sort<PROBLEM_SIZE>(
+		double_buffer,
+		num_elements,
+		START_BIT,
+		KEY_BITS,
+		0,
+		max_ctas,
+		true);
 
 	if (error) exit(1);
 
@@ -256,7 +262,8 @@ int main(int argc, char** argv)
 			h_keys,
 			sizeof(KeyType) * num_elements,
 			cudaMemcpyHostToDevice);
-		if (!KEYS_ONLY) {
+		if (!KEYS_ONLY)
+		{
 			cudaMemcpy(
 				double_buffer.d_values[double_buffer.selector],
 				h_values,
@@ -264,8 +271,8 @@ int main(int argc, char** argv)
 				cudaMemcpyHostToDevice);
 		}
 
-		if (schmoo) {
-
+		if (schmoo)
+		{
 			// Sample a problem size
 			unsigned int sample;
 			b40c::util::RandomBits(sample);
@@ -277,8 +284,13 @@ int main(int argc, char** argv)
 			gpu_timer.Start();
 
 			// Sort
-			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
-				double_buffer, num_elements, 0, max_ctas);
+			error = enactor.Sort<PROBLEM_SIZE>(
+				double_buffer,
+				num_elements,
+				START_BIT,
+				KEY_BITS,
+				0,
+				max_ctas);
 
 			gpu_timer.Stop();
 
@@ -289,15 +301,20 @@ int main(int argc, char** argv)
 				millis,
 				float(elements) / millis / 1000.f);
 			fflush(stdout);
-
-		} else {
-
+		}
+		else
+		{
 			// Regular iteration
 			gpu_timer.Start();
 
 			// Sort
-			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
-				double_buffer, num_elements, 0, max_ctas);
+			error = enactor.Sort<PROBLEM_SIZE>(
+				double_buffer,
+				num_elements,
+				START_BIT,
+				KEY_BITS,
+				0,
+				max_ctas);
 
 			gpu_timer.Stop();
 

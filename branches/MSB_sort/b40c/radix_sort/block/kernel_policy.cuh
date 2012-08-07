@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Configuration policy for single-CTA radix sort
+ *
  ******************************************************************************/
 
 #pragma once
@@ -30,13 +30,14 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace single {
+namespace block {
 
 /**
- * Single-CTA tuning policy.
+ * Block partition tuning policy.
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
+	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_CTA_THREADS,			// The number of threads per CTA
 	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
@@ -47,6 +48,7 @@ struct KernelPolicy
 	enum
 	{
 		RADIX_BITS					= _RADIX_BITS,
+		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
 		CTA_THREADS 				= _CTA_THREADS,
 		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
 
@@ -61,6 +63,6 @@ struct KernelPolicy
 
 
 } // namespace single
-} // namespace partition
+} // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

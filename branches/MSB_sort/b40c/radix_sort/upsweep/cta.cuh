@@ -326,9 +326,6 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 			keys[LOAD] = d_in_keys[cta_offset + threadIdx.x + (LOAD * CTA_THREADS)];
 		}
 
-		// Prevent bucketing from being hoisted (otherwise we don't get the desired outstanding loads)
-//		if (KEYS_PER_THREAD > 1) __syncthreads();
-
 		// Bucket tile of keys
 		Iterate<0, KEYS_PER_THREAD>::BucketKeys(*this,		Cta &cta, KeyType keys[LOADS_PER_TILE * LOAD_VEC_SIZE])
 		{

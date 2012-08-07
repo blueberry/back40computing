@@ -88,7 +88,7 @@ public:
 			struct
 			{
 				UnsignedBits						key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
-				ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+//				ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
 			};
 		};
 	};

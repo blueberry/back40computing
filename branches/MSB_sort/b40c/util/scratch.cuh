@@ -18,8 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Management of temporary device storage needed for maintaining partial
- * reductions between subsequent grids
+ * Management of temporary device storage
  ******************************************************************************/
 
 #pragma once
@@ -33,28 +32,27 @@ namespace b40c {
 namespace util {
 
 /**
- * Manages device storage needed for communicating partial reductions
- * between CTAs in subsequent grids
+ * Manages device storage
  */
-struct Spine
+struct Scratch
 {
 	//---------------------------------------------------------------------
 	// Members
 	//---------------------------------------------------------------------
 
-	// Device spine storage
-	void *d_spine;
+	// Device scratch storage
+	void *d_scratch;
 
-	// Host-mapped spine storage (if so constructed)
-	void *h_spine;
+	// Host-mapped scratch storage (if so constructed)
+	void *h_scratch;
 
-	// Number of bytes backed by d_spine
-	size_t spine_bytes;
+	// Number of bytes backed by d_scratch
+	size_t scratch_bytes;
 
-	// GPU d_spine was allocated on
+	// GPU d_scratch was allocated on
 	int gpu;
 
-	// Whether or not the spine has a shadow spine on the host
+	// Whether or not the scratch has a shadow scratch on the host
 	bool host_shadow;
 
 
@@ -63,12 +61,12 @@ struct Spine
 	//---------------------------------------------------------------------
 
 	/**
-	 * Constructor (device-allocated spine)
+	 * Constructor (device-allocated scratch)
 	 */
-	Spine() :
-		d_spine(NULL),
-		h_spine(NULL),
-		spine_bytes(0),
+	Scratch() :
+		d_scratch(NULL),
+		h_scratch(NULL),
+		scratch_bytes(0),
 		gpu(CUB_INVALID_DEVICE),
 		host_shadow(false) {}
 
@@ -77,18 +75,18 @@ struct Spine
 	 * Constructor
 	 *
 	 * @param host_shadow
-	 * 		Whether or not the spine has a shadow spine on the host
+	 * 		Whether or not the scratch has a shadow scratch on the host
 	 */
-	Spine(bool host_shadow) :
-		d_spine(NULL),
-		h_spine(NULL),
-		spine_bytes(0),
+	Scratch(bool host_shadow) :
+		d_scratch(NULL),
+		h_scratch(NULL),
+		scratch_bytes(0),
 		gpu(CUB_INVALID_DEVICE),
 		host_shadow(host_shadow) {}
 
 
 	/**
-	 * Deallocates and resets the spine
+	 * Deallocates and resets the scratch
 	 */
 	cudaError_t HostReset()
 	{
@@ -100,33 +98,33 @@ struct Spine
 			// Save current gpu
 			int current_gpu;
 			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
-				"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+				"Scratch cudaGetDevice failed: ", __FILE__, __LINE__)) break;
 #if CUDA_VERSION >= 4000
 			if (retval = util::B40CPerror(cudaSetDevice(gpu),
-				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+				"Scratch cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 #endif
-			if (d_spine) {
+			if (d_scratch) {
 				// Deallocate
-				if (retval = util::B40CPerror(cudaFree(d_spine),
-					"Spine cudaFree d_spine failed: ", __FILE__, __LINE__)) break;
-				d_spine = NULL;
+				if (retval = util::B40CPerror(cudaFree(d_scratch),
+					"Scratch cudaFree d_scratch failed: ", __FILE__, __LINE__)) break;
+				d_scratch = NULL;
 			}
-			if (h_spine) {
+			if (h_scratch) {
 				// Deallocate
-				if (retval = util::B40CPerror(cudaFreeHost((void *) h_spine),
-					"Spine cudaFreeHost h_spine failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaFreeHost((void *) h_scratch),
+					"Scratch cudaFreeHost h_scratch failed", __FILE__, __LINE__)) break;
 
-				h_spine = NULL;
+				h_scratch = NULL;
 			}
 
 #if CUDA_VERSION >= 4000
 			// Restore current gpu
 			if (retval = util::B40CPerror(cudaSetDevice(current_gpu),
-				"Spine cudaSetDevice failed: ", __FILE__, __LINE__)) break;
+				"Scratch cudaSetDevice failed: ", __FILE__, __LINE__)) break;
 #endif
 
 			gpu 			= CUB_INVALID_DEVICE;
-			spine_bytes	 	= 0;
+			scratch_bytes	 	= 0;
 
 		} while (0);
 
@@ -137,37 +135,37 @@ struct Spine
 	/**
 	 * Destructor
 	 */
-	virtual ~Spine()
+	virtual ~Scratch()
 	{
 		HostReset();
 	}
 
 
 	/**
-	 * Device spine storage accessor
+	 * Device scratch storage accessor
 	 */
 	void* operator()()
 	{
-		return d_spine;
+		return d_scratch;
 	}
 
 
 	/**
-	 * Sets up the spine to accommodate the specified number of bytes.
+	 * Sets up the scratch to accommodate the specified number of bytes.
 	 * Reallocates if necessary.
 	 */
 	template <typename SizeT>
-	cudaError_t Setup(SizeT problem_spine_bytes)
+	cudaError_t Setup(SizeT problem_scratch_bytes)
 	{
 		cudaError_t retval = cudaSuccess;
 		do {
 			// Get current gpu
 			int current_gpu;
 			if (retval = util::B40CPerror(cudaGetDevice(&current_gpu),
-				"Spine cudaGetDevice failed: ", __FILE__, __LINE__)) break;
+				"Scratch cudaGetDevice failed: ", __FILE__, __LINE__)) break;
 
 			// Check if big enough and if lives on proper GPU
-			if ((problem_spine_bytes > spine_bytes) || (gpu != current_gpu)) {
+			if ((problem_scratch_bytes > scratch_bytes) || (gpu != current_gpu)) {
 
 				// Deallocate if exists
 				if (retval = HostReset()) break;
@@ -176,17 +174,18 @@ struct Spine
 				gpu = current_gpu;
 
 				// Reallocate
-				spine_bytes = problem_spine_bytes;
+				scratch_bytes = problem_scratch_bytes;
 
 				// Allocate on device
-				if (retval = util::B40CPerror(cudaMalloc((void**) &d_spine, spine_bytes),
-					"Spine cudaMalloc d_spine failed", __FILE__, __LINE__)) break;
+				if (retval = util::B40CPerror(cudaMalloc((void**) &d_scratch, scratch_bytes),
+					"Scratch cudaMalloc d_scratch failed", __FILE__, __LINE__)) break;
 
-				if (host_shadow) {
-					// Allocate pinned memory for h_spine
+				if (host_shadow)
+				{
+					// Allocate pinned memory for h_scratch
 					int flags = cudaHostAllocMapped;
-					if (retval = util::B40CPerror(cudaHostAlloc((void **)&h_spine, problem_spine_bytes, flags),
-						"Spine cudaHostAlloc h_spine failed", __FILE__, __LINE__)) break;
+					if (retval = util::B40CPerror(cudaHostAlloc((void **)&h_scratch, problem_scratch_bytes, flags),
+						"Scratch cudaHostAlloc h_scratch failed", __FILE__, __LINE__)) break;
 				}
 			}
 		} while (0);
@@ -196,28 +195,28 @@ struct Spine
 
 
 	/**
-	 * Syncs the shadow host spine with device spine
+	 * Syncs the shadow host scratch with device scratch
 	 */
 	cudaError_t Sync(cudaStream_t stream)
 	{
 		return cudaMemcpyAsync(
-			h_spine,
-			d_spine,
-			spine_bytes,
+			h_scratch,
+			d_scratch,
+			scratch_bytes,
 			cudaMemcpyDeviceToHost,
 			stream);
 	}
 
 
 	/**
-	 * Syncs the shadow host spine with device spine
+	 * Syncs the shadow host scratch with device scratch
 	 */
 	cudaError_t Sync()
 	{
 		return cudaMemcpy(
-			h_spine,
-			d_spine,
-			spine_bytes,
+			h_scratch,
+			d_scratch,
+			scratch_bytes,
 			cudaMemcpyDeviceToHost);
 	}
 

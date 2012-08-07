@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for single-CTA radix sort kernel
+ *
  ******************************************************************************/
 
 #pragma once
@@ -34,11 +34,11 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace single {
+namespace block {
 
 
 /**
- * Single-CTA radix sort
+ *
  */
 template <
 	typename KernelPolicy,
@@ -93,6 +93,8 @@ struct Cta
 	 */
 	struct SmemStorage
 	{
+		Partition								partition;
+
 		union
 		{
 			typename CtaRadixSort::SmemStorage 	sorting_storage;
@@ -102,14 +104,71 @@ struct Cta
 
 
 	//---------------------------------------------------------------------
+	// Fields
+	//---------------------------------------------------------------------
+
+	SmemStorage 		&smem_storage;
+	Partition			*d_partitions_out;
+	KeyType 			*d_keys_in;
+	KeyType 			*d_keys_out;
+	KeyType 			*d_keys_final;
+	ValueType 			*d_values_in;
+	ValueType			*d_values_out;
+	ValueType			*d_values_final;
+	int					low_bit;
+
+
+	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Cta(
+		SmemStorage 	&smem_storage,
+		Partition		*d_partitions_in,
+		Partition		*d_partitions_out,
+		KeyType 		*d_keys_in,
+		KeyType 		*d_keys_out,
+		KeyType 		*d_keys_final,
+		util::NullType 	*d_values_in,
+		util::NullType 	*d_values_out,
+		util::NullType 	*d_values_final,
+		int				low_bit) :
+			smem_storage(smem_storage),
+			d_partitions_out(d_partitions_out),
+			d_keys_in(d_keys_in),
+			d_keys_out(d_keys_out),
+			d_keys_final(d_keys_final),
+			d_values_in(d_values_in),
+			d_values_out(d_values_out),
+			d_values_final(d_values_final),
+			low_bit(low_bit)
+	{
+		// Retrieve work
+		if (threadIdx.x == 0)
+		{
+			smem_storage.partition = d_partitions_in[blockIdx.x];
+/*
+			printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
+				blockIdx.x,
+				low_bit,
+				smem_storage.partition.current_bit,
+				smem_storage.partition.num_elements,
+				smem_storage.partition.offset);
+*/
+		}
+
+		__syncthreads();
+	}
+
 
 	/**
 	 *
 	 */
 	template <typename T, typename SizeT>
-	static __device__ __forceinline__ void LoadTile(
+	__device__ __forceinline__ void LoadTile(
 		T				*exchange,
 		T 				*items,
 		T 				*d_in,
@@ -167,17 +226,9 @@ struct Cta
 
 
 	/**
-	 * ProcessTile.  (Specialized for keys-only sorting.)
+	 * Block sort
 	 */
-	template <typename SizeT>
-	static __device__ __forceinline__ void ProcessTile(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys,
-		util::NullType 	*d_values,
-		unsigned int 	current_bit,
-		unsigned int 	bits_remaining,
-		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
+	__device__ __forceinline__ void BlockSort()
 	{
 		UnsignedBits keys[KEYS_PER_THREAD];
 
@@ -192,9 +243,9 @@ struct Cta
 		LoadTile(
 			smem_storage.key_exchange,
 			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
-			cta_offset,
-			guarded_elements);
+			reinterpret_cast<UnsignedBits*>(d_keys_in),
+			smem_storage.partition.offset,
+			smem_storage.partition.num_elements);
 
 		__syncthreads();
 
@@ -209,8 +260,8 @@ struct Cta
 		CtaRadixSort::SortThreadToCtaStride(
 			smem_storage.sorting_storage,
 			keys,
-			current_bit,
-			bits_remaining);
+			low_bit,
+			smem_storage.partition.current_bit - low_bit);
 
 		// Twiddle key bits if necessary
 		#pragma unroll
@@ -222,94 +273,36 @@ struct Cta
 		// Store keys
 		StoreTile(
 			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
-			cta_offset,
-			guarded_elements);
+			reinterpret_cast<UnsignedBits*>(d_keys_final),
+			smem_storage.partition.offset,
+			smem_storage.partition.num_elements);
 	}
 
 
 	/**
-	 * ProcessTile.  (Specialized for keys-value sorting.)
-	 * /
-	template <typename SizeT, typename _ValueType>
-	static __device__ __forceinline__ void ProcessTile(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys,
-		_ValueType		*d_values,
-		unsigned int 	current_bit,
-		unsigned int 	bits_remaining,
-		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
+	 * ProcessTile.  (Specialized for keys-only sorting.)
+	 */
+	__device__ __forceinline__ void ProcessWorkRange()
 	{
-		UnsignedBits 	keys[KEYS_PER_THREAD];
-		ValueType 		values[KEYS_PER_THREAD];
+		// Quit if there is no work
+		if (smem_storage.partition.num_elements == 0) return;
 
-		// Initialize keys to default key value
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		// Choose block or pass sort
+		if (smem_storage.partition.num_elements < TILE_ELEMENTS)
 		{
-			keys[KEY] = MAX_KEY;
+			// Block sort the remainder of the radix bits
+			BlockSort();
 		}
-
-		// Load keys
-		LoadTile(
-			reinterpret_cast<KeyTexType*>(keys),
-			reinterpret_cast<KeyTexType*>(d_keys),
-			TexKeys<KeyTexType>::ref,
-			cta_offset,
-			guarded_elements);
-
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		else
 		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
+			// CTA pass
 		}
-
-		// Load values
-		LoadTile(
-			reinterpret_cast<ValueTexType*>(values),
-			reinterpret_cast<ValueTexType*>(d_values),
-			TexValues<ValueTexType>::ref,
-			cta_offset,
-			guarded_elements);
-
-		// Sort
-		CtaRadixSort::SortThreadToCtaStride(
-			smem_storage.sorting_storage,
-			keys,
-			values,
-			current_bit,
-			bits_remaining);
-
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
-		}
-
-		// Store keys
-		StoreTile(
-			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
-			cta_offset,
-			guarded_elements);
-
-		// Store values
-		StoreTile(
-			values,
-			d_values,
-			cta_offset,
-			guarded_elements);
 	}
-*/
-
 
 };
 
 
-} // namespace single
+} // namespace block
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

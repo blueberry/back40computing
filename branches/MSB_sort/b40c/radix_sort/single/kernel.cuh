@@ -54,13 +54,15 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename Cta::SmemStorage smem_storage;
 
+	int cta_offset = 0;
+
 	Cta::ProcessTile(
 		smem_storage,
 		d_keys,
 		d_values,
 		current_bit,
 		bits_remaining,
-		0,
+		cta_offset,
 		num_elements);
 }
 

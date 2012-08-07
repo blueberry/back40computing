@@ -31,6 +31,42 @@ namespace b40c {
 namespace radix_sort {
 
 
+
+/******************************************************************************
+ * Partition descriptor
+ ******************************************************************************/
+
+/**
+ * Partition descriptor
+ */
+struct Partition
+{
+	int offset;
+	int num_elements;
+	int current_bit;
+	int padding;
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Partition() {}
+
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ Partition(
+		int offset,
+		int num_elements,
+		int current_bit) :
+			offset(offset),
+			num_elements(num_elements),
+			current_bit(current_bit)
+				{}
+};
+
+
+
+
 /******************************************************************************
  * Bit-field extraction utilities
  ******************************************************************************/

@@ -24,14 +24,12 @@
 #pragma once
 
 #include "../../util/basic_utils.cuh"
-#include "../../util/tex_vector.cuh"
 #include "../../util/io/modified_load.cuh"
 #include "../../util/io/modified_store.cuh"
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
 #include "../../radix_sort/cta_radix_rank.cuh"
-#include "../../radix_sort/tex_ref.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -95,18 +93,7 @@ struct Cta
 
 		LOG_STORE_TXN_THREADS 		= LOG_MEM_BANKS,
 		STORE_TXN_THREADS 			= 1 << LOG_STORE_TXN_THREADS,
-
-		ELEMENTS_PER_TEX			= Textures<KeyType, ValueType, KEYS_PER_THREAD>::ELEMENTS_PER_TEX,
-
-		THREAD_TEX_LOADS	 		= KEYS_PER_THREAD / ELEMENTS_PER_TEX,
-
-		TILE_TEX_LOADS				= CTA_THREADS * THREAD_TEX_LOADS,
 	};
-
-	// Texture types
-	typedef Textures<KeyType, ValueType, KEYS_PER_THREAD> 					Textures;
-	typedef typename Textures::KeyTexType 									KeyTexType;
-	typedef typename Textures::ValueTexType 								ValueTexType;
 
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
@@ -291,12 +278,12 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	 */
 	__device__ __forceinline__ void LoadKeys(
 		SizeT tex_offset,
-		const SizeT &guarded_elements,
+		const SizeT &guarded_elements,Partition		*d_partitions_out,
+		SizeT 			*d_spinents,
 		Tile &tilein_keys,
 		KeyType 		*d_out_keys,
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
-		SizeT 			*d_spine,
 		unsigned int 	current_bit) :
 			smem_storage(smem_storage),
 			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
@@ -310,7 +297,29 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			// Read digit scatter base (in parallel)
 			int spine_digit_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 			my_digit_offset = d_spine[spine_digit_offset];
+
+			if (blockIdx.x == 0)
+			{
+				SizeT next_digit_offset = d_spine[spine_digit_offset + gridDim.x];
+				SizeT elements = next_digit_offset - my_digit_offset;
+
+				Partition partition(
+					my_digit_offset,
+					elements,
+					current_bit);
+
+				d_partitions_out[threadIdx.x] = partition;
+/*
+				printf("Created partition %d (bit %d) of %d elements at offset %d\n",
+					threadIdx.x,
+					partition.current_bit,
+					partition.num_elements,
+					partition.offset);
+*/
+			}
 		}
+
+
 	}
 
 
@@ -453,40 +462,6 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		SizeT 			cta_offset,
 		const SizeT 	&guarded_elements)
 	{
-		if ((LOAD_MODIFIER == util::io::ld::tex) &&
-			(util::NumericTraits<ValueType>::BUILT_IN) &&
-			FULL_TILE)
-		{-			// Unguarded loads through tex
-			#pragma unroll
-			for (int PACK = 0; PACK < THREAD_TEX_LOADS; PACK++)
-			{
-                // Load tex vector
-				ValueType pack[ELEMENTS_PER_TEX];
-				*reinterpret_cast<ValueTexType*>(&pack) = tex1Dfetch(
-					TexValues<ValueTexType>::ref,
-					cta_offset + (threadIdx.x * THREAD_TEX_LOADS) + PACK);
-
-				#pragma unroll
-				for (int KEY = 0; KEY < ELEMENTS_PER_TEX; KEY++)
-				{
-					values[(PACK * ELEMENTS_PER_TEX) + KEY] = pack[KEY];
-				}
-			}
-		}
-		else
-		{
-			// We have a partial-tile.  Need to perform guarded loads.
-			#pragma unroll
-			for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-			{
-				int thread_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
-
-				if (thread_offset < guarded_elements)
-				{
-					values[KEY] = *(d_in_values + (cta_offset * ELEMENTS_PER_TEX) + thread_offset);
-				}
-			}
-		}
 	}
 
 

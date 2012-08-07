@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "../util/spine.cuh"
+#include "../util/scratch.cuh"
 #include "../util/basic_utils.cuh"
 #include "../util/kernel_props.cuh"
 #include "../util/error_utils.cuh"
@@ -32,17 +32,11 @@
 
 #include "../radix_sort/sort_utils.cuh"
 #include "../radix_sort/pass_policy.cuh"
-#include "../radix_sort/tex_ref.cuh"
 
-#include "../radix_sort/upsweep/kernel_policy.cuh"
 #include "../radix_sort/upsweep/kernel.cuh"
-
-#include "../radix_sort/spine/kernel_policy.cuh"
 #include "../radix_sort/spine/kernel.cuh"
-
-#include "../radix_sort/downsweep/kernel_policy.cuh"
 #include "../radix_sort/downsweep/kernel.cuh"
-
+#include "../radix_sort/block/kernel.cuh"
 #include "../radix_sort/single/kernel.cuh"
 
 B40C_NS_PREFIX
@@ -77,7 +71,11 @@ struct ProblemInstance
 	struct UpsweepKernelProps : util::KernelProps
 	{
 		// Kernel function type
-		typedef void (*KernelFunc)(SizeT*, KeyType*, util::CtaWorkDistribution<SizeT>, unsigned int);
+		typedef void (*KernelFunc)(
+			SizeT*,
+			KeyType*,
+			util::CtaWorkDistribution<SizeT>,
+			unsigned int);
 
 		// Fields
 		KernelFunc 					kernel_func;
@@ -168,6 +166,7 @@ struct ProblemInstance
 	{
 		// Kernel function type
 		typedef void (*KernelFunc)(
+			Partition*,
 			SizeT*,
 			KeyType*,
 			KeyType*,
@@ -189,16 +188,63 @@ struct ProblemInstance
 			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
-			// Texture types
-			typedef radix_sort::Textures<
-				KeyType,
-				ValueType,
-				KernelPolicy::THREAD_ELEMENTS> Textures;
-			typedef typename Textures::KeyTexType KeyTexType;
-			typedef typename Textures::ValueTexType ValueTexType;
-
 			// Initialize fields
 			kernel_func 			= downsweep::Kernel<OpaquePolicy>;
+			tile_elements 			= KernelPolicy::TILE_ELEMENTS;
+			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+
+			// Initialize super class
+			return util::KernelProps::Init(
+				kernel_func,
+				KernelPolicy::CTA_THREADS,
+				sm_arch,
+				sm_count);
+		}
+
+		/**
+		 * Initializer
+		 */
+		template <typename KernelPolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		}
+
+	};
+
+
+	/**
+	 * Block kernel props
+	 */
+	struct BlockKernelProps : util::KernelProps
+	{
+		// Kernel function type
+		typedef void (*KernelFunc)(
+			Partition*,
+			Partition*,
+			KeyType*,
+			KeyType*,
+			KeyType*,
+			ValueType*,
+			ValueType*,
+			ValueType*,
+			int);
+
+		// Fields
+		KernelFunc 					kernel_func;
+		int 						tile_elements;
+		cudaSharedMemConfig 		sm_bank_config;
+
+		/**
+		 * Initializer
+		 */
+		template <
+			typename KernelPolicy,
+			typename OpaquePolicy>
+		cudaError_t Init(int sm_arch, int sm_count)
+		{
+			// Initialize fields
+			kernel_func 			= block::Kernel<OpaquePolicy>;
 			tile_elements 			= KernelPolicy::TILE_ELEMENTS;
 			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
@@ -228,18 +274,15 @@ struct ProblemInstance
 	struct SingleKernelProps : util::KernelProps
 	{
 		// Kernel function type
-		typedef void (*KernelFunc)(KeyType*, ValueType*, unsigned int, unsigned int, unsigned int);
-
-		// Texture [un]binding function types
-		typedef cudaError_t (*BindTexFunc)(void *, size_t);
-		typedef cudaError_t (*UnbindTexFunc)();
+		typedef void (*KernelFunc)(
+			KeyType*,
+			ValueType*,
+			unsigned int,
+			unsigned int,
+			unsigned int);
 
 		// Fields
 		KernelFunc 					kernel_func;
-		BindTexFunc					bind_keys_func;
-		BindTexFunc					bind_values_func;
-		UnbindTexFunc				unbind_keys_func;
-		UnbindTexFunc				unbind_values_func;
 		int 						tile_elements;
 		cudaSharedMemConfig 		sm_bank_config;
 
@@ -251,30 +294,10 @@ struct ProblemInstance
 			typename OpaquePolicy>
 		cudaError_t Init(int sm_arch, int sm_count)
 		{
-			// Texture types
-			typedef radix_sort::Textures<KeyType, ValueType, 1> Textures;
-			typedef typename Textures::KeyTexType KeyTexType;
-			typedef typename Textures::ValueTexType ValueTexType;
-
 			// Initialize fields
 			kernel_func 			= single::Kernel<OpaquePolicy>;
 			tile_elements 			= KernelPolicy::TILE_ELEMENTS;
 			sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
-			bind_keys_func 			= NULL;
-			bind_values_func 		= NULL;
-			unbind_keys_func 		= NULL;
-			unbind_values_func 		= NULL;
-
-			if (KernelPolicy::LOAD_MODIFIER == util::io::ld::tex)
-			{
-				bind_keys_func 		= TexKeys<KeyTexType>::BindTexture;
-				unbind_keys_func 	= TexKeys<KeyTexType>::UnbindTexture;
-				if (!util::Equals<ValueType, util::NullType>::VALUE)
-				{
-					bind_values_func 	= TexValues<ValueTexType>::BindTexture;
-					unbind_values_func 	= TexValues<ValueTexType>::UnbindTexture;
-				}
-			}
 
 			// Initialize super class
 			return util::KernelProps::Init(
@@ -293,48 +316,6 @@ struct ProblemInstance
 			return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
 		}
 
-		/**
-		 * Bind related textures
-		 */
-		cudaError_t BindTexture(
-			KeyType *d_in_keys,
-			ValueType *d_in_values,
-			SizeT num_elements) const
-		{
-			cudaError_t error = cudaSuccess;
-			do {
-				// Bind key texture
-				if (bind_keys_func) error = bind_keys_func(d_in_keys, sizeof(KeyType) * num_elements);
-				if (error) break;
-
-				// Bind value texture
-				if (bind_values_func) error = bind_values_func(d_in_values, sizeof(ValueType) * num_elements);
-				if (error) break;
-
-			} while (0);
-
-			return error;
-		}
-
-		/**
-		 * Unbind related textures
-		 */
-		cudaError_t UnbindTexture() const
-		{
-			cudaError_t error = cudaSuccess;
-			do {
-				// Unbind key texture
-				if (unbind_keys_func) error = unbind_keys_func();
-				if (error) break;
-
-				// Unbind value texture
-				if (unbind_values_func) error = unbind_values_func();
-				if (error) break;
-
-			} while (0);
-
-			return error;
-		}
 	};
 
 
@@ -344,8 +325,12 @@ struct ProblemInstance
 
 	DoubleBuffer		&storage;
 	SizeT				num_elements;
+	int 				low_bit;
+	int					num_bits;
 
-	util::Spine			&spine;
+	util::Scratch		&spine;
+	util::Scratch 		(&partitions)[2];
+
 	cudaStream_t		stream;
 	int			 		max_grid_size;
 	bool				debug;
@@ -361,25 +346,30 @@ struct ProblemInstance
 	ProblemInstance(
 		DoubleBuffer	&storage,
 		SizeT			num_elements,
+		int 			low_bit,
+		int				num_bits,
 		cudaStream_t	stream,
-		util::Spine		&spine,
+		util::Scratch	&spine,
+		util::Scratch	(&partitions)[2],
 		int			 	max_grid_size,
 		bool			debug) :
 			storage(storage),
 			num_elements(num_elements),
+			low_bit(low_bit),
+			num_bits(num_bits),
 			stream(stream),
 			spine(spine),
+			partitions(partitions),
 			max_grid_size(max_grid_size),
 			debug(debug)
 	{}
 
 
 	/**
-	 * DispatchPass
+	 * Dispatch primary
 	 */
-	cudaError_t DispatchPass(
+	cudaError_t DispatchPrimary(
 		unsigned int 					radix_bits,
-		unsigned int					current_bit,
 		const UpsweepKernelProps 		&upsweep_props,
 		const SpineKernelProps			&spine_props,
 		const DownsweepKernelProps		&downsweep_props,
@@ -389,6 +379,9 @@ struct ProblemInstance
 		cudaError_t error = cudaSuccess;
 
 		do {
+			// Current bit
+			int current_bit = low_bit + num_bits - radix_bits;
+
 			// Compute sweep grid size
 			int schedule_granularity = CUB_MAX(
 				upsweep_props.tile_elements,
@@ -451,14 +444,17 @@ struct ProblemInstance
 			{
 				work.Print();
 				printf(
+					"Current bit(%d)\n"
 					"Upsweep:   tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
 					"Spine:     tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n"
 					"Downsweep: tile size(%d), occupancy(%d), grid_size(%d), threads(%d), dynamic smem(%d)\n",
+					current_bit,
 					upsweep_props.tile_elements, upsweep_props.max_cta_occupancy, grid_size[0], upsweep_props.threads, dynamic_smem[0],
 					(1 << spine_props.log_tile_elements), spine_props.max_cta_occupancy, grid_size[1], spine_props.threads, dynamic_smem[1],
 					downsweep_props.tile_elements, downsweep_props.max_cta_occupancy, grid_size[2], downsweep_props.threads, dynamic_smem[2]);
 				fflush(stdout);
 			}
+
 
 			//
 			// Upsweep
@@ -469,6 +465,8 @@ struct ProblemInstance
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
 			if (old_sm_config != upsweep_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(upsweep_props.sm_bank_config);
+
+
 
 			// Upsweep reduction into spine
 			upsweep_props.kernel_func<<<grid_size[0], upsweep_props.threads, dynamic_smem[0], stream>>>(
@@ -511,6 +509,7 @@ struct ProblemInstance
 
 			// Downsweep scan from spine
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.threads, dynamic_smem[2], stream>>>(
+				(Partition*) partitions[storage.selector ^ 1](),
 				(SizeT *) spine(),
 				storage.d_keys[storage.selector],
 				storage.d_keys[storage.selector ^ 1],
@@ -538,12 +537,69 @@ struct ProblemInstance
 
 
 	/**
-	 * DispatchPass.  (Single cta version)
+	 * Dispatch block sort
 	 */
-	cudaError_t DispatchPass(
-		unsigned int 					current_bit,
-		unsigned int					bits_remaining,
-		const SingleKernelProps 		&single_props)
+	cudaError_t DispatchBlock(
+		const BlockKernelProps &block_props,
+		int initial_selector,
+		int grid_size)
+	{
+		cudaError_t error = cudaSuccess;
+
+		do {
+
+			// Print debug info
+			if (debug)
+			{
+				printf("Block: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
+					block_props.tile_elements,
+					block_props.max_cta_occupancy,
+					grid_size,
+					block_props.threads);
+				fflush(stdout);
+			}
+
+			// Set shared mem bank mode
+			cudaSharedMemConfig old_sm_config;
+			cudaDeviceGetSharedMemConfig(&old_sm_config);
+			if (old_sm_config != block_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(block_props.sm_bank_config);
+
+			// Block sorting kernel
+			block_props.kernel_func<<<grid_size, block_props.threads, 0, stream>>>(
+				(Partition*) partitions[storage.selector](),
+				(Partition*) partitions[storage.selector ^ 1](),
+				storage.d_keys[storage.selector],
+				storage.d_keys[storage.selector ^ 1],
+				storage.d_keys[initial_selector],
+				storage.d_values[storage.selector],
+				storage.d_values[storage.selector ^ 1],
+				storage.d_values[initial_selector],
+				low_bit);
+
+			if (debug) {
+				error = cudaThreadSynchronize();
+				if (error = util::B40CPerror(error, "Single kernel failed ", __FILE__, __LINE__)) break;
+			}
+
+			// Restore smem bank mode
+			if (old_sm_config != block_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(old_sm_config);
+
+			// Update selector
+			storage.selector ^= 1;
+
+		} while(0);
+
+		return error;
+	}
+
+
+
+	/**
+	 * Dispatch single-CTA sort
+	 */
+	cudaError_t DispatchSingle(const SingleKernelProps &single_props)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -569,29 +625,18 @@ struct ProblemInstance
 			if (old_sm_config != single_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(single_props.sm_bank_config);
 
-			// Bind single textures
-			error = single_props.BindTexture(
-				storage.d_keys[storage.selector],
-				storage.d_values[storage.selector],
-				num_elements);
-			if (error) break;
-
 			// Single-CTA sorting kernel
 			single_props.kernel_func<<<grid_size, single_props.threads, 0, stream>>>(
 				storage.d_keys[storage.selector],
 				storage.d_values[storage.selector],
-				current_bit,
-				bits_remaining,
+				low_bit,
+				num_bits,
 				num_elements);
 
 			if (debug) {
 				error = cudaThreadSynchronize();
 				if (error = util::B40CPerror(error, "Single kernel failed ", __FILE__, __LINE__)) break;
 			}
-
-			// Unbind textures
-			error = single_props.UnbindTexture();
-			if (error) break;
 
 			// Restore smem bank mode
 			if (old_sm_config != single_props.sm_bank_config)

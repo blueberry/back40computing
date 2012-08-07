@@ -44,6 +44,7 @@ template <
 __launch_bounds__ (KernelPolicy::CTA_THREADS, KernelPolicy::MIN_CTA_OCCUPANCY)
 __global__ 
 void Kernel(
+	Partition							*d_partitions_out,
 	SizeT 								*d_spine,
 	KeyType 							*d_in_keys,
 	KeyType 							*d_out_keys,
@@ -60,11 +61,12 @@ void Kernel(
 
 	Cta cta(
 		smem_storage,
+		d_partitions_out,
+		d_spine,
 		d_in_keys,
 		d_out_keys,
 		d_in_values,
 		d_out_values,
-		d_spine,
 		current_bit);
 
 	cta.ProcessWorkRange(cta_work_distribution);

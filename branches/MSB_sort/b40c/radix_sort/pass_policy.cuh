@@ -32,6 +32,7 @@
 #include "../radix_sort/upsweep/kernel_policy.cuh"
 #include "../radix_sort/spine/kernel_policy.cuh"
 #include "../radix_sort/downsweep/kernel_policy.cuh"
+#include "../radix_sort/block/kernel_policy.cuh"
 #include "../radix_sort/single/kernel_policy.cuh"
 
 B40C_NS_PREFIX
@@ -62,8 +63,9 @@ template <
 	bool 				_UNIFORM_GRID_SIZE>
 struct DispatchPolicy
 {
-	enum {
-		UNIFORM_GRID_SIZE 			= _UNIFORM_GRID_SIZE,
+	enum
+	{
+		UNIFORM_GRID_SIZE = _UNIFORM_GRID_SIZE,
 	};
 
 	static const DynamicSmemConfig 	DYNAMIC_SMEM_CONFIG = _DYNAMIC_SMEM_CONFIG;
@@ -81,6 +83,7 @@ template <
 	typename 	_UpsweepPolicy,
 	typename 	_SpinePolicy,
 	typename 	_DownsweepPolicy,
+	typename 	_BlockPolicy,
 	typename 	_SinglePolicy,
 	typename 	_DispatchPolicy>
 struct PassPolicy
@@ -88,6 +91,7 @@ struct PassPolicy
 	typedef _UpsweepPolicy			UpsweepPolicy;
 	typedef _SpinePolicy 			SpinePolicy;
 	typedef _DownsweepPolicy 		DownsweepPolicy;
+	typedef _BlockPolicy 			BlockPolicy;
 	typedef _SinglePolicy 			SinglePolicy;
 	typedef _DispatchPolicy 		DispatchPolicy;
 };
@@ -136,7 +140,8 @@ struct TunedPassPolicy;
 template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
 struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 {
-	enum {
+	enum
+	{
 		TUNE_ARCH			= 200,
 		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
 		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
@@ -154,12 +159,6 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		RADIX_BITS,								// RADIX_BITS
 		8,										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
-/*
-		((PROBLEM_SIZE == SMALL_PROBLEM) ? 		// LOG_LOAD_VEC_SIZE
-			1 :
-			(!LARGE_DATA ? 2 : 1)),
-		1,										// LOG_LOADS_PER_TILE
-*/
 		17,										// ELEMENTS_PER_THREAD,
 		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
@@ -182,179 +181,37 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		RADIX_BITS,								// RADIX_BITS
 		4, 										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
-/*
-		(KEYS_ONLY && !LARGE_DATA ? 4 : 2), 	// MIN_CTA_OCCUPANCY
-		((PROBLEM_SIZE == SMALL_PROBLEM) ?		// LOG_CTA_THREADS
-			7 :
-			(KEYS_ONLY && !LARGE_DATA ? 7 : 8)),
-*/
 		17,										// THREAD_ELEMENTS
-/*
-		((PROBLEM_SIZE == SMALL_PROBLEM) ?		// LOG_THREAD_ELEMENTS
-			2 :
-			(!LARGE_DATA ? 4 : 3)),
-*/
-		((PROBLEM_SIZE == SMALL_PROBLEM) ? 		// LOAD_MODIFIER
-			b40c::util::io::ld::NONE :
-			b40c::util::io::ld::tex),
+		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
 		EARLY_EXIT>								// EARLY_EXIT
 			DownsweepPolicy;
 
+	// Block kernel policy
+	typedef block::KernelPolicy<
+		RADIX_BITS,								// RADIX_BITS
+		4, 										// MIN_CTA_OCCUPANCY
+		128,									// CTA_THREADS
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
+		b40c::util::io::st::NONE,				// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			BlockPolicy;
+
 	// Single kernel policy
 	typedef single::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		256,									// CTA_THREADS
+		128,									// CTA_THREADS
 		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		b40c::util::io::ld::tex,				// LOAD_MODIFIER
+		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			SinglePolicy;
 };
 
 
-/**
- * SM13
- */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
-struct TunedPassPolicy<130, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
-{
-	enum {
-		TUNE_ARCH			= 130,
-		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
-		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
-		EARLY_EXIT			= false,
-	};
-
-	// Dispatch policy
-	typedef DispatchPolicy <
-		DYNAMIC_SMEM_UNIFORM, 					// UNIFORM_SMEM_ALLOCATION
-		true> 									// UNIFORM_GRID_SIZE
-			DispatchPolicy;
-
-	// Upsweep kernel policy
-	typedef upsweep::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		(RADIX_BITS > 4 ? 3 : 6),				// MIN_CTA_OCCUPANCY
-		7,										// LOG_CTA_THREADS
-/*
-		0,										// LOG_LOAD_VEC_SIZE
-		(!LARGE_DATA ? 2 : 1),					// LOG_LOADS_PER_TILE
-*/
-		2,										// ELEMENTS_PER_THREAD,
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
-			UpsweepPolicy;
-
-	// Spine-scan kernel policy
-	typedef spine::KernelPolicy<
-		8,										// LOG_CTA_THREADS
-		2,										// LOG_LOAD_VEC_SIZE
-		0,										// LOG_LOADS_PER_TILE
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SpinePolicy;
-
-	// Downsweep kernel policy
-	typedef downsweep::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		(KEYS_ONLY ? 3 : 2),					// MIN_CTA_OCCUPANCY
-		6,										// LOG_CTA_THREADS
-		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS
-		b40c::util::io::ld::tex,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
-			DownsweepPolicy;
-
-	// Single kernel policy
-	typedef single::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		64,										// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		b40c::util::io::ld::tex,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SinglePolicy;
-
-};
-
-
-/**
- * SM10
- */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
-struct TunedPassPolicy<100, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
-{
-	enum {
-		TUNE_ARCH			= 100,
-		KEYS_ONLY 			= util::Equals<typename ProblemInstance::ValueType, util::NullType>::VALUE,
-		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
-		EARLY_EXIT			= false,
-	};
-
-	// Dispatch policy
-	typedef DispatchPolicy <
-		DYNAMIC_SMEM_LCM, 						// UNIFORM_SMEM_ALLOCATION
-		true> 									// UNIFORM_GRID_SIZE
-			DispatchPolicy;
-
-	// Upsweep kernel policy
-	typedef upsweep::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		2,										// MIN_CTA_OCCUPANCY
-		7,										// LOG_CTA_THREADS
-/*
-		0,										// LOG_LOAD_VEC_SIZE
-		0,										// LOG_LOADS_PER_TILE
-*/
-		2,										// ELEMENTS_PER_THREAD,
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
-			UpsweepPolicy;
-
-	// Spine-scan kernel policy
-	typedef spine::KernelPolicy<
-		8,										// LOG_CTA_THREADS
-		2,										// LOG_LOAD_VEC_SIZE
-		0,										// LOG_LOADS_PER_TILE
-		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SpinePolicy;
-
-	// Downsweep kernel policy
-	typedef downsweep::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		2,										// MIN_CTA_OCCUPANCY
-		6,										// LOG_CTA_THREADS
-		(!LARGE_DATA ? 4 : 3),					// LOG_THREAD_ELEMENTS
-		b40c::util::io::ld::tex,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		downsweep::SCATTER_WARP_TWO_PHASE,		// SCATTER_STRATEGY
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
-			DownsweepPolicy;
-
-	// Single kernel policy
-	typedef single::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		64,										// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		b40c::util::io::ld::tex,				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SinglePolicy;
-
-};
 
 
 
