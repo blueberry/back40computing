@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for single-CTA radix sort kernel
+ * CTA abstraction for single-tile radix sorting
  ******************************************************************************/
 
 #pragma once
@@ -34,17 +34,44 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace single {
+
+
+/**
+ * Single-CTA tuning policy.
+ */
+template <
+	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
+	int 							_CTA_THREADS,			// The number of threads per CTA
+	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
+	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+struct CtaTilePolicy
+{
+	enum
+	{
+		RADIX_BITS					= _RADIX_BITS,
+		CTA_THREADS 				= _CTA_THREADS,
+		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
+
+		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
+	};
+
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+};
+
 
 
 /**
  * Single-CTA radix sort
  */
 template <
-	typename KernelPolicy,
+	typename CtaTilePolicy,
 	typename KeyType,
 	typename ValueType>
-struct Cta
+struct CtaTile
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -55,27 +82,14 @@ struct Cta
 
 	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
 	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= KernelPolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= KernelPolicy::STORE_MODIFIER;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaTilePolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaTilePolicy::STORE_MODIFIER;
 
 	enum
 	{
-		RADIX_BITS					= KernelPolicy::RADIX_BITS,
-		RADIX_DIGITS 				= 1 << RADIX_BITS,
-
-		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
-
-		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
-		WARP_THREADS				= 1 << LOG_WARP_THREADS,
-
-		CTA_THREADS 				= KernelPolicy::CTA_THREADS,
-		WARPS						= CTA_THREADS / WARP_THREADS,
-
-		KEYS_PER_THREAD				= KernelPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= KernelPolicy::TILE_ELEMENTS,
-
-		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__),
-		MEM_BANKS					= 1 << LOG_MEM_BANKS,
+		RADIX_BITS					= CtaTilePolicy::RADIX_BITS,
+		KEYS_PER_THREAD				= CtaTilePolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= CtaTilePolicy::TILE_ELEMENTS,
 	};
 
 
@@ -86,7 +100,7 @@ struct Cta
 		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
-		KernelPolicy::SMEM_CONFIG> CtaRadixSort;
+		CtaTilePolicy::SMEM_CONFIG> CtaRadixSort;
 
 	/**
 	 * Shared memory storage layout
@@ -102,7 +116,7 @@ struct Cta
 
 
 	//---------------------------------------------------------------------
-	// Methods
+	// Utility methods
 	//---------------------------------------------------------------------
 
 	/**
@@ -166,14 +180,20 @@ struct Cta
 	}
 
 
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
 	/**
 	 * ProcessTile.  (Specialized for keys-only sorting.)
 	 */
 	template <typename SizeT>
-	static __device__ __forceinline__ void ProcessTile(
+	static __device__ __forceinline__ void Sort(
 		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys,
-		util::NullType 	*d_values,
+		KeyType 		*d_keys_in,
+		KeyType 		*d_keys_out,
+		util::NullType 	*d_values_in,
+		util::NullType 	*d_values_out,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
 		const SizeT		&cta_offset,
@@ -192,7 +212,7 @@ struct Cta
 		LoadTile(
 			smem_storage.key_exchange,
 			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
+			reinterpret_cast<UnsignedBits*>(d_keys_in),
 			cta_offset,
 			guarded_elements);
 
@@ -222,94 +242,49 @@ struct Cta
 		// Store keys
 		StoreTile(
 			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
+			reinterpret_cast<UnsignedBits*>(d_keys_out),
 			cta_offset,
 			guarded_elements);
 	}
-
-
-	/**
-	 * ProcessTile.  (Specialized for keys-value sorting.)
-	 * /
-	template <typename SizeT, typename _ValueType>
-	static __device__ __forceinline__ void ProcessTile(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys,
-		_ValueType		*d_values,
-		unsigned int 	current_bit,
-		unsigned int 	bits_remaining,
-		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
-	{
-		UnsignedBits 	keys[KEYS_PER_THREAD];
-		ValueType 		values[KEYS_PER_THREAD];
-
-		// Initialize keys to default key value
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = MAX_KEY;
-		}
-
-		// Load keys
-		LoadTile(
-			reinterpret_cast<KeyTexType*>(keys),
-			reinterpret_cast<KeyTexType*>(d_keys),
-			TexKeys<KeyTexType>::ref,
-			cta_offset,
-			guarded_elements);
-
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleIn(keys[KEY]);
-		}
-
-		// Load values
-		LoadTile(
-			reinterpret_cast<ValueTexType*>(values),
-			reinterpret_cast<ValueTexType*>(d_values),
-			TexValues<ValueTexType>::ref,
-			cta_offset,
-			guarded_elements);
-
-		// Sort
-		CtaRadixSort::SortThreadToCtaStride(
-			smem_storage.sorting_storage,
-			keys,
-			values,
-			current_bit,
-			bits_remaining);
-
-		// Twiddle key bits if necessary
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			keys[KEY] = KeyTraits<KeyType>::TwiddleOut(keys[KEY]);
-		}
-
-		// Store keys
-		StoreTile(
-			keys,
-			reinterpret_cast<UnsignedBits*>(d_keys),
-			cta_offset,
-			guarded_elements);
-
-		// Store values
-		StoreTile(
-			values,
-			d_values,
-			cta_offset,
-			guarded_elements);
-	}
-*/
-
 
 };
 
 
-} // namespace single
+/**
+ * Kernel entry point
+ */
+template <
+	typename CtaTilePolicy,
+	typename KeyType,
+	typename ValueType>
+__launch_bounds__ (CtaTilePolicy::CTA_THREADS, 1)
+__global__
+void Kernel(
+	KeyType 							*d_keys,
+	ValueType 							*d_values,
+	unsigned int 						current_bit,
+	unsigned int						bits_remaining,
+	unsigned int 						num_elements)
+{
+	// CTA abstraction type
+	typedef CtaTile<CtaTilePolicy, KeyType, ValueType> CtaTile;
+
+	// Shared memory pool
+	__shared__ typename CtaTile::SmemStorage smem_storage;
+
+	CtaTile::ProcessTile(
+		smem_storage,
+		d_keys,
+		d_keys,
+		d_values,
+		d_values,
+		current_bit,
+		bits_remaining,
+		int(0),
+		num_elements);
+}
+
+
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

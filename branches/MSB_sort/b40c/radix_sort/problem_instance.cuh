@@ -34,10 +34,10 @@
 #include "../radix_sort/pass_policy.cuh"
 
 #include "../radix_sort/upsweep/cta.cuh"
-#include "../radix_sort/spine/kernel.cuh"
-#include "../radix_sort/downsweep/kernel.cuh"
-#include "../radix_sort/block/kernel.cuh"
-#include "../radix_sort/single/kernel.cuh"
+#include "../radix_sort/spine/cta.cuh"
+#include "../radix_sort/downsweep/cta.cuh"
+#include "../radix_sort/tile/cta.cuh"
+#include "../radix_sort/partition/cta.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -214,9 +214,9 @@ struct ProblemInstance
 
 
 	/**
-	 * Block kernel props
+	 * Partition kernel props
 	 */
-	struct BlockKernelProps : util::KernelProps
+	struct PartitionKernelProps : util::KernelProps
 	{
 		// Kernel function type
 		typedef void (*KernelFunc)(
@@ -271,7 +271,7 @@ struct ProblemInstance
 	/**
 	 * Single kernel props
 	 */
-	struct SingleKernelProps : util::KernelProps
+	struct TileKernelProps : util::KernelProps
 	{
 		// Kernel function type
 		typedef void (*KernelFunc)(
@@ -537,12 +537,12 @@ struct ProblemInstance
 
 
 	/**
-	 * Dispatch block sort
+	 * Dispatch partition sort
 	 */
-	cudaError_t DispatchBlock(
-		const BlockKernelProps &block_props,
-		int initial_selector,
-		int grid_size)
+	cudaError_t DispatchPartition(
+		const PartitionKernelProps 	&partition_props,
+		int 						initial_selector,
+		int 						grid_size)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -551,22 +551,22 @@ struct ProblemInstance
 			// Print debug info
 			if (debug)
 			{
-				printf("Block: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
-					block_props.tile_elements,
-					block_props.max_cta_occupancy,
+				printf("Partition: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
+					partition_props.tile_elements,
+					partition_props.max_cta_occupancy,
 					grid_size,
-					block_props.threads);
+					partition_props.threads);
 				fflush(stdout);
 			}
 
 			// Set shared mem bank mode
 			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			if (old_sm_config != block_props.sm_bank_config)
-				cudaDeviceSetSharedMemConfig(block_props.sm_bank_config);
+			if (old_sm_config != partition_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(partition_props.sm_bank_config);
 
-			// Block sorting kernel
-			block_props.kernel_func<<<grid_size, block_props.threads, 0, stream>>>(
+			// Tile sorting kernel
+			partition_props.kernel_func<<<grid_size, partition_props.threads, 0, stream>>>(
 				(Partition*) partitions[storage.selector](),
 				(Partition*) partitions[storage.selector ^ 1](),
 				storage.d_keys[storage.selector],
@@ -583,7 +583,7 @@ struct ProblemInstance
 			}
 
 			// Restore smem bank mode
-			if (old_sm_config != block_props.sm_bank_config)
+			if (old_sm_config != partition_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
 
 			// Update selector
@@ -597,9 +597,9 @@ struct ProblemInstance
 
 
 	/**
-	 * Dispatch single-CTA sort
+	 * Dispatch single-CTA tile sort
 	 */
-	cudaError_t DispatchSingle(const SingleKernelProps &single_props)
+	cudaError_t DispatchTile(const TileKernelProps &tile_props)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -611,22 +611,22 @@ struct ProblemInstance
 			// Print debug info
 			if (debug)
 			{
-				printf("Single: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
-					single_props.tile_elements,
-					single_props.max_cta_occupancy,
+				printf("Single tile: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
+					tile_props.tile_elements,
+					tile_props.max_cta_occupancy,
 					grid_size,
-					single_props.threads);
+					tile_props.threads);
 				fflush(stdout);
 			}
 
 			// Set shared mem bank mode
 			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			if (old_sm_config != single_props.sm_bank_config)
-				cudaDeviceSetSharedMemConfig(single_props.sm_bank_config);
+			if (old_sm_config != tile_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(tile_props.sm_bank_config);
 
 			// Single-CTA sorting kernel
-			single_props.kernel_func<<<grid_size, single_props.threads, 0, stream>>>(
+			tile_props.kernel_func<<<grid_size, tile_props.threads, 0, stream>>>(
 				storage.d_keys[storage.selector],
 				storage.d_values[storage.selector],
 				low_bit,
@@ -639,7 +639,7 @@ struct ProblemInstance
 			}
 
 			// Restore smem bank mode
-			if (old_sm_config != single_props.sm_bank_config)
+			if (old_sm_config != tile_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
 
 		} while(0);

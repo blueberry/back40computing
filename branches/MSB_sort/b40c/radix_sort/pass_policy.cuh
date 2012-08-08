@@ -32,8 +32,8 @@
 #include "../radix_sort/upsweep/kernel_policy.cuh"
 #include "../radix_sort/spine/kernel_policy.cuh"
 #include "../radix_sort/downsweep/kernel_policy.cuh"
-#include "../radix_sort/block/kernel_policy.cuh"
-#include "../radix_sort/single/kernel_policy.cuh"
+#include "../radix_sort/partition/kernel_policy.cuh"
+#include "../radix_sort/tile/kernel_policy.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -83,17 +83,17 @@ template <
 	typename 	_UpsweepPolicy,
 	typename 	_SpinePolicy,
 	typename 	_DownsweepPolicy,
-	typename 	_BlockPolicy,
-	typename 	_SinglePolicy,
+	typename 	_TilePolicy,
+	typename 	_PartitionPolicy,
 	typename 	_DispatchPolicy>
 struct PassPolicy
 {
 	typedef _UpsweepPolicy			UpsweepPolicy;
 	typedef _SpinePolicy 			SpinePolicy;
 	typedef _DownsweepPolicy 		DownsweepPolicy;
-	typedef _BlockPolicy 			BlockPolicy;
-	typedef _SinglePolicy 			SinglePolicy;
+	typedef _PartitionPolicy 		PartitionPolicy;
 	typedef _DispatchPolicy 		DispatchPolicy;
+	typedef _TilePolicy 			TilePolicy;
 };
 
 
@@ -189,7 +189,17 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		EARLY_EXIT>								// EARLY_EXIT
 			DownsweepPolicy;
 
-	// Block kernel policy
+	// Tile kernel policy
+	typedef single::KernelPolicy<
+		RADIX_BITS,								// RADIX_BITS
+		128,									// CTA_THREADS
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
+		b40c::util::io::st::NONE,				// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			TilePolicy;
+
+	// Partition kernel policy
 	typedef block::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		4, 										// MIN_CTA_OCCUPANCY
@@ -198,17 +208,7 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			BlockPolicy;
-
-	// Single kernel policy
-	typedef single::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		128,									// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
-		b40c::util::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SinglePolicy;
+			PartitionPolicy;
 };
 
 

@@ -37,27 +37,57 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace spine {
 
 
+/**
+ * Spine tuning policy.
+ */
 template <
-	typename KernelPolicy,
+	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
+	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load
+	int 							_LOG_LOADS_PER_TILE,	// The number of loads to process per thread per tile
+	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+struct CtaSpinePolicy
+{
+	enum {
+		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
+		LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE,
+		LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE,
+
+		CTA_THREADS					= 1 << LOG_CTA_THREADS,
+		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+	};
+
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+};
+
+
+
+/**
+ *
+ */
+template <
+	typename CtaSpinePolicy,
 	typename T,
 	typename SizeT>
-struct Cta
+struct CtaSpine
 {
 	//---------------------------------------------------------------------
 	// Constants and type definitions
 	//---------------------------------------------------------------------
 
 	enum {
-		LOG_CTA_THREADS 					= KernelPolicy::LOG_CTA_THREADS,
+		LOG_CTA_THREADS 					= CtaSpinePolicy::LOG_CTA_THREADS,
 		CTA_THREADS							= 1 << LOG_CTA_THREADS,
 
-		LOG_LOAD_VEC_SIZE  				= KernelPolicy::LOG_LOAD_VEC_SIZE,
+		LOG_LOAD_VEC_SIZE  				= CtaSpinePolicy::LOG_LOAD_VEC_SIZE,
 		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
 
-		LOG_LOADS_PER_TILE 				= KernelPolicy::LOG_LOADS_PER_TILE,
+		LOG_LOADS_PER_TILE 				= CtaSpinePolicy::LOG_LOADS_PER_TILE,
 		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
 
 		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
@@ -129,7 +159,7 @@ struct Cta
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ Cta(
+	__device__ __forceinline__ CtaSpine(
 		SmemStorage 		&smem_storage,
 		T 					*d_in,
 		T 					*d_out) :
@@ -157,7 +187,7 @@ struct Cta
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			CTA_THREADS,
-			KernelPolicy::LOAD_MODIFIER,
+			CtaSpinePolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				partials,
 				d_in,
@@ -177,7 +207,7 @@ struct Cta
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			CTA_THREADS,
-			KernelPolicy::STORE_MODIFIER,
+			CtaSpinePolicy::STORE_MODIFIER,
 			false>::Store(
 				partials,
 				d_out,
@@ -203,7 +233,41 @@ struct Cta
 };
 
 
-} // namespace spine
+
+
+
+/**
+ * Kernel entry point
+ */
+template <
+	typename CtaSpinePolicy,
+	typename T,
+	typename SizeT>
+__launch_bounds__ (CtaSpinePolicy::CTA_THREADS, 1)
+__global__
+void Kernel(
+	T			*d_in,
+	T			*d_out,
+	SizeT 		spine_elements)
+{
+	// CTA abstraction type
+	typedef CtaSpine<CtaSpinePolicy, T, SizeT> CtaSpine;
+
+	// Shared memory pool
+	__shared__ typename CtaSpine::SmemStorage smem_storage;
+
+	// Only CTA-0 needs to run
+	if (blockIdx.x > 0) return;
+
+	CtaSpine cta(smem_storage, d_in, d_out);
+	cta.ProcessWorkRange(spine_elements);
+}
+
+
+
+
+
+
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

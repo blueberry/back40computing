@@ -34,18 +34,63 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace downsweep {
+
+
+/**
+ * Types of downsweep scattering strategies
+ */
+enum ScatterStrategy
+{
+	SCATTER_DIRECT = 0,			// Scatter directly from registers to global bins
+	SCATTER_TWO_PHASE,			// First scatter from registers into shared memory bins, then into global bins
+	SCATTER_WARP_TWO_PHASE,		// Similar to SCATTER_TWO_PHASE, but with the additional constraint that each warp only perform segment-aligned global writes
+};
+
+
+/**
+ * Downsweep tuning policy.
+ */
+template <
+	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
+	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
+	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
+	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
+	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
+	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
+	cudaSharedMemConfig				_SMEM_CONFIG,			// Shared memory bank size
+	bool						 	_EARLY_EXIT>			// Whether or not to short-circuit passes if the upsweep determines homogoneous digits in the current digit place
+struct CtaDownsweepPolicy
+{
+	enum {
+		RADIX_BITS					= _RADIX_BITS,
+		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
+		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
+		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
+		EARLY_EXIT					= _EARLY_EXIT,
+
+		CTA_THREADS					= 1 << LOG_CTA_THREADS,
+		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
+	};
+
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+	static const ScatterStrategy 				SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
+};
+
+
 
 
 /**
  * Partitioning downsweep scan CTA
  */
 template <
-	typename KernelPolicy,
+	typename CtaDownsweepPolicy,
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-struct Cta
+struct CtaDownsweep
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -56,16 +101,16 @@ struct Cta
 
 	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
 	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= KernelPolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= KernelPolicy::STORE_MODIFIER;
-	static const ScatterStrategy 				SCATTER_STRATEGY 	= KernelPolicy::SCATTER_STRATEGY;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaDownsweepPolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaDownsweepPolicy::STORE_MODIFIER;
+	static const ScatterStrategy 				SCATTER_STRATEGY 	= CtaDownsweepPolicy::SCATTER_STRATEGY;
 
 	enum {
-		RADIX_BITS					= KernelPolicy::RADIX_BITS,
+		RADIX_BITS					= CtaDownsweepPolicy::RADIX_BITS,
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
 
-		LOG_CTA_THREADS 			= KernelPolicy::LOG_CTA_THREADS,
+		LOG_CTA_THREADS 			= CtaDownsweepPolicy::LOG_CTA_THREADS,
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
@@ -74,8 +119,8 @@ struct Cta
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
-		KEYS_PER_THREAD 			= KernelPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= KernelPolicy::TILE_ELEMENTS,
+		KEYS_PER_THREAD 			= CtaDownsweepPolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= CtaDownsweepPolicy::TILE_ELEMENTS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),
 		LOG_BYTES_PER_SIZET			= util::Log2<BYTES_PER_SIZET>::VALUE,
@@ -99,30 +144,24 @@ struct Cta
 	typedef CtaRadixRank<
 		CTA_THREADS,
 		RADIX_BITS,
-		KernelPolicy::SMEM_CONFIG> CtaRadixRank;
+		CtaDownsweepPolicy::SMEM_CONFIG> CtaRadixRank;
 
 	/**
 	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
-		SizeT							cta_offset;
-		SizeT							cta_offset_limit;
-
-		util::CtaProgress<SizeT, TILE_ELEMENTS> cta_progress;
-
-		unsigned int 					digit_prefixes[RADIX_DIGITS + 1];
-
-		union
-		{
-			SizeT 						digit_offsets[RADIX_DIGITS];
-		};
+		util::CtaProgress<SizeT, TILE_ELEMENTS> 	cta_progress;
+		SizeT										cta_offset;
+		SizeT										cta_offset_limit;
+		unsigned int 								digit_prefixes[RADIX_DIGITS + 1];
+		SizeT 										digit_offsets[RADIX_DIGITS];
 
 		union
 		{
-			typename CtaRadixRank::SmemStorage	ranking_storage;
-			UnsignedBits						key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
-			ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+			typename CtaRadixRank::SmemStorage		ranking_storage;
+			UnsignedBits							key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+			ValueType 								value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
 		};
 	};
 
@@ -277,7 +316,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	 * Load tile of keys
 	 */
 	__device__ __forceinline__ void LoadKeys(
-		SizeT tex_offset,
+		SizeT tex_offsetDownsweep,
 		const SizeT &guarded_elements,Partition		*d_partitions_out,
 		SizeT 			*d_spinents,
 		Tile &tilein_keys,
@@ -686,6 +725,47 @@ ents);
 		{
 			SizeT remainder = smem_storage.cta_progress.out_of_bounds - cta_offset;
 			ProcessTile<false>(cta_offset, remainders
-		while (tex_offset < smem_storage.tex_offset_limit) {
-			ProcessTile(tex_offset);
-	B40C_NS_POSTFIX
+		while (tex_
+/**
+ * Kernel entry point
+ */
+template <
+	typename CtaDownsweepPolicy,
+	typename SizeT,
+	typename KeyType,
+	typename ValueType>
+__launch_bounds__ (CtaDownsweepPolicy::CTA_THREADS, CtaDownsweepPolicy::MIN_CTA_OCCUPANCY)
+__global__
+void Kernel(
+	SizeT 								*d_spine,
+	KeyType 							*d_in_keys,
+	KeyType 							*d_out_keys,
+	ValueType 							*d_in_values,
+	ValueType 							*d_out_values,
+	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
+	unsigned int 						current_bit)
+{
+	// CTA abstraction type
+	typedef CtaDownsweep<CtaDownsweepPolicy, SizeT, KeyType, ValueType> CtaDownsweep;
+
+	// Shared memory pool
+	__shared__ typename CtaDownsweep::SmemStorage smem_storage;
+
+	CtaDownsweep cta(
+		smem_storage,
+		d_spine,
+		d_in_keys,
+		d_out_keys,
+		d_in_values,
+		d_out_values,
+		current_bit);
+
+	cta.ProcessWorkRange(cta_work_distribution);
+}
+
+
+
+
+} // namespace radix_sort
+} // namespace b40c
+B40C_NS_POSTFIX

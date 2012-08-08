@@ -234,7 +234,8 @@ private :
 		#pragma unroll
 		for (int STEP = 0; STEP < LOG_WARP_THREADS; STEP++)
 		{
-			warpscan[0] = partial = partial + warpscan[0 - (1 << STEP)];
+			partial += warpscan[0 - (1 << STEP)];
+			warpscan[0] = partial;
 		}
 
 		// Barrier

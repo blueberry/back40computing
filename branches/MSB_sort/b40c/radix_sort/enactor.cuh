@@ -94,8 +94,8 @@ struct Enactor
 		struct UpsweepPolicy 	: TunedPassPolicy::UpsweepPolicy {};
 		struct SpinePolicy 		: TunedPassPolicy::SpinePolicy {};
 		struct DownsweepPolicy 	: TunedPassPolicy::DownsweepPolicy {};
-		struct BlockPolicy 		: TunedPassPolicy::BlockPolicy {};
-		struct SinglePolicy 	: TunedPassPolicy::SinglePolicy {};
+		struct PartitionPolicy 	: TunedPassPolicy::PartitionPolicy {};
+		struct TilePolicy 		: TunedPassPolicy::TilePolicy {};
 	};
 
 
@@ -145,30 +145,37 @@ struct Enactor
 				typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
 			if (error) break;
 
-			// Block kernel props
-			typename ProblemInstance::BlockKernelProps block_props;
-			error = block_props.template Init<
-				typename TunedPassPolicy::BlockPolicy,
-				typename OpaquePassPolicy::BlockPolicy>(sm_version, sm_count);
+			// Partition kernel props
+			typename ProblemInstance::PartitionKernelProps partition_props;
+			error = partition_props.template Init<
+				typename TunedPassPolicy::PartitionPolicy,
+				typename OpaquePassPolicy::PartitionPolicy>(sm_version, sm_count);
 			if (error) break;
 /*
-			// Single kernel props
-			typename ProblemInstance::SingleKernelProps single_props;
-			error = single_props.template Init<
-				typename TunedPassPolicy::SinglePolicy,
-				typename OpaquePassPolicy::SinglePolicy>(sm_version, sm_count);
+			// Tile kernel props
+			typename ProblemInstance::TileKernelProps tile_props;
+			error = tile_props.template Init<
+				typename TunedPassPolicy::TilePolicy,
+				typename OpaquePassPolicy::TilePolicy>(sm_version, sm_count);
 			if (error) break;
 */
 			//
 			// Allocate
 			//
 
-			// Make sure our partitions queue is big enough
-			int max_partitions = (problem_instance.num_elements + block_props.tile_elements - 1) / block_props.tile_elements;
-			error = partitions[0].Setup(sizeof(Partition) * max_partitions);
+			// Make sure our partition descriptor queues are big enough
+			int max_partitions = (problem_instance.num_elements + partition_props.tile_elements - 1) / partition_props.tile_elements;
+			size_t queue_bytes = sizeof(Partition) * max_partitions;
+
+			error = partitions[0].Setup(queue_bytes);
 			if (error) break;
-			error = partitions[1].Setup(sizeof(Partition) * max_partitions);
+			error = partitions[1].Setup(queue_bytes);
 			if (error) break;
+
+			error = cudaMemSet(partitions[0](), 0, sizeof(Partition) * max_partitions);
+			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
+			error = cudaMemSet(partitions[1](), 0, sizeof(Partition) * max_partitions);
+			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
 
 
 			//
@@ -200,8 +207,8 @@ struct Enactor
 			// Perform block iterations
 			int grid_size = 32;
 			{
-				error = problem_instance.DispatchBlock(
-					block_props,
+				error = problem_instance.DispatchPartition(
+					partition_props,
 					initial_selector,
 					grid_size);
 				if (error) break;
