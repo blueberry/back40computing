@@ -18,7 +18,8 @@
  ******************************************************************************/
 
 /******************************************************************************
- *
+ * "Hybrid" CTA abstraction for locally sorting small blocks or performing
+ * global distribution passes over large blocks
  ******************************************************************************/
 
 #pragma once
@@ -29,19 +30,18 @@
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
+#include "../../radix_sort/cta_block.cuh"
 #include "../../radix_sort/cta_radix_sort.cuh"
-#include "../../radix_sort/cta_tile.cuh"
 #include "../../radix_sort/cta_upsweep.cuh"
 #include "../../radix_sort/cta_downsweep.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
-namespace partition {
 
 
 /**
- * CtaPass tuning policy.
+ * Hybrid CTA tuning policy.
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -51,7 +51,7 @@ template <
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
-struct CtaPassPolicy
+struct CtaHybridPolicy
 {
 	enum
 	{
@@ -71,14 +71,15 @@ struct CtaPassPolicy
 
 
 /**
- *
+ * "Hybrid" CTA abstraction for locally sorting small blocks or performing
+ * global distribution passes over large blocks
  */
 template <
-	typename CtaPassPolicy,
+	typename CtaHybridPolicy,
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-struct CtaPass
+struct CtaHybrid
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -86,25 +87,25 @@ struct CtaPass
 
 	enum
 	{
-		PASS_RADIX_BITS		= CtaPassPolicy::Upsweep::RADIX_BITS,
+		PASS_RADIX_BITS		= CtaHybridPolicy::Upsweep::RADIX_BITS,
 		PASS_RADIX_DIGITS 	= 1 << PASS_RADIX_BITS,
 	};
 
-	// Block CTA abstraction
-	typedef CtaPass<
-		typename CtaPassPolicy::Upsweep,
+	// Single-tile CTA abstraction
+	typedef CtaSingle<
+		typename CtaHybridPolicy::Upsweep,
 		KeyType,
-		ValueType> BlockCta;
+		ValueType> SingleCta;
 
 	// Upsweep CTA abstraction
 	typedef CtaUpsweep<
-		typename CtaPassPolicy::Upsweep,
+		typename CtaHybridPolicy::Upsweep,
 		SizeT,
 		KeyType> UpsweepCta;
 
 	// Downsweep CTA abstraction
 	typedef CtaDownsweep<
-		typename CtaPassPolicy::Downsweep,
+		typename CtaHybridPolicy::Downsweep,
 		SizeT,
 		KeyType,
 		ValueType> DownsweepCta;
@@ -260,11 +261,11 @@ struct CtaPass
  * Kernel entry point
  */
 template <
-	typename CtaPassPolicy,
+	typename CtaHybridPolicy,
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-__launch_bounds__ (CtaPassPolicy::CTA_THREADS, CtaPassPolicy::MIN_CTA_OCCUPANCY)
+__launch_bounds__ (CtaHybridPolicy::CTA_THREADS, CtaHybridPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void Kernel(
 	Partition							*d_partitions_in,
@@ -278,12 +279,12 @@ void Kernel(
 	int									low_bit)
 {
 	// CTA abstraction type
-	typedef CtaPass<CtaPassPolicy, SizeT, KeyType, ValueType> CtaPass;
+	typedef CtaHybrid<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybrid;
 
 	// Shared memory pool
-	__shared__ typename CtaPass::SmemStorage smem_storage;
+	__shared__ typename CtaHybrid::SmemStorage smem_storage;
 
-	CtaPass::ProcessWorkRange(
+	CtaHybrid::ProcessWorkRange(
 		smem_storage,
 		d_partitions_in,
 		d_partitions_out,

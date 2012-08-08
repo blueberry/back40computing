@@ -7,7 +7,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  * 
- *	 http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -66,115 +66,10 @@ struct Partition
 
 
 
-
-/******************************************************************************
- * Bit-field extraction utilities
- ******************************************************************************/
-
-/**
- * Bitfield-extract, left-shift
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT, typename T>
-__device__ __forceinline__ unsigned int Extract(
-	T source)
-{
-	const T MASK 		= ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT 	= LEFT_SHIFT - BIT_OFFSET;
-
-	T bits = (source & MASK);
-	if (SHIFT != 0) {
-		bits = util::MagnitudeShift<SHIFT>::Shift(bits);
-	}
-	return bits;
-}
-
-/**
- * Bitfield-extract, left-shift, add
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT, typename T>
-__device__ __forceinline__ unsigned int Extract(
-	T source,
-	unsigned int addend)
-{
-	const T MASK			= ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT	 		= LEFT_SHIFT - BIT_OFFSET;
-	const int BIT_LENGTH	= int(sizeof(int) * 8);
-
-	unsigned int bits = (source & MASK);
-	if ((SHIFT == 0) || (SHIFT >= BIT_LENGTH) || (SHIFT * -1 >= BIT_LENGTH)) {
-		bits += addend;
-	} else if (SHIFT > 0) {
-		bits = util::SHL_ADD(bits, (unsigned int) (SHIFT), addend);
-	} else {
-		bits = util::SHR_ADD(bits, (unsigned int) (SHIFT * -1), addend);
-	}
-	return bits;
-}
-
-
-/**
- * Bitfield-extract, left-shift (64-bit)
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
-__device__ __forceinline__ unsigned int Extract(
-	unsigned long long source)
-{
-	const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-	unsigned long long bits = (source & MASK);
-	return util::MagnitudeShift<SHIFT>::Shift(bits);
-}
-
-/**
- * Bitfield-extract, left-shift, add (64-bit)
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
-__device__ __forceinline__ unsigned int Extract(
-	unsigned long long source,
-	unsigned int addend)
-{
-	return Extract<BIT_OFFSET, NUM_BITS, LEFT_SHIFT>(source) + addend;
-}
-
-
-#if defined(__LP64__)
-// longs are 64-bit on non-Windows 64-bit compilers
-
-/**
- * Bitfield-extract, left-shift (64-bit)
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
-__device__ __forceinline__ unsigned int Extract(
-	unsigned long source)
-{
-	const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-	const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-	unsigned long long bits = (source & MASK);
-	return util::MagnitudeShift<SHIFT>::Shift(bits);
-}
-
-/**
- * Bitfield-extract, left-shift, add (64-bit)
- */
-template <int BIT_OFFSET, int NUM_BITS, int LEFT_SHIFT>
-__device__ __forceinline__ unsigned int Extract(
-	unsigned long source,
-	unsigned int addend)
-{
-	return Extract<BIT_OFFSET, NUM_BITS, LEFT_SHIFT>(source) + addend;
-}
-
-#endif
-
-
-
 /******************************************************************************
  * Traits for converting for converting signed and floating point types
  * to unsigned types suitable for radix sorting
  ******************************************************************************/
-
 
 /**
  * Specialization for unsigned signed integers

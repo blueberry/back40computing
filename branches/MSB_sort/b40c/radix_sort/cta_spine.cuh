@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for scan kernels
+ * "Spine-scan" CTA abstraction for scanning radix digit histograms
  ******************************************************************************/
 
 #pragma once
@@ -40,7 +40,7 @@ namespace radix_sort {
 
 
 /**
- * Spine tuning policy.
+ * Spine CTA tuning policy
  */
 template <
 	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
@@ -68,7 +68,7 @@ struct CtaSpinePolicy
 
 
 /**
- *
+ * "Spine-scan" CTA abstraction for scanning radix digit histograms
  */
 template <
 	typename CtaSpinePolicy,

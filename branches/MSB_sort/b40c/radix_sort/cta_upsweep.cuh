@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for radix sort upsweep reduction kernels
+ * "Upsweep" CTA abstraction for computing radix digit histograms
  ******************************************************************************/
 
 #pragma once
@@ -36,7 +36,7 @@ B40C_NS_PREFIXinclude <b40c/radix_sort/sort_utils.cuh>
 
 
 /**
- * Radix sort upsweep reduction tuning policy.
+ * Upsweep CTA tuning policy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -67,14 +67,16 @@ struct CtaUpsweepPolicy
 
 
 /**
- * Radix sort upsweep reduction CTA
+ * "Upsweep" CTA abstraction for computing radix digit histograms
  */
 template <
 	typename CtaUpsweepPolicy,
 	typename SizeT,
 	typename KeyType>
-struct CtaUpsweep
-{l
+class CtaUpsweep
+{
+private:
+l
 	/D,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
@@ -125,21 +127,27 @@ struct CtaUpsweep
 		// four = CUB_MAX(0, LOG_COUNTER_LANES - LOG_WARPS),
 		LANES_PER_WARP ES_PER_WARP					= CUB_MAX(0, LOG_COMPOSITE_LANES - LOG_WARPS),
 		LANES_PER_WARP 						= 1 << LOG_LANES_PER_WARP,= CUB_MIN(64, 255 / KEYS_PER_THREAD),
-		UNROLLED_ELEMENTS ER_LANE - LOG_WARP_THREADS,		// Number of partials per thread to aggregate
+		UNROLLED_ELEMENTS ER_LANE - LOG_WARP_THREADS,		// Number opublic:f partials per thread to aggregate
 		COMPOSITES_PER_LANE_PER_THREAD 		= 1 << LOG_COMPOSITES_PER_til::CtaProgress<SizeT, TILE_ELEMENTS> cta_progress;
 PER_LANE
 		{	= RADIX_DIGITS,
 		AGGREGATED_PARTIALS_PER_ROW 	CTA_	= WARP_THREADS,
 		PADDED_AGGREGATED_PARTIALS_PER_ROW 	= AGGREGATED_PARTIACTA_LS_PER_ROW + 1,
 
-		// Unroll tiles in batches of X elements per thread (X = log(255) is maximum without risking overflow)
-		LOG_UNROLL_COUNT 					= 6 - LOG_TILE_ELEMENTS_PER_THREAD,		// X = 128
+		// Unroll tiles in batches of X elements per thread (X = log(private:
+l
+	/D,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};
 
+ C--
+	// Thread fieldsl
+	/D,		// X = 128
+		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
+	};
 
-
-	/**
+ C--
+--/**
 	 * Shared storage for radix distributionn sorting upsweep
 	 */
 	struct SmemStorage
@@ -378,7 +386,8 @@ ce_LE_ELEMENTS * HALF));
 	 * Reset composite couUnsignedBits key = d_in_keys[cta_offset];
 			Bucket(key);
 			cta_offset += CTA_{
-		#pragma unroll
+		#pragma unrolpublic:
+l
 	/D,		// X = 128
 		UNROLL_COUNT						= 1 << LOG_UNROLL_COUNT,
 	};

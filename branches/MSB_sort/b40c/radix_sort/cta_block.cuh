@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA abstraction for single-tile radix sorting
+ * "Block" CTA abstraction for sorting small tiles of input
  ******************************************************************************/
 
 #pragma once
@@ -37,7 +37,7 @@ namespace radix_sort {
 
 
 /**
- * Single-CTA tuning policy.
+ * Block CTA tuning policy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -46,7 +46,7 @@ template <
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
-struct CtaTilePolicy
+struct CtaBlockPolicy
 {
 	enum
 	{
@@ -65,14 +65,16 @@ struct CtaTilePolicy
 
 
 /**
- * Single-CTA radix sort
+ * "Block" CTA abstraction for sorting small tiles of input
  */
 template <
-	typename CtaTilePolicy,
+	typename CtaBlockPolicy,
 	typename KeyType,
 	typename ValueType>
-struct CtaTile
+class CtaBlock
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
@@ -82,14 +84,14 @@ struct CtaTile
 
 	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
 	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaTilePolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaTilePolicy::STORE_MODIFIER;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaBlockPolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaBlockPolicy::STORE_MODIFIER;
 
 	enum
 	{
-		RADIX_BITS					= CtaTilePolicy::RADIX_BITS,
-		KEYS_PER_THREAD				= CtaTilePolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= CtaTilePolicy::TILE_ELEMENTS,
+		RADIX_BITS					= CtaBlockPolicy::RADIX_BITS,
+		KEYS_PER_THREAD				= CtaBlockPolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= CtaBlockPolicy::TILE_ELEMENTS,
 	};
 
 
@@ -100,7 +102,9 @@ struct CtaTile
 		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
-		CtaTilePolicy::SMEM_CONFIG> CtaRadixSort;
+		CtaBlockPolicy::SMEM_CONFIG> CtaRadixSort;
+
+public:
 
 	/**
 	 * Shared memory storage layout
@@ -114,6 +118,8 @@ struct CtaTile
 		};
 	};
 
+
+private:
 
 	//---------------------------------------------------------------------
 	// Utility methods
@@ -179,6 +185,7 @@ struct CtaTile
 		}
 	}
 
+public:
 
 	//---------------------------------------------------------------------
 	// Interface
@@ -254,10 +261,10 @@ struct CtaTile
  * Kernel entry point
  */
 template <
-	typename CtaTilePolicy,
+	typename CtaBlockPolicy,
 	typename KeyType,
 	typename ValueType>
-__launch_bounds__ (CtaTilePolicy::CTA_THREADS, 1)
+__launch_bounds__ (CtaBlockPolicy::CTA_THREADS, 1)
 __global__
 void Kernel(
 	KeyType 							*d_keys,
@@ -267,12 +274,12 @@ void Kernel(
 	unsigned int 						num_elements)
 {
 	// CTA abstraction type
-	typedef CtaTile<CtaTilePolicy, KeyType, ValueType> CtaTile;
+	typedef CtaBlock<CtaBlockPolicy, KeyType, ValueType> CtaBlock;
 
 	// Shared memory pool
-	__shared__ typename CtaTile::SmemStorage smem_storage;
+	__shared__ typename CtaBlock::SmemStorage smem_storage;
 
-	CtaTile::ProcessTile(
+	CtaBlock::ProcessTile(
 		smem_storage,
 		d_keys,
 		d_keys,

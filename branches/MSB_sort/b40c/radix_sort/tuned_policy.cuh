@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Radix sort policy
+ * Tuned derivatives of radix sorting policy
  ******************************************************************************/
 
 #pragma once
@@ -28,12 +28,11 @@
 #include "../util/io/modified_store.cuh"
 #include "../util/ns_umbrella.cuh"
 
-#include "../radix_sort/pass_policy.cuh"
-#include "../radix_sort/upsweep/kernel_policy.cuh"
-#include "../radix_sort/spine/kernel_policy.cuh"
-#include "../radix_sort/downsweep/kernel_policy.cuh"
-#include "../radix_sort/partition/kernel_policy.cuh"
-#include "../radix_sort/tile/kernel_policy.cuh"
+#include "../radix_sort/cta_downsweep.cuh"
+#include "../radix_sort/cta_hybrid.cuh"
+#include "../radix_sort/cta_block.cuh"
+#include "../radix_sort/cta_spine.cuh"
+#include "../radix_sort/cta_upsweep.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {

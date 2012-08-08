@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA collective abstraction for ranking keys (unsigned bits) by radix digit.
+ * CTA abstraction for ranking keys (unsigned bits) by radix digit.
  ******************************************************************************/
 
 #pragma once

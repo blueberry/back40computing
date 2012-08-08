@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for radix sort downsweep scan kernels
+ * "Downsweep" CTA abstraction for distributing keys
  ******************************************************************************/
 
 #pragma once
@@ -48,7 +48,7 @@ enum ScatterStrategy
 
 
 /**
- * Downsweep tuning policy.
+ * Downsweep CTA tuning policy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -83,15 +83,17 @@ struct CtaDownsweepPolicy
 
 
 /**
- * Partitioning downsweep scan CTA
+ * "Downsweep" CTA abstraction for distributing keys
  */
 template <
 	typename CtaDownsweepPolicy,
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-struct CtaDownsweep
+class CtaDownsweep
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
@@ -146,6 +148,9 @@ struct CtaDownsweep
 		RADIX_BITS,
 		CtaDownsweepPolicy::SMEM_CONFIG> CtaRadixRank;
 
+
+public:
+
 	/**
 	 * Shared memory storage layout
 	 */
@@ -165,6 +170,8 @@ struct CtaDownsweep
 		};
 	};
 
+
+private:
 
 	//---------------------------------------------------------------------
 	// Thread fields
@@ -725,7 +732,19 @@ ents);
 		{
 			SizeT remainder = smem_storage.cta_progress.out_of_bounds - cta_offset;
 			ProcessTile<false>(cta_offset, remainders
-		while (tex_
+		while 
+
+public:
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Process work range of tiles
+	 */
+	__device__ __forceinline__ void ProcessWorkRange()
+	{ile (tex_
 /**
  * Kernel entry point
  */
