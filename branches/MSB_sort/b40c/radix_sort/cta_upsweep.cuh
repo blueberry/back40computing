@@ -459,47 +459,7 @@ l
 			false>::LoadValid(cta.ReduceUnpackedCounts(bin_count);
 	}
 
-
-	/**
-	 * Process work range
-	 */
-	static __device__ __forceinline__ void Upsweep(
-		SmemStorage 						&smem_storage,
-		SizeT 								*d_spine,
-		KeyType 							*d_in_keys,
-		util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
-		unsigned int 						current_bit)
-	{
-		if (threadIdx.x == 0)
-		{
-			// Determine our threadblock's work range
-			smem_storage.cta_progress.Init(cta_work_distribution);
-		}
-
-		// Sync to acquire work limits
-		__syncthreads();
-te couCompute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
-		SizeT bin_count;
-		ProcessWorkRange(
-			smem_storage,
-			d_in_keys,
-			current_bit,
-			smem_storage.cta_progress.cta_offset,
-			smem_storage.cta_progress.out_of_bounds,
-			bin_count);
-
-		// Write out the bin_count reductions
-		if (threadIdx.x < RADIX_DIGITS)
-		{s[warp_id] + warp_idx);
-	}
-
-
-	/**
-	 * Bucket a key into smem counters
-	 */
-	__device__ __forceiCtaUpsweep_ void BSTORt(KeyType key)
-	{
-		// Compute byte offset of smem counter.  Add in threa};
+};
 
 
 
@@ -512,7 +472,7 @@ template <
 	typename KeyType>
 __launch_bounds__ (CtaUpsweepPolicy::CTA_THREADS, CtaUpsweepPolicy::MIN_CTA_OCCUPANCY)
 __global__
-void Kernel(
+void UpsweepKernel(
 	SizeT 								*d_spine,
 	KeyType 							*d_in_keys,
 	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
@@ -524,12 +484,34 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename CtaUpsweep::SmemStorage smem_storage;
 
-	CtaUpsweep::Upsweep(
+	// Determine our threadblock's work range
+	if (threadIdx.x == 0)
+	{
+		smem_storage.cta_progress.Init(cta_work_distribution);
+	}
+
+	// Sync to acquire work range
+	__syncthreads();
+
+	// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
+	SizeT bin_count;
+	CtaUpsweep::ProcessWorkRange(
 		smem_storage,
-		d_spine,
 		d_in_keys,
-		cta_work_distribution,
-		current_bit);
+		current_bit,
+		smem_storage.cta_progress.cta_offset,
+		smem_storage.cta_progress.out_of_bounds,
+		bin_count);
+
+	// Write out the bin_count reductions
+	if (threadIdx.x < RADIX_DIGITS)
+	{
+		int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+
+		util::io::ModifiedStore<CtaUpsweepPolicy::STORE_MODIFIER>::St(
+			bin_count,
+			d_spine + spine_bin_offset);
+	}
 }ZE]) keys,
 				d_in
 

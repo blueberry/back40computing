@@ -187,7 +187,7 @@ private:
 	ValueType 					*d_out_values;
 
 	// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
-	SizeT 						my_digit_offset;
+	SizeT 						bin_prefix;
 
 	// The least-significant bit position of the current digit to extract
 	unsigned int 				current_bit;
@@ -338,34 +338,6 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			d_out_values(d_out_values),
 			current_bit(current_bit:
 	{
-		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
-		{
-			// Read digit scatter base (in parallel)
-			int spine_digit_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-			my_digit_offset = d_spine[spine_digit_offset];
-
-			if (blockIdx.x == 0)
-			{
-				SizeT next_digit_offset = d_spine[spine_digit_offset + gridDim.x];
-				SizeT elements = next_digit_offset - my_digit_offset;
-
-				Partition partition(
-					my_digit_offset,
-					elements,
-					current_bit);
-
-				d_partitions_out[threadIdx.x] = partition;
-/*
-				printf("Created partition %d (bit %d) of %d elements at offset %d\n",
-					threadIdx.x,
-					partition.current_bit,
-					partition.num_elements,
-					partition.offset);
-*/
-			}
-		}
-
-
 	}
 
 
@@ -689,9 +661,9 @@ Shar// Gather values from shared
 		// Update global scatter base offsets for each digit
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
-			my_digit_offset -= smem_storage.digit_prefixes[threadIdx.x];
-			smem_storage.digit_offsets[threadIdx.x] = my_digit_offset;
-			my_digit_offset += smem_storage.digit_prefixes[threadIdx.x + 1];
+			bin_prefix -= smem_storage.digit_prefixes[threadIdx.x];
+			smem_storage.digit_offsets[threadIdx.x] = bin_prefix;
+			bin_prefix += smem_storage.digit_prefixes[threadIdx.x + 1];
 		}
 
 		__syncthreads();
@@ -700,13 +672,29 @@ Shar// Gather values from shared
 		ScatterKeys<FULL_TILE>(twiddled_keys, digit_offsets, ranks, guarded_elements);
 
 		// Gather/scatter values
-		GatherScatterValues<FULL_TILE>(values, digit_offsets, ranks, cta_offset, guarded_elementsked(*this, tile, tile.keys);
+		GatherScatterValues<FULL_TILE>(values, digit_offsets, ranks, cta_offset, guarded_elementsked(*thi
 
-		__syncthreads();
 
-		// Gather keys from shared memory and scatter to
-		const util::CtaWorkDistribution<SizeT> &cta_work_distribution)
+public:im.x * threadIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine::TexSInterfacem.x * threadIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine::
+	/**
+	 * Process work range of tiles
+	 */
+	static __device__ __forceinline__ void ProcessWorkRange(
+			SmemStorage 	&smem_storage,
+			KeyType 		*d_in_keys,
+			KeyType 		*d_out_keys,
+			ValueType 		*d_in_values,
+			ValueType 		*d_out_values,
+			unsigned int 	current_bit)
 	{
+		// Construct CTA abstraction
+		CtaUpsweep cta(
+			smem_storage,
+			d_in_keys,
+			current_bit);
+
 		if (threadIdx.x == 0)
 		{
 			// Determine our threadblock's work range
@@ -732,19 +720,7 @@ ents);
 		{
 			SizeT remainder = smem_storage.cta_progress.out_of_bounds - cta_offset;
 			ProcessTile<false>(cta_offset, remainders
-		while 
-
-public:
-
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * Process work range of tiles
-	 */
-	__device__ __forceinline__ void ProcessWorkRange()
-	{ile (tex_
+		while (tex_
 /**
  * Kernel entry point
  */
@@ -755,14 +731,14 @@ template <
 	typename ValueType>
 __launch_bounds__ (CtaDownsweepPolicy::CTA_THREADS, CtaDownsweepPolicy::MIN_CTA_OCCUPANCY)
 __global__
-void Kernel(
+void DownsweepKernel(
 	SizeT 								*d_spine,
 	KeyType 							*d_in_keys,
 	KeyType 							*d_out_keys,
 	ValueType 							*d_in_values,
 	ValueType 							*d_out_values,
-	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
-	unsigned int 						current_bit)
+	unsigned int 						current_bit,
+	util::CtaWorkDistribution<SizeT> 	cta_work_distribution)
 {
 	// CTA abstraction type
 	typedef CtaDownsweep<CtaDownsweepPolicy, SizeT, KeyType, ValueType> CtaDownsweep;
@@ -770,14 +746,58 @@ void Kernel(
 	// Shared memory pool
 	__shared__ typename CtaDownsweep::SmemStorage smem_storage;
 
-	CtaDownsweep cta(
+	// Determine our threadblock's work range
+	if (threadIdx.x == 0)
+	{
+		smem_storage.cta_progress.Init(cta_work_distribution);
+	}
+
+	// Read exclusive bin prefixes
+	SizeT bin_prefix;
+	if (threadIdx.x < CtaDownsweepPolicy::RADIX_DIGITS)
+	{
+		int spine_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
+		bin_prefix = d_spine[spine_digit_offset];
+
+		if (blockIdx.x == 0)
+		{
+			SizeT next_spine_offset = d_spine[spine_offset + gridDim.x];
+			SizeT elements = next_spine_offset - bin_prefix;
+
+			Partition partition(
+				bin_prefix,
+				elements,
+				current_bit);
+
+			d_partitions_out[threadIdx.x] = partition;
+/*
+			printf("Created partition %d (bit %d) of %d elements at offset %d\n",
+				threadIdx.x,
+				partition.current_bit,
+				partition.num_elements,
+				partition.offset);
+*/
+		}
+	}
+
+
+	// Sync to acquire work range
+	__syncthreads();
+
+	// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
+	SizeT cta_offset = smem_storage.cta_progress.cta_offset;
+
+
+	CtaDownsweep::Downsweep(
 		smem_storage,
-		d_spine,
 		d_in_keys,
 		d_out_keys,
 		d_in_values,
 		d_out_values,
-		current_bit);
+		current_bit,
+		bin_prefixes,
+		smem_storage.cta_progress.cta_offset,
+		smem_storage.cta_progress.out_of_bounds);
 
 	cta.ProcessWorkRange(cta_work_distribution);
 }

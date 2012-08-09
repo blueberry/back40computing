@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Block" CTA abstraction for sorting small tiles of input
+ * "Block-sort" CTA abstraction for sorting small tiles of input
  ******************************************************************************/
 
 #pragma once
@@ -65,7 +65,7 @@ struct CtaBlockPolicy
 
 
 /**
- * "Block" CTA abstraction for sorting small tiles of input
+ * "Block-sort" CTA abstraction for sorting small tiles of input
  */
 template <
 	typename CtaBlockPolicy,
