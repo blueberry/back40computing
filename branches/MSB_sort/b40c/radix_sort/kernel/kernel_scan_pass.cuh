@@ -48,12 +48,12 @@ void Kernel(
 	typedef CtaSpine<CtaSpinePolicy, T, SizeT> CtaSpine;
 
 	// Shared memory pool
-	__shared__ typename CtaSpine::SmemStorage smem_storage;
+	__shared__ typename CtaSpine::SmemStorage cta_smem_storage;
 
 	// Only CTA-0 needs to run
 	if (blockIdx.x > 0) return;
 
-	CtaSpine cta(smem_storage, d_in, d_out);
+	CtaSpine cta(cta_smem_storage, d_in, d_out);
 	cta.ProcessWorkRange(spine_elements);
 }
 

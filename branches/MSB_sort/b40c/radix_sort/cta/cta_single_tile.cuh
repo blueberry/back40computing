@@ -196,7 +196,7 @@ public:
 	 */
 	template <typename SizeT>
 	static __device__ __forceinline__ void Sort(
-		SmemStorage 	&smem_storage,
+		SmemStorage 	&cta_smem_storage,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		util::NullType 	*d_values_in,
@@ -217,7 +217,7 @@ public:
 
 		// Load keys
 		LoadTile(
-			smem_storage.key_exchange,
+			cta_smem_storage.key_exchange,
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_in),
 			cta_offset,
@@ -234,7 +234,7 @@ public:
 
 		// Sort
 		CtaRadixSort::SortThreadToCtaStride(
-			smem_storage.sorting_storage,
+			cta_smem_storage.sorting_storage,
 			keys,
 			current_bit,
 			bits_remaining);

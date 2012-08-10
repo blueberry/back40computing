@@ -43,7 +43,7 @@ template <typename SizeT>
 struct CtaWorkDistribution
 {
 	int total_grains;
-	int overfetch;
+	int excess;
 
 	int big_blocks;
 	int last_block;
@@ -63,7 +63,7 @@ struct CtaWorkDistribution
 		int schedule_granularity)
 	{
 		total_grains 			= (num_elements + schedule_granularity - 1) / schedule_granularity;
-		overfetch 				= (total_grains * schedule_granularity) - num_elements;
+		excess 				= (total_grains * schedule_granularity) - num_elements;
 
 		int grains_per_cta 		= total_grains / grid_size;
 		big_blocks	 			= total_grains - (grains_per_cta * grid_size);		// leftover grains go to big blocks
@@ -88,7 +88,7 @@ struct CtaWorkDistribution
 			"normal_share: %lu, "
 			"normal_base_offset: %lu, "
 			"last_block: %lu, "
-			"overfetch: %lu \n",
+			"excess: %lu \n",
 				(unsigned long) total_grains,
 				(unsigned long) big_blocks,
 				(unsigned long) unguarded_elements,
@@ -96,7 +96,7 @@ struct CtaWorkDistribution
 				(unsigned long) normal_share,
 				(unsigned long) normal_base_offset,
 				(unsigned long) last_block,
-				(unsigned long) overfetch);
+				(unsigned long) excess);
 	}
 };
 
@@ -113,7 +113,7 @@ struct CtaProgress
 {
 	// Even share parameters
 	SizeT 	cta_offset;
-	SizeT 	out_of_bounds;
+	SizeT 	num_elements;
 
 	/**
 	 * Initializer
@@ -131,24 +131,24 @@ struct CtaProgress
 
 			// This CTA gets a big share of grains (grains_per_cta + 1)
 			cta_offset = (blockIdx.x * distribution.big_share);
-			out_of_bounds = cta_offset + distribution.big_share;
+			num_elements = distribution.big_share;
 
 		} else if (blockIdx.x < distribution.total_grains) {
 
 			// This CTA gets a normal share of grains (grains_per_cta)
 			cta_offset = distribution.normal_base_offset + (blockIdx.x * distribution.normal_share);
-			out_of_bounds = cta_offset + distribution.normal_share;
+			num_elements = distribution.normal_share;
 
 		} else {
 
 			// This CTA gets no work
 			cta_offset = 0;
-			out_of_bounds = 0;
+			num_elements = 0;
 		}
 
 		if (blockIdx.x == distribution.last_block)
 		{
-			out_of_bounds -= distribution.overfetch;
+			num_elements -= distribution.excess;
 		}
 	}
 
@@ -159,32 +159,7 @@ struct CtaProgress
 	__device__ __forceinline__ void Init(SizeT num_elements)
 	{
 		cta_offset = 0;
-		out_of_bounds = num_elements;
-	}
-
-
-	/**
-	 *
-	 */
-	__device__ __forceinline__ bool HasTile()
-	{
-		return (cta_offset < out_of_bounds);
-	}
-
-
-	/**
-	 *
-	 */
-	__device__ __forceinline__ void NextTile()
-	{
-		if (WORK_STEALING) {
-
-			// TODO
-
-		} else {
-
-			cta_offset += TILE_ELEMENTS;
-		}
+		this->num_elements = num_elements;
 	}
 
 };

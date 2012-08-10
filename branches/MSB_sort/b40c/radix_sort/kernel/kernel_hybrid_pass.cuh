@@ -56,10 +56,10 @@ void Kernel(
 	typedef CtaHybrid<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybrid;
 
 	// Shared memory pool
-	__shared__ typename CtaHybrid::SmemStorage smem_storage;
+	__shared__ typename CtaHybrid::SmemStorage cta_smem_storage;
 
 	CtaHybrid::ProcessWorkRange(
-		smem_storage,
+		cta_smem_storage,
 		d_bins_in,
 		d_bins_out,
 		d_keys_in,

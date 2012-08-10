@@ -190,7 +190,7 @@ private:
 			global_digit_base = tex1Dfetch(spine:----
 
 	// Shared storage for this CTA
-	SmemStorage 				&smem_storage;
+	SmemStorage 				&cta_smem_storage;
 
 	// Input and output device pointers
 	UnsignedBits 				*d_in_keys;
@@ -270,7 +270,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		 * coalescing rules
 		 */
 		template <typename T>
-		static __device__ __forceinline__ void AlignedScatterSmemStorage 	&smem_storage,
+		static __device__ __forceinline__ void AlignedScatterSmemStorage 	&cta_smem_storage,
 			T 				*buffer,
 			T 				*d_out,
 			SizeT 			valid_elements)
@@ -282,9 +282,9 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			if (my_digit < RADI
 			{IGITS) {
 
-				int my_exclus	= smem_storage.digit_prefixes[my_digit];
-				int my_inclusive_scan 	= smem_storage.digit_prefixes[my_digit + 1];
-				int my_carry 			= smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
+				int my_exclus	= cta_smem_storage.digit_prefixes[my_digit];
+				int my_inclusive_scan 	= cta_smem_storage.digit_prefixes[my_digit + 1];
+				int my_carry 			= cta_smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
 				int my_aligned_offset 	d_offset = store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1int gather_offset;
 				while ((gather_offset = my_aligned_offset + my_exclusive_scan) < my_inclusive_scan)
 				{
@@ -302,7 +302,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			}
 
 			// Next scatter pass
-			Iterate<COUNT + 1, MAX>::AlignedScasmem_storage, buffer, d_out, valid_elements);
+			Iterate<COUNT + 1, MAX>::AlignedScacta_smem_storage, buffer, d_out, valid_elements);
 		}
 	};
 
@@ -336,14 +336,14 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	 */
 	__device__ __forceinline__ void LoadKeys(
 		SizeT tex_offsetDownsweep,
-		const SizeT &guarded_elements,BinDescriptor		*d_bins_out,
+		const SizeT &gcta_uarded_elements,BinDescriptor		*d_bins_out,
 		SizeT 			*d_spinents,
 		Tile &tilein_keys,
 		KeyType 		*d_out_keys,
 		ValueType 		*d_in_values,
 		ValueType 		*d_out_values,
 		unsigned int 	current_bit) :
-			smem_storage(smem_storage),
+			cta_smem_storage(cta_smem_storage),
 			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
 			d_out_keys(reinterpret_cast<UnsignedBits*>(d_out_keys)),
 			d_in_values(d_in_values),
@@ -432,7 +432,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			// Decode address of bin-offset inUnsignedBits digit = util::BFE(twiddled_keys[KEY], current_bit, RADIX_BITS);
 
 			// Lookup base digit offset from shared memory
-			digit_offsets[KEY] = smem_storage.digit_offsets[digit];
+			digit_offsets[KEY] = cta_smem_storage.digit_offsets[digit];
 		}
 	}
 
@@ -467,7 +467,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			smem_storage.key_exchange[threadIdx.x + (KEY * CTA_THREADS)] = keys[KEY];
+			cta_smem_storage.key_exchange[threadIdx.x + (KEY * CTA_THREADS)] = keys[KEY];
 		}
 
 		__syncthreads();
@@ -475,7 +475,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			keys[KEY] = smem_storage.key_exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
+			keys[KEY] = cta_smem_storage.key_exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
 		}
 
 		__syncthreads();
@@ -531,14 +531,14 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(twiddled_keys, keys);
 
 			// Scatter to shared memory first
-			ScatterRanked(ranks, keys, smem_storage.key_exchange);
+			ScatterRanked(ranks, keys, cta_smem_storage.key_exchange);
 
 			__syncthreads();
 
 			// Gather sorted keys from smem and scatter to global using warp-aligned scattering
 			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-				smem_storage,
-				smem_storage.key_exchange,
+				cta_smem_storage,
+				cta_smem_storage.key_exchange,
 				d_out_keys,
 				guarded_elements);
 		}
@@ -548,12 +548,12 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			// scatter sorted keys to global
 
 			// Scatter to shared memory first (for better write-coalescing during global scatter)
-			ScatterRanked(ranks, twiddled_keys, smem_storage.key_exchange);
+			ScatterRanked(ranks, twiddled_keys, cta_smem_storage.key_exchange);
 
 			__syncthreads();
 
 			// Gather sorted keys from shared memory
-			GatherShared(twiddled_keys, smem_storage.key_exchange);
+			GatherShared(twiddled_keys, cta_smem_storage.key_exchange);
 
 			// Compute scatter offsets
 			DecodeDigitOffsets(twiddled_keys, digit_offsets);
@@ -601,13 +601,13 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 			__syncthreads();
 
 			// Exchange values through shared memory for better write-coalescing
-			ScatterRanked(ranks, values, smem_storage.value_exchange);
+			ScatterRanked(ranks, values, cta_smem_storage.value_exchange);
 
 			__syncthreads();
 Shar// Use explicitly warp-aligned scattering of values from shared memory
 			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-				smem_storage,
-				smem_storage.value_exchange,
+				cta_smem_storage,
+				cta_smem_storage.value_exchange,
 				d_out_values,
 				guarded_elements);
 		}
@@ -616,11 +616,11 @@ Shar// Use explicitly warp-aligned scattering of values from shared memory
 			__syncthreads();
 
 			// Exchange values through shared memory for better write-coalescing
-			ScatterRanked(ranks, values, smem_storage.value_exchange);
+			ScatterRanked(ranks, values, cta_smem_storage.value_exchange);
 
 			__syncthreads();
 Shar// Gather values from shared
-			GatherShared(values, smem_storage.value_exchange);
+			GatherShared(values, cta_smem_storage.value_exchange);
 
 			// Scatter to global memory
 			Iterate<0, KEYS_PER_THREAD>::template ScatterGlobal<FULL_TILE>(
@@ -662,10 +662,10 @@ Shar// Gather values from shared
 
 		// Rank the twiddled keys
 		CtaRadixRank::RankKeys(
-			smem_storage.ranking_storage,
+			cta_smem_storage.ranking_storage,
 			twiddled_keys,
 			ranks,
-			smem_storage.digit_prefixes,
+			cta_smem_storage.digit_prefixes,
 			current_bit);
 
 		__syncthreads();
@@ -673,9 +673,9 @@ Shar// Gather values from shared
 		// Update global scatter base offsets for each digit
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
-			bin_prefix -= smem_storage.digit_prefixes[threadIdx.x];
-			smem_storage.digit_offsets[threadIdx.x] = bin_prefix;
-			bin_prefix += smem_storage.digit_prefixes[threadIdx.x + 1];
+			bin_prefix -= cta_smem_storage.digit_prefixes[threadIdx.x];
+			cta_smem_storage.digit_offsets[threadIdx.x] = bin_prefix;
+			bin_prefix += cta_smem_storage.digit_prefixes[threadIdx.x + 1];
 		}
 
 		__syncthreads();
@@ -694,7 +694,7 @@ public:im.x * threadIdx.x) + blockIdx.x;
 	 * Process work range of tiles
 	 */
 	static __device__ __forceinline__ void ProcessWorkRange(
-			SmemStorage 	&smem_storage,
+			SmemStorage 	&cta_smem_storage,
 			KeyType 		*d_in_keys,
 			KeyType 		*d_out_keys,
 			ValueType 		*d_in_values,
@@ -703,14 +703,14 @@ public:im.x * threadIdx.x) + blockIdx.x;
 	{
 		// Construct CTA abstraction
 		CtaUpsweep cta(
-			smem_storage,
+			cta_smem_storage,
 			d_in_keys,
 			current_bit);
 
 		if (threadIdx.x == 0)
 		{
 			// Determine our threadblock's work range
-			smem_storage.cta_progress.Init(cta_work_distribution);
+			cta_smem_storage.cta_progress.Init(cta_work_distribution);
 		}
 
 		// Sync to acquire work limits
@@ -718,19 +718,19 @@ public:im.x * threadIdx.x) + blockIdx.x;
 ents);
 
 		// Truck along values (if applicable)
-		TruckValues<KEYS_ONLY>::Invoke(tex_offset, cta_offset = smem_storage.cta_progress.cta_offset;
+		TruckValues<KEYS_ONLY>::Invoke(tex_offset, cta_offset = cta_smem_storage.cta_progress.cta_offset;
 
 		// Process full tiles of tile_elements
-		while (cta_offset + TILE_ELEMENTS <= smem_storage.cta_progress.out_of_bounds)
+		while (cta_offset + TILE_ELEMENTS <= cta_smem_storage.cta_progress.out_of_bounds)
 		{
 			ProcessTile<true>(cta_offset);
 			cta_offset += TILE_ELEMENTS;
 		}
 
 		// Clean up last partial tile with guarded-io
-		if (cta_offset < smem_storage.cta_progress.out_of_bounds)
+		if (cta_offset < cta_smem_storage.cta_progress.out_of_bounds)
 		{
-			SizeT remainder = smem_storage.cta_progress.out_of_bounds - cta_offset;
+			SizeT remainder = cta_smem_storage.cta_progress.out_of_bounds - cta_offset;
 			ProcessTile<false>(cta_offset, remainders
 		while (tex_
 

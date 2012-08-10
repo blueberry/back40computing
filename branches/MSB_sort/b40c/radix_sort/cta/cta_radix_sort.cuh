@@ -155,7 +155,7 @@ public:
 	 * Keys-only sorting
 	 */
 	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage		&smem_storage,									// Shared memory storage
+		SmemStorage		&cta_smem_storage,									// Shared memory storage
 		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
 		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
 		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
@@ -168,7 +168,7 @@ public:
 
 			// Rank the keys within the CTA
 			CtaRadixRank::RankKeys(
-				smem_storage.ranking_storage,
+				cta_smem_storage.ranking_storage,
 				keys,
 				ranks,
 				current_bit);
@@ -176,7 +176,7 @@ public:
 			__syncthreads();
 
 			// Scatter keys to shared memory
-			Scatter(ranks, keys, smem_storage.key_exchange);
+			Scatter(ranks, keys, cta_smem_storage.key_exchange);
 
 			__syncthreads();
 
@@ -184,13 +184,13 @@ public:
 			if (current_bit >= bits_remaining) break;
 
 			// Gather keys from shared memory (thread-stride)
-			GatherThreadStride(keys, smem_storage.key_exchange);
+			GatherThreadStride(keys, cta_smem_storage.key_exchange);
 
 			__syncthreads();
 		}
 
 		// Gather keys from shared memory (CTA-stride)
-		GatherCtaStride(keys, smem_storage.key_exchange);
+		GatherCtaStride(keys, cta_smem_storage.key_exchange);
 	}
 
 
@@ -202,7 +202,7 @@ public:
 	 * Keys-value sorting
 	 */
 	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage		&smem_storage,									// Shared memory storage
+		SmemStorage		&cta_smem_storage,									// Shared memory storage
 		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
 		ValueType	 	(&values)[KEYS_PER_THREAD],
 		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
@@ -216,7 +216,7 @@ public:
 
 			// Rank the keys within the CTA
 			CtaRadixRank::RankKeys(
-				smem_storage.ranking_storage,
+				cta_smem_storage.ranking_storage,
 				keys,
 				ranks,
 				current_bit);
@@ -224,8 +224,8 @@ public:
 			__syncthreads();
 
 			// Scatter keys and values to shared memory
-			Scatter(ranks, keys, smem_storage.key_exchange);
-			Scatter(ranks, values, smem_storage.value_exchange);
+			Scatter(ranks, keys, cta_smem_storage.key_exchange);
+			Scatter(ranks, values, cta_smem_storage.value_exchange);
 
 			__syncthreads();
 
@@ -233,15 +233,15 @@ public:
 			if (current_bit >= bits_remaining) break;
 
 			// Gather keys and values from shared memory (thread-stride)
-			GatherThreadStride(keys, smem_storage.key_exchange);
-			GatherThreadStride(values, smem_storage.value_exchange);
+			GatherThreadStride(keys, cta_smem_storage.key_exchange);
+			GatherThreadStride(values, cta_smem_storage.value_exchange);
 
 			__syncthreads();
 		}
 
 		// Gather keys and values from shared memory (CTA-stride)
-		GatherCtaStride(keys, smem_storage.key_exchange);
-		GatherCtaStride(values, smem_storage.value_exchange);
+		GatherCtaStride(keys, cta_smem_storage.key_exchange);
+		GatherCtaStride(values, cta_smem_storage.value_exchange);
 	}
 };
 

@@ -149,14 +149,14 @@ struct CtaHybrid
 		// Retrieve work
 		if (threadIdx.x == 0)
 		{
-			smem_storage.partition = d_bins_in[blockIdx.x];
+			cta_smem_storage.partition = d_bins_in[blockIdx.x];
 /*
 			printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
 				blockIdx.x,
 				low_bit,
-				smem_storage.partition.current_bit,
-				smem_storage.partition.num_elements,
-				smem_storage.partition.offset);
+				cta_smem_storage.partition.current_bit,
+				cta_smem_storage.partition.num_elements,
+				cta_smem_storage.partition.offset);
 */
 
 			// Reset current partition descriptor
@@ -166,22 +166,22 @@ struct CtaHybrid
 		__syncthreads();
 
 		// Quit if there is no work
-		if (smem_storage.partition.num_elements == 0) return;
+		if (cta_smem_storage.partition.num_elements == 0) return;
 
 		// Choose whether to block-sort or pass-sort
-		if (smem_storage.partition.num_elements < TILE_ELEMENTS)
+		if (cta_smem_storage.partition.num_elements < TILE_ELEMENTS)
 		{
 			// Perform block sort
 			BlockCta::Sort(
-				smem_storage.block_storage,
+				cta_smem_storage.block_storage,
 				d_keys_in,
 				d_keys_final,
 				d_values_in,
 				d_values_final,
 				low_bit,
-				smem_storage.partition.current_bit - low_bit,
-				smem_storage.partition.offset,
-				smem_storage.partition.num_elements);
+				cta_smem_storage.partition.current_bit - low_bit,
+				cta_smem_storage.partition.offset,
+				cta_smem_storage.partition.num_elements);
 
 			// Output new (dummy) partition descriptors
 			if (threadIdx.x < PASS_RADIX_DIGITS)
@@ -196,11 +196,11 @@ struct CtaHybrid
 			// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
 			SizeT bin_count;
 			UpsweepCta::Upsweep(
-				smem_storage.upsweep_storage,
+				cta_smem_storage.upsweep_storage,
 				d_keys_in,
-				smem_storage.partition.current_bit,
-				smem_storage.partition.offset,
-				smem_storage.partition.out_of_bounds,
+				cta_smem_storage.partition.current_bit,
+				cta_smem_storage.partition.offset,
+				cta_smem_storage.partition.out_of_bounds,
 				bin_count);
 
 			__syncthreads();
@@ -232,7 +232,7 @@ struct CtaHybrid
 				BinDescriptor partition(
 					bin_prefix,
 					bin_count,
-					smem_storage.partition.current_bit - PASS_RADIX_DIGITS);
+					cta_smem_storage.partition.current_bit - PASS_RADIX_DIGITS);
 
 				SizeT partition_offset = (blockIdx.x * PASS_RADIX_DIGITS) + threadIdx.x;
 				d_bins_out[partition_offset] = partition;
@@ -243,7 +243,7 @@ struct CtaHybrid
 
 			// Distribute keys
 			DownsweepCta::Downsweep(
-				smem_storage.downsweep_storage,
+				cta_smem_storage.downsweep_storage,
 				d_in_keys,
 				d_out_keys,
 				d_in_values,

@@ -51,7 +51,7 @@ void UpsweepKernel(
 	typedef UpsweepCta<UpsweepCtaPolicy, SizeT, KeyType> UpsweepCta;
 
 	// Shared data structures
-	__shared__ typename UpsweepCta::SmemStorage 	smem_storage;
+	__shared__ typename UpsweepCta::SmemStorage 	cta_smem_storage;
 	__shared__ util::CtaProgress<SizeT, TILE_ELEMENTS> 	cta_progress;
 
 
@@ -67,7 +67,7 @@ void UpsweepKernel(
 	// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
 	SizeT bin_count;
 	UpsweepCta::ProcessWorkRange(
-		smem_storage,
+		cta_smem_storage,
 		d_in_keys,
 		current_bit,
 		cta_progress.cta_offset,

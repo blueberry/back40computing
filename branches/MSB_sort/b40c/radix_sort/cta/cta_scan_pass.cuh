@@ -135,7 +135,7 @@ struct CtaSpine
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
-	SmemStorage &smem_storage;
+	SmemStorage &cta_smem_storage;
 
 	// Running partial accumulated by the CTA over its tile-processing
 	// lifetime (managed in each raking thread)
@@ -160,15 +160,15 @@ struct CtaSpine
 	 * Constructor
 	 */
 	__device__ __forceinline__ CtaSpine(
-		SmemStorage 		&smem_storage,
+		SmemStorage 		&cta_smem_storage,
 		T 					*d_in,
 		T 					*d_out) :
 			// Initializers
 			raking_details(
-				smem_storage.raking_elements,
-				smem_storage.warpscan,
+				cta_smem_storage.raking_elements,
+				cta_smem_storage.warpscan,
 				0),
-			smem_storage(smem_storage),
+			cta_smem_storage(cta_smem_storage),
 			d_in(d_in),
 			d_out(d_out),
 			carry(0)
@@ -219,13 +219,13 @@ struct CtaSpine
 	 * Process work range of tiles
 	 */
 	static __device__ __forceinline__ void ProcessWorkRange(
-		SmemStorage 		&smem_storage,
+		SmemStorage 		&cta_smem_storage,
 		T 					*d_in,
 		T 					*d_out,
 		SizeT				&num_elements)
 	{
 		// Construct CTA abstraction
-		ScanCta cta(smem_storage, d_in_keys, current_bit);
+		ScanCta cta(cta_smem_storage, d_in_keys, current_bit);
 
 		for (SizeT cta_offset = 0;
 			cta_offset + TILE_ELEMENTS < num_elements;

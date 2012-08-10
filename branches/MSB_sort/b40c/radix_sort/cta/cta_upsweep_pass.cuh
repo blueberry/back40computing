@@ -179,7 +179,7 @@ l
 
  C----
 --/**
-	 * Shared storage for radix distributionn sorting upsweep
+	 * Shared storage for radix distributionn cta_sorting upsweep
 	 */
 	struct SmemStorage
 	{
@@ -265,9 +265,10 @@ UpsweepPass &state_bundle//UnsignedBits keys[KEYS_PER_THREAD]) {;
 	 * State bundle constructor
 	 */
 	__device__ __forceinline__ CtaUpsweepPass(
-		SmemStorage		&smem_storag			cta.local_countin_keys,
+		SmemStorage		&cta_smem_storage,
+		KeyType 		*d_in_keys,
 		unsigned int 	current_bit) :
-			smem_storage(smem_storage),
+			cta_smem_storage(cta_smem_storage),
 			d_in_keys(reinterpret_cast<UnsignedBits*>(d_in_keys)),
 			current_bit(current_bit)
 	{mplate <int WARP_LANE, int dummy>
@@ -284,14 +285,14 @@ UpsweepPass &state_bundle//UnsignedBits keys[KEYS_PER_THREAD]) {;
 		UnsignedBits row_offset = util::BFE(converted_key, current_bit + LOG_PACKING_RATIO, LOG_COUNTER_LANES);
 
 		// Increment counter
-		smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
+		cta_smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
  COMPOSITES_PER_LANE_PER_THREAD>::ShareCounters(cta);
 		}
 
 		// ResetCounters
 		static __device__ __forceinline__ void ResetCounters(Cta &cta)
 		{
-			cta.local_counts[WARP_LANE][0] = 0;
+			cta.local_counts[WARP_LANE]cta_[0] = 0;
 			cta.local_counts[WARP_LANE][1] = 0;
 			cta.local_counts[WARP_LANE][2] = 0;
 			cta.local_counts[WARP_LANE][3] = 0;
@@ -341,7 +342,7 @@ ce__ __forceinline__ void ShareCounters(Cta &cta) {}
 		{
 			static const int HALF = UNROLL_COUNT / 2;
 
-			statsmem_storage.digit_counters[warp_id][warp_tid][OFFSET]ine__ void ProcessTiles(
+			statcta_smem_storage.digit_counters[warp_id][warp_tid][OFFSET]ine__ void ProcessTiles(
 				Cta &cta, SizeT cta_offset)
 			{
 				Iterate<HALF>::ProcessTiles(cta, cta_offset);
@@ -369,7 +370,7 @@ ce_LE_ELEMENTS * HALF));
 
 	//---------------------------------------------------------------------
 	// Methods
-	//---------------------------------------------------------------------
+	//-----------------------------cta_----------------------------------------
 
 	/**
 	 * Constructor
@@ -381,7 +382,7 @@ ce_LE_ELEMENTS * HALF));
 		if (threadIdx.x < RADIX_DIGITS)
 		{
 						warp_id(threadIdx.x >> LOG_WARP_THREADS),
-			warp_idx(util::LaneId())
+			warp_idx(util::LaneIdcta_())
 	{
 		base = (char *) (smem_storage.wordin thread column.
 		unsigned int offset = (threadIdx.x << (LOG_PACKED_COUNTERS + LOG_BYTES_PER_COUNTER));
@@ -434,14 +435,14 @@ l
 	 * Perform a digit-counting "upsweep" pass
 	 */
 	static __device__ __forceinline__ void UpsweepPass(
-		SmemStorage 	&smem_storage,
+		SmemStorage 	&cta_smem_storage,
 		KeyType 		*d_in_keys,
 		unsigned int 	current_bit,
 		const SizeT 	&num_elements,
 		SizeT 			&bin_count)				// The digit count for tid'th bin (output param, valid in the first RADIX_DIGITS threads)
 	{
 		// Construct state bundle
-		CtaUpsweepPass state_bundle(smem_storage, d_in_keys, current_bit);
+		CtaUpsweepPass state_bundle(cta_smem_storage, d_in_keys, current_bit);
 
 		// Reset digit counters in smem and unpacked counters in registers
 		state_bundle.ResetDigitCounters();
