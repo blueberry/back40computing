@@ -83,14 +83,14 @@ template <
 	typename 	_SpinePolicy,
 	typename 	_DownsweepPolicy,
 	typename 	_TilePolicy,
-	typename 	_PartitionPolicy,
+	typename 	_BinDescriptorPolicy,
 	typename 	_DispatchPolicy>
 struct PassPolicy
 {
 	typedef _UpsweepPolicy			UpsweepPolicy;
 	typedef _SpinePolicy 			SpinePolicy;
 	typedef _DownsweepPolicy 		DownsweepPolicy;
-	typedef _PartitionPolicy 		PartitionPolicy;
+	typedef _BinDescriptorPolicy 		BinDescriptorPolicy;
 	typedef _DispatchPolicy 		DispatchPolicy;
 	typedef _TilePolicy 			TilePolicy;
 };
@@ -198,7 +198,7 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			TilePolicy;
 
-	// Partition kernel policy
+	// BinDescriptor kernel policy
 	typedef block::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		4, 										// MIN_CTA_OCCUPANCY
@@ -207,7 +207,7 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		b40c::util::io::ld::NONE, 				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			PartitionPolicy;
+			BinDescriptorPolicy;
 };
 
 

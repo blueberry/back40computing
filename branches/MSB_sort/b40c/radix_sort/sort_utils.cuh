@@ -33,13 +33,13 @@ namespace radix_sort {
 
 
 /******************************************************************************
- * Partition descriptor
+ * BinDescriptor descriptor
  ******************************************************************************/
 
 /**
- * Partition descriptor
+ * BinDescriptor descriptor
  */
-struct Partition
+struct BinDescriptor
 {
 	int offset;
 	int num_elements;
@@ -49,12 +49,12 @@ struct Partition
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ Partition() {}
+	__device__ __forceinline__ BinDescriptor() {}
 
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ Partition(
+	__device__ __forceinline__ BinDescriptor(
 		int offset,
 		int num_elements,
 		int current_bit) :

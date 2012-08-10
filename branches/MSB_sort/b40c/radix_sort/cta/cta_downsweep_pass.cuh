@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Downsweep" CTA abstraction for distributing keys
+ * CTA-wide "downsweep" abstraction for distributing keys
  ******************************************************************************/
 
 #pragma once
@@ -29,15 +29,21 @@
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta_radix_rank.cuh"
+#include "../../radix_sort/cta/cta_radix_rank.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
 
 
+//readIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine:----
+// Tuning policy types
+//readIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine:----
+
 /**
- * Types of downsweep scattering strategies
+ * Types of scattering strategies
  */
 enum ScatterStrategy
 {
@@ -81,9 +87,15 @@ struct CtaDownsweepPolicy
 
 
 
+//readIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine:----
+// CTA-wide abstractions
+//readIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine:----
+
 
 /**
- * "Downsweep" CTA abstraction for distributing keys
+ * CTA-wide "downsweep" abstraction for distributing keys
  */
 template <
 	typename CtaDownsweepPolicy,
@@ -156,7 +168,6 @@ public:
 	 */
 	struct SmemStorage
 	{
-		util::CtaProgress<SizeT, TILE_ELEMENTS> 	cta_progress;
 		SizeT										cta_offset;
 		SizeT										cta_offset_limit;
 		unsigned int 								digit_prefixes[RADIX_DIGITS + 1];
@@ -174,8 +185,9 @@ public:
 private:
 
 	//---------------------------------------------------------------------
-	// Thread fields
-	//---------------------------------------------------------------------
+	// Thread fields (aggregate state bundle)
+	//readIdx.x) + blockIdx.x;
+			global_digit_base = tex1Dfetch(spine:----
 
 	// Shared storage for this CTA
 	SmemStorage 				&smem_storage;
@@ -324,7 +336,7 @@ of-boundFULL_TILEELEMENTS) || (tile_element < guarded_e
 	 */
 	__device__ __forceinline__ void LoadKeys(
 		SizeT tex_offsetDownsweep,
-		const SizeT &guarded_elements,Partition		*d_partitions_out,
+		const SizeT &guarded_elements,BinDescriptor		*d_bins_out,
 		SizeT 			*d_spinents,
 		Tile &tilein_keys,
 		KeyType 		*d_out_keys,
@@ -721,86 +733,6 @@ ents);
 			SizeT remainder = smem_storage.cta_progress.out_of_bounds - cta_offset;
 			ProcessTile<false>(cta_offset, remainders
 		while (tex_
-/**
- * Kernel entry point
- */
-template <
-	typename CtaDownsweepPolicy,
-	typename SizeT,
-	typename KeyType,
-	typename ValueType>
-__launch_bounds__ (CtaDownsweepPolicy::CTA_THREADS, CtaDownsweepPolicy::MIN_CTA_OCCUPANCY)
-__global__
-void DownsweepKernel(
-	SizeT 								*d_spine,
-	KeyType 							*d_in_keys,
-	KeyType 							*d_out_keys,
-	ValueType 							*d_in_values,
-	ValueType 							*d_out_values,
-	unsigned int 						current_bit,
-	util::CtaWorkDistribution<SizeT> 	cta_work_distribution)
-{
-	// CTA abstraction type
-	typedef CtaDownsweep<CtaDownsweepPolicy, SizeT, KeyType, ValueType> CtaDownsweep;
-
-	// Shared memory pool
-	__shared__ typename CtaDownsweep::SmemStorage smem_storage;
-
-	// Determine our threadblock's work range
-	if (threadIdx.x == 0)
-	{
-		smem_storage.cta_progress.Init(cta_work_distribution);
-	}
-
-	// Read exclusive bin prefixes
-	SizeT bin_prefix;
-	if (threadIdx.x < CtaDownsweepPolicy::RADIX_DIGITS)
-	{
-		int spine_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-		bin_prefix = d_spine[spine_digit_offset];
-
-		if (blockIdx.x == 0)
-		{
-			SizeT next_spine_offset = d_spine[spine_offset + gridDim.x];
-			SizeT elements = next_spine_offset - bin_prefix;
-
-			Partition partition(
-				bin_prefix,
-				elements,
-				current_bit);
-
-			d_partitions_out[threadIdx.x] = partition;
-/*
-			printf("Created partition %d (bit %d) of %d elements at offset %d\n",
-				threadIdx.x,
-				partition.current_bit,
-				partition.num_elements,
-				partition.offset);
-*/
-		}
-	}
-
-
-	// Sync to acquire work range
-	__syncthreads();
-
-	// Make sure we get a local copy of the cta's offset (work_limits may be in smem)
-	SizeT cta_offset = smem_storage.cta_progress.cta_offset;
-
-
-	CtaDownsweep::Downsweep(
-		smem_storage,
-		d_in_keys,
-		d_out_keys,
-		d_in_values,
-		d_out_values,
-		current_bit,
-		bin_prefixes,
-		smem_storage.cta_progress.cta_offset,
-		smem_storage.cta_progress.out_of_bounds);
-
-	cta.ProcessWorkRange(cta_work_distribution);
-}
 
 
 

@@ -116,7 +116,7 @@ struct CtaHybrid
 	 */
 	struct SmemStorage
 	{
-		Partition								partition;
+		BinDescriptor								partition;
 
 		union
 		{
@@ -136,8 +136,8 @@ struct CtaHybrid
 	 * Process work range
 	 */
 	static __device__ __forceinline__ void ProcessWorkRange(
-		Partition		*d_partitions_in,
-		Partition		*d_partitions_out,
+		BinDescriptor		*d_bins_in,
+		BinDescriptor		*d_bins_out,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		KeyType 		*d_keys_final,
@@ -149,7 +149,7 @@ struct CtaHybrid
 		// Retrieve work
 		if (threadIdx.x == 0)
 		{
-			smem_storage.partition = d_partitions_in[blockIdx.x];
+			smem_storage.partition = d_bins_in[blockIdx.x];
 /*
 			printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
 				blockIdx.x,
@@ -160,7 +160,7 @@ struct CtaHybrid
 */
 
 			// Reset current partition descriptor
-			d_partitions_in[blockIdx.x].num_elements = 0;
+			d_bins_in[blockIdx.x].num_elements = 0;
 		}
 
 		__syncthreads();
@@ -186,9 +186,9 @@ struct CtaHybrid
 			// Output new (dummy) partition descriptors
 			if (threadIdx.x < PASS_RADIX_DIGITS)
 			{
-				Partition partition(0, 0, 0);
+				BinDescriptor partition(0, 0, 0);
 				SizeT partition_offset = (blockIdx.x * PASS_RADIX_DIGITS) + threadIdx.x;
-				d_partitions_out[partition_offset] = partition;
+				d_bins_out[partition_offset] = partition;
 			}
 		}
 		else
@@ -229,13 +229,13 @@ struct CtaHybrid
 			// Output new partition descriptors
 			if (threadIdx.x < PASS_RADIX_DIGITS)
 			{
-				Partition partition(
+				BinDescriptor partition(
 					bin_prefix,
 					bin_count,
 					smem_storage.partition.current_bit - PASS_RADIX_DIGITS);
 
 				SizeT partition_offset = (blockIdx.x * PASS_RADIX_DIGITS) + threadIdx.x;
-				d_partitions_out[partition_offset] = partition;
+				d_bins_out[partition_offset] = partition;
 			}
 
 
@@ -256,46 +256,6 @@ struct CtaHybrid
 };
 
 
-
-/**
- * Kernel entry point
- */
-template <
-	typename CtaHybridPolicy,
-	typename SizeT,
-	typename KeyType,
-	typename ValueType>
-__launch_bounds__ (CtaHybridPolicy::CTA_THREADS, CtaHybridPolicy::MIN_CTA_OCCUPANCY)
-__global__
-void Kernel(
-	Partition							*d_partitions_in,
-	Partition							*d_partitions_out,
-	KeyType 							*d_keys_in,
-	KeyType 							*d_keys_out,
-	KeyType 							*d_keys_final,
-	ValueType 							*d_values_in,
-	ValueType 							*d_values_out,
-	ValueType 							*d_values_final,
-	int									low_bit)
-{
-	// CTA abstraction type
-	typedef CtaHybrid<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybrid;
-
-	// Shared memory pool
-	__shared__ typename CtaHybrid::SmemStorage smem_storage;
-
-	CtaHybrid::ProcessWorkRange(
-		smem_storage,
-		d_partitions_in,
-		d_partitions_out,
-		d_keys_in,
-		d_keys_out,
-		d_keys_final,
-		d_values_in,
-		d_values_out,
-		d_values_final,
-		low_bit);
-}
 
 
 

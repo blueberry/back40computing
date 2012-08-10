@@ -218,11 +218,17 @@ struct CtaSpine
 	/**
 	 * Process work range of tiles
 	 */
-	__device__ __forceinline__ void ProcessWorkRange(
-		SizeT num_elements)
+	static __device__ __forceinline__ void ProcessWorkRange(
+		SmemStorage 		&smem_storage,
+		T 					*d_in,
+		T 					*d_out,
+		SizeT				&num_elements)
 	{
+		// Construct CTA abstraction
+		ScanCta cta(smem_storage, d_in_keys, current_bit);
+
 		for (SizeT cta_offset = 0;
-			cta_offset < num_elements;
+			cta_offset + TILE_ELEMENTS < num_elements;
 			cta_offset += TILE_ELEMENTS)
 		{
 			// Process full tiles of tile_elements
@@ -236,32 +242,6 @@ struct CtaSpine
 
 
 
-/**
- * Kernel entry point
- */
-template <
-	typename CtaSpinePolicy,
-	typename T,
-	typename SizeT>
-__launch_bounds__ (CtaSpinePolicy::CTA_THREADS, 1)
-__global__
-void Kernel(
-	T			*d_in,
-	T			*d_out,
-	SizeT 		spine_elements)
-{
-	// CTA abstraction type
-	typedef CtaSpine<CtaSpinePolicy, T, SizeT> CtaSpine;
-
-	// Shared memory pool
-	__shared__ typename CtaSpine::SmemStorage smem_storage;
-
-	// Only CTA-0 needs to run
-	if (blockIdx.x > 0) return;
-
-	CtaSpine cta(smem_storage, d_in, d_out);
-	cta.ProcessWorkRange(spine_elements);
-}
 
 
 

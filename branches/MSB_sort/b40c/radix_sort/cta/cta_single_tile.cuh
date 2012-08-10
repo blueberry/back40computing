@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * "Block-sort" CTA abstraction for sorting small tiles of input
+ * Tile-sorting CTA abstraction
  ******************************************************************************/
 
 #pragma once
@@ -29,7 +29,7 @@
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta_radix_sort.cuh"
+#include "../../radix_sort/cta/cta_radix_sort.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -37,7 +37,7 @@ namespace radix_sort {
 
 
 /**
- * Block CTA tuning policy
+ * Tile-sorting CTA tuning policy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -46,7 +46,7 @@ template <
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
-struct CtaBlockPolicy
+struct TileCtaPolicy
 {
 	enum
 	{
@@ -68,10 +68,10 @@ struct CtaBlockPolicy
  * "Block-sort" CTA abstraction for sorting small tiles of input
  */
 template <
-	typename CtaBlockPolicy,
+	typename TileCtaPolicy,
 	typename KeyType,
 	typename ValueType>
-class CtaBlock
+class TileCta
 {
 private:
 
@@ -84,14 +84,14 @@ private:
 
 	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
 	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaBlockPolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaBlockPolicy::STORE_MODIFIER;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= TileCtaPolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= TileCtaPolicy::STORE_MODIFIER;
 
 	enum
 	{
-		RADIX_BITS					= CtaBlockPolicy::RADIX_BITS,
-		KEYS_PER_THREAD				= CtaBlockPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= CtaBlockPolicy::TILE_ELEMENTS,
+		RADIX_BITS					= TileCtaPolicy::RADIX_BITS,
+		KEYS_PER_THREAD				= TileCtaPolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= TileCtaPolicy::TILE_ELEMENTS,
 	};
 
 
@@ -102,7 +102,7 @@ private:
 		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
-		CtaBlockPolicy::SMEM_CONFIG> CtaRadixSort;
+		TileCtaPolicy::SMEM_CONFIG> CtaRadixSort;
 
 public:
 
@@ -257,41 +257,7 @@ public:
 };
 
 
-/**
- * Kernel entry point
- */
-template <
-	typename CtaBlockPolicy,
-	typename KeyType,
-	typename ValueType>
-__launch_bounds__ (CtaBlockPolicy::CTA_THREADS, 1)
-__global__
-void Kernel(
-	KeyType 							*d_keys,
-	ValueType 							*d_values,
-	unsigned int 						current_bit,
-	unsigned int						bits_remaining,
-	unsigned int 						num_elements)
-{
-	// CTA abstraction type
-	typedef CtaBlock<CtaBlockPolicy, KeyType, ValueType> CtaBlock;
-
-	// Shared memory pool
-	__shared__ typename CtaBlock::SmemStorage smem_storage;
-
-	CtaBlock::ProcessTile(
-		smem_storage,
-		d_keys,
-		d_keys,
-		d_values,
-		d_values,
-		current_bit,
-		bits_remaining,
-		int(0),
-		num_elements);
-}
-
-
+} // namespace cta
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX
