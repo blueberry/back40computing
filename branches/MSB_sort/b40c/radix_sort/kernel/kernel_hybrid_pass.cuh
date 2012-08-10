@@ -23,11 +23,17 @@
 
 #pragma once
 
+#include "../../util/kernel_props.cuh"
 #include "../../util/ns_umbrella.cuh"
+
+#include "../../radix_sort/sort_utils.cuh"
+#include "../../radix_sort/cta/cta_hybrid_pass.cuh"
+
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace kernel {
 
 
 
@@ -39,9 +45,11 @@ template <
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-__launch_bounds__ (CtaHybridPolicy::CTA_THREADS, CtaHybridPolicy::MIN_CTA_OCCUPANCY)
+__launch_bounds__ (
+	CtaHybridPolicy::CTA_THREADS,
+	CtaHybridPolicy::MIN_CTA_OCCUPANCY)
 __global__
-void Kernel(
+void HybridKernel(
 	BinDescriptor						*d_bins_in,
 	BinDescriptor						*d_bins_out,
 	KeyType 							*d_keys_in,
@@ -53,21 +61,43 @@ void Kernel(
 	int									low_bit)
 {
 	// CTA abstraction type
-	typedef CtaHybrid<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybrid;
+	typedef CtaHybridPass<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybridPass;
 
-	// Shared memory pool
-	__shared__ typename CtaHybrid::SmemStorage cta_smem_storage;
+	// Shared data structures
+	__shared__ typename CtaHybridPass::SmemStorage 	cta_smem_storage;
+	__shared__ BinDescriptor 						input_bin;
 
-	CtaHybrid::ProcessWorkRange(
+	// Retrieve work
+	if (threadIdx.x == 0)
+	{
+		input_bin = d_bins_in[blockIdx.x];
+/*
+		printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
+			blockIdx.x,
+			low_bit,
+			input_bin.current_bit,
+			input_bin.num_elements,
+			input_bin.offset);
+*/
+
+		// Reset current partition descriptor
+		d_bins_in[blockIdx.x].num_elements = 0;
+	}
+
+	__syncthreads();
+
+	// Quit if there is no work
+	if (input_bin.num_elements == 0) return;
+
+	CtaHybridPass::Sort(
 		cta_smem_storage,
-		d_bins_in,
-		d_bins_out,
 		d_keys_in,
 		d_keys_out,
 		d_keys_final,
 		d_values_in,
 		d_values_out,
 		d_values_final,
+		input_bin.
 		low_bit);
 }
 
@@ -75,12 +105,12 @@ void Kernel(
 /**
  * Hybrid kernel props
  */
-struct BinDescriptorKernelProps : util::KernelProps
+struct HybridKernelProps : util::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
-		Hybrid*,
-		Hybrid*,
+		BinDescriptor*,
+		BinDescriptor*,
 		KeyType*,
 		KeyType*,
 		KeyType*,
@@ -98,19 +128,19 @@ struct BinDescriptorKernelProps : util::KernelProps
 	 * Initializer
 	 */
 	template <
-		typename KernelPolicy,
-		typename OpaquePolicy>
+		typename CtaHybridPassPolicy,
+		typename OpaqueCtaHybridPassPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
 		// Initialize fields
-		kernel_func 			= block::Kernel<OpaquePolicy>;
-		tile_elements 			= KernelPolicy::TILE_ELEMENTS;
-		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+		kernel_func 			= HybridKernel<OpaqueCtaHybridPassPolicy>;
+		tile_elements 			= CtaHybridPassPolicy::TILE_ELEMENTS;
+		sm_bank_config 			= CtaHybridPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
 		return util::KernelProps::Init(
 			kernel_func,
-			KernelPolicy::CTA_THREADS,
+			CtaHybridPassPolicy::CTA_THREADS,
 			sm_arch,
 			sm_count);
 	}
@@ -118,14 +148,15 @@ struct BinDescriptorKernelProps : util::KernelProps
 	/**
 	 * Initializer
 	 */
-	template <typename KernelPolicy>
+	template <typename CtaHybridPassPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
-		return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		return Init<CtaHybridPassPolicy, CtaHybridPassPolicy>(sm_arch, sm_count);
 	}
 
 };
 
+} // namespace kernel
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

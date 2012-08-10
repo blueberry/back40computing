@@ -537,6 +537,16 @@ struct CachedAllocator
 
 
 
+/**
+ * Retrieve default allocator
+ */
+template <void>
+CachedAllocator* DefaultAllocator()
+{
+	static CachedAllocator default_allocator;
+}
+
+
 
 } // namespace util
 } // namespace b40c

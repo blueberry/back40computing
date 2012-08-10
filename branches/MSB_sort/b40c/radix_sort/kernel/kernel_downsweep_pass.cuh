@@ -23,11 +23,17 @@
 
 #pragma once
 
+#include "../../util/kernel_props.cuh"
+#include "../../util/cta_progress.cuh"
 #include "../../util/ns_umbrella.cuh"
+
+#include "../../radix_sort/sort_utils.cuh"
+#include "../../radix_sort/cta/cta_downsweep_pass.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace kernel {
 
 
 /**
@@ -42,26 +48,21 @@ __launch_bounds__ (
 	CtaDownsweepPassPolicy::CTA_THREADS,
 	CtaDownsweepPassPolicy::MIN_CTA_OCCUPANCY)
 __global__ void DownsweepKernel(
+	BinDescriptor						*d_bins_out,
 	SizeT 								*d_spine,
-	KeyType 							*d_in_keys,
-	KeyType 							*d_out_keys,
-	ValueType 							*d_in_values,
-	ValueType 							*d_out_values,
+	KeyType 							*d_keys_in,
+	KeyType 							*d_keys_out,
+	ValueType 							*d_values_in,
+	ValueType 							*d_values_out,
 	unsigned int 						current_bit,
 	util::CtaWorkDistribution<SizeT> 	cta_work_distribution)
 {
 	// CTA abstraction type
 	typedef CtaDownsweepPass<CtaDownsweepPassPolicy, SizeT, KeyType, ValueType> CtaDownsweepPass;
 
-	// Shared memory
+	// Shared data structures
 	__shared__ typename CtaDownsweepPass::SmemStorage 		cta_smem_storage;
 	__shared__ util::CtaProgress<SizeT, TILE_ELEMENTS> 		cta_progress;
-
-	// Determine our CTA's work range
-	if (threadIdx.x == 0)
-	{
-		cta_progress.Init(cta_work_distribution);
-	}
 
 	// Read exclusive bin prefixes
 	SizeT bin_prefix;
@@ -87,18 +88,24 @@ __global__ void DownsweepKernel(
 		}
 	}
 
+	// Determine our CTA's work range
+	if (threadIdx.x == 0)
+	{
+		cta_progress.Init(cta_work_distribution);
+	}
+
 	// Sync to acquire work range
 	__syncthreads();
 
-	// Process downsweep
+	// Scatter keys to each radix digit bin
 	CtaDownsweepPass::Downsweep(
 		cta_smem_storage,
-		d_in_keys + cta_progress.cta_offset,
-		d_out_keys,
-		d_in_values + cta_progress.cta_offset,
-		d_out_values,
+		bin_prefix,
+		d_keys_in + cta_progress.cta_offset,
+		d_keys_out,
+		d_values_in + cta_progress.cta_offset,
+		d_values_out,
 		current_bit,
-		bin_prefixes,
 		cta_progress.num_elements);
 }
 
@@ -106,6 +113,10 @@ __global__ void DownsweepKernel(
 /**
  * Downsweep kernel props
  */
+template <
+	typename SizeT,
+	typename KeyType,
+	typename ValueType>
 struct DownsweepKernelProps : util::KernelProps
 {
 	// Kernel function type
@@ -128,19 +139,19 @@ struct DownsweepKernelProps : util::KernelProps
 	 * Initializer
 	 */
 	template <
-		typename KernelPolicy,
-		typename OpaquePolicy>
+		typename CtaDownsweepPolicy,
+		typename OpaqueCtaDownsweepPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
 		// Initialize fields
-		kernel_func 			= downsweep::Kernel<OpaquePolicy>;
-		tile_elements 			= KernelPolicy::TILE_ELEMENTS;
-		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPolicy>;
+		tile_elements 			= CtaDownsweepPolicy::TILE_ELEMENTS;
+		sm_bank_config 			= CtaDownsweepPolicy::SMEM_CONFIG;
 
 		// Initialize super class
 		return util::KernelProps::Init(
 			kernel_func,
-			KernelPolicy::CTA_THREADS,
+			CtaDownsweepPolicy::CTA_THREADS,
 			sm_arch,
 			sm_count);
 	}
@@ -148,15 +159,16 @@ struct DownsweepKernelProps : util::KernelProps
 	/**
 	 * Initializer
 	 */
-	template <typename KernelPolicy>
+	template <typename CtaDownsweepPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
-		return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		return Init<CtaDownsweepPolicy, CtaDownsweepPolicy>(sm_arch, sm_count);
 	}
 
 };
 
 
+} // namespace kernel
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

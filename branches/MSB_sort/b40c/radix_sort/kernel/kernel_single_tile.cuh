@@ -23,11 +23,10 @@
 
 #pragma once
 
-#include "../../util/operators.cuh"
 #include "../../util/kernel_props.cuh"
 #include "../../util/ns_umbrella.cuh"
 
-#include "../../radix_sort/cta/cta_scan_pass.cuh"
+#include "../../radix_sort/cta/cta_single_tile.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -39,65 +38,83 @@ namespace kernel {
  * Kernel entry point
  */
 template <
-	typename CtaScanPassPolicy,
-	typename T,
+	typename CtaSingleTilePolicy,
+	typename KeyType,
+	typename ValueType,
 	typename SizeT>
-__launch_bounds__ (CtaScanPassPolicy::CTA_THREADS, 1)
+__launch_bounds__ (
+	CtaSingleTilePolicy::CTA_THREADS,
+	CtaSingleTilePolicy::MIN_CTA_OCCUPANCY)
 __global__
-void ScanKernel(
-	T			*d_in,
-	T			*d_out,
-	SizeT 		spine_elements)
+void SingleTileKernel(
+	KeyType 		*d_keys_in,
+	KeyType 		*d_keys_out,
+	ValueType 		*d_values_in,
+	ValueType 		*d_values_out,
+	unsigned int	current_bit,
+	unsigned int 	bits_remaining,
+	SizeT 			num_elements)
 {
 	// CTA abstraction type
-	typedef CtaScanPass<CtaScanPassPolicy, T> CtaScanPass;
+	typedef CtaSingleTile<CtaSingleTilePolicy, SizeT, KeyType, ValueType> CtaSingleTile;
 
 	// Shared data structures
-	__shared__ typename CtaScanPass::SmemStorage cta_smem_storage;
+	__shared__ typename CtaSingleTile::SmemStorage cta_smem_storage;
 
-	// Only CTA-0 needs to run
-	if (blockIdx.x > 0) return;
-
-	CtaScanPass::Scan(
+	// Sort input tile
+	CtaSingleTile::Sort(
 		cta_smem_storage,
-		d_in,
-		d_out,
-		util::Sum<T>,
-		spine_elements);
+		d_keys_in,
+		d_keys_out,
+		d_values_in,
+		d_values_out,
+		current_bit,
+		bits_remaining,
+		num_elements);
 }
 
 
-
 /**
- * Spine kernel properties
+ * Single-tile kernel props
  */
-struct SpineKernelProps : util::KernelProps
+template <
+	typename KeyType,
+	typename ValueType,
+	typename SizeT>
+struct SingleTileKernelProps : util::KernelProps
 {
 	// Kernel function type
-	typedef void (*KernelFunc)(SizeT*, SizeT*, int);
+	typedef void (*KernelFunc)(
+		KeyType*,
+		KeyType*,
+		ValueType*,
+		ValueType*,
+		unsigned int,
+		unsigned int,
+		SizeT);
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						log_tile_elements;
+	int 						tile_elements;
 	cudaSharedMemConfig 		sm_bank_config;
 
 	/**
 	 * Initializer
 	 */
 	template <
-		typename KernelPolicy,
-		typename OpaquePolicy>
+		typename CtaSingleTilePolicy,
+		typename OpaqueCtaSingleTilePolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
 		// Initialize fields
-		kernel_func 			= ScanKernel<OpaquePolicy>;
-		log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
-		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+		kernel_func 			= SingleTileKernel<OpaqueCtaSingleTilePolicy>;
+		tile_elements 			= CtaSingleTilePolicy::TILE_ELEMENTS;
+		sm_bank_config 			= CtaSingleTilePolicy::SMEM_CONFIG;
 
 		// Initialize super class
 		return util::KernelProps::Init(
 			kernel_func,
-			KernelPolicy::CTA_THREADS,
+			CtaSingleTilePolicy::CTA_THREADS,
 			sm_arch,
 			sm_count);
 	}
@@ -105,14 +122,13 @@ struct SpineKernelProps : util::KernelProps
 	/**
 	 * Initializer
 	 */
-	template <typename KernelPolicy>
+	template <typename CtaSingleTilePolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
-		return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(sm_arch, sm_count);
 	}
+
 };
-
-
 
 } // namespace kernel
 } // namespace radix_sort

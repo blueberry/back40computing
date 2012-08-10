@@ -26,7 +26,6 @@
 #include "../../util/cuda_properties.cuh"
 #include "../../util/srts_grid.cuh"
 #include "../../util/srts_details.cuh"
-#include "../../util/operators.cuh"
 #include "../../util/io/modified_load.cuh"
 #include "../../util/io/modified_store.cuh"
 #include "../../util/io/load_tile.cuh"
@@ -37,6 +36,7 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace cta {
 
 
 /**
@@ -49,9 +49,10 @@ template <
 	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
-struct CtaSpinePolicy
+struct CtaScanPassPolicy
 {
-	enum {
+	enum
+	{
 		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
 		LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE,
 		LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE,
@@ -68,26 +69,28 @@ struct CtaSpinePolicy
 
 
 /**
- * "Spine-scan" CTA abstraction for scanning radix digit histograms
+ * CTA-wide abstraction for computing a prefix scan over a range of input tiles
  */
 template <
-	typename CtaSpinePolicy,
-	typename T,
-	typename SizeT>
-struct CtaSpine
+	typename CtaScanPassPolicy,
+	typename T>
+class CtaScanPass
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Constants and type definitions
 	//---------------------------------------------------------------------
 
-	enum {
-		LOG_CTA_THREADS 					= CtaSpinePolicy::LOG_CTA_THREADS,
-		CTA_THREADS							= 1 << LOG_CTA_THREADS,
+	enum
+	{
+		LOG_CTA_THREADS 				= CtaScanPassPolicy::LOG_CTA_THREADS,
+		CTA_THREADS						= 1 << LOG_CTA_THREADS,
 
-		LOG_LOAD_VEC_SIZE  				= CtaSpinePolicy::LOG_LOAD_VEC_SIZE,
+		LOG_LOAD_VEC_SIZE  				= CtaScanPassPolicy::LOG_LOAD_VEC_SIZE,
 		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
 
-		LOG_LOADS_PER_TILE 				= CtaSpinePolicy::LOG_LOADS_PER_TILE,
+		LOG_LOADS_PER_TILE 				= CtaScanPassPolicy::LOG_LOADS_PER_TILE,
 		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
 
 		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
@@ -108,7 +111,7 @@ struct CtaSpine
 	 */
 	typedef util::RakingGrid<
 		T,										// Partial type
-		LOG_CTA_THREADS,							// Depositing threads (the CTA size)
+		LOG_CTA_THREADS,						// Depositing threads (the CTA size)
 		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
 		LOG_WARP_THREADS,						// 1 warp of raking threads
 		true>									// There are prefix dependences between lanes
@@ -119,9 +122,10 @@ struct CtaSpine
 	 */
 	typedef util::RakingDetails<RakingGrid> RakingDetails;
 
+public:
 
 	/**
-	 * Shared memory storage type
+	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
@@ -129,9 +133,10 @@ struct CtaSpine
 		T raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];		// Raking raking elements
 	};
 
+private:
 
 	//---------------------------------------------------------------------
-	// Fields
+	// Thread fields (aggregate state bundle)
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
@@ -148,10 +153,6 @@ struct CtaSpine
 	// Operational details for raking scan grid
 	RakingDetails raking_details;
 
-	// Scan operator
-	util::Sum<T> scan_op;
-
-
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -159,7 +160,7 @@ struct CtaSpine
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaSpine(
+	__device__ __forceinline__ CtaScanPass(
 		SmemStorage 		&cta_smem_storage,
 		T 					*d_in,
 		T 					*d_out) :
@@ -177,7 +178,10 @@ struct CtaSpine
 	/**
 	 * Process a single tile
 	 */
-	__device__ __forceinline__ void ProcessTile(SizeT cta_offset)
+	template <typename ScanOp, typename SizeT>
+	__device__ __forceinline__ void ProcessTile(
+		ScanOp scan_op,
+		SizeT cta_offset)
 	{
 		// Tile of scan elements
 		T partials[LOADS_PER_TILE][LOAD_VEC_SIZE];
@@ -187,7 +191,7 @@ struct CtaSpine
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			CTA_THREADS,
-			CtaSpinePolicy::LOAD_MODIFIER,
+			CtaScanPassPolicy::LOAD_MODIFIER,
 			false>::LoadValid(
 				partials,
 				d_in,
@@ -207,47 +211,47 @@ struct CtaSpine
 			LOG_LOADS_PER_TILE,
 			LOG_LOAD_VEC_SIZE,
 			CTA_THREADS,
-			CtaSpinePolicy::STORE_MODIFIER,
+			CtaScanPassPolicy::STORE_MODIFIER,
 			false>::Store(
 				partials,
 				d_out,
 				cta_offset);
 	}
 
+public:
+
+	//---------------------------------------------------------------------
+	// Interface
+	//---------------------------------------------------------------------
 
 	/**
-	 * Process work range of tiles
+	 * Scan a range of input tiles
 	 */
-	static __device__ __forceinline__ void ProcessWorkRange(
+	template <typename ScanOp, typename SizeT>
+	static __device__ __forceinline__ void Scan(
 		SmemStorage 		&cta_smem_storage,
 		T 					*d_in,
 		T 					*d_out,
+		ScanOp				scan_op,
 		SizeT				&num_elements)
 	{
-		// Construct CTA abstraction
-		ScanCta cta(cta_smem_storage, d_in_keys, current_bit);
+		// Construct state bundle
+		ScanCta cta(cta_smem_storage, d_keys_in, current_bit);
 
-		for (SizeT cta_offset = 0;
-			cta_offset + TILE_ELEMENTS < num_elements;
-			cta_offset += TILE_ELEMENTS)
+		SizeT cta_offset = 0;
+		while (cta_offset + TILE_ELEMENTS <= num_elements)
 		{
 			// Process full tiles of tile_elements
-			ProcessTile(cta_offset);
+			ProcessTile(cta_offset, scan_op);
+
+			cta_offset += TILE_ELEMENTS;
 		}
 	}
 
 };
 
 
-
-
-
-
-
-
-
-
-
+} // namespace cta
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

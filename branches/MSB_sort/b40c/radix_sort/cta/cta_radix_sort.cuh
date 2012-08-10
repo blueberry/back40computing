@@ -34,6 +34,7 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace cta {
 
 
 /**
@@ -248,6 +249,7 @@ public:
 
 
 
+} // namespace cta
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

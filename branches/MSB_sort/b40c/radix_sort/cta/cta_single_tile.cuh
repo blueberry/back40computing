@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Tile-sorting CTA abstraction
+ * CTA-wide abstraction for sorting a single tile of input
  ******************************************************************************/
 
 #pragma once
@@ -34,10 +34,15 @@
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace cta {
 
+
+//---------------------------------------------------------------------
+// Tuning policy types
+//---------------------------------------------------------------------
 
 /**
- * Tile-sorting CTA tuning policy
+ * Single tile CTA tuning policy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
@@ -46,7 +51,7 @@ template <
 	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
 	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
-struct TileCtaPolicy
+struct CtaSingleTilePolicy
 {
 	enum
 	{
@@ -64,14 +69,18 @@ struct TileCtaPolicy
 
 
 
+//---------------------------------------------------------------------
+// CTA-wide abstractions
+//---------------------------------------------------------------------
+
 /**
- * "Block-sort" CTA abstraction for sorting small tiles of input
+ * CTA-wide abstraction for sorting a single tile of input
  */
 template <
-	typename TileCtaPolicy,
+	typename CtaSingleTilePolicy,
 	typename KeyType,
 	typename ValueType>
-class TileCta
+class CtaSingleTile
 {
 private:
 
@@ -84,14 +93,14 @@ private:
 
 	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
 	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= TileCtaPolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= TileCtaPolicy::STORE_MODIFIER;
+	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaSingleTilePolicy::LOAD_MODIFIER;
+	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaSingleTilePolicy::STORE_MODIFIER;
 
 	enum
 	{
-		RADIX_BITS					= TileCtaPolicy::RADIX_BITS,
-		KEYS_PER_THREAD				= TileCtaPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= TileCtaPolicy::TILE_ELEMENTS,
+		RADIX_BITS					= CtaSingleTilePolicy::RADIX_BITS,
+		KEYS_PER_THREAD				= CtaSingleTilePolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= CtaSingleTilePolicy::TILE_ELEMENTS,
 	};
 
 
@@ -102,7 +111,7 @@ private:
 		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
-		TileCtaPolicy::SMEM_CONFIG> CtaRadixSort;
+		CtaSingleTilePolicy::SMEM_CONFIG> CtaRadixSort;
 
 public:
 
@@ -134,13 +143,13 @@ private:
 		T 				*items,
 		T 				*d_in,
 		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
+		const int 		&num_elements)
 	{
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			int thread_offset = threadIdx.x + (KEY * CTA_THREADS);
-			if (thread_offset < guarded_elements)
+			if (thread_offset < num_elements)
 			{
 				items[KEY] = d_in[cta_offset + thread_offset];
 			}
@@ -172,13 +181,13 @@ private:
 		T 				*items,
 		T 				*d_out,
 		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
+		const int 		&num_elements)
 	{
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (global_offset < guarded_elements)
+			if (global_offset < num_elements)
 			{
 				d_out[cta_offset + global_offset] = items[KEY];
 			}
@@ -203,8 +212,7 @@ public:
 		util::NullType 	*d_values_out,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
-		const SizeT		&cta_offset,
-		const int 		&guarded_elements)
+		const int 		&num_elements)
 	{
 		UnsignedBits keys[KEYS_PER_THREAD];
 
@@ -221,7 +229,7 @@ public:
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_in),
 			cta_offset,
-			guarded_elements);
+			num_elements);
 
 		__syncthreads();
 
@@ -251,7 +259,7 @@ public:
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_out),
 			cta_offset,
-			guarded_elements);
+			num_elements);
 	}
 
 };

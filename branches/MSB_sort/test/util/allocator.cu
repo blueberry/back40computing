@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 	int num_gpus;
 	if (b40c::util::B40CPerror(cudaGetDeviceCount(&num_gpus))) exit(1);
 
-	// Create allocator with default 6MB-1B allowance
+	// Create default allocator with (max 6MB allowance)
     b40c::util::CachedAllocator allocator;
 
 	printf("Running single-gpu tests...\n"); fflush(stdout);

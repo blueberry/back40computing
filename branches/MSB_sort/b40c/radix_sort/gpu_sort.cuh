@@ -23,21 +23,20 @@
 
 #pragma once
 
-#include "../util/scratch.cuh"
+#include "../util/allocator.cuh"
 #include "../util/basic_utils.cuh"
-#include "../util/kernel_props.cuh"
 #include "../util/error_utils.cuh"
 #include "../util/cta_progress.cuh"
 #include "../util/ns_umbrella.cuh"
 
 #include "../radix_sort/sort_utils.cuh"
-#include "../radix_sort/pass_policy.cuh"
+#include "../radix_sort/tuned_policy.cuh"
 
-#include "../radix_sort/upsweep/cta.cuh"
-#include "../radix_sort/spine/cta.cuh"
-#include "../radix_sort/downsweep/cta.cuh"
-#include "../radix_sort/tile/cta.cuh"
-#include "../radix_sort/partition/cta.cuh"
+#include "../radix_sort/kernel/kernel_downsweep_pass.cuh"
+#include "../radix_sort/kernel/kernel_hybrid_pass.cuh"
+#include "../radix_sort/kernel/kernel_scan_pass.cuh"
+#include "../radix_sort/kernel/kernel_single_tile.cuh"
+#include "../radix_sort/kernel/kernel_upsweep_pass.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -53,31 +52,69 @@ namespace radix_sort {
  * Problem instance
  */
 template <
-	typename DoubleBuffer,
-	typename _SizeT>
+	typename Allocator,
+	typename KeyType,
+	typename ValueType,
+	typename SizeT>
 struct ProblemInstance
 {
 	//---------------------------------------------------------------------
-	// Type definitions
+	// Type definitions and constants
 	//---------------------------------------------------------------------
 
-	typedef typename DoubleBuffer::KeyType 					KeyType;
-	typedef typename DoubleBuffer::ValueType 				ValueType;
-	typedef _SizeT 											SizeT;
+	/**
+	 * Tuned pass policy whose type signature does not reflect the tuned
+	 * SM architecture.
+	 */
+	template <
+		ProblemSize 	PROBLEM_SIZE,
+		int 			RADIX_BITS>
+	struct OpaquePassPolicy
+	{
+		// The appropriate tuning arch-id from the arch-id targeted by the
+		// active compiler pass.
+		enum
+		{
+/*
+			COMPILER_TUNE_ARCH 		= (__CUB_CUDA_ARCH__ >= 200) ?
+										200 :
+										(__CUB_CUDA_ARCH__ >= 130) ?
+											130 :
+											100
+*/
+			COMPILER_TUNE_ARCH = 200
+		};
+
+		// Tuned pass policy
+		typedef TunedPassPolicy<
+			COMPILER_TUNE_ARCH,
+			ProblemInstance,
+			PROBLEM_SIZE,
+			RADIX_BITS> TunedPassPolicy;
+
+		struct DispatchPolicy 	: TunedPassPolicy::DispatchPolicy {};
+		struct UpsweepPolicy 	: TunedPassPolicy::UpsweepPolicy {};
+		struct SpinePolicy 		: TunedPassPolicy::SpinePolicy {};
+		struct DownsweepPolicy 	: TunedPassPolicy::DownsweepPolicy {};
+		struct BinDescriptorPolicy 	: TunedPassPolicy::BinDescriptorPolicy {};
+		struct TilePolicy 		: TunedPassPolicy::TilePolicy {};
+	};
 
 
 	//---------------------------------------------------------------------
 	// Fields
 	//---------------------------------------------------------------------
 
-	DoubleBuffer		&storage;
+	Allocator			*allocator;
+
+	KeyType				*d_keys[2];
+	ValueType			*d_values[2];
+	BinDescriptor		*d_bins[2];
+	int 				selector;
+
 	SizeT				num_elements;
 	int 				low_bit;
 	int					num_bits;
-
-	util::Scratch		&spine;
-	util::Scratch 		(&partitions)[2];
-
 	cudaStream_t		stream;
 	int			 		max_grid_size;
 	bool				debug;
@@ -87,35 +124,97 @@ struct ProblemInstance
 	// Methods
 	//---------------------------------------------------------------------
 
+
 	/**
 	 * Constructor
 	 */
-	ProblemInstance(
-		DoubleBuffer	&storage,
-		SizeT			num_elements,
-		int 			low_bit,
-		int				num_bits,
-		cudaStream_t	stream,
-		util::Scratch	&spine,
-		util::Scratch	(&partitions)[2],
-		int			 	max_grid_size,
-		bool			debug) :
-			storage(storage),
-			num_elements(num_elements),
-			low_bit(low_bit),
-			num_bits(num_bits),
-			stream(stream),
-			spine(spine),
-			partitions(partitions),
-			max_grid_size(max_grid_size),
-			debug(debug)
-	{}
+	ProblemInstance()
+	{
+		allocator = NULL;
+		d_keys[0] = NULL;
+		d_keys[1] = NULL;
+		d_values[0] = NULL;
+		d_values[1] = NULL;
+		d_bins[0] = NULL;
+		d_bins[1] = NULL;
+	}
 
 
 	/**
-	 * Dispatch primary
+	 * Destructor
 	 */
-	cudaError_t DispatchPrimary(
+	virtual ~ProblemInstance()
+	{
+		if (allocator)
+		{
+			if (d_keys[0]) allocator.Deallocate(d_keys[1]);
+			if (d_values[0]) allocator.Deallocate(d_values[1]);
+			if (d_bins[0]) allocator.Deallocate(d_bins[0]);
+			if (d_bins[1]) allocator.Deallocate(d_bins[1]);
+		}
+	}
+
+
+	/**
+	 * Initializer
+	 */
+	cudaError_t Init(
+		util::CachedAllocator	*allocator,
+		KeyType					*d_keys,
+		ValueType				*d_values,
+		SizeT					num_elements,
+		int 					low_bit,
+		int						num_bits,
+		cudaStream_t			stream,
+		int			 			max_grid_size,
+		bool					debug)
+	{
+		cudaError_t error = cudaSuccess;
+
+		do {
+
+			this->selector = 0;
+			this->d_keys[0] = d_keys;
+			this->d_values[0] = d_values;
+
+			// Allocate temporary keys and values arrays
+			error = allocator->Allocate(this->d_keys[1], sizeof(KeyType) * num_elements);
+			if (error) break;
+			if (d_values != NULL)
+			{
+				error = allocator->Allocate(this->d_values[1], sizeof(ValueType) * num_elements);
+				if (error) break;
+			}
+
+			// Allocate partition descriptor queues
+			int max_partitions = (problem_instance.num_elements + partition_props.tile_elements - 1) / partition_props.tile_elements;
+			error = allocator->Allocate(this->d_bins[0], sizeof(BinDescriptor) * num_elements);
+			if (error) break;
+			error = allocator->Allocate(this->d_bins[1], sizeof(BinDescriptor) * num_elements);
+			if (error) break;
+
+			// Initialize partition descriptor queues
+			error = cudaMemSet(d_bins[0](), 0, sizeof(BinDescriptor) * max_partitions);
+			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
+			error = cudaMemSet(d_bins[1](), 0, sizeof(BinDescriptor) * max_partitions);
+			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
+
+
+			this->num_elements = num_elements;
+			this->low_bit = low_bit;
+			this->num_bits = num_bits;
+			this->stream = stream;
+			this->max_grid_size = max_grid_size;
+			this->debug = debug;
+
+		} while (0);
+	}
+
+
+	/**
+	 * Dispatch global partition
+	 */
+	cudaError_t DispatchGlobal(
 		unsigned int 					radix_bits,
 		const UpsweepKernelProps 		&upsweep_props,
 		const SpineKernelProps			&spine_props,
@@ -346,7 +445,7 @@ struct ProblemInstance
 	/**
 	 * Dispatch single-CTA tile sort
 	 */
-	cudaError_t DispatchTile(const TileKernelProps &tile_props)
+	cudaError_t DispatchTile(const cta::SingleTileKernelProps &single_tile_props)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -359,21 +458,21 @@ struct ProblemInstance
 			if (debug)
 			{
 				printf("Single tile: tile size(%d), occupancy(%d), grid_size(%d), threads(%d)\n",
-					tile_props.tile_elements,
-					tile_props.max_cta_occupancy,
+					single_tile_props.tile_elements,
+					single_tile_props.max_cta_occupancy,
 					grid_size,
-					tile_props.threads);
+					single_tile_props.threads);
 				fflush(stdout);
 			}
 
 			// Set shared mem bank mode
 			cudaSharedMemConfig old_sm_config;
 			cudaDeviceGetSharedMemConfig(&old_sm_config);
-			if (old_sm_config != tile_props.sm_bank_config)
-				cudaDeviceSetSharedMemConfig(tile_props.sm_bank_config);
+			if (old_sm_config != single_tile_props.sm_bank_config)
+				cudaDeviceSetSharedMemConfig(single_tile_props.sm_bank_config);
 
 			// Single-CTA sorting kernel
-			tile_props.kernel_func<<<grid_size, tile_props.threads, 0, stream>>>(
+			single_tile_props.kernel_func<<<grid_size, single_tile_props.threads, 0, stream>>>(
 				storage.d_keys[storage.selector],
 				storage.d_values[storage.selector],
 				low_bit,
@@ -386,7 +485,7 @@ struct ProblemInstance
 			}
 
 			// Restore smem bank mode
-			if (old_sm_config != tile_props.sm_bank_config)
+			if (old_sm_config != single_tile_props.sm_bank_config)
 				cudaDeviceSetSharedMemConfig(old_sm_config);
 
 		} while(0);
@@ -395,73 +494,14 @@ struct ProblemInstance
 	}
 
 
-	//---------------------------------------------------------------------
-	// Fields
-	//---------------------------------------------------------------------
 
-	// Temporary device storage needed for reducing partials produced
-	// by separate CTAs
-	util::Scratch spine;
-
-	// Pair of partition descriptor queues
-	util::Scratch partitions[2];
-
-	// Device properties
-	const util::CudaProperties cuda_props;
-
-
-	//---------------------------------------------------------------------
-	// Helper structures
-	//---------------------------------------------------------------------
-
-	/**
-	 * Tuned pass policy whose type signature does not reflect the tuned
-	 * SM architecture.
-	 */
-	template <
-		typename 		ProblemInstance,
-		ProblemSize 	PROBLEM_SIZE,
-		int 			RADIX_BITS>
-	struct OpaquePassPolicy
-	{
-		// The appropriate tuning arch-id from the arch-id targeted by the
-		// active compiler pass.
-		enum
-		{
-/*
-			COMPILER_TUNE_ARCH 		= (__CUB_CUDA_ARCH__ >= 200) ?
-										200 :
-										(__CUB_CUDA_ARCH__ >= 130) ?
-											130 :
-											100
-*/
-			COMPILER_TUNE_ARCH = 200
-		};
-
-		// Tuned pass policy
-		typedef TunedPassPolicy<
-			COMPILER_TUNE_ARCH,
-			ProblemInstance,
-			PROBLEM_SIZE,
-			RADIX_BITS> TunedPassPolicy;
-
-		struct DispatchPolicy 	: TunedPassPolicy::DispatchPolicy {};
-		struct UpsweepPolicy 	: TunedPassPolicy::UpsweepPolicy {};
-		struct SpinePolicy 		: TunedPassPolicy::SpinePolicy {};
-		struct DownsweepPolicy 	: TunedPassPolicy::DownsweepPolicy {};
-		struct BinDescriptorPolicy 	: TunedPassPolicy::BinDescriptorPolicy {};
-		struct TilePolicy 		: TunedPassPolicy::TilePolicy {};
-	};
 
 
 	/**
 	 * Sort.
 	 */
-	template <
-		int 			TUNE_ARCH,
-		ProblemSize 	PROBLEM_SIZE,
-		typename 		ProblemInstance>
-	cudaError_t Sort(ProblemInstance &problem_instance)
+	template <int TUNE_ARCH, ProblemSize PROBLEM_SIZE>
+	cudaError_t Sort()
 	{
 		cudaError_t error = cudaSuccess;
 		do
@@ -477,10 +517,9 @@ struct ProblemInstance
 
 			int sm_version = cuda_props.device_sm_version;
 			int sm_count = cuda_props.device_props.multiProcessorCount;
-			int initial_selector = problem_instance.storage.selector;
 
 			// Upsweep kernel props
-			typename ProblemInstance::UpsweepKernelProps upsweep_props;
+			kernel::UpsweepKernelProps<SizeT, KeyType> upsweep_props;
 			error = upsweep_props.template Init<
 				typename TunedPassPolicy::UpsweepPolicy,
 				typename OpaquePassPolicy::UpsweepPolicy>(sm_version, sm_count);
@@ -500,20 +539,20 @@ struct ProblemInstance
 				typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
 			if (error) break;
 
-			// BinDescriptor kernel props
+			// Single-tile kernel props
+			typename ProblemInstance::TileKernelProps single_tile_props;
+			error = single_tile_props.template Init<
+				typename TunedPassPolicy::TilePolicy,
+				typename OpaquePassPolicy::TilePolicy>(sm_version, sm_count);
+			if (error) break;
+
+			// Hygrid kernel props
 			typename ProblemInstance::BinDescriptorKernelProps partition_props;
 			error = partition_props.template Init<
 				typename TunedPassPolicy::BinDescriptorPolicy,
 				typename OpaquePassPolicy::BinDescriptorPolicy>(sm_version, sm_count);
 			if (error) break;
-/*
-			// Tile kernel props
-			typename ProblemInstance::TileKernelProps tile_props;
-			error = tile_props.template Init<
-				typename TunedPassPolicy::TilePolicy,
-				typename OpaquePassPolicy::TilePolicy>(sm_version, sm_count);
-			if (error) break;
-*/
+
 			//
 			// Allocate
 			//
@@ -527,10 +566,6 @@ struct ProblemInstance
 			error = partitions[1].Setup(queue_bytes);
 			if (error) break;
 
-			error = cudaMemSet(partitions[0](), 0, sizeof(BinDescriptor) * max_partitions);
-			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
-			error = cudaMemSet(partitions[1](), 0, sizeof(BinDescriptor) * max_partitions);
-			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
 
 
 			//
@@ -550,7 +585,7 @@ struct ProblemInstance
 			}
 
 			// Dispatch first pass
-			error = problem_instance.DispatchPrimary(
+			error = problem_instance.DispatchGlobal(
 				RADIX_BITS,
 				upsweep_props,
 				spine_props,
@@ -580,79 +615,56 @@ struct ProblemInstance
 	}
 
 
-
-	//---------------------------------------------------------------------
-	// Members
-	//---------------------------------------------------------------------
-
-	/**
-	 * Constructor
-	 */
-	Enactor()
-	{}
+};
 
 
-	/**
-	 * Enact a sort.
-	 *
-	 * @param problem_storage
-	 * 		Instance of b40c::util::DoubleBuffer
-	 * @param num_elements
-	 * 		The number of elements in problem_storage to sort (starting at offset 0)
-	 * @param max_grid_size
-	 * 		Optional upper-bound on the number of CTAs to launch.
-	 *
-	 * @return cudaSuccess on success, error enumeration otherwise
-	 */
-	template <ProblemSize PROBLEM_SIZE, typename DoubleBuffer>
-	cudaError_t Sort(
-		DoubleBuffer& 	problem_storage,
-		int 			num_elements,
-		int				low_bit,
-		int 			num_bits,
-		cudaStream_t	stream 			= 0,
-		int 			max_grid_size 	= 0,
-		bool 			debug 			= false)
+/**
+ * Enact a sort.
+ * @return cudaSuccess on success, error enumeration otherwise
+ */
+template <ProblemSize PROBLEM_SIZE, typename KeyType>
+cudaError_t GpuSort(
+	KeyType 		d_keys,
+	int 			num_elements,
+	int				low_bit,
+	int 			num_bits,
+	cudaStream_t	stream 			= 0,
+	int 			max_grid_size 	= 0,
+	bool 			debug 			= false)
+{
+	typedef ProblemInstance<KeyType, util::NullType, int> ProblemInstance;
+
+	if (num_elements <= 1)
 	{
-		typedef ProblemInstance<DoubleBuffer, int> ProblemInstance;
-
-		if (num_elements <= 1)
-		{
-			// Nothing to do
-			return cudaSuccess;
-		}
-
-		ProblemInstance problem_instance(
-			problem_storage,
-			num_elements,
-			low_bit,
-			num_bits,
-			stream,
-			spine,
-			partitions,
-			max_grid_size,
-			debug);
-
-//		if (cuda_props.kernel_ptx_version >= 200)
-		{
-			return Sort<200, PROBLEM_SIZE>(problem_instance);
-		}
-/*		else if (cuda_props.kernel_ptx_version >= 130)
-		{
-			return Sort<130, PROBLEM_SIZE>(problem_instance);
-		}
-		else
-		{
-			return Sort<100, PROBLEM_SIZE>(problem_instance);
-		}
-*/
+		// Nothing to do
+		return cudaSuccess;
 	}
 
+	ProblemInstance<KeyType, util::NullType, int> problem_instance(
+		d_keys,
+		NULL,
+		num_elements,
+		low_bit,
+		num_bits,
+		stream,
+		max_grid_size,
+		debug);
 
+//		if (cuda_props.kernel_ptx_version >= 200)
+	{
+		return problem_instance.Sort<200, PROBLEM_SIZE>();
+	}
+/*		else if (cuda_props.kernel_ptx_version >= 130)
+	{
+		return problem_instance.Sort<200, PROBLEM_SIZE>();
+	}
+	else
+	{
+		return problem_instance.Sort<200, PROBLEM_SIZE>();
+	}
+*/
+}
 
-
-
-};
 
 
 

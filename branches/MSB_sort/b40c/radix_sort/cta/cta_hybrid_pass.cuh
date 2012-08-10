@@ -30,42 +30,28 @@
 #include "../../util/ns_umbrella.cuh"
 
 #include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta_block.cuh"
-#include "../../radix_sort/cta_radix_sort.cuh"
-#include "../../radix_sort/cta_upsweep.cuh"
-#include "../../radix_sort/cta_downsweep.cuh"
+#include "../../radix_sort/cta/cta_single_tile.cuh"
+#include "../../radix_sort/cta/cta_upsweep_pass.cuh"
+#include "../../radix_sort/cta/cta_downsweep_pass.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace cta {
 
 
 /**
  * Hybrid CTA tuning policy.
  */
 template <
-	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
-	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
-	int 							_CTA_THREADS,			// The number of threads per CTA
-	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
-	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
-	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
-	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+	typename CtaSingleTilePolicy,
+	typename CtaUpsweepPassPolicy,
+	typename CtaDownsweepPassPolicy>
 struct CtaHybridPolicy
 {
-	enum
-	{
-		RADIX_BITS					= _RADIX_BITS,
-		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
-		CTA_THREADS 				= _CTA_THREADS,
-		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
-
-		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
-	};
-
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+	typename _CtaSingleTilePolicy 		CtaSingleTilePolicy;
+	typename _CtaUpsweepPassPolicy 		CtaUpsweepPassPolicy;
+	typename _CtaDownsweepPassPolicy 	CtaDownsweepPassPolicy;
 };
 
 
@@ -76,20 +62,16 @@ struct CtaHybridPolicy
  */
 template <
 	typename CtaHybridPolicy,
-	typename SizeT,
 	typename KeyType,
-	typename ValueType>
-struct CtaHybrid
+	typename ValueType,
+	typename SizeT>
+class CtaHybridPass
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
-
-	enum
-	{
-		PASS_RADIX_BITS		= CtaHybridPolicy::Upsweep::RADIX_BITS,
-		PASS_RADIX_DIGITS 	= 1 << PASS_RADIX_BITS,
-	};
 
 	// Single-tile CTA abstraction
 	typedef CtaSingle<
@@ -100,24 +82,23 @@ struct CtaHybrid
 	// Upsweep CTA abstraction
 	typedef CtaUpsweep<
 		typename CtaHybridPolicy::Upsweep,
-		SizeT,
-		KeyType> UpsweepCta;
+		KeyType,
+		SizeT> UpsweepCta;
 
 	// Downsweep CTA abstraction
 	typedef CtaDownsweep<
 		typename CtaHybridPolicy::Downsweep,
-		SizeT,
 		KeyType,
-		ValueType> DownsweepCta;
+		ValueType,
+		SizeT> DownsweepCta;
 
+public:
 
 	/**
 	 * Shared memory storage layout
 	 */
 	struct SmemStorage
 	{
-		BinDescriptor								partition;
-
 		union
 		{
 			typename BlockCta::SmemStorage 		block_storage;
@@ -135,41 +116,25 @@ struct CtaHybrid
 	/**
 	 * Process work range
 	 */
-	static __device__ __forceinline__ void ProcessWorkRange(
-		BinDescriptor		*d_bins_in,
-		BinDescriptor		*d_bins_out,
+	static __device__ __forceinline__ void Sort(
+		SmemStorage 	&cta_smem_storage,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		KeyType 		*d_keys_final,
 		ValueType 		*d_values_in,
 		ValueType 		*d_values_out,
 		ValueType 		*d_values_final,
-		int				low_bit)
+		int				current_bit,
+		int				low_bit,
+		SizeT			num_elements,
+		int				&bin_count,			// The digit count for tid'th bin (output param, valid in the first RADIX_DIGITS threads)
+		int				&bin_prefix)		// The base offset for each digit (valid in the first RADIX_DIGITS threads)
 	{
-		// Retrieve work
-		if (threadIdx.x == 0)
-		{
-			cta_smem_storage.partition = d_bins_in[blockIdx.x];
-/*
-			printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
-				blockIdx.x,
-				low_bit,
-				cta_smem_storage.partition.current_bit,
-				cta_smem_storage.partition.num_elements,
-				cta_smem_storage.partition.offset);
-*/
-
-			// Reset current partition descriptor
-			d_bins_in[blockIdx.x].num_elements = 0;
-		}
-
-		__syncthreads();
-
-		// Quit if there is no work
-		if (cta_smem_storage.partition.num_elements == 0) return;
+		bin_count = 0;
+		bin_prefix = 0;
 
 		// Choose whether to block-sort or pass-sort
-		if (cta_smem_storage.partition.num_elements < TILE_ELEMENTS)
+		if (num_elements < TILE_ELEMENTS)
 		{
 			// Perform block sort
 			BlockCta::Sort(
@@ -182,14 +147,6 @@ struct CtaHybrid
 				cta_smem_storage.partition.current_bit - low_bit,
 				cta_smem_storage.partition.offset,
 				cta_smem_storage.partition.num_elements);
-
-			// Output new (dummy) partition descriptors
-			if (threadIdx.x < PASS_RADIX_DIGITS)
-			{
-				BinDescriptor partition(0, 0, 0);
-				SizeT partition_offset = (blockIdx.x * PASS_RADIX_DIGITS) + threadIdx.x;
-				d_bins_out[partition_offset] = partition;
-			}
 		}
 		else
 		{
@@ -198,9 +155,8 @@ struct CtaHybrid
 			UpsweepCta::Upsweep(
 				cta_smem_storage.upsweep_storage,
 				d_keys_in,
-				cta_smem_storage.partition.current_bit,
-				cta_smem_storage.partition.offset,
-				cta_smem_storage.partition.out_of_bounds,
+				current_bit,
+				num_elements,
 				bin_count);
 
 			__syncthreads();
@@ -226,33 +182,20 @@ struct CtaHybrid
 				bin_prefix = partial - bin_count;
 			}
 
-			// Output new partition descriptors
-			if (threadIdx.x < PASS_RADIX_DIGITS)
-			{
-				BinDescriptor partition(
-					bin_prefix,
-					bin_count,
-					cta_smem_storage.partition.current_bit - PASS_RADIX_DIGITS);
-
-				SizeT partition_offset = (blockIdx.x * PASS_RADIX_DIGITS) + threadIdx.x;
-				d_bins_out[partition_offset] = partition;
-			}
-
-
 			// Note: no syncthreads() necessary
 
 			// Distribute keys
 			DownsweepCta::Downsweep(
 				cta_smem_storage.downsweep_storage,
-				d_in_keys,
-				d_out_keys,
-				d_in_values,
-				d_out_values,
+				bin_prefix,
+				d_keys_in,
+				d_keys_out,
+				d_values_in,
+				d_values_out,
 				current_bit,
-				bin_prefix);
+				num_elements);
 		}
 	}
-
 };
 
 
@@ -260,6 +203,7 @@ struct CtaHybrid
 
 
 
+} // namespace cta
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX

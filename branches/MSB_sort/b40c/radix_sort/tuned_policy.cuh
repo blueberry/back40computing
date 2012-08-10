@@ -28,11 +28,11 @@
 #include "../util/io/modified_store.cuh"
 #include "../util/ns_umbrella.cuh"
 
-#include "../radix_sort/cta_downsweep.cuh"
-#include "../radix_sort/cta_hybrid.cuh"
-#include "../radix_sort/cta_block.cuh"
-#include "../radix_sort/cta_spine.cuh"
-#include "../radix_sort/cta_upsweep.cuh"
+#include "../radix_sort/cta/cta_downsweep_pass.cuh"
+#include "../radix_sort/cta/cta_hybrid_pass.cuh"
+#include "../radix_sort/cta/cta_scan_pass.cuh"
+#include "../radix_sort/cta/cta_single_tile.cuh"
+#include "../radix_sort/cta/cta_upsweep_pass.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
@@ -72,31 +72,6 @@ struct DispatchPolicy
 
 
 /******************************************************************************
- * Pass policy
- ******************************************************************************/
-
-/**
- * Pass policy
- */
-template <
-	typename 	_UpsweepPolicy,
-	typename 	_SpinePolicy,
-	typename 	_DownsweepPolicy,
-	typename 	_TilePolicy,
-	typename 	_BinDescriptorPolicy,
-	typename 	_DispatchPolicy>
-struct PassPolicy
-{
-	typedef _UpsweepPolicy			UpsweepPolicy;
-	typedef _SpinePolicy 			SpinePolicy;
-	typedef _DownsweepPolicy 		DownsweepPolicy;
-	typedef _BinDescriptorPolicy 		BinDescriptorPolicy;
-	typedef _DispatchPolicy 		DispatchPolicy;
-	typedef _TilePolicy 			TilePolicy;
-};
-
-
-/******************************************************************************
  * Tuned pass policy specializations
  ******************************************************************************/
 
@@ -127,7 +102,9 @@ struct PreferredDigitBits
  */
 template <
 	int 			TUNE_ARCH,
-	typename 		ProblemInstance,
+	typename 		KeyType,
+	typename 		ValueType,
+	typename 		SizeT,
 	ProblemSize 	PROBLEM_SIZE,
 	int				RADIX_BITS>
 struct TunedPassPolicy;
@@ -136,8 +113,8 @@ struct TunedPassPolicy;
 /**
  * SM20
  */
-template <typename ProblemInstance, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
-struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
+template <typename KeyType, typename ValueType, typename SizeT, ProblemSize PROBLEM_SIZE, int RADIX_BITS>
+struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE, RADIX_BITS>
 {
 	enum
 	{

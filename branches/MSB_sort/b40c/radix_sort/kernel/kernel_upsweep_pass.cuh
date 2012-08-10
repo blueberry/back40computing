@@ -23,37 +23,41 @@
 
 #pragma once
 
+#include "../../util/kernel_props.cuh"
+#include "../../util/cta_progress.cuh"
 #include "../../util/ns_umbrella.cuh"
+
+#include "../../radix_sort/cta/cta_upsweep_pass.cuh"
 
 B40C_NS_PREFIX
 namespace b40c {
 namespace radix_sort {
+namespace kernel {
 
 
 /**
  * Kernel entry point
  */
 template <
-	typename UpsweepCtaPolicy,
+	typename CtaUpsweepPassPolicy,
 	typename SizeT,
 	typename KeyType>
 __launch_bounds__ (
-	UpsweepCtaPolicy::CTA_THREADS,
-	UpsweepCtaPolicy::MIN_CTA_OCCUPANCY)
+	CtaUpsweepPassPolicy::CTA_THREADS,
+	CtaUpsweepPassPolicy::MIN_CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
 	SizeT 								*d_spine,
-	KeyType 							*d_in_keys,
+	KeyType 							*d_keys_in,
 	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
 	unsigned int 						current_bit)
 {
 	// CTA abstraction type
-	typedef UpsweepCta<UpsweepCtaPolicy, SizeT, KeyType> UpsweepCta;
+	typedef CtaUpsweepPass<CtaUpsweepPassPolicy, SizeT, KeyType> CtaUpsweepPass;
 
 	// Shared data structures
-	__shared__ typename UpsweepCta::SmemStorage 	cta_smem_storage;
+	__shared__ typename CtaUpsweepPass::SmemStorage 	cta_smem_storage;
 	__shared__ util::CtaProgress<SizeT, TILE_ELEMENTS> 	cta_progress;
-
 
 	// Determine our threadblock's work range
 	if (threadIdx.x == 0)
@@ -64,14 +68,13 @@ void UpsweepKernel(
 	// Sync to acquire work range
 	__syncthreads();
 
-	// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
+	// Compute bin-count for each radix digit (valid in the first RADIX_DIGITS threads)
 	SizeT bin_count;
-	UpsweepCta::ProcessWorkRange(
+	CtaUpsweepPass::Upsweep(
 		cta_smem_storage,
-		d_in_keys,
+		d_keys_in + cta_progress.cta_offset,
 		current_bit,
-		cta_progress.cta_offset,
-		cta_progress.out_of_bounds,
+		cta_progress.num_elements,
 		bin_count);
 
 	// Write out the bin_count reductions
@@ -79,7 +82,7 @@ void UpsweepKernel(
 	{
 		int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 
-		util::io::ModifiedStore<UpsweepCtaPolicy::STORE_MODIFIER>::St(
+		util::io::ModifiedStore<CtaUpsweepPassPolicy::STORE_MODIFIER>::St(
 			bin_count,
 			d_spine + spine_bin_offset);
 	}
@@ -89,6 +92,9 @@ void UpsweepKernel(
 /**
  * Upsweep kernel properties
  */
+template <
+	typename SizeT,
+	typename KeyType>
 struct UpsweepKernelProps : util::KernelProps
 {
 	// Kernel function type
@@ -107,19 +113,19 @@ struct UpsweepKernelProps : util::KernelProps
 	 * Initializer
 	 */
 	template <
-		typename KernelPolicy,
-		typename OpaquePolicy>
+		typename CtaUpsweepPassPolicy,
+		typename OpaqueCtaUpsweepPassPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
 		// Initialize fields
-		kernel_func 			= upsweep::Kernel<OpaquePolicy>;
-		tile_elements 			= KernelPolicy::TILE_ELEMENTS;
-		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy>;
+		tile_elements 			= CtaUpsweepPassPolicy::TILE_ELEMENTS;
+		sm_bank_config 			= CtaUpsweepPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
 		return util::KernelProps::Init(
 			kernel_func,
-			KernelPolicy::CTA_THREADS,
+			CtaUpsweepPassPolicy::CTA_THREADS,
 			sm_arch,
 			sm_count);
 	}
@@ -127,14 +133,15 @@ struct UpsweepKernelProps : util::KernelProps
 	/**
 	 * Initializer
 	 */
-	template <typename KernelPolicy>
+	template <typename CtaUpsweepPassPolicy>
 	cudaError_t Init(int sm_arch, int sm_count)
 	{
-		return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy>(sm_arch, sm_count);
 	}
 };
 
 
+} // namespace kernel
 } // namespace radix_sort
 } // namespace b40c
 B40C_NS_POSTFIX
