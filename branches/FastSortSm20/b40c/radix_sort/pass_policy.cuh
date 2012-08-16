@@ -154,9 +154,7 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 		RADIX_BITS,								// RADIX_BITS
 		8,										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
-		((PROBLEM_SIZE == SMALL_PROBLEM) ? 		// LOG_LOAD_VEC_SIZE
-			1 :
-			(!LARGE_DATA ? 2 : 1)),
+		(!LARGE_DATA ? 2 : 1),					// LOG_LOAD_VEC_SIZE
 		1,										// LOG_LOADS_PER_TILE
 		b40c::util::io::ld::NONE,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
@@ -176,17 +174,11 @@ struct TunedPassPolicy<200, ProblemInstance, PROBLEM_SIZE, RADIX_BITS>
 
 	// Downsweep kernel policy
 	typedef downsweep::KernelPolicy<
-		RADIX_BITS,								// RADIX_BITS
-		(KEYS_ONLY && !LARGE_DATA ? 4 : 2), 	// MIN_CTA_OCCUPANCY
-		((PROBLEM_SIZE == SMALL_PROBLEM) ?		// LOG_CTA_THREADS
-			7 :
-			(KEYS_ONLY && !LARGE_DATA ? 7 : 8)),
-		((PROBLEM_SIZE == SMALL_PROBLEM) ?		// LOG_THREAD_ELEMENTS
-			2 :
-			(!LARGE_DATA ? 4 : 3)),
-		((PROBLEM_SIZE == SMALL_PROBLEM) ? 		// LOAD_MODIFIER
-			b40c::util::io::ld::NONE :
-			b40c::util::io::ld::tex),
+		RADIX_BITS,														// RADIX_BITS
+		(KEYS_ONLY && !LARGE_DATA ? 4 : 2), 							// MIN_CTA_OCCUPANCY
+		(KEYS_ONLY && !LARGE_DATA ? 7 : 8),								// LOG_CTA_THREADS
+		(((PROBLEM_SIZE != SMALL_PROBLEM) && !LARGE_DATA) ? 4 : 3),		// LOG_THREAD_ELEMENTS
+		b40c::util::io::ld::tex,				// LOAD_MODIFIER
 		b40c::util::io::st::NONE,				// STORE_MODIFIER
 		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
