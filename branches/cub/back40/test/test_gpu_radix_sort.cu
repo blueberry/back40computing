@@ -27,9 +27,10 @@
 #include <iostream>
 
 // Sorting includes
-#include <back40/radix_sort/gpu_sort.cuh>
+#include <back40/gpu_radix_sort.cuh>
 
 // Test utils
+#include "cub/cub.cuh"
 #include "cub/test/test_util.h"
 
 
@@ -40,7 +41,7 @@ void Assign(T &t, S &s)
 }
 
 template <typename S>
-void Assign(back40::util::NullType, S &s) {}
+void Assign(cub::NullType, S &s) {}
 
 template <typename T>
 int CastInt(T &t)
@@ -48,7 +49,7 @@ int CastInt(T &t)
 	return (int) t;
 }
 
-int CastInt(back40::util::NullType)
+int CastInt(cub::NullType)
 {
 	return 0;
 }
@@ -66,28 +67,26 @@ int main(int argc, char** argv)
 //	typedef int						KeyType;
 	typedef unsigned int 			KeyType;
 //	typedef unsigned short 			KeyType;
-	typedef back40::util::NullType 	ValueType;
+	typedef cub::NullType 			ValueType;
 //	typedef unsigned long long 		ValueType;
 //	typedef unsigned int			ValueType;
 
-	static const back40::radix_sort::ProblemSize PROBLEM_SIZE = back40::radix_sort::LARGE_PROBLEM;
-
-	cudaError_t 	error				= cudaSuccess;
 	const int 		START_BIT			= 0;
 	const int 		KEY_BITS 			= sizeof(KeyType) * 8;
-	const bool 		KEYS_ONLY			= back40::util::Equals<ValueType, back40::util::NullType>::VALUE;
-    int 			num_elements 		= 1024 * 1024 * 8;			// 8 million pairs
-    unsigned int 	max_ctas 			= 0;						// default: let the enactor decide how many CTAs to launch based upon device properties
+	const bool 		KEYS_ONLY			= cub::Equals<ValueType, cub::NullType>::VALUE;
+    int 			num_elements 		= 1024 * 1024 * 8;
+    unsigned int 	max_ctas 			= 0;
     int 			iterations 			= 0;
     int				entropy_reduction 	= 0;
     int 			effective_bits 		= KEY_BITS;
 
     // Initialize command line
-    back40::CommandLineArgs args(argc, argv);
-    back40::DeviceInit(args);
+    CommandLineArgs args(argc, argv);
+    CubDebugExit(args.DeviceInit());
 
 	// Usage/help
-    if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h")) {
+    if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h"))
+    {
     	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] "
     			"[--max-ctas=<max-thread-blocks>] [--i=<iterations>] "
     			"[--zeros | --regular] [--entropy-reduction=<random &'ing rounds>\n");
@@ -106,9 +105,9 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("bits", effective_bits);
 
     // Print header
-    if (zeros) printf("Zeros\n");
-    else if (regular) printf("%d-bit mod-%llu\n", KEY_BITS, 1ull << effective_bits);
-    else printf("%d-bit random\n", KEY_BITS);
+    if (zeros) printf("Zeros\n\n");
+    else if (regular) printf("%d-bit mod-%llu\n\n", KEY_BITS, 1ull << effective_bits);
+    else printf("%d-bit random\n\n", KEY_BITS);
     fflush(stdout);
 
 	// Allocate and initialize host problem data and host reference solution.
@@ -118,20 +117,22 @@ int main(int argc, char** argv)
     KeyType 	*h_keys 				= new KeyType[num_elements];
 	KeyType 	*h_reference_keys 		= new KeyType[num_elements];
     ValueType 	*h_values = NULL;
-	if (!KEYS_ONLY) {
+	if (!KEYS_ONLY)
+	{
 		h_values = new ValueType[num_elements];
 	}
 
-	if (verbose) printf("Original: ");
-	for (int i = 0; i < num_elements; ++i) {
-
+	if (verbose) printf("Original:\n");
+	for (int i = 0; i < num_elements; ++i)
+	{
 		if (regular) {
 			h_keys[i] = i & ((1ull << effective_bits) - 1);
 		} else if (zeros) {
 			h_keys[i] = 0;
 		} else {
-			back40::util::RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
+			RandomBits(h_keys[i], entropy_reduction, KEY_BITS);
 		}
+
 		h_keys[i] *= (1 << START_BIT);
 
 		h_reference_keys[i] = h_keys[i];
@@ -141,85 +142,58 @@ int main(int argc, char** argv)
 		}
 
 		if (verbose) {
-			back40::PrintValue(h_keys[i]);
-			printf(", ");
-			if ((i & 255) == 255) printf("\n\n");
+			std::cout << h_keys[i] << ", ";
 		}
 	}
-	if (verbose) printf("\n");
+	if (verbose) printf("\n\n");
 
     // Compute reference solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
 
 	// Allocate device data.
-	KeyType 	*d_keys;
-	ValueType 	*d_values;
-
-	error = cudaMalloc((void**) &double_buffer.d_keys[0], sizeof(KeyType) * num_elements);
-	if (back40::util::B40CPerror(error)) exit(1);
-	if (!KEYS_ONLY) {
-		error = cudaMalloc((void**) &double_buffer.d_values[0], sizeof(ValueType) * num_elements);
-		if (back40::util::B40CPerror(error)) exit(1);
+	KeyType 	*d_keys = NULL;
+	ValueType 	*d_values = NULL;
+	CubDebugExit(cudaMalloc((void**) &d_keys, sizeof(KeyType) * num_elements));
+	if (!KEYS_ONLY)
+	{
+		CubDebugExit(cudaMalloc((void**) &d_values, sizeof(ValueType) * num_elements));
 	}
 
-	// Create a scan enactor
-	back40::radix_sort::Enactor enactor;
-
 	//
-	// Perform one sorting pass (starting at bit zero and covering RADIX_BITS bits)
+	// Perform one sorting pass for correctness/warmup
 	//
 
-	cudaMemcpy(
-		double_buffer.d_keys[double_buffer.selector],
-		h_keys,
-		sizeof(KeyType) * num_elements,
-		cudaMemcpyHostToDevice);
-	if (!KEYS_ONLY) {
-		cudaMemcpy(
-			double_buffer.d_values[double_buffer.selector],
-			h_values,
-			sizeof(ValueType) * num_elements,
-			cudaMemcpyHostToDevice);
+	// Copy problem to GPU
+	CubDebugExit(cudaMemcpy(d_keys, h_keys, sizeof(KeyType) * num_elements, cudaMemcpyHostToDevice));
+	if (!KEYS_ONLY)
+	{
+		CubDebugExit(cudaMemcpy(d_values, h_values, sizeof(ValueType) * num_elements, cudaMemcpyHostToDevice));
 	}
 
 	// Sort
-	error = enactor.Sort<PROBLEM_SIZE>(
-		double_buffer,
+	CubDebugExit(back40::GpuRadixSortLarge(
+		d_keys,
+		d_values,
 		num_elements,
 		START_BIT,
 		KEY_BITS,
 		0,
 		max_ctas,
-		true);
+		true));
 
-	if (error) exit(1);
+	// Check key results
+	AssertEquals(0, CompareDeviceResults(h_reference_keys, d_keys, num_elements, true, verbose))
+	printf("\n");
 
-	printf("\nRestricted-range %s sort (selector %d): ",
-		(KEYS_ONLY) ? "keys-only" : "key-value",
-		double_buffer.selector);
-	fflush(stdout);
-
-	back40::CompareDeviceResults(
-		h_reference_keys,
-		double_buffer.d_keys[double_buffer.selector],
-		num_elements,
-		true,
-		verbose); printf("\n");
-
+	// Check value results
 	if (!KEYS_ONLY)
 	{
-		cudaMemcpy(
-			h_values,
-			double_buffer.d_values[double_buffer.selector],
-			sizeof(ValueType) * num_elements,
-			cudaMemcpyDeviceToHost);
+		CubDebugExit(cudaMemcpy(h_values, d_values, sizeof(ValueType) * num_elements, cudaMemcpyDeviceToHost));
 
 		printf("\n\nValues: ");
 		if (verbose) {
-			for (int i = 0; i < num_elements; ++i)
-			{
-				back40::PrintValue(h_values[i]);
-				printf(", ");
+			for (int i = 0; i < num_elements; ++i) {
+				std::cout << h_values[i] << ", ";
 			}
 			printf("\n\n");
 		}
@@ -238,40 +212,38 @@ int main(int argc, char** argv)
 		}
 	}
 
-	cudaThreadSynchronize();
+	// Flush any stdio from the kernel
+	CubDebugExit(cudaThreadSynchronize());
 
+	// Print column headers
 	if (schmoo) {
-		printf("iteration, elements, elapsed (ms), throughput (MKeys/s)\n");
+		printf("Iteration, Elements, Elapsed (ms), Throughput (MKeys/s)\n");
 	}
 
-	back40::GpuTimer gpu_timer;
+
+	//
+	// Iterate for timing results
+	//
+
+	GpuTimer gpu_timer;
 	double max_exponent 		= log2(double(num_elements)) - 5.0;
 	unsigned int max_int 		= (unsigned int) -1;
 	float elapsed 				= 0;
 
 	for (int i = 0; i < iterations; i++) {
 
-		// Reset problem
-		double_buffer.selector = 0;
-		cudaMemcpy(
-			double_buffer.d_keys[double_buffer.selector],
-			h_keys,
-			sizeof(KeyType) * num_elements,
-			cudaMemcpyHostToDevice);
+		// Copy problem to GPU
+		CubDebugExit(cudaMemcpy(d_keys, h_keys, sizeof(KeyType) * num_elements, cudaMemcpyHostToDevice));
 		if (!KEYS_ONLY)
 		{
-			cudaMemcpy(
-				double_buffer.d_values[double_buffer.selector],
-				h_values,
-				sizeof(ValueType) * num_elements,
-				cudaMemcpyHostToDevice);
+			CubDebugExit(cudaMemcpy(d_values, h_values, sizeof(ValueType) * num_elements, cudaMemcpyHostToDevice));
 		}
 
 		if (schmoo)
 		{
 			// Sample a problem size
 			unsigned int sample;
-			back40::util::RandomBits(sample);
+			RandomBits(sample);
 			double scale = double(sample) / max_int;
 			int elements = (i < iterations / 2) ?
 				pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
@@ -280,13 +252,15 @@ int main(int argc, char** argv)
 			gpu_timer.Start();
 
 			// Sort
-			error = enactor.Sort<PROBLEM_SIZE>(
-				double_buffer,
+			CubDebugExit(back40::GpuRadixSortLarge(
+				d_keys,
+				d_values,
 				num_elements,
 				START_BIT,
 				KEY_BITS,
 				0,
-				max_ctas);
+				max_ctas,
+				true));
 
 			gpu_timer.Stop();
 
@@ -304,13 +278,15 @@ int main(int argc, char** argv)
 			gpu_timer.Start();
 
 			// Sort
-			error = enactor.Sort<PROBLEM_SIZE>(
-				double_buffer,
+			CubDebugExit(back40::GpuRadixSortLarge(
+				d_keys,
+				d_values,
 				num_elements,
 				START_BIT,
 				KEY_BITS,
 				0,
-				max_ctas);
+				max_ctas,
+				true));
 
 			gpu_timer.Stop();
 
@@ -319,7 +295,8 @@ int main(int argc, char** argv)
 	}
 
 	// Display output
-	if ((!schmoo) && (iterations > 0)) {
+	if ((!schmoo) && (iterations > 0))
+	{
 		float avg_elapsed = elapsed / float(iterations);
 		printf("Elapsed millis: %f, avg elapsed: %f, throughput: %.2f Mkeys/s\n",
 			elapsed,
@@ -328,10 +305,8 @@ int main(int argc, char** argv)
 	}
 
 	// Cleanup device storage
-	if (double_buffer.d_keys[0]) cudaFree(double_buffer.d_keys[0]);
-	if (double_buffer.d_keys[1]) cudaFree(double_buffer.d_keys[1]);
-	if (double_buffer.d_values[0]) cudaFree(double_buffer.d_values[0]);
-	if (double_buffer.d_values[1]) cudaFree(double_buffer.d_values[1]);
+	if (d_keys) cudaFree(d_keys);
+	if (d_values) cudaFree(d_values);
 
 	// Cleanup other
 	delete h_keys;

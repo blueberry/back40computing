@@ -23,6 +23,8 @@
 
 #pragma once
 
+#include <iostream>
+
 #include "ns_wrapper.cuh"
 
 CUB_NS_PREFIX
@@ -33,6 +35,8 @@ namespace cub {
  * Null type
  */
 struct NullType {};
+
+std::ostream& operator<< (std::ostream& stream, const NullType& val) { return stream; }
 
 
 /**

@@ -23,8 +23,8 @@
 #pragma once
 
 #include <functional>
-#include "../util/device_intrinsics.cuh"
-#include "../util/ns_wrapper.cuh"
+
+#include "../ns_wrapper.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {

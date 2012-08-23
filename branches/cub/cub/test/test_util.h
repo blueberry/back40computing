@@ -249,11 +249,11 @@ public:
  * ...					| ...
  *
  */
+/**
+ * Random bits
+ */
 template <typename K>
-void RandomBits(
-	K 		&key,
-	int 	lower_key_bits 		= sizeof(K) * 8,
-	int 	entropy_reduction 	= 0)
+void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K) * 8)
 {
 	const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
 	unsigned char key_bits[NUM_UCHARS];

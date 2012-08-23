@@ -23,11 +23,12 @@
 
 #pragma once
 
-#include "../util/allocator.cuh"
-#include "../util/basic_utils.cuh"
-#include "../util/error_utils.cuh"
-#include "../util/cta_progress.cuh"
-#include "../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+
+#include "ns_wrapper.cuh"
+#include "radix_sort/tuned_policy.cuh"
+#include "radix_sort/sort_utils.cuh"
+
 /*
 #include "../radix_sort/sort_utils.cuh"
 #include "../radix_sort/tuned_policy.cuh"
@@ -41,7 +42,6 @@
 
 BACK40_NS_PREFIX
 namespace back40 {
-namespace radix_sort {
 
 
 
@@ -68,8 +68,8 @@ struct ProblemInstance
 	 * SM architecture.
 	 */
 	template <
-		ProblemSize 	PROBLEM_SIZE,
-		int 			RADIX_BITS>
+		radix_sort::ProblemSize 	PROBLEM_SIZE,
+		int 						RADIX_BITS>
 	struct OpaquePassPolicy
 	{
 		// The appropriate tuning arch-id from the arch-id targeted by the
@@ -86,6 +86,7 @@ struct ProblemInstance
 			COMPILER_TUNE_ARCH = 200
 		};
 
+/*
 		// Tuned pass policy
 		typedef TunedPassPolicy<
 			COMPILER_TUNE_ARCH,
@@ -93,12 +94,13 @@ struct ProblemInstance
 			PROBLEM_SIZE,
 			RADIX_BITS> TunedPassPolicy;
 
-		struct DispatchPolicy 	: TunedPassPolicy::DispatchPolicy {};
-		struct UpsweepPolicy 	: TunedPassPolicy::UpsweepPolicy {};
-		struct SpinePolicy 		: TunedPassPolicy::SpinePolicy {};
-		struct DownsweepPolicy 	: TunedPassPolicy::DownsweepPolicy {};
+		struct DispatchPolicy 		: TunedPassPolicy::DispatchPolicy {};
+		struct UpsweepPolicy 		: TunedPassPolicy::UpsweepPolicy {};
+		struct SpinePolicy 			: TunedPassPolicy::SpinePolicy {};
+		struct DownsweepPolicy 		: TunedPassPolicy::DownsweepPolicy {};
 		struct BinDescriptorPolicy 	: TunedPassPolicy::BinDescriptorPolicy {};
-		struct TilePolicy 		: TunedPassPolicy::TilePolicy {};
+		struct TilePolicy 			: TunedPassPolicy::TilePolicy {};
+*/
 	};
 
 
@@ -106,38 +108,53 @@ struct ProblemInstance
 	// Fields
 	//---------------------------------------------------------------------
 
-	Allocator			*allocator;
+	Allocator					*allocator;
 
-	KeyType				*d_keys[2];
-	ValueType			*d_values[2];
-	BinDescriptor		*d_bins[2];
-	int 				selector;
+	KeyType						*d_keys[2];
+	ValueType					*d_values[2];
+	radix_sort::BinDescriptor	*d_bins[2];
+	int 						selector;
 
-	SizeT				num_elements;
-	int 				low_bit;
-	int					num_bits;
-	cudaStream_t		stream;
-	int			 		max_grid_size;
-	bool				debug;
+	SizeT						num_elements;
+	int 						low_bit;
+	int							num_bits;
+	cudaStream_t				stream;
+	int			 				max_grid_size;
+	bool						debug;
 
 
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
 
-
 	/**
 	 * Constructor
 	 */
-	ProblemInstance()
+	ProblemInstance(
+		Allocator		*allocator,
+		KeyType			*d_keys,
+		ValueType		*d_values,
+		SizeT			num_elements,
+		int 			low_bit,
+		int				num_bits,
+		cudaStream_t	stream,
+		int			 	max_grid_size,
+		bool			debug)
+
 	{
-		allocator = NULL;
-		d_keys[0] = NULL;
-		d_keys[1] = NULL;
-		d_values[0] = NULL;
-		d_values[1] = NULL;
-		d_bins[0] = NULL;
-		d_bins[1] = NULL;
+		this->selector 			= 0;
+		this->d_keys[0] 		= d_keys;
+		this->d_keys[1] 		= NULL;
+		this->d_values[0] 		= d_values;
+		this->d_values[1] 		= NULL;
+		this->d_bins[0] 		= NULL;
+		this->d_bins[1]			= NULL;
+		this->num_elements 		= num_elements;
+		this->low_bit 			= low_bit;
+		this->num_bits 			= num_bits;
+		this->stream 			= stream;
+		this->max_grid_size 	= max_grid_size;
+		this->debug 			= debug;
 	}
 
 
@@ -148,73 +165,17 @@ struct ProblemInstance
 	{
 		if (allocator)
 		{
-			if (d_keys[0]) allocator.Deallocate(d_keys[1]);
-			if (d_values[0]) allocator.Deallocate(d_values[1]);
-			if (d_bins[0]) allocator.Deallocate(d_bins[0]);
-			if (d_bins[1]) allocator.Deallocate(d_bins[1]);
+			if (d_keys[1]) allocator->Deallocate(d_keys[1]);
+			if (d_values[1]) allocator->Deallocate(d_values[1]);
+			if (d_bins[0]) allocator->Deallocate(d_bins[0]);
+			if (d_bins[1]) allocator->Deallocate(d_bins[1]);
 		}
 	}
 
 
 	/**
-	 * Initializer
-	 */
-	cudaError_t Init(
-		util::CachedAllocator	*allocator,
-		KeyType					*d_keys,
-		ValueType				*d_values,
-		SizeT					num_elements,
-		int 					low_bit,
-		int						num_bits,
-		cudaStream_t			stream,
-		int			 			max_grid_size,
-		bool					debug)
-	{
-		cudaError_t error = cudaSuccess;
-
-		do {
-
-			this->selector = 0;
-			this->d_keys[0] = d_keys;
-			this->d_values[0] = d_values;
-
-			// Allocate temporary keys and values arrays
-			error = allocator->Allocate(this->d_keys[1], sizeof(KeyType) * num_elements);
-			if (error) break;
-			if (d_values != NULL)
-			{
-				error = allocator->Allocate(this->d_values[1], sizeof(ValueType) * num_elements);
-				if (error) break;
-			}
-
-			// Allocate partition descriptor queues
-			int max_partitions = (problem_instance.num_elements + partition_props.tile_elements - 1) / partition_props.tile_elements;
-			error = allocator->Allocate(this->d_bins[0], sizeof(BinDescriptor) * num_elements);
-			if (error) break;
-			error = allocator->Allocate(this->d_bins[1], sizeof(BinDescriptor) * num_elements);
-			if (error) break;
-
-			// Initialize partition descriptor queues
-			error = cudaMemSet(d_bins[0](), 0, sizeof(BinDescriptor) * max_partitions);
-			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
-			error = cudaMemSet(d_bins[1](), 0, sizeof(BinDescriptor) * max_partitions);
-			if (util::B40CPerror(error, __FILE__, __LINE__)) break;
-
-
-			this->num_elements = num_elements;
-			this->low_bit = low_bit;
-			this->num_bits = num_bits;
-			this->stream = stream;
-			this->max_grid_size = max_grid_size;
-			this->debug = debug;
-
-		} while (0);
-	}
-
-
-	/**
 	 * Dispatch global partition
-	 */
+	 * /
 	cudaError_t DispatchGlobal(
 		unsigned int 					radix_bits,
 		const UpsweepKernelProps 		&upsweep_props,
@@ -381,11 +342,11 @@ struct ProblemInstance
 
 		return error;
 	}
-
+*/
 
 	/**
 	 * Dispatch partition sort
-	 */
+	 * /
 	cudaError_t DispatchBinDescriptor(
 		const BinDescriptorKernelProps 	&partition_props,
 		int 						initial_selector,
@@ -440,12 +401,12 @@ struct ProblemInstance
 
 		return error;
 	}
-
+*/
 
 
 	/**
 	 * Dispatch single-CTA tile sort
-	 */
+	 * /
 	cudaError_t DispatchTile(const cta::SingleTileKernelProps &single_tile_props)
 	{
 		cudaError_t error = cudaSuccess;
@@ -493,14 +454,14 @@ struct ProblemInstance
 
 		return error;
 	}
-
+*/
 
 
 
 
 	/**
 	 * Sort.
-	 */
+	 * /
 	template <int TUNE_ARCH, ProblemSize PROBLEM_SIZE>
 	cudaError_t Sort()
 	{
@@ -558,14 +519,30 @@ struct ProblemInstance
 			// Allocate
 			//
 
-			// Make sure our partition descriptor queues are big enough
-			int max_partitions = (problem_instance.num_elements + partition_props.tile_elements - 1) / partition_props.tile_elements;
-			size_t queue_bytes = sizeof(BinDescriptor) * max_partitions;
 
-			error = partitions[0].Setup(queue_bytes);
-			if (error) break;
-			error = partitions[1].Setup(queue_bytes);
-			if (error) break;
+			// Allocate temporary keys and values arrays
+			error = allocator->Allocate(this->d_keys[1], sizeof(KeyType) * num_elements);
+			if (CubDebug(error)) break;
+			if (d_values != NULL)
+			{
+				error = allocator->Allocate(this->d_values[1], sizeof(ValueType) * num_elements);
+				if (CubDebug(error)) break;
+			}
+
+			// Allocate partition descriptor queues
+			int max_partitions = (num_elements + partition_props.tile_elements - 1) / partition_props.tile_elements;
+			size_t descriptor_queue_bytes = sizeof(radix_sort::BinDescriptor) * max_partitions;
+
+			error = allocator->Allocate(this->d_bins[0], descriptor_queue_bytes);
+			if (CubDebug(error)) break;
+			error = allocator->Allocate(this->d_bins[1], descriptor_queue_bytes);
+			if (CubDebug(error)) break;
+
+			// Initialize partition descriptor queues
+			error = cudaMemSet(d_bins[0](), 0, sizeof(BinDescriptor) * max_partitions);
+			if (CubDebug(error)) break;
+			error = cudaMemSet(d_bins[1](), 0, sizeof(BinDescriptor) * max_partitions);
+			if (CubDebug(error)) break;
 
 
 
@@ -614,7 +591,7 @@ struct ProblemInstance
 
 		return error;
 	}
-
+*/
 
 };
 
@@ -623,9 +600,12 @@ struct ProblemInstance
  * Enact a sort.
  * @return cudaSuccess on success, error enumeration otherwise
  */
-template <ProblemSize PROBLEM_SIZE, typename KeyType>
-cudaError_t GpuSort(
+template <
+	typename KeyType,
+	typename ValueType>
+cudaError_t GpuRadixSortLarge(
 	KeyType 		*d_keys,
+	ValueType		*d_values,
 	int 			num_elements,
 	int				low_bit,
 	int 			num_bits,
@@ -633,6 +613,9 @@ cudaError_t GpuSort(
 	int 			max_grid_size 	= 0,
 	bool 			debug 			= false)
 {
+	return cudaSuccess;
+
+/*
 	typedef ProblemInstance<KeyType, util::NullType, int> ProblemInstance;
 
 	if (num_elements <= 1)
@@ -651,10 +634,11 @@ cudaError_t GpuSort(
 		max_grid_size,
 		debug);
 
-//		if (cuda_props.kernel_ptx_version >= 200)
+	if (cuda_props.kernel_ptx_version >= 200)
 	{
 		return problem_instance.Sort<200, PROBLEM_SIZE>();
 	}
+*/
 /*		else if (cuda_props.kernel_ptx_version >= 130)
 	{
 		return problem_instance.Sort<200, PROBLEM_SIZE>();
@@ -670,6 +654,5 @@ cudaError_t GpuSort(
 
 
 
-} // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

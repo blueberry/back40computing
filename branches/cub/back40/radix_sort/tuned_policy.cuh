@@ -23,14 +23,18 @@
 
 #pragma once
 
-#include "cub/cub.cuh"
-
+#include "../../cub/cub.cuh"
 #include "../ns_wrapper.cuh"
+
+#include "dispatch_policy.cuh"
+#include "cta_upsweep_pass.cuh"
+
+/*
 #include "../radix_sort/cta/cta_downsweep_pass.cuh"
 #include "../radix_sort/cta/cta_hybrid_pass.cuh"
 #include "../radix_sort/cta/cta_scan_pass.cuh"
 #include "../radix_sort/cta/cta_single_tile.cuh"
-#include "../radix_sort/cta/cta_upsweep_pass.cuh"
+*/
 
 BACK40_NS_PREFIX
 namespace back40 {
@@ -48,7 +52,7 @@ enum ProblemSize
 
 
 /**
- * Tuned pass policy specializations
+ * Tuned policy specializations
  */
 template <
 	int 			TUNE_ARCH,
@@ -62,7 +66,11 @@ struct TunedPassPolicy;
 /**
  * SM20
  */
-template <typename KeyType, typename ValueType, typename SizeT, ProblemSize PROBLEM_SIZE>
+template <
+	typename 		KeyType,
+	typename 		ValueType,
+	typename 		SizeT,
+	ProblemSize 	PROBLEM_SIZE>
 struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 {
 	enum
@@ -70,28 +78,27 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		RADIX_BITS			= 5,
 		TUNE_ARCH			= 200,
 		KEYS_ONLY 			= cub::Equals<ValueType, cub::NullType>::VALUE,
-		LARGE_DATA			= (sizeof(typename ProblemInstance::KeyType) > 4) || (sizeof(typename ProblemInstance::ValueType) > 4),
-		EARLY_EXIT			= false,
+		LARGE_DATA			= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
 	};
 
 	// Dispatch policy
 	typedef DispatchPolicy <
 		DYNAMIC_SMEM_NONE, 						// UNIFORM_SMEM_ALLOCATION
 		true> 									// UNIFORM_GRID_SIZE
-			DispatchPolicy;
+			DispatchPolicyT;
 
 	// Upsweep kernel policy
-	typedef upsweep::KernelPolicy<
+	typedef CtaUpsweepPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		8,										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
 		17,										// ELEMENTS_PER_THREAD,
-		back40::cub::io::ld::NONE,				// LOAD_MODIFIER
-		back40::cub::io::st::NONE,				// STORE_MODIFIER
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
-			UpsweepPolicy;
+		cub::LOAD_NONE,							// LOAD_MODIFIER
+		cub::STORE_NONE,						// STORE_MODIFIER
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
+			CtaUpsweepPassPolicyT;
 
+/*
 	// Spine-scan kernel policy
 	typedef spine::KernelPolicy<
 		8,										// LOG_CTA_THREADS
@@ -111,8 +118,7 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		back40::cub::io::ld::NONE, 				// LOAD_MODIFIER
 		back40::cub::io::st::NONE,				// STORE_MODIFIER
 		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
-		cudaSharedMemBankSizeFourByte,			// SMEM_CONFIG
-		EARLY_EXIT>								// EARLY_EXIT
+		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			DownsweepPolicy;
 
 	// Tile kernel policy
@@ -135,6 +141,7 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		back40::cub::io::st::NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			BinDescriptorPolicy;
+*/
 };
 
 

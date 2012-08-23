@@ -23,17 +23,13 @@
 
 #pragma once
 
-#include "../../util/basic_utils.cuh"
-#include "../../util/device_intrinsics.cuh"
-#include "../../util/reduction/serial_reduce.cuh"
-#include "../../util/ns_wrapper.cuh"
-
-#include "../../radix_sort/sort_utils.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
+#include "sort_utils.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace cta {
 
 
 //---------------------------------------------------------------------
@@ -49,10 +45,9 @@ template <
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
 	int 							_ELEMENTS_PER_THREAD,	// The number of elements to load per thread
-	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
-	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
-	cudaSharedMemConfig				_SMEM_CONFIG,			// Shared memory bank size
-	bool 							_EARLY_EXIT>			// Whether or not to short-circuit passes if the upsweep determines homogoneous digits in the current digit place
+	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
+	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaUpsweepPassPolicy
 {
 	enum
@@ -61,15 +56,14 @@ struct CtaUpsweepPassPolicy
 		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
 		LOG_CTA_THREADS				= _LOG_CTA_THREADS,
 		ELEMENTS_PER_THREAD  		= _ELEMENTS_PER_THREAD,
-		EARLY_EXIT					= _EARLY_EXIT,
 
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 		TILE_ELEMENTS				= CTA_THREADS * ELEMENTS_PER_THREAD,
 	};
 
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
 };
 
 
@@ -101,7 +95,7 @@ private:
 	typedef unsigned char DigitCounter;
 
 	// Integer type for packing DigitCounters into columns of shared memory banks
-	typedef typename util::If<(CtaUpsweepPassPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByte),
+	typedef typename cub::If<(CtaUpsweepPassPolicy::SMEM_CONFIG == cudaSharedMemBankSizeEightByte),
 		unsigned long long,
 		unsigned int>::Type PackedCounter;
 
@@ -113,7 +107,7 @@ private:
 		LOG_CTA_THREADS 			= CtaUpsweepPassPolicy::LOG_CTA_THREADS,
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
-		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
+		LOG_WARP_THREADS 			= cub::DeviceProps::LOG_WARP_THREADS,
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
@@ -124,10 +118,10 @@ private:
 		TILE_ELEMENTS				= CTA_THREADS * KEYS_PER_THREAD,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
-		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
+		LOG_BYTES_PER_COUNTER		= cub::Log2<BYTES_PER_COUNTER>::VALUE,
 
 		PACKING_RATIO				= sizeof(PackedCounter) / sizeof(DigitCounter),
-		LOG_PACKING_RATIO			= util::Log2<PACKING_RATIO>::VALUE,
+		LOG_PACKING_RATIO			= cub::Log2<PACKING_RATIO>::VALUE,
 
 		LOG_COUNTER_LANES 			= CUB_MAX(0, RADIX_BITS - LOG_PACKING_RATIO),
 		COUNTER_LANES 				= 1 << LOG_COUNTER_LANES,
@@ -252,10 +246,10 @@ private:
 		UnsignedBits converted_key = KeyTraits<KeyType>::TwiddleIn(key);
 
 		// Add in sub-counter offset
-		UnsignedBits sub_counter = util::BFE(converted_key, current_bit, LOG_PACKING_RATIO);
+		UnsignedBits sub_counter = cub::BFE(converted_key, current_bit, LOG_PACKING_RATIO);
 
 		// Add in row offset
-		UnsignedBits row_offset = util::BFE(converted_key, current_bit + LOG_PACKING_RATIO, LOG_COUNTER_LANES);
+		UnsignedBits row_offset = cub::BFE(converted_key, current_bit + LOG_PACKING_RATIO, LOG_COUNTER_LANES);
 
 		// Increment counter
 		cta_smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
@@ -355,7 +349,7 @@ private:
 		// Rake-reduce bin_count reductions
 		if (threadIdx.x < RADIX_DIGITS)
 		{
-			bin_count = util::reduction::SerialReduce<WARP_THREADS>::Invoke(
+			bin_count = cub::ThreadReduce<WARP_THREADS>(
 				cta_smem_storage.digit_partials[threadIdx.x]);
 		}
 	}
@@ -465,7 +459,6 @@ public:
 };
 
 
-} // namespace cta
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

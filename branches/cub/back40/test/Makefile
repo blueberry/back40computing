@@ -79,7 +79,7 @@ endif
 # Includes
 #-------------------------------------------------------------------------------
 
-INC = -I.. -I../.. 
+INC = -I../..  
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -131,27 +131,29 @@ endif
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-DEPS = 			./Makefile \
-				../back40_test_util.h \
-				$(wildcard ../../cub/*.cuh) \
-				$(wildcard ../../cub/**/*.cuh) \
-				$(wildcard ../../back40/**/*.cuh)
+rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
+
+DEPS = 	./Makefile \
+		../../cub/test/test_util.h \
+		$(call rwildcard,../../cub/,*.cuh) \
+		$(call rwildcard,../../back40/,*.cuh) 
+
 		 
 
 #-------------------------------------------------------------------------------
-# (make test) Test driver 
+# test_gpu_radix_sort  
 #-------------------------------------------------------------------------------
 
-simple: bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test_gpu_radix_sort : bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort.cu $(DEPS)
+bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_gpu_radix_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_gpu_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 
 #-------------------------------------------------------------------------------
-# Clean
+# clean
 #-------------------------------------------------------------------------------
 
 clean :
