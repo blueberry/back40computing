@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "ns_umbrella.cuh"
+#include "ns_wrapper.cuh"
 #include "thread/thread_load.cuh"
 #include "thread/thread_store.cuh"
 

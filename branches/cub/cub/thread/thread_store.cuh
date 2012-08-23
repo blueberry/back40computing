@@ -24,8 +24,10 @@
 #pragma once
 
 #include <cuda.h>
+
 #include "../ptx_intrinsics.cuh"
-#include "../ns_umbrella.cuh"
+#include "../type_utils.cuh"
+#include "../ns_wrapper.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
@@ -41,15 +43,15 @@ namespace cub {
 enum StoreModifier
 {
 	// Global store modifiers
-	STORE_NONE,		// Default (currently STORE_WB)
-	STORE_WB,		// Cache write-back all coherent levels
-	STORE_CG,		// Cache at global level
-	STORE_CS, 		// Cache streaming (likely to be accessed once)
-	STORE_WT, 		// Cache write-through (to system memory)
+	STORE_NONE,					// Default (currently STORE_WB)
+	STORE_WB,					// Cache write-back all coherent levels
+	STORE_CG,					// Cache at global level
+	STORE_CS, 					// Cache streaming (likely to be accessed once)
+	STORE_WT, 					// Cache write-through (to system memory)
 	STORE_GLOBAL_LIMIT,
 
 	// Shared store modifiers
-	STORE_VS,		// Shared-volatile
+	STORE_VS,					// Shared-volatile
 };
 
 

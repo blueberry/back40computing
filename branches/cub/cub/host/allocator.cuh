@@ -28,7 +28,7 @@
 #include <set>
 #include <map>
 
-#include "../ns_umbrella.cuh"
+#include "../ns_wrapper.cuh"
 #include "../host/spinlock.cuh"
 #include "../host/debug.cuh"
 

@@ -24,7 +24,7 @@
 #pragma once
 
 #include "../host/debug.cuh"
-#include "../ns_umbrella.cuh"
+#include "../ns_wrapper.cuh"
 #include "../thread/thread_load.cuh"
 
 CUB_NS_PREFIX

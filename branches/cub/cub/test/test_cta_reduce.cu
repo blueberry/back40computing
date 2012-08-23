@@ -187,9 +187,6 @@ __global__ void FullTileReduceKernel(
 {
 	const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
 
-	// Cooperative CTA tile-loading utility type
-	typedef CtaLoad<CTA_THREADS> CtaLoad;
-
 	// Cooperative CTA reduction utility type (returns aggregate in thread 0)
 	typedef CtaReduce<T, CTA_THREADS, STRIPS> CtaReduce;
 
@@ -201,7 +198,7 @@ __global__ void FullTileReduceKernel(
 
 	// Load first tile of data
 	int cta_offset = 0;
-	CtaLoad::LoadUnguarded(data, d_in, cta_offset);
+	CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, cta_offset);
 	cta_offset += TILE_SIZE;
 
 	// Cooperative reduce first tile
@@ -214,7 +211,7 @@ __global__ void FullTileReduceKernel(
 		__syncthreads();
 
 		// Load tile of data
-		CtaLoad::LoadUnguarded(data, d_in, cta_offset);
+		CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, cta_offset);
 		cta_offset += TILE_SIZE;
 
 		// Cooperatively reduce the tile's aggregate

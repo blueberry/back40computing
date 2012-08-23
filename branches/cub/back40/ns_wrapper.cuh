@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Placeholder for prefixing the b40c namespace for inclusion within other
+ * Placeholder for prefixing the back40 namespace for inclusion within other
  * C++ header libraries
  ******************************************************************************/
 

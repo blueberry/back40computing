@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "ns_umbrella.cuh"
+#include "ns_wrapper.cuh"
 #include "type_utils.cuh"
 #include "vector_type.cuh"
 

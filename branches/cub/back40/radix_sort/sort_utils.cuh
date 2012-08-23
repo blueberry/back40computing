@@ -16,108 +16,53 @@
  * limitations under the License. 
  * 
  ******************************************************************************/
-
 /******************************************************************************
- * Types and subroutines utilities that are common across all B40C LSB radix 
- * sorting kernels and host enactors  
+ * Common utilities for radix sorting
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/cub.cuh>
+#include <functional>
+#include "../util/device_intrinsics.cuh"
+#include "../util/ns_wrapper.cuh"
 
+BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
 
 
+
 /******************************************************************************
- * Bit-field extraction kernel subroutines
+ * BinDescriptor descriptor
  ******************************************************************************/
 
 /**
- * Bit extraction, specialized for non-64bit key types
+ * BinDescriptor descriptor
  */
-template <
-	typename T,
-	int BIT_OFFSET,
-	int NUM_BITS,
-	int LEFT_SHIFT>
-struct Extract
+struct BinDescriptor
 {
-	/**
-	 * Super bitfield-extract (BFE, then left-shift).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		T source)
-	{
-		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-		T bits = (source & MASK);
-		if (SHIFT == 0) {
-			return bits;
-		} else {
-			return util::MagnitudeShift<SHIFT>::Shift(bits);
-		}
-	}
+	int offset;
+	int num_elements;
+	int current_bit;
+	int padding;
 
 	/**
-	 * Super bitfield-extract (BFE, then left-shift, then add).
+	 * Constructor
 	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		T source,
-		unsigned int addend)
-	{
-		const T MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
+	__device__ __forceinline__ BinDescriptor() {}
 
-		T bits = (source & MASK);
-		if (SHIFT == 0) {
-			return bits + addend;
-		} else {
-			bits = (SHIFT > 0) ?
-				(util::SHL_ADD(bits, SHIFT, addend)) :
-				(util::SHR_ADD(bits, SHIFT * -1, addend));
-			return bits;
-		}
-	}
-
+	/**
+	 * Constructor
+	 */
+	__device__ __forceinline__ BinDescriptor(
+		int offset,
+		int num_elements,
+		int current_bit) :
+			offset(offset),
+			num_elements(num_elements),
+			current_bit(current_bit)
+				{}
 };
-
-
-/**
- * Bit extraction, specialized for 64bit key types
- */
-template <
-	int BIT_OFFSET,
-	int NUM_BITS,
-	int LEFT_SHIFT>
-struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
-{
-	/**
-	 * Super bitfield-extract (BFE, then left-shift).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		unsigned long long source)
-	{
-		const unsigned long long MASK = ((1ull << NUM_BITS) - 1) << BIT_OFFSET;
-		const int SHIFT = LEFT_SHIFT - BIT_OFFSET;
-
-		unsigned long long bits = (source & MASK);
-		return util::MagnitudeShift<SHIFT>::Shift(bits);
-	}
-
-	/**
-	 * Super bitfield-extract (BFE, then left-shift, then add).
-	 */
-	__device__ __forceinline__ static unsigned int SuperBFE(
-		unsigned long long source,
-		unsigned int addend)
-	{
-		return SuperBFE(source) + addend;
-	}
-};
-
 
 
 
@@ -126,60 +71,49 @@ struct Extract<unsigned long long, BIT_OFFSET, NUM_BITS, LEFT_SHIFT>
  * to unsigned types suitable for radix sorting
  ******************************************************************************/
 
-
 /**
  * Specialization for unsigned signed integers
  */
-template <typename UnsignedBits>
+template <typename _UnsignedBits>
 struct UnsignedKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _UnsignedBits UnsignedBits;
 
-	static const bool MUST_APPLY = false;
+	static const UnsignedBits MIN_KEY = UnsignedBits(0);
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1);
 
-	struct IngressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			return key;
-		}
-	};
+		return key;
+	}
 
-	struct EgressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			return key;
-		}
-	};
+		return key;
+	}
 };
 
 
 /**
  * Specialization for signed integers
  */
-template <typename UnsignedBits>
+template <typename _UnsignedBits>
 struct SignedKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _UnsignedBits UnsignedBits;
 
-	static const bool MUST_APPLY 			= true;
-	static const UnsignedBits HIGH_BIT 		= ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits MIN_KEY = HIGH_BIT;
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	struct IngressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			return key ^ HIGH_BIT;
-		}
+		return key ^ HIGH_BIT;
 	};
 
-	struct EgressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			return key ^ HIGH_BIT;
-		}
+		return key ^ HIGH_BIT;
 	};
 };
 
@@ -187,31 +121,27 @@ struct SignedKeyTraits
 /**
  * Specialization for floating point
  */
-template <typename UnsignedBits>
+template <typename _UnsignedBits>
 struct FloatKeyTraits
 {
-	typedef UnsignedBits ConvertedKeyType;
+	typedef _UnsignedBits 	UnsignedBits;
 
-	static const bool MUST_APPLY 			= true;
-	static const UnsignedBits HIGH_BIT 		= ((UnsignedBits) 0x1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits HIGH_BIT = UnsignedBits(1) << ((sizeof(UnsignedBits) * 8) - 1);
+	static const UnsignedBits MIN_KEY = UnsignedBits(-1);
+	static const UnsignedBits MAX_KEY = UnsignedBits(-1) ^ HIGH_BIT;
 
-	struct IngressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleIn(UnsignedBits key)
 	{
-		__device__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			UnsignedBits mask = (key & HIGH_BIT) ? (UnsignedBits) -1 : HIGH_BIT;
-			return key ^ mask;
-		}
+		UnsignedBits mask = (key & HIGH_BIT) ? UnsignedBits(-1) : HIGH_BIT;
+		return key ^ mask;
 	};
 
-	struct EgressOp
+	static __device__ __forceinline__ UnsignedBits TwiddleOut(UnsignedBits key)
 	{
-		__device__ __host__ __forceinline__ UnsignedBits operator()(UnsignedBits key)
-		{
-			UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : (UnsignedBits) -1;
-			return key ^ mask;
-		}
+		UnsignedBits mask = (key & HIGH_BIT) ? HIGH_BIT : UnsignedBits(-1);
+		return key ^ mask;
 	};
+
 };
 
 
@@ -250,4 +180,4 @@ template <> struct KeyTraits<double> : FloatKeyTraits<unsigned long long> {};
 
 } // namespace radix_sort
 } // namespace back40
-
+BACK40_NS_POSTFIX

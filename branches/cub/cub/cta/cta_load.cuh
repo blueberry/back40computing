@@ -24,7 +24,7 @@
 #pragma once
 
 #include "../macro_utils.cuh"
-#include "../ns_umbrella.cuh"
+#include "../ns_wrapper.cuh"
 #include "../operators.cuh"
 #include "../thread/thread_load.cuh"
 #include "../type_utils.cuh"

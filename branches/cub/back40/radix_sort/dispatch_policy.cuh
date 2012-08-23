@@ -18,53 +18,48 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Texture references for spine kernels
+ * Dispatch policy types
  ******************************************************************************/
 
 #pragma once
 
-#include <cub/cub.cuh>
+#include "../ns_wrapper.cuh"
 
+BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace spine {
+
 
 /**
- * Templated texture reference for spine
+ * Alternative strategies for how much dynamic smem should be allocated to each kernel
  */
-template <typename SizeT>
-struct TexSpine
+enum DynamicSmemConfig
 {
-	typedef texture<SizeT, cudaTextureType1D, cudaReadModeElementType> TexRef;
-
-	static TexRef ref;
-
-	/**
-	 * Bind textures
-	 */
-	static cudaError_t BindTexture(void *d_spine, size_t bytes)
-	{
-		cudaChannelFormatDesc tex_desc = cudaCreateChannelDesc<SizeT>();
-
-		// Bind key texture ref0
-		cudaError_t error = cudaBindTexture(0, ref, d_spine, tex_desc, bytes);
-		error = cub::Debug(error, "cudaBindTexture TexSpine failed", __FILE__, __LINE__);
-
-		return error;
-	}
-
+	DYNAMIC_SMEM_NONE,			// No dynamic smem for kernels
+	DYNAMIC_SMEM_UNIFORM,		// Uniform: pad with dynamic smem so all kernels get the same total smem allocation
+	DYNAMIC_SMEM_LCM,			// Least-common-multiple: pad with dynamic smem so kernel occupancy a multiple of the lowest occupancy
 };
 
-// Reference definition
-template <typename SizeT>
-typename TexSpine<SizeT>::TexRef TexSpine<SizeT>::ref;
+
+/**
+ * Dispatch policy type
+ */
+template <
+	DynamicSmemConfig 	_DYNAMIC_SMEM_CONFIG,
+	bool 				_UNIFORM_GRID_SIZE>
+struct DispatchPolicy
+{
+	enum
+	{
+		UNIFORM_GRID_SIZE = _UNIFORM_GRID_SIZE,
+	};
+
+	static const DynamicSmemConfig DYNAMIC_SMEM_CONFIG = _DYNAMIC_SMEM_CONFIG;
+};
 
 
 
 
-
-
-} // namespace spine
-} // namespace radix_sort
-} // namespace back40
-
+}// namespace radix_sort
+}// namespace back40
+BACK40_NS_POSTFIX

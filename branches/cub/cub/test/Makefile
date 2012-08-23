@@ -150,6 +150,17 @@ bin/warp_scan_$(SUFFIX) : test_warp_scan.cu $(DEPS)
 
 
 #-------------------------------------------------------------------------------
+# make cta_scan 
+#-------------------------------------------------------------------------------
+
+cta_scan: bin/cta_scan_$(SUFFIX)
+
+bin/cta_scan_$(SUFFIX) : test_cta_scan.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_scan_$(SUFFIX) test_cta_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+
+
+#-------------------------------------------------------------------------------
 # make clean
 #-------------------------------------------------------------------------------
 

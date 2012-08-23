@@ -18,7 +18,7 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Test of WarpScan utilities
+ * Test of CtaScan utilities
  ******************************************************************************/
 
 // Ensure printing of CUDA runtime errors to console
@@ -185,15 +185,17 @@ void InitValue(int gen_mode, Bar &value, int index = 0)
 //---------------------------------------------------------------------
 
 /**
- * Exclusive WarpScan test kernel.
+ * Exclusive CtaScan test kernel.
  */
 template <
-	int 		LOGICAL_WARP_THREADS,
+	int 		CTA_THREADS,
+	int			STRIPS_PER_TILE,
+	int			ITEMS_PER_STRIP,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp,
 	typename 	IdentityT>
-__global__ void WarpScanKernel(
+__global__ void CtaScanKernel(
 	T 			*d_in,
 	T 			*d_out,
 	ScanOp 		scan_op,
@@ -202,58 +204,65 @@ __global__ void WarpScanKernel(
 	clock_t		*d_elapsed)
 {
 	// Cooperative warp-scan utility type (1 warp)
-	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
+	typedef CtaScan<T, CTA_THREADS, STRIPS_PER_TILE> CtaScan;
 
 	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
+	__shared__ typename CtaScan::SmemStorage smem_storage;
 
 	// Per-thread tile data
-	T data = d_in[threadIdx.x];
+	T data[STRIPS_PER_TILE][ITEMS_PER_STRIP];
+
+	// Load items
+	CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, 0);
 
 	// Record elapsed clocks
 	clock_t start = clock();
 
-	// Test scan
-	T aggregate;
+
+//	T aggregate;
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
+		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
 	}
-	else if (TEST_MODE == AGGREGATE)
+/*	else if (TEST_MODE == AGGREGATE)
 	{
 		// Test with cumulative aggregate
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
+		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
 	}
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
+		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
 	}
-
+*/
 	// Record elapsed clocks
 	*d_elapsed = clock() - start;
 
 	// Store data
-	d_out[threadIdx.x] = data;
+	CtaStore<CTA_THREADS>::StoreUnguarded(data, d_out, 0);
 
+/*
 	// Store aggregate
 	if (threadIdx.x == 0)
 	{
 		d_out[blockDim.x] = aggregate;
 	}
+*/
 }
 
 
 /**
- * Inclusive WarpScan test kernel.
+ * Inclusive CtaScan test kernel.
  */
 template <
-	int 		LOGICAL_WARP_THREADS,
+	int 		CTA_THREADS,
+	int			STRIPS_PER_TILE,
+	int			ITEMS_PER_STRIP,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp>
-__global__ void WarpScanKernel(
+__global__ void CtaScanKernel(
 	T 			*d_in,
 	T 			*d_out,
 	ScanOp 		scan_op,
@@ -262,10 +271,10 @@ __global__ void WarpScanKernel(
 	clock_t		*d_elapsed)
 {
 	// Cooperative warp-scan utility type (1 warp)
-	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
+	typedef CtaScan<T, 1, CTA_THREADS> CtaScan;
 
 	// Shared memory
-	__shared__ typename WarpScan::SmemStorage smem_storage;
+	__shared__ typename CtaScan::SmemStorage smem_storage;
 
 	// Per-thread tile data
 	T data = d_in[threadIdx.x];
@@ -274,22 +283,23 @@ __global__ void WarpScanKernel(
 	clock_t start = clock();
 
 	T aggregate;
+/*
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
-		WarpScan::InclusiveScan(smem_storage, data, data, scan_op);
+		CtaScan::InclusiveScan(smem_storage, data, data, scan_op);
 	}
 	else if (TEST_MODE == AGGREGATE)
 	{
 		// Test with cumulative aggregate
-		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate);
+		CtaScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate);
 	}
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
+		CtaScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
 	}
-
+*/
 	// Record elapsed clocks
 	*d_elapsed = clock() - start;
 
@@ -377,7 +387,9 @@ T Initialize(
  * Test warp scan
  */
 template <
-	int 		LOGICAL_WARP_THREADS,
+	int 		CTA_THREADS,
+	int			STRIPS_PER_TILE,
+	int			ITEMS_PER_STRIP,
 	TestMode 	TEST_MODE,
 	typename 	ScanOp,
 	typename 	IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
@@ -389,35 +401,37 @@ void Test(
 	T			prefix,
 	char		*type_string)
 {
+	const int TILE_SIZE = CTA_THREADS * STRIPS_PER_TILE * ITEMS_PER_STRIP;
+
 	// Allocate host arrays
-	T *h_in = new T[LOGICAL_WARP_THREADS];
-	T *h_reference = new T[LOGICAL_WARP_THREADS];
+	T *h_in = new T[TILE_SIZE];
+	T *h_reference = new T[TILE_SIZE];
 
 	// Initialize problem
 	T *p_prefix = (TEST_MODE == PREFIX_AGGREGATE) ? &prefix : NULL;
-	T aggregate = Initialize(gen_mode, h_in, h_reference, LOGICAL_WARP_THREADS, scan_op, identity, p_prefix);
+	T aggregate = Initialize(gen_mode, h_in, h_reference, TILE_SIZE, scan_op, identity, p_prefix);
 
 	// Initialize device arrays
 	T *d_in = NULL;
 	T *d_out = NULL;
 	clock_t *d_elapsed = NULL;
-	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * LOGICAL_WARP_THREADS));
-	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (LOGICAL_WARP_THREADS + 1)));
+	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (TILE_SIZE + 1)));
 	CubDebugExit(cudaMalloc((void**)&d_elapsed, sizeof(clock_t)));
-	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * LOGICAL_WARP_THREADS, cudaMemcpyHostToDevice));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
 	// Run kernel
 	printf("Test-mode %d, gen-mode %d, %s warpscan, %d warp threads, %s (%d bytes) elements:\n",
 		TEST_MODE,
 		gen_mode,
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
-		LOGICAL_WARP_THREADS,
+		CTA_THREADS,
 		type_string,
 		(int) sizeof(T));
 	fflush(stdout);
 
 	// Run aggregate/prefix kernel
-	WarpScanKernel<LOGICAL_WARP_THREADS, TEST_MODE><<<1, LOGICAL_WARP_THREADS>>>(
+	CtaScanKernel<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, TEST_MODE><<<1, CTA_THREADS>>>(
 		d_in,
 		d_out,
 		scan_op,
@@ -435,14 +449,14 @@ void Test(
 
 	// Copy out and display results
 	printf("\tScan results: ");
-	AssertEquals(0, CompareDeviceResults(h_reference, d_out, LOGICAL_WARP_THREADS, g_verbose, g_verbose));
+	AssertEquals(0, CompareDeviceResults(h_reference, d_out, TILE_SIZE, g_verbose, g_verbose));
 	printf("\n");
 
 	// Copy out and display aggregate
 	if ((TEST_MODE == AGGREGATE) || (TEST_MODE == PREFIX_AGGREGATE))
 	{
 		printf("\tScan aggregate: ");
-		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + LOGICAL_WARP_THREADS, 1, g_verbose, g_verbose));
+		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + TILE_SIZE, 1, g_verbose, g_verbose));
 		printf("\n");
 	}
 
@@ -458,7 +472,9 @@ void Test(
  * Run battery of tests for different primitive variants
  */
 template <
-	int 		LOGICAL_WARP_THREADS,
+	int 		CTA_THREADS,
+	int			STRIPS_PER_TILE,
+	int			ITEMS_PER_STRIP,
 	typename 	ScanOp,
 	typename 	T>
 void Test(
@@ -469,62 +485,65 @@ void Test(
 	char *		type_string)
 {
 	// Exclusive
-	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, identity, prefix, type_string);
-	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
-	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, BASIC>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
 
 	// Inclusive
-	Test<LOGICAL_WARP_THREADS, BASIC>(gen_mode, scan_op, NullType(), prefix, type_string);
-	Test<LOGICAL_WARP_THREADS, AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
-	Test<LOGICAL_WARP_THREADS, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, BASIC>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
 }
 
 
 /**
  * Run battery of tests for different data types and scan ops
  */
-template <int LOGICAL_WARP_THREADS>
+template <int CTA_THREADS, int STRIPS_PER_TILE, int ITEMS_PER_STRIP>
 void Test(int gen_mode)
 {
 	// primitive
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
 
 	// primitive (alternative scan op)
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Max<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
 
 	// vec-2
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uchar2>(), make_uchar2(0, 0), make_uchar2(17, 21), CUB_TYPE_STRING(uchar2));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ushort2>(), make_ushort2(0, 0), make_ushort2(17, 21), CUB_TYPE_STRING(ushort2));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uint2>(), make_uint2(0, 0), make_uint2(17, 21), CUB_TYPE_STRING(uint2));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong2>(), make_ulonglong2(0, 0), make_ulonglong2(17, 21), CUB_TYPE_STRING(ulonglong2));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uchar2>(), make_uchar2(0, 0), make_uchar2(17, 21), CUB_TYPE_STRING(uchar2));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ushort2>(), make_ushort2(0, 0), make_ushort2(17, 21), CUB_TYPE_STRING(ushort2));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uint2>(), make_uint2(0, 0), make_uint2(17, 21), CUB_TYPE_STRING(uint2));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ulonglong2>(), make_ulonglong2(0, 0), make_ulonglong2(17, 21), CUB_TYPE_STRING(ulonglong2));
 
 	// vec-4
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uchar4>(), make_uchar4(0, 0, 0, 0), make_uchar4(17, 21, 32, 85), CUB_TYPE_STRING(uchar4));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ushort4>(), make_ushort4(0, 0, 0, 0), make_ushort4(17, 21, 32, 85), CUB_TYPE_STRING(ushort4));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<uint4>(), make_uint4(0, 0, 0, 0), make_uint4(17, 21, 32, 85), CUB_TYPE_STRING(uint4));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uchar4>(), make_uchar4(0, 0, 0, 0), make_uchar4(17, 21, 32, 85), CUB_TYPE_STRING(uchar4));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ushort4>(), make_ushort4(0, 0, 0, 0), make_ushort4(17, 21, 32, 85), CUB_TYPE_STRING(ushort4));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uint4>(), make_uint4(0, 0, 0, 0), make_uint4(17, 21, 32, 85), CUB_TYPE_STRING(uint4));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
 
 	// complex
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
-	Test<LOGICAL_WARP_THREADS>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
+	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
 }
 
 
 /**
  * Run battery of tests for different problem generation options
  */
-template <int LOGICAL_WARP_THREADS>
+template <
+	int CTA_THREADS,
+	int STRIPS_PER_TILE,
+	int ITEMS_PER_STRIP>
 void Test()
 {
 	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
 	{
-		Test<LOGICAL_WARP_THREADS>(gen_mode);
+		Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode);
 	}
 }
 
@@ -553,11 +572,13 @@ int main(int argc, char** argv)
     // Initialize device
     CubDebugExit(args.DeviceInit());
 
-    if (quick)
+
+//    if (quick)
     {
         // Quick exclusive test
-        Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
+        Test<128, 1, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
     }
+/*
     else
     {
         // Test logical warp sizes
@@ -566,6 +587,10 @@ int main(int argc, char** argv)
         Test<9>();
         Test<7>();
     }
+*/
+
+    // Flush any stdout from the kernel;
+    cudaDeviceSynchronize();
 
     return 0;
 }

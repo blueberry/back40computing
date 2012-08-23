@@ -18,22 +18,23 @@
  ******************************************************************************/
 
 /******************************************************************************
- * CTA-processing functionality for radix sort downsweep scan kernels
+ * CTA abstraction for ranking keys (unsigned bits) by radix digit.
  ******************************************************************************/
 
 #pragma once
 
-#include <back40/radix_sort/sort_utils.cuh"
+#include "../radix_sort/sort_utils.cuh"
 
-#include <back40/util/basic_utils.cuh"
-#include <back40/util/reduction/serial_reduce.cuh"
-#include <back40/util/scan/serial_scan.cuh"
-#include <back40/util/ns_wrapper.cuh"
+#include "../util/basic_utils.cuh"
+#include "../util/reduction/serial_reduce.cuh"
+#include "../util/scan/serial_scan.cuh"
+#include "../util/ns_wrapper.cuh"
 
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
+namespace cta {
 
 
 /**
@@ -42,12 +43,13 @@ namespace radix_sort {
  * Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
  */
 template <
-	int 					LOG_CTA_THREADS,
+	int 					CTA_THREADS,
 	int 					RADIX_BITS,
-	int 					CURRENT_BIT,
 	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
-struct CtaRadixRank
+class CtaRadixRank
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
@@ -63,13 +65,9 @@ struct CtaRadixRank
 	enum {
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-
 		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
-
-		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS						= 1 << LOG_WARPS,
+		WARPS						= (CTA_THREADS + WARP_THREADS - 1) / WARP_THREADS,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
 		LOG_BYTES_PER_COUNTER		= util::Log2<BYTES_PER_COUNTER>::VALUE,
@@ -87,6 +85,7 @@ struct CtaRadixRank
 		MEM_BANKS					= 1 << LOG_MEM_BANKS,
 	};
 
+public:
 
 	/**
 	 * Shared memory storage layout
@@ -98,38 +97,20 @@ struct CtaRadixRank
 
 		union
 		{
-			unsigned char			digit_counter_bytes[1];
 			DigitCounter			digit_counters[COUNTER_LANES + 1][CTA_THREADS][PACKING_RATIO];
 			PackedCounter			raking_grid[CTA_THREADS][RAKING_SEGMENT];
 		};
 	};
 
+private :
 
 	//---------------------------------------------------------------------
-	// Methods
+	// Template iteration structures.  (Regular iteration cannot always be
+	// unrolled due to conditionals or ABI procedure calls within
+	// functors).
 	//---------------------------------------------------------------------
 
-	/**
-	 * Reset shared memory digit counters
-	 */
-	static __device__ __forceinline__ void ResetCounters(SmemStorage &smem_storage)
-	{
-		// Reset shared memory digit counters
-		#pragma unroll
-		for (int LANE = 0; LANE < COUNTER_LANES + 1; LANE++)
-		{
-			*((PackedCounter*) smem_storage.digit_counters[LANE][threadIdx.x]) = 0;
-		}
-	}
-
-	//---------------------------------------------------------------------
-	// Helper structure for templated iteration.  (NVCC currently won't
-	// unroll loops with "unexpected control flow".)
-	//---------------------------------------------------------------------
-
-	/**
-	 * Iterate
-	 */
+	// General template iteration
 	template <int COUNT, int MAX>
 	struct Iterate
 	{
@@ -144,99 +125,97 @@ struct CtaRadixRank
 		 */
 		template <typename UnsignedBits, int KEYS_PER_THREAD>
 		static __device__ __forceinline__ void DecodeKeys(
-			SmemStorage		&smem_storage,							// Shared memory storage
+			SmemStorage		&cta_smem_storage,							// Shared memory storage
 			UnsignedBits 	(&keys)[KEYS_PER_THREAD],				// Key to decode
 			DigitCounter 	(&thread_prefixes)[KEYS_PER_THREAD],	// Prefix counter value (out parameter)
-			unsigned int 	(&counter_offsets)[KEYS_PER_THREAD])	// Counter smem offset (out parameter)
+			DigitCounter* 	(&digit_counters)[KEYS_PER_THREAD],		// Counter smem offset (out parameter)
+			unsigned int 	current_bit)							// The least-significant bit position of the current digit to extract
 		{
-			// Compute byte offset of smem counter, starting with offset
-			// of the thread's packed counter column
-			counter_offsets[COUNT] = (threadIdx.x << (LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER));
-
 			// Add in sub-counter offset
-			counter_offsets[COUNT] = Extract<
-				CURRENT_BIT + LOG_COUNTER_LANES,
-				LOG_PACKING_RATIO,
-				LOG_BYTES_PER_COUNTER>(
-					keys[COUNT],
-					counter_offsets[COUNT]);
+			UnsignedBits sub_counter = util::BFE(keys[COUNT], current_bit + LOG_COUNTER_LANES, LOG_PACKING_RATIO);
 
 			// Add in row offset
-			counter_offsets[COUNT] = Extract<
-				CURRENT_BIT,
-				LOG_COUNTER_LANES,
-				LOG_CTA_THREADS + LOG_PACKING_RATIO + LOG_BYTES_PER_COUNTER>(
-					keys[COUNT],
-					counter_offsets[COUNT]);
+			UnsignedBits row_offset = util::BFE(keys[COUNT], current_bit, LOG_COUNTER_LANES);
 
 			// Pointer to smem digit counter
-			DigitCounter* counter = (DigitCounter*) (smem_storage.digit_counter_bytes + counter_offsets[COUNT]);
+			digit_counters[COUNT] = &cta_smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter];
 
 			// Load thread-exclusive prefix
-			thread_prefixes[COUNT] = *counter;
+			thread_prefixes[COUNT] = *digit_counters[COUNT];
 
 			// Store inclusive prefix
-			*counter = thread_prefixes[COUNT] + 1;
+			*digit_counters[COUNT] = thread_prefixes[COUNT] + 1;
 
 			// Iterate next key
-			Iterate<COUNT + 1, MAX>::DecodeKeys(smem_storage, keys, thread_prefixes, counter_offsets);
+			Iterate<COUNT + 1, MAX>::DecodeKeys(cta_smem_storage, keys, thread_prefixes, digit_counters, current_bit);
 		}
 
 
-		/**
-		 * Compute rank.  Returns the rank of a key given its shared memory
-		 * counter offset and its prefix counter value.
-		 */
+		// Termination
 		template <int KEYS_PER_THREAD>
 		static __device__ __forceinline__ void UpdateRanks(
-			SmemStorage		&smem_storage,							// Shared memory storage
+			SmemStorage		&cta_smem_storage,							// Shared memory storage
 			unsigned int 	(&ranks)[KEYS_PER_THREAD],				// Local ranks (out parameter)
 			DigitCounter 	(&thread_prefixes)[KEYS_PER_THREAD],	// Prefix counter value
-			unsigned int 	(&counter_offsets)[KEYS_PER_THREAD])	// Counter smem offset
+			DigitCounter* 	(&digit_counters)[KEYS_PER_THREAD])	// Counter smem offset
 		{
-			// Determine counter address
-			DigitCounter* counter = (DigitCounter*) (smem_storage.digit_counter_bytes + counter_offsets[COUNT]);
-
 			// Add in CTA exclusive prefix
-			ranks[COUNT] = thread_prefixes[COUNT] + *counter;
+			ranks[COUNT] = thread_prefixes[COUNT] + *digit_counters[COUNT];
 
 			// Iterate next key
-			Iterate<COUNT + 1, MAX>::UpdateRanks(smem_storage, ranks, thread_prefixes, counter_offsets);
+			Iterate<COUNT + 1, MAX>::UpdateRanks(cta_smem_storage, ranks, thread_prefixes, digit_counters);
 		}
 	};
 
-	/**
-	 * Terminate iteration
-	 */
+
+	// Termination
 	template <int MAX>
 	struct Iterate<MAX, MAX>
 	{
 		// DecodeKeys
 		template <typename UnsignedBits, int KEYS_PER_THREAD>
 		static __device__ __forceinline__ void DecodeKeys(
-			SmemStorage		&smem_storage,
+			SmemStorage		&cta_smem_storage,
 			UnsignedBits 	(&keys)[KEYS_PER_THREAD],
 			DigitCounter 	(&thread_prefixes)[KEYS_PER_THREAD],
-			unsigned int 	(&counter_offsets)[KEYS_PER_THREAD]) {}
+			DigitCounter*	(&digit_counters)[KEYS_PER_THREAD],
+			unsigned int 	current_bit) {}
 
 
 		// UpdateRanks
 		template <int KEYS_PER_THREAD>
 		static __device__ __forceinline__ void UpdateRanks(
-			SmemStorage		&smem_storage,
+			SmemStorage		&cta_smem_storage,
 			unsigned int 	(&ranks)[KEYS_PER_THREAD],
 			DigitCounter 	(&thread_prefixes)[KEYS_PER_THREAD],
-			unsigned int 	(&counter_offsets)[KEYS_PER_THREAD]) {}
+			DigitCounter*	(&digit_counters)[KEYS_PER_THREAD]) {}
 	};
 
+
+	//---------------------------------------------------------------------
+	// Utility methods
+	//---------------------------------------------------------------------
+
+	/**
+	 * Reset shared memory digit counters
+	 */
+	static __device__ __forceinline__ void ResetCounters(SmemStorage &cta_smem_storage)
+	{
+		// Reset shared memory digit counters
+		#pragma unroll
+		for (int LANE = 0; LANE < COUNTER_LANES + 1; LANE++)
+		{
+			*((PackedCounter*) cta_smem_storage.digit_counters[LANE][threadIdx.x]) = 0;
+		}
+	}
 
 
 	/**
 	 * Scan shared memory digit counters.
 	 */
-	static __device__ __forceinline__ void ScanCounters(SmemStorage &smem_storage)
+	static __device__ __forceinline__ void ScanCounters(SmemStorage &cta_smem_storage)
 	{
-		PackedCounter *raking_segment = smem_storage.raking_grid[threadIdx.x];
+		PackedCounter *raking_segment = cta_smem_storage.raking_grid[threadIdx.x];
 
 		// Upsweep reduce
 		PackedCounter raking_partial = util::reduction::SerialReduce<RAKING_SEGMENT>::Invoke(
@@ -244,7 +223,7 @@ struct CtaRadixRank
 
 		int warp_id 						= threadIdx.x >> LOG_WARP_THREADS;
 		int tid 							= threadIdx.x & (WARP_THREADS - 1);
-		volatile PackedCounter *warpscan 	= &smem_storage.warpscan[warp_id][(WARP_THREADS / 2) + tid];
+		volatile PackedCounter *warpscan 	= &cta_smem_storage.warpscan[warp_id][(WARP_THREADS / 2) + tid];
 
 		// Initialize warpscan identity regions
 		warpscan[0 - (WARP_THREADS / 2)] = 0;
@@ -256,7 +235,8 @@ struct CtaRadixRank
 		#pragma unroll
 		for (int STEP = 0; STEP < LOG_WARP_THREADS; STEP++)
 		{
-			warpscan[0] = partial = partial + warpscan[0 - (1 << STEP)];
+			partial += warpscan[0 - (1 << STEP)];
+			warpscan[0] = partial;
 		}
 
 		// Barrier
@@ -269,7 +249,7 @@ struct CtaRadixRank
 		for (int WARP = 0; WARP < WARPS; WARP++)
 		{
 			// Add totals from all previous warpscans into our partial
-			PackedCounter warpscan_total = smem_storage.warpscan[WARP][(WARP_THREADS * 3 / 2) - 1];
+			PackedCounter warpscan_total = cta_smem_storage.warpscan[WARP][(WARP_THREADS * 3 / 2) - 1];
 			if (warp_id == WARP) {
 				partial += warpscan_totals;
 			}
@@ -293,6 +273,7 @@ struct CtaRadixRank
 			exclusive_partial);
 	}
 
+public:
 
 	//---------------------------------------------------------------------
 	// Interface
@@ -305,28 +286,29 @@ struct CtaRadixRank
 		typename UnsignedBits,
 		int KEYS_PER_THREAD>
 	static __device__ __forceinline__ void RankKeys(
-		SmemStorage		&smem_storage,						// Shared memory storage
+		SmemStorage		&cta_smem_storage,						// Shared memory storage
 		UnsignedBits	(&keys)[KEYS_PER_THREAD],			// Keys for this tile
-		unsigned int 	(&ranks)[KEYS_PER_THREAD])			// For each key, the local rank within the tile
+		unsigned int 	(&ranks)[KEYS_PER_THREAD],			// For each key, the local rank within the tile
+		unsigned int 	current_bit)						// The least-significant bit position of the current digit to extract
 	{
 		DigitCounter	thread_prefixes[KEYS_PER_THREAD];	// For each key, the count of previous keys in this tile having the same digit
-		unsigned int 	counter_offsets[KEYS_PER_THREAD];	// For each key, the byte-offset of its corresponding digit counter in smem
+		DigitCounter* 	digit_counters[KEYS_PER_THREAD];	// For each key, the byte-offset of its corresponding digit counter in smem
 
 		// Reset shared memory digit counters
-		ResetCounters(smem_storage);
+		ResetCounters(cta_smem_storage);
 
 		// Decode keys and update digit counters
-		Iterate<0, KEYS_PER_THREAD>::DecodeKeys(smem_storage, keys, thread_prefixes, counter_offsets);
+		Iterate<0, KEYS_PER_THREAD>::DecodeKeys(cta_smem_storage, keys, thread_prefixes, digit_counters, current_bit);
 
 		__syncthreads();
 
 		// Scan shared memory counters
-		ScanCounters(smem_storage);
+		ScanCounters(cta_smem_storage);
 
 		__syncthreads();
 
 		// Extract the local ranks of each key
-		Iterate<0, KEYS_PER_THREAD>::UpdateRanks(smem_storage, ranks, thread_prefixes, counter_offsets);
+		Iterate<0, KEYS_PER_THREAD>::UpdateRanks(cta_smem_storage, ranks, thread_prefixes, digit_counters);
 	}
 
 
@@ -338,24 +320,26 @@ struct CtaRadixRank
 		typename UnsignedBits,
 		int KEYS_PER_THREAD>
 	static __device__ __forceinline__ void RankKeys(
-		SmemStorage		&smem_storage,						// Shared memory storage
+		SmemStorage		&cta_smem_storage,						// Shared memory storage
 		UnsignedBits	(&keys)[KEYS_PER_THREAD],			// Keys for this tile
 		unsigned int 	(&ranks)[KEYS_PER_THREAD],			// For each key, the local rank within the tile (out parameter)
-		unsigned int	&inclusive_digit_count,				// Sum of keys having the radix digit less than or equal to the calling thread-id (out parameter)
-		unsigned int	&exclusive_digit_count)				// Sum of keys having the radix digit less than the calling thread-id (out parameter)
+		unsigned int 	digit_prefixes[RADIX_DIGITS],
+		unsigned int 	current_bit)						// The least-significant bit position of the current digit to extract
 	{
 		// Rank keys
-		RankKeys(smem_storage, keys, ranks);
+		RankKeys(cta_smem_storage, keys, ranks, current_bit);
 
 		// Get the inclusive and exclusive digit totals corresponding to the calling thread.
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
+			// Initialize digit scan's identity value
+			digit_prefixes[threadIdx.x] = 0;
+
 			// Obtain ex/inclusive digit counts.  (Unfortunately these all reside in the
 			// first counter column, resulting in unavoidable bank conflicts.)
 			int counter_lane = (threadIdx.x & (COUNTER_LANES - 1));
 			int sub_counter = threadIdx.x >> (LOG_COUNTER_LANES);
-			exclusive_digit_count = smem_storage.digit_counters[counter_lane][0][sub_counter];
-			inclusive_digit_count = smem_storage.digit_counters[counter_lane + 1][0][sub_counter];
+			digit_prefixes[threadIdx.x + 1] = cta_smem_storage.digit_counters[counter_lane + 1][0][sub_counter];
 		}
 	}
 };
@@ -363,6 +347,7 @@ struct CtaRadixRank
 
 
 
+} // namespace cta
 } // namespace radix_sort
 } // namespace back40
-
+BACK40_NS_POSTFIX

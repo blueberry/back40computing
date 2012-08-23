@@ -14,9 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License. 
 #  
-#  For more information, see our Google Code project site: 
-#  http://code.google.com/p/back40computing/
-#  
 #-------------------------------------------------------------------------------
  
 #-------------------------------------------------------------------------------
@@ -26,8 +23,6 @@
 NVCC = "$(shell which nvcc)"
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
 
-KERNELS = 
-
 # detect OS
 OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 
@@ -35,8 +30,9 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 # Gen targets
 #-------------------------------------------------------------------------------
 
+GEN_SM35 = -gencode=arch=compute_35,code=\"sm_35,compute_35\"
 GEN_SM30 = -gencode=arch=compute_30,code=\"sm_30,compute_30\"
-GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\" -open64
+GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
 GEN_SM11 = -gencode=arch=compute_11,code=\"sm_11,compute_11\" 
 GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\" 
@@ -83,9 +79,7 @@ endif
 # Includes
 #-------------------------------------------------------------------------------
 
-THRUST_INC = "../../../Thrust"
-CUDA_INC = "$(shell dirname $(NVCC))/../include"
-INC = -I$(CUDA_INC) -I.. -I../.. -I../../.. 
+INC = -I.. -I../.. 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -113,7 +107,7 @@ ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
 endif
 
 ifneq ($(abi), 1)
-	# Disable the ABI by default for 3.1+
+	# Disable the ABI by default
 	NVCCFLAGS += -Xptxas -abi=no
 endif
 
@@ -125,6 +119,10 @@ ifeq ($(keep), 1)
     NVCCFLAGS += -keep
 endif
 
+ifeq ($(open64), 1)
+    NVCCFLAGS += -open64
+endif
+
 ifdef maxregisters
     NVCCFLAGS += -maxrregcount $(maxregisters)
 endif
@@ -134,23 +132,23 @@ endif
 #-------------------------------------------------------------------------------
 
 DEPS = 			./Makefile \
-				../test_util.h \
-				 
-
-
+				../back40_test_util.h \
+				$(wildcard ../../cub/*.cuh) \
+				$(wildcard ../../cub/**/*.cuh) \
+				$(wildcard ../../back40/**/*.cuh)
+		 
 
 #-------------------------------------------------------------------------------
-# (make lars) Test driver for Lars
+# (make test) Test driver 
 #-------------------------------------------------------------------------------
 
-lars: bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+simple: bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
 
-bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) : lars_demo.cu $(DEPS)
+bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_radix_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/lars_demo_$(NVCC_VERSION)_$(ARCH_SUFFIX) lars_demo.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
-	
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
-	
+
 
 #-------------------------------------------------------------------------------
 # Clean

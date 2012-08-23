@@ -8,4 +8,4 @@ tar 						\
 	--exclude=*/testlab 	\
 	--exclude=*/graph		\
 	--exclude=*/bfs			\
-	-czvf b40c.$VER.tgz LICENSE.TXT VERSION.TXT b40c test
+	-czvf back40.$VER.tgz LICENSE.TXT VERSION.TXT back40 test
