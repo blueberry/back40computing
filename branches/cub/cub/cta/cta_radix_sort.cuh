@@ -55,7 +55,7 @@ private:
 
 	enum
 	{
-		TILE_ELEMENTS				= CTA_THREADS * KEYS_PER_THREAD,
+		TILE_ITEMS				= CTA_THREADS * KEYS_PER_THREAD,
 
 		LOG_SMEM_BANKS				= DeviceProps::LOG_SMEM_BANKS,
 		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
@@ -63,7 +63,7 @@ private:
 		// Insert padding if the number of keys per thread is a power of two
 		PADDING  					= ((KEYS_PER_THREAD & (KEYS_PER_THREAD - 1)) == 0),
 
-		PADDING_ELEMENTS			= (PADDING) ? (TILE_ELEMENTS >> LOG_SMEM_BANKS) : 0,
+		PADDING_ELEMENTS			= (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
 	};
 
 	// CtaRadixRank utility type
@@ -84,8 +84,8 @@ public:
 			typename CtaRadixRank::SmemStorage		ranking_storage;
 			struct
 			{
-				UnsignedBits						key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
-//				ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+				UnsignedBits						key_exchange[TILE_ITEMS + PADDING_ELEMENTS];
+//				ValueType 							value_exchange[TILE_ITEMS + PADDING_ELEMENTS];
 			};
 		};
 	};

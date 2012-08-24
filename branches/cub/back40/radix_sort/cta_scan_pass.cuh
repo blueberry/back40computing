@@ -37,12 +37,12 @@ namespace radix_sort {
 
 
 /**
- * Spine CTA tuning policy
+ * Spine scan CTA tuning policy
  */
 template <
-	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
-	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load
-	int 							_LOG_LOADS_PER_TILE,	// The number of loads to process per thread per tile
+	int 							_CTA_THREADS,			// The number of threads per CTA
+	int 							_THREAD_STRIP_ITEMS,	// The number of consecutive keys to process per thread per global load
+	int 							_TILE_STRIPS,			// The number of loads to process per thread per tile
 	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
 	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
@@ -50,12 +50,10 @@ struct CtaScanPassPolicy
 {
 	enum
 	{
-		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
-		LOG_LOAD_VEC_SIZE  			= _LOG_LOAD_VEC_SIZE,
-		LOG_LOADS_PER_TILE 			= _LOG_LOADS_PER_TILE,
-
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
+		CTA_THREADS 				= _CTA_THREADS,
+		THREAD_STRIP_ITEMS  		= _THREAD_STRIP_ITEMS,
+		TILE_STRIPS 				= _TILE_STRIPS,
+		TILE_ITEMS				= CTA_THREADS * THREAD_STRIP_ITEMS * TILE_STRIPS,
 	};
 
 	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
@@ -85,102 +83,49 @@ private:
 
 	enum
 	{
-		LOG_CTA_THREADS 				= CtaScanPassPolicy::LOG_CTA_THREADS,
-		CTA_THREADS						= 1 << LOG_CTA_THREADS,
-
-		LOG_LOAD_VEC_SIZE  				= CtaScanPassPolicy::LOG_LOAD_VEC_SIZE,
-		LOAD_VEC_SIZE					= 1 << LOG_LOAD_VEC_SIZE,
-
-		LOG_LOADS_PER_TILE 				= CtaScanPassPolicy::LOG_LOADS_PER_TILE,
-		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
-
-		LOG_WARP_THREADS 				= cub::DeviceProps::LOG_WARP_THREADS,
-		WARP_THREADS					= 1 << LOG_WARP_THREADS,
-
-		LOG_WARPS						= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS							= 1 << LOG_WARPS,
-
-		LOG_TILE_ELEMENTS_PER_THREAD	= LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
-		TILE_ELEMENTS_PER_THREAD		= 1 << LOG_TILE_ELEMENTS_PER_THREAD,
-
-		LOG_TILE_ELEMENTS 				= LOG_TILE_ELEMENTS_PER_THREAD + LOG_CTA_THREADS,
-		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
+		CTA_THREADS					= CtaScanPassPolicy::CTA_THREADS,
+		THREAD_STRIP_ITEMS			= CtaScanPassPolicy::THREAD_STRIP_ITEMS,
+		TILE_STRIPS					= CtaScanPassPolicy::TILE_STRIPS,
+		TILE_ITEMS				= CtaScanPassPolicy::TILE_ITEMS,
 	};
 
-	// CtaPrefixScan utility type
-	typedef cub::CtaScan<T, CTA_THREADS, LOADS_PER_TILE> CtaScanT;
+	// CtaScan utility type
+	typedef cub::CtaScan<T, CTA_THREADS, TILE_STRIPS> CtaScanT;
 
 public:
 
 	/**
 	 * Shared memory storage layout
 	 */
-	struct SmemStorage
-	{
-		union
-		{
-			typename CtaScanT::SmemStorage scan_storage;
-		};
-	};
+	struct SmemStorage : CtaScanT::SmemStorage {};
 
 private:
-
-	//---------------------------------------------------------------------
-	// Thread fields (aggregate state bundle)
-	//---------------------------------------------------------------------
-
-	// Shared storage for this CTA
-	SmemStorage &cta_smem_storage;
-
-	// Running partial accumulated by the CTA over its tile-processing
-	// lifetime (managed in each raking thread)
-	T carry;
-
-	// Input and output device pointers
-	T *d_in;
-	T *d_out;
 
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
 
 	/**
-	 * Constructor
-	 */
-	__device__ __forceinline__ CtaScanPass(
-		SmemStorage 		&cta_smem_storage,
-		T 					*d_in,
-		T 					*d_out) :
-			cta_smem_storage(cta_smem_storage),
-			d_in(d_in),
-			d_out(d_out),
-			carry(0)
-	{}
-
-	/**
 	 * Process a single tile
 	 */
 	template <typename ScanOp, typename SizeT>
-	__device__ __forceinline__ void ProcessTile(
-		ScanOp scan_op,
-		SizeT cta_offset)
+	static __device__ __forceinline__ void ProcessTile(
+		SmemStorage 	&cta_smem_storage,
+		T 				*d_in,
+		T 				*d_out,
+		ScanOp			scan_op,
+		SizeT 			cta_offset,
+		T				&carry)
 	{
 		// Tile of scan elements
-		T partials[LOADS_PER_TILE][LOAD_VEC_SIZE];
+		T partials[TILE_STRIPS][THREAD_STRIP_ITEMS];
 
 		// Load tile
 		cub::CtaLoad<CTA_THREADS>::LoadUnguarded(partials, d_in, cta_offset);
 
-		// Scan tile with carry update in raking threads
+		// Scan tile with carry in thread-0
 		T aggregate;
-		CtaScanT::ExclusiveScan(
-			cta_smem_storage.scan_storage,
-			partials,
-			partials,
-			cub::Sum<T>(),
-			0,
-			aggregate,
-			carry);
+		CtaScanT::ExclusiveSum(cta_smem_storage, partials, partials, aggregate, carry);
 
 		// Store tile
 		cub::CtaStore<CTA_THREADS>::StoreUnguarded(partials, d_out, cta_offset);
@@ -203,16 +148,17 @@ public:
 		ScanOp				scan_op,
 		SizeT				&num_elements)
 	{
-		// Construct state bundle
-		CtaScanPass cta(cta_smem_storage, d_in, d_out);
+		// Running partial accumulated by the CTA over its tile-processing
+		// lifetime (managed in each raking thread)
+		T carry = 0;
 
 		SizeT cta_offset = 0;
-		while (cta_offset + TILE_ELEMENTS <= num_elements)
+		while (cta_offset + TILE_ITEMS <= num_elements)
 		{
 			// Process full tiles of tile_elements
-			ProcessTile(cta_offset, scan_op);
+			ProcessTile(cta_smem_storage, d_in, d_out, scan_op, cta_offset, carry);
 
-			cta_offset += TILE_ELEMENTS;
+			cta_offset += TILE_ITEMS;
 		}
 	}
 

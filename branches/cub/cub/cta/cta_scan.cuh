@@ -121,18 +121,14 @@ struct CtaScan
 		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
 		ScanOp 			scan_op,						// (in) Reduction operator
 		T				identity,						// (in) Identity value.
-		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				&warp_prefix)					// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
+		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					// (in/out) Cta-wide prefix to scan (valid in lane-0).
 	{
-		// Pointers into shared memory raking grid where my strip partial-reductions go
-		T *raking_placement[STRIPS];
-
 		// Reduce in registers and place partial into shared memory raking grid
 		#pragma unroll
 		for (int STRIP = 0; STRIP < STRIPS; STRIP++)
 		{
-			raking_placement[STRIP]= CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP);
-			*raking_placement[STRIP] = ThreadReduce(input[STRIP], scan_op);
+			*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP) = ThreadReduce(input[STRIP], scan_op);
 		}
 
 		__syncthreads();
@@ -155,7 +151,7 @@ struct CtaScan
 				scan_op,
 				identity,
 				aggregate,
-				warp_prefix);
+				cta_prefix);
 
 			// Raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_segment, raking_segment, scan_op, exclusive_partial);
@@ -167,10 +163,212 @@ struct CtaScan
 		#pragma unroll
 		for (int STRIP = 0; STRIP < STRIPS; STRIP++)
 		{
-			ThreadScanExclusive(input[STRIP], output[STRIP], scan_op, *raking_placement[STRIP]);
+			ThreadScanExclusive(
+				input[STRIP],
+				output[STRIP],
+				scan_op,
+				*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP));
 		}
-
 	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive scan over the input
+	 * using the specified scan operator.
+	 */
+	template <
+		int STRIPS,
+		int ITEMS,
+		typename ScanOp>
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
+		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
+		ScanOp 			scan_op,						// (in) Reduction operator
+		T				identity,						// (in) Identity value.
+		T				&aggregate)						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		T cta_prefix;
+		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate, cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive scan over the input
+	 * using the specified scan operator.
+	 */
+	template <
+		int STRIPS,
+		int ITEMS,
+		typename ScanOp>
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
+		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
+		ScanOp 			scan_op,						// (in) Reduction operator
+		T				identity)						// (in) Identity value.
+	{
+		T aggregate;
+		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <
+		int STRIPS,
+		int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
+		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
+		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		ExclusiveScan(smem_storage, input, output, Sum<T>(), T(0), aggregate, cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <
+		int STRIPS,
+		int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
+		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
+		T				&aggregate)						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		T cta_prefix;
+		ExclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <
+		int STRIPS,
+		int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
+		T 				(&output)[STRIPS][ITEMS])		// (out) Output array (may be aliased to input)
+	{
+		T aggregate;
+		ExclusiveSum(smem_storage, input, output, aggregate);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[ITEMS],				// (in) Input array
+		T 				(&output)[ITEMS],				// (out) Output array (may be aliased to input)
+		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		typedef T Array2D[1][ITEMS];
+
+		ExclusiveSum(
+			smem_storage,
+			reinterpret_cast<Array2D&>(input),
+			reinterpret_cast<Array2D&>(output),
+			aggregate,
+			cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[ITEMS],				// (in) Input array
+		T 				(&output)[ITEMS],				// (out) Output array (may be aliased to input)
+		T				&aggregate)						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		T cta_prefix;
+		ExclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	template <int ITEMS>
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				(&input)[ITEMS],				// (in) Input array
+		T 				(&output)[ITEMS])				// (out) Output array (may be aliased to input)
+	{
+		T aggregate;
+		ExclusiveSum(smem_storage, input, output, aggregate);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				input,							// (in) Input array
+		T 				&output,						// (out) Output array (may be aliased to input)
+		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		typedef T Array1D[1];
+
+		ExclusiveSum(
+			smem_storage,
+			reinterpret_cast<Array1D&>(input),
+			reinterpret_cast<Array1D&>(output),
+			aggregate,
+			cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				input,							// (in) Input array
+		T 				&output,						// (out) Output array (may be aliased to input)
+		T				&aggregate)						// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		T cta_prefix;
+		ExclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
+	}
+
+
+	/**
+	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
+	 */
+	static __device__ __forceinline__ void ExclusiveSum(
+		SmemStorage		&smem_storage,					// (in) SmemStorage reference
+		T 				input,							// (in) Input array
+		T 				&output)						// (out) Output array (may be aliased to input)
+	{
+		T aggregate;
+		ExclusiveSum(smem_storage, input, output, aggregate);
+	}
+
+
+
+
+	//---------------------------------------------------------------------
+	// Inclusive prefix scan interface
+	//---------------------------------------------------------------------
+
+
 
 };
 

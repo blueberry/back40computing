@@ -91,7 +91,7 @@ struct SpineKernelProps : util::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= ScanKernel<OpaquePolicy>;
-		log_tile_elements 		= KernelPolicy::LOG_TILE_ELEMENTS;
+		log_tile_elements 		= KernelPolicy::LOG_TILE_ITEMS;
 		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
 
 		// Initialize super class

@@ -82,7 +82,7 @@ struct WorkDistribution
  */
 template <
 	typename 	SizeT,
-	int 		TILE_ELEMENTS,
+	int 		TILE_ITEMS,
 	bool 		WORK_STEALING = false>
 struct CtaProgress
 {
@@ -106,7 +106,7 @@ struct CtaProgress
 		if (WORK_STEALING) {
 
 			// This CTA gets at least one tile (if possible)
-			cta_offset = blockIdx.x * TILE_ELEMENTS;
+			cta_offset = blockIdx.x * TILE_ITEMS;
 			out_of_bounds = distribution.unguarded_elements;
 
 		} else if (blockIdx.x < distribution.extra_grains) {
@@ -138,7 +138,7 @@ struct CtaProgress
 	__device__ __forceinline__ CtaProgress(SizeT num_elements)
 	{
 		cta_offset = 0;
-		extra_elements = num_elements % TILE_ELEMENTS;
+		extra_elements = num_elements % TILE_ITEMS;
 		out_of_bounds = num_elements - extra_elements;
 		extra_offset = out_of_bounds;
 	}
@@ -162,7 +162,7 @@ struct CtaProgress
 
 		} else {
 
-			cta_offset += TILE_ELEMENTS;
+			cta_offset += TILE_ITEMS;
 		}
 	}
 

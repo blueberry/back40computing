@@ -30,12 +30,9 @@
 #include "cta_upsweep_pass.cuh"
 #include "cta_downsweep_pass.cuh"
 #include "cta_scan_pass.cuh"
+#include "cta_single_tile.cuh"
+#include "cta_hybrid_pass.cuh"
 
-/*
-#include "../radix_sort/cta/cta_hybrid_pass.cuh"
-#include "../radix_sort/cta/cta_scan_pass.cuh"
-#include "../radix_sort/cta/cta_single_tile.cuh"
-*/
 
 BACK40_NS_PREFIX
 namespace back40 {
@@ -76,14 +73,16 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 {
 	enum
 	{
-		RADIX_BITS			= 5,
-		TUNE_ARCH			= 200,
-		KEYS_ONLY 			= cub::Equals<ValueType, cub::NullType>::VALUE,
-		LARGE_DATA			= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
+		RADIX_BITS					= 5,
+		KEYS_ONLY 					= cub::Equals<ValueType, cub::NullType>::VALUE,
+		LARGE_DATA					= (sizeof(KeyType) > 4) || (sizeof(ValueType) > 4),
 	};
 
 	// Dispatch policy
 	typedef DispatchPolicy <
+		8,										// UPSWEEP_MIN_CTA_OCCUPANCY
+		4,										// DOWNSWEEP_MIN_CTA_OCCUPANCY
+		4,										// HYBRID_MIN_CTA_OCCUPANCY
 		DYNAMIC_SMEM_NONE, 						// UNIFORM_SMEM_ALLOCATION
 		true> 									// UNIFORM_GRID_SIZE
 			DispatchPolicyT;
@@ -91,19 +90,18 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 	// Upsweep pass CTA policy
 	typedef CtaUpsweepPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		8,										// MIN_CTA_OCCUPANCY
-		7,										// LOG_CTA_THREADS
-		17,										// ELEMENTS_PER_THREAD,
+		128,									// CTA_THREADS
+		17,										// THREAD_ITEMS,
 		cub::LOAD_NONE,							// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaUpsweepPassPolicyT;
 
-	// Spine-scan CTA policy
+	// Spine-scan pass CTA policy
 	typedef CtaScanPassPolicy<
-		8,										// LOG_CTA_THREADS
-		2,										// LOG_LOAD_VEC_SIZE
-		2,										// LOG_LOADS_PER_TILE
+		256,									// CTA_THREADS
+		4,										// THREAD_STRIP_ITEMS
+		4,										// TILE_STRIPS
 		cub::LOAD_NONE,							// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
@@ -112,37 +110,37 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 	// Downsweep pass CTA policy
 	typedef CtaDownsweepPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		4, 										// MIN_CTA_OCCUPANCY
-		7,										// LOG_CTA_THREADS
-		17,										// THREAD_ELEMENTS
+		128,									// CTA_THREADS
+		17,										// THREAD_ITEMS
+		SCATTER_TWO_PHASE,						// SCATTER_STRATEGY
 		cub::LOAD_NONE, 						// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
-		SCATTER_TWO_PHASE,						// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaDownsweepPassPolicyT;
 
-/*
-	// Tile CTA policy
-	typedef single::KernelPolicy<
+	// Single-tile CTA policy
+	typedef CtaSingleTilePolicy<
 		RADIX_BITS,								// RADIX_BITS
 		128,									// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
+		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ITEMS
 		cub::LOAD_NONE, 						// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			TilePolicy;
+			CtaSingleTilePolicyT;
 
-	// BinDescriptor CTA policy
-	typedef block::KernelPolicy<
+	// Hybrid pass CTA policy
+	typedef CtaHybridPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
-		4, 										// MIN_CTA_OCCUPANCY
 		128,									// CTA_THREADS
-		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		cub::LOAD_NONE, 				// LOAD_MODIFIER
-		cub::STORE_NONE,				// STORE_MODIFIER
+		17, 									// UPSWEEP_THREAD_ITEMS
+		17, 									// DOWNSWEEP_THREAD_ITEMS
+		SCATTER_TWO_PHASE,						// DOWNSWEEP_SCATTER_STRATEGY
+		((KEYS_ONLY) ? 17 : 9), 				// SINGLE_TILE_THREAD_ITEMS
+		cub::LOAD_NONE, 						// LOAD_MODIFIER
+		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			BinDescriptorPolicy;
-*/
+
 };
 
 

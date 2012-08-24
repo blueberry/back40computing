@@ -134,7 +134,7 @@ struct HybridKernelProps : util::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= HybridKernel<OpaqueCtaHybridPassPolicy>;
-		tile_elements 			= CtaHybridPassPolicy::TILE_ELEMENTS;
+		tile_elements 			= CtaHybridPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaHybridPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class

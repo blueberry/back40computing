@@ -57,7 +57,7 @@ void UpsweepKernel(
 
 	// Shared data structures
 	__shared__ typename CtaUpsweepPass::SmemStorage 	cta_smem_storage;
-	__shared__ util::CtaProgress<SizeT, TILE_ELEMENTS> 	cta_progress;
+	__shared__ util::CtaProgress<SizeT, TILE_ITEMS> 	cta_progress;
 
 	// Determine our threadblock's work range
 	if (threadIdx.x == 0)
@@ -119,7 +119,7 @@ struct UpsweepKernelProps : util::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy>;
-		tile_elements 			= CtaUpsweepPassPolicy::TILE_ELEMENTS;
+		tile_elements 			= CtaUpsweepPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaUpsweepPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class

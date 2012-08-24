@@ -42,9 +42,8 @@ namespace radix_sort {
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
-	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
-	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
-	int 							_ELEMENTS_PER_THREAD,	// The number of elements to load per thread
+	int 							_CTA_THREADS,			// The number of threads per CTA
+	int 							_THREAD_ITEMS,			// The number of items to load per thread per tile
 	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
 	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
@@ -53,12 +52,9 @@ struct CtaUpsweepPassPolicy
 	enum
 	{
 		RADIX_BITS					= _RADIX_BITS,
-		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
-		LOG_CTA_THREADS				= _LOG_CTA_THREADS,
-		ELEMENTS_PER_THREAD  		= _ELEMENTS_PER_THREAD,
-
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-		TILE_ELEMENTS				= CTA_THREADS * ELEMENTS_PER_THREAD,
+		CTA_THREADS					= _CTA_THREADS,
+		THREAD_ITEMS  				= _THREAD_ITEMS,
+		TILE_ITEMS				= CTA_THREADS * THREAD_ITEMS,
 	};
 
 	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
@@ -113,9 +109,9 @@ private:
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
-		KEYS_PER_THREAD  			= CtaUpsweepPassPolicy::ELEMENTS_PER_THREAD,
+		KEYS_PER_THREAD  			= CtaUpsweepPassPolicy::THREAD_ITEMS,
 
-		TILE_ELEMENTS				= CTA_THREADS * KEYS_PER_THREAD,
+		TILE_ITEMS				= CTA_THREADS * KEYS_PER_THREAD,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
 		LOG_BYTES_PER_COUNTER		= cub::Log2<BYTES_PER_COUNTER>::VALUE,
@@ -135,7 +131,7 @@ private:
 
 		// Unroll tiles in batches without risk of counter overflow
 		UNROLL_COUNT				= CUB_MIN(64, 255 / KEYS_PER_THREAD),
-		UNROLLED_ELEMENTS 			= UNROLL_COUNT * TILE_ELEMENTS,
+		UNROLLED_ELEMENTS 			= UNROLL_COUNT * TILE_ITEMS,
 	};
 
 public:
@@ -201,7 +197,7 @@ private:
 		{
 			// Next
 			Iterate<1, HALF>::ProcessTiles(cta, cta_offset);
-			Iterate<1, MAX - HALF>::ProcessTiles(cta, cta_offset + (HALF * TILE_ELEMENTS));
+			Iterate<1, MAX - HALF>::ProcessTiles(cta, cta_offset + (HALF * TILE_ITEMS));
 		}
 	};
 
@@ -437,10 +433,10 @@ public:
 		}
 
 		// Unroll single full tiles
-		while (cta_offset + TILE_ELEMENTS <= num_elements)
+		while (cta_offset + TILE_ITEMS <= num_elements)
 		{
 			cta.ProcessFullTile(cta_offset);
-			cta_offset += TILE_ELEMENTS;
+			cta_offset += TILE_ITEMS;
 		}
 
 		// Process partial tile if necessary

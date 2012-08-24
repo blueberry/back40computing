@@ -62,7 +62,7 @@ __global__ void DownsweepKernel(
 
 	// Shared data structures
 	__shared__ typename CtaDownsweepPass::SmemStorage 		cta_smem_storage;
-	__shared__ util::CtaProgress<SizeT, TILE_ELEMENTS> 		cta_progress;
+	__shared__ util::CtaProgress<SizeT, TILE_ITEMS> 		cta_progress;
 
 	// Read exclusive bin prefixes
 	SizeT bin_prefix;
@@ -145,7 +145,7 @@ struct DownsweepKernelProps : util::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPolicy>;
-		tile_elements 			= CtaDownsweepPolicy::TILE_ELEMENTS;
+		tile_elements 			= CtaDownsweepPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaDownsweepPolicy::SMEM_CONFIG;
 
 		// Initialize super class

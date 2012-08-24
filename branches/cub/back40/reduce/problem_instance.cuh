@@ -77,7 +77,7 @@ struct ProblemInstance
 			KernelPtr 				kernel_ptr,
 			const CudaProps 		&cuda_props)
 		{
-			tile_elements = KernelPolicy::TILE_ELEMENTS;
+			tile_elements = KernelPolicy::TILE_ITEMS;
 
 			return back40::KernelProps<KernelPtr>::Init(
 				kernel_ptr,

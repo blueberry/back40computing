@@ -108,7 +108,7 @@ struct SingleTileKernelProps : util::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= SingleTileKernel<OpaqueCtaSingleTilePolicy>;
-		tile_elements 			= CtaSingleTilePolicy::TILE_ELEMENTS;
+		tile_elements 			= CtaSingleTilePolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaSingleTilePolicy::SMEM_CONFIG;
 
 		// Initialize super class

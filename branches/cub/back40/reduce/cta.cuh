@@ -44,7 +44,7 @@ template <
 struct Cta
 	: CtaProgress<				// Progress-management base class
 		SizeT,
-		KernelPolicy::TILE_ELEMENTS,
+		KernelPolicy::TILE_ITEMS,
 		KernelPolicy::WORK_STEALING>
 {
 	//---------------------------------------------------------------------
@@ -57,7 +57,7 @@ struct Cta
 	// Progress-management base class
 	typedef CtaProgress<
 		SizeT,
-		KernelPolicy::TILE_ELEMENTS,
+		KernelPolicy::TILE_ITEMS,
 		KernelPolicy::WORK_STEALING> CtaProgress;
 
 	// Tile reader type
@@ -165,7 +165,7 @@ struct Cta
 
 			// Collectively reduce accumulator from each thread into output
 			// destination (all thread have valid reduction partials)
-			OutputToSpine(KernelPolicy::TILE_ELEMENTS);
+			OutputToSpine(KernelPolicy::TILE_ITEMS);
 
 		} else if (this->extra_elements) {
 

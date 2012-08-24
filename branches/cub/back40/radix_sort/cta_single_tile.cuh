@@ -23,18 +23,13 @@
 
 #pragma once
 
-#include "../../util/basic_utils.cuh"
-#include "../../util/io/modified_load.cuh"
-#include "../../util/io/modified_store.cuh"
-#include "../../util/ns_wrapper.cuh"
-
-#include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta/cta_radix_sort.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
+#include "sort_utils.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace cta {
 
 
 //---------------------------------------------------------------------
@@ -47,9 +42,9 @@ namespace cta {
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
 	int 							_CTA_THREADS,			// The number of threads per CTA
-	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
-	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
-	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	int 							_THREAD_ITEMS,			// The number of consecutive items to load per thread per tile
+	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaSingleTilePolicy
 {
@@ -57,14 +52,13 @@ struct CtaSingleTilePolicy
 	{
 		RADIX_BITS					= _RADIX_BITS,
 		CTA_THREADS 				= _CTA_THREADS,
-		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
-
-		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
+		THREAD_ITEMS 				= _THREAD_ITEMS,
+		TILE_ITEMS					= CTA_THREADS * THREAD_ITEMS,
 	};
 
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
 };
 
 
@@ -91,27 +85,26 @@ private:
 	// Appropriate unsigned-bits representation of KeyType
 	typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;
 
-	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
-	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaSingleTilePolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaSingleTilePolicy::STORE_MODIFIER;
+	static const UnsignedBits 	MIN_KEY 	= KeyTraits<KeyType>::MIN_KEY;
+	static const UnsignedBits 	MAX_KEY 	= KeyTraits<KeyType>::MAX_KEY;
 
 	enum
 	{
+		CTA_THREADS					= CtaSingleTilePolicy::CTA_THREADS,
 		RADIX_BITS					= CtaSingleTilePolicy::RADIX_BITS,
-		KEYS_PER_THREAD				= CtaSingleTilePolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= CtaSingleTilePolicy::TILE_ELEMENTS,
+		KEYS_PER_THREAD				= CtaSingleTilePolicy::THREAD_ITEMS,
+		TILE_ITEMS				= CtaSingleTilePolicy::TILE_ITEMS,
 	};
 
 
 	// CtaRadixSort utility type
-	typedef CtaRadixSort<
+	typedef cub::CtaRadixSort<
 		UnsignedBits,
 		CTA_THREADS,
 		KEYS_PER_THREAD,
 		RADIX_BITS,
 		ValueType,
-		CtaSingleTilePolicy::SMEM_CONFIG> CtaRadixSort;
+		CtaSingleTilePolicy::SMEM_CONFIG> CtaRadixSortT;
 
 public:
 
@@ -122,8 +115,8 @@ public:
 	{
 		union
 		{
-			typename CtaRadixSort::SmemStorage 	sorting_storage;
-			UnsignedBits						key_exchange[TILE_ELEMENTS];
+			typename CtaRadixSortT::SmemStorage 	sorting_storage;
+			UnsignedBits							key_exchange[TILE_ITEMS];
 		};
 	};
 
@@ -142,7 +135,6 @@ private:
 		T				*exchange,
 		T 				*items,
 		T 				*d_in,
-		const SizeT		&cta_offset,
 		const int 		&num_elements)
 	{
 		#pragma unroll
@@ -151,7 +143,7 @@ private:
 			int thread_offset = threadIdx.x + (KEY * CTA_THREADS);
 			if (thread_offset < num_elements)
 			{
-				items[KEY] = d_in[cta_offset + thread_offset];
+				items[KEY] = d_in[thread_offset];
 			}
 		}
 
@@ -180,16 +172,15 @@ private:
 	static __device__ __forceinline__ void StoreTile(
 		T 				*items,
 		T 				*d_out,
-		const SizeT		&cta_offset,
 		const int 		&num_elements)
 	{
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			int global_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (global_offset < num_elements)
+			int thread_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (thread_offset < num_elements)
 			{
-				d_out[cta_offset + global_offset] = items[KEY];
+				d_out[thread_offset] = items[KEY];
 			}
 		}
 	}
@@ -208,8 +199,8 @@ public:
 		SmemStorage 	&cta_smem_storage,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
-		util::NullType 	*d_values_in,
-		util::NullType 	*d_values_out,
+		cub::NullType 	*d_values_in,
+		cub::NullType 	*d_values_out,
 		unsigned int 	current_bit,
 		unsigned int 	bits_remaining,
 		const int 		&num_elements)
@@ -228,7 +219,6 @@ public:
 			cta_smem_storage.key_exchange,
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_in),
-			cta_offset,
 			num_elements);
 
 		__syncthreads();
@@ -241,7 +231,7 @@ public:
 		}
 
 		// Sort
-		CtaRadixSort::SortThreadToCtaStride(
+		CtaRadixSortT::SortThreadToCtaStride(
 			cta_smem_storage.sorting_storage,
 			keys,
 			current_bit,
@@ -258,14 +248,12 @@ public:
 		StoreTile(
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_out),
-			cta_offset,
 			num_elements);
 	}
 
 };
 
 
-} // namespace cta
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

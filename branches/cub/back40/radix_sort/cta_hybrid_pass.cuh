@@ -24,36 +24,72 @@
 
 #pragma once
 
-#include "../../util/basic_utils.cuh"
-#include "../../util/io/modified_load.cuh"
-#include "../../util/io/modified_store.cuh"
-#include "../../util/ns_wrapper.cuh"
-
-#include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta/cta_single_tile.cuh"
-#include "../../radix_sort/cta/cta_upsweep_pass.cuh"
-#include "../../radix_sort/cta/cta_downsweep_pass.cuh"
+#include "../../cub/cub.cuh"
+#include "cta_single_tile.cuh"
+#include "cta_upsweep_pass.cuh"
+#include "cta_downsweep_pass.cuh"
+#include "../ns_wrapper.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace cta {
+
+//---------------------------------------------------------------------
+// Tuning policy types
+//---------------------------------------------------------------------
 
 
 /**
- * Hybrid CTA tuning policy.
+ * Hybrid CTA tuning policy
  */
 template <
-	typename CtaSingleTilePolicy,
-	typename CtaUpsweepPassPolicy,
-	typename CtaDownsweepPassPolicy>
-struct CtaHybridPolicy
+	int 						RADIX_BITS,						// The number of radix bits, i.e., log2(bins)
+	int 						CTA_THREADS,					// The number of threads per CTA
+
+	int 						UPSWEEP_THREAD_ITEMS,			// The number of consecutive upsweep items to load per thread per tile
+	int 						DOWNSWEEP_THREAD_ITEMS,			// The number of consecutive downsweep items to load per thread per tile
+	ScatterStrategy 			DOWNSWEEP_SCATTER_STRATEGY,		// Downsweep strategy
+	int 						SINGLE_TILE_THREAD_ITEMS,		// The number of consecutive single-tile items to load per thread per tile
+
+	cub::LoadModifier 			LOAD_MODIFIER,					// Load cache-modifier
+	cub::StoreModifier			STORE_MODIFIER,					// Store cache-modifier
+	cudaSharedMemConfig			SMEM_CONFIG>					// Shared memory bank size
+struct CtaHybridPassPolicy
 {
-	typename _CtaSingleTilePolicy 		CtaSingleTilePolicy;
-	typename _CtaUpsweepPassPolicy 		CtaUpsweepPassPolicy;
-	typename _CtaDownsweepPassPolicy 	CtaDownsweepPassPolicy;
+	// Upsweep pass policy
+	typedef CtaUpsweepPassPolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		UPSWEEP_THREAD_ITEMS,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaUpsweepPassPolicyT;
+
+	// Downsweep pass policy
+	typedef CtaDownsweepPassPolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		DOWNSWEEP_THREAD_ITEMS,
+		DOWNSWEEP_SCATTER_STRATEGY,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaDownsweepPassPolicyT;
+
+	// Single tile policy
+	typedef CtaSingleTilePolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		SINGLE_TILE_THREAD_ITEMS,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaSingleTilePolicyT;
 };
 
+
+
+//---------------------------------------------------------------------
+// CTA-wide abstractions
+//---------------------------------------------------------------------
 
 
 /**
@@ -61,7 +97,7 @@ struct CtaHybridPolicy
  * global distribution passes over large blocks
  */
 template <
-	typename CtaHybridPolicy,
+	typename CtaHybridPassPolicy,
 	typename KeyType,
 	typename ValueType,
 	typename SizeT>
@@ -73,24 +109,46 @@ private:
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
-	// Single-tile CTA abstraction
-	typedef CtaSingle<
-		typename CtaHybridPolicy::Upsweep,
-		KeyType,
-		ValueType> SingleCta;
+	enum
+	{
+		CTA_THREADS			= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::CTA_THREADS,
 
-	// Upsweep CTA abstraction
-	typedef CtaUpsweep<
-		typename CtaHybridPolicy::Upsweep,
-		KeyType,
-		SizeT> UpsweepCta;
+		RADIX_DIGITS		= 1 << CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
 
-	// Downsweep CTA abstraction
-	typedef CtaDownsweep<
-		typename CtaHybridPolicy::Downsweep,
+		WARP_THREADS		= cub::DeviceProps::WARP_THREADS,
+
+		SINGLE_TILE_ITEMS	= CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
+	};
+
+	// CTA upsweep abstraction
+	typedef CtaUpsweepPass<
+		typename CtaHybridPassPolicy::CtaUpsweepPassPolicyT,
+		KeyType,
+		SizeT> CtaUpsweepPassT;
+
+	// CTA downsweep abstraction
+	typedef CtaDownsweepPass<
+		typename CtaHybridPassPolicy::CtaDownsweepPassPolicyT,
 		KeyType,
 		ValueType,
-		SizeT> DownsweepCta;
+		SizeT> CtaDownsweepPassT;
+
+	// CTA single-tile abstraction
+	typedef CtaSingleTile<
+		typename CtaHybridPassPolicy::CtaSingleTilePolicyT,
+		KeyType,
+		ValueType> CtaSingleTileT;
+
+	// Warp scan abstraction
+	typedef cub::WarpScan<
+		SizeT,
+		1,
+		RADIX_DIGITS> WarpScanT;
+
+	// CTA scan abstraction
+	typedef cub::CtaScan<
+		SizeT,
+		CTA_THREADS> CtaScanT;
 
 public:
 
@@ -101,10 +159,11 @@ public:
 	{
 		union
 		{
-			typename BlockCta::SmemStorage 		block_storage;
-			typename UpsweepCta::SmemStorage 	upsweep_storage;
-			typename DownsweepCta::SmemStorage 	downsweep_storage;
-			volatile SizeT						warpscan[2][PASS_RADIX_DIGITS];
+			typename CtaUpsweepPassT::SmemStorage 		upsweep_storage;
+			typename CtaDownsweepPassT::SmemStorage 	downsweep_storage;
+			typename CtaSingleTileT::SmemStorage 		single_storage;
+			typename WarpScanT::SmemStorage				warp_scan_storage;
+			typename CtaScanT::SmemStorage				cta_scan_storage;
 		};
 	};
 
@@ -134,11 +193,11 @@ public:
 		bin_prefix = 0;
 
 		// Choose whether to block-sort or pass-sort
-		if (num_elements < TILE_ELEMENTS)
+		if (num_elements < SINGLE_TILE_ITEMS)
 		{
 			// Perform block sort
-			BlockCta::Sort(
-				cta_smem_storage.block_storage,
+			CtaSingleTileT::Sort(
+				cta_smem_storage.single_storage,
 				d_keys_in,
 				d_keys_final,
 				d_values_in,
@@ -152,7 +211,7 @@ public:
 		{
 			// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
 			SizeT bin_count;
-			UpsweepCta::Upsweep(
+			CtaUpsweepPassT::UpsweepPass(
 				cta_smem_storage.upsweep_storage,
 				d_keys_in,
 				current_bit,
@@ -161,31 +220,26 @@ public:
 
 			__syncthreads();
 
-			// Exclusive scan across bin counts
+			// Prefix sum over bin counts
 			SizeT bin_prefix;
-			if (threadIdx.x < PASS_RADIX_DIGITS)
+			if (RADIX_DIGITS <= WARP_THREADS)
 			{
-				// Initialize warpscan identity regions
-				warpscan[0][threadIdx.x] = 0;
-
-				// Warpscan
-				SizeT partial = bin_count;
-				warpscan[1][threadIdx.x] = partial;
-
-				#pragma unroll
-				for (int STEP = 0; STEP < LOG_WARP_THREADS; STEP++)
+				// Warp prefix sum
+				if (threadIdx.x < RADIX_DIGITS)
 				{
-					partial += warpscan[1][threadIdx.x - (1 << STEP)];
-					warpscan[1][threadIdx.x] = partial;
+					WarpScanT::ExclusiveSum(cta_smem_storage.warp_scan_storage, bin_count, bin_prefix);
 				}
-
-				bin_prefix = partial - bin_count;
+			}
+			else
+			{
+				// Cta prefix sum
+				CtaScanT::ExclusiveSum(cta_smem_storage.cta_scan_storage, bin_count, bin_prefix);
 			}
 
 			// Note: no syncthreads() necessary
 
 			// Distribute keys
-			DownsweepCta::Downsweep(
+			CtaDownsweepPassT::DownsweepPass(
 				cta_smem_storage.downsweep_storage,
 				bin_prefix,
 				d_keys_in,
@@ -203,7 +257,6 @@ public:
 
 
 
-} // namespace cta
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

@@ -53,30 +53,26 @@ enum ScatterStrategy
  */
 template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
-	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
-	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
-	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
+	int 							_CTA_THREADS,			// The number of threads per CTA
+	int 							_THREAD_ITEMS,			// The number of consecutive downsweep keys to process per thread
+	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
 	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
 	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
-	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaDownsweepPassPolicy
 {
 	enum
 	{
 		RADIX_BITS					= _RADIX_BITS,
-		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
-		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
-		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
-
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
+		CTA_THREADS					= _CTA_THREADS,
+		THREAD_ITEMS 				= _THREAD_ITEMS,
+		TILE_ITEMS				= CTA_THREADS * THREAD_ITEMS,
 	};
 
+	static const ScatterStrategy 		SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
 	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
 	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
 	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
-	static const ScatterStrategy 		SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
 };
 
 
@@ -92,9 +88,9 @@ struct CtaDownsweepPassPolicy
  */
 template <
 	typename CtaDownsweepPassPolicy,
-	typename SizeT,
 	typename KeyType,
-	typename ValueType>
+	typename ValueType,
+	typename SizeT>
 class CtaDownsweepPass
 {
 private:
@@ -124,8 +120,8 @@ private:
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
-		KEYS_PER_THREAD 			= CtaDownsweepPassPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= CtaDownsweepPassPolicy::TILE_ELEMENTS,
+		KEYS_PER_THREAD 			= CtaDownsweepPassPolicy::THREAD_ITEMS,
+		TILE_ITEMS				= CtaDownsweepPassPolicy::TILE_ITEMS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),
 		LOG_BYTES_PER_SIZET			= cub::Log2<BYTES_PER_SIZET>::VALUE,
@@ -136,7 +132,7 @@ private:
 		// Whether or not to insert padding for exchanging keys. (Padding is
 		// worse than bank conflicts on GPUs that need two-phase scattering)
 		PADDED_EXCHANGE 			= false, //(SCATTER_STRATEGY != SCATTER_WARP_TWO_PHASE),
-		PADDING_ELEMENTS			= (PADDED_EXCHANGE) ? (TILE_ELEMENTS >> LOG_SMEM_BANKS) : 0,
+		PADDING_ELEMENTS			= (PADDED_EXCHANGE) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
 
 		DIGITS_PER_SCATTER_PASS 	= CTA_THREADS / SMEM_BANKS,
 		SCATTER_PASSES 				= RADIX_DIGITS / DIGITS_PER_SCATTER_PASS,
@@ -167,8 +163,8 @@ public:
 		union
 		{
 			typename CtaRadixRankT::SmemStorage		ranking_storage;
-			UnsignedBits							key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
-			ValueType 								value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+			UnsignedBits							key_exchange[TILE_ITEMS + PADDING_ELEMENTS];
+			ValueType 								value_exchange[TILE_ITEMS + PADDING_ELEMENTS];
 		};
 	};
 
@@ -647,7 +643,7 @@ private:
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void ProcessTile(
 		SizeT cta_offset,
-		const SizeT &guarded_elements = TILE_ELEMENTS)
+		const SizeT &guarded_elements = TILE_ITEMS)
 	{
 		// Per-thread tile data
 		UnsignedBits 	keys[KEYS_PER_THREAD];					// Keys
@@ -723,10 +719,10 @@ public:
 
 		// Process full tiles of tile_elements
 		SizeT cta_offset = 0;
-		while (cta_offset + TILE_ELEMENTS <= num_elements)
+		while (cta_offset + TILE_ITEMS <= num_elements)
 		{
 			cta.ProcessTile<true>(cta_offset);
-			cta_offset += TILE_ELEMENTS;
+			cta_offset += TILE_ITEMS;
 		}
 
 		// Clean up last partial tile with guarded-I/O

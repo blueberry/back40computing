@@ -23,8 +23,6 @@
 NVCC = "$(shell which nvcc)"
 NVCC_VERSION = $(strip $(shell nvcc --version | grep release | sed 's/.*release //' |  sed 's/,.*//'))
 
-KERNELS = 
-
 # detect OS
 OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 
@@ -32,6 +30,7 @@ OSUPPER = $(shell uname -s 2>/dev/null | tr [:lower:] [:upper:])
 # Gen targets
 #-------------------------------------------------------------------------------
 
+GEN_SM35 = -gencode=arch=compute_35,code=\"sm_35,compute_35\"
 GEN_SM30 = -gencode=arch=compute_30,code=\"sm_30,compute_30\"
 GEN_SM20 = -gencode=arch=compute_20,code=\"sm_20,compute_20\"
 GEN_SM13 = -gencode=arch=compute_13,code=\"sm_13,compute_13\" 
@@ -41,10 +40,15 @@ GEN_SM10 = -gencode=arch=compute_10,code=\"sm_10,compute_10\"
 SM_TARGETS = $(GEN_SM20)
 
 #-------------------------------------------------------------------------------
+# Libs
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
 # Includes
 #-------------------------------------------------------------------------------
 
-INC = -I. -I.. -I../.. 
+INC = -I. -I../.. 
 
 #-------------------------------------------------------------------------------
 # Defines
@@ -70,7 +74,7 @@ NVCCFLAGS = -Xptxas -v -Xcudafe -\#
 ifeq ($(abi), 1)
 	ABI_SUFFIX = abi
 else 
-	# Disable the ABI by default for 3.1+
+	# Disable the ABI by default
 	NVCCFLAGS += -Xptxas -abi=no
 	ABI_SUFFIX = noabi
 endif
@@ -97,67 +101,66 @@ SUFFIX = $(PTX_SUFFIX)_$(NVCC_VERSION)_$(ABI_SUFFIX)_$(ARCH_SUFFIX)
 # Dependency Lists
 #-------------------------------------------------------------------------------
 
-DEPS = 			./Makefile \
-				./test_util.h \
-				$(wildcard ../*.cuh) \
-				$(wildcard ../cta/*.cuh) \
-				$(wildcard ../host/*.cuh) \
-				$(wildcard ../thread/*.cuh) \
-				$(wildcard ../warp/*.cuh) 
+rwildcard=$(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2) $(filter $(subst *,%,$2),$d))
+
+DEPS = 	./Makefile \
+		./test_util.h \
+		$(call rwildcard,../../cub/,*.cuh)
+
 
 #-------------------------------------------------------------------------------
-# make allocator 
+# make test_allocator 
 #-------------------------------------------------------------------------------
 
-allocator: bin/allocator_$(SUFFIX)
+test_allocator: bin/test_allocator_$(SUFFIX)
 
-bin/allocator_$(SUFFIX) : test_allocator.cu $(DEPS)
+bin/test_allocator_$(SUFFIX) : test_allocator.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/allocator_$(SUFFIX) test_allocator.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_allocator_$(SUFFIX) test_allocator.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
 	
 	
 #-------------------------------------------------------------------------------
-# make cta_global_barrier 
+# make test_cta_global_barrier 
 #-------------------------------------------------------------------------------
 
-cta_global_barrier: bin/cta_global_barrier_$(SUFFIX)
+test_cta_global_barrier: bin/test_cta_global_barrier_$(SUFFIX)
 
-bin/cta_global_barrier_$(SUFFIX) : test_cta_global_barrier.cu $(DEPS)
+bin/test_cta_global_barrier_$(SUFFIX) : test_cta_global_barrier.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_global_barrier_$(SUFFIX) test_cta_global_barrier.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_global_barrier_$(SUFFIX) test_cta_global_barrier.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 	
 
 #-------------------------------------------------------------------------------
-# make cta_reduce 
+# make test_cta_reduce 
 #-------------------------------------------------------------------------------
 
-cta_reduce: bin/cta_reduce_$(SUFFIX)
+test_cta_reduce: bin/test_cta_reduce_$(SUFFIX)
 
-bin/cta_reduce_$(SUFFIX) : test_cta_reduce.cu $(DEPS)
+bin/test_cta_reduce_$(SUFFIX) : test_cta_reduce.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_reduce_$(SUFFIX) test_cta_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_reduce_$(SUFFIX) test_cta_reduce.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------
-# make warp_scan 
+# make test_warp_scan 
 #-------------------------------------------------------------------------------
 
-warp_scan: bin/warp_scan_$(SUFFIX)
+test_warp_scan: bin/test_warp_scan_$(SUFFIX)
 
-bin/warp_scan_$(SUFFIX) : test_warp_scan.cu $(DEPS)
+bin/test_warp_scan_$(SUFFIX) : test_warp_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/warp_scan_$(SUFFIX) test_warp_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_warp_scan_$(SUFFIX) test_warp_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------
-# make cta_scan 
+# make test_cta_scan 
 #-------------------------------------------------------------------------------
 
-cta_scan: bin/cta_scan_$(SUFFIX)
+test_cta_scan: bin/test_cta_scan_$(SUFFIX)
 
-bin/cta_scan_$(SUFFIX) : test_cta_scan.cu $(DEPS)
+bin/test_cta_scan_$(SUFFIX) : test_cta_scan.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/cta_scan_$(SUFFIX) test_cta_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_scan_$(SUFFIX) test_cta_scan.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 #-------------------------------------------------------------------------------

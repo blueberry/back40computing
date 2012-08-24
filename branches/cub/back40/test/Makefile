@@ -106,9 +106,20 @@ ifeq (WIN_NT, $(findstring WIN_NT, $(OSUPPER)))
 	NVCCFLAGS += -Xcompiler /bigobj -Xcompiler /Zm500
 endif
 
-ifneq ($(abi), 1)
+ifeq ($(abi), 1)
+	ABI_SUFFIX = abi
+else 
 	# Disable the ABI by default
 	NVCCFLAGS += -Xptxas -abi=no
+	ABI_SUFFIX = noabi
+endif
+
+ifeq ($(open64), 1)
+	# Use open64 compiler instead of nvvm
+	NVCCFLAGS += -open64
+	PTX_SUFFIX = open64
+else 
+	PTX_SUFFIX = nvvm
 endif
 
 ifeq ($(verbose), 1)
@@ -119,13 +130,8 @@ ifeq ($(keep), 1)
     NVCCFLAGS += -keep
 endif
 
-ifeq ($(open64), 1)
-    NVCCFLAGS += -open64
-endif
+SUFFIX = $(PTX_SUFFIX)_$(NVCC_VERSION)_$(ABI_SUFFIX)_$(ARCH_SUFFIX)
 
-ifdef maxregisters
-    NVCCFLAGS += -maxrregcount $(maxregisters)
-endif
 
 #-------------------------------------------------------------------------------
 # Dependency Lists
@@ -144,11 +150,11 @@ DEPS = 	./Makefile \
 # test_gpu_radix_sort  
 #-------------------------------------------------------------------------------
 
-test_gpu_radix_sort : bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX)
+test_gpu_radix_sort : bin/test_gpu_radix_sort_$(SUFFIX)
 
-bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_gpu_radix_sort.cu $(DEPS)
+bin/test_gpu_radix_sort_$(SUFFIX) : test_gpu_radix_sort.cu $(DEPS)
 	mkdir -p bin
-	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) test_gpu_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_gpu_radix_sort_$(SUFFIX) test_gpu_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3  
 
 
 
@@ -157,7 +163,7 @@ bin/test_gpu_radix_sort_$(NVCC_VERSION)_$(ARCH_SUFFIX) : test_gpu_radix_sort.cu 
 #-------------------------------------------------------------------------------
 
 clean :
-	rm -f bin/*_$(NVCC_VERSION)_$(ARCH_SUFFIX)* 
+	rm -f bin/*_$(SUFFIX)* 
 	rm -f *.i* *.cubin *.cu.c *.cudafe* *.fatbin.c *.ptx *.hash *.cu.cpp *.o
 
 
