@@ -26,6 +26,8 @@
 #include "cta/cta_global_barrier.cuh"
 #include "cta/cta_load.cuh"
 #include "cta/cta_progress.cuh"
+#include "cta/cta_radix_rank.cuh"
+#include "cta/cta_radix_sort.cuh"
 #include "cta/cta_reduce.cuh"
 #include "cta/cta_scan.cuh"
 #include "cta/cta_store.cuh"

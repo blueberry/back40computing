@@ -23,20 +23,17 @@
 
 #pragma once
 
-#include "../../util/cuda_properties.cuh"
-#include "../../util/srts_grid.cuh"
-#include "../../util/srts_details.cuh"
-#include "../../util/io/modified_load.cuh"
-#include "../../util/io/modified_store.cuh"
-#include "../../util/io/load_tile.cuh"
-#include "../../util/io/store_tile.cuh"
-#include "../../util/scan/cooperative_scan.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace cta {
+
+
+//---------------------------------------------------------------------
+// Tuning policy types
+//---------------------------------------------------------------------
 
 
 /**
@@ -46,8 +43,8 @@ template <
 	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
 	int 							_LOG_LOAD_VEC_SIZE,		// The number of consecutive keys to process per thread per global load
 	int 							_LOG_LOADS_PER_TILE,	// The number of loads to process per thread per tile
-	util::io::ld::CacheModifier 	_LOAD_MODIFIER,			// Load cache-modifier
-	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaScanPassPolicy
 {
@@ -61,11 +58,15 @@ struct CtaScanPassPolicy
 		LOG_TILE_ELEMENTS			= LOG_CTA_THREADS + LOG_LOAD_VEC_SIZE + LOG_LOADS_PER_TILE,
 	};
 
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
+	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
 };
 
+
+//---------------------------------------------------------------------
+// CTA-wide abstractions
+//---------------------------------------------------------------------
 
 
 /**
@@ -93,7 +94,7 @@ private:
 		LOG_LOADS_PER_TILE 				= CtaScanPassPolicy::LOG_LOADS_PER_TILE,
 		LOADS_PER_TILE					= 1 << LOG_LOADS_PER_TILE,
 
-		LOG_WARP_THREADS 				= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
+		LOG_WARP_THREADS 				= cub::DeviceProps::LOG_WARP_THREADS,
 		WARP_THREADS					= 1 << LOG_WARP_THREADS,
 
 		LOG_WARPS						= LOG_CTA_THREADS - LOG_WARP_THREADS,
@@ -106,21 +107,8 @@ private:
 		TILE_ELEMENTS					= 1 << LOG_TILE_ELEMENTS,
 	};
 
-	/**
-	 * Raking grid type
-	 */
-	typedef util::RakingGrid<
-		T,										// Partial type
-		LOG_CTA_THREADS,						// Depositing threads (the CTA size)
-		LOG_LOADS_PER_TILE,						// Lanes (the number of loads)
-		LOG_WARP_THREADS,						// 1 warp of raking threads
-		true>									// There are prefix dependences between lanes
-			RakingGrid;
-
-	/**
-	 * Operational details type for raking grid type
-	 */
-	typedef util::RakingDetails<RakingGrid> RakingDetails;
+	// CtaPrefixScan utility type
+	typedef cub::CtaScan<T, CTA_THREADS, LOADS_PER_TILE> CtaScanT;
 
 public:
 
@@ -129,8 +117,10 @@ public:
 	 */
 	struct SmemStorage
 	{
-		T warpscan[2][WARP_THREADS];
-		T raking_elements[RakingGrid::TOTAL_RAKING_ELEMENTS];		// Raking raking elements
+		union
+		{
+			typename CtaScanT::SmemStorage scan_storage;
+		};
 	};
 
 private:
@@ -150,9 +140,6 @@ private:
 	T *d_in;
 	T *d_out;
 
-	// Operational details for raking scan grid
-	RakingDetails raking_details;
-
 	//---------------------------------------------------------------------
 	// Methods
 	//---------------------------------------------------------------------
@@ -164,11 +151,6 @@ private:
 		SmemStorage 		&cta_smem_storage,
 		T 					*d_in,
 		T 					*d_out) :
-			// Initializers
-			raking_details(
-				cta_smem_storage.raking_elements,
-				cta_smem_storage.warpscan,
-				0),
 			cta_smem_storage(cta_smem_storage),
 			d_in(d_in),
 			d_out(d_out),
@@ -187,35 +169,21 @@ private:
 		T partials[LOADS_PER_TILE][LOAD_VEC_SIZE];
 
 		// Load tile
-		util::io::LoadTile<
-			LOG_LOADS_PER_TILE,
-			LOG_LOAD_VEC_SIZE,
-			CTA_THREADS,
-			CtaScanPassPolicy::LOAD_MODIFIER,
-			false>::LoadValid(
-				partials,
-				d_in,
-				cta_offset);
+		cub::CtaLoad<CTA_THREADS>::LoadUnguarded(partials, d_in, cta_offset);
 
 		// Scan tile with carry update in raking threads
-		util::scan::CooperativeTileScan<
-			LOAD_VEC_SIZE,
-			true>::ScanTileWithCarry(
-				raking_details,
-				partials,
-				carry,
-				scan_op);
+		T aggregate;
+		CtaScanT::ExclusiveScan(
+			cta_smem_storage.scan_storage,
+			partials,
+			partials,
+			cub::Sum<T>(),
+			0,
+			aggregate,
+			carry);
 
 		// Store tile
-		util::io::StoreTile<
-			LOG_LOADS_PER_TILE,
-			LOG_LOAD_VEC_SIZE,
-			CTA_THREADS,
-			CtaScanPassPolicy::STORE_MODIFIER,
-			false>::Store(
-				partials,
-				d_out,
-				cta_offset);
+		cub::CtaStore<CTA_THREADS>::StoreUnguarded(partials, d_out, cta_offset);
 	}
 
 public:
@@ -236,7 +204,7 @@ public:
 		SizeT				&num_elements)
 	{
 		// Construct state bundle
-		ScanCta cta(cta_smem_storage, d_keys_in, current_bit);
+		CtaScanPass cta(cta_smem_storage, d_in, d_out);
 
 		SizeT cta_offset = 0;
 		while (cta_offset + TILE_ELEMENTS <= num_elements)
@@ -251,7 +219,6 @@ public:
 };
 
 
-} // namespace cta
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

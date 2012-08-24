@@ -28,9 +28,10 @@
 
 #include "dispatch_policy.cuh"
 #include "cta_upsweep_pass.cuh"
+#include "cta_downsweep_pass.cuh"
+#include "cta_scan_pass.cuh"
 
 /*
-#include "../radix_sort/cta/cta_downsweep_pass.cuh"
 #include "../radix_sort/cta/cta_hybrid_pass.cuh"
 #include "../radix_sort/cta/cta_scan_pass.cuh"
 #include "../radix_sort/cta/cta_single_tile.cuh"
@@ -87,7 +88,7 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		true> 									// UNIFORM_GRID_SIZE
 			DispatchPolicyT;
 
-	// Upsweep kernel policy
+	// Upsweep pass CTA policy
 	typedef CtaUpsweepPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		8,										// MIN_CTA_OCCUPANCY
@@ -98,47 +99,47 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaUpsweepPassPolicyT;
 
-/*
-	// Spine-scan kernel policy
-	typedef spine::KernelPolicy<
+	// Spine-scan CTA policy
+	typedef CtaScanPassPolicy<
 		8,										// LOG_CTA_THREADS
 		2,										// LOG_LOAD_VEC_SIZE
 		2,										// LOG_LOADS_PER_TILE
-		back40::cub::io::ld::NONE,				// LOAD_MODIFIER
-		back40::cub::io::st::NONE,				// STORE_MODIFIER
+		cub::LOAD_NONE,							// LOAD_MODIFIER
+		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			SpinePolicy;
+			CtaScanPassPolicyT;
 
-	// Downsweep kernel policy
-	typedef downsweep::KernelPolicy<
+	// Downsweep pass CTA policy
+	typedef CtaDownsweepPassPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		4, 										// MIN_CTA_OCCUPANCY
 		7,										// LOG_CTA_THREADS
 		17,										// THREAD_ELEMENTS
-		back40::cub::io::ld::NONE, 				// LOAD_MODIFIER
-		back40::cub::io::st::NONE,				// STORE_MODIFIER
-		downsweep::SCATTER_TWO_PHASE,			// SCATTER_STRATEGY
+		cub::LOAD_NONE, 						// LOAD_MODIFIER
+		cub::STORE_NONE,						// STORE_MODIFIER
+		SCATTER_TWO_PHASE,						// SCATTER_STRATEGY
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			DownsweepPolicy;
+			CtaDownsweepPassPolicyT;
 
-	// Tile kernel policy
+/*
+	// Tile CTA policy
 	typedef single::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		128,									// CTA_THREADS
 		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		back40::cub::io::ld::NONE, 				// LOAD_MODIFIER
-		back40::cub::io::st::NONE,				// STORE_MODIFIER
+		cub::LOAD_NONE, 						// LOAD_MODIFIER
+		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			TilePolicy;
 
-	// BinDescriptor kernel policy
+	// BinDescriptor CTA policy
 	typedef block::KernelPolicy<
 		RADIX_BITS,								// RADIX_BITS
 		4, 										// MIN_CTA_OCCUPANCY
 		128,									// CTA_THREADS
 		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ELEMENTS
-		back40::cub::io::ld::NONE, 				// LOAD_MODIFIER
-		back40::cub::io::st::NONE,				// STORE_MODIFIER
+		cub::LOAD_NONE, 				// LOAD_MODIFIER
+		cub::STORE_NONE,				// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			BinDescriptorPolicy;
 */

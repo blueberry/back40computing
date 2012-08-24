@@ -120,7 +120,9 @@ struct CtaScan
 		T 				(&input)[STRIPS][ITEMS],		// (in) Input array
 		T 				(&output)[STRIPS][ITEMS],		// (out) Output array (may be aliased to input)
 		ScanOp 			scan_op,						// (in) Reduction operator
-		T				identity)						// (in) Identity value.
+		T				identity,						// (in) Identity value.
+		T				&aggregate,						// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&warp_prefix)					// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Pointers into shared memory raking grid where my strip partial-reductions go
 		T *raking_placement[STRIPS];
@@ -151,7 +153,9 @@ struct CtaScan
 				raking_partial,
 				exclusive_partial,
 				scan_op,
-				identity);
+				identity,
+				aggregate,
+				warp_prefix);
 
 			// Raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_segment, raking_segment, scan_op, exclusive_partial);
@@ -167,8 +171,6 @@ struct CtaScan
 		}
 
 	}
-
-
 
 };
 

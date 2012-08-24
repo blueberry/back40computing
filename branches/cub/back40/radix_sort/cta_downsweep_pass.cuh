@@ -24,19 +24,13 @@
 
 #pragma once
 
-#include "../../util/basic_utils.cuh"
-#include "../../util/device_intrinsics.cuh"
-#include "../../util/io/modified_load.cuh"
-#include "../../util/io/modified_store.cuh"
-#include "../../util/ns_wrapper.cuh"
-
-#include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta/cta_radix_rank.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
+#include "sort_utils.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace cta {
 
 
 //---------------------------------------------------------------------
@@ -62,12 +56,11 @@ template <
 	int 							_MIN_CTA_OCCUPANCY,		// The minimum CTA occupancy requested for this kernel per SM
 	int 							_LOG_CTA_THREADS,		// The number of threads per CTA
 	int 							_THREAD_ELEMENTS,		// The number of consecutive keys to process per thread per tile
-	util::io::ld::CacheModifier	 	_LOAD_MODIFIER,			// Load cache-modifier
-	util::io::st::CacheModifier 	_STORE_MODIFIER,		// Store cache-modifier
+	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
-	cudaSharedMemConfig				_SMEM_CONFIG,			// Shared memory bank size
-	bool						 	_EARLY_EXIT>			// Whether or not to short-circuit passes if the upsweep determines homogoneous digits in the current digit place
-struct CtaDownsweepPolicy
+	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
+struct CtaDownsweepPassPolicy
 {
 	enum
 	{
@@ -75,16 +68,15 @@ struct CtaDownsweepPolicy
 		MIN_CTA_OCCUPANCY  			= _MIN_CTA_OCCUPANCY,
 		LOG_CTA_THREADS 			= _LOG_CTA_THREADS,
 		THREAD_ELEMENTS 			= _THREAD_ELEMENTS,
-		EARLY_EXIT					= _EARLY_EXIT,
 
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 		TILE_ELEMENTS				= CTA_THREADS * THREAD_ELEMENTS,
 	};
 
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
-	static const cudaSharedMemConfig			SMEM_CONFIG			= _SMEM_CONFIG;
-	static const ScatterStrategy 				SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
+	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
+	static const ScatterStrategy 		SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
 };
 
 
@@ -99,11 +91,11 @@ struct CtaDownsweepPolicy
  * a range of input tiles.
  */
 template <
-	typename CtaDownsweepPolicy,
+	typename CtaDownsweepPassPolicy,
 	typename SizeT,
 	typename KeyType,
 	typename ValueType>
-class CtaDownsweep
+class CtaDownsweepPass
 {
 private:
 
@@ -114,52 +106,50 @@ private:
 	// Appropriate unsigned-bits representation of KeyType
 	typedef typename KeyTraits<KeyType>::UnsignedBits UnsignedBits;
 
-	static const UnsignedBits 					MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
-	static const UnsignedBits 					MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
-	static const util::io::ld::CacheModifier 	LOAD_MODIFIER 		= CtaDownsweepPolicy::LOAD_MODIFIER;
-	static const util::io::st::CacheModifier 	STORE_MODIFIER 		= CtaDownsweepPolicy::STORE_MODIFIER;
-	static const ScatterStrategy 				SCATTER_STRATEGY 	= CtaDownsweepPolicy::SCATTER_STRATEGY;
+	static const UnsignedBits 		MIN_KEY 			= KeyTraits<KeyType>::MIN_KEY;
+	static const UnsignedBits 		MAX_KEY 			= KeyTraits<KeyType>::MAX_KEY;
+	static const ScatterStrategy 	SCATTER_STRATEGY 	= CtaDownsweepPassPolicy::SCATTER_STRATEGY;
 
 	enum {
-		RADIX_BITS					= CtaDownsweepPolicy::RADIX_BITS,
+		RADIX_BITS					= CtaDownsweepPassPolicy::RADIX_BITS,
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
-		KEYS_ONLY 					= util::Equals<ValueType, util::NullType>::VALUE,
+		KEYS_ONLY 					= cub::Equals<ValueType, cub::NullType>::VALUE,
 
-		LOG_CTA_THREADS 			= CtaDownsweepPolicy::LOG_CTA_THREADS,
+		LOG_CTA_THREADS 			= CtaDownsweepPassPolicy::LOG_CTA_THREADS,
 		CTA_THREADS					= 1 << LOG_CTA_THREADS,
 
-		LOG_WARP_THREADS 			= CUB_LOG_WARP_THREADS(__CUB_CUDA_ARCH__),
+		LOG_WARP_THREADS 			= cub::DeviceProps::LOG_WARP_THREADS,
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
 		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
 		WARPS						= 1 << LOG_WARPS,
 
-		KEYS_PER_THREAD 			= CtaDownsweepPolicy::THREAD_ELEMENTS,
-		TILE_ELEMENTS				= CtaDownsweepPolicy::TILE_ELEMENTS,
+		KEYS_PER_THREAD 			= CtaDownsweepPassPolicy::THREAD_ELEMENTS,
+		TILE_ELEMENTS				= CtaDownsweepPassPolicy::TILE_ELEMENTS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),
-		LOG_BYTES_PER_SIZET			= util::Log2<BYTES_PER_SIZET>::VALUE,
+		LOG_BYTES_PER_SIZET			= cub::Log2<BYTES_PER_SIZET>::VALUE,
 
-		LOG_MEM_BANKS				= CUB_LOG_MEM_BANKS(__CUB_CUDA_ARCH__),
-		MEM_BANKS					= 1 << LOG_MEM_BANKS,
+		LOG_SMEM_BANKS				= cub::DeviceProps::LOG_SMEM_BANKS,
+		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
 
 		// Whether or not to insert padding for exchanging keys. (Padding is
 		// worse than bank conflicts on GPUs that need two-phase scattering)
 		PADDED_EXCHANGE 			= false, //(SCATTER_STRATEGY != SCATTER_WARP_TWO_PHASE),
-		PADDING_ELEMENTS			= (PADDED_EXCHANGE) ? (TILE_ELEMENTS >> LOG_MEM_BANKS) : 0,
+		PADDING_ELEMENTS			= (PADDED_EXCHANGE) ? (TILE_ELEMENTS >> LOG_SMEM_BANKS) : 0,
 
-		DIGITS_PER_SCATTER_PASS 	= CTA_THREADS / MEM_BANKS,
+		DIGITS_PER_SCATTER_PASS 	= CTA_THREADS / SMEM_BANKS,
 		SCATTER_PASSES 				= RADIX_DIGITS / DIGITS_PER_SCATTER_PASS,
 
-		LOG_STORE_TXN_THREADS 		= LOG_MEM_BANKS,
+		LOG_STORE_TXN_THREADS 		= LOG_SMEM_BANKS,
 		STORE_TXN_THREADS 			= 1 << LOG_STORE_TXN_THREADS,
 	};
 
 	// CtaRadixRank utility type
-	typedef CtaRadixRank<
+	typedef cub::CtaRadixRank<
 		CTA_THREADS,
 		RADIX_BITS,
-		CtaDownsweepPolicy::SMEM_CONFIG> CtaRadixRank;
+		CtaDownsweepPassPolicy::SMEM_CONFIG> CtaRadixRankT;
 
 
 public:
@@ -176,7 +166,7 @@ public:
 
 		union
 		{
-			typename CtaRadixRank::SmemStorage		ranking_storage;
+			typename CtaRadixRankT::SmemStorage		ranking_storage;
 			UnsignedBits							key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
 			ValueType 								value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
 		};
@@ -232,7 +222,7 @@ private:
 
 			if (FULL_TILE || (tile_element < guarded_elements))
 			{
-				util::io::ModifiedStore<STORE_MODIFIER>::St(items[COUNT], scatter);
+				*scatter = items[COUNT];
 			}
 
 			// Iterate next element
@@ -257,7 +247,7 @@ private:
 
 			if (FULL_TILE || (ranks[COUNT] < guarded_elements))
 			{
-				util::io::ModifiedStore<STORE_MODIFIER>::St(items[COUNT], scatter);
+				*scatter = items[COUNT];
 			}
 
 			// Iterate next element
@@ -294,7 +284,7 @@ private:
 					if ((my_aligned_offset >= 0) && (gather_offset < valid_elements))
 					{
 						int padded_gather_offset = (PADDED_EXCHANGE) ?
-							gather_offset = util::SHR_ADD(gather_offset, LOG_MEM_BANKS, gather_offset) :
+							gather_offset = cub::SHR_ADD(gather_offset, LOG_SMEM_BANKS, gather_offset) :
 							gather_offset;
 
 						T datum = buffer[padded_gather_offset];
@@ -337,7 +327,7 @@ private:
 	/**
 	 * Constructor
 	 */
-	__device__ __forceinline__ CtaDownsweep(
+	__device__ __forceinline__ CtaDownsweepPass(
 		SmemStorage 	&cta_smem_storage,
 		SizeT 			bin_prefix,
 		KeyType 		*d_keys_in,
@@ -389,8 +379,8 @@ private:
 			{
 				// Workaround for (CUAD4.2+NVCC+abi+m64) bug when sorting 16-bit key-value pairs
 				offset = (sizeof(ValueType) == 2) ?
-					(offset >> LOG_MEM_BANKS) + offset :
-					util::SHR_ADD(offset, LOG_MEM_BANKS, offset);
+					(offset >> LOG_SMEM_BANKS) + offset :
+					cub::SHR_ADD(offset, LOG_SMEM_BANKS, offset);
 			}
 
 			buffer[offset] = items[KEY];
@@ -410,9 +400,9 @@ private:
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			int gather_offset = (PADDED_EXCHANGE) ?
-				(util::SHR_ADD(threadIdx.x, LOG_MEM_BANKS, threadIdx.x) +
+				(cub::SHR_ADD(threadIdx.x, LOG_SMEM_BANKS, threadIdx.x) +
 					(KEY * CTA_THREADS) +
-					((KEY * CTA_THREADS) >> LOG_MEM_BANKS)) :
+					((KEY * CTA_THREADS) >> LOG_SMEM_BANKS)) :
 				(threadIdx.x + (KEY * CTA_THREADS));
 
 			items[KEY] = buffer[gather_offset];
@@ -431,7 +421,7 @@ private:
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
 			// Decode address of bin-offset in smem
-			UnsignedBits digit = util::BFE(twiddled_keys[KEY], current_bit, RADIX_BITS);
+			UnsignedBits digit = cub::BFE(twiddled_keys[KEY], current_bit, RADIX_BITS);
 
 			// Lookup base digit offset from shared memory
 			digit_offsets[KEY] = cta_smem_storage.digit_offsets[digit];
@@ -643,7 +633,7 @@ private:
 	 */
 	template <bool FULL_TILE>
 	__device__ __forceinline__ void GatherScatterValues(
-		util::NullType	values[KEYS_PER_THREAD],
+		cub::NullType	values[KEYS_PER_THREAD],
 		SizeT 			digit_offsets[KEYS_PER_THREAD],
 		unsigned int 	ranks[KEYS_PER_THREAD],
 		SizeT 			cta_offset,
@@ -675,7 +665,7 @@ private:
 		TwiddleKeys<KeyTraits<KeyType>::TwiddleIn>(keys, twiddled_keys);
 
 		// Rank the twiddled keys
-		CtaRadixRank::RankKeys(
+		CtaRadixRankT::RankKeys(
 			cta_smem_storage.ranking_storage,
 			twiddled_keys,
 			ranks,
@@ -711,7 +701,7 @@ public:
 	/**
 	 * Distribute keys from a range of input tiles.
 	 */
-	static __device__ __forceinline__ void Downsweep(
+	static __device__ __forceinline__ void DownsweepPass(
 		SmemStorage 	&cta_smem_storage,
 		SizeT 			bin_prefix, 			// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
 		KeyType 		*d_keys_in,
@@ -722,7 +712,7 @@ public:
 		const SizeT 	&num_elements)			// Number of elements for this CTA to process
 	{
 		// Construct state bundle
-		CtaUpsweep cta(
+		CtaDownsweepPass cta(
 			cta_smem_storage,
 			bin_prefix,
 			d_keys_in,
@@ -754,7 +744,6 @@ public:
 
 
 
-} // namespace cta
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

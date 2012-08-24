@@ -227,7 +227,7 @@ public:
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Lane-IDs
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
@@ -240,6 +240,9 @@ public:
 
 		// Compute inclusive warp scan
 		InclusiveSum(smem_storage, input, output, aggregate);
+
+		// Update warp_prefix
+		warp_prefix += aggregate;
 	}
 
 
@@ -287,7 +290,7 @@ public:
 		T 				input, 				// (in) Calling thread's input
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0)
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
@@ -303,6 +306,9 @@ public:
 		T inclusive;
 		InclusiveSum(smem_storage, partial, inclusive, aggregate);
 		output = inclusive - input;
+
+		// Update warp_prefix
+		warp_prefix += aggregate;
 	}
 
 
@@ -401,7 +407,7 @@ public:
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		ScanOp 			scan_op,			// (in) Scan operator.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
@@ -414,6 +420,9 @@ public:
 
 		// Compute inclusive warp scan
 		InclusiveScan(smem_storage, input, output, scan_op, aggregate);
+
+		// Update warp_prefix
+		warp_prefix = scan_op(warp_prefix, aggregate);
 	}
 
 
@@ -427,7 +436,7 @@ public:
 		T				&output,			// (out) Calling thread's output.  May be aliased with input.
 		Sum<T, true>,						// (in) Scan operator.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		InclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
 	}
@@ -533,7 +542,7 @@ public:
 		ScanOp 			scan_op,			// (in) Scan operator.
 		T				identity,			// (in) Identity value.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
 		unsigned int lane_id = (WARPS == 1) ? threadIdx.x : (threadIdx.x & (LOGICAL_WARP_THREADS - 1));
@@ -551,6 +560,7 @@ public:
 		if (lane_id == 0)
 		{
 			output = warp_prefix;
+			warp_prefix = scan_op(warp_prefix, aggregate);
 		}
 	}
 
@@ -566,7 +576,7 @@ public:
 		Sum<T, true>,						// (in) Scan operator.
 		T,									// (in) Identity value.
 		T				&aggregate,			// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
-		T				warp_prefix)		// (in) Warp-wide prefix to warp_prefix with (valid in lane-0).
+		T				&warp_prefix)		// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		ExclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
 	}

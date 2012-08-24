@@ -28,7 +28,7 @@
  *
  *     __shared__ int[DeviceProps::WARP_THREADS];
  *
- *     int padded_offset = threadIdx.x + (threadIdx.x >> DeviceProps::SMEM_BANKS);
+ *     int padded_offset = threadIdx.x + (threadIdx.x >> DeviceProps::LOG_SMEM_BANKS);
  *
  ******************************************************************************/
 
@@ -70,8 +70,10 @@ struct StaticDeviceProps<300>
 		LOG_WARP_THREADS	= 5,						// 32 threads per warp
 		WARP_THREADS		= 1 << LOG_WARP_THREADS,
 
+		LOG_SMEM_BANKS		= 5, 						// 32 banks
+		SMEM_BANKS			= 1 << LOG_SMEM_BANKS,
+
 		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
-		SMEM_BANKS			= 32, 						// 32 banks
 		SMEM_BYTES			= 48 * 1024,				// 48KB shared memory
 		SMEM_ALLOC_UNIT		= 256,						// 256B smem allocation segment size
 		REGS_BY_BLOCK		= false,					// Allocates registers by warp
@@ -102,8 +104,10 @@ struct StaticDeviceProps<200>
 		LOG_WARP_THREADS	= 5,						// 32 threads per warp
 		WARP_THREADS		= 1 << LOG_WARP_THREADS,
 
+		LOG_SMEM_BANKS		= 5, 						// 32 banks
+		SMEM_BANKS			= 1 << LOG_SMEM_BANKS,
+
 		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
-		SMEM_BANKS			= 32, 						// 32 banks
 		SMEM_BYTES			= 48 * 1024,				// 48KB shared memory
 		SMEM_ALLOC_UNIT		= 128,						// 128B smem allocation segment size
 		REGS_BY_BLOCK		= false,					// Allocates registers by warp
@@ -138,8 +142,10 @@ struct StaticDeviceProps<120>
 		LOG_WARP_THREADS	= 5,						// 32 threads per warp
 		WARP_THREADS		= 1 << LOG_WARP_THREADS,
 
+		LOG_SMEM_BANKS		= 4, 						// 16 banks
+		SMEM_BANKS			= 1 << LOG_SMEM_BANKS,
+
 		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
-		SMEM_BANKS			= 16, 						// 16 banks
 		SMEM_BYTES			= 16 * 1024,				// 16KB shared memory
 		SMEM_ALLOC_UNIT		= 512,						// 512B smem allocation segment size
 		REGS_BY_BLOCK		= true,						// Allocates registers by CTA
@@ -174,8 +180,10 @@ struct StaticDeviceProps<100>
 		LOG_WARP_THREADS	= 5,						// 32 threads per warp
 		WARP_THREADS		= 1 << LOG_WARP_THREADS,
 
+		LOG_SMEM_BANKS		= 4, 						// 16 banks
+		SMEM_BANKS			= 1 << LOG_SMEM_BANKS,
+
 		SMEM_BANK_BYTES		= 4,						// 4 byte bank words
-		SMEM_BANKS			= 16, 						// 16 banks
 		SMEM_BYTES			= 16 * 1024,				// 16KB shared memory
 		SMEM_ALLOC_UNIT		= 512,						// 512B smem allocation segment size
 		REGS_BY_BLOCK		= true,						// Allocates registers by CTA

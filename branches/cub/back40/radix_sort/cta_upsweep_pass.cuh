@@ -409,7 +409,10 @@ public:
 		SizeT 			&bin_count)				// The digit count for tid'th bin (output param, valid in the first RADIX_DIGITS threads)
 	{
 		// Construct state bundle
-		CtaUpsweepPass cta(cta_smem_storage, d_keys_in, current_bit);
+		CtaUpsweepPass cta(
+			cta_smem_storage,
+			d_keys_in,
+			current_bit);
 
 		// Reset digit counters in smem and unpacked counters in registers
 		cta.ResetDigitCounters();

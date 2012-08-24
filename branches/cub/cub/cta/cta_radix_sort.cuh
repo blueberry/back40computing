@@ -18,51 +18,230 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Cooperative scan abstraction for CTAs.
+ * CTA abstraction for sorting keys (unsigned bits) by radix digit.
  ******************************************************************************/
 
 #pragma once
 
 #include "../device_props.cuh"
 #include "../type_utils.cuh"
-#include "../operators.cuh"
+#include "../ptx_intrinsics.cuh"
 #include "../ns_wrapper.cuh"
+#include "cta_radix_rank.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
 
 
 /**
- * Policy for default radix bits (based upon key type and the target
- * architecture).
- */
-template <typename KeyType, int TARGET_ARCH>
-struct RadixBitsPolicy
-{
-	enum
-	{
-		VALUE = 5,
-	};
-};
-
-
-
-/**
- * Cooperative radix sorting abstraction for CTAs.
+ * CTA collective abstraction for sorting keys (unsigned bits) by radix digit.
+ *
+ * Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
  */
 template <
+	typename				UnsignedBits,
 	int 					CTA_THREADS,
-	int 					BITS_REMAINING,
-	int 					CURRENT_BIT,
-	typename 				KeyType,
-	typename 				ValueType 			= NullType,
-	int 					RADIX_BITS			= DefaultRadixBits<KeyType, PTX_ARCH>::VALUE,
-	cudaSharedMemConfig 	SMEM_CONFIG 		= cudaSharedMemBankSizeFourByte>				// Shared memory bank size
-struct CtaRadixSort
+	int						KEYS_PER_THREAD,
+	int 					RADIX_BITS,
+	typename 				ValueType = NullType,
+	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
+class CtaRadixSort
 {
+private:
+
+	//---------------------------------------------------------------------
+	// Type definitions and constants
+	//---------------------------------------------------------------------
+
+	enum
+	{
+		TILE_ELEMENTS				= CTA_THREADS * KEYS_PER_THREAD,
+
+		LOG_SMEM_BANKS				= DeviceProps::LOG_SMEM_BANKS,
+		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
+
+		// Insert padding if the number of keys per thread is a power of two
+		PADDING  					= ((KEYS_PER_THREAD & (KEYS_PER_THREAD - 1)) == 0),
+
+		PADDING_ELEMENTS			= (PADDING) ? (TILE_ELEMENTS >> LOG_SMEM_BANKS) : 0,
+	};
+
+	// CtaRadixRank utility type
+	typedef CtaRadixRank<
+		CTA_THREADS,
+		RADIX_BITS,
+		SMEM_CONFIG> CtaRadixRank;
+
+public:
+
+	/**
+	 * Shared memory storage layout
+	 */
+	struct SmemStorage
+	{
+		union
+		{
+			typename CtaRadixRank::SmemStorage		ranking_storage;
+			struct
+			{
+				UnsignedBits						key_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+//				ValueType 							value_exchange[TILE_ELEMENTS + PADDING_ELEMENTS];
+			};
+		};
+	};
+
+private:
+
+	//---------------------------------------------------------------------
+	// Template iteration
+	//---------------------------------------------------------------------
+
+	template <typename T>
+	static __device__ __forceinline__ void GatherThreadStride(
+		T items[KEYS_PER_THREAD],
+		T *buffer)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int shared_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
+			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
+			items[KEY] = buffer[shared_offset];
+		}
+	}
+
+	template <typename T>
+	static __device__ __forceinline__ void GatherCtaStride(
+		T items[KEYS_PER_THREAD],
+		T *buffer)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
+			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
+			items[KEY] = buffer[shared_offset];
+		}
+	}
+
+	template <typename T>
+	static __device__ __forceinline__ void Scatter(
+		unsigned int 	ranks[KEYS_PER_THREAD],
+		T 				items[KEYS_PER_THREAD],
+		T 				*buffer)
+	{
+		#pragma unroll
+		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
+		{
+			int shared_offset = ranks[KEY];
+			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
+
+			buffer[shared_offset] = items[KEY];
+		}
+	}
 
 
+public:
+
+
+	//---------------------------------------------------------------------
+	// Keys-only interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Keys-only sorting
+	 */
+	static __device__ __forceinline__ void SortThreadToCtaStride(
+		SmemStorage		&cta_smem_storage,									// Shared memory storage
+		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
+		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
+		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+	{
+		// Radix sorting passes
+
+		while (true)
+		{
+			unsigned int ranks[KEYS_PER_THREAD];
+
+			// Rank the keys within the CTA
+			CtaRadixRank::RankKeys(
+				cta_smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			__syncthreads();
+
+			// Scatter keys to shared memory
+			Scatter(ranks, keys, cta_smem_storage.key_exchange);
+
+			__syncthreads();
+
+			current_bit += RADIX_BITS;
+			if (current_bit >= bits_remaining) break;
+
+			// Gather keys from shared memory (thread-stride)
+			GatherThreadStride(keys, cta_smem_storage.key_exchange);
+
+			__syncthreads();
+		}
+
+		// Gather keys from shared memory (CTA-stride)
+		GatherCtaStride(keys, cta_smem_storage.key_exchange);
+	}
+
+
+	//---------------------------------------------------------------------
+	// Keys-value interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Keys-value sorting
+	 */
+	static __device__ __forceinline__ void SortThreadToCtaStride(
+		SmemStorage		&cta_smem_storage,									// Shared memory storage
+		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
+		ValueType	 	(&values)[KEYS_PER_THREAD],
+		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
+		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+	{
+		// Radix sorting passes
+
+		while (true)
+		{
+			unsigned int ranks[KEYS_PER_THREAD];
+
+			// Rank the keys within the CTA
+			CtaRadixRank::RankKeys(
+				cta_smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			__syncthreads();
+
+			// Scatter keys and values to shared memory
+			Scatter(ranks, keys, cta_smem_storage.key_exchange);
+			Scatter(ranks, values, cta_smem_storage.value_exchange);
+
+			__syncthreads();
+
+			current_bit += RADIX_BITS;
+			if (current_bit >= bits_remaining) break;
+
+			// Gather keys and values from shared memory (thread-stride)
+			GatherThreadStride(keys, cta_smem_storage.key_exchange);
+			GatherThreadStride(values, cta_smem_storage.value_exchange);
+
+			__syncthreads();
+		}
+
+		// Gather keys and values from shared memory (CTA-stride)
+		GatherCtaStride(keys, cta_smem_storage.key_exchange);
+		GatherCtaStride(values, cta_smem_storage.value_exchange);
+	}
 };
+
 
 
 
