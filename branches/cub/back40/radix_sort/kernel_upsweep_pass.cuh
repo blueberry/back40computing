@@ -23,41 +23,46 @@
 
 #pragma once
 
-#include "../../util/kernel_props.cuh"
-#include "../../util/cta_progress.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
-#include "../../radix_sort/cta/cta_upsweep_pass.cuh"
+#include "cta_upsweep_pass.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace kernel {
 
 
 /**
  * Kernel entry point
  */
 template <
-	typename CtaUpsweepPassPolicy,
-	typename SizeT,
-	typename KeyType>
+	typename 	CtaUpsweepPassPolicy,
+	int 		MIN_CTA_OCCUPANCY,
+	typename 	KeyType,
+	typename 	SizeT>
 __launch_bounds__ (
 	CtaUpsweepPassPolicy::CTA_THREADS,
-	CtaUpsweepPassPolicy::MIN_CTA_OCCUPANCY)
+	MIN_CTA_OCCUPANCY)
 __global__
 void UpsweepKernel(
-	SizeT 								*d_spine,
 	KeyType 							*d_keys_in,
-	util::CtaWorkDistribution<SizeT> 	cta_work_distribution,
+	SizeT 								*d_spine,
+	cub::CtaWorkDistribution<SizeT> 	cta_work_distribution,
 	unsigned int 						current_bit)
 {
-	// CTA abstraction type
-	typedef CtaUpsweepPass<CtaUpsweepPassPolicy, SizeT, KeyType> CtaUpsweepPass;
+	enum
+	{
+		TILE_ITEMS 		= CtaUpsweepPassPolicy::TILE_ITEMS,
+		RADIX_DIGITS 	= 1 << CtaUpsweepPassPolicy::RADIX_BITS,
+	};
+
+	// CTA abstraction types
+	typedef CtaUpsweepPass<CtaUpsweepPassPolicy, KeyType, SizeT> CtaUpsweepPassT;
 
 	// Shared data structures
-	__shared__ typename CtaUpsweepPass::SmemStorage 	cta_smem_storage;
-	__shared__ util::CtaProgress<SizeT, TILE_ITEMS> 	cta_progress;
+	__shared__ typename CtaUpsweepPassT::SmemStorage 	smem_storage;
+	__shared__ cub::CtaProgress<SizeT, TILE_ITEMS>		cta_progress;
 
 	// Determine our threadblock's work range
 	if (threadIdx.x == 0)
@@ -70,8 +75,8 @@ void UpsweepKernel(
 
 	// Compute bin-count for each radix digit (valid in the first RADIX_DIGITS threads)
 	SizeT bin_count;
-	CtaUpsweepPass::Upsweep(
-		cta_smem_storage,
+	CtaUpsweepPassT::UpsweepPass(
+		smem_storage,
 		d_keys_in + cta_progress.cta_offset,
 		current_bit,
 		cta_progress.num_elements,
@@ -82,9 +87,7 @@ void UpsweepKernel(
 	{
 		int spine_bin_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
 
-		util::io::ModifiedStore<CtaUpsweepPassPolicy::STORE_MODIFIER>::St(
-			bin_count,
-			d_spine + spine_bin_offset);
+		d_spine[spine_bin_offset] = bin_count;
 	}
 }
 
@@ -93,15 +96,15 @@ void UpsweepKernel(
  * Upsweep kernel properties
  */
 template <
-	typename SizeT,
-	typename KeyType>
-struct UpsweepKernelProps : util::KernelProps
+	typename KeyType,
+	typename SizeT>
+struct UpsweepKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
-		SizeT*,
 		KeyType*,
-		util::CtaWorkDistribution<SizeT>,
+		SizeT*,
+		cub::CtaWorkDistribution<SizeT>,
 		unsigned int);
 
 	// Fields
@@ -114,34 +117,35 @@ struct UpsweepKernelProps : util::KernelProps
 	 */
 	template <
 		typename CtaUpsweepPassPolicy,
-		typename OpaqueCtaUpsweepPassPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+		typename OpaqueCtaUpsweepPassPolicy,
+		int MIN_CTA_OCCUPANCY>
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		// Initialize fields
-		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy>;
+		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>;
 		tile_elements 			= CtaUpsweepPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaUpsweepPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
-		return util::KernelProps::Init(
+		return cub::KernelProps::Init(
 			kernel_func,
 			CtaUpsweepPassPolicy::CTA_THREADS,
-			sm_arch,
-			sm_count);
+			cuda_props);
 	}
 
 	/**
 	 * Initializer
 	 */
-	template <typename CtaUpsweepPassPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	template <
+		typename CtaUpsweepPassPolicy,
+		int MIN_CTA_OCCUPANCY>
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy>(sm_arch, sm_count);
+		return Init<CtaUpsweepPassPolicy, CtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>(cuda_props);
 	}
 };
 
 
-} // namespace kernel
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

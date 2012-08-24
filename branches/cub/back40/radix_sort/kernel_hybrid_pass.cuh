@@ -23,17 +23,16 @@
 
 #pragma once
 
-#include "../../util/kernel_props.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
-#include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta/cta_hybrid_pass.cuh"
+#include "sort_utils.cuh"
+#include "cta_hybrid_pass.cuh"
 
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace kernel {
 
 
 
@@ -41,13 +40,14 @@ namespace kernel {
  * Kernel entry point
  */
 template <
-	typename CtaHybridPolicy,
-	typename SizeT,
-	typename KeyType,
-	typename ValueType>
+	typename 	CtaHybridPolicy,
+	int 		MIN_CTA_OCCUPANCY,
+	typename 	SizeT,
+	typename 	KeyType,
+	typename 	ValueType>
 __launch_bounds__ (
 	CtaHybridPolicy::CTA_THREADS,
-	CtaHybridPolicy::MIN_CTA_OCCUPANCY)
+	MIN_CTA_OCCUPANCY)
 __global__
 void HybridKernel(
 	BinDescriptor						*d_bins_in,
@@ -61,11 +61,15 @@ void HybridKernel(
 	int									low_bit)
 {
 	// CTA abstraction type
-	typedef CtaHybridPass<CtaHybridPolicy, SizeT, KeyType, ValueType> CtaHybridPass;
+	typedef CtaHybridPass<
+		CtaHybridPolicy,
+		KeyType,
+		ValueType,
+		SizeT> CtaHybridPassT;
 
 	// Shared data structures
-	__shared__ typename CtaHybridPass::SmemStorage 	cta_smem_storage;
-	__shared__ BinDescriptor 						input_bin;
+	__shared__ typename CtaHybridPassT::SmemStorage 	smem_storage;
+	__shared__ BinDescriptor 							input_bin;
 
 	// Retrieve work
 	if (threadIdx.x == 0)
@@ -89,23 +93,28 @@ void HybridKernel(
 	// Quit if there is no work
 	if (input_bin.num_elements == 0) return;
 
-	CtaHybridPass::Sort(
-		cta_smem_storage,
+	CtaHybridPassT::Sort(
+		smem_storage,
 		d_keys_in,
 		d_keys_out,
 		d_keys_final,
 		d_values_in,
 		d_values_out,
 		d_values_final,
-		input_bin.
-		low_bit);
+		input_bin.current_bit,
+		low_bit,
+		input_bin.num_elements);
 }
 
 
 /**
  * Hybrid kernel props
  */
-struct HybridKernelProps : util::KernelProps
+template <
+	typename KeyType,
+	typename ValueType,
+	typename SizeT>
+struct HybridKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
@@ -121,7 +130,6 @@ struct HybridKernelProps : util::KernelProps
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						tile_elements;
 	cudaSharedMemConfig 		sm_bank_config;
 
 	/**
@@ -129,34 +137,33 @@ struct HybridKernelProps : util::KernelProps
 	 */
 	template <
 		typename CtaHybridPassPolicy,
-		typename OpaqueCtaHybridPassPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+		typename OpaqueCtaHybridPassPolicy,
+		int MIN_CTA_OCCUPANCY>
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		// Initialize fields
-		kernel_func 			= HybridKernel<OpaqueCtaHybridPassPolicy>;
-		tile_elements 			= CtaHybridPassPolicy::TILE_ITEMS;
+		kernel_func 			= HybridKernel<OpaqueCtaHybridPassPolicy, MIN_CTA_OCCUPANCY, SizeT>;
 		sm_bank_config 			= CtaHybridPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
-		return util::KernelProps::Init(
+		return cub::KernelProps::Init(
 			kernel_func,
 			CtaHybridPassPolicy::CTA_THREADS,
-			sm_arch,
-			sm_count);
+			cuda_props);
 	}
 
 	/**
 	 * Initializer
 	 */
 	template <typename CtaHybridPassPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<CtaHybridPassPolicy, CtaHybridPassPolicy>(sm_arch, sm_count);
+		return Init<CtaHybridPassPolicy, CtaHybridPassPolicy>(cuda_props);
 	}
 
 };
 
-} // namespace kernel
+
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

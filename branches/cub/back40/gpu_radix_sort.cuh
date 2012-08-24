@@ -28,21 +28,14 @@
 #include "ns_wrapper.cuh"
 #include "radix_sort/tuned_policy.cuh"
 #include "radix_sort/sort_utils.cuh"
-
-/*
-#include "../radix_sort/sort_utils.cuh"
-#include "../radix_sort/tuned_policy.cuh"
-
-#include "../radix_sort/kernel/kernel_downsweep_pass.cuh"
-#include "../radix_sort/kernel/kernel_hybrid_pass.cuh"
-#include "../radix_sort/kernel/kernel_scan_pass.cuh"
-#include "../radix_sort/kernel/kernel_single_tile.cuh"
-#include "../radix_sort/kernel/kernel_upsweep_pass.cuh"
-*/
+#include "radix_sort/kernel_upsweep_pass.cuh"
+#include "radix_sort/kernel_scan_pass.cuh"
+#include "radix_sort/kernel_downsweep_pass.cuh"
+#include "radix_sort/kernel_single_tile.cuh"
+#include "radix_sort/kernel_hybrid_pass.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
-
 
 
 /******************************************************************************
@@ -476,44 +469,47 @@ struct GpuRadixSort
 		cudaError_t error = cudaSuccess;
 		do
 		{
+			// Kernel properties
+			radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props;
+			radix_sort::SpineKernelProps<SizeT> 							spine_props;
+			radix_sort::DownsweepKernelProps<KeyType, ValueType, SizeT> 	downsweep_props;
+			radix_sort::SingleTileKernelProps<KeyType, ValueType, SizeT> 	single_tile_props;
+			radix_sort::HybridKernelProps<KeyType, ValueType, SizeT> 		hybrid_props;
 
-			int sm_version 		= cuda_props->sm_version;
-			int sm_count 		= cuda_props->sm_count;
-/*
-			// Upsweep kernel props
-			kernel::UpsweepKernelProps<SizeT, KeyType> upsweep_props;
+			// Initialize upsweep kernel props
 			error = upsweep_props.template Init<
-				typename TunedPolicy::UpsweepPolicy,
-				typename OpaqueTunedPolicy::UpsweepPolicy>(sm_version, sm_count);
+				typename TunedPolicy::CtaUpsweepPassPolicyT,
+				typename OpaqueTunedPolicy::CtaUpsweepPassPolicyT,
+				TunedPolicy::DispatchPolicyT::UPSWEEP_MIN_CTA_OCCUPANCY>(*cuda_props);
 			if (error) break;
 
-			// Spine kernel props
-			typename GpuRadixSort::SpineKernelProps spine_props;
+			// Initialize spine kernel props
 			error = spine_props.template Init<
-				typename TunedPolicy::SpinePolicy,
-				typename OpaqueTunedPolicy::SpinePolicy>(sm_version, sm_count);
+				typename TunedPolicy::CtaScanPassPolicyT,
+				typename OpaqueTunedPolicy::CtaScanPassPolicyT>(*cuda_props);
 			if (error) break;
 
-			// Downsweep kernel props
-			typename GpuRadixSort::DownsweepKernelProps downsweep_props;
+			// Initialize downsweep kernel props
 			error = downsweep_props.template Init<
-				typename TunedPolicy::DownsweepPolicy,
-				typename OpaqueTunedPolicy::DownsweepPolicy>(sm_version, sm_count);
+				typename TunedPolicy::CtaDownsweepPassPolicyT,
+				typename OpaqueTunedPolicy::CtaDownsweepPassPolicyT,
+				TunedPolicy::DispatchPolicyT::DOWNSWEEP_MIN_CTA_OCCUPANCY>(*cuda_props);
 			if (error) break;
 
-			// Single-tile kernel props
-			typename GpuRadixSort::TileKernelProps single_tile_props;
+			// Initialize single-tile kernel props
 			error = single_tile_props.template Init<
-				typename TunedPolicy::TilePolicy,
-				typename OpaqueTunedPolicy::TilePolicy>(sm_version, sm_count);
+				typename TunedPolicy::CtaSingleTilePolicyT,
+				typename OpaqueTunedPolicy::CtaSingleTilePolicyT>(*cuda_props);
 			if (error) break;
 
-			// Hygrid kernel props
-			typename GpuRadixSort::BinDescriptorKernelProps partition_props;
-			error = partition_props.template Init<
-				typename TunedPolicy::BinDescriptorPolicy,
-				typename OpaqueTunedPolicy::BinDescriptorPolicy>(sm_version, sm_count);
+			// Initialize hybrid kernel props
+			error = hybrid_props.template Init<
+				typename TunedPolicy::CtaHybridPassPolicyT,
+				typename OpaqueTunedPolicy::CtaHybridPassPolicyT,
+				TunedPolicy::DispatchPolicyT::HYBRID_MIN_CTA_OCCUPANCY>(*cuda_props);
 			if (error) break;
+
+		/*
 
 			//
 			// Allocate

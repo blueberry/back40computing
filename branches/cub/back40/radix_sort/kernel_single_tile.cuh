@@ -23,15 +23,15 @@
 
 #pragma once
 
-#include "../../util/kernel_props.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
-#include "../../radix_sort/cta/cta_single_tile.cuh"
+#include "cta_single_tile.cuh"
+
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace kernel {
 
 
 /**
@@ -40,11 +40,10 @@ namespace kernel {
 template <
 	typename CtaSingleTilePolicy,
 	typename KeyType,
-	typename ValueType,
-	typename SizeT>
+	typename ValueType>
 __launch_bounds__ (
 	CtaSingleTilePolicy::CTA_THREADS,
-	CtaSingleTilePolicy::MIN_CTA_OCCUPANCY)
+	1)
 __global__
 void SingleTileKernel(
 	KeyType 		*d_keys_in,
@@ -53,17 +52,20 @@ void SingleTileKernel(
 	ValueType 		*d_values_out,
 	unsigned int	current_bit,
 	unsigned int 	bits_remaining,
-	SizeT 			num_elements)
+	int 			num_elements)
 {
 	// CTA abstraction type
-	typedef CtaSingleTile<CtaSingleTilePolicy, SizeT, KeyType, ValueType> CtaSingleTile;
+	typedef CtaSingleTile<
+		CtaSingleTilePolicy,
+		KeyType,
+		ValueType> CtaSingleTileT;
 
 	// Shared data structures
-	__shared__ typename CtaSingleTile::SmemStorage cta_smem_storage;
+	__shared__ typename CtaSingleTileT::SmemStorage smem_storage;
 
 	// Sort input tile
-	CtaSingleTile::Sort(
-		cta_smem_storage,
+	CtaSingleTileT::Sort(
+		smem_storage,
 		d_keys_in,
 		d_keys_out,
 		d_values_in,
@@ -81,7 +83,7 @@ template <
 	typename KeyType,
 	typename ValueType,
 	typename SizeT>
-struct SingleTileKernelProps : util::KernelProps
+struct SingleTileKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
@@ -91,7 +93,7 @@ struct SingleTileKernelProps : util::KernelProps
 		ValueType*,
 		unsigned int,
 		unsigned int,
-		SizeT);
+		int);
 
 	// Fields
 	KernelFunc 					kernel_func;
@@ -104,7 +106,7 @@ struct SingleTileKernelProps : util::KernelProps
 	template <
 		typename CtaSingleTilePolicy,
 		typename OpaqueCtaSingleTilePolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		// Initialize fields
 		kernel_func 			= SingleTileKernel<OpaqueCtaSingleTilePolicy>;
@@ -112,25 +114,23 @@ struct SingleTileKernelProps : util::KernelProps
 		sm_bank_config 			= CtaSingleTilePolicy::SMEM_CONFIG;
 
 		// Initialize super class
-		return util::KernelProps::Init(
+		return cub::KernelProps::Init(
 			kernel_func,
 			CtaSingleTilePolicy::CTA_THREADS,
-			sm_arch,
-			sm_count);
+			cuda_props);
 	}
 
 	/**
 	 * Initializer
 	 */
 	template <typename CtaSingleTilePolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(sm_arch, sm_count);
+		return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(sm_arch, cuda_props);
 	}
 
 };
 
-} // namespace kernel
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

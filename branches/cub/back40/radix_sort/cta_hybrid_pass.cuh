@@ -44,7 +44,7 @@ namespace radix_sort {
  */
 template <
 	int 						RADIX_BITS,						// The number of radix bits, i.e., log2(bins)
-	int 						CTA_THREADS,					// The number of threads per CTA
+	int 						_CTA_THREADS,					// The number of threads per CTA
 
 	int 						UPSWEEP_THREAD_ITEMS,			// The number of consecutive upsweep items to load per thread per tile
 	int 						DOWNSWEEP_THREAD_ITEMS,			// The number of consecutive downsweep items to load per thread per tile
@@ -53,9 +53,16 @@ template <
 
 	cub::LoadModifier 			LOAD_MODIFIER,					// Load cache-modifier
 	cub::StoreModifier			STORE_MODIFIER,					// Store cache-modifier
-	cudaSharedMemConfig			SMEM_CONFIG>					// Shared memory bank size
+	cudaSharedMemConfig			_SMEM_CONFIG>					// Shared memory bank size
 struct CtaHybridPassPolicy
 {
+	enum
+	{
+		CTA_THREADS = _CTA_THREADS,
+	};
+
+	static const cudaSharedMemConfig SMEM_CONFIG = _SMEM_CONFIG;
+
 	// Upsweep pass policy
 	typedef CtaUpsweepPassPolicy<
 		RADIX_BITS,
@@ -176,7 +183,7 @@ public:
 	 * Process work range
 	 */
 	static __device__ __forceinline__ void Sort(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		KeyType 		*d_keys_final,
@@ -185,34 +192,28 @@ public:
 		ValueType 		*d_values_final,
 		int				current_bit,
 		int				low_bit,
-		SizeT			num_elements,
-		int				&bin_count,			// The digit count for tid'th bin (output param, valid in the first RADIX_DIGITS threads)
-		int				&bin_prefix)		// The base offset for each digit (valid in the first RADIX_DIGITS threads)
+		SizeT			num_elements)
 	{
-		bin_count = 0;
-		bin_prefix = 0;
-
 		// Choose whether to block-sort or pass-sort
 		if (num_elements < SINGLE_TILE_ITEMS)
 		{
 			// Perform block sort
 			CtaSingleTileT::Sort(
-				cta_smem_storage.single_storage,
+				smem_storage.single_storage,
 				d_keys_in,
 				d_keys_final,
 				d_values_in,
 				d_values_final,
 				low_bit,
-				cta_smem_storage.partition.current_bit - low_bit,
-				cta_smem_storage.partition.offset,
-				cta_smem_storage.partition.num_elements);
+				current_bit - low_bit,
+				num_elements);
 		}
 		else
 		{
 			// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
 			SizeT bin_count;
 			CtaUpsweepPassT::UpsweepPass(
-				cta_smem_storage.upsweep_storage,
+				smem_storage.upsweep_storage,
 				d_keys_in,
 				current_bit,
 				num_elements,
@@ -227,20 +228,20 @@ public:
 				// Warp prefix sum
 				if (threadIdx.x < RADIX_DIGITS)
 				{
-					WarpScanT::ExclusiveSum(cta_smem_storage.warp_scan_storage, bin_count, bin_prefix);
+					WarpScanT::ExclusiveSum(smem_storage.warp_scan_storage, bin_count, bin_prefix);
 				}
 			}
 			else
 			{
 				// Cta prefix sum
-				CtaScanT::ExclusiveSum(cta_smem_storage.cta_scan_storage, bin_count, bin_prefix);
+				CtaScanT::ExclusiveSum(smem_storage.cta_scan_storage, bin_count, bin_prefix);
 			}
 
 			// Note: no syncthreads() necessary
 
 			// Distribute keys
 			CtaDownsweepPassT::DownsweepPass(
-				cta_smem_storage.downsweep_storage,
+				smem_storage.downsweep_storage,
 				bin_prefix,
 				d_keys_in,
 				d_keys_out,
@@ -251,9 +252,6 @@ public:
 		}
 	}
 };
-
-
-
 
 
 

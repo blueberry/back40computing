@@ -66,7 +66,7 @@ struct CtaDownsweepPassPolicy
 		RADIX_BITS					= _RADIX_BITS,
 		CTA_THREADS					= _CTA_THREADS,
 		THREAD_ITEMS 				= _THREAD_ITEMS,
-		TILE_ITEMS				= CTA_THREADS * THREAD_ITEMS,
+		TILE_ITEMS					= CTA_THREADS * THREAD_ITEMS,
 	};
 
 	static const ScatterStrategy 		SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
@@ -111,17 +111,12 @@ private:
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 		KEYS_ONLY 					= cub::Equals<ValueType, cub::NullType>::VALUE,
 
-		LOG_CTA_THREADS 			= CtaDownsweepPassPolicy::LOG_CTA_THREADS,
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
-
-		LOG_WARP_THREADS 			= cub::DeviceProps::LOG_WARP_THREADS,
-		WARP_THREADS				= 1 << LOG_WARP_THREADS,
-
-		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS						= 1 << LOG_WARPS,
+		WARP_THREADS 				= cub::DeviceProps::WARP_THREADS,
+		CTA_THREADS					= CtaDownsweepPassPolicy::CTA_THREADS,
+		WARPS						= (CTA_THREADS + WARP_THREADS - 1) / WARP_THREADS,
 
 		KEYS_PER_THREAD 			= CtaDownsweepPassPolicy::THREAD_ITEMS,
-		TILE_ITEMS				= CtaDownsweepPassPolicy::TILE_ITEMS,
+		TILE_ITEMS					= CtaDownsweepPassPolicy::TILE_ITEMS,
 
 		BYTES_PER_SIZET				= sizeof(SizeT),
 		LOG_BYTES_PER_SIZET			= cub::Log2<BYTES_PER_SIZET>::VALUE,
@@ -176,7 +171,7 @@ private:
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
-	SmemStorage 				&cta_smem_storage;
+	SmemStorage 				&smem_storage;
 
 	// Input and output device pointers
 	UnsignedBits 				*d_keys_in;
@@ -258,7 +253,7 @@ private:
 		 */
 		template <typename T>
 		static __device__ __forceinline__ void AlignedScatterPass(
-			SmemStorage 	&cta_smem_storage,
+			SmemStorage 	&smem_storage,
 			T 				*buffer,
 			T 				*d_out,
 			SizeT 			valid_elements)
@@ -269,9 +264,9 @@ private:
 
 			if (my_digit < RADIX_DIGITS)
 			{
-				int my_exclusive_scan 	= cta_smem_storage.digit_prefixes[my_digit];
-				int my_inclusive_scan 	= cta_smem_storage.digit_prefixes[my_digit + 1];
-				int my_carry 			= cta_smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
+				int my_exclusive_scan 	= smem_storage.digit_prefixes[my_digit];
+				int my_inclusive_scan 	= smem_storage.digit_prefixes[my_digit + 1];
+				int my_carry 			= smem_storage.digit_offsets[my_digit] + my_exclusive_scan;
 				int my_aligned_offset 	= store_txn_idx - (my_carry & (STORE_TXN_THREADS - 1));
 
 				int gather_offset;
@@ -291,7 +286,7 @@ private:
 			}
 
 			// Next scatter pass
-			Iterate<COUNT + 1, MAX>::AlignedScatterPass(cta_smem_storage, buffer, d_out, valid_elements);
+			Iterate<COUNT + 1, MAX>::AlignedScatterPass(smem_storage, buffer, d_out, valid_elements);
 		}
 	};
 
@@ -324,14 +319,14 @@ private:
 	 * Constructor
 	 */
 	__device__ __forceinline__ CtaDownsweepPass(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		SizeT 			bin_prefix,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		ValueType 		*d_values_in,
 		ValueType 		*d_values_out,
 		unsigned int 	current_bit) :
-			cta_smem_storage(cta_smem_storage),
+			smem_storage(smem_storage),
 			bin_prefix(bin_prefix),
 			d_keys_in(reinterpret_cast<UnsignedBits*>(d_keys_in)),
 			d_keys_out(reinterpret_cast<UnsignedBits*>(d_keys_out)),
@@ -420,7 +415,7 @@ private:
 			UnsignedBits digit = cub::BFE(twiddled_keys[KEY], current_bit, RADIX_BITS);
 
 			// Lookup base digit offset from shared memory
-			digit_offsets[KEY] = cta_smem_storage.digit_offsets[digit];
+			digit_offsets[KEY] = smem_storage.digit_offsets[digit];
 		}
 	}
 
@@ -455,7 +450,7 @@ private:
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			cta_smem_storage.key_exchange[threadIdx.x + (KEY * CTA_THREADS)] = keys[KEY];
+			smem_storage.key_exchange[threadIdx.x + (KEY * CTA_THREADS)] = keys[KEY];
 		}
 
 		__syncthreads();
@@ -463,7 +458,7 @@ private:
 		#pragma unroll
 		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
 		{
-			keys[KEY] = cta_smem_storage.key_exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
+			keys[KEY] = smem_storage.key_exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
 		}
 
 		__syncthreads();
@@ -521,14 +516,14 @@ private:
 			TwiddleKeys<KeyTraits<KeyType>::TwiddleOut>(twiddled_keys, keys);
 
 			// Scatter to shared memory first
-			ScatterRanked(ranks, keys, cta_smem_storage.key_exchange);
+			ScatterRanked(ranks, keys, smem_storage.key_exchange);
 
 			__syncthreads();
 
 			// Gather sorted keys from smem and scatter to global using warp-aligned scattering
 			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-				cta_smem_storage,
-				cta_smem_storage.key_exchange,
+				smem_storage,
+				smem_storage.key_exchange,
 				d_keys_out,
 				guarded_elements);
 		}
@@ -538,12 +533,12 @@ private:
 			// scatter sorted keys to global
 
 			// Scatter to shared memory first (for better write-coalescing during global scatter)
-			ScatterRanked(ranks, twiddled_keys, cta_smem_storage.key_exchange);
+			ScatterRanked(ranks, twiddled_keys, smem_storage.key_exchange);
 
 			__syncthreads();
 
 			// Gather sorted keys from shared memory
-			GatherShared(twiddled_keys, cta_smem_storage.key_exchange);
+			GatherShared(twiddled_keys, smem_storage.key_exchange);
 
 			// Compute scatter offsets
 			DecodeDigitOffsets(twiddled_keys, digit_offsets);
@@ -591,14 +586,14 @@ private:
 			__syncthreads();
 
 			// Exchange values through shared memory for better write-coalescing
-			ScatterRanked(ranks, values, cta_smem_storage.value_exchange);
+			ScatterRanked(ranks, values, smem_storage.value_exchange);
 
 			__syncthreads();
 
 			// Use explicitly warp-aligned scattering of values from shared memory
 			Iterate<0, SCATTER_PASSES>::AlignedScatterPass(
-				cta_smem_storage,
-				cta_smem_storage.value_exchange,
+				smem_storage,
+				smem_storage.value_exchange,
 				d_values_out,
 				guarded_elements);
 		}
@@ -607,12 +602,12 @@ private:
 			__syncthreads();
 
 			// Exchange values through shared memory for better write-coalescing
-			ScatterRanked(ranks, values, cta_smem_storage.value_exchange);
+			ScatterRanked(ranks, values, smem_storage.value_exchange);
 
 			__syncthreads();
 
 			// Gather values from shared
-			GatherShared(values, cta_smem_storage.value_exchange);
+			GatherShared(values, smem_storage.value_exchange);
 
 			// Scatter to global memory
 			Iterate<0, KEYS_PER_THREAD>::template ScatterGlobal<FULL_TILE>(
@@ -662,10 +657,10 @@ private:
 
 		// Rank the twiddled keys
 		CtaRadixRankT::RankKeys(
-			cta_smem_storage.ranking_storage,
+			smem_storage.ranking_storage,
 			twiddled_keys,
 			ranks,
-			cta_smem_storage.digit_prefixes,
+			smem_storage.digit_prefixes,
 			current_bit);
 
 		__syncthreads();
@@ -673,9 +668,9 @@ private:
 		// Update global scatter base offsets for each digit
 		if ((CTA_THREADS == RADIX_DIGITS) || (threadIdx.x < RADIX_DIGITS))
 		{
-			bin_prefix -= cta_smem_storage.digit_prefixes[threadIdx.x];
-			cta_smem_storage.digit_offsets[threadIdx.x] = bin_prefix;
-			bin_prefix += cta_smem_storage.digit_prefixes[threadIdx.x + 1];
+			bin_prefix -= smem_storage.digit_prefixes[threadIdx.x];
+			smem_storage.digit_offsets[threadIdx.x] = bin_prefix;
+			bin_prefix += smem_storage.digit_prefixes[threadIdx.x + 1];
 		}
 
 		__syncthreads();
@@ -698,7 +693,7 @@ public:
 	 * Distribute keys from a range of input tiles.
 	 */
 	static __device__ __forceinline__ void DownsweepPass(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		SizeT 			bin_prefix, 			// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
@@ -709,7 +704,7 @@ public:
 	{
 		// Construct state bundle
 		CtaDownsweepPass cta(
-			cta_smem_storage,
+			smem_storage,
 			bin_prefix,
 			d_keys_in,
 			d_keys_out,

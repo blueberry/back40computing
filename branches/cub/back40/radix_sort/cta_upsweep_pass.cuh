@@ -100,18 +100,16 @@ private:
 		RADIX_BITS					= CtaUpsweepPassPolicy::RADIX_BITS,
 		RADIX_DIGITS 				= 1 << RADIX_BITS,
 
-		LOG_CTA_THREADS 			= CtaUpsweepPassPolicy::LOG_CTA_THREADS,
-		CTA_THREADS					= 1 << LOG_CTA_THREADS,
+		CTA_THREADS 				= CtaUpsweepPassPolicy::CTA_THREADS,
 
 		LOG_WARP_THREADS 			= cub::DeviceProps::LOG_WARP_THREADS,
 		WARP_THREADS				= 1 << LOG_WARP_THREADS,
 
-		LOG_WARPS					= LOG_CTA_THREADS - LOG_WARP_THREADS,
-		WARPS						= 1 << LOG_WARPS,
+		WARPS						= (CTA_THREADS + WARP_THREADS - 1) / WARP_THREADS,
 
 		KEYS_PER_THREAD  			= CtaUpsweepPassPolicy::THREAD_ITEMS,
 
-		TILE_ITEMS				= CTA_THREADS * KEYS_PER_THREAD,
+		TILE_ITEMS					= CTA_THREADS * KEYS_PER_THREAD,
 
 		BYTES_PER_COUNTER			= sizeof(DigitCounter),
 		LOG_BYTES_PER_COUNTER		= cub::Log2<BYTES_PER_COUNTER>::VALUE,
@@ -126,8 +124,7 @@ private:
 		// digit counters back into registers.  Each counter lane is assigned to a
 		// warp for aggregation.
 
-		LOG_LANES_PER_WARP			= CUB_MAX(0, LOG_COUNTER_LANES - LOG_WARPS),
-		LANES_PER_WARP 				= 1 << LOG_LANES_PER_WARP,
+		LANES_PER_WARP 				= CUB_MAX(1, COUNTER_LANES / WARPS),
 
 		// Unroll tiles in batches without risk of counter overflow
 		UNROLL_COUNT				= CUB_MIN(64, 255 / KEYS_PER_THREAD),
@@ -156,7 +153,7 @@ private:
 	//---------------------------------------------------------------------
 
 	// Shared storage for this CTA
-	SmemStorage 		&cta_smem_storage;
+	SmemStorage 		&smem_storage;
 
 	// Thread-local counters for periodically aggregating composite-counter lanes
 	SizeT 				local_counts[LANES_PER_WARP][PACKING_RATIO];
@@ -224,10 +221,10 @@ private:
 	 * State bundle constructor
 	 */
 	__device__ __forceinline__ CtaUpsweepPass(
-		SmemStorage		&cta_smem_storage,
+		SmemStorage		&smem_storage,
 		KeyType 		*d_keys_in,
 		unsigned int 	current_bit) :
-			cta_smem_storage(cta_smem_storage),
+			smem_storage(smem_storage),
 			d_keys_in(reinterpret_cast<UnsignedBits*>(d_keys_in)),
 			current_bit(current_bit)
 	{}
@@ -248,7 +245,7 @@ private:
 		UnsignedBits row_offset = cub::BFE(converted_key, current_bit + LOG_PACKING_RATIO, LOG_COUNTER_LANES);
 
 		// Increment counter
-		cta_smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
+		smem_storage.digit_counters[row_offset][threadIdx.x][sub_counter]++;
 
 	}
 
@@ -261,7 +258,7 @@ private:
 		#pragma unroll
 		for (int LANE = 0; LANE < COUNTER_LANES; LANE++)
 		{
-			cta_smem_storage.packed_counters[LANE][threadIdx.x] = 0;
+			smem_storage.packed_counters[LANE][threadIdx.x] = 0;
 		}
 	}
 
@@ -306,7 +303,7 @@ private:
 					for (int UNPACKED_COUNTER = 0; UNPACKED_COUNTER < PACKING_RATIO; UNPACKED_COUNTER++)
 					{
 						const int OFFSET = (((COUNTER_LANE * CTA_THREADS) + PACKED_COUNTER) * PACKING_RATIO) + UNPACKED_COUNTER;
-						local_counts[LANE][UNPACKED_COUNTER] += cta_smem_storage.digit_counters[warp_id][warp_tid][OFFSET];
+						local_counts[LANE][UNPACKED_COUNTER] += smem_storage.digit_counters[warp_id][warp_tid][OFFSET];
 					}
 				}
 			}
@@ -334,7 +331,7 @@ private:
 				#pragma unroll
 				for (int UNPACKED_COUNTER = 0; UNPACKED_COUNTER < PACKING_RATIO; UNPACKED_COUNTER++)
 				{
-					cta_smem_storage.digit_partials[digit_row + UNPACKED_COUNTER][warp_tid]
+					smem_storage.digit_partials[digit_row + UNPACKED_COUNTER][warp_tid]
 						  = local_counts[LANE][UNPACKED_COUNTER];
 				}
 			}
@@ -346,7 +343,8 @@ private:
 		if (threadIdx.x < RADIX_DIGITS)
 		{
 			bin_count = cub::ThreadReduce<WARP_THREADS>(
-				cta_smem_storage.digit_partials[threadIdx.x]);
+				smem_storage.digit_partials[threadIdx.x],
+				cub::Sum<SizeT>());
 		}
 	}
 
@@ -398,7 +396,7 @@ public:
 	 * Compute radix digit histograms over a range of input tiles.
 	 */
 	static __device__ __forceinline__ void UpsweepPass(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		KeyType 		*d_keys_in,
 		unsigned int 	current_bit,
 		const SizeT 	&num_elements,
@@ -406,7 +404,7 @@ public:
 	{
 		// Construct state bundle
 		CtaUpsweepPass cta(
-			cta_smem_storage,
+			smem_storage,
 			d_keys_in,
 			current_bit);
 

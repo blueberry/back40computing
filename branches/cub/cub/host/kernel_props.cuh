@@ -23,8 +23,8 @@
 
 #pragma once
 
-#include "../cub.cuh"
 #include "../ns_wrapper.cuh"
+#include "../macro_utils.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
@@ -32,14 +32,11 @@ namespace cub {
 /**
  * Encapsulation of kernel properties for a combination of {device, CTA size}
  */
-template <typename KernelPtr>
 struct KernelProps
 {
 	//---------------------------------------------------------------------
 	// Fields
 	//---------------------------------------------------------------------
-
-	KernelPtr 					kernel_ptr;
 
 	int 						sm_version;
 	int 						sm_count;
@@ -61,15 +58,15 @@ struct KernelProps
 	/**
 	 * Initializer
 	 */
+	template <typename KernelPtr>
 	cudaError_t Init(
 		KernelPtr kernel_ptr,
 		int cta_threads,					// Number of threads per CTA
-		const CudaProps &cuda_props)	// CUDA properties for a specific device
+		const CudaProps &cuda_props)		// CUDA properties for a specific device
 	{
 		cudaError_t error = cudaSuccess;
 
 		do {
-			this->kernel_ptr			= kernel_ptr;
 			this->cta_threads 			= cta_threads;
 			this->sm_count 				= cuda_props.sm_count;
 			this->sm_version 			= cuda_props.sm_version;
@@ -78,8 +75,7 @@ struct KernelProps
 
 			// Get kernel attributes
 			cudaFuncAttributes kernel_attrs;
-			if (error = cub::Debug(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr),
-				"cudaFuncGetAttributes failed", __FILE__, __LINE__)) break;
+			if (error = CubDebug(cudaFuncGetAttributes(&kernel_attrs, kernel_ptr))) break;
 
 			this->cta_warps = CUB_ROUND_UP_NEAREST(cta_threads / cuda_props.warp_threads, 1);
 
@@ -180,10 +176,15 @@ struct KernelProps
 
 				break;
 			}
-
-		} else {
-
-			// GF10x: quadruple CTA occupancy times SM count
+		}
+		else if (sm_version < 300)
+		{
+			// Fermi: quadruple CTA occupancy times SM count
+			grid_size = 4 * max_cta_occupancy * sm_count;
+		}
+		else
+		{
+			// Kepler: quadruple CTA occupancy times SM count
 			grid_size = 4 * max_cta_occupancy * sm_count;
 		}
 
@@ -213,6 +214,5 @@ struct KernelProps
 };
 
 
-
-} // namespace back40
+} // namespace cub
 CUB_NS_POSTFIX

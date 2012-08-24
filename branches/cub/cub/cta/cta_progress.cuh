@@ -30,6 +30,7 @@
 #pragma once
 
 #include "../ns_wrapper.cuh"
+#include "../macro_utils.cuh"
 
 CUB_NS_PREFIX
 namespace cub {
@@ -39,39 +40,63 @@ namespace cub {
  * Description of work distribution amongst CTAs
  */
 template <typename SizeT>
-struct WorkDistribution
+struct CtaWorkDistribution
 {
 	int total_grains;
-	int extra_grains;
+	int excess;
+
+	int big_blocks;
+	int last_block;
 
 	SizeT unguarded_elements;
 	SizeT big_share;
 	SizeT normal_share;
 	SizeT normal_base_offset;
 
-	int last_block;
-	int extra_elements;
 
 	/**
 	 * Constructor
 	 */
-	__host__ __device__ __forceinline__ WorkDistribution(
+	__host__ __device__ __forceinline__ CtaWorkDistribution(
 		SizeT num_elements,
 		int grid_size,
 		int schedule_granularity)
 	{
-		total_grains 			= num_elements / schedule_granularity;
-		unguarded_elements 		= total_grains * schedule_granularity;
-		extra_elements 			= num_elements - unguarded_elements;
+		total_grains 			= (num_elements + schedule_granularity - 1) / schedule_granularity;
+		excess 					= (total_grains * schedule_granularity) - num_elements;
 
 		int grains_per_cta 		= total_grains / grid_size;
-		extra_grains 			= total_grains - (grains_per_cta * grid_size);
+		big_blocks	 			= total_grains - (grains_per_cta * grid_size);		// leftover grains go to big blocks
 
 		normal_share 			= grains_per_cta * schedule_granularity;
-		normal_base_offset 		= extra_grains * schedule_granularity;
+		normal_base_offset 		= big_blocks * schedule_granularity;
 		big_share 				= normal_share + schedule_granularity;
 
 		last_block 				= CUB_MIN(total_grains, grid_size) - 1;
+	}
+
+	/**
+	 * Print to stdout
+	 */
+	void Print()
+	{
+		printf(
+			"total_grains: %lu, "
+			"big_blocks: %lu, "
+			"unguarded_elements: %lu, "
+			"big_share: %lu, "
+			"normal_share: %lu, "
+			"normal_base_offset: %lu, "
+			"last_block: %lu, "
+			"excess: %lu \n",
+				(unsigned long) total_grains,
+				(unsigned long) big_blocks,
+				(unsigned long) unguarded_elements,
+				(unsigned long) big_share,
+				(unsigned long) normal_share,
+				(unsigned long) normal_base_offset,
+				(unsigned long) last_block,
+				(unsigned long) excess);
 	}
 };
 
@@ -82,88 +107,59 @@ struct WorkDistribution
  */
 template <
 	typename 	SizeT,
-	int 		TILE_ITEMS,
+	int 		TILE_ELEMENTS,
 	bool 		WORK_STEALING = false>
 struct CtaProgress
 {
 	// Even share parameters
 	SizeT 	cta_offset;
-	SizeT 	out_of_bounds;
-
-	int		extra_elements;
-	SizeT	extra_offset;
+	SizeT 	num_elements;
 
 	/**
-	 * Constructor
+	 * Initializer
 	 */
-	__device__ __forceinline__ CtaProgress(
-		const WorkDistribution<SizeT> &distribution)
+	__device__ __forceinline__ void Init(
+		const CtaWorkDistribution<SizeT> &distribution)
 	{
-		extra_elements = (blockIdx.x == distribution.last_block) ?
-			distribution.extra_elements :
-			0;
 
 		if (WORK_STEALING) {
 
 			// This CTA gets at least one tile (if possible)
-			cta_offset = blockIdx.x * TILE_ITEMS;
-			out_of_bounds = distribution.unguarded_elements;
+			// TODO
 
-		} else if (blockIdx.x < distribution.extra_grains) {
+		} else if (blockIdx.x < distribution.big_blocks) {
 
-			// This CTA gets a big share (grains_per_cta + 1 grains)
+			// This CTA gets a big share of grains (grains_per_cta + 1)
 			cta_offset = (blockIdx.x * distribution.big_share);
-			out_of_bounds = cta_offset + distribution.big_share;
+			num_elements = distribution.big_share;
 
 		} else if (blockIdx.x < distribution.total_grains) {
 
-			// This CTA gets a normal share (grains_per_cta grains)
+			// This CTA gets a normal share of grains (grains_per_cta)
 			cta_offset = distribution.normal_base_offset + (blockIdx.x * distribution.normal_share);
-			out_of_bounds = cta_offset + distribution.normal_share;
+			num_elements = distribution.normal_share;
 
 		} else {
 
 			// This CTA gets no work
 			cta_offset = 0;
-			out_of_bounds = 0;
+			num_elements = 0;
 		}
 
-		extra_offset = out_of_bounds;
+		if (blockIdx.x == distribution.last_block)
+		{
+			num_elements -= distribution.excess;
+		}
 	}
 
 
 	/**
-	 * Constructor
+	 * Initializer
 	 */
-	__device__ __forceinline__ CtaProgress(SizeT num_elements)
+	__device__ __forceinline__ void Init(SizeT num_elements)
 	{
 		cta_offset = 0;
-		extra_elements = num_elements % TILE_ITEMS;
-		out_of_bounds = num_elements - extra_elements;
-		extra_offset = out_of_bounds;
-	}
-
-
-	/**
-	 *
-	 */
-	__device__ __forceinline__ bool HasTile()
-	{
-		return (cta_offset < out_of_bounds);
-	}
-
-
-	/**
-	 *
-	 */
-	__device__ __forceinline__ void NextTile()
-	{
-		if (WORK_STEALING) {
-
-		} else {
-
-			cta_offset += TILE_ITEMS;
-		}
+		this->num_elements = num_elements;
 	}
 
 };
@@ -171,3 +167,4 @@ struct CtaProgress
 
 } // namespace cub
 CUB_NS_POSTFIX
+

@@ -108,12 +108,11 @@ private:
 	/**
 	 * Process a single tile
 	 */
-	template <typename ScanOp, typename SizeT>
+	template <typename SizeT>
 	static __device__ __forceinline__ void ProcessTile(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		T 				*d_in,
 		T 				*d_out,
-		ScanOp			scan_op,
 		SizeT 			cta_offset,
 		T				&carry)
 	{
@@ -125,7 +124,7 @@ private:
 
 		// Scan tile with carry in thread-0
 		T aggregate;
-		CtaScanT::ExclusiveSum(cta_smem_storage, partials, partials, aggregate, carry);
+		CtaScanT::ExclusiveSum(smem_storage, partials, partials, aggregate, carry);
 
 		// Store tile
 		cub::CtaStore<CTA_THREADS>::StoreUnguarded(partials, d_out, cta_offset);
@@ -140,12 +139,11 @@ public:
 	/**
 	 * Scan a range of input tiles
 	 */
-	template <typename ScanOp, typename SizeT>
-	static __device__ __forceinline__ void Scan(
-		SmemStorage 		&cta_smem_storage,
+	template <typename SizeT>
+	static __device__ __forceinline__ void ScanPass(
+		SmemStorage 		&smem_storage,
 		T 					*d_in,
 		T 					*d_out,
-		ScanOp				scan_op,
 		SizeT				&num_elements)
 	{
 		// Running partial accumulated by the CTA over its tile-processing
@@ -156,7 +154,7 @@ public:
 		while (cta_offset + TILE_ITEMS <= num_elements)
 		{
 			// Process full tiles of tile_elements
-			ProcessTile(cta_smem_storage, d_in, d_out, scan_op, cta_offset, carry);
+			ProcessTile(smem_storage, d_in, d_out, cta_offset, carry);
 
 			cta_offset += TILE_ITEMS;
 		}

@@ -130,7 +130,7 @@ private:
 	/**
 	 *
 	 */
-	template <typename T, typename SizeT>
+	template <typename T>
 	static __device__ __forceinline__ void LoadTile(
 		T				*exchange,
 		T 				*items,
@@ -168,7 +168,7 @@ private:
 	/**
 	 *
 	 */
-	template <typename T, typename SizeT>
+	template <typename T>
 	static __device__ __forceinline__ void StoreTile(
 		T 				*items,
 		T 				*d_out,
@@ -194,9 +194,8 @@ public:
 	/**
 	 * ProcessTile.  (Specialized for keys-only sorting.)
 	 */
-	template <typename SizeT>
 	static __device__ __forceinline__ void Sort(
-		SmemStorage 	&cta_smem_storage,
+		SmemStorage 	&smem_storage,
 		KeyType 		*d_keys_in,
 		KeyType 		*d_keys_out,
 		cub::NullType 	*d_values_in,
@@ -216,7 +215,7 @@ public:
 
 		// Load keys
 		LoadTile(
-			cta_smem_storage.key_exchange,
+			smem_storage.key_exchange,
 			keys,
 			reinterpret_cast<UnsignedBits*>(d_keys_in),
 			num_elements);
@@ -232,7 +231,7 @@ public:
 
 		// Sort
 		CtaRadixSortT::SortThreadToCtaStride(
-			cta_smem_storage.sorting_storage,
+			smem_storage.sorting_storage,
 			keys,
 			current_bit,
 			bits_remaining);

@@ -23,30 +23,29 @@
 
 #pragma once
 
-#include "../../util/kernel_props.cuh"
-#include "../../util/cta_progress.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
-#include "../../radix_sort/sort_utils.cuh"
-#include "../../radix_sort/cta/cta_downsweep_pass.cuh"
+#include "sort_utils.cuh"
+#include "cta_upsweep_pass.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace kernel {
 
 
 /**
  * Kernel entry point
  */
 template <
-	typename CtaDownsweepPassPolicy,
-	typename SizeT,
-	typename KeyType,
-	typename ValueType>
+	typename 	CtaDownsweepPassPolicy,
+	int 		MIN_CTA_OCCUPANCY,
+	typename 	KeyType,
+	typename 	ValueType,
+	typename 	SizeT>
 __launch_bounds__ (
 	CtaDownsweepPassPolicy::CTA_THREADS,
-	CtaDownsweepPassPolicy::MIN_CTA_OCCUPANCY)
+	MIN_CTA_OCCUPANCY)
 __global__ void DownsweepKernel(
 	BinDescriptor						*d_bins_out,
 	SizeT 								*d_spine,
@@ -55,21 +54,31 @@ __global__ void DownsweepKernel(
 	ValueType 							*d_values_in,
 	ValueType 							*d_values_out,
 	unsigned int 						current_bit,
-	util::CtaWorkDistribution<SizeT> 	cta_work_distribution)
+	cub::CtaWorkDistribution<SizeT> 	cta_work_distribution)
 {
+	enum
+	{
+		TILE_ITEMS 		= CtaDownsweepPassPolicy::TILE_ITEMS,
+		RADIX_DIGITS 	= 1 << CtaDownsweepPassPolicy::RADIX_BITS,
+	};
+
 	// CTA abstraction type
-	typedef CtaDownsweepPass<CtaDownsweepPassPolicy, SizeT, KeyType, ValueType> CtaDownsweepPass;
+	typedef CtaDownsweepPass<
+		CtaDownsweepPassPolicy,
+		KeyType,
+		ValueType,
+		SizeT> CtaDownsweepPassT;
 
 	// Shared data structures
-	__shared__ typename CtaDownsweepPass::SmemStorage 		cta_smem_storage;
-	__shared__ util::CtaProgress<SizeT, TILE_ITEMS> 		cta_progress;
+	__shared__ typename CtaDownsweepPassT::SmemStorage 		smem_storage;
+	__shared__ cub::CtaProgress<SizeT, TILE_ITEMS> 			cta_progress;
 
 	// Read exclusive bin prefixes
 	SizeT bin_prefix;
-	if (threadIdx.x < CtaDownsweepPassPolicy::RADIX_DIGITS)
+	if (threadIdx.x < RADIX_DIGITS)
 	{
 		int spine_offset = (gridDim.x * threadIdx.x) + blockIdx.x;
-		bin_prefix = d_spine[spine_digit_offset];
+		bin_prefix = d_spine[spine_offset];
 
 		if (blockIdx.x == 0)
 		{
@@ -98,8 +107,8 @@ __global__ void DownsweepKernel(
 	__syncthreads();
 
 	// Scatter keys to each radix digit bin
-	CtaDownsweepPass::Downsweep(
-		cta_smem_storage,
+	CtaDownsweepPassT::DownsweepPass(
+		smem_storage,
 		bin_prefix,
 		d_keys_in + cta_progress.cta_offset,
 		d_keys_out,
@@ -114,10 +123,10 @@ __global__ void DownsweepKernel(
  * Downsweep kernel props
  */
 template <
-	typename SizeT,
 	typename KeyType,
-	typename ValueType>
-struct DownsweepKernelProps : util::KernelProps
+	typename ValueType,
+	typename SizeT>
+struct DownsweepKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
@@ -127,8 +136,8 @@ struct DownsweepKernelProps : util::KernelProps
 		KeyType*,
 		ValueType*,
 		ValueType*,
-		util::CtaWorkDistribution<SizeT>,
-		unsigned int);
+		unsigned int,
+		cub::CtaWorkDistribution<SizeT>);
 
 	// Fields
 	KernelFunc 					kernel_func;
@@ -139,36 +148,35 @@ struct DownsweepKernelProps : util::KernelProps
 	 * Initializer
 	 */
 	template <
-		typename CtaDownsweepPolicy,
-		typename OpaqueCtaDownsweepPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+		typename CtaDownsweepPassPolicy,
+		typename OpaqueCtaDownsweepPassPolicy,
+		int MIN_CTA_OCCUPANCY>
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		// Initialize fields
-		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPolicy>;
-		tile_elements 			= CtaDownsweepPolicy::TILE_ITEMS;
-		sm_bank_config 			= CtaDownsweepPolicy::SMEM_CONFIG;
+		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPassPolicy, MIN_CTA_OCCUPANCY>;
+		tile_elements 			= CtaDownsweepPassPolicy::TILE_ITEMS;
+		sm_bank_config 			= CtaDownsweepPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
-		return util::KernelProps::Init(
+		return cub::KernelProps::Init(
 			kernel_func,
-			CtaDownsweepPolicy::CTA_THREADS,
-			sm_arch,
-			sm_count);
+			CtaDownsweepPassPolicy::CTA_THREADS,
+			cuda_props);
 	}
 
 	/**
 	 * Initializer
 	 */
 	template <typename CtaDownsweepPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<CtaDownsweepPolicy, CtaDownsweepPolicy>(sm_arch, sm_count);
+		return Init<CtaDownsweepPolicy, CtaDownsweepPolicy>(cuda_props);
 	}
 
 };
 
 
-} // namespace kernel
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

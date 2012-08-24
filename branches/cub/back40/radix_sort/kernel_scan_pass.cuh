@@ -23,16 +23,14 @@
 
 #pragma once
 
-#include "../../util/operators.cuh"
-#include "../../util/kernel_props.cuh"
-#include "../../util/ns_wrapper.cuh"
+#include "../../cub/cub.cuh"
+#include "../ns_wrapper.cuh"
 
-#include "../../radix_sort/cta/cta_scan_pass.cuh"
+#include "cta_scan_pass.cuh"
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
-namespace kernel {
 
 
 /**
@@ -50,19 +48,18 @@ void ScanKernel(
 	SizeT 		spine_elements)
 {
 	// CTA abstraction type
-	typedef CtaScanPass<CtaScanPassPolicy, T> CtaScanPass;
+	typedef CtaScanPass<CtaScanPassPolicy, T> CtaScanPassT;
 
 	// Shared data structures
-	__shared__ typename CtaScanPass::SmemStorage cta_smem_storage;
+	__shared__ typename CtaScanPassT::SmemStorage smem_storage;
 
 	// Only CTA-0 needs to run
 	if (blockIdx.x > 0) return;
 
-	CtaScanPass::Scan(
-		cta_smem_storage,
+	CtaScanPassT::ScanPass(
+		smem_storage,
 		d_in,
 		d_out,
-		util::Sum<T>,
 		spine_elements);
 }
 
@@ -71,50 +68,49 @@ void ScanKernel(
 /**
  * Spine kernel properties
  */
-struct SpineKernelProps : util::KernelProps
+template <typename SizeT>
+struct SpineKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(SizeT*, SizeT*, int);
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						log_tile_elements;
+	int 						tile_elements;
 	cudaSharedMemConfig 		sm_bank_config;
 
 	/**
 	 * Initializer
 	 */
 	template <
-		typename KernelPolicy,
-		typename OpaquePolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+		typename CtaScanPassPolicy,
+		typename OpaqueCtaScanPassPolicy>
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
 		// Initialize fields
-		kernel_func 			= ScanKernel<OpaquePolicy>;
-		log_tile_elements 		= KernelPolicy::LOG_TILE_ITEMS;
-		sm_bank_config 			= KernelPolicy::SMEM_CONFIG;
+		kernel_func 			= ScanKernel<OpaqueCtaScanPassPolicy>;
+		tile_elements 			= CtaScanPassPolicy::TILE_ITEMS;
+		sm_bank_config 			= CtaScanPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class
-		return util::KernelProps::Init(
+		return cub::KernelProps::Init(
 			kernel_func,
-			KernelPolicy::CTA_THREADS,
-			sm_arch,
-			sm_count);
+			CtaScanPassPolicy::CTA_THREADS,
+			cuda_props);
 	}
 
 	/**
 	 * Initializer
 	 */
 	template <typename KernelPolicy>
-	cudaError_t Init(int sm_arch, int sm_count)
+	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<KernelPolicy, KernelPolicy>(sm_arch, sm_count);
+		return Init<KernelPolicy, KernelPolicy>(cuda_props);
 	}
 };
 
 
 
-} // namespace kernel
 } // namespace radix_sort
 } // namespace back40
 BACK40_NS_POSTFIX

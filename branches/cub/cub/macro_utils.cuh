@@ -40,6 +40,15 @@ namespace cub {
  */
 #define CUB_MIN(a, b) (((a) < (b)) ? (a) : (b))
 
+/**
+ * Quotient of x/y rounded down to nearest integer
+ */
+#define CUB_QUOTIENT_FLOOR(x, y) ((x) / (y))
+
+/**
+ * Quotient of x/y rounded up to nearest integer
+ */
+#define CUB_QUOTIENT_CEILING(x, y) (((x) + (y) - 1) / (y))
 
 /**
  * x rounded up to the nearest multiple of y
