@@ -57,7 +57,7 @@ template <
 	typename KeyType,
 	typename ValueType,
 	typename SizeT>
-struct ProblemInstance
+struct GpuRadixSort
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -67,10 +67,8 @@ struct ProblemInstance
 	 * Tuned pass policy whose type signature does not reflect the tuned
 	 * SM architecture.
 	 */
-	template <
-		radix_sort::ProblemSize 	PROBLEM_SIZE,
-		int 						RADIX_BITS>
-	struct OpaquePassPolicy
+	template <radix_sort::ProblemSize PROBLEM_SIZE>
+	struct OpaqueTunedPolicy
 	{
 		// The appropriate tuning arch-id from the arch-id targeted by the
 		// active compiler pass.
@@ -86,21 +84,20 @@ struct ProblemInstance
 			COMPILER_TUNE_ARCH = 200
 		};
 
-/*
 		// Tuned pass policy
-		typedef TunedPassPolicy<
+		typedef radix_sort::TunedPolicy<
 			COMPILER_TUNE_ARCH,
-			ProblemInstance,
-			PROBLEM_SIZE,
-			RADIX_BITS> TunedPassPolicy;
+			KeyType,
+			ValueType,
+			SizeT,
+			PROBLEM_SIZE> TunedPolicy;
 
-		struct DispatchPolicy 		: TunedPassPolicy::DispatchPolicy {};
-		struct UpsweepPolicy 		: TunedPassPolicy::UpsweepPolicy {};
-		struct SpinePolicy 			: TunedPassPolicy::SpinePolicy {};
-		struct DownsweepPolicy 		: TunedPassPolicy::DownsweepPolicy {};
-		struct BinDescriptorPolicy 	: TunedPassPolicy::BinDescriptorPolicy {};
-		struct TilePolicy 			: TunedPassPolicy::TilePolicy {};
-*/
+		struct DispatchPolicyT 				: TunedPolicy::DispatchPolicyT {};
+		struct CtaUpsweepPassPolicyT 		: TunedPolicy::CtaUpsweepPassPolicyT {};
+		struct CtaScanPassPolicyT 			: TunedPolicy::CtaScanPassPolicyT {};
+		struct CtaDownsweepPassPolicyT 		: TunedPolicy::CtaDownsweepPassPolicyT {};
+		struct CtaSingleTilePolicyT 		: TunedPolicy::CtaSingleTilePolicyT {};
+		struct CtaHybridPassPolicyT 		: TunedPolicy::CtaHybridPassPolicyT {};
 	};
 
 
@@ -108,12 +105,13 @@ struct ProblemInstance
 	// Fields
 	//---------------------------------------------------------------------
 
+	cub::CudaProps				*cuda_props;
 	Allocator					*allocator;
 
+	int 						selector;
 	KeyType						*d_keys[2];
 	ValueType					*d_values[2];
 	radix_sort::BinDescriptor	*d_bins[2];
-	int 						selector;
 
 	SizeT						num_elements;
 	int 						low_bit;
@@ -130,18 +128,20 @@ struct ProblemInstance
 	/**
 	 * Constructor
 	 */
-	ProblemInstance(
-		Allocator		*allocator,
-		KeyType			*d_keys,
-		ValueType		*d_values,
-		SizeT			num_elements,
-		int 			low_bit,
-		int				num_bits,
-		cudaStream_t	stream,
-		int			 	max_grid_size,
-		bool			debug)
-
+	GpuRadixSort(
+		cub::CudaProps		*cuda_props,
+		Allocator			*allocator,
+		KeyType				*d_keys,
+		ValueType			*d_values,
+		SizeT				num_elements,
+		int 				low_bit,
+		int					num_bits,
+		cudaStream_t		stream,
+		int			 		max_grid_size,
+		bool				debug)
 	{
+		this->cuda_props		= cuda_props;
+		this->allocator			= allocator;
 		this->selector 			= 0;
 		this->d_keys[0] 		= d_keys;
 		this->d_keys[1] 		= NULL;
@@ -161,7 +161,7 @@ struct ProblemInstance
 	/**
 	 * Destructor
 	 */
-	virtual ~ProblemInstance()
+	virtual ~GpuRadixSort()
 	{
 		if (allocator)
 		{
@@ -456,63 +456,63 @@ struct ProblemInstance
 	}
 */
 
-
-
-
 	/**
 	 * Sort.
-	 * /
-	template <int TUNE_ARCH, ProblemSize PROBLEM_SIZE>
+	 */
+	template <int TUNE_ARCH, radix_sort::ProblemSize PROBLEM_SIZE>
 	cudaError_t Sort()
 	{
+		// Tuned policy
+		typedef radix_sort::TunedPolicy<
+			TUNE_ARCH,
+			KeyType,
+			ValueType,
+			SizeT,
+			PROBLEM_SIZE> TunedPolicy;
+
+		// Opaque tuned policy
+		typedef OpaqueTunedPolicy<PROBLEM_SIZE> OpaqueTunedPolicy;
+
 		cudaError_t error = cudaSuccess;
 		do
 		{
-			enum
-			{
-				RADIX_BITS = PreferredDigitBits<TUNE_ARCH>::PREFERRED_BITS,
-			};
 
-			// Define tuned and opaque pass policies
-			typedef radix_sort::TunedPassPolicy<TUNE_ARCH, ProblemInstance, PROBLEM_SIZE, RADIX_BITS> 	TunedPassPolicy;
-			typedef OpaquePassPolicy<ProblemInstance, PROBLEM_SIZE, RADIX_BITS>							OpaquePassPolicy;
-
-			int sm_version = cuda_props.device_sm_version;
-			int sm_count = cuda_props.device_props.multiProcessorCount;
-
+			int sm_version 		= cuda_props->sm_version;
+			int sm_count 		= cuda_props->sm_count;
+/*
 			// Upsweep kernel props
 			kernel::UpsweepKernelProps<SizeT, KeyType> upsweep_props;
 			error = upsweep_props.template Init<
-				typename TunedPassPolicy::UpsweepPolicy,
-				typename OpaquePassPolicy::UpsweepPolicy>(sm_version, sm_count);
+				typename TunedPolicy::UpsweepPolicy,
+				typename OpaqueTunedPolicy::UpsweepPolicy>(sm_version, sm_count);
 			if (error) break;
 
 			// Spine kernel props
-			typename ProblemInstance::SpineKernelProps spine_props;
+			typename GpuRadixSort::SpineKernelProps spine_props;
 			error = spine_props.template Init<
-				typename TunedPassPolicy::SpinePolicy,
-				typename OpaquePassPolicy::SpinePolicy>(sm_version, sm_count);
+				typename TunedPolicy::SpinePolicy,
+				typename OpaqueTunedPolicy::SpinePolicy>(sm_version, sm_count);
 			if (error) break;
 
 			// Downsweep kernel props
-			typename ProblemInstance::DownsweepKernelProps downsweep_props;
+			typename GpuRadixSort::DownsweepKernelProps downsweep_props;
 			error = downsweep_props.template Init<
-				typename TunedPassPolicy::DownsweepPolicy,
-				typename OpaquePassPolicy::DownsweepPolicy>(sm_version, sm_count);
+				typename TunedPolicy::DownsweepPolicy,
+				typename OpaqueTunedPolicy::DownsweepPolicy>(sm_version, sm_count);
 			if (error) break;
 
 			// Single-tile kernel props
-			typename ProblemInstance::TileKernelProps single_tile_props;
+			typename GpuRadixSort::TileKernelProps single_tile_props;
 			error = single_tile_props.template Init<
-				typename TunedPassPolicy::TilePolicy,
-				typename OpaquePassPolicy::TilePolicy>(sm_version, sm_count);
+				typename TunedPolicy::TilePolicy,
+				typename OpaqueTunedPolicy::TilePolicy>(sm_version, sm_count);
 			if (error) break;
 
 			// Hygrid kernel props
-			typename ProblemInstance::BinDescriptorKernelProps partition_props;
+			typename GpuRadixSort::BinDescriptorKernelProps partition_props;
 			error = partition_props.template Init<
-				typename TunedPassPolicy::BinDescriptorPolicy,
-				typename OpaquePassPolicy::BinDescriptorPolicy>(sm_version, sm_count);
+				typename TunedPolicy::BinDescriptorPolicy,
+				typename OpaqueTunedPolicy::BinDescriptorPolicy>(sm_version, sm_count);
 			if (error) break;
 
 			//
@@ -568,8 +568,8 @@ struct ProblemInstance
 				upsweep_props,
 				spine_props,
 				downsweep_props,
-				TunedPassPolicy::DispatchPolicy::UNIFORM_GRID_SIZE,
-				TunedPassPolicy::DispatchPolicy::DYNAMIC_SMEM_CONFIG);
+				TunedPolicy::DispatchPolicy::UNIFORM_GRID_SIZE,
+				TunedPolicy::DispatchPolicy::DYNAMIC_SMEM_CONFIG);
 			if (error) break;
 
 			// Perform block iterations
@@ -586,18 +586,19 @@ struct ProblemInstance
 
 			// Reset selector
 			problem_instance.storage.selector = initial_selector;
+*/
 
 		} while (0);
 
 		return error;
 	}
-*/
+
 
 };
 
 
 /**
- * Enact a sort.
+ * Enact a large-problem sort.
  * @return cudaSuccess on success, error enumeration otherwise
  */
 template <
@@ -613,10 +614,6 @@ cudaError_t GpuRadixSortLarge(
 	int 			max_grid_size 	= 0,
 	bool 			debug 			= false)
 {
-	return cudaSuccess;
-
-/*
-	typedef ProblemInstance<KeyType, util::NullType, int> ProblemInstance;
 
 	if (num_elements <= 1)
 	{
@@ -624,9 +621,16 @@ cudaError_t GpuRadixSortLarge(
 		return cudaSuccess;
 	}
 
-	ProblemInstance<KeyType, util::NullType, int> problem_instance(
+	// Initialize cuda props
+	cub::CudaProps cuda_props;
+	cudaError_t error = cuda_props.Init();
+	if (error) return error;
+
+	GpuRadixSort<cub::CachedAllocator, KeyType, ValueType, int> problem_instance(
+		&cuda_props,
+		cub::CubCachedAllocator<void>(),
 		d_keys,
-		NULL,
+		d_values,
 		num_elements,
 		low_bit,
 		num_bits,
@@ -634,12 +638,14 @@ cudaError_t GpuRadixSortLarge(
 		max_grid_size,
 		debug);
 
-	if (cuda_props.kernel_ptx_version >= 200)
+	return problem_instance.template Sort<200, radix_sort::LARGE_PROBLEM>();
+
+/*
+	if (cuda_props.ptx_version >= 200)
 	{
-		return problem_instance.Sort<200, PROBLEM_SIZE>();
+		return problem_instance.Sort<200, radix_sort::LARGE_PROBLEM>();
 	}
-*/
-/*		else if (cuda_props.kernel_ptx_version >= 130)
+	else if (cuda_props.ptx_version >= 130)
 	{
 		return problem_instance.Sort<200, PROBLEM_SIZE>();
 	}

@@ -527,6 +527,17 @@ struct CachedAllocator
 };
 
 
+/**
+ * Singleton factory for unit-wide cached allocator
+ */
+template <typename T>
+CachedAllocator* CubCachedAllocator()
+{
+	static CachedAllocator allocator;
+	return &allocator;
+}
+
+
 
 
 } // namespace cub

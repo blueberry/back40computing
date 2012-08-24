@@ -50,7 +50,6 @@
 #include "device_props.cuh"
 #include "operators.cuh"
 #include "ptx_intrinsics.cuh"
-#include "tex_vector.cuh"
 #include "type_utils.cuh"
 #include "vector_type.cuh"
 

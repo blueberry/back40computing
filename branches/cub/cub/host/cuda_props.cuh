@@ -103,7 +103,8 @@ public:
 	cudaError_t Init(int gpu_ordinal)
 	{
 		cudaError_t error = cudaSuccess;
-		do {
+		do
+		{
 			// Obtain SM version and count
 			cudaDeviceProp device_props;
 			if (error = cub::Debug(cudaGetDeviceProperties(&device_props, gpu_ordinal),
@@ -132,7 +133,8 @@ public:
 	cudaError_t Init()
 	{
 		cudaError_t error = cudaSuccess;
-		do {
+		do
+		{
 			int gpu_ordinal;
 			if (error = cub::Debug(cudaGetDevice(&gpu_ordinal),
 				"cudaGetDevice failed", __FILE__, __LINE__)) break;
@@ -142,21 +144,6 @@ public:
 		return error;
 	}
 
-	/**
-	 * Constructor.  Properties are retrieved for the current GPU ordinal.
-	 */
-	CudaProps()
-	{
-		Init();
-	}
-
-	/**
-	 * Constructor.  Properties are retrieved for the specified GPU ordinal.
-	 */
-	CudaProps(int gpu_ordinal)
-	{
-		Init(gpu_ordinal);
-	}
 };
 
 

@@ -58,7 +58,7 @@ template <
 	typename 		ValueType,
 	typename 		SizeT,
 	ProblemSize 	PROBLEM_SIZE>
-struct TunedPassPolicy;
+struct TunedPolicy;
 
 
 /**
@@ -69,7 +69,7 @@ template <
 	typename 		ValueType,
 	typename 		SizeT,
 	ProblemSize 	PROBLEM_SIZE>
-struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
+struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 {
 	enum
 	{
@@ -139,7 +139,7 @@ struct TunedPassPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		cub::LOAD_NONE, 						// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
-			BinDescriptorPolicy;
+			CtaHybridPassPolicyT;
 
 };
 
