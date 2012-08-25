@@ -22,6 +22,9 @@
  * Simple test driver program for radix sort.
  ******************************************************************************/
 
+// Ensure printing of CUDA runtime errors to console
+#define CUB_STDERR
+
 #include <stdio.h> 
 #include <algorithm>
 #include <iostream>
@@ -159,6 +162,10 @@ int main(int argc, char** argv)
 		CubDebugExit(cudaMalloc((void**) &d_values, sizeof(ValueType) * num_elements));
 	}
 
+	// Resize max cached bytes in default caching allocator (2MB + ping-pong)
+	cub::CachedAllocator *allocator = cub::CubCachedAllocator<void>();
+	allocator->SetMaxCachedBytes((1024 * 1024 * 2) + (num_elements * (sizeof(KeyType) + sizeof(ValueType))));
+
 	//
 	// Perform one sorting pass for correctness/warmup
 	//
@@ -182,7 +189,7 @@ int main(int argc, char** argv)
 		true));
 
 	// Check key results
-	AssertEquals(0, CompareDeviceResults(h_reference_keys, d_keys, num_elements, true, verbose))
+	CompareDeviceResults(h_reference_keys, d_keys, num_elements, true, verbose);
 	printf("\n");
 
 	// Check value results
@@ -260,7 +267,7 @@ int main(int argc, char** argv)
 				KEY_BITS,
 				0,
 				max_ctas,
-				true));
+				false));
 
 			gpu_timer.Stop();
 
@@ -286,7 +293,7 @@ int main(int argc, char** argv)
 				KEY_BITS,
 				0,
 				max_ctas,
-				true));
+				false));
 
 			gpu_timer.Stop();
 

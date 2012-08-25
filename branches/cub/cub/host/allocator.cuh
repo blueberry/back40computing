@@ -172,10 +172,10 @@ struct CachedAllocator
 	typedef bool (*Compare)(const BlockDescriptor &, const BlockDescriptor &);
 
 	// Set type for cached blocks (ordered by size)
-	typedef std::set<BlockDescriptor, Compare> CachedBlocks;
+	typedef std::multiset<BlockDescriptor, Compare> CachedBlocks;
 
 	// Set type for live blocks (ordered by ptr)
-	typedef std::set<BlockDescriptor, Compare> BusyBlocks;
+	typedef std::multiset<BlockDescriptor, Compare> BusyBlocks;
 
 	// Map type of gpu ordinals to the number of cached bytes cached by each GPU
 	typedef std::map<GpuOrdinal, size_t> GpuCachedBytes;
@@ -200,6 +200,8 @@ struct CachedAllocator
 
 	GpuCachedBytes	cached_bytes;		// Map of GPU ordinal to aggregate cached bytes on that GPU
 
+	bool			debug;
+
 
 	//---------------------------------------------------------------------
 	// Methods
@@ -213,6 +215,7 @@ struct CachedAllocator
 		unsigned int min_bin,			// Minimum bin
 		unsigned int max_bin,			// Maximum bin
 		size_t max_cached_bytes) :		// Maximum aggregate cached bytes per GPU
+			debug(false),
 			spin_lock(0),
 			cached_blocks(BlockDescriptor::SizeCompare),
 			live_blocks(BlockDescriptor::PtrCompare),
@@ -236,6 +239,7 @@ struct CachedAllocator
 	 * 	and sets a maximum of 6,291,455 cached bytes per GPU
 	 */
 	CachedAllocator() :
+		debug(false),
 		spin_lock(0),
 		cached_blocks(BlockDescriptor::SizeCompare),
 		live_blocks(BlockDescriptor::PtrCompare),
@@ -258,6 +262,8 @@ struct CachedAllocator
 		Lock(&spin_lock);
 
 		this->max_cached_bytes = max_cached_bytes;
+
+		if (debug) printf("New max_cached_bytes(%d)\n", max_cached_bytes);
 
 		// Unlock
 		Unlock(&spin_lock);
@@ -313,6 +319,8 @@ struct CachedAllocator
 				// Remove from free blocks
 				cached_blocks.erase(block_itr);
 				cached_bytes[gpu] -= search_key.bytes;
+
+				if (debug) printf("\tReused device block %d bytes on gpu %d\n", search_key.bytes, gpu);
 			}
 			else
 			{
@@ -337,6 +345,8 @@ struct CachedAllocator
 
 				// Insert into live blocks
 				live_blocks.insert(search_key);
+
+				if (debug) printf("\tAllocating new device block %d bytes on gpu %d\n", search_key.bytes, gpu);
 			}
 		} while(0);
 
@@ -409,15 +419,22 @@ struct CachedAllocator
 				live_blocks.erase(block_itr);
 
 				// Check if we should keep the returned allocation
-				if ((search_key.bin <= max_bin) &&
-					(cached_bytes[gpu] + search_key.bytes <= max_cached_bytes))
+				if (cached_bytes[gpu] + search_key.bytes <= max_cached_bytes)
 				{
+					int begin = cached_blocks.size();
+
 					// Insert returned allocation into free blocks
 					cached_blocks.insert(search_key);
 					cached_bytes[gpu] += search_key.bytes;
+
+					int end = cached_blocks.size();
+
+					if (debug) printf("Returned %d bytes, blocks begin: %d, end: %d\n", search_key.bytes, begin, end);
 				}
 				else
 				{
+					if (debug) printf("Freed %d bytes\n", search_key.bytes);
+
 					// Free the returned allocation.  Unlock.
 					if (locked) {
 						Unlock(&spin_lock);

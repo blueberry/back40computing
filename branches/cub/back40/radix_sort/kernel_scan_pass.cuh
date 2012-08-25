@@ -76,7 +76,7 @@ struct SpineKernelProps : cub::KernelProps
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						tile_elements;
+	int 						tile_items;
 	cudaSharedMemConfig 		sm_bank_config;
 
 	/**
@@ -89,7 +89,7 @@ struct SpineKernelProps : cub::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= ScanKernel<OpaqueCtaScanPassPolicy>;
-		tile_elements 			= CtaScanPassPolicy::TILE_ITEMS;
+		tile_items 			= CtaScanPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaScanPassPolicy::SMEM_CONFIG;
 
 		// Initialize super class

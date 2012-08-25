@@ -52,6 +52,7 @@ struct CtaWorkDistribution
 	SizeT big_share;
 	SizeT normal_share;
 	SizeT normal_base_offset;
+	SizeT num_elements;
 
 
 	/**
@@ -62,6 +63,7 @@ struct CtaWorkDistribution
 		int grid_size,
 		int schedule_granularity)
 	{
+		this->num_elements		= num_elements;
 		total_grains 			= (num_elements + schedule_granularity - 1) / schedule_granularity;
 		excess 					= (total_grains * schedule_granularity) - num_elements;
 

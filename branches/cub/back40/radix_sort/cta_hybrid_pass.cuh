@@ -118,13 +118,14 @@ private:
 
 	enum
 	{
-		CTA_THREADS			= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::CTA_THREADS,
+		CTA_THREADS				= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::CTA_THREADS,
 
-		RADIX_DIGITS		= 1 << CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+		SWEEP_RADIX_BITS 		= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+		SWEEP_RADIX_DIGITS		= 1 << SWEEP_RADIX_BITS,
 
-		WARP_THREADS		= cub::DeviceProps::WARP_THREADS,
+		WARP_THREADS			= cub::DeviceProps::WARP_THREADS,
 
-		SINGLE_TILE_ITEMS	= CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
+		SINGLE_TILE_ITEMS		= CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
 	};
 
 	// CTA upsweep abstraction
@@ -150,7 +151,7 @@ private:
 	typedef cub::WarpScan<
 		SizeT,
 		1,
-		RADIX_DIGITS> WarpScanT;
+		SWEEP_RADIX_DIGITS> WarpScanT;
 
 	// CTA scan abstraction
 	typedef cub::CtaScan<
@@ -192,7 +193,9 @@ public:
 		ValueType 		*d_values_final,
 		int				current_bit,
 		int				low_bit,
-		SizeT			num_elements)
+		SizeT			num_elements,
+		SizeT 			&bin_count,
+		SizeT 			&bin_prefix)
 	{
 		// Choose whether to block-sort or pass-sort
 		if (num_elements < SINGLE_TILE_ITEMS)
@@ -207,11 +210,14 @@ public:
 				low_bit,
 				current_bit - low_bit,
 				num_elements);
+
+			bin_count = 0;
 		}
 		else
 		{
+			current_bit -= SWEEP_RADIX_BITS;
+
 			// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
-			SizeT bin_count;
 			CtaUpsweepPassT::UpsweepPass(
 				smem_storage.upsweep_storage,
 				d_keys_in,
@@ -222,11 +228,10 @@ public:
 			__syncthreads();
 
 			// Prefix sum over bin counts
-			SizeT bin_prefix;
-			if (RADIX_DIGITS <= WARP_THREADS)
+			if (SWEEP_RADIX_DIGITS <= WARP_THREADS)
 			{
 				// Warp prefix sum
-				if (threadIdx.x < RADIX_DIGITS)
+				if (threadIdx.x < SWEEP_RADIX_DIGITS)
 				{
 					WarpScanT::ExclusiveSum(smem_storage.warp_scan_storage, bin_count, bin_prefix);
 				}
@@ -236,7 +241,14 @@ public:
 				// Cta prefix sum
 				CtaScanT::ExclusiveSum(smem_storage.cta_scan_storage, bin_count, bin_prefix);
 			}
-
+/*
+			if (blockIdx.x == 31) {
+				if (threadIdx.x < SWEEP_RADIX_DIGITS)
+				{
+					printf("digit %d count %d prefix %d\n", threadIdx.x, bin_count, bin_prefix);
+				}
+			}
+*/
 			// Note: no syncthreads() necessary
 
 			// Distribute keys

@@ -82,17 +82,20 @@ __global__ void DownsweepKernel(
 
 		if (blockIdx.x == 0)
 		{
-			SizeT next_spine_offset = d_spine[spine_offset + gridDim.x];
+			SizeT next_spine_offset = (threadIdx.x == RADIX_DIGITS - 1) ?
+				cta_work_distribution.num_elements :
+				d_spine[spine_offset + gridDim.x];
+
 			SizeT elements = next_spine_offset - bin_prefix;
 
 			BinDescriptor bin(bin_prefix, elements, current_bit);
 			d_bins_out[threadIdx.x] = bin;
 /*
-			printf("Created partition %d (bit %d) of %d elements at offset %d\n",
+			printf("Global digit %d created partition: bit(%d) elements(%d) offset(%d)\n",
 				threadIdx.x,
-				partition.current_bit,
-				partition.num_elements,
-				partition.offset);
+				bin.current_bit,
+				bin.num_elements,
+				bin.offset);
 */
 		}
 	}
@@ -141,8 +144,9 @@ struct DownsweepKernelProps : cub::KernelProps
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						tile_elements;
+	int 						tile_items;
 	cudaSharedMemConfig 		sm_bank_config;
+	int							radix_bits;
 
 	/**
 	 * Initializer
@@ -155,8 +159,9 @@ struct DownsweepKernelProps : cub::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPassPolicy, MIN_CTA_OCCUPANCY>;
-		tile_elements 			= CtaDownsweepPassPolicy::TILE_ITEMS;
+		tile_items 			= CtaDownsweepPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaDownsweepPassPolicy::SMEM_CONFIG;
+		radix_bits				= CtaDownsweepPassPolicy::RADIX_BITS;
 
 		// Initialize super class
 		return cub::KernelProps::Init(

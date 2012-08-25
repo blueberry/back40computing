@@ -153,7 +153,7 @@ public:
 		SizeT cta_offset = 0;
 		while (cta_offset + TILE_ITEMS <= num_elements)
 		{
-			// Process full tiles of tile_elements
+			// Process full tiles of tile_items
 			ProcessTile(smem_storage, d_in, d_out, cta_offset, carry);
 
 			cta_offset += TILE_ITEMS;

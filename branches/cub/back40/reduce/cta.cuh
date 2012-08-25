@@ -145,7 +145,7 @@ struct Cta
 	 */
 	__device__ __forceinline__ void ProcessTiles()
 	{
-		// Check for at least one full tile of tile_elements
+		// Check for at least one full tile of tile_items
 		if (this->HasTile()) {
 
 			// Process first tile

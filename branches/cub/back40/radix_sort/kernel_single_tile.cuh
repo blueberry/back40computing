@@ -97,7 +97,7 @@ struct SingleTileKernelProps : cub::KernelProps
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						tile_elements;
+	int 						tile_items;
 	cudaSharedMemConfig 		sm_bank_config;
 
 	/**
@@ -110,7 +110,7 @@ struct SingleTileKernelProps : cub::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= SingleTileKernel<OpaqueCtaSingleTilePolicy>;
-		tile_elements 			= CtaSingleTilePolicy::TILE_ITEMS;
+		tile_items 				= CtaSingleTilePolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaSingleTilePolicy::SMEM_CONFIG;
 
 		// Initialize super class

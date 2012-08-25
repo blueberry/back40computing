@@ -109,8 +109,9 @@ struct UpsweepKernelProps : cub::KernelProps
 
 	// Fields
 	KernelFunc 					kernel_func;
-	int 						tile_elements;
+	int 						tile_items;
 	cudaSharedMemConfig 		sm_bank_config;
+	int							radix_bits;
 
 	/**
 	 * Initializer
@@ -123,8 +124,9 @@ struct UpsweepKernelProps : cub::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= UpsweepKernel<OpaqueCtaUpsweepPassPolicy, MIN_CTA_OCCUPANCY>;
-		tile_elements 			= CtaUpsweepPassPolicy::TILE_ITEMS;
+		tile_items 			= CtaUpsweepPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaUpsweepPassPolicy::SMEM_CONFIG;
+		radix_bits				= CtaUpsweepPassPolicy::RADIX_BITS;
 
 		// Initialize super class
 		return cub::KernelProps::Init(

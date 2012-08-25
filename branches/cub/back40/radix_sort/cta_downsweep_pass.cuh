@@ -712,7 +712,7 @@ public:
 			d_values_out,
 			current_bit);
 
-		// Process full tiles of tile_elements
+		// Process full tiles of tile_items
 		SizeT cta_offset = 0;
 		while (cta_offset + TILE_ITEMS <= num_elements)
 		{

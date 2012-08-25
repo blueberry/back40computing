@@ -66,7 +66,7 @@ struct ProblemInstance
 	template <typename KernelPtr>
 	struct KernelProps : back40::KernelProps<KernelPtr>
 	{
-		int tile_elements;
+		int tile_items;
 
 		/**
 		 * Initializer
@@ -77,7 +77,7 @@ struct ProblemInstance
 			KernelPtr 				kernel_ptr,
 			const CudaProps 		&cuda_props)
 		{
-			tile_elements = KernelPolicy::TILE_ITEMS;
+			tile_items = KernelPolicy::TILE_ITEMS;
 
 			return back40::KernelProps<KernelPtr>::Init(
 				kernel_ptr,

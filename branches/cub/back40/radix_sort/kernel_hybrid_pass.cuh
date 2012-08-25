@@ -40,13 +40,13 @@ namespace radix_sort {
  * Kernel entry point
  */
 template <
-	typename 	CtaHybridPolicy,
+	typename 	CtaHybridPassPolicy,
 	int 		MIN_CTA_OCCUPANCY,
 	typename 	SizeT,
 	typename 	KeyType,
 	typename 	ValueType>
 __launch_bounds__ (
-	CtaHybridPolicy::CTA_THREADS,
+	CtaHybridPassPolicy::CTA_THREADS,
 	MIN_CTA_OCCUPANCY)
 __global__
 void HybridKernel(
@@ -60,9 +60,15 @@ void HybridKernel(
 	ValueType 							*d_values_final,
 	int									low_bit)
 {
+	enum
+	{
+		SWEEP_RADIX_BITS 		= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
+		SWEEP_RADIX_DIGITS		= 1 << SWEEP_RADIX_BITS,
+	};
+
 	// CTA abstraction type
 	typedef CtaHybridPass<
-		CtaHybridPolicy,
+		CtaHybridPassPolicy,
 		KeyType,
 		ValueType,
 		SizeT> CtaHybridPassT;
@@ -76,16 +82,16 @@ void HybridKernel(
 	{
 		input_bin = d_bins_in[blockIdx.x];
 /*
-		printf("\tCTA %d loaded partition (low bit %d, current bit %d) of %d elements at offset %d\n",
-			blockIdx.x,
-			low_bit,
-			input_bin.current_bit,
-			input_bin.num_elements,
-			input_bin.offset);
+		if (input_bin.num_elements > 0)
+			printf("\tCTA %d loaded partition current bit(%d) elements(%d) offset(%d)\n",
+				blockIdx.x,
+				input_bin.current_bit,
+				input_bin.num_elements,
+				input_bin.offset);
 */
 
 		// Reset current partition descriptor
-		d_bins_in[blockIdx.x].num_elements = 0;
+//		d_bins_in[blockIdx.x].num_elements = 0;
 	}
 
 	__syncthreads();
@@ -93,17 +99,42 @@ void HybridKernel(
 	// Quit if there is no work
 	if (input_bin.num_elements == 0) return;
 
+	// Perform hybrid pass
+	SizeT bin_count, bin_prefix;
 	CtaHybridPassT::Sort(
 		smem_storage,
-		d_keys_in,
-		d_keys_out,
-		d_keys_final,
-		d_values_in,
-		d_values_out,
-		d_values_final,
+		d_keys_in + input_bin.offset,
+		d_keys_out + input_bin.offset,
+		d_keys_final + input_bin.offset,
+		d_values_in + input_bin.offset,
+		d_values_out + input_bin.offset,
+		d_values_final + input_bin.offset,
 		input_bin.current_bit,
 		low_bit,
-		input_bin.num_elements);
+		input_bin.num_elements,
+		bin_count,
+		bin_prefix);
+
+	// Output bin
+	if (threadIdx.x < SWEEP_RADIX_DIGITS)
+	{
+		BinDescriptor bin(
+			input_bin.offset + bin_prefix,
+			bin_count,
+			input_bin.current_bit - SWEEP_RADIX_BITS);
+/*
+		if (bin.num_elements > 0)
+			printf("\t\tCta %d digit %d created partition %d: bit(%d) elements(%d) offset(%d)\n",
+				blockIdx.x,
+				threadIdx.x,
+				(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x,
+				bin.current_bit,
+				bin.num_elements,
+				bin.offset);
+*/
+		d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
+	}
+
 }
 
 
