@@ -23,7 +23,7 @@
 
 #pragma once
 
-#include "../../cub/cub.cuh"
+#include "../cub/cub.cuh"
 
 #include "ns_wrapper.cuh"
 #include "radix_sort/tuned_policy.cuh"
@@ -135,12 +135,14 @@ struct GpuRadixSort
 	 */
 	GpuRadixSort(
 		cub::CudaProps		*cuda_props,
-		Allocator			*allocator) :
+		Allocator			*allocator,
+		bool 				debug = false) :
 			cuda_props(cuda_props),
 			allocator(allocator),
 			selector(0),
 			d_spine(NULL),
-			spine_bytes(0)
+			spine_bytes(0),
+			debug(debug)
 	{
 		this->d_keys[0] 		= NULL;
 		this->d_keys[1] 		= NULL;
@@ -422,7 +424,8 @@ struct GpuRadixSort
 			// Update selector
 			selector ^= 1;
 
-		} while(0);
+		} while(0);		this->debug 			= debug;
+
 
 		return error;
 	}
@@ -540,8 +543,7 @@ struct GpuRadixSort
 		int 				low_bit,
 		int					num_bits,
 		cudaStream_t		stream,
-		int			 		max_grid_size,
-		bool				debug)
+		int			 		max_grid_size)
 	{
 		this->d_keys[0] 		= d_keys_in;
 		this->d_values[0] 		= d_values_in;
@@ -550,7 +552,6 @@ struct GpuRadixSort
 		this->num_bits 			= num_bits;
 		this->stream 			= stream;
 		this->max_grid_size 	= max_grid_size;
-		this->debug 			= debug;
 
 		cudaError_t error = cudaSuccess;
 		do
@@ -653,7 +654,10 @@ cudaError_t GpuRadixSortLarge(
 		cub::CachedAllocator *allocator = cub::CubCachedAllocator<void>();
 
 		// Construct and configure problem instance
-		GpuRadixSort<cub::CachedAllocator, KeyType, ValueType, int> problem_instance(&cuda_props, allocator);
+		GpuRadixSort<cub::CachedAllocator, KeyType, ValueType, int> problem_instance(
+			&cuda_props,
+			allocator,
+			debug);
 
 //		if (cuda_props.ptx_version >= 200)
 		{
@@ -680,8 +684,7 @@ cudaError_t GpuRadixSortLarge(
 			low_bit,
 			num_bits,
 			stream,
-			max_grid_size,
-			debug);
+			max_grid_size);
 		if (CubDebug(error)) break;
 
 	} while (0);

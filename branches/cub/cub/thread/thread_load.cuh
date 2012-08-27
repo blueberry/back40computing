@@ -98,12 +98,18 @@ CUB_HAS_NESTED_TYPE(HasThreadLoad, ThreadLoadTag)
 
 
 /**
+ * Dispatch specializer
+ */
+template <LoadModifier MODIFIER, bool HAS_THREAD_LOAD>
+struct ThreadLoadDispatch;
+
+/**
  * Dispatch ThreadLoad() to value if it exposes a ThreadLoadTag typedef
  */
-template <typename T, bool HAS_THREAD_LOAD = HasThreadLoad<T>::VALUE>
-struct ThreadLoadDispatch
+template <LoadModifier MODIFIER>
+struct ThreadLoadDispatch<MODIFIER, true>
 {
-	template <LoadModifier MODIFIER>
+	template <typename T>
 	static __device__ __forceinline__ T ThreadLoad(T *ptr)
 	{
 		T val;
@@ -112,43 +118,34 @@ struct ThreadLoadDispatch
 	}
 };
 
-
 /**
- * Dispatch ThreadLoad() by modifier
+ * Generic LOAD_NONE specialization
  */
-template <typename T>
-struct ThreadLoadDispatch<T, false>
+template <>
+struct ThreadLoadDispatch<LOAD_NONE, false>
 {
-	// Specialization by modifier.
-	template <LoadModifier MODIFIER>
-	static __device__ __forceinline__ T ThreadLoad(T *ptr);
-
-	// Generic LOAD_NONE specialization
-	template <>
-	static __device__ __forceinline__ T ThreadLoad<LOAD_NONE>(T *ptr)
+	template <typename T>
+	static __device__ __forceinline__ T ThreadLoad(T *ptr)
 	{
 		// Straightforward dereference
 		return *ptr;
 	}
-
-	// Generic LOAD_VS specialization
-	template <>
-	static __device__ __forceinline__ T ThreadLoad<LOAD_VS>(T *ptr)
-	{
-		// Use volatile pointer if T is a primitive
-		typedef typename If<Traits<T>::PRIMITIVE, volatile T*, T*>::Type PtrT;
-		T val = *((PtrT) ptr);
-		return val;
-	}
-
-	// Generic LOAD_TEX specialization
-	template <>
-	static __device__ __forceinline__ T ThreadLoad<LOAD_TEX>(T *ptr)
-	{
-		return ThreadLoad<LOAD_NONE>(ptr);
-	}
 };
 
+/**
+ * Generic LOAD_VS specialization
+ */
+template <>
+struct ThreadLoadDispatch<LOAD_VS, false>
+{
+	template <typename T>
+	static __device__ __forceinline__ T ThreadLoad(T *ptr)
+	{
+		// Straightforward dereference of volatile pointer
+		volatile T *volatile_ptr = ptr;
+		return *volatile_ptr;
+	}
+};
 
 /**
  * Generic ThreadLoad() operation.  Further specialized below.
@@ -156,7 +153,7 @@ struct ThreadLoadDispatch<T, false>
 template <LoadModifier MODIFIER, typename T>
 __device__ __forceinline__ T ThreadLoad(T *ptr)
 {
-	return ThreadLoadDispatch<T>::template ThreadLoad<MODIFIER>(ptr);
+	return ThreadLoadDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadLoad(ptr);
 }
 
 

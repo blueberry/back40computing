@@ -126,7 +126,7 @@ struct SingleTileKernelProps : cub::KernelProps
 	template <typename CtaSingleTilePolicy>
 	cudaError_t Init(const cub::CudaProps &cuda_props)	// CUDA properties for a specific device
 	{
-		return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(sm_arch, cuda_props);
+		return Init<CtaSingleTilePolicy, CtaSingleTilePolicy>(cuda_props);
 	}
 
 };

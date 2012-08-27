@@ -82,7 +82,7 @@ public:
 	/**
 	 * Shared memory storage type
 	 */
-	typedef struct SmemStorage
+	struct SmemStorage
 	{
 		T warp_scan[WARPS][WARP_SMEM_ELEMENTS];
 	};

@@ -67,12 +67,19 @@ CUB_HAS_NESTED_TYPE(HasThreadStore, ThreadStoreTag)
 
 
 /**
+ * Dispatch specializer
+ */
+template <StoreModifier MODIFIER, bool HAS_THREAD_LOAD>
+struct ThreadStoreDispatch;
+
+
+/**
  * Dispatch ThreadStore() to value if it exposes a ThreadStoreTag typedef
  */
-template <typename T, bool HAS_THREAD_STORE = HasThreadStore<T>::VALUE>
-struct ThreadStoreDispatch
+template <StoreModifier MODIFIER>
+struct ThreadStoreDispatch<MODIFIER, true>
 {
-	template <StoreModifier MODIFIER>
+	template <typename T>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
 		val.ThreadStore<MODIFIER>(ptr);
@@ -81,36 +88,35 @@ struct ThreadStoreDispatch
 
 
 /**
- * Dispatch ThreadStore() by modifier
+ * Generic STORE_NONE specialization
  */
-template <typename T>
-struct ThreadStoreDispatch<T, false>
+template <>
+struct ThreadStoreDispatch<STORE_NONE, false>
 {
-	// Specialization by modifier.
-	template <StoreModifier MODIFIER>
-	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val);
-
-	// Generic STORE_NONE specialization
-	template <>
-	static __device__ __forceinline__ void ThreadStore<STORE_NONE>(T *ptr, const T& val)
+	template <typename T>
+	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
 		// Straightforward dereference
 		*ptr = val;
 	}
+};
 
-	// Generic STORE_VS specialization
-	template <>
-	static __device__ __forceinline__ void ThreadStore<STORE_VS>(T *ptr, const T& val)
+
+/**
+ * Generic STORE_VS specialization
+ */
+template <>
+struct ThreadStoreDispatch<STORE_VS, false>
+{
+	template <typename T>
+	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
-		// Use volatile pointer if T is a primitive
-		typedef typename If<Traits<T>::PRIMITIVE, volatile T*, T*>::Type PtrT;
-
-		*((PtrT) ptr) = val;
-
-		// Prevent compiler from reordering or omitting memory accesses between rounds
-		if (!Traits<T>::PRIMITIVE) __threadfence_block();
+		// Straightforward dereference of volatile pointer
+		volatile T *volatile_ptr = ptr;
+		*volatile_ptr = val;
 	}
 };
+
 
 
 /**
@@ -119,7 +125,7 @@ struct ThreadStoreDispatch<T, false>
 template <StoreModifier MODIFIER, typename T>
 __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 {
-	ThreadStoreDispatch<T>::template ThreadStore<MODIFIER>(ptr, val);
+	ThreadStoreDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadStore(ptr, val);
 }
 
 
