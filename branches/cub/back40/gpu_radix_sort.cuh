@@ -566,7 +566,7 @@ struct GpuRadixSort
 			}
 
 			// Allocate and initialize partition descriptor queues
-			int max_partitions = 32 * 32;
+			int max_partitions = 32 * 32 * 32;
 //			int max_partitions = (num_elements + single_tile_props.tile_items - 1) / single_tile_props.tile_items;
 			size_t partition_queue_bytes = sizeof(radix_sort::BinDescriptor) * max_partitions;
 
@@ -601,7 +601,14 @@ struct GpuRadixSort
 
 				grid_size *= 32;
 			}
-			if (num_elements > 1024 * 64)
+			if (num_elements > 2048 * 32)
+			{
+				error = DispatchHybridPass(grid_size);
+				if (CubDebug(error)) break;
+
+				grid_size *= 32;
+			}
+			if (num_elements > 2048 * 32 * 32)
 			{
 				error = DispatchHybridPass(grid_size);
 				if (CubDebug(error)) break;

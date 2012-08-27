@@ -241,14 +241,7 @@ public:
 				// Cta prefix sum
 				CtaScanT::ExclusiveSum(smem_storage.cta_scan_storage, bin_count, bin_prefix);
 			}
-/*
-			if (blockIdx.x == 31) {
-				if (threadIdx.x < SWEEP_RADIX_DIGITS)
-				{
-					printf("digit %d count %d prefix %d\n", threadIdx.x, bin_count, bin_prefix);
-				}
-			}
-*/
+
 			// Note: no syncthreads() necessary
 
 			// Distribute keys

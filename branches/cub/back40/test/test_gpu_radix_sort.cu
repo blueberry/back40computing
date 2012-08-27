@@ -108,9 +108,10 @@ int main(int argc, char** argv)
     args.GetCmdLineArgument("bits", effective_bits);
 
     // Print header
-    if (zeros) printf("Zeros\n\n");
-    else if (regular) printf("%d-bit mod-%llu\n\n", KEY_BITS, 1ull << effective_bits);
-    else printf("%d-bit random\n\n", KEY_BITS);
+	printf("Initializing problem instance ");
+    if (zeros) printf("(zeros)\n");
+    else if (regular) printf("(%d-bit mod-%llu)\n", KEY_BITS, 1ull << effective_bits);
+    else printf("(%d-bit random)\n", KEY_BITS);
     fflush(stdout);
 
 	// Allocate and initialize host problem data and host reference solution.
@@ -148,7 +149,8 @@ int main(int argc, char** argv)
 			std::cout << h_keys[i] << ", ";
 		}
 	}
-	if (verbose) printf("\n\n");
+	if (verbose) printf("\n");
+	printf("Done.\n"); fflush(stdout);
 
     // Compute reference solution
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
@@ -221,6 +223,7 @@ int main(int argc, char** argv)
 
 	// Flush any stdio from the kernel
 	CubDebugExit(cudaThreadSynchronize());
+	fflush(stdout);
 
 	// Print column headers
 	if (schmoo) {

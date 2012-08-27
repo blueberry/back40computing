@@ -89,9 +89,8 @@ void HybridKernel(
 				input_bin.num_elements,
 				input_bin.offset);
 */
-
 		// Reset current partition descriptor
-//		d_bins_in[blockIdx.x].num_elements = 0;
+		d_bins_in[blockIdx.x].num_elements = 0;
 	}
 
 	__syncthreads();
@@ -132,9 +131,11 @@ void HybridKernel(
 				bin.num_elements,
 				bin.offset);
 */
-		d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
+		if (bin_count > 0)
+		{
+			d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
+		}
 	}
-
 }
 
 
