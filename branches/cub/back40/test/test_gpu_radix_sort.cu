@@ -166,7 +166,10 @@ int main(int argc, char** argv)
 
 	// Resize max cached bytes in default caching allocator (2MB + ping-pong)
 	cub::CachedAllocator *allocator = cub::CubCachedAllocator<void>();
-	allocator->SetMaxCachedBytes((1024 * 1024 * 2) + (num_elements * (sizeof(KeyType) + sizeof(ValueType))));
+	size_t max_cached_bytes = (sizeof(back40::radix_sort::BinDescriptor) * 32 * 32 * 32 * 3) +
+			(num_elements * (sizeof(KeyType) + sizeof(ValueType)) +
+			1024 * 1024 * 10);
+	allocator->SetMaxCachedBytes(max_cached_bytes);
 
 	//
 	// Perform one sorting pass for correctness/warmup

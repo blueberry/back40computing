@@ -22,8 +22,6 @@
 
 #pragma once
 
-#include <functional>
-
 #include "../ns_wrapper.cuh"
 
 BACK40_NS_PREFIX
@@ -43,8 +41,8 @@ struct BinDescriptor
 {
 	int offset;
 	int num_elements;
-	int current_bit;
-	int padding;
+	unsigned int current_bit;
+	unsigned int padding;
 
 	/**
 	 * Constructor

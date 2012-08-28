@@ -31,7 +31,7 @@
 #include "cta_downsweep_pass.cuh"
 #include "cta_scan_pass.cuh"
 #include "cta_single_tile.cuh"
-#include "cta_hybrid_pass.cuh"
+#include "kernel_hybrid_pass.cuh"
 
 
 BACK40_NS_PREFIX

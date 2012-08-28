@@ -27,14 +27,76 @@
 #include "../ns_wrapper.cuh"
 
 #include "sort_utils.cuh"
-#include "cta_hybrid_pass.cuh"
+#include "cta_single_tile.cuh"
+#include "cta_downsweep_pass.cuh"
+#include "cta_upsweep_pass.cuh"
 
 
 BACK40_NS_PREFIX
 namespace back40 {
 namespace radix_sort {
 
+//---------------------------------------------------------------------
+// Tuning policy types
+//---------------------------------------------------------------------
 
+
+/**
+ * Hybrid CTA tuning policy
+ */
+template <
+	int 						RADIX_BITS,						// The number of radix bits, i.e., log2(bins)
+	int 						_CTA_THREADS,					// The number of threads per CTA
+
+	int 						UPSWEEP_THREAD_ITEMS,			// The number of consecutive upsweep items to load per thread per tile
+	int 						DOWNSWEEP_THREAD_ITEMS,			// The number of consecutive downsweep items to load per thread per tile
+	ScatterStrategy 			DOWNSWEEP_SCATTER_STRATEGY,		// Downsweep strategy
+	int 						SINGLE_TILE_THREAD_ITEMS,		// The number of consecutive single-tile items to load per thread per tile
+
+	cub::LoadModifier 			LOAD_MODIFIER,					// Load cache-modifier
+	cub::StoreModifier			STORE_MODIFIER,					// Store cache-modifier
+	cudaSharedMemConfig			_SMEM_CONFIG>					// Shared memory bank size
+struct CtaHybridPassPolicy
+{
+	enum
+	{
+		CTA_THREADS = _CTA_THREADS,
+	};
+
+	static const cudaSharedMemConfig SMEM_CONFIG = _SMEM_CONFIG;
+
+	// Upsweep pass policy
+	typedef CtaUpsweepPassPolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		UPSWEEP_THREAD_ITEMS,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaUpsweepPassPolicyT;
+
+	// Downsweep pass policy
+	typedef CtaDownsweepPassPolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		DOWNSWEEP_THREAD_ITEMS,
+		DOWNSWEEP_SCATTER_STRATEGY,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaDownsweepPassPolicyT;
+
+	// Single tile policy
+	typedef CtaSingleTilePolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		SINGLE_TILE_THREAD_ITEMS,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaSingleTilePolicyT;
+};
+
+//---------------------------------------------------------------------
+// CTA-wide abstractions
+//---------------------------------------------------------------------
 
 /**
  * Kernel entry point
@@ -62,79 +124,139 @@ void HybridKernel(
 {
 	enum
 	{
+		CTA_THREADS				= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::CTA_THREADS,
+
 		SWEEP_RADIX_BITS 		= CtaHybridPassPolicy::CtaUpsweepPassPolicyT::RADIX_BITS,
 		SWEEP_RADIX_DIGITS		= 1 << SWEEP_RADIX_BITS,
+
+		WARP_THREADS			= cub::DeviceProps::WARP_THREADS,
+
+		SINGLE_TILE_ITEMS		= CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
 	};
 
-	// CTA abstraction type
-	typedef CtaHybridPass<
-		CtaHybridPassPolicy,
+	// CTA upsweep abstraction
+	typedef CtaUpsweepPass<
+		typename CtaHybridPassPolicy::CtaUpsweepPassPolicyT,
+		KeyType,
+		SizeT> CtaUpsweepPassT;
+
+	// CTA downsweep abstraction
+	typedef CtaDownsweepPass<
+		typename CtaHybridPassPolicy::CtaDownsweepPassPolicyT,
 		KeyType,
 		ValueType,
-		SizeT> CtaHybridPassT;
+		SizeT> CtaDownsweepPassT;
+
+	// CTA single-tile abstraction
+	typedef CtaSingleTile<
+		typename CtaHybridPassPolicy::CtaSingleTilePolicyT,
+		KeyType,
+		ValueType> CtaSingleTileT;
+
+	// Warp scan abstraction
+	typedef cub::WarpScan<
+		SizeT,
+		1,
+		SWEEP_RADIX_DIGITS> WarpScanT;
+
+	// CTA scan abstraction
+	typedef cub::CtaScan<
+		SizeT,
+		CTA_THREADS> CtaScanT;
+
+	/**
+	 * Shared memory storage layout
+	 */
+	struct SmemStorage
+	{
+		union
+		{
+			typename CtaUpsweepPassT::SmemStorage 		upsweep_storage;
+			typename CtaDownsweepPassT::SmemStorage 	downsweep_storage;
+			typename CtaSingleTileT::SmemStorage 		single_storage;
+			typename WarpScanT::SmemStorage				warp_scan_storage;
+			typename CtaScanT::SmemStorage				cta_scan_storage;
+		};
+	};
 
 	// Shared data structures
-	__shared__ typename CtaHybridPassT::SmemStorage 	smem_storage;
-	__shared__ BinDescriptor 							input_bin;
+	__shared__ SmemStorage 								smem_storage;
+	__shared__ SizeT									bin_count[SWEEP_RADIX_DIGITS];
+	__shared__ unsigned int 							current_bit;
+	__shared__ unsigned int 							bits_remaining;
+	__shared__ SizeT									num_elements;
+	__shared__ SizeT									cta_offset;
 
 	// Retrieve work
 	if (threadIdx.x == 0)
 	{
-		input_bin = d_bins_in[blockIdx.x];
-/*
-		if (input_bin.num_elements > 0)
-			printf("\tCTA %d loaded partition current bit(%d) elements(%d) offset(%d)\n",
-				blockIdx.x,
-				input_bin.current_bit,
-				input_bin.num_elements,
-				input_bin.offset);
-*/
+		BinDescriptor input_bin 	= d_bins_in[blockIdx.x];
+		current_bit 				= input_bin.current_bit - SWEEP_RADIX_BITS;
+		bits_remaining 				= input_bin.current_bit - low_bit;
+		num_elements 				= input_bin.num_elements;
+		cta_offset					= input_bin.offset;
+
 		// Reset current partition descriptor
 		d_bins_in[blockIdx.x].num_elements = 0;
 	}
 
 	__syncthreads();
 
-	// Quit if there is no work
-	if (input_bin.num_elements == 0) return;
-
-	// Perform hybrid pass
-	SizeT bin_count, bin_prefix;
-	CtaHybridPassT::Sort(
-		smem_storage,
-		d_keys_in + input_bin.offset,
-		d_keys_out + input_bin.offset,
-		d_keys_final + input_bin.offset,
-		d_values_in + input_bin.offset,
-		d_values_out + input_bin.offset,
-		d_values_final + input_bin.offset,
-		input_bin.current_bit,
-		low_bit,
-		input_bin.num_elements,
-		bin_count,
-		bin_prefix);
-
-	// Output bin
-	if (threadIdx.x < SWEEP_RADIX_DIGITS)
+	if (num_elements <= SINGLE_TILE_ITEMS)
 	{
-		BinDescriptor bin(
-			input_bin.offset + bin_prefix,
-			bin_count,
-			input_bin.current_bit - SWEEP_RADIX_BITS);
-/*
-		if (bin.num_elements > 0)
-			printf("\t\tCta %d digit %d created partition %d: bit(%d) elements(%d) offset(%d)\n",
-				blockIdx.x,
-				threadIdx.x,
-				(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x,
-				bin.current_bit,
-				bin.num_elements,
-				bin.offset);
-*/
-		if (bin_count > 0)
+		// Sort input tile
+		CtaSingleTileT::Sort(
+			smem_storage.single_storage,
+			d_keys_in + cta_offset,
+			d_keys_final + cta_offset,
+			d_values_in + cta_offset,
+			d_values_final + cta_offset,
+			low_bit,
+			bits_remaining,
+			num_elements);
+	}
+	else
+	{
+		// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
+		CtaUpsweepPassT::UpsweepPass(
+			smem_storage.upsweep_storage,
+			d_keys_in + cta_offset,
+			current_bit,
+			num_elements,
+			bin_count[threadIdx.x]);
+
+		// Warp prefix sum
+		SizeT bin_prefix;
+		if (threadIdx.x < SWEEP_RADIX_DIGITS)
 		{
+			WarpScanT::ExclusiveSum(
+				smem_storage.warp_scan_storage,
+				bin_count[threadIdx.x],
+				bin_prefix);
+		}
+
+		// Distribute keys
+		CtaDownsweepPassT::DownsweepPass(
+			smem_storage.downsweep_storage,
+			bin_prefix,
+			d_keys_in + cta_offset,
+			d_keys_out + cta_offset,
+			d_values_in + cta_offset,
+			d_values_out + cta_offset,
+			current_bit,
+			num_elements);
+
+		// Output bin
+		if ((threadIdx.x < SWEEP_RADIX_DIGITS) && (bin_count > 0))
+		{
+			BinDescriptor bin(
+				cta_offset + bin_prefix,
+				bin_count[threadIdx.x],
+				current_bit);
+
 			d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
 		}
+
 	}
 }
 

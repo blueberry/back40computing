@@ -195,14 +195,14 @@ public:
 	 * ProcessTile.  (Specialized for keys-only sorting.)
 	 */
 	static __device__ __forceinline__ void Sort(
-		SmemStorage 	&smem_storage,
-		KeyType 		*d_keys_in,
-		KeyType 		*d_keys_out,
-		cub::NullType 	*d_values_in,
-		cub::NullType 	*d_values_out,
-		unsigned int 	current_bit,
-		unsigned int 	bits_remaining,
-		const int 		&num_elements)
+		SmemStorage 		&smem_storage,
+		KeyType 			*d_keys_in,
+		KeyType 			*d_keys_out,
+		cub::NullType 		*d_values_in,
+		cub::NullType 		*d_values_out,
+		unsigned int 		current_bit,
+		const unsigned int 	&bits_remaining,
+		const int 			&num_elements)
 	{
 		UnsignedBits keys[KEYS_PER_THREAD];
 

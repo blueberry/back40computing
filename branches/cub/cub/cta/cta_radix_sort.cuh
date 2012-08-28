@@ -152,10 +152,10 @@ public:
 	 * Keys-only sorting
 	 */
 	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage		&smem_storage,									// Shared memory storage
-		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
-		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
-		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+		SmemStorage			&smem_storage,									// Shared memory storage
+		UnsignedBits 		(&keys)[KEYS_PER_THREAD],
+		unsigned int 		current_bit = 0,								// The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 
@@ -199,11 +199,11 @@ public:
 	 * Keys-value sorting
 	 */
 	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage		&smem_storage,									// Shared memory storage
-		UnsignedBits 	(&keys)[KEYS_PER_THREAD],
-		ValueType	 	(&values)[KEYS_PER_THREAD],
-		unsigned int 	current_bit = 0,								// The least-significant bit needed for key comparison
-		unsigned int	bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+		SmemStorage			&smem_storage,									// Shared memory storage
+		UnsignedBits 		(&keys)[KEYS_PER_THREAD],
+		ValueType	 		(&values)[KEYS_PER_THREAD],
+		unsigned int 		current_bit = 0,								// The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 
