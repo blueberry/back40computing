@@ -190,12 +190,18 @@ void HybridKernel(
 	// Retrieve work
 	if (threadIdx.x == 0)
 	{
-		BinDescriptor input_bin 	= d_bins_in[blockIdx.x];
-		current_bit 				= input_bin.current_bit - SWEEP_RADIX_BITS;
-		bits_remaining 				= input_bin.current_bit - low_bit;
-		num_elements 				= input_bin.num_elements;
-		cta_offset					= input_bin.offset;
-
+		BinDescriptor bin 			= d_bins_in[blockIdx.x];
+		current_bit 				= bin.current_bit - SWEEP_RADIX_BITS;
+		bits_remaining 				= bin.current_bit - low_bit;
+		num_elements 				= bin.num_elements;
+		cta_offset					= bin.offset;
+/*
+		printf("CTA %d assigned partition: bit(%d) elements(%d) offset(%d)\n",
+			blockIdx.x,
+			bin.current_bit,
+			bin.num_elements,
+			bin.offset);
+*/
 		// Reset current partition descriptor
 		d_bins_in[blockIdx.x].num_elements = 0;
 	}
@@ -247,14 +253,43 @@ void HybridKernel(
 			num_elements);
 
 		// Output bin
-		if ((threadIdx.x < SWEEP_RADIX_DIGITS) && (bin_count > 0))
+		if (threadIdx.x < SWEEP_RADIX_DIGITS)
 		{
+			volatile SizeT *volatile_bin_count = bin_count;
+
+			int my_count 			= volatile_bin_count[threadIdx.x];
+			int my_current_bit 		= current_bit;
+
+			#pragma unroll
+			for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
+			{
+				const int PEER_STRIDE = 1 << BIT;
+				const int MASK = (1 << (BIT + 1)) - 1;
+
+				if ((threadIdx.x & MASK) == 0)
+				{
+					SizeT next_bin_count = volatile_bin_count[threadIdx.x + PEER_STRIDE];
+					if (my_count + next_bin_count < SINGLE_TILE_ITEMS)
+					{
+						// Agglomerate
+						volatile_bin_count[threadIdx.x] = my_count + next_bin_count;
+						volatile_bin_count[threadIdx.x + PEER_STRIDE] = 0;
+						my_current_bit++;
+					}
+				}
+
+				my_count = volatile_bin_count[threadIdx.x];
+			}
+
 			BinDescriptor bin(
 				cta_offset + bin_prefix,
-				bin_count[threadIdx.x],
-				current_bit);
+				my_count,
+				my_current_bit);
 
-			d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
+			 if (my_count > 0)
+			 {
+				 d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
+			 }
 		}
 
 	}

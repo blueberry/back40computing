@@ -98,8 +98,8 @@ struct GpuRadixSort
 	// Fields
 	//---------------------------------------------------------------------
 
-	cub::CudaProps				*cuda_props;
-	Allocator					*allocator;
+	cub::CudaProps					*cuda_props;
+	Allocator						*allocator;
 
 	// Kernel properties
 	radix_sort::UpsweepKernelProps<KeyType, SizeT> 					upsweep_props;
@@ -116,6 +116,7 @@ struct GpuRadixSort
 	ValueType						*d_values[2];
 	SizeT							*d_spine;
 	radix_sort::BinDescriptor		*d_bins[2];
+
 	size_t							spine_bytes;
 
 	SizeT							num_elements;
@@ -251,7 +252,7 @@ struct GpuRadixSort
 		radix_sort::DownsweepKernelProps<KeyType, ValueType, SizeT> 	downsweep_props,
 		radix_sort::SingleTileKernelProps<KeyType, ValueType, SizeT> 	single_tile_props,
 		radix_sort::HybridKernelProps<KeyType, ValueType, SizeT> 		hybrid_props,
-		bool															unform_grid_size,
+		bool															uniform_grid_size,
 		radix_sort::DynamicSmemConfig									dynamic_smem_config)
 	{
 		this->upsweep_props 		= upsweep_props;
@@ -574,12 +575,12 @@ struct GpuRadixSort
 			if (CubDebug(error)) break;
 			error = allocator->Allocate((void**) &d_bins[1], partition_queue_bytes);
 			if (CubDebug(error)) break;
-/*
+
 			error = cudaMemset(d_bins[0], 0, partition_queue_bytes);
 			if (CubDebug(error)) break;
 			error = cudaMemset(d_bins[1], 0, partition_queue_bytes);
 			if (CubDebug(error)) break;
-*/
+
 			// Dispatch first pass
 			error = DispatchGlobalPass();
 			if (CubDebug(error)) break;
@@ -601,14 +602,14 @@ struct GpuRadixSort
 
 				grid_size *= 32;
 			}
-			if (num_elements > 2048 * 32)
+			if (num_elements > 4096 * 32)
 			{
 				error = DispatchHybridPass(grid_size);
 				if (CubDebug(error)) break;
 
 				grid_size *= 32;
 			}
-			if (num_elements > 2048 * 32 * 32)
+			if (num_elements > 4096 * 32 * 32)
 			{
 				error = DispatchHybridPass(grid_size);
 				if (CubDebug(error)) break;

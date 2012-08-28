@@ -55,7 +55,7 @@ private:
 
 	enum
 	{
-		TILE_ITEMS				= CTA_THREADS * KEYS_PER_THREAD,
+		TILE_ITEMS					= CTA_THREADS * KEYS_PER_THREAD,
 
 		LOG_SMEM_BANKS				= DeviceProps::LOG_SMEM_BANKS,
 		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
