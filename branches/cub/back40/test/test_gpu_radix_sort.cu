@@ -90,9 +90,10 @@ int main(int argc, char** argv)
 	// Usage/help
     if (args.CheckCmdLineFlag("help") || args.CheckCmdLineFlag("h"))
     {
-    	printf("\nlars_demo [--device=<device index>] [--v] [--n=<elements>] "
+    	printf("\n%s [--schmoo] [--device=<device index>] [--v] [--n=<elements>] "
     			"[--max-ctas=<max-thread-blocks>] [--i=<iterations>] "
-    			"[--zeros | --regular] [--entropy-reduction=<random &'ing rounds>\n");
+    			"[--zeros | --regular] [--entropy-reduction=<random &'ing rounds>\n",
+    			argv[0]);
     	return 0;
     }
 
@@ -153,7 +154,9 @@ int main(int argc, char** argv)
 	printf("Done.\n"); fflush(stdout);
 
     // Compute reference solution
+	printf("Computing reference solution on CPU..."); fflush(stdout);
 	std::sort(h_reference_keys, h_reference_keys + num_elements);
+	printf(" Done.\n"); fflush(stdout);
 
 	// Allocate device data.
 	KeyType 	*d_keys = NULL;
@@ -170,6 +173,7 @@ int main(int argc, char** argv)
 			(num_elements * (sizeof(KeyType) + sizeof(ValueType)) +
 			1024 * 1024 * 10);
 	allocator->SetMaxCachedBytes(max_cached_bytes);
+//	allocator->debug = true;
 
 	//
 	// Perform one sorting pass for correctness/warmup
@@ -259,16 +263,19 @@ int main(int argc, char** argv)
 			RandomBits(sample);
 			double scale = double(sample) / max_int;
 			int elements = (i < iterations / 2) ?
-				pow(2.0, (max_exponent * scale) + 5.0) :		// log bias
-				elements = scale * num_elements;						// uniform bias
+				pow(2.0, (max_exponent * scale) + 5.0) :			// log bias
+				elements = scale * num_elements;					// uniform bias
 
 			gpu_timer.Start();
+
+			printf("%d, %d", i, elements);
+			fflush(stdout);
 
 			// Sort
 			CubDebugExit(back40::GpuRadixSortLarge(
 				d_keys,
 				d_values,
-				num_elements,
+				elements,
 				START_BIT,
 				KEY_BITS,
 				0,
@@ -278,9 +285,7 @@ int main(int argc, char** argv)
 			gpu_timer.Stop();
 
 			float millis = gpu_timer.ElapsedMillis();
-			printf("%d, %d, %.3f, %.2f\n",
-				i,
-				elements,
+			printf(", %.3f, %.2f\n",
 				millis,
 				float(elements) / millis / 1000.f);
 			fflush(stdout);

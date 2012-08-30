@@ -435,7 +435,9 @@ struct GpuRadixSort
 	/**
 	 * Dispatch hybrid partitioning pass
 	 */
-	cudaError_t DispatchHybridPass(int grid_size)
+	cudaError_t DispatchHybridPass(
+		int grid_size,
+		int iteration)
 	{
 		cudaError_t error = cudaSuccess;
 		do
@@ -464,7 +466,8 @@ struct GpuRadixSort
 				d_values[selector],
 				d_values[selector ^ 1],
 				d_values[0],
-				low_bit);
+				low_bit,
+				iteration);
 
 			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
 
@@ -484,8 +487,8 @@ struct GpuRadixSort
 
 	/**
 	 * Dispatch single-CTA tile sort
-	 * /
-	cudaError_t DispatchTile(const cub::SingleTileKernelProps &single_tile_props)
+	 */
+	cudaError_t DispatchTile()
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -501,7 +504,7 @@ struct GpuRadixSort
 					single_tile_props.tile_items,
 					single_tile_props.max_cta_occupancy,
 					grid_size,
-					single_tile_props.threads);
+					single_tile_props.cta_threads);
 				fflush(stdout);
 			}
 
@@ -514,15 +517,14 @@ struct GpuRadixSort
 			// Single-CTA sorting kernel
 			single_tile_props.kernel_func<<<grid_size, single_tile_props.cta_threads, 0, stream>>>(
 				d_keys[selector],
+				d_keys[selector],
+				d_values[selector],
 				d_values[selector],
 				low_bit,
 				num_bits,
 				num_elements);
 
-			if (debug) {
-				error = cudaThreadSynchronize();
-				if (error = cub::B40CPerror(error, "Single kernel failed ", __FILE__, __LINE__)) break;
-			}
+			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
 
 			// Restore smem bank mode
 			if (old_sm_config != single_tile_props.sm_bank_config)
@@ -532,7 +534,7 @@ struct GpuRadixSort
 
 		return error;
 	}
-*/
+
 
 	/**
 	 * Sort
@@ -557,64 +559,73 @@ struct GpuRadixSort
 		cudaError_t error = cudaSuccess;
 		do
 		{
-			// Allocate temporary keys and values arrays
-			error = allocator->Allocate((void**) &d_keys[1], sizeof(KeyType) * num_elements);
-			if (CubDebug(error)) break;
-			if (d_values_in != NULL)
+			if (num_elements <= single_tile_props.tile_items)
 			{
-				error = allocator->Allocate((void**) &d_values[1], sizeof(ValueType) * num_elements);
+				// Single tile sort
+				error = DispatchTile();
 				if (CubDebug(error)) break;
 			}
-
-			// Allocate and initialize partition descriptor queues
-			int max_partitions = 32 * 32 * 32;
-//			int max_partitions = (num_elements + single_tile_props.tile_items - 1) / single_tile_props.tile_items;
-			size_t partition_queue_bytes = sizeof(radix_sort::BinDescriptor) * max_partitions;
-
-			error = allocator->Allocate((void**) &d_bins[0], partition_queue_bytes);
-			if (CubDebug(error)) break;
-			error = allocator->Allocate((void**) &d_bins[1], partition_queue_bytes);
-			if (CubDebug(error)) break;
-
-			error = cudaMemset(d_bins[0], 0, partition_queue_bytes);
-			if (CubDebug(error)) break;
-			error = cudaMemset(d_bins[1], 0, partition_queue_bytes);
-			if (CubDebug(error)) break;
-
-			// Dispatch first pass
-			error = DispatchGlobalPass();
-			if (CubDebug(error)) break;
-
-			if (num_bits <= upsweep_props.radix_bits)
+			else
 			{
-				// Copy output into source buffer and be done
-				error = cudaMemcpy(d_keys[0], d_keys[1], sizeof(KeyType) * num_elements, cudaMemcpyDeviceToDevice);
+				// Allocate temporary keys and values arrays
+				error = allocator->Allocate((void**) &d_keys[1], sizeof(KeyType) * num_elements);
+				if (CubDebug(error)) break;
+				if (d_values_in != NULL)
+				{
+					error = allocator->Allocate((void**) &d_values[1], sizeof(ValueType) * num_elements);
+					if (CubDebug(error)) break;
+				}
+
+				// Allocate and initialize partition descriptor queues
+				int max_partitions = 32 * 32 * 32;
+	//			int max_partitions = (num_elements + single_tile_props.tile_items - 1) / single_tile_props.tile_items;
+				size_t partition_queue_bytes = sizeof(radix_sort::BinDescriptor) * max_partitions;
+
+				error = allocator->Allocate((void**) &d_bins[0], partition_queue_bytes);
+				if (CubDebug(error)) break;
+				error = allocator->Allocate((void**) &d_bins[1], partition_queue_bytes);
+				if (CubDebug(error)) break;
+	/*
+				error = cudaMemset(d_bins[0], 0, partition_queue_bytes);
+				if (CubDebug(error)) break;
+				error = cudaMemset(d_bins[1], 0, partition_queue_bytes);
+				if (CubDebug(error)) break;
+	*/
+				// Dispatch first pass
+				error = DispatchGlobalPass();
 				if (CubDebug(error)) break;
 
-				return error;
-			}
+				if (num_bits <= upsweep_props.radix_bits)
+				{
+					// Copy output into source buffer and be done
+					error = cudaMemcpy(d_keys[0], d_keys[1], sizeof(KeyType) * num_elements, cudaMemcpyDeviceToDevice);
+					if (CubDebug(error)) break;
 
-			// Perform block iterations
-			int grid_size = 32;
-			{
-				error = DispatchHybridPass(grid_size);
-				if (CubDebug(error)) break;
+					return error;
+				}
 
-				grid_size *= 32;
-			}
-			if (num_elements > 4096 * 32)
-			{
-				error = DispatchHybridPass(grid_size);
-				if (CubDebug(error)) break;
+				// Perform block iterations
+				int grid_size = 32;
+				{
+					error = DispatchHybridPass(grid_size, 1);
+					if (CubDebug(error)) break;
 
-				grid_size *= 32;
-			}
-			if (num_elements > 4096 * 32 * 32)
-			{
-				error = DispatchHybridPass(grid_size);
-				if (CubDebug(error)) break;
+					grid_size *= 32;
+				}
+				if (num_elements > 2048 * 32)
+				{
+					error = DispatchHybridPass(grid_size, 2);
+					if (CubDebug(error)) break;
 
-				grid_size *= 32;
+					grid_size *= 32;
+				}
+				if (num_elements > 2048 * 32 * 32)
+				{
+					error = DispatchHybridPass(grid_size, 3);
+					if (CubDebug(error)) break;
+
+					grid_size *= 32;
+				}
 			}
 
 		} while(0);

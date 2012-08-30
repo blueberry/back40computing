@@ -92,6 +92,16 @@ struct CtaHybridPassPolicy
 		LOAD_MODIFIER,
 		STORE_MODIFIER,
 		SMEM_CONFIG> CtaSingleTilePolicyT;
+
+	// Single tile policy
+	typedef CtaSingleTilePolicy<
+		RADIX_BITS,
+		CTA_THREADS,
+		1,
+		LOAD_MODIFIER,
+		STORE_MODIFIER,
+		SMEM_CONFIG> CtaSingleTilePolicyT1;
+
 };
 
 //---------------------------------------------------------------------
@@ -120,7 +130,8 @@ void HybridKernel(
 	ValueType 							*d_values_in,
 	ValueType 							*d_values_out,
 	ValueType 							*d_values_final,
-	int									low_bit)
+	unsigned int						low_bit,
+	int 								iteration)
 {
 	enum
 	{
@@ -132,6 +143,7 @@ void HybridKernel(
 		WARP_THREADS			= cub::DeviceProps::WARP_THREADS,
 
 		SINGLE_TILE_ITEMS		= CtaHybridPassPolicy::CtaSingleTilePolicyT::TILE_ITEMS,
+		SINGLE_TILE_ITEMS1		= CtaHybridPassPolicy::CtaSingleTilePolicyT1::TILE_ITEMS,
 	};
 
 	// CTA upsweep abstraction
@@ -152,6 +164,12 @@ void HybridKernel(
 		typename CtaHybridPassPolicy::CtaSingleTilePolicyT,
 		KeyType,
 		ValueType> CtaSingleTileT;
+
+	// CTA single-tile abstraction
+	typedef CtaSingleTile<
+		typename CtaHybridPassPolicy::CtaSingleTilePolicyT1,
+		KeyType,
+		ValueType> CtaSingleTileT1;
 
 	// Warp scan abstraction
 	typedef cub::WarpScan<
@@ -174,6 +192,7 @@ void HybridKernel(
 			typename CtaUpsweepPassT::SmemStorage 		upsweep_storage;
 			typename CtaDownsweepPassT::SmemStorage 	downsweep_storage;
 			typename CtaSingleTileT::SmemStorage 		single_storage;
+			typename CtaSingleTileT1::SmemStorage 		single_storage1;
 			typename WarpScanT::SmemStorage				warp_scan_storage;
 			typename CtaScanT::SmemStorage				cta_scan_storage;
 		};
@@ -181,7 +200,7 @@ void HybridKernel(
 
 	// Shared data structures
 	__shared__ SmemStorage 								smem_storage;
-	__shared__ SizeT									bin_count[SWEEP_RADIX_DIGITS];
+	__shared__ volatile SizeT							shared_bin_count[SWEEP_RADIX_DIGITS];
 	__shared__ unsigned int 							current_bit;
 	__shared__ unsigned int 							bits_remaining;
 	__shared__ SizeT									num_elements;
@@ -208,7 +227,24 @@ void HybridKernel(
 
 	__syncthreads();
 
-	if (num_elements <= SINGLE_TILE_ITEMS)
+	if (num_elements == 0)
+	{
+		return;
+	}
+/*	else if (num_elements <= SINGLE_TILE_ITEMS1)
+	{
+		// Sort input tile
+		CtaSingleTileT1::Sort(
+			smem_storage.single_storage1,
+			d_keys_in + cta_offset,
+			d_keys_final + cta_offset,
+			d_values_in + cta_offset,
+			d_values_final + cta_offset,
+			low_bit,
+			bits_remaining,
+			num_elements);
+	}
+*/	else if (num_elements <= SINGLE_TILE_ITEMS)
 	{
 		// Sort input tile
 		CtaSingleTileT::Sort(
@@ -220,25 +256,89 @@ void HybridKernel(
 			low_bit,
 			bits_remaining,
 			num_elements);
+
+		SizeT bin_offset = (blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x;
+
+		// Mooch
+		if (threadIdx.x < SWEEP_RADIX_DIGITS)
+		{
+//			if (bin_count > 0)
+			if (bin_offset < 32 * 32 * 32)
+			{
+				d_bins_out[bin_offset].num_elements = 0;
+			}
+		}
 	}
 	else
 	{
+		SizeT bin_count, bin_prefix;
+
 		// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
 		CtaUpsweepPassT::UpsweepPass(
 			smem_storage.upsweep_storage,
 			d_keys_in + cta_offset,
 			current_bit,
 			num_elements,
-			bin_count[threadIdx.x]);
+			bin_count);
 
-		// Warp prefix sum
-		SizeT bin_prefix;
+		// Scan bin counts and output new partitions for next pass
 		if (threadIdx.x < SWEEP_RADIX_DIGITS)
 		{
+			unsigned int my_current_bit = current_bit;
+
+			// Warp prefix sum
 			WarpScanT::ExclusiveSum(
 				smem_storage.warp_scan_storage,
-				bin_count[threadIdx.x],
+				bin_count,
 				bin_prefix);
+
+			// Agglomerate counts
+			shared_bin_count[threadIdx.x] = bin_count;
+
+			#pragma unroll
+			for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
+			{
+				const int PEER_STRIDE = 1 << BIT;
+				const int MASK = (1 << (BIT + 1)) - 1;
+
+				if ((threadIdx.x & MASK) == 0)
+				{
+					SizeT next_bin_count = shared_bin_count[threadIdx.x + PEER_STRIDE];
+					if (bin_count + next_bin_count < SINGLE_TILE_ITEMS)
+					{
+						shared_bin_count[threadIdx.x] = bin_count + next_bin_count;
+						shared_bin_count[threadIdx.x + PEER_STRIDE] = 0;
+						my_current_bit++;
+					}
+				}
+
+				bin_count = shared_bin_count[threadIdx.x];
+			}
+
+			// Output bin
+			BinDescriptor bin(
+				cta_offset + bin_prefix,
+				bin_count,
+				my_current_bit);
+/*
+			if (bin_count > 0)
+			{
+				printf("CTA %d bin %d created partition: bit(%d) elements(%d) offset(%d)\n",
+					blockIdx.x,
+					threadIdx.x,
+					bin.current_bit,
+					bin.num_elements,
+					bin.offset);
+			}
+*/
+			SizeT bin_offset = (blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x;
+
+			// Mooch
+//			if (bin_count > 0)
+			if (bin_offset < 32 * 32 * 32)
+			{
+				d_bins_out[bin_offset] = bin;
+			}
 		}
 
 		// Distribute keys
@@ -251,47 +351,6 @@ void HybridKernel(
 			d_values_out + cta_offset,
 			current_bit,
 			num_elements);
-
-		// Output bin
-		if (threadIdx.x < SWEEP_RADIX_DIGITS)
-		{
-			volatile SizeT *volatile_bin_count = bin_count;
-
-			int my_count 			= volatile_bin_count[threadIdx.x];
-			int my_current_bit 		= current_bit;
-
-			#pragma unroll
-			for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
-			{
-				const int PEER_STRIDE = 1 << BIT;
-				const int MASK = (1 << (BIT + 1)) - 1;
-
-				if ((threadIdx.x & MASK) == 0)
-				{
-					SizeT next_bin_count = volatile_bin_count[threadIdx.x + PEER_STRIDE];
-					if (my_count + next_bin_count < SINGLE_TILE_ITEMS)
-					{
-						// Agglomerate
-						volatile_bin_count[threadIdx.x] = my_count + next_bin_count;
-						volatile_bin_count[threadIdx.x + PEER_STRIDE] = 0;
-						my_current_bit++;
-					}
-				}
-
-				my_count = volatile_bin_count[threadIdx.x];
-			}
-
-			BinDescriptor bin(
-				cta_offset + bin_prefix,
-				my_count,
-				my_current_bit);
-
-			 if (my_count > 0)
-			 {
-				 d_bins_out[(blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x] = bin;
-			 }
-		}
-
 	}
 }
 
@@ -315,6 +374,7 @@ struct HybridKernelProps : cub::KernelProps
 		ValueType*,
 		ValueType*,
 		ValueType*,
+		unsigned int,
 		int);
 
 	// Fields
