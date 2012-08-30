@@ -278,7 +278,10 @@ int main(int argc, char** argv)
 
 			// Sort
 			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
-				double_buffer, num_elements, 0, max_ctas);
+				double_buffer,
+				elements,
+				0,
+				max_ctas);
 
 			gpu_timer.Stop();
 
@@ -297,7 +300,10 @@ int main(int argc, char** argv)
 
 			// Sort
 			enactor.Sort<PROBLEM_SIZE, KEY_BITS, START_BIT>(
-				double_buffer, num_elements, 0, max_ctas);
+				double_buffer,
+				num_elements,
+				0,
+				max_ctas);
 
 			gpu_timer.Stop();
 
