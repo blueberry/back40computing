@@ -124,7 +124,7 @@ private:
 		// digit counters back into registers.  Each counter lane is assigned to a
 		// warp for aggregation.
 
-		LANES_PER_WARP 				= CUB_MAX(1, COUNTER_LANES / WARPS),
+		LANES_PER_WARP 				= CUB_MAX(1, (COUNTER_LANES + WARPS - 1) / WARPS),
 
 		// Unroll tiles in batches without risk of counter overflow
 		UNROLL_COUNT				= CUB_MIN(64, 255 / KEYS_PER_THREAD),
@@ -289,21 +289,20 @@ private:
 		unsigned int warp_id = threadIdx.x >> LOG_WARP_THREADS;
 		unsigned int warp_tid = threadIdx.x & (WARP_THREADS - 1);
 
-		if (warp_id < COUNTER_LANES)
+		#pragma unroll
+		for (int LANE = 0; LANE < LANES_PER_WARP; LANE++)
 		{
-			#pragma unroll
-			for (int LANE = 0; LANE < LANES_PER_WARP; LANE++)
+			const int counter_lane = (LANE * WARPS) + warp_id;
+			if (counter_lane < COUNTER_LANES)
 			{
-				const int COUNTER_LANE = LANE * WARPS;
-
 				#pragma unroll
 				for (int PACKED_COUNTER = 0; PACKED_COUNTER < CTA_THREADS; PACKED_COUNTER += WARP_THREADS)
 				{
 					#pragma unroll
 					for (int UNPACKED_COUNTER = 0; UNPACKED_COUNTER < PACKING_RATIO; UNPACKED_COUNTER++)
 					{
-						const int OFFSET = (((COUNTER_LANE * CTA_THREADS) + PACKED_COUNTER) * PACKING_RATIO) + UNPACKED_COUNTER;
-						local_counts[LANE][UNPACKED_COUNTER] += smem_storage.digit_counters[warp_id][warp_tid][OFFSET];
+						SizeT counter = smem_storage.digit_counters[counter_lane][warp_tid + PACKED_COUNTER][UNPACKED_COUNTER];
+						local_counts[LANE][UNPACKED_COUNTER] += counter;
 					}
 				}
 			}
@@ -320,19 +319,19 @@ private:
 		unsigned int warp_tid = threadIdx.x & (WARP_THREADS - 1);
 
 		// Place unpacked digit counters in shared memory
-		if (warp_id < COUNTER_LANES)
+		#pragma unroll
+		for (int LANE = 0; LANE < LANES_PER_WARP; LANE++)
 		{
-			#pragma unroll
-			for (int LANE = 0; LANE < LANES_PER_WARP; LANE++)
+			int counter_lane = (LANE * WARPS) + warp_id;
+			if (counter_lane < COUNTER_LANES)
 			{
-				const int COUNTER_LANE = LANE * WARPS;
-				int digit_row = (COUNTER_LANE + warp_id) << LOG_PACKING_RATIO;
+				int digit_row = counter_lane << LOG_PACKING_RATIO;
 
 				#pragma unroll
 				for (int UNPACKED_COUNTER = 0; UNPACKED_COUNTER < PACKING_RATIO; UNPACKED_COUNTER++)
 				{
-					smem_storage.digit_partials[digit_row + UNPACKED_COUNTER][warp_tid]
-						  = local_counts[LANE][UNPACKED_COUNTER];
+					smem_storage.digit_partials[digit_row + UNPACKED_COUNTER][warp_tid] =
+						local_counts[LANE][UNPACKED_COUNTER];
 				}
 			}
 		}

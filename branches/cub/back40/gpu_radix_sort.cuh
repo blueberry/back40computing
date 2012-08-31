@@ -612,14 +612,14 @@ struct GpuRadixSort
 
 					grid_size *= 32;
 				}
-				if (num_elements > 2048 * 32)
+				if (num_elements > 128 * 16 * 32)
 				{
 					error = DispatchHybridPass(grid_size, 2);
 					if (CubDebug(error)) break;
 
 					grid_size *= 32;
 				}
-				if (num_elements > 2048 * 32 * 32)
+				if (num_elements > 128 * 16 * 32 * 32)
 				{
 					error = DispatchHybridPass(grid_size, 3);
 					if (CubDebug(error)) break;
