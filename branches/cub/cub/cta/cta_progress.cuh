@@ -59,9 +59,9 @@ struct CtaWorkDistribution
 	 * Constructor
 	 */
 	__host__ __device__ __forceinline__ CtaWorkDistribution(
-		SizeT num_elements,
-		int grid_size,
-		int schedule_granularity)
+		SizeT 	num_elements,
+		int 	grid_size,
+		int 	schedule_granularity)
 	{
 		this->num_elements		= num_elements;
 		total_grains 			= (num_elements + schedule_granularity - 1) / schedule_granularity;
@@ -124,25 +124,25 @@ struct CtaProgress
 		const CtaWorkDistribution<SizeT> &distribution)
 	{
 
-		if (WORK_STEALING) {
-
+		if (WORK_STEALING)
+		{
 			// This CTA gets at least one tile (if possible)
 			// TODO
-
-		} else if (blockIdx.x < distribution.big_blocks) {
-
+		}
+		else if (blockIdx.x < distribution.big_blocks)
+		{
 			// This CTA gets a big share of grains (grains_per_cta + 1)
 			cta_offset = (blockIdx.x * distribution.big_share);
 			num_elements = distribution.big_share;
-
-		} else if (blockIdx.x < distribution.total_grains) {
-
+		}
+		else if (blockIdx.x < distribution.total_grains)
+		{
 			// This CTA gets a normal share of grains (grains_per_cta)
 			cta_offset = distribution.normal_base_offset + (blockIdx.x * distribution.normal_share);
 			num_elements = distribution.normal_share;
-
-		} else {
-
+		}
+		else
+		{
 			// This CTA gets no work
 			cta_offset = 0;
 			num_elements = 0;

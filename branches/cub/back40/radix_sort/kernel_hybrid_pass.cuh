@@ -122,6 +122,8 @@ __launch_bounds__ (
 	MIN_CTA_OCCUPANCY)
 __global__
 void HybridKernel(
+	unsigned int						*d_queue_counters,
+	unsigned int						*d_steal_counters,
 	BinDescriptor						*d_bins_in,
 	BinDescriptor						*d_bins_out,
 	KeyType 							*d_keys_in,
@@ -205,152 +207,183 @@ void HybridKernel(
 	__shared__ unsigned int 							bits_remaining;
 	__shared__ SizeT									num_elements;
 	__shared__ SizeT									cta_offset;
+	__shared__ volatile unsigned int					enqueue_offset;
+	__shared__ unsigned int 							queue_descriptors;
 
-	// Retrieve work
 	if (threadIdx.x == 0)
 	{
-		BinDescriptor bin 			= d_bins_in[blockIdx.x];
-		current_bit 				= bin.current_bit - SWEEP_RADIX_BITS;
-		bits_remaining 				= bin.current_bit - low_bit;
-		num_elements 				= bin.num_elements;
-		cta_offset					= bin.offset;
-/*
-		printf("CTA %d assigned partition: bit(%d) elements(%d) offset(%d)\n",
-			blockIdx.x,
-			bin.current_bit,
-			bin.num_elements,
-			bin.offset);
-*/
-		// Reset current partition descriptor
-		d_bins_in[blockIdx.x].num_elements = 0;
-	}
+		queue_descriptors = d_queue_counters[(iteration - 1) & 3];
 
-	__syncthreads();
-
-	if (num_elements == 0)
-	{
-		return;
-	}
-/*	else if (num_elements <= SINGLE_TILE_ITEMS1)
-	{
-		// Sort input tile
-		CtaSingleTileT1::Sort(
-			smem_storage.single_storage1,
-			d_keys_in + cta_offset,
-			d_keys_final + cta_offset,
-			d_values_in + cta_offset,
-			d_values_final + cta_offset,
-			low_bit,
-			bits_remaining,
-			num_elements);
-	}
-*/	else if (num_elements <= SINGLE_TILE_ITEMS)
-	{
-		// Sort input tile
-		CtaSingleTileT::Sort(
-			smem_storage.single_storage,
-			d_keys_in + cta_offset,
-			d_keys_final + cta_offset,
-			d_values_in + cta_offset,
-			d_values_final + cta_offset,
-			low_bit,
-			bits_remaining,
-			num_elements);
-
-		SizeT bin_offset = (blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x;
-
-		// Mooch
-		if (threadIdx.x < SWEEP_RADIX_DIGITS)
+		if (blockIdx.x == 0)
 		{
-//			if (bin_count > 0)
-			if (bin_offset < 32 * 32 * 32)
-			{
-				d_bins_out[bin_offset].num_elements = 0;
-			}
+//			printf("%d incoming descriptors\n", queue_descriptors);
+
+			// Reset next work steal counter
+			d_steal_counters[(iteration + 1) & 1] = 0;
+
+			// Reset next queue counter
+			d_queue_counters[(iteration + 1) & 3] = 0;
 		}
 	}
-	else
+
+	while (true)
 	{
-		SizeT bin_count, bin_prefix;
-
-		// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
-		CtaUpsweepPassT::UpsweepPass(
-			smem_storage.upsweep_storage,
-			d_keys_in + cta_offset,
-			current_bit,
-			num_elements,
-			bin_count);
-
-		// Scan bin counts and output new partitions for next pass
-		if (threadIdx.x < SWEEP_RADIX_DIGITS)
+		// Retrieve work
+		if (threadIdx.x == 0)
 		{
-			unsigned int my_current_bit = current_bit;
+			unsigned int descriptor_offset = atomicAdd(d_steal_counters + (iteration & 1), 1);
 
-			// Warp prefix sum
-			WarpScanT::ExclusiveSum(
-				smem_storage.warp_scan_storage,
-				bin_count,
-				bin_prefix);
+			num_elements = 0;
 
-			// Agglomerate counts
-			shared_bin_count[threadIdx.x] = bin_count;
-
-			#pragma unroll
-			for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
+			if (descriptor_offset < queue_descriptors)
 			{
-				const int PEER_STRIDE = 1 << BIT;
-				const int MASK = (1 << (BIT + 1)) - 1;
-
-				if ((threadIdx.x & MASK) == 0)
-				{
-					SizeT next_bin_count = shared_bin_count[threadIdx.x + PEER_STRIDE];
-					if (bin_count + next_bin_count < SINGLE_TILE_ITEMS)
-					{
-						shared_bin_count[threadIdx.x] = bin_count + next_bin_count;
-						shared_bin_count[threadIdx.x + PEER_STRIDE] = 0;
-						my_current_bit++;
-					}
-				}
-
-				bin_count = shared_bin_count[threadIdx.x];
-			}
-
-			// Output bin
-			BinDescriptor bin(
-				cta_offset + bin_prefix,
-				bin_count,
-				my_current_bit);
+				BinDescriptor bin 			= d_bins_in[descriptor_offset];
+				current_bit 				= bin.current_bit - SWEEP_RADIX_BITS;
+				bits_remaining 				= bin.current_bit - low_bit;
+				num_elements 				= bin.num_elements;
+				cta_offset					= bin.offset;
 /*
-			if (bin_count > 0)
-			{
-				printf("CTA %d bin %d created partition: bit(%d) elements(%d) offset(%d)\n",
+				if ((descriptor_offset == 0) || ((iteration == 3) && (num_elements > SINGLE_TILE_ITEMS)))
+				printf("\tPartition %d stolen by CTA %d: bit(%d) elements(%d) offset(%d)\n",
+					descriptor_offset,
 					blockIdx.x,
-					threadIdx.x,
 					bin.current_bit,
 					bin.num_elements,
 					bin.offset);
-			}
 */
-			SizeT bin_offset = (blockIdx.x * SWEEP_RADIX_DIGITS) + threadIdx.x;
-
-			// Mooch
-//			if (bin_count > 0)
-			if (bin_offset < 32 * 32 * 32)
-			{
-				d_bins_out[bin_offset] = bin;
 			}
 		}
 
-		// Distribute keys
-		CtaDownsweepPassT::DownsweepPass(
-			smem_storage.downsweep_storage,
-			bin_prefix,
-			d_keys_in + cta_offset,
-			d_keys_out + cta_offset,
-			d_values_in + cta_offset,
-			d_values_out + cta_offset,
-			current_bit,
-			num_elements);
+		__syncthreads();
+
+		if (num_elements == 0)
+		{
+			return;
+		}
+/*		else if (num_elements <= SINGLE_TILE_ITEMS1)
+		{
+			// Sort input tile
+			CtaSingleTileT1::Sort(
+				smem_storage.single_storage1,
+				d_keys_in + cta_offset,
+				d_keys_final + cta_offset,
+				d_values_in + cta_offset,
+				d_values_final + cta_offset,
+				low_bit,
+				bits_remaining,
+				num_elements);
+		}
+*/		else if (num_elements <= SINGLE_TILE_ITEMS)
+		{
+			// Sort input tile
+			CtaSingleTileT::Sort(
+				smem_storage.single_storage,
+				d_keys_in + cta_offset,
+				d_keys_final + cta_offset,
+				d_values_in + cta_offset,
+				d_values_final + cta_offset,
+				low_bit,
+				bits_remaining,
+				num_elements);
+		}
+		else
+		{
+			SizeT bin_count = 0;
+			SizeT bin_prefix = 0;
+
+			// Compute bin-count for each radix digit (valid in tid < RADIX_DIGITS)
+			CtaUpsweepPassT::UpsweepPass(
+				smem_storage.upsweep_storage,
+				d_keys_in + cta_offset,
+				current_bit,
+				num_elements,
+				bin_count);
+
+			// Scan bin counts and output new partitions for next pass
+			if (threadIdx.x < SWEEP_RADIX_DIGITS)
+			{
+				unsigned int my_current_bit = current_bit;
+
+				// Warp prefix sum
+				WarpScanT::ExclusiveSum(
+					smem_storage.warp_scan_storage,
+					bin_count,
+					bin_prefix);
+
+				// Agglomerate counts
+				shared_bin_count[threadIdx.x] = bin_count;
+
+				#pragma unroll
+				for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
+				{
+					const int PEER_STRIDE = 1 << BIT;
+					const int MASK = (1 << (BIT + 1)) - 1;
+
+					if ((threadIdx.x & MASK) == 0)
+					{
+						SizeT next_bin_count = shared_bin_count[threadIdx.x + PEER_STRIDE];
+						if (bin_count + next_bin_count < SINGLE_TILE_ITEMS)
+						{
+							shared_bin_count[threadIdx.x] = bin_count + next_bin_count;
+							shared_bin_count[threadIdx.x + PEER_STRIDE] = 0;
+							my_current_bit++;
+						}
+					}
+
+					bin_count = shared_bin_count[threadIdx.x];
+				}
+
+				unsigned int active_bins_vote 		= __ballot(bin_count > 0);
+				unsigned int thread_mask 			= (1 << threadIdx.x) - 1;
+				unsigned int active_bins 			= __popc(active_bins_vote);
+				unsigned int active_bins_prefix 	= __popc(active_bins_vote & thread_mask);
+
+				// Increment enqueue offset
+				if (threadIdx.x == 0)
+				{
+					enqueue_offset = atomicAdd(d_queue_counters + (iteration & 3), active_bins);
+				}
+/*
+				if (enqueue_offset == 0) printf("\t\tCta %d, tid %d, bin_count %d, active_bins %d, active_bins_prefix %d\n",
+					blockIdx.x,
+					threadIdx.x,
+					bin_count,
+					active_bins,
+					active_bins_prefix);
+*/
+				// Output bin
+				if (bin_count > 0)
+				{
+					BinDescriptor bin(
+						cta_offset + bin_prefix,
+						bin_count,
+						my_current_bit);
+/*
+					if (enqueue_offset + active_bins_prefix == 0)
+					printf("CTA %d, num elements %d, bin %d created partition descriptor %d: bit(%d) elements(%d) offset(%d)\n",
+						blockIdx.x,
+						num_elements,
+						threadIdx.x,
+						enqueue_offset + active_bins_prefix,
+						bin.current_bit,
+						bin.num_elements,
+						bin.offset);
+*/
+					d_bins_out[enqueue_offset + active_bins_prefix] = bin;
+				}
+			}
+
+			// Distribute keys
+			CtaDownsweepPassT::DownsweepPass(
+				smem_storage.downsweep_storage,
+				bin_prefix,
+				d_keys_in + cta_offset,
+				d_keys_out + cta_offset,
+				d_values_in + cta_offset,
+				d_values_out + cta_offset,
+				current_bit,
+				num_elements);
+		}
 	}
 }
 
@@ -366,6 +399,8 @@ struct HybridKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
+		unsigned int*,
+		unsigned int*,
 		BinDescriptor*,
 		BinDescriptor*,
 		KeyType*,

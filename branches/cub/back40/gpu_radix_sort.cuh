@@ -56,6 +56,12 @@ struct GpuRadixSort
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
+	enum
+	{
+		COUNTERS		= 6,
+	};
+
+
 	/**
 	 * Tuned pass policy whose type signature does not reflect the tuned
 	 * SM architecture.
@@ -116,6 +122,7 @@ struct GpuRadixSort
 	ValueType						*d_values[2];
 	SizeT							*d_spine;
 	radix_sort::BinDescriptor		*d_bins[2];
+	unsigned int					*d_counters;
 
 	size_t							spine_bytes;
 
@@ -142,6 +149,7 @@ struct GpuRadixSort
 			allocator(allocator),
 			selector(0),
 			d_spine(NULL),
+			d_counters(NULL),
 			spine_bytes(0),
 			debug(debug)
 	{
@@ -166,6 +174,7 @@ struct GpuRadixSort
 			if (d_bins[0]) allocator->Deallocate(d_bins[0]);
 			if (d_bins[1]) allocator->Deallocate(d_bins[1]);
 			if (d_spine) allocator->Deallocate(d_spine);
+			if (d_counters) allocator->Deallocate(d_counters);
 			spine_bytes = 0;
 		}
 	}
@@ -299,7 +308,7 @@ struct GpuRadixSort
 	/**
 	 * Dispatch global partitioning pass
 	 */
-	cudaError_t DispatchGlobalPass()
+	cudaError_t DispatchGlobalPass(int iteration)
 	{
 		cudaError_t error = cudaSuccess;
 
@@ -408,6 +417,8 @@ struct GpuRadixSort
 
 			// Downsweep scan from spine
 			downsweep_props.kernel_func<<<grid_size[2], downsweep_props.cta_threads, dynamic_smem[2], stream>>>(
+				d_counters,
+				d_counters + 4,
 				d_bins[selector ^ 1],
 				d_spine,
 				d_keys[selector],
@@ -415,7 +426,8 @@ struct GpuRadixSort
 				d_values[selector],
 				d_values[selector ^ 1],
 				current_bit,
-				work);
+				work,
+				iteration);
 			if (debug && (error = CubDebug(cudaThreadSynchronize()))) break;
 
 			// Restore smem bank mode
@@ -458,6 +470,8 @@ struct GpuRadixSort
 
 			// Tile sorting kernel
 			hybrid_props.kernel_func<<<grid_size, hybrid_props.cta_threads, 0, stream>>>(
+				d_counters,
+				d_counters + 4,
 				d_bins[selector],
 				d_bins[selector ^ 1],
 				d_keys[selector],
@@ -576,6 +590,10 @@ struct GpuRadixSort
 					if (CubDebug(error)) break;
 				}
 
+				// Allocate work queue counters
+				error = allocator->Allocate((void**) &d_counters, sizeof(unsigned int) * COUNTERS);
+				if (CubDebug(error)) break;
+
 				// Allocate and initialize partition descriptor queues
 				int max_partitions = 32 * 32 * 32;
 	//			int max_partitions = (num_elements + single_tile_props.tile_items - 1) / single_tile_props.tile_items;
@@ -592,7 +610,7 @@ struct GpuRadixSort
 				if (CubDebug(error)) break;
 	*/
 				// Dispatch first pass
-				error = DispatchGlobalPass();
+				error = DispatchGlobalPass(0);
 				if (CubDebug(error)) break;
 
 				if (num_bits <= upsweep_props.radix_bits)
@@ -605,26 +623,19 @@ struct GpuRadixSort
 				}
 
 				// Perform block iterations
-				int grid_size = 32;
 				{
-					error = DispatchHybridPass(grid_size, 1);
+					error = DispatchHybridPass(32, 1);
 					if (CubDebug(error)) break;
-
-					grid_size *= 32;
 				}
 				if (num_elements > 128 * 16 * 32)
 				{
-					error = DispatchHybridPass(grid_size, 2);
+					error = DispatchHybridPass(240, 2);
 					if (CubDebug(error)) break;
-
-					grid_size *= 32;
 				}
 				if (num_elements > 128 * 16 * 32 * 32)
 				{
-					error = DispatchHybridPass(grid_size, 3);
+					error = DispatchHybridPass(240, 3);
 					if (CubDebug(error)) break;
-
-					grid_size *= 32;
 				}
 			}
 

@@ -47,6 +47,8 @@ __launch_bounds__ (
 	CtaDownsweepPassPolicy::CTA_THREADS,
 	MIN_CTA_OCCUPANCY)
 __global__ void DownsweepKernel(
+	unsigned int 						*d_queue_counters,
+	unsigned int						*d_steal_counters,
 	BinDescriptor						*d_bins_out,
 	SizeT 								*d_spine,
 	KeyType 							*d_keys_in,
@@ -54,12 +56,14 @@ __global__ void DownsweepKernel(
 	ValueType 							*d_values_in,
 	ValueType 							*d_values_out,
 	unsigned int 						current_bit,
-	cub::CtaWorkDistribution<SizeT> 	cta_work_distribution)
+	cub::CtaWorkDistribution<SizeT> 	cta_work_distribution,
+	int									iteration)
 {
 	enum
 	{
 		TILE_ITEMS 		= CtaDownsweepPassPolicy::TILE_ITEMS,
-		RADIX_DIGITS 	= 1 << CtaDownsweepPassPolicy::RADIX_BITS,
+		RADIX_BITS		= CtaDownsweepPassPolicy::RADIX_BITS,
+		RADIX_DIGITS 	= 1 << RADIX_BITS,
 	};
 
 	// CTA abstraction type
@@ -72,6 +76,7 @@ __global__ void DownsweepKernel(
 	// Shared data structures
 	__shared__ typename CtaDownsweepPassT::SmemStorage 		smem_storage;
 	__shared__ cub::CtaProgress<SizeT, TILE_ITEMS> 			cta_progress;
+	__shared__ volatile unsigned int 						enqueue_offset;
 
 	// Read exclusive bin prefixes
 	SizeT bin_prefix;
@@ -86,25 +91,51 @@ __global__ void DownsweepKernel(
 				cta_work_distribution.num_elements :
 				d_spine[spine_offset + gridDim.x];
 
-			SizeT elements = next_spine_offset - bin_prefix;
+			SizeT bin_count = next_spine_offset - bin_prefix;
 
-			BinDescriptor bin(bin_prefix, elements, current_bit);
-			d_bins_out[threadIdx.x] = bin;
 /*
-			printf("Global digit %d created partition: bit(%d) elements(%d) offset(%d)\n",
+			printf("Global digit %d created partition: bit(%d) bin_count(%d) offset(%d)\n",
 				threadIdx.x,
 				bin.current_bit,
 				bin.num_elements,
 				bin.offset);
 */
+
+			unsigned int active_bins_vote 		= __ballot(bin_count > 0);
+			unsigned int thread_mask 			= (1 << threadIdx.x) - 1;
+			int active_bins 					= __popc(active_bins_vote);
+			int active_bins_prefix 				= __popc(active_bins_vote & thread_mask);
+
+			if (threadIdx.x == 0)
+			{
+				// Increment enqueue offset
+				if (iteration == 0)
+				{
+					d_queue_counters[0] = active_bins;
+					enqueue_offset = 0;
+				}
+				else
+				{
+					enqueue_offset = atomicAdd(d_queue_counters + (iteration & 3), active_bins);
+				}
+
+				// Reset next queue counter
+				d_queue_counters[(iteration + 1) & 3] = 0;
+				d_steal_counters[0] = 0;
+				d_steal_counters[1] = 0;
+			}
+
+			BinDescriptor bin(bin_prefix, bin_count, current_bit);
+			d_bins_out[enqueue_offset + active_bins_prefix] = bin;
+		}
+
+		if (threadIdx.x == 0)
+		{
+			// Determine our CTA's work range
+			cta_progress.Init(cta_work_distribution);
 		}
 	}
 
-	// Determine our CTA's work range
-	if (threadIdx.x == 0)
-	{
-		cta_progress.Init(cta_work_distribution);
-	}
 
 	// Sync to acquire work range
 	__syncthreads();
@@ -133,6 +164,8 @@ struct DownsweepKernelProps : cub::KernelProps
 {
 	// Kernel function type
 	typedef void (*KernelFunc)(
+		unsigned int*,
+		unsigned int*,
 		BinDescriptor*,
 		SizeT*,
 		KeyType*,
@@ -140,7 +173,8 @@ struct DownsweepKernelProps : cub::KernelProps
 		ValueType*,
 		ValueType*,
 		unsigned int,
-		cub::CtaWorkDistribution<SizeT>);
+		cub::CtaWorkDistribution<SizeT>,
+		int);
 
 	// Fields
 	KernelFunc 					kernel_func;
@@ -159,7 +193,7 @@ struct DownsweepKernelProps : cub::KernelProps
 	{
 		// Initialize fields
 		kernel_func 			= DownsweepKernel<OpaqueCtaDownsweepPassPolicy, MIN_CTA_OCCUPANCY>;
-		tile_items 			= CtaDownsweepPassPolicy::TILE_ITEMS;
+		tile_items 				= CtaDownsweepPassPolicy::TILE_ITEMS;
 		sm_bank_config 			= CtaDownsweepPassPolicy::SMEM_CONFIG;
 		radix_bits				= CtaDownsweepPassPolicy::RADIX_BITS;
 
