@@ -150,8 +150,7 @@ public:
 	 */
 	struct SmemStorage
 	{
-		SizeT										cta_offset;
-		SizeT										cta_offset_limit;
+		SizeT										remainder;
 		unsigned int 								digit_prefixes[RADIX_DIGITS + 1];
 		SizeT 										digit_offsets[RADIX_DIGITS];
 
@@ -183,7 +182,7 @@ private:
 	SizeT 						bin_prefix;
 
 	// The least-significant bit position of the current digit to extract
-	unsigned int 				current_bit;
+	const unsigned int 			&current_bit;
 
 
 	//---------------------------------------------------------------------
@@ -319,13 +318,13 @@ private:
 	 * Constructor
 	 */
 	__device__ __forceinline__ CtaDownsweepPass(
-		SmemStorage 	&smem_storage,
-		SizeT 			bin_prefix,
-		KeyType 		*d_keys_in,
-		KeyType 		*d_keys_out,
-		ValueType 		*d_values_in,
-		ValueType 		*d_values_out,
-		unsigned int 	current_bit) :
+		SmemStorage 		&smem_storage,
+		SizeT 				bin_prefix,
+		KeyType 			*d_keys_in,
+		KeyType 			*d_keys_out,
+		ValueType 			*d_values_in,
+		ValueType 			*d_values_out,
+		const unsigned int 	&current_bit) :
 			smem_storage(smem_storage),
 			bin_prefix(bin_prefix),
 			d_keys_in(reinterpret_cast<UnsignedBits*>(d_keys_in)),
@@ -460,9 +459,6 @@ private:
 		{
 			keys[KEY] = smem_storage.key_exchange[(threadIdx.x * KEYS_PER_THREAD) + KEY];
 		}
-
-		__syncthreads();
-
 	}
 
 
@@ -693,14 +689,14 @@ public:
 	 * Distribute keys from a range of input tiles.
 	 */
 	static __device__ __forceinline__ void DownsweepPass(
-		SmemStorage 	&smem_storage,
-		SizeT 			bin_prefix, 			// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
-		KeyType 		*d_keys_in,
-		KeyType 		*d_keys_out,
-		ValueType 		*d_values_in,
-		ValueType 		*d_values_out,
-		unsigned int 	current_bit,
-		const SizeT 	&num_elements)			// Number of elements for this CTA to process
+		SmemStorage 		&smem_storage,
+		SizeT 				bin_prefix, 			// The global scatter base offset for each digit (valid in the first RADIX_DIGITS threads)
+		KeyType 			*d_keys_in,
+		KeyType 			*d_keys_out,
+		ValueType 			*d_values_in,
+		ValueType 			*d_values_out,
+		const unsigned int 	&current_bit,
+		const SizeT 		&num_elements)			// Number of elements for this CTA to process
 	{
 		// Construct state bundle
 		CtaDownsweepPass cta(
@@ -720,11 +716,12 @@ public:
 			cta_offset += TILE_ITEMS;
 		}
 
+		smem_storage.remainder = num_elements - cta_offset;
+
 		// Clean up last partial tile with guarded-I/O
 		if (cta_offset < num_elements)
 		{
-			SizeT remainder = num_elements - cta_offset;
-			cta.ProcessTile<false>(cta_offset, remainder);
+			cta.ProcessTile<false>(cta_offset, smem_storage.remainder);
 		}
 	}
 };

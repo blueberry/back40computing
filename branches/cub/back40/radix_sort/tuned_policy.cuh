@@ -121,7 +121,7 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 	// Single-tile CTA policy
 	typedef CtaSingleTilePolicy<
 		RADIX_BITS,								// RADIX_BITS
-		128,									// CTA_THREADS
+		192,									// CTA_THREADS
 		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ITEMS
 		cub::LOAD_NONE, 						// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
@@ -135,7 +135,7 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		17, 									// UPSWEEP_THREAD_ITEMS
 		17, 									// DOWNSWEEP_THREAD_ITEMS
 		SCATTER_TWO_PHASE,						// DOWNSWEEP_SCATTER_STRATEGY
-		((KEYS_ONLY) ? 17 : 9), 				// SINGLE_TILE_THREAD_ITEMS
+		((KEYS_ONLY) ? 19 : 9), 				// SINGLE_TILE_THREAD_ITEMS
 		cub::LOAD_NONE, 						// LOAD_MODIFIER
 		cub::STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG

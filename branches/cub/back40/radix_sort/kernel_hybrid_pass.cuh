@@ -256,7 +256,7 @@ void HybridKernel(
 
 		__syncthreads();
 
-		if (num_elements == 0)
+		if (num_elements <= 1)
 		{
 			return;
 		}
