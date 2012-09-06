@@ -203,6 +203,7 @@ void HybridKernel(
 	// Shared data structures
 	__shared__ SmemStorage 								smem_storage;
 	__shared__ volatile SizeT							shared_bin_count[SWEEP_RADIX_DIGITS];
+	__shared__ volatile bool							bin_coalesced[SWEEP_RADIX_DIGITS];
 	__shared__ unsigned int 							current_bit;
 	__shared__ unsigned int 							bits_remaining;
 	__shared__ SizeT									num_elements;
@@ -244,7 +245,7 @@ void HybridKernel(
 				cta_offset					= bin.offset;
 /*
 				if ((descriptor_offset == 0) || ((iteration == 3) && (num_elements > SINGLE_TILE_ITEMS)))
-				printf("\tPartition %d stolen by CTA %d: bit(%d) elements(%d) offset(%d)\n",
+				printf("\tPartition %d bin_coalesced by CTA %d: bit(%d) elements(%d) offset(%d)\n",
 					descriptor_offset,
 					blockIdx.x,
 					bin.current_bit,
@@ -310,28 +311,45 @@ void HybridKernel(
 					bin_count,
 					bin_prefix);
 
-				// Agglomerate counts
+				// Initialize bin_coalesced
+				bin_coalesced[threadIdx.x] = false;
+
+				// Share out bin counts
 				shared_bin_count[threadIdx.x] = bin_count;
 
+				// Progressively coalesce peer bins having stride 1, 2, 4, 8, etc.
 				#pragma unroll
 				for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
 				{
+					// Mask off bins whose indices are not a multiple of current stride * 2
 					const int PEER_STRIDE = 1 << BIT;
 					const int MASK = (1 << (BIT + 1)) - 1;
-
 					if ((threadIdx.x & MASK) == 0)
 					{
-						SizeT next_bin_count = shared_bin_count[threadIdx.x + PEER_STRIDE];
-						if (bin_count + next_bin_count < SINGLE_TILE_ITEMS)
+						SizeT coalesced_bin_count = bin_count + shared_bin_count[threadIdx.x + PEER_STRIDE];
+						if (coalesced_bin_count < SINGLE_TILE_ITEMS)
 						{
-							shared_bin_count[threadIdx.x] = bin_count + next_bin_count;
-							shared_bin_count[threadIdx.x + PEER_STRIDE] = 0;
+							// Coalesce peer bin
+							bin_count = coalesced_bin_count;
+							shared_bin_count[threadIdx.x] = bin_count;
+							bin_coalesced[threadIdx.x + PEER_STRIDE] = true;
 							my_current_bit++;
+						}
+						else
+						{
+							// I could not coalesce my peer; no one can coalesce me now
+							shared_bin_count[threadIdx.x] = SINGLE_TILE_ITEMS;
 						}
 					}
 
-					bin_count = shared_bin_count[threadIdx.x];
 				}
+
+				// Discard my bin if I was coalesced
+				if (bin_coalesced[threadIdx.x])
+				{
+					bin_count = 0;
+				}
+
 
 				unsigned int active_bins_vote 		= __ballot(bin_count > 0);
 				unsigned int thread_mask 			= (1 << threadIdx.x) - 1;
