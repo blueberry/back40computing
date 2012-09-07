@@ -203,7 +203,7 @@ void HybridKernel(
 	// Shared data structures
 	__shared__ SmemStorage 								smem_storage;
 	__shared__ volatile SizeT							shared_bin_count[SWEEP_RADIX_DIGITS];
-	__shared__ volatile bool							bin_coalesced[SWEEP_RADIX_DIGITS];
+	__shared__ volatile bool							shared_bin_active[SWEEP_RADIX_DIGITS];
 	__shared__ unsigned int 							current_bit;
 	__shared__ unsigned int 							bits_remaining;
 	__shared__ SizeT									num_elements;
@@ -245,7 +245,7 @@ void HybridKernel(
 				cta_offset					= bin.offset;
 /*
 				if ((descriptor_offset == 0) || ((iteration == 3) && (num_elements > SINGLE_TILE_ITEMS)))
-				printf("\tPartition %d bin_coalesced by CTA %d: bit(%d) elements(%d) offset(%d)\n",
+				printf("\tPartition %d shared_bin_active by CTA %d: bit(%d) elements(%d) offset(%d)\n",
 					descriptor_offset,
 					blockIdx.x,
 					bin.current_bit,
@@ -303,51 +303,57 @@ void HybridKernel(
 			// Scan bin counts and output new partitions for next pass
 			if (threadIdx.x < SWEEP_RADIX_DIGITS)
 			{
-				unsigned int my_current_bit = current_bit;
-
 				// Warp prefix sum
 				WarpScanT::ExclusiveSum(
 					smem_storage.warp_scan_storage,
 					bin_count,
 					bin_prefix);
 
-				// Initialize bin_coalesced
-				bin_coalesced[threadIdx.x] = false;
+				unsigned int 	my_current_bit 		= current_bit;
+				bool 			bin_active 			= true;
 
-				// Share out bin counts
-				shared_bin_count[threadIdx.x] = bin_count;
+				// Update shared state
+				shared_bin_count[threadIdx.x] 		= bin_count;
+				shared_bin_active[threadIdx.x] 		= bin_active;
 
 				// Progressively coalesce peer bins having stride 1, 2, 4, 8, etc.
 				#pragma unroll
 				for (int BIT = 0; BIT < SWEEP_RADIX_BITS - 1; BIT++)
 				{
-					// Mask off bins whose indices are not a multiple of current stride * 2
+					// Attempt to merge bins whose indices are a multiple of current stride
 					const int PEER_STRIDE = 1 << BIT;
 					const int MASK = (1 << (BIT + 1)) - 1;
-					if ((threadIdx.x & MASK) == 0)
+					if (bin_active && (threadIdx.x & MASK) == 0)
 					{
-						SizeT coalesced_bin_count = bin_count + shared_bin_count[threadIdx.x + PEER_STRIDE];
-						if (coalesced_bin_count < SINGLE_TILE_ITEMS)
+						SizeT merged_bin_count = bin_count + shared_bin_count[threadIdx.x + PEER_STRIDE];
+
+						if (merged_bin_count < SINGLE_TILE_ITEMS)
 						{
 							// Coalesce peer bin
-							bin_count = coalesced_bin_count;
-							shared_bin_count[threadIdx.x] = bin_count;
-							bin_coalesced[threadIdx.x + PEER_STRIDE] = true;
+							bin_count = merged_bin_count;
+							shared_bin_count[threadIdx.x + PEER_STRIDE] = 0;
 							my_current_bit++;
+
+							// I am still active if the peer was still active
+							bin_active = shared_bin_active[threadIdx.x + PEER_STRIDE];
 						}
 						else
 						{
-							// I could not coalesce my peer; no one can coalesce me now
-							shared_bin_count[threadIdx.x] = SINGLE_TILE_ITEMS;
+							// I could not coalesce my peer; I am no longer active
+							bin_active = false;
 						}
+
+						// Share my state
+						shared_bin_count[threadIdx.x] = bin_count;
+						shared_bin_active[threadIdx.x] = bin_active;
 					}
 
 				}
 
-				// Discard my bin if I was coalesced
-				if (bin_coalesced[threadIdx.x])
+				// Recover my state
+				if (shared_bin_active[threadIdx.x])
 				{
-					bin_count = 0;
+					bin_count = shared_bin_count[threadIdx.x];
 				}
 
 
