@@ -23,10 +23,10 @@
 
 #pragma once
 
+#include "../ns_wrapper.cuh"
 #include "../device_props.cuh"
 #include "../type_utils.cuh"
-#include "../ptx_intrinsics.cuh"
-#include "../ns_wrapper.cuh"
+#include "cta_exchange.cuh"
 #include "cta_radix_rank.cuh"
 
 CUB_NS_PREFIX
@@ -36,35 +36,22 @@ namespace cub {
 /**
  * CTA collective abstraction for sorting keys (unsigned bits) by radix digit.
  *
- * Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
+ * Keys must be in a form suitable for radix ranking (i.e., unsigned integer types).
  */
 template <
-	typename				UnsignedBits,
-	int 					CTA_THREADS,
-	int						KEYS_PER_THREAD,
-	int 					RADIX_BITS,
-	typename 				ValueType = NullType,
-	cudaSharedMemConfig 	SMEM_CONFIG = cudaSharedMemBankSizeFourByte>	// Shared memory bank size
+	typename				KeyType,											/// Key type
+	int 					CTA_THREADS,										/// The CTA size in threads
+	int						ITEMS_PER_THREAD,									/// The number of items per thread
+	typename 				ValueType 		= NullType,							/// (optional) Value type
+	int 					RADIX_BITS 		= 5,								/// (optional) The number of radix bits per digit place
+	cudaSharedMemConfig 	SMEM_CONFIG 	= cudaSharedMemBankSizeFourByte>	/// (optional) Shared memory bank size
 class CtaRadixSort
 {
-private:
-
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
 
-	enum
-	{
-		TILE_ITEMS					= CTA_THREADS * KEYS_PER_THREAD,
-
-		LOG_SMEM_BANKS				= DeviceProps::LOG_SMEM_BANKS,
-		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
-
-		// Insert padding if the number of keys per thread is a power of two
-		PADDING  					= ((KEYS_PER_THREAD & (KEYS_PER_THREAD - 1)) == 0),
-
-		PADDING_ELEMENTS			= (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
-	};
+private:
 
 	// CtaRadixRank utility type
 	typedef CtaRadixRank<
@@ -72,174 +59,434 @@ private:
 		RADIX_BITS,
 		SMEM_CONFIG> CtaRadixRank;
 
+	// CtaExchange utility type for keys
+	typedef CtaExchange<
+		KeyType,
+		CTA_THREADS,
+		ITEMS_PER_THREAD> KeyCtaExchange;
+
+	// CtaExchange utility type for values
+	typedef CtaExchange<
+		ValueType,
+		CTA_THREADS,
+		ITEMS_PER_THREAD> ValueCtaExchange;
+
 public:
 
 	/**
-	 * Shared memory storage layout
+	 * Opaque shared memory storage layout
 	 */
 	struct SmemStorage
 	{
 		union
 		{
-			typename CtaRadixRank::SmemStorage		ranking_storage;
-			struct
-			{
-				UnsignedBits						key_exchange[TILE_ITEMS + PADDING_ELEMENTS];
-//				ValueType 							value_exchange[TILE_ITEMS + PADDING_ELEMENTS];
-			};
+			typename CtaRadixRank::SmemStorage			ranking_storage;
+			typename KeyCtaExchange::SmemStorage		key_xchg_storage;
+			typename ValueCtaExchange::SmemStorage		value_xchg_storage;
 		};
 	};
-
-private:
-
-	//---------------------------------------------------------------------
-	// Template iteration
-	//---------------------------------------------------------------------
-
-	template <typename T>
-	static __device__ __forceinline__ void GatherThreadStride(
-		T items[KEYS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int shared_offset = (threadIdx.x * KEYS_PER_THREAD) + KEY;
-			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
-			items[KEY] = buffer[shared_offset];
-		}
-	}
-
-	template <typename T>
-	static __device__ __forceinline__ void GatherCtaStride(
-		T items[KEYS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int shared_offset = (KEY * CTA_THREADS) + threadIdx.x;
-			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
-			items[KEY] = buffer[shared_offset];
-		}
-	}
-
-	template <typename T>
-	static __device__ __forceinline__ void Scatter(
-		unsigned int 	ranks[KEYS_PER_THREAD],
-		T 				items[KEYS_PER_THREAD],
-		T 				*buffer)
-	{
-		#pragma unroll
-		for (int KEY = 0; KEY < KEYS_PER_THREAD; KEY++)
-		{
-			int shared_offset = ranks[KEY];
-			if (PADDING) shared_offset = SHR_ADD(shared_offset, LOG_SMEM_BANKS, shared_offset);
-
-			buffer[shared_offset] = items[KEY];
-		}
-	}
-
-
-public:
 
 
 	//---------------------------------------------------------------------
 	// Keys-only interface
 	//---------------------------------------------------------------------
 
+public:
+
 	/**
-	 * Keys-only sorting
+	 * Keys-only, least-significant-digit (LSD) radix sorting, "blocked"
+	 * arrangement.
+	 *
+	 * The aggregate set of items is assumed to be ordered across
+	 * threads in "blocked" fashion, i.e., each thread owns an array
+	 * of logically-consecutive items (and consecutive thread ranks own
+	 * logically-consecutive arrays).
 	 */
-	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage			&smem_storage,									// Shared memory storage
-		UnsignedBits 		(&keys)[KEYS_PER_THREAD],
-		unsigned int 		current_bit = 0,								// The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+	static __device__ __forceinline__ void SortBlocked(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
 	{
 		// Radix sorting passes
-
 		while (true)
 		{
-			unsigned int ranks[KEYS_PER_THREAD];
-
 			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
 			CtaRadixRank::RankKeys(
 				smem_storage.ranking_storage,
 				keys,
 				ranks,
 				current_bit);
 
-			__syncthreads();
-
-			// Scatter keys to shared memory
-			Scatter(ranks, keys, smem_storage.key_exchange);
-
-			__syncthreads();
-
 			current_bit += RADIX_BITS;
-			if (current_bit >= bits_remaining) break;
 
-			// Gather keys from shared memory (thread-stride)
-			GatherThreadStride(keys, smem_storage.key_exchange);
+			__syncthreads();
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				break;
+			}
 
 			__syncthreads();
 		}
-
-		// Gather keys from shared memory (CTA-stride)
-		GatherCtaStride(keys, smem_storage.key_exchange);
 	}
 
 
-	//---------------------------------------------------------------------
-	// Keys-value interface
-	//---------------------------------------------------------------------
-
 	/**
-	 * Keys-value sorting
+	 * Keys-only, least-significant-digit (LSD) radix sorting, "CTA-striped"
+	 * arrangement.
+	 *
+	 * The aggregate set of items is assumed to be ordered
+	 * across threads in "CTA-striped" fashion, i.e., each thread owns
+	 * an array of items having logical stride CTA_THREADS between each item
+	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
+	 * thread-1, and so on).
 	 */
-	static __device__ __forceinline__ void SortThreadToCtaStride(
-		SmemStorage			&smem_storage,									// Shared memory storage
-		UnsignedBits 		(&keys)[KEYS_PER_THREAD],
-		ValueType	 		(&values)[KEYS_PER_THREAD],
-		unsigned int 		current_bit = 0,								// The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(UnsignedBits) * 8)		// The number of bits needed for key comparison
+	static __device__ __forceinline__ void SortStriped(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
 	{
-		// Radix sorting passes
+		// Transpose keys from "CTA-striped" to "blocked" arrangement
+		KeyCtaExchange::TransposeStripedBlocked(
+			smem_storage.key_xchg_storage,
+			keys);
 
+		__syncthreads();
+
+		// Radix sorting passes
 		while (true)
 		{
-			unsigned int ranks[KEYS_PER_THREAD];
-
 			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
 			CtaRadixRank::RankKeys(
 				smem_storage.ranking_storage,
 				keys,
 				ranks,
 				current_bit);
 
-			__syncthreads();
-
-			// Scatter keys and values to shared memory
-			Scatter(ranks, keys, smem_storage.key_exchange);
-			Scatter(ranks, values, smem_storage.value_exchange);
-
-			__syncthreads();
-
 			current_bit += RADIX_BITS;
-			if (current_bit >= bits_remaining) break;
 
-			// Gather keys and values from shared memory (thread-stride)
-			GatherThreadStride(keys, smem_storage.key_exchange);
-			GatherThreadStride(values, smem_storage.value_exchange);
+			__syncthreads();
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				// Exchange keys through shared memory in "striped" arrangement
+				KeyCtaExchange::ScatterGatherStriped(
+					smem_storage.key_xchg_storage,
+					keys,
+					ranks);
+
+				break;
+			}
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
 
 			__syncthreads();
 		}
-
-		// Gather keys and values from shared memory (CTA-stride)
-		GatherCtaStride(keys, smem_storage.key_exchange);
-		GatherCtaStride(values, smem_storage.value_exchange);
 	}
+
+
+	/**
+	 * Keys-only, least-significant-digit (LSD) radix sorting, "blocked"
+	 * arrangement (input) --> "CTA-striped" arrangement (output).
+	 *
+	 * As input, the aggregate set of items is assumed to be ordered across
+	 * threads in "blocked" fashion, i.e., each thread owns an array
+	 * of logically-consecutive items (and consecutive thread ranks own
+	 * logically-consecutive arrays).
+	 *
+	 * As output, the aggregate set of items is assumed to be ordered
+	 * across threads in "CTA-striped" fashion, i.e., each thread owns an
+	 * array of items having logical stride CTA_THREADS between each item
+	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
+	 * thread-1, and so on).
+	 */
+	static __device__ __forceinline__ void SortBlockedToStriped(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
+	{
+		// Radix sorting passes
+		while (true)
+		{
+			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
+			CtaRadixRank::RankKeys(
+				smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			current_bit += RADIX_BITS;
+
+			__syncthreads();
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				// Exchange keys through shared memory in "striped" arrangement
+				KeyCtaExchange::ScatterGatherStriped(
+					smem_storage.key_xchg_storage,
+					keys,
+					ranks);
+
+				break;
+			}
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
+
+			__syncthreads();
+		}
+	}
+
+
+	//---------------------------------------------------------------------
+	// Key-value pairs interface
+	//---------------------------------------------------------------------
+
+public:
+
+	/**
+	 * Key-value pairs, least-significant-digit (LSD) radix sorting, "blocked"
+	 * arrangement.
+	 *
+	 * The aggregate set of items is assumed to be ordered across
+	 * threads in "blocked" fashion, i.e., each thread owns an array
+	 * of logically-consecutive items (and consecutive thread ranks own
+	 * logically-consecutive arrays).
+	 */
+	static __device__ __forceinline__ void SortBlocked(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		ValueType 			values[ITEMS_PER_THREAD],					/// (in/out) Values to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
+	{
+		// Radix sorting passes
+		while (true)
+		{
+			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
+			CtaRadixRank::RankKeys(
+				smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			current_bit += RADIX_BITS;
+
+			__syncthreads();
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
+
+			__syncthreads();
+
+			// Exchange values through shared memory in "blocked" arrangement
+			ValueCtaExchange::ScatterGatherBlocked(
+				smem_storage.value_xchg_storage,
+				values,
+				ranks);
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				break;
+			}
+
+			__syncthreads();
+		}
+	}
+
+
+	/**
+	 * Key-value pairs, least-significant-digit (LSD) radix sorting, "CTA-striped"
+	 * arrangement.
+	 *
+	 * The aggregate set of items is assumed to be ordered across threads in
+	 * "CTA-striped" fashion, i.e., each thread owns an array of items having
+	 * logical stride CTA_THREADS between each item (e.g., items[0] in
+	 * thread-0 is logically followed by items[0] in thread-1, and so on).
+	 */
+	static __device__ __forceinline__ void SortStriped(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		ValueType 			values[ITEMS_PER_THREAD],					/// (in/out) Values to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
+	{
+		// Transpose keys from "CTA-striped" to "blocked" arrangement
+		KeyCtaExchange::TransposeStripedBlocked(
+			smem_storage.key_xchg_storage,
+			keys);
+
+		__syncthreads();
+
+		// Transpose values from "CTA-striped" to "blocked" arrangement
+		KeyCtaExchange::TransposeStripedBlocked(
+			smem_storage.key_xchg_storage,
+			keys);
+
+		__syncthreads();
+
+		// Radix sorting passes
+		while (true)
+		{
+			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
+			CtaRadixRank::RankKeys(
+				smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			current_bit += RADIX_BITS;
+
+			__syncthreads();
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				// Exchange keys through shared memory in "striped" arrangement
+				KeyCtaExchange::ScatterGatherStriped(
+					smem_storage.key_xchg_storage,
+					keys,
+					ranks);
+
+				__syncthreads();
+
+				// Exchange values through shared memory in "striped" arrangement
+				ValueCtaExchange::ScatterGatherStriped(
+					smem_storage.value_xchg_storage,
+					values,
+					ranks);
+
+				break;
+			}
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
+
+			__syncthreads();
+
+			// Exchange values through shared memory in "blocked" arrangement
+			ValueCtaExchange::ScatterGatherBlocked(
+				smem_storage.value_xchg_storage,
+				values,
+				ranks);
+
+			__syncthreads();
+		}
+	}
+
+
+	/**
+	 * Key-value pairs, least-significant-digit (LSD) radix sorting, "blocked"
+	 * arrangement (input) --> "CTA-striped" arrangement (output).
+	 *
+	 * As input, the aggregate set of items is assumed to be ordered across
+	 * threads in "blocked" fashion, i.e., each thread owns an array
+	 * of logically-consecutive items (and consecutive thread ranks own
+	 * logically-consecutive arrays).
+	 *
+	 * As output, the aggregate set of items is assumed to be ordered
+	 * across threads in "CTA-striped" fashion, i.e., each thread owns an
+	 * array of items having logical stride CTA_THREADS between each item
+	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
+	 * thread-1, and so on).
+	 */
+	static __device__ __forceinline__ void SortBlockedToStriped(
+		SmemStorage			&smem_storage,								/// (opaque) Shared memory storage
+		KeyType 			keys[ITEMS_PER_THREAD],						/// (in/out) Keys to sort
+		ValueType 			values[ITEMS_PER_THREAD],					/// (in/out) Values to sort
+		unsigned int 		current_bit = 0,							/// (in, optional) The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		/// (in, optional) The number of bits needed for key comparison
+	{
+		// Radix sorting passes
+		while (true)
+		{
+			// Rank the keys within the CTA
+			unsigned int ranks[ITEMS_PER_THREAD];
+
+			CtaRadixRank::RankKeys(
+				smem_storage.ranking_storage,
+				keys,
+				ranks,
+				current_bit);
+
+			current_bit += RADIX_BITS;
+
+			__syncthreads();
+
+			// Check if done
+			if (current_bit >= bits_remaining)
+			{
+				// Exchange keys through shared memory in "striped" arrangement
+				KeyCtaExchange::ScatterGatherStriped(
+					smem_storage.key_xchg_storage,
+					keys,
+					ranks);
+
+				__syncthreads();
+
+				// Exchange values through shared memory in "striped" arrangement
+				ValueCtaExchange::ScatterGatherStriped(
+					smem_storage.value_xchg_storage,
+					values,
+					ranks);
+
+				break;
+			}
+
+			// Exchange keys through shared memory in "blocked" arrangement
+			KeyCtaExchange::ScatterGatherBlocked(
+				smem_storage.key_xchg_storage,
+				keys,
+				ranks);
+
+			__syncthreads();
+
+			// Exchange values through shared memory in "blocked" arrangement
+			ValueCtaExchange::ScatterGatherBlocked(
+				smem_storage.value_xchg_storage,
+				values,
+				ranks);
+
+			__syncthreads();
+		}
+	}
+
 };
 
 

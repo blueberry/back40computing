@@ -18,7 +18,41 @@
  ******************************************************************************/
 
 /******************************************************************************
- * Thread utilities for writing memory (optionally using cache modifiers)
+ * Thread utilities for writing memory (optionally using cache modifiers).
+ * Cache modifiers will only be effected for built-in types (i.e., C++
+ * primitives and CUDA vector-types).
+ *
+ * For example:
+ *
+ *     // 32-bit store using cache-global modifier:
+ *
+ *     		int *d_out;
+ *     		int val;
+ *     		ThreadStore<STORE_CG>(d_out + threadIdx.x, val);
+ *
+ *
+ *     // 16-bit store using default modifier
+ *
+ *     		short *d_out;
+ *     		short val;
+ *     		ThreadStore<STORE_NONE>(d_out + threadIdx.x, val);
+ *
+ *
+ *     // 256-bit store using write-through modifier
+ *
+ *     		double4 *d_out;
+ *     		double4 val;
+ *     		ThreadStore<STORE_WT>(d_out + threadIdx.x, val);
+ *
+ *
+ *     // 96-bit store using default cache modifier (ignoring STORE_CS)
+ *
+ *     		struct Foo { bool a; short b; };
+ *     		Foo *d_struct;
+ *     		Foo val;
+ *     		ThreadStore<STORE_CS>(d_out + threadIdx.x, val);
+ *
+ *
  ******************************************************************************/
 
 #pragma once
@@ -48,7 +82,6 @@ enum StoreModifier
 	STORE_CG,					// Cache at global level
 	STORE_CS, 					// Cache streaming (likely to be accessed once)
 	STORE_WT, 					// Cache write-through (to system memory)
-	STORE_GLOBAL_LIMIT,
 
 	// Shared store modifiers
 	STORE_VS,					// Shared-volatile
@@ -79,8 +112,16 @@ struct ThreadStoreDispatch;
 template <StoreModifier MODIFIER>
 struct ThreadStoreDispatch<MODIFIER, true>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
+	{
+		val.ThreadStore<MODIFIER>(ptr);
+	}
+
+	// Iterator
+	template <typename OutputIterator, typename T>
+	static __device__ __forceinline__ void ThreadStore(OutputIterator itr, const T& val)
 	{
 		val.ThreadStore<MODIFIER>(ptr);
 	}
@@ -93,8 +134,19 @@ struct ThreadStoreDispatch<MODIFIER, true>
 template <>
 struct ThreadStoreDispatch<STORE_NONE, false>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
+	{
+		// Straightforward dereference
+		*ptr = val;
+	}
+
+	// Iterator
+	template <
+		typename OutputIterator,
+		typename T>
+	static __device__ __forceinline__ void ThreadStore(OutputIterator itr, const T& val)
 	{
 		// Straightforward dereference
 		*ptr = val;
@@ -108,6 +160,7 @@ struct ThreadStoreDispatch<STORE_NONE, false>
 template <>
 struct ThreadStoreDispatch<STORE_VS, false>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
@@ -118,11 +171,25 @@ struct ThreadStoreDispatch<STORE_VS, false>
 };
 
 
+/**
+ * Generic ThreadStore() operation for output iterators
+ */
+template <
+	StoreModifier MODIFIER,
+	typename OutputIterator,
+	typename T>
+__device__ __forceinline__ void ThreadStore(OutputIterator itr, const T& val)
+{
+	ThreadStoreDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadStore(itr, val);
+}
+
 
 /**
  * Generic ThreadStore() operation.  Further specialized below.
  */
-template <StoreModifier MODIFIER, typename T>
+template <
+	StoreModifier MODIFIER,
+	typename T>
 __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 {
 	ThreadStoreDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadStore(ptr, val);
@@ -354,7 +421,6 @@ __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 /**
  * Expand ThreadStore() implementations for primitive types.
  */
-
 // Signed
 CUB_STORES_0124(char, char, short, s8, h)
 CUB_STORES_0(signed char, short, s8, h)

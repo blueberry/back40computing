@@ -27,25 +27,26 @@
  *     // 32-bit load using cache-global modifier:
  *
  *     		int *d_in;
- *     		int data = ThreadLoad<LOAD_CG>(d_in + threadIdx.x);
+ *     		int val = ThreadLoad<LOAD_CG>(d_in + threadIdx.x);
  *
  *
  *     // 16-bit load using default modifier
  *
  *     		short *d_in;
- *     		short data = ThreadLoad(d_in + threadIdx.x);
+ *     		short val = ThreadLoad<LOAD_NONE>(d_in + threadIdx.x);
  *
  *
  *     // 256-bit load using cache-volatile modifier
  *
  *     		double4 *d_in;
- *     		double4 data = ThreadLoad<LOAD_CV>(d_in + threadIdx.x);
+ *     		double4 val = ThreadLoad<LOAD_CV>(d_in + threadIdx.x);
  *
  *
  *     // 96-bit load using default cache modifier (ignoring LOAD_CS)
  *
- *     		struct Foo { bool a; short b; } *d_struct = NULL;
- *     		Foo data = ThreadLoad<LOAD_CS>(d_in + threadIdx.x);
+ *     		struct Foo { bool a; short b; };
+ *     		Foo *d_struct;
+ *     		Foo val = ThreadLoad<LOAD_CS>(d_in + threadIdx.x);
  *
  *
  ******************************************************************************/
@@ -53,6 +54,8 @@
 #pragma once
 
 #include <cuda.h>
+
+#include <iterator>
 
 #include "../ptx_intrinsics.cuh"
 #include "../type_utils.cuh"
@@ -78,7 +81,6 @@ enum LoadModifier
 	LOAD_CS, 		// Cache streaming (likely to be accessed once)
 	LOAD_CV, 		// Cache as volatile (including cached system lines)
 	LOAD_TEX,		// Texture (defaults to NONE if no tex reference is provided)
-	LOAD_GLOBA_LIMIT,
 
 	// Shared store modifiers
 	LOAD_VS,		// Volatile shared
@@ -109,10 +111,20 @@ struct ThreadLoadDispatch;
 template <LoadModifier MODIFIER>
 struct ThreadLoadDispatch<MODIFIER, true>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ T ThreadLoad(T *ptr)
 	{
 		T val;
+		val.ThreadLoad<MODIFIER>(ptr);
+		return val;
+	}
+
+	// Iterator
+	template <typename InputIterator>
+	static __device__ __forceinline__ typename std::iterator_traits<InputIterator>::value_type ThreadLoad(InputIterator itr)
+	{
+		typename std::iterator_traits<InputIterator>::value_type val;
 		val.ThreadLoad<MODIFIER>(ptr);
 		return val;
 	}
@@ -124,8 +136,17 @@ struct ThreadLoadDispatch<MODIFIER, true>
 template <>
 struct ThreadLoadDispatch<LOAD_NONE, false>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ T ThreadLoad(T *ptr)
+	{
+		// Straightforward dereference
+		return *ptr;
+	}
+
+	// Iterator
+	template <typename InputIterator>
+	static __device__ __forceinline__ typename std::iterator_traits<InputIterator>::value_type ThreadLoad(InputIterator itr)
 	{
 		// Straightforward dereference
 		return *ptr;
@@ -138,6 +159,7 @@ struct ThreadLoadDispatch<LOAD_NONE, false>
 template <>
 struct ThreadLoadDispatch<LOAD_VS, false>
 {
+	// Pointer
 	template <typename T>
 	static __device__ __forceinline__ T ThreadLoad(T *ptr)
 	{
@@ -147,6 +169,7 @@ struct ThreadLoadDispatch<LOAD_VS, false>
 	}
 };
 
+
 /**
  * Generic ThreadLoad() operation.  Further specialized below.
  */
@@ -155,7 +178,6 @@ __device__ __forceinline__ T ThreadLoad(T *ptr)
 {
 	return ThreadLoadDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadLoad(ptr);
 }
-
 
 
 //-----------------------------------------------------------------------------
@@ -440,9 +462,21 @@ CUB_LOADS_4L(double4, double2);
 
 
 /**
+ * Generic ThreadLoad() operation for input iterators.
+ */
+template <
+	LoadModifier MODIFIER,
+	typename InputIterator>
+__device__ __forceinline__ 	typename std::iterator_traits<InputIterator>::value_type ThreadLoad(InputIterator itr)
+{
+	typedef typename std::iterator_traits<InputIterator>::value_type T;
+	return ThreadLoadDispatch<MODIFIER, HasThreadLoad<T>::VALUE>::ThreadLoad(itr);
+}
+
+
+/**
  * Undefine macros
  */
-
 #undef CUB_G_LOAD_0
 #undef CUB_G_LOAD_1
 #undef CUB_G_LOAD_2

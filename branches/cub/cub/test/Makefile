@@ -164,6 +164,17 @@ bin/test_cta_scan_$(SUFFIX) : test_cta_scan.cu $(DEPS)
 
 
 #-------------------------------------------------------------------------------
+# make test_cta_load_store 
+#-------------------------------------------------------------------------------
+
+test_cta_load_store: bin/test_cta_load_store_$(SUFFIX)
+
+bin/test_cta_load_store_$(SUFFIX) : test_cta_load_store.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_load_store_$(SUFFIX) test_cta_load_store.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+	
+	
+#-------------------------------------------------------------------------------
 # make clean
 #-------------------------------------------------------------------------------
 

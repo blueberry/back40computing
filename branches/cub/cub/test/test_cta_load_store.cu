@@ -21,16 +21,26 @@
  * Test of CtaLoad and CtaStore utilities
  ******************************************************************************/
 
+// Ensure printing of CUDA runtime errors to console
 #define CUB_STDERR
 
+#include <iterator>
 #include <stdio.h>
-#include "../cub.cuh"
 #include <test_util.h>
+#include "../cub.cuh"
 
 using namespace cub;
 
+//---------------------------------------------------------------------
+// Globals, constants and typedefs
+//---------------------------------------------------------------------
+
 bool g_verbose = false;
 
+
+//---------------------------------------------------------------------
+// Test kernels
+//---------------------------------------------------------------------
 
 
 /**
@@ -38,132 +48,328 @@ bool g_verbose = false;
  */
 template <
 	int 			CTA_THREADS,
-	int 			SEGMENTS,
-	int 			ELEMENTS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
 	LoadModifier 	LOAD_MODIFIER,
 	StoreModifier 	STORE_MODIFIER,
-	typename 		T>
-__global__ void UnguardedKernel(T *d_in, T *d_out)
+	typename 		InputIterator,
+	typename 		OutputIterator>
+__launch_bounds__ (CTA_THREADS, 1)
+__global__ void UnguardedKernel(
+	InputIterator d_in,
+	OutputIterator d_out)
 {
-	typedef CtaLoad<CTA_THREADS, LOAD_MODIFIER> 	CtaLoad;
-	typedef CtaStore<CTA_THREADS, STORE_MODIFIER> 	CtaStore;
+	// Data type of input/output iterators
+	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
-	T data[SEGMENTS][ELEMENTS];
+	typedef CtaLoad<
+		InputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		LOAD_MODIFIER> CtaLoad;
+
+	typedef CtaStore<
+		OutputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		STORE_POLICY,
+		STORE_MODIFIER> CtaStore;
+
+	union SmemStorage
+	{
+		typename CtaLoad::SmemStorage 	load;
+		typename CtaStore::SmemStorage 	store;
+	};
+
+	__shared__ SmemStorage smem_storage;
+
+	T data[ITEMS_PER_THREAD];
 
 	// Load data
-	CtaLoad::LoadUnguarded(data, d_in, 0);
+	CtaLoad::Load(smem_storage.load, data, d_in, 0);
 
 	__syncthreads();
 
 	// Store data
-	CtaStore::StoreUnguarded(data, d_out, 0);
+	CtaStore::Store(smem_storage.store, data, d_out, 0);
 }
 
 
 /**
- * Test guarded load/store kernel.
- */
+ * Test guarded-by-range load/store kernel.
+ * /
 template <
 	int 			CTA_THREADS,
-	int 			SEGMENTS,
-	int 			ELEMENTS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
 	LoadModifier 	LOAD_MODIFIER,
 	StoreModifier 	STORE_MODIFIER,
-	typename 		T>
-__global__ void GuardedKernel(
-	T *d_in,
-	T *d_out,
-	bool *d_flags,
+	typename 		InputIterator,
+	typename 		OutputIterator>
+__global__ void GuardedRangeKernel(
+	T d_in,
+	T d_out,
 	int num_elements)
 {
-	typedef CtaLoad<CTA_THREADS, LOAD_MODIFIER> 	CtaLoad;
-	typedef CtaStore<CTA_THREADS, STORE_MODIFIER> 	CtaStore;
+	// Data type of input/output iterators
+	typedef typename std::iterator_traits<InputIterator>::value_type T;
 
-	T 		data[SEGMENTS][ELEMENTS];
-	bool 	flags[SEGMENTS][ELEMENTS];
+	typedef CtaLoad<
+		InputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		LOAD_MODIFIER>			CtaLoad;
+
+	typedef CtaStore<
+		OutputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		STORE_POLICY,
+		STORE_MODIFIER>			CtaStore;
+
+	union SmemStorage
+	{
+		typename CtaLoad::SmemStorage 	load;
+		typename CtaStore::SmemStorage 	store;
+	};
+
+	__shared__ SmemStorage smem_storage;
+
+	T data[ITEMS_PER_THREAD];
 
 	// Load data
-	CtaLoad::LoadGuarded(flags, data, d_in, 0, num_elements);
+	CtaLoad::Load(smem_storage.load, data, d_in, 0, num_elements);
 
 	__syncthreads();
 
 	// Store data
-	CtaStore::StoreGuarded(data, d_out, 0, num_elements);
-
-	// Store flags
-	CtaStore::StoreUnguarded(flags, d_flags, 0);
+	CtaStore::Store(smem_storage.store, data, d_out, 0, num_elements);
 }
 
 
+/* *
+ * Test guarded-by-flag load/store kernel.
+ * /
+template <
+	int 			CTA_THREADS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
+	LoadModifier 	LOAD_MODIFIER,
+	StoreModifier 	STORE_MODIFIER,
+	typename 		InputIterator,
+	typename 		OutputIterator,
+	typename		Flag>
+__global__ void GuardedFlagKernel(
+	InputIterator 	d_in,
+	OutputIterator 	d_out,
+	Flag 			*d_flags)
+{
+	typedef CtaLoad<
+		InputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		LOAD_MODIFIER>			CtaLoad;
+
+	typedef CtaLoad<
+		Flag*,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		LOAD_MODIFIER>			CtaLoadFlags;
+
+	typedef CtaStore<
+		OutputIterator,
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		STORE_POLICY,
+		STORE_MODIFIER>			CtaStore;
+
+	union SmemStorage
+	{
+		typename CtaLoad::SmemStorage 		load;
+		typename CtaLoadFlags::SmemStorage 	load_flags;
+		typename CtaStore::SmemStorage 		store;
+	};
+
+	__shared__ SmemStorage smem_storage;
+
+	T 		data[ITEMS_PER_THREAD];
+	Flag 	flags[ITEMS_PER_THREAD];
+
+	// Load flags
+	CtaLoad::Load(smem_storage.load_flags, flags, d_flags, 0);
+
+	__syncthreads();
+
+	// Load data
+	CtaLoad::Load(smem_storage.load, data, d_in, 0, flags);
+
+	__syncthreads();
+
+	// Store data
+	CtaStore::Store(smem_storage.store, data, d_out, 0, flags);
+}
+
+
+//---------------------------------------------------------------------
+// Host testing subroutines
+//---------------------------------------------------------------------
+
+*/
 
 /**
  * Test unguarded load/store
  */
 template <
+	typename 		T,
 	int 			CTA_THREADS,
-	int 			SEGMENTS,
-	int 			ELEMENTS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
 	LoadModifier 	LOAD_MODIFIER,
-	StoreModifier 	STORE_MODIFIER,
-	typename 		T>
-void TestUnguarded()
+	StoreModifier 	STORE_MODIFIER>
+void TestUnguardedKernel()
 {
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
 	// Allocate host arrays
-	T h_in[CTA_THREADS];
+	T h_in[TILE_SIZE];
 
 	// Initialize problem (and solution)
-	for (int i = 0; i < CTA_THREADS; ++i)
+	for (int i = 0; i < TILE_SIZE; ++i)
 	{
 		RandomBits(h_in[i]);
+//		h_in[i] = i;
 	}
 
 	// Initialize device arrays
 	T *d_in = NULL;
 	T *d_out = NULL;
-	DebugExit(cudaMalloc((void**)&d_in, sizeof(T) * CTA_THREADS));
-	DebugExit(cudaMalloc((void**)&d_out, sizeof(T) * CTA_THREADS));
-	DebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * CTA_THREADS, cudaMemcpyHostToDevice));
+	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
-	printf("Unguarded test "
+	printf("TestUnguardedKernel "
 		"CTA_THREADS(%d) "
-		"SEGMENTS(%d) "
-		"ELEMENTS(%d) "
+		"ITEMS_PER_THREAD(%d) "
+		"LOAD_POLICY(%d) "
+		"STORE_POLICY(%d) "
 		"LOAD_MODIFIER(%d) "
 		"STORE_MODIFIER(%d) "
 		"sizeof(T)(%d):\n\t ",
-			CTA_THREADS, SEGMENTS, ELEMENTS, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
+			CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
 
 	// Run kernel
-	UnguardedKernel<CTA_THREADS, SEGMENTS, ELEMENTS, LOAD_MODIFIER, STORE_MODIFIER>
-		<<<1, CTA_THREADS>>>(d_in, d_out);
+	UnguardedKernel<
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		STORE_POLICY,
+		LOAD_MODIFIER,
+		STORE_MODIFIER>
+			<<<1, CTA_THREADS>>>(d_in, d_out);
 
-	DebugExit(cudaDeviceSynchronize());
+	CubDebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
-	AssertEquals(0, CompareDeviceResults(h_in, d_out, CTA_THREADS, g_verbose, g_verbose));
+	AssertEquals(0, CompareDeviceResults(h_in, d_out, TILE_SIZE, g_verbose, g_verbose));
 	printf("\n");
 
 	// Cleanup
-	if (d_in) DebugExit(cudaFree(d_in));
-	if (d_out) DebugExit(cudaFree(d_out));
+	if (d_in) CubDebugExit(cudaFree(d_in));
+	if (d_out) CubDebugExit(cudaFree(d_out));
 }
 
 
 /**
  * Test guarded load/store
- */
+ * /
 template <
+	typename 		T,
 	int 			CTA_THREADS,
-	int 			SEGMENTS,
-	int 			ELEMENTS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
 	LoadModifier 	LOAD_MODIFIER,
-	StoreModifier 	STORE_MODIFIER,
-	typename 		T>
-void TestGuarded(int num_elements)
+	StoreModifier 	STORE_MODIFIER>
+void TestGuardedRangeKernel(int num_elements)
 {
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
 	// Allocate host arrays
-	T 		h_in[CTA_THREADS];
-	bool 	h_flags[CTA_THREADS];
+	T h_in[TILE_SIZE];
+
+	// Initialize problem (and solution)
+	for (int i = 0; i < TILE_SIZE; ++i)
+	{
+		RandomBits(h_in[i]);
+	}
+
+	// Initialize device arrays
+	T 		*d_in = NULL;
+	T 		*d_out = NULL;
+
+	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
+
+	printf("TestGuardedRangeKernel "
+		"num_elements(%d) "
+		"CTA_THREADS(%d) "
+		"ITEMS_PER_THREAD(%d) "
+		"LOAD_POLICY(%d) "
+		"STORE_POLICY(%d) "
+		"LOAD_MODIFIER(%d) "
+		"STORE_MODIFIER(%d) "
+		"sizeof(T)(%d):\n\t ",
+			num_elements, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
+
+	// Run kernel
+	GuardedRangeKernel<
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		STORE_POLICY,
+		LOAD_MODIFIER,
+		STORE_MODIFIER>
+			<<<1, CTA_THREADS>>>(d_in, d_out, num_elements);
+
+	CubDebugExit(cudaDeviceSynchronize());
+
+	// Copy out and display results
+	AssertEquals(0, CompareDeviceResults(h_in, d_out, num_elements, g_verbose, g_verbose));
+	printf("\n\t");
+
+	// Cleanup
+	if (d_in) CubDebugExit(cudaFree(d_in));
+	if (d_out) CubDebugExit(cudaFree(d_out));
+}
+
+
+/* *
+ * Test guarded load/store
+ * /
+template <
+	typename 		T,
+	int 			CTA_THREADS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
+	LoadModifier 	LOAD_MODIFIER,
+	StoreModifier 	STORE_MODIFIER>
+void TestGuardedFlagKernel(int num_elements)
+{
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
+	// Allocate host arrays
+	T 		h_in[TILE_SIZE];
+	bool 	h_flags[TILE_SIZE];
 
 	// Initialize problem (and solution)
 	for (int i = 0; i < CTA_THREADS; ++i)
@@ -177,39 +383,121 @@ void TestGuarded(int num_elements)
 	T 		*d_out = NULL;
 	bool 	*d_flags = NULL;
 
-	DebugExit(cudaMalloc((void**)&d_in, sizeof(T) * CTA_THREADS));
-	DebugExit(cudaMalloc((void**)&d_out, sizeof(T) * CTA_THREADS));
-	DebugExit(cudaMalloc((void**)&d_flags, sizeof(bool) * CTA_THREADS));
-	DebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * CTA_THREADS, cudaMemcpyHostToDevice));
+	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * TILE_SIZE));
+	CubDebugExit(cudaMalloc((void**)&d_flags, sizeof(bool) * TILE_SIZE));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
-	printf("Guarded test "
+	printf("TestGuardedFlagKernel "
+		"num_elements(%d) "
 		"CTA_THREADS(%d) "
-		"SEGMENTS(%d) "
-		"ELEMENTS(%d) "
+		"ITEMS_PER_THREAD(%d) "
+		"LOAD_POLICY(%d) "
+		"STORE_POLICY(%d) "
 		"LOAD_MODIFIER(%d) "
 		"STORE_MODIFIER(%d) "
-		"sizeof(T)(%d):\n\t",
-			CTA_THREADS, SEGMENTS, ELEMENTS, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
+		"sizeof(T)(%d):\n\t ",
+			num_elements, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER, (int) sizeof(T));
 
 	// Run kernel
-	GuardedKernel<CTA_THREADS, SEGMENTS, ELEMENTS, LOAD_MODIFIER, STORE_MODIFIER>
-		<<<1, CTA_THREADS>>>(d_in, d_out, d_flags, num_elements);
+	GuardedFlagKernel<
+		CTA_THREADS,
+		ITEMS_PER_THREAD,
+		LOAD_POLICY,
+		STORE_POLICY,
+		LOAD_MODIFIER,
+		STORE_MODIFIER>
+			<<<1, CTA_THREADS>>>(d_in, d_out, d_flags);
 
-	DebugExit(cudaDeviceSynchronize());
+	CubDebugExit(cudaDeviceSynchronize());
 
 	// Copy out and display results
 	AssertEquals(0, CompareDeviceResults(h_in, d_out, num_elements, g_verbose, g_verbose));
 	printf("\n\t");
 
-	AssertEquals(0, CompareDeviceResults(h_flags, d_flags, CTA_THREADS, g_verbose, g_verbose));
-	printf("\n");
-
 	// Cleanup
-	if (d_in) DebugExit(cudaFree(d_in));
-	if (d_out) DebugExit(cudaFree(d_out));
-	if (d_flags) DebugExit(cudaFree(d_flags));
+	if (d_in) CubDebugExit(cudaFree(d_in));
+	if (d_out) CubDebugExit(cudaFree(d_out));
+	if (d_flags) CubDebugExit(cudaFree(d_flags));
+}
+*/
+
+
+/**
+ * Evaluate different LoadTile variants
+ */
+template <
+	typename 		T,
+	int 			CTA_THREADS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY,
+	LoadModifier 	LOAD_MODIFIER,
+	StoreModifier 	STORE_MODIFIER>
+void TestVariants()
+{
+    TestUnguardedKernel<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_MODIFIER, STORE_MODIFIER>();
 }
 
+
+/**
+ * Evaluate different cache modifiers
+ */
+template <
+	typename 		T,
+	int 			CTA_THREADS,
+	int 			ITEMS_PER_THREAD,
+	CtaLoadPolicy 	LOAD_POLICY,
+	CtaStorePolicy 	STORE_POLICY>
+void TestModifiers()
+{
+	TestVariants<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_NONE, STORE_NONE>();
+	TestVariants<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_CG, STORE_CG>();
+	TestVariants<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_CS, STORE_CS>();
+}
+
+
+/**
+ * Evaluate different load/store strategies
+ */
+template <
+	typename 		T,
+	int 			CTA_THREADS,
+	int 			ITEMS_PER_THREAD>
+void TestStrategy()
+{
+	TestModifiers<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_DIRECT, STORE_TILE_DIRECT>();
+	TestModifiers<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_TRANSPOSE, STORE_TILE_TRANSPOSE>();
+	TestModifiers<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_VECTORIZED, STORE_TILE_VECTORIZED>();
+}
+
+
+/**
+ * Evaluate different register blocking
+ */
+template <
+	typename T,
+	int CTA_THREADS>
+void TestItemsPerThread()
+{
+	TestStrategy<T, CTA_THREADS, 1>();
+	TestStrategy<T, CTA_THREADS, 3>();
+	TestStrategy<T, CTA_THREADS, 4>();
+	TestStrategy<T, CTA_THREADS, 8>();
+}
+
+
+/**
+ * Evaluate different CTA sizes
+ */
+template <typename T>
+void TestThreads()
+{
+	TestItemsPerThread<T, 15>();
+	TestItemsPerThread<T, 32>();
+	TestItemsPerThread<T, 96>();
+	TestItemsPerThread<T, 128>();
+}
 
 /**
  * Main
@@ -218,24 +506,28 @@ int main(int argc, char** argv)
 {
     // Initialize command line
     CommandLineArgs args(argc, argv);
-    DeviceInit(args);
     g_verbose = args.CheckCmdLineFlag("v");
 
-    TestUnguarded<128, 2, 2, LOAD_NONE, STORE_NONE, int>();
-    TestUnguarded<128, 2, 2, LOAD_NONE, STORE_NONE, double>();
-    TestUnguarded<128, 2, 2, LOAD_NONE, STORE_NONE, char>();
-    TestUnguarded<128, 2, 2, LOAD_CG, STORE_CS, int>();
+    // Print usage
+    if (args.CheckCmdLineFlag("help"))
+    {
+    	printf("%s "
+    		"[--device=<device-id>] "
+    		"[--v] "
+    		"\n", argv[0]);
+    	exit(0);
+    }
 
-    TestUnguarded<128, 2, 3, LOAD_NONE, STORE_NONE, int>();
-    TestUnguarded<128, 2, 8, LOAD_NONE, STORE_NONE, int>();
-    TestUnguarded<128, 2, 9, LOAD_NONE, STORE_NONE, int>();
+    // Initialize device
+    CubDebugExit(args.DeviceInit());
 
-    TestGuarded<128, 1, 1, LOAD_NONE, STORE_NONE, int>(56);
-    TestGuarded<128, 1, 1, LOAD_CS, STORE_WT, float>(127);
-    TestGuarded<128, 2, 2, LOAD_NONE, STORE_NONE, int>(56);
-    TestGuarded<128, 2, 2, LOAD_CS, STORE_WT, float>(127);
+    // Evaluate different data types
+    TestThreads<int>();
 
-	return 0;
+
+
+
+    return 0;
 }
 
 
