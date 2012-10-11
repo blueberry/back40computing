@@ -125,7 +125,7 @@ struct ThreadLoadDispatch<MODIFIER, true>
 	static __device__ __forceinline__ typename std::iterator_traits<InputIterator>::value_type ThreadLoad(InputIterator itr)
 	{
 		typename std::iterator_traits<InputIterator>::value_type val;
-		val.ThreadLoad<MODIFIER>(ptr);
+		val.ThreadLoad<MODIFIER>(itr);
 		return val;
 	}
 };
@@ -149,7 +149,7 @@ struct ThreadLoadDispatch<LOAD_NONE, false>
 	static __device__ __forceinline__ typename std::iterator_traits<InputIterator>::value_type ThreadLoad(InputIterator itr)
 	{
 		// Straightforward dereference
-		return *ptr;
+		return *itr;
 	}
 };
 

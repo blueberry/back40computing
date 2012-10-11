@@ -123,7 +123,7 @@ struct ThreadStoreDispatch<MODIFIER, true>
 	template <typename OutputIterator, typename T>
 	static __device__ __forceinline__ void ThreadStore(OutputIterator itr, const T& val)
 	{
-		val.ThreadStore<MODIFIER>(ptr);
+		val.ThreadStore<MODIFIER>(itr);
 	}
 };
 
@@ -149,7 +149,7 @@ struct ThreadStoreDispatch<STORE_NONE, false>
 	static __device__ __forceinline__ void ThreadStore(OutputIterator itr, const T& val)
 	{
 		// Straightforward dereference
-		*ptr = val;
+		*itr = val;
 	}
 };
 

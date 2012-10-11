@@ -159,38 +159,6 @@ public:
 			}
 		}
 	}
-
-
-	/**
-	 * Load tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Load(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (out) Data to load
-		InputIterator 	itr,							/// (in) Input iterator for loading from
-		const SizeT 	&cta_offset,					/// (in) Offset in itr at which to load the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Read directly in thread-blocked order
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			if (flags[ITEM])
-			{
-				int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-				items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
-			}
-		}
-	}
-
 };
 
 
@@ -300,41 +268,6 @@ public:
 		// Transpose to CTA-striped order
 		CtaExchange::TransposeStripedBlocked(smem_storage, items);
 	}
-
-
-	/**
-	 * Load tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Load(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (out) Data to load
-		InputIterator 	itr,							/// (in) Input iterator for loading from
-		const SizeT 	&cta_offset,					/// (in) Offset in itr at which to load the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Read in CTA-striped order
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			if (flags[ITEM])
-			{
-				int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-				items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
-			}
-		}
-
-		// Transpose to CTA-striped order
-		CtaExchange::TransposeStripedBlocked(smem_storage, items);
-	}
-
 };
 
 
@@ -460,19 +393,21 @@ public:
 	 * threads in "blocked" fashion, i.e., each thread owns an array
 	 * of logically-consecutive items (and consecutive thread ranks own
 	 * logically-consecutive arrays).
-	 * /
+	 */
 	template <
+		typename _T,									/// (inferred) Value type
+		typename _InputIterator,						/// (inferred) Output iterator type
 		typename SizeT>									/// (inferred) Integer counting type
 	static __device__ __forceinline__ void Load(
 		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (out) Data to load
-		InputIterator 	itr,							/// (in) Input iterator for loading from
+		_T 				items[ITEMS_PER_THREAD],		/// (out) Data to load
+		_InputIterator 	itr,							/// (in) Input iterator for loading from
 		const SizeT 	&cta_offset)					/// (in) Offset in itr at which to load the tile
 	{
 		// Direct-load of individual items
 		CtaLoadSingly::Load(smem_storage.singly_storage, items, itr, cta_offset);
 	}
-*/
+
 
 	/**
 	 * Load tile, guarded by range
@@ -494,30 +429,6 @@ public:
 		// Direct-load of individual items
 		CtaLoadSingly::Load(smem_storage.singly_storage, items, itr, cta_offset, guarded_elements);
 	}
-
-
-	/**
-	 * Load tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Load(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (out) Data to load
-		InputIterator 	itr,							/// (in) Input iterator for loading from
-		SizeT 			cta_offset,						/// (in) Offset in itr at which to load the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Direct-load of individual items
-		CtaLoadSingly::Load(smem_storage.singly_storage, items, itr, cta_offset, flags);
-	}
-
 };
 
 

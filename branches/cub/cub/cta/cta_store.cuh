@@ -159,38 +159,6 @@ public:
 			}
 		}
 	}
-
-
-	/**
-	 * Store tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Store(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (in) Data to store
-		OutputIterator 	itr,							/// (in) Output iterator for storing to
-		const SizeT 	&cta_offset,					/// (in) Offset in itr at which to store the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Write out directly in thread-blocked order
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			if (flags[ITEM])
-			{
-				int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-				ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
-			}
-		}
-	}
-
 };
 
 
@@ -300,41 +268,6 @@ public:
 			}
 		}
 	}
-
-
-	/**
-	 * Store tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Store(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (in) Data to store
-		OutputIterator 	itr,							/// (in) Output iterator for storing to
-		const SizeT 	&cta_offset,					/// (in) Offset in itr at which to store the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Transpose to CTA-striped order
-		CtaExchange::TransposeBlockedStriped(smem_storage, items);
-
-		// Write out in CTA-striped order
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			if (flags[ITEM])
-			{
-				int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-				ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
-			}
-		}
-	}
-
 };
 
 
@@ -461,19 +394,21 @@ public:
 	 * threads in "blocked" fashion, i.e., each thread owns an array
 	 * of logically-consecutive items (and consecutive thread ranks own
 	 * logically-consecutive arrays).
-	 * /
+	 */
 	template <
+		typename _T,									/// (inferred) Value type
+		typename _OutputIterator,						/// (inferred) Output iterator type
 		typename SizeT>									/// (inferred) Integer counting type
 	static __device__ __forceinline__ void Store(
 		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (in) Data to store
-		OutputIterator 	itr,							/// (in) Output iterator for storing to
+		_T 				items[ITEMS_PER_THREAD],		/// (in) Data to store
+		_OutputIterator itr,							/// (in) Output iterator for storing to
 		const SizeT 	&cta_offset)					/// (in) Offset in itr at which to store the tile
 	{
 		// Direct-store of individual items
 		CtaStoreSingly::Store(smem_storage.singly_storage, items, itr, cta_offset);
 	}
-*/
+
 
 	/**
 	 * Store tile, guarded by range
@@ -495,30 +430,6 @@ public:
 		// Direct-store of individual items
 		CtaStoreSingly::Store(smem_storage.singly_storage, items, itr, cta_offset, guarded_elements);
 	}
-
-
-	/**
-	 * Store tile, guarded by flag
-	 *
-	 * The aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	template <
-		typename SizeT,									/// (inferred) Integer counting type
-		typename Flag>									/// (inferred) Validity-flag type
-	static __device__ __forceinline__ void Store(
-		SmemStorage		&smem_storage,					/// (opaque) Shared memory storage
-		T 				items[ITEMS_PER_THREAD],		/// (in) Data to store
-		OutputIterator 	itr,							/// (in) Output iterator for storing to
-		SizeT 			cta_offset,						/// (in) Offset in itr at which to store the tile
-		Flag			flags)							/// (in) Valid flags corresponding to items
-	{
-		// Direct-store of individual items
-		CtaStoreSingly::Store(smem_storage.singly_storage, items, itr, cta_offset, flags);
-	}
-
 };
 
 
