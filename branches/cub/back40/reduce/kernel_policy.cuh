@@ -43,8 +43,8 @@ template <
 	int 			_THREADS,
 	int 			_STRIPS_PER_THREAD,
 	int 			_ELEMENTS_PER_STRIP,
-	LoadModifier 	_LOAD_MODIFIER,
-	StoreModifier 	_STORE_MODIFIER,
+	PtxLoadModifier 	_LOAD_MODIFIER,
+	PtxStoreModifier 	_STORE_MODIFIER,
 	bool 			_WORK_STEALING>
 struct KernelPolicy
 {
@@ -55,8 +55,8 @@ struct KernelPolicy
 		TILE_ITEMS			= THREADS * STRIPS_PER_THREAD * ELEMENTS_PER_STRIP,
 	};
 
-	static const LoadModifier 	LOAD_MODIFIER 	= _LOAD_MODIFIER;
-	static const StoreModifier 	STORE_MODIFIER 	= _STORE_MODIFIER;
+	static const PtxLoadModifier 	LOAD_MODIFIER 	= _LOAD_MODIFIER;
+	static const PtxStoreModifier 	STORE_MODIFIER 	= _STORE_MODIFIER;
 	static const bool 			WORK_STEALING	= _WORK_STEALING;
 };
 

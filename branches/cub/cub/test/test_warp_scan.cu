@@ -141,7 +141,7 @@ struct Bar
 	}
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__
 	void ThreadLoad(Bar *ptr)
 	{
@@ -150,7 +150,7 @@ struct Bar
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);

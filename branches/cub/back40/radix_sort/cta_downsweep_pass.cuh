@@ -56,8 +56,8 @@ template <
 	int 							_CTA_THREADS,			// The number of threads per CTA
 	int 							_THREAD_ITEMS,			// The number of consecutive downsweep keys to process per thread
 	ScatterStrategy 				_SCATTER_STRATEGY,		// Scattering strategy
-	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
-	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
+	cub::PtxLoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::PtxStoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaDownsweepPassPolicy
 {
@@ -70,8 +70,8 @@ struct CtaDownsweepPassPolicy
 	};
 
 	static const ScatterStrategy 		SCATTER_STRATEGY 	= _SCATTER_STRATEGY;
-	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cub::PtxLoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::PtxStoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
 	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
 };
 

@@ -62,14 +62,14 @@ struct VectorType<T, 1>
 	typedef void ThreadStoreTag;
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__ 	void ThreadLoad(VectorType *ptr)
 	{
 		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(VectorType *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
@@ -90,7 +90,7 @@ struct VectorType<T, 2>
 	typedef void ThreadStoreTag;
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__ void ThreadLoad(VectorType *ptr)
 	{
 		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
@@ -98,7 +98,7 @@ struct VectorType<T, 2>
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(VectorType *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
@@ -121,7 +121,7 @@ struct VectorType<T, 3>
 	typedef void ThreadStoreTag;
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__ void ThreadLoad(VectorType *ptr)
 	{
 		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
@@ -130,7 +130,7 @@ struct VectorType<T, 3>
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(VectorType *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
@@ -156,7 +156,7 @@ struct VectorType<T, 4>
 	typedef void ThreadStoreTag;
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__ void ThreadLoad(VectorType *ptr)
 	{
 		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
@@ -166,7 +166,7 @@ struct VectorType<T, 4>
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(VectorType *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);

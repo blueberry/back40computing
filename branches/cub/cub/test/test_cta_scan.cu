@@ -141,7 +141,7 @@ struct Bar
 	}
 
 	// ThreadLoad
-	template <LoadModifier MODIFIER>
+	template <PtxLoadModifier MODIFIER>
 	__device__ __forceinline__
 	void ThreadLoad(Bar *ptr)
 	{
@@ -150,7 +150,7 @@ struct Bar
 	}
 
 	 // ThreadStore
-	template <StoreModifier MODIFIER>
+	template <PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
@@ -185,12 +185,11 @@ void InitValue(int gen_mode, Bar &value, int index = 0)
 //---------------------------------------------------------------------
 
 /**
- * Exclusive CtaScan test kernel.
+ * CtaScan test kernel (specialized for exclusive scan with identity value).
  */
 template <
 	int 		CTA_THREADS,
-	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_STRIP,
+	int			ITEMS_PER_THREAD,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp,
@@ -210,55 +209,56 @@ __global__ void CtaScanKernel(
 	__shared__ typename CtaScan::SmemStorage smem_storage;
 
 	// Per-thread tile data
-	T data[STRIPS_PER_TILE][ITEMS_PER_STRIP];
+	T aggregate;
+	clock_t cycles;
+	T data[ITEMS_PER_THREAD];
 
 	// Load items
-	CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, 0);
+	CtaLoadDirect<CTA_THREADS>(data, d_in, 0);
 
-	// Record elapsed clocks
-	clock_t start = clock();
-
-
-//	T aggregate;
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
+		cycles = clock();
 		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
+		cycles = clock() - start;
 	}
-/*	else if (TEST_MODE == AGGREGATE)
+	else if (TEST_MODE == AGGREGATE)
 	{
 		// Test with cumulative aggregate
+		cycles = clock();
 		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
+		cycles = clock() - start;
 	}
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
+		cycles = clock();
 		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
+		cycles = clock() - start;
 	}
-*/
+
 	// Record elapsed clocks
-	*d_elapsed = clock() - start;
+	*d_elapsed = cycles;
 
 	// Store data
-	CtaStore<CTA_THREADS>::StoreUnguarded(data, d_out, 0);
+	CtaStoreDirect<CTA_THREADS>(data, d_out, 0);
 
-/*
 	// Store aggregate
 	if (threadIdx.x == 0)
 	{
 		d_out[blockDim.x] = aggregate;
 	}
-*/
 }
 
 
 /**
- * Inclusive CtaScan test kernel.
+ * CtaScan test kernel (specialized for inclusive scan without identity value).
  */
 template <
 	int 		CTA_THREADS,
 	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_STRIP,
+	int			ITEMS_PER_THREAD,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp>
@@ -283,7 +283,6 @@ __global__ void CtaScanKernel(
 	clock_t start = clock();
 
 	T aggregate;
-/*
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
@@ -299,7 +298,7 @@ __global__ void CtaScanKernel(
 		// Test with warp-prefix and cumulative aggregate
 		CtaScan::InclusiveScan(smem_storage, data, data, scan_op, aggregate, prefix);
 	}
-*/
+
 	// Record elapsed clocks
 	*d_elapsed = clock() - start;
 
@@ -389,7 +388,7 @@ T Initialize(
 template <
 	int 		CTA_THREADS,
 	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_STRIP,
+	int			ITEMS_PER_THREAD,
 	TestMode 	TEST_MODE,
 	typename 	ScanOp,
 	typename 	IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
@@ -401,7 +400,7 @@ void Test(
 	T			prefix,
 	char		*type_string)
 {
-	const int TILE_SIZE = CTA_THREADS * STRIPS_PER_TILE * ITEMS_PER_STRIP;
+	const int TILE_SIZE = CTA_THREADS * STRIPS_PER_TILE * ITEMS_PER_THREAD;
 
 	// Allocate host arrays
 	T *h_in = new T[TILE_SIZE];
@@ -431,7 +430,7 @@ void Test(
 	fflush(stdout);
 
 	// Run aggregate/prefix kernel
-	CtaScanKernel<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, TEST_MODE><<<1, CTA_THREADS>>>(
+	CtaScanKernel<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE><<<1, CTA_THREADS>>>(
 		d_in,
 		d_out,
 		scan_op,
@@ -474,7 +473,7 @@ void Test(
 template <
 	int 		CTA_THREADS,
 	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_STRIP,
+	int			ITEMS_PER_THREAD,
 	typename 	ScanOp,
 	typename 	T>
 void Test(
@@ -485,50 +484,50 @@ void Test(
 	char *		type_string)
 {
 	// Exclusive
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, BASIC>(gen_mode, scan_op, identity, prefix, type_string);
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, BASIC>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, PREFIX_AGGREGATE>(gen_mode, scan_op, identity, prefix, type_string);
 
 	// Inclusive
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, BASIC>(gen_mode, scan_op, NullType(), prefix, type_string);
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, BASIC>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
+	Test<CTA_THREADS, ITEMS_PER_THREAD, PREFIX_AGGREGATE>(gen_mode, scan_op, NullType(), prefix, type_string);
 }
 
 
 /**
  * Run battery of tests for different data types and scan ops
  */
-template <int CTA_THREADS, int STRIPS_PER_TILE, int ITEMS_PER_STRIP>
+template <int CTA_THREADS, int int ITEMS_PER_THREAD>
 void Test(int gen_mode)
 {
 	// primitive
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
 
 	// primitive (alternative scan op)
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Max<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Max<unsigned char>(), (unsigned char) 0, (unsigned char) 99, CUB_TYPE_STRING(unsigned char));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Max<unsigned short>(), (unsigned short) 0, (unsigned short) 99, CUB_TYPE_STRING(unsigned short));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Max<unsigned int>(), (unsigned int) 0, (unsigned int) 99, CUB_TYPE_STRING(unsigned int));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Max<unsigned long long>(), (unsigned long long) 0, (unsigned long long) 99, CUB_TYPE_STRING(unsigned long long));
 
 	// vec-2
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uchar2>(), make_uchar2(0, 0), make_uchar2(17, 21), CUB_TYPE_STRING(uchar2));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ushort2>(), make_ushort2(0, 0), make_ushort2(17, 21), CUB_TYPE_STRING(ushort2));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uint2>(), make_uint2(0, 0), make_uint2(17, 21), CUB_TYPE_STRING(uint2));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ulonglong2>(), make_ulonglong2(0, 0), make_ulonglong2(17, 21), CUB_TYPE_STRING(ulonglong2));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<uchar2>(), make_uchar2(0, 0), make_uchar2(17, 21), CUB_TYPE_STRING(uchar2));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<ushort2>(), make_ushort2(0, 0), make_ushort2(17, 21), CUB_TYPE_STRING(ushort2));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<uint2>(), make_uint2(0, 0), make_uint2(17, 21), CUB_TYPE_STRING(uint2));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<ulonglong2>(), make_ulonglong2(0, 0), make_ulonglong2(17, 21), CUB_TYPE_STRING(ulonglong2));
 
 	// vec-4
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uchar4>(), make_uchar4(0, 0, 0, 0), make_uchar4(17, 21, 32, 85), CUB_TYPE_STRING(uchar4));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ushort4>(), make_ushort4(0, 0, 0, 0), make_ushort4(17, 21, 32, 85), CUB_TYPE_STRING(ushort4));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<uint4>(), make_uint4(0, 0, 0, 0), make_uint4(17, 21, 32, 85), CUB_TYPE_STRING(uint4));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<uchar4>(), make_uchar4(0, 0, 0, 0), make_uchar4(17, 21, 32, 85), CUB_TYPE_STRING(uchar4));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<ushort4>(), make_ushort4(0, 0, 0, 0), make_ushort4(17, 21, 32, 85), CUB_TYPE_STRING(ushort4));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<uint4>(), make_uint4(0, 0, 0, 0), make_uint4(17, 21, 32, 85), CUB_TYPE_STRING(uint4));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<ulonglong4>(), make_ulonglong4(0, 0, 0, 0), make_ulonglong4(17, 21, 32, 85), CUB_TYPE_STRING(ulonglong4));
 
 	// complex
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
-	Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<Foo>(), Foo::MakeFoo(0, 0, 0, 0), Foo::MakeFoo(17, 21, 32, 85), CUB_TYPE_STRING(Foo));
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode, Sum<Bar>(), Bar::MakeBar(0, 0), Bar::MakeBar(17, 21), CUB_TYPE_STRING(Bar));
 }
 
 
@@ -538,12 +537,12 @@ void Test(int gen_mode)
 template <
 	int CTA_THREADS,
 	int STRIPS_PER_TILE,
-	int ITEMS_PER_STRIP>
+	int ITEMS_PER_THREAD>
 void Test()
 {
 	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
 	{
-		Test<CTA_THREADS, STRIPS_PER_TILE, ITEMS_PER_STRIP>(gen_mode);
+		Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode);
 	}
 }
 

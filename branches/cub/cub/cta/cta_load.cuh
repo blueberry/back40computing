@@ -41,13 +41,13 @@ namespace cub {
 //-----------------------------------------------------------------------------
 
 /**
- * Policy for optimizing "block-arranged"
+ * Tuning policy for coalescing CTA tile-loading
  */
 enum CtaLoadPolicy
 {
-	LOAD_TILE_DIRECT,			/// Reads consecutive thread-items directly from the input
-	LOAD_TILE_TRANSPOSE,		/// Reads CTA-striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
-	LOAD_TILE_VECTORIZED,		/// Attempts to use CUDA's built-in vectorized items as a coalescing optimization
+	CTA_LOAD_DIRECT,			/// Reads consecutive thread-items directly from the input
+	CTA_LOAD_TRANSPOSE,		/// Reads CTA-striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
+	CTA_LOAD_VECTORIZE,		/// Attempts to use CUDA's built-in vectorized items as a coalescing optimization
 };
 
 
@@ -62,14 +62,14 @@ template <
 	typename 		InputIterator,						/// Input iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	CtaLoadPolicy	POLICY 		= LOAD_TILE_DIRECT,		/// (optional) CTA load policy
-	LoadModifier 	MODIFIER 	= LOAD_NONE>			/// (optional) Cache modifier (e.g., LOAD_NONE/LOAD_WB/LOAD_CG/LOAD_CS/LOAD_WT/etc.)
+	CtaLoadPolicy	POLICY 		= CTA_LOAD_DIRECT,		/// (optional) CTA load tuning policy
+	PtxLoadModifier 	MODIFIER 	= PTX_LOAD_NONE>			/// (optional) Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
 class CtaLoad;
 
 
 
 //-----------------------------------------------------------------------------
-// CtaLoad abstraction specialized for LOAD_TILE_DIRECT policy
+// CtaLoad abstraction specialized for CTA_LOAD_DIRECT policy
 //-----------------------------------------------------------------------------
 
 /**
@@ -81,8 +81,8 @@ template <
 	typename 		InputIterator,						/// Input iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	LoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., LOAD_NONE/LOAD_WB/LOAD_CG/LOAD_CS/LOAD_WT/etc.)
-class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_DIRECT, MODIFIER>
+	PtxLoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
+class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -162,10 +162,86 @@ public:
 };
 
 
+/**
+ * CTA load direct interface
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	PtxLoadModifier 	MODIFIER,						/// Cache load modifier Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaLoadDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 	itr,							/// (in) Input iterator for loading from
+	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to load the tile
+{
+	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoad;
+	CtaLoad::Load(CtaLoad::SmemStorage(), items, itr, cta_offset);
+}
+
+
+/**
+ * CTA load direct interface
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaLoadDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 	itr,							/// (in) Input iterator for loading from
+	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to load the tile
+{
+	CtaLoadDirect<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset);
+}
+
+/**
+ * CTA load direct interface, guarded by range
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	PtxLoadModifier 	MODIFIER,						/// Cache load modifier Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaLoadDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 	itr,							/// (in) Input iterator for loading from
+	const SizeT 	&cta_offset,					/// (in) Offset in itr at which to load the tile
+	const SizeT 	&guarded_elements)				/// (in) Number of valid items in the tile
+{
+	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoad;
+	CtaLoad::Load(CtaLoad::SmemStorage(), items, itr, cta_offset, guarded_elements);
+}
+
+
+/**
+ * CTA load direct interface, guarded by range
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaLoadDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 	itr,							/// (in) Input iterator for loading from
+	const SizeT 	&cta_offset,					/// (in) Offset in itr at which to load the tile
+	const SizeT 	&guarded_elements)				/// (in) Number of valid items in the tile
+{
+	CtaLoadDirect<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+}
+
 
 
 //-----------------------------------------------------------------------------
-// CtaLoad abstraction specialized for LOAD_TILE_TRANSPOSE policy
+// CtaLoad abstraction specialized for CTA_LOAD_TRANSPOSE policy
 //-----------------------------------------------------------------------------
 
 /**
@@ -178,8 +254,8 @@ template <
 	typename 		InputIterator,						/// Input iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	LoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., LOAD_NONE/LOAD_WB/LOAD_CG/LOAD_CS/LOAD_WT/etc.)
-class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_TRANSPOSE, MODIFIER>
+	PtxLoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
+class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_TRANSPOSE, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -272,7 +348,7 @@ public:
 
 
 //-----------------------------------------------------------------------------
-// CtaLoad abstraction specialized for LOAD_TILE_VECTORIZED
+// CtaLoad abstraction specialized for CTA_LOAD_VECTORIZE
 //-----------------------------------------------------------------------------
 
 /**
@@ -280,7 +356,7 @@ public:
  *
  * Specialized to minimize load instruction overhead using CUDA's built-in
  * vectorized items as a read-coalescing optimization.  This implementation
- * resorts to LOAD_TILE_DIRECT behavior if:
+ * resorts to CTA_LOAD_DIRECT behavior if:
  * 		(a) The input iterator type is not a native pointer type
  * 		(b) The input pointer is not not quad-item aligned
  * 		(c) The input is guarded
@@ -289,8 +365,8 @@ template <
 	typename 		InputIterator,						/// Input iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	LoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., LOAD_NONE/LOAD_WB/LOAD_CG/LOAD_CS/LOAD_WT/etc.)
-class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_VECTORIZED, MODIFIER>
+	PtxLoadModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
+class CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_VECTORIZE, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -317,11 +393,11 @@ private:
 	// Vector type
 	typedef typename VectorType<T, VEC_SIZE>::Type Vector;
 
-	// LOAD_TILE_DIRECT specialization of CtaLoad for vector type
-	typedef CtaLoad<Vector*, CTA_THREADS, VECTORS_PER_THREAD, LOAD_TILE_DIRECT, MODIFIER> CtaLoadVector;
+	// CTA_LOAD_DIRECT specialization of CtaLoad for vector type
+	typedef CtaLoad<Vector*, CTA_THREADS, VECTORS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoadVector;
 
-	// LOAD_TILE_DIRECT specialization of CtaLoad for singleton type
-	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_DIRECT, MODIFIER> CtaLoadSingly;
+	// CTA_LOAD_DIRECT specialization of CtaLoad for singleton type
+	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoadSingly;
 
 public:
 

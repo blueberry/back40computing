@@ -53,8 +53,8 @@ template <
 	ScatterStrategy 			DOWNSWEEP_SCATTER_STRATEGY,		// Downsweep strategy
 	int 						SINGLE_TILE_THREAD_ITEMS,		// The number of consecutive single-tile items to load per thread per tile
 
-	cub::LoadModifier 			LOAD_MODIFIER,					// Load cache-modifier
-	cub::StoreModifier			STORE_MODIFIER,					// Store cache-modifier
+	cub::PtxLoadModifier 			LOAD_MODIFIER,					// Load cache-modifier
+	cub::PtxStoreModifier			STORE_MODIFIER,					// Store cache-modifier
 	cudaSharedMemConfig			_SMEM_CONFIG>					// Shared memory bank size
 struct CtaHybridPassPolicy
 {

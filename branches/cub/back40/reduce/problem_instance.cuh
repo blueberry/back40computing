@@ -221,8 +221,8 @@ struct ProblemInstance
 	// 100
 	template <>
 	struct TunedPolicy<100> : Policy<
-		KernelPolicy<64, 1, 1, LOAD_NONE, STORE_NONE, false>,
-		KernelPolicy<64, 1, 1, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<64, 1, 1, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
+		KernelPolicy<64, 1, 1, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
 		true,
 		true>
 	{};
@@ -230,8 +230,8 @@ struct ProblemInstance
 	// 130
 	template <>
 	struct TunedPolicy<130> : Policy<
-		KernelPolicy<128, 1, 2, LOAD_NONE, STORE_NONE, false>,
-		KernelPolicy<128, 1, 2, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<128, 1, 2, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
+		KernelPolicy<128, 1, 2, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
 		true,
 		true>
 	{};
@@ -239,8 +239,8 @@ struct ProblemInstance
 	// 200
 	template <>
 	struct TunedPolicy<200> : Policy<
-		KernelPolicy<128, 2, 2, LOAD_NONE, STORE_NONE, false>,
-		KernelPolicy<128, 2, 2, LOAD_NONE, STORE_NONE, false>,
+		KernelPolicy<128, 2, 2, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
+		KernelPolicy<128, 2, 2, PTX_LOAD_NONE, PTX_STORE_NONE, false>,
 		true,
 		true>
 	{};

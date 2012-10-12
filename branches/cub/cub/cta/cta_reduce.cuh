@@ -133,12 +133,12 @@ private:
 			const int OFFSET = 1 << COUNT;
 
 			// Share partial into buffer
-			ThreadStore<STORE_VS>(&smem_storage.warp_buffer[threadIdx.x], partial);
+			ThreadStore<PTX_STORE_VS>(&smem_storage.warp_buffer[threadIdx.x], partial);
 
 			// Update partial if addend is in range
 			if (UNGUARDED || ((threadIdx.x + OFFSET) * RAKING_LENGTH < num_valid))
 			{
-				T addend = ThreadLoad<LOAD_VS>(&smem_storage.warp_buffer[threadIdx.x + OFFSET]);
+				T addend = ThreadLoad<PTX_LOAD_VS>(&smem_storage.warp_buffer[threadIdx.x + OFFSET]);
 				partial = reduction_op(partial, addend);
 			}
 

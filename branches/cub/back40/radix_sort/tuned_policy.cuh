@@ -92,8 +92,8 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		RADIX_BITS,								// RADIX_BITS
 		128,									// CTA_THREADS
 		17,										// THREAD_ITEMS,
-		cub::LOAD_NONE,							// LOAD_MODIFIER
-		cub::STORE_NONE,						// STORE_MODIFIER
+		cub::PTX_LOAD_NONE,							// LOAD_MODIFIER
+		cub::PTX_STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaUpsweepPassPolicyT;
 
@@ -102,8 +102,8 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		256,									// CTA_THREADS
 		4,										// THREAD_STRIP_ITEMS
 		4,										// TILE_STRIPS
-		cub::LOAD_NONE,							// LOAD_MODIFIER
-		cub::STORE_NONE,						// STORE_MODIFIER
+		cub::PTX_LOAD_NONE,							// LOAD_MODIFIER
+		cub::PTX_STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaScanPassPolicyT;
 
@@ -113,8 +113,8 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		128,									// CTA_THREADS
 		17,										// THREAD_ITEMS
 		SCATTER_TWO_PHASE,						// SCATTER_STRATEGY
-		cub::LOAD_NONE, 						// LOAD_MODIFIER
-		cub::STORE_NONE,						// STORE_MODIFIER
+		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
+		cub::PTX_STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaDownsweepPassPolicyT;
 
@@ -123,8 +123,8 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		RADIX_BITS,								// RADIX_BITS
 		192,									// CTA_THREADS
 		((KEYS_ONLY) ? 17 : 9), 				// THREAD_ITEMS
-		cub::LOAD_NONE, 						// LOAD_MODIFIER
-		cub::STORE_NONE,						// STORE_MODIFIER
+		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
+		cub::PTX_STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaSingleTilePolicyT;
 
@@ -136,8 +136,8 @@ struct TunedPolicy<200, KeyType, ValueType, SizeT, PROBLEM_SIZE>
 		17, 									// DOWNSWEEP_THREAD_ITEMS
 		SCATTER_TWO_PHASE,						// DOWNSWEEP_SCATTER_STRATEGY
 		((KEYS_ONLY) ? 19 : 9), 				// SINGLE_TILE_THREAD_ITEMS
-		cub::LOAD_NONE, 						// LOAD_MODIFIER
-		cub::STORE_NONE,						// STORE_MODIFIER
+		cub::PTX_LOAD_NONE, 						// LOAD_MODIFIER
+		cub::PTX_STORE_NONE,						// STORE_MODIFIER
 		cudaSharedMemBankSizeFourByte>			// SMEM_CONFIG
 			CtaHybridPassPolicyT;
 

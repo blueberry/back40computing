@@ -41,13 +41,13 @@ namespace cub {
 //-----------------------------------------------------------------------------
 
 /**
- * Policy for optimizing "block-arranged"
+ * Tuning policy for coalescing CTA tile-storing
  */
 enum CtaStorePolicy
 {
-	STORE_TILE_DIRECT,			/// Writes consecutive thread-items directly to the output
-	STORE_TILE_TRANSPOSE,		/// Transposes consecutive thread-items through shared memory and then writes them out in CTA-striped fashion as a write-coalescing optimization
-	STORE_TILE_VECTORIZED,		/// Attempts to use CUDA's built-in vectorized items as a coalescing optimization
+	CTA_STORE_DIRECT,			/// Writes consecutive thread-items directly to the output
+	CTA_STORE_TRANSPOSE,		/// Transposes consecutive thread-items through shared memory and then writes them out in CTA-striped fashion as a write-coalescing optimization
+	CTA_STORE_VECTORIZE,		/// Attempts to use CUDA's built-in vectorized items as a coalescing optimization
 };
 
 
@@ -62,14 +62,14 @@ template <
 	typename 		OutputIterator,						/// Output iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	CtaStorePolicy	POLICY 		= STORE_TILE_DIRECT,	/// (optional) CTA store policy
-	StoreModifier 	MODIFIER 	= STORE_NONE>			/// (optional) Cache modifier (e.g., STORE_NONE/STORE_WB/STORE_CG/STORE_CS/STORE_WT/etc.)
+	CtaStorePolicy	POLICY 		= CTA_STORE_DIRECT,		/// (optional) CTA store tuning policy
+	PtxStoreModifier 	MODIFIER 	= PTX_STORE_NONE>			/// (optional) Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
 class CtaStore;
 
 
 
 //-----------------------------------------------------------------------------
-// CtaStore abstraction specialized for STORE_TILE_DIRECT policy
+// CtaStore abstraction specialized for CTA_STORE_DIRECT policy
 //-----------------------------------------------------------------------------
 
 /**
@@ -81,8 +81,8 @@ template <
 	typename 		OutputIterator,						/// Output iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	StoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., STORE_NONE/STORE_WB/STORE_CG/STORE_CS/STORE_WT/etc.)
-class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, STORE_TILE_DIRECT, MODIFIER>
+	PtxStoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
+class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_DIRECT, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -162,10 +162,84 @@ public:
 };
 
 
+/**
+ * CTA store direct interface
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	PtxStoreModifier 	MODIFIER,						/// Cache store modifier Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaStoreDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (in) Data to store
+	InputIterator 	itr,							/// (in) Input iterator for storing from
+	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to store the tile
+{
+	typedef CtaStore<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_DIRECT, MODIFIER> CtaStore;
+	CtaStore::Store(CtaStore::SmemStorage(), items, itr, cta_offset);
+}
 
+
+/**
+ * CTA store direct interface
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaStoreDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (in) Data to store
+	InputIterator 	itr,							/// (in) Input iterator for storing from
+	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to store the tile
+{
+	CtaStoreDirect<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset);
+}
+
+/**
+ * CTA store direct interface, guarded by range
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	PtxStoreModifier 	MODIFIER,						/// Cache store modifier Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaStoreDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (in) Data to store
+	InputIterator 	itr,							/// (in) Input iterator for storing from
+	const SizeT 	&cta_offset,					/// (in) Offset in itr at which to store the tile
+	const SizeT 	&guarded_elements)				/// (in) Number of valid items in the tile
+{
+	typedef CtaStore<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_DIRECT, MODIFIER> CtaStore;
+	CtaStore::Store(CtaStore::SmemStorage(), items, itr, cta_offset, guarded_elements);
+}
+
+
+/**
+ * CTA store direct interface, guarded by range
+ */
+template <
+	int 			CTA_THREADS,					/// The CTA size in threads
+	typename 		T,								/// (inferred) Value type
+	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 		InputIterator,					/// (inferred) Input iterator type
+	typename 		SizeT>							/// (inferred) Integer counting type
+__device__ __forceinline__ void CtaStoreDirect(
+	T 				(&items)[ITEMS_PER_THREAD],		/// (in) Data to store
+	InputIterator 	itr,							/// (in) Input iterator for storing from
+	const SizeT 	&cta_offset,					/// (in) Offset in itr at which to store the tile
+	const SizeT 	&guarded_elements)				/// (in) Number of valid items in the tile
+{
+	CtaStoreDirect<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+}
 
 //-----------------------------------------------------------------------------
-// CtaStore abstraction specialized for STORE_TILE_TRANSPOSE policy
+// CtaStore abstraction specialized for CTA_STORE_TRANSPOSE policy
 //-----------------------------------------------------------------------------
 
 /**
@@ -178,8 +252,8 @@ template <
 	typename 		OutputIterator,						/// Output iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	StoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., STORE_NONE/STORE_WB/STORE_CG/STORE_CS/STORE_WT/etc.)
-class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, STORE_TILE_TRANSPOSE, MODIFIER>
+	PtxStoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
+class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_TRANSPOSE, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -272,7 +346,7 @@ public:
 
 
 //-----------------------------------------------------------------------------
-// CtaStore abstraction specialized for STORE_TILE_VECTORIZED
+// CtaStore abstraction specialized for CTA_STORE_VECTORIZE
 //-----------------------------------------------------------------------------
 
 /**
@@ -280,7 +354,7 @@ public:
  *
  * Specialized to minimize store instruction overhead using CUDA's built-in
  * vectorized items as a write-coalescing optimization.  This implementation
- * resorts to STORE_TILE_DIRECT behavior if:
+ * resorts to CTA_STORE_DIRECT behavior if:
  * 		(a) The output iterator type is not a native pointer type
  * 		(b) The output pointer is not not quad-item aligned
  * 		(c) The output is guarded
@@ -289,8 +363,8 @@ template <
 	typename 		OutputIterator,						/// Output iterator type
 	int 			CTA_THREADS,						/// The CTA size in threads
 	int				ITEMS_PER_THREAD,					/// The number of items per thread
-	StoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., STORE_NONE/STORE_WB/STORE_CG/STORE_CS/STORE_WT/etc.)
-class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, STORE_TILE_VECTORIZED, MODIFIER>
+	PtxStoreModifier 	MODIFIER>							/// (optional) Cache modifier (e.g., PTX_STORE_NONE/PTX_STORE_WB/PTX_STORE_CG/PTX_STORE_CS/PTX_STORE_WT/etc.)
+class CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_VECTORIZE, MODIFIER>
 {
 	//---------------------------------------------------------------------
 	// Type definitions and constants
@@ -317,11 +391,11 @@ private:
 	// Vector type
 	typedef typename VectorType<T, VEC_SIZE>::Type Vector;
 
-	// STORE_TILE_DIRECT specialization of CtaStore for vector type
-	typedef CtaStore<Vector*, CTA_THREADS, VECTORS_PER_THREAD, STORE_TILE_DIRECT, MODIFIER> CtaStoreVector;
+	// CTA_STORE_DIRECT specialization of CtaStore for vector type
+	typedef CtaStore<Vector*, CTA_THREADS, VECTORS_PER_THREAD, CTA_STORE_DIRECT, MODIFIER> CtaStoreVector;
 
-	// STORE_TILE_DIRECT specialization of CtaStore for singleton type
-	typedef CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, STORE_TILE_DIRECT, MODIFIER> CtaStoreSingly;
+	// CTA_STORE_DIRECT specialization of CtaStore for singleton type
+	typedef CtaStore<OutputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_STORE_DIRECT, MODIFIER> CtaStoreSingly;
 
 public:
 

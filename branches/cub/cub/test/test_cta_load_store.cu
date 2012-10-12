@@ -54,8 +54,8 @@ template <
 	int 			ITEMS_PER_THREAD,
 	CtaLoadPolicy 	LOAD_POLICY,
 	CtaStorePolicy 	STORE_POLICY,
-	LoadModifier 	LOAD_MODIFIER,
-	StoreModifier 	STORE_MODIFIER,
+	PtxLoadModifier 	LOAD_MODIFIER,
+	PtxStoreModifier 	STORE_MODIFIER,
 	typename 		InputIterator,
 	typename 		OutputIterator>
 __launch_bounds__ (CTA_THREADS, 1)
@@ -137,8 +137,8 @@ template <
 	int 			ITEMS_PER_THREAD,
 	CtaLoadPolicy 	LOAD_POLICY,
 	CtaStorePolicy 	STORE_POLICY,
-	LoadModifier 	LOAD_MODIFIER,
-	StoreModifier 	STORE_MODIFIER,
+	PtxLoadModifier 	LOAD_MODIFIER,
+	PtxStoreModifier 	STORE_MODIFIER,
 	typename 		InputIterator,
 	typename 		OutputIterator>
 void TestKernel(
@@ -181,8 +181,8 @@ template <
 	int 			ITEMS_PER_THREAD,
 	CtaLoadPolicy 	LOAD_POLICY,
 	CtaStorePolicy 	STORE_POLICY,
-	LoadModifier 	LOAD_MODIFIER,
-	StoreModifier 	STORE_MODIFIER>
+	PtxLoadModifier 	LOAD_MODIFIER,
+	PtxStoreModifier 	STORE_MODIFIER>
 void TestNative(
 	int grid_size,
 	float fraction_valid)
@@ -280,7 +280,7 @@ void TestIterator(
 		"sizeof(T)(%d)\n",
 			grid_size, guarded_elements, unguarded_elements, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, (int) sizeof(T));
 
-	TestKernel<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_NONE, STORE_NONE>(
+	TestKernel<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(
 		h_in,
 		counting_itr,
 		d_out_unguarded,
@@ -308,9 +308,9 @@ void TestPointerAccess(
 	int grid_size,
 	float fraction_valid)
 {
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_NONE, STORE_NONE>(grid_size, fraction_valid);
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_CG, STORE_CG>(grid_size, fraction_valid);
-    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, LOAD_CS, STORE_CS>(grid_size, fraction_valid);
+    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_NONE, PTX_STORE_NONE>(grid_size, fraction_valid);
+    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CG, PTX_STORE_CG>(grid_size, fraction_valid);
+    TestNative<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY, PTX_LOAD_CS, PTX_STORE_CS>(grid_size, fraction_valid);
     TestIterator<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_POLICY, STORE_POLICY>(grid_size, fraction_valid);
 }
 
@@ -326,9 +326,9 @@ void TestStrategy(
 	int grid_size,
 	float fraction_valid)
 {
-	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_DIRECT, STORE_TILE_DIRECT>(grid_size, fraction_valid);
-	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_TRANSPOSE, STORE_TILE_TRANSPOSE>(grid_size, fraction_valid);
-	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, LOAD_TILE_VECTORIZED, STORE_TILE_VECTORIZED>(grid_size, fraction_valid);
+	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, CTA_STORE_DIRECT>(grid_size, fraction_valid);
+	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_TRANSPOSE, CTA_STORE_TRANSPOSE>(grid_size, fraction_valid);
+	TestPointerAccess<T, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_VECTORIZE, CTA_STORE_VECTORIZE>(grid_size, fraction_valid);
 }
 
 

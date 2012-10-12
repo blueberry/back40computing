@@ -44,8 +44,8 @@ template <
 	int 							_RADIX_BITS,			// The number of radix bits, i.e., log2(bins)
 	int 							_CTA_THREADS,			// The number of threads per CTA
 	int 							_THREAD_ITEMS,			// The number of items to load per thread per tile
-	cub::LoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
-	cub::StoreModifier				_STORE_MODIFIER,		// Store cache-modifier
+	cub::PtxLoadModifier 				_LOAD_MODIFIER,			// Load cache-modifier
+	cub::PtxStoreModifier				_STORE_MODIFIER,		// Store cache-modifier
 	cudaSharedMemConfig				_SMEM_CONFIG>			// Shared memory bank size
 struct CtaUpsweepPassPolicy
 {
@@ -57,8 +57,8 @@ struct CtaUpsweepPassPolicy
 		TILE_ITEMS				= CTA_THREADS * THREAD_ITEMS,
 	};
 
-	static const cub::LoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
-	static const cub::StoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
+	static const cub::PtxLoadModifier 		LOAD_MODIFIER 		= _LOAD_MODIFIER;
+	static const cub::PtxStoreModifier 	STORE_MODIFIER 		= _STORE_MODIFIER;
 	static const cudaSharedMemConfig	SMEM_CONFIG			= _SMEM_CONFIG;
 };
 
