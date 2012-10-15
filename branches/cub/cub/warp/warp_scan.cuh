@@ -499,7 +499,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is invalid).
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is invalid).
 	 */
 	template <typename ScanOp>
 	static __device__ __forceinline__ void ExclusiveScan(
@@ -526,7 +526,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is invalid).
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is invalid).
 	 *
 	 * (Specialized for summation)
 	 */
@@ -582,7 +582,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is
 	 * invalid).  Also computes warp-wide aggregate in lane-0.
 	 */
 	template <typename ScanOp>
@@ -605,7 +605,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is
 	 * invalid).  Also computes warp-wide aggregate in lane-0.
 	 *
 	 * (Specialized for summation)
@@ -676,7 +676,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is
 	 * invalid).  The scan is seeded by the warp-wide prefix from lane-0. Also
 	 * computes warp-wide aggregate in lane-0.
 	 */
@@ -711,7 +711,7 @@ public:
 
 
 	/**
-	 * Exclusive prefix scan without identity (the item returned by thread-0 is
+	 * Exclusive prefix scan without identity (the output computed for thread-0 is
 	 * invalid).  The scan is seeded by the warp-wide prefix from lane-0. Also
 	 * computes warp-wide aggregate in lane-0.
 	 *

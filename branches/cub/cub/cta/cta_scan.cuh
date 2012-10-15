@@ -62,18 +62,23 @@ template <
 	typename 		T,							/// The data type to be scanned
 	int 			CTA_THREADS,				/// The CTA size in threads
 	CtaScanPolicy	POLICY = CTA_SCAN_RAKING>	/// (optional) CTA scan tuning policy
+class CtaScan;
+
+
+/**
+ * Specialized for CTA_SCAN_RAKING
+ */
+template <
+	typename 		T,							/// The data type to be scanned
+	int 			CTA_THREADS,				/// The CTA size in threads
+	CtaScanPolicy	POLICY = CTA_SCAN_RAKING>	/// (optional) CTA scan tuning policy
 class CtaScan
 {
+private:
+
 	//---------------------------------------------------------------------
 	// Type definitions and constants
 	//---------------------------------------------------------------------
-
-private:
-
-	/**
-	 * Layout type for padded CTA raking grid
-	 */
-	typedef CtaRakingGrid<CTA_THREADS, T> CtaRakingGrid;
 
 	enum
 	{
@@ -90,52 +95,701 @@ private:
 		WARP_SYNCHRONOUS = (CTA_THREADS == RAKING_THREADS),
 	};
 
+	/**
+	 * Layout type for padded CTA raking grid
+	 */
+	typedef CtaRakingGrid<CTA_THREADS, T> CtaRakingGrid;
 
 	/**
-	 *
+	 * Raking warp-scan utility type
 	 */
-	template <CtaScanPolicy	POLICY>
-	struct InternalExclusiveScan;
+	typedef WarpScan<T, 1, RAKING_THREADS> WarpScan;
 
+public:
 
 	/**
-	 * Specialized for raking scan
+	 * Raking shared memory storage type
 	 */
-	template <>
-	struct InternalExclusiveScan<CTA_SCAN_RAKING>
+	struct SmemStorage
 	{
-		/**
-		 * Raking warp-scan utility type
-		 */
-		typedef WarpScan<T, 1, RAKING_THREADS> WarpScan;
-
-		/**
-		 * Raking shared memory storage type
-		 */
-		struct SmemStorage
-		{
-			typename RakingWarpScan::SmemStorage 	warp_scan;		// Buffer for warp-synchronous scan
-			typename CtaRakingGrid::SmemStorage 	raking_grid;	// Padded CTA raking grid
-		};
-
+		typename WarpScan::SmemStorage 			warp_scan;		// Buffer for warp-synchronous scan
+		typename CtaRakingGrid::SmemStorage 	raking_grid;	// Padded CTA raking grid
 	};
+
+	//---------------------------------------------------------------------
+	// Exclusive scan interface (with identity)
+	//---------------------------------------------------------------------
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp exclusive synchronous scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				identity,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep exclusive scan
+			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative exclusive CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate);
+
+		// Exclusive scan in registers with prefix
+		ThreadScanExclusive(input, output, scan_op, thread_partial);
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, with cta_prefix
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous exclusive scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				identity,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep exclusive scan
+			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, with cta_prefix
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative exclusive CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate, cta_prefix);
+
+		// Exclusive scan in registers with prefix
+		ThreadScanExclusive(input, output, scan_op, thread_partial);
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan.
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		T aggregate;
+		ExclusiveScan(smem_storage, input, output, identity, scan_op);
+	}
+
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan.
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		T				identity,						/// (in) Identity value.
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op);
+
+		// Exclusive scan in registers with prefix
+		ThreadScanExclusive(input, output, scan_op, thread_partial);
+	}
+
+
+	//---------------------------------------------------------------------
+	// Exclusive scan interface (without identity)
+	//---------------------------------------------------------------------
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, without identity (the
+	 * output computed for thread-0 is invalid)
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep scan
+			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, without identity (the
+	 * first output element computed for thread-0 is invalid)
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, with cta_prefix, without
+	 * identity (the output computed for thread-0 is invalid)
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep scan
+			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan with aggregate, with cta_prefix, without
+	 * identity (the first output element computed for thread-0 is invalid)
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate, cta_prefix);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan without identity (the output computed for
+	 * thread-0 is invalid).
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		T aggregate;
+		ExclusiveScan(smem_storage, input, output, scan_op);
+	}
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan without identity (the first output element computed for
+	 * thread-0 is invalid).
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+	//---------------------------------------------------------------------
+	// Inclusive scan interface
+	//---------------------------------------------------------------------
+
+	/**
+	 * Inclusive CTA-wide prefix scan with aggregate
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep scan
+			ThreadScanInclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial, (threadIdx.x == 0));
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Inclusive CTA-wide prefix scan with aggregate
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative exclusive CTA-scan
+		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+	/**
+	 * Inclusive CTA-wide prefix scan with aggregate, with cta_prefix, without
+	 * identity (the output computed for thread-0 is invalid)
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous scan
+			WarpScan::InclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep scan
+			ThreadScanInclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+
+
+	/**
+	 * Inclusive CTA-wide prefix scan with aggregate, with cta_prefix, without
+	 * identity (the first output element computed for thread-0 is invalid)
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		InclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate, cta_prefix);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+	/**
+	 * Inclusive CTA-wide prefix scan without identity (the output computed for
+	 * thread-0 is invalid).
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		T aggregate;
+		InclusiveScan(smem_storage, input, output, scan_op);
+	}
+
+
+	/**
+	 * Inclusive CTA-wide prefix scan without identity (the first output element computed for
+	 * thread-0 is invalid).
+	 */
+	template <
+		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+		typename 		ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void InclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input
+		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op)						/// (in) Binary scan operator
+	{
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
+
+		// Cooperative CTA-scan
+		InclusiveScan(smem_storage, thread_partial, thread_partial, scan_op);
+
+		// Scan in registers, prefixed by the exclusive partial
+		ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	/**
+	 * Exclusive CTA-wide prefix scan without identity (the item returned
+	 * by thread-0 is invalid).
+	 */
+	template <typename ScanOp>							/// (inferred) Binary scan operator type
+	static __device__ __forceinline__ void ExclusiveScan(
+		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
+		T 				input,							/// (in) Input
+		T 				&output,						/// (out) Output (may be aliased to input)
+		ScanOp 			scan_op,						/// (in) Binary scan operator
+		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
+		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
+	{
+		// Place thread partial into shared memory raking grid
+		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+		*placement_ptr = input;
+
+		__syncthreads();
+
+		// Reduce parallelism down to just raking threads
+		if (threadIdx.x < RAKING_THREADS)
+		{
+			// Raking upsweep reduction in grid
+			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
+			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
+
+			// Warp synchronous scan
+			WarpScan::ExclusiveScan(
+				smem_storage.warp_scan,
+				raking_partial,
+				raking_partial,
+				scan_op,
+				aggregate,
+				cta_prefix);
+
+			// Raking downsweep scan
+			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
+		}
+
+		__syncthreads();
+
+		// Grab thread prefix from shared memory
+		output = *placement_ptr;
+	}
+};
 
 
 	/**
 	 * Specialized for tiled warp scan
 	 */
 	template <>
-	struct InternalExclusiveScan<CTA_SCAN_WARPSCANS>
+	struct InternalScan<CTA_SCAN_WARPSCANS>
 	{
 		/**
 		 * Tiled warp-scan utility type
 		 */
-		typedef WarpScan<T, WARPS> TiledWarpScan;
+		typedef WarpScan<T, WARPS> WarpScan;
 
 		/**
 		 * Tiled warpscan shared memory storage type
 		 */
-		typedef typename TiledWarpScan::SmemStorage SmemStorage;
+		typedef typename WarpScan::SmemStorage SmemStorage;
 
 	};
 
@@ -231,6 +885,9 @@ public:
 				cta_prefix);
 
 		}
+
+		// Reduce consecutive thread items in registers
+		T thread_partial = ThreadReduce(input, scan_op);
 
 		// Scan in registers, prefixed by the exclusive partial
 		ThreadScanExclusive(

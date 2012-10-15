@@ -286,11 +286,11 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 
 
 /******************************************************************************
- * Test value initialization utilities
+ * Console printing utilities
  ******************************************************************************/
 
 /**
- * Helper for casting types for cout printing
+ * Helper for casting character types to integers for cout printing
  */
 template <typename T>
 T CoutCast(T val) { return val; }
@@ -302,6 +302,10 @@ int CoutCast(unsigned char val) { return val; }
 int CoutCast(signed char val) { return val; }
 
 
+/******************************************************************************
+ * Test value initialization utilities
+ ******************************************************************************/
+
 /**
  * Test problem generation options
  */
@@ -310,8 +314,6 @@ enum GenMode
 	UNIFORM,			// All 1s
 	SEQ_INC,			// Sequentially incrementing
 	RANDOM,				// Random
-
-	GEN_MODE_END,
 };
 
 /**
@@ -528,8 +530,134 @@ CUB_VEC_OVERLOAD(float)
 CUB_VEC_OVERLOAD(double)
 
 
+//---------------------------------------------------------------------
+// Complex data type Foo
+//---------------------------------------------------------------------
+
+/**
+ * Foo complex data type
+ */
+struct Foo
+{
+	long long 	x;
+	int 		y;
+	short 		z;
+	char 		w;
+
+	// Factory
+	static __host__ __device__ __forceinline__ Foo MakeFoo(long long x, int y, short z, char w)
+	{
+		Foo retval = {x, y, z, w};
+		return retval;
+	}
+
+	// Summation operator
+	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
+	{
+		return MakeFoo(x + b.x, y + b.y, z + b.z, w + b.w);
+	}
+
+	// Inequality operator
+	__host__ __device__ __forceinline__ bool operator !=(const Foo &b)
+	{
+		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
+	}
+};
+
+/**
+ * Foo ostream operator
+ */
+std::ostream& operator<<(std::ostream& os, const Foo& val)
+{
+	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << CoutCast(val.w) << ')';
+	return os;
+}
+
+/**
+ * Foo test initialization
+ */
+void InitValue(int gen_mode, Foo &value, int index = 0)
+{
+	InitValue(gen_mode, value.x, index);
+	InitValue(gen_mode, value.y, index);
+	InitValue(gen_mode, value.z, index);
+	InitValue(gen_mode, value.w, index);
+}
+
+
+//---------------------------------------------------------------------
+// Complex data type Bar (with optimizations for fence-free warp-synchrony)
+//---------------------------------------------------------------------
+
+/**
+ * Bar complex data type
+ */
+struct Bar
+{
+	typedef void ThreadLoadTag;
+	typedef void ThreadStoreTag;
+
+	long long 	x;
+	int 		y;
+
+	// Factory
+	static __host__ __device__ __forceinline__ Bar MakeBar(long long x, int y)
+	{
+		Bar retval = {x, y};
+		return retval;
+	}
+
+	// Summation operator
+	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
+	{
+		return MakeBar(x + b.x, y + b.y);
+	}
+
+	// Inequality operator
+	__host__ __device__ __forceinline__ bool operator !=(const Bar &b)
+	{
+		return (x != b.x) && (y != b.y);
+	}
+
+	// ThreadLoad
+	template <PtxLoadModifier MODIFIER>
+	__device__ __forceinline__
+	void ThreadLoad(Bar *ptr)
+	{
+		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
+		y = cub::ThreadLoad<MODIFIER>(&(ptr->y));
+	}
+
+	 // ThreadStore
+	template <PtxStoreModifier MODIFIER>
+	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
+	{
+		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
+		cub::ThreadStore<MODIFIER>(&(ptr->y), y);
+	}
+};
+
+/**
+ * Bar ostream operator
+ */
+std::ostream& operator<<(std::ostream& os, const Bar& val)
+{
+	os << '(' << val.x << ',' << val.y << ')';
+	return os;
+}
+
+/**
+ * Bar test initialization
+ */
+void InitValue(int gen_mode, Bar &value, int index = 0)
+{
+	InitValue(gen_mode, value.x, index);
+	InitValue(gen_mode, value.y, index);
+}
+
+
 /******************************************************************************
- * Helper routines for list construction and validation
+ * Helper routines for list comparison and display
  ******************************************************************************/
 
 

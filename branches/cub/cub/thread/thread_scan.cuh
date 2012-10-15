@@ -37,27 +37,33 @@ namespace cub {
  ******************************************************************************/
 
 /**
- * Exclusive prefix scan across a thread-local array (with specified prefix).
+ * Exclusive prefix scan across a thread-local array with seed prefix.
  * Returns the aggregate.
  */
 template <
-	int LENGTH,					// Length of input/output arrays
-	typename T,					// Input/output type
-	typename ScanOp>			// Binary scan operator type (parameters of type T)
+	int 		LENGTH,					/// Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Binary scan operator type (parameters of type T)
 __device__ __forceinline__ T ThreadScanExclusive(
-	T		*input,				// Input array
-	T		*output,			// Output array (may be aliased to input)
-	ScanOp	scan_op,			// Scan operator
-	T 		prefix)				// Prefix to prefix scan with
+	T			*input,					/// (in) Input array
+	T			*output,				/// (out) Output array (may be aliased to input)
+	ScanOp		scan_op,				/// (in) Scan operator
+	T 			prefix,					/// (in) Prefix to seed scan with
+	bool 		apply_prefix = true)	/// (in) Whether or not the calling thread should apply its prefix.  If not, the first output element is undefined.  (Handy for preventing thread-0 from applying a prefix.)
 {
-	T exclusive = prefix;
-	T inclusive = prefix;
+	T inclusive = input[0];
+	if (apply_prefix)
+	{
+		inclusive = scan_op(prefix, inclusive);
+	}
+	output[0] = prefix;
+	T exclusive = inclusive;
 
 	#pragma unroll
-	for (int i = 0; i < LENGTH; ++i)
+	for (int i = 1; i < LENGTH; ++i)
 	{
 		inclusive = scan_op(exclusive, input[i]);
-		output[i] = (T) exclusive;
+		output[i] = exclusive;
 		exclusive = inclusive;
 	}
 
@@ -66,18 +72,19 @@ __device__ __forceinline__ T ThreadScanExclusive(
 
 
 /**
- * Exclusive prefix scan across a thread-local array (with specified seed prefix).
+ * Exclusive prefix scan across a thread-local array with seed prefix.
  * Returns the aggregate.
  */
 template <
-	int LENGTH,					// Length of input/output arrays
-	typename T,					// Input/output type
-	typename ScanOp>			// Binary scan operator type (parameters of type T)
+	int 		LENGTH,					/// (inferred) Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Binary scan operator type (parameters of type T)
 __device__ __forceinline__ T ThreadScanExclusive(
-	T		(&input)[LENGTH],	// Input array
-	T		(&output)[LENGTH],	// Output array (may be aliased to input)
-	ScanOp	scan_op,			// Scan operator
-	T 		prefix)				// Prefix to prefix scan with
+	T			(&input)[LENGTH],		/// (in) Input array
+	T			(&output)[LENGTH],		/// (out) Output array (may be aliased to input)
+	ScanOp		scan_op,				/// (in) Scan operator
+	T 			prefix,					/// (in) Prefix to seed scan with
+	bool 		apply_prefix = true)	/// (in) Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
 {
 	return ThreadScanExclusive<LENGTH>((T*) input, (T*) output, scan_op, prefix);
 }
@@ -92,13 +99,13 @@ __device__ __forceinline__ T ThreadScanExclusive(
  * Inclusive prefix scan across a thread-local array. Returns the aggregate.
  */
 template <
-	int LENGTH,					// Length of input/output arrays
-	typename T,					// Input/output type
-	typename ScanOp>			// Scan operator type (functor)
+	int 		LENGTH,					/// Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Scan operator type (functor)
 __device__ __forceinline__ T ThreadScanInclusive(
-	T		*input,				// Input array
-	T		*output,			// Output array (may be aliased to input)
-	ScanOp 	scan_op)			// Scan operator
+	T			*input,					/// (in) Input array
+	T			*output,				/// (out) Output array (may be aliased to input)
+	ScanOp 		scan_op)				/// (in) Scan operator
 {
 	T inclusive = input[0];
 	output[0] = inclusive;
@@ -116,23 +123,37 @@ __device__ __forceinline__ T ThreadScanInclusive(
 
 
 /**
- * Inclusive prefix scan across a thread-local array (with specified seed prefix).
+ * Inclusive prefix scan across a thread-local array. Returns the aggregate.
+ */
+template <
+	int 		LENGTH,					/// (inferred) Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Scan operator type (functor)
+__device__ __forceinline__ T ThreadScanInclusive(
+	T			(&input)[LENGTH],		/// (in) Input array
+	T			(&output)[LENGTH],		/// (out) Output array (may be aliased to input)
+	ScanOp 		scan_op)				/// (in) Scan operator
+{
+	ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op);
+}
+
+
+/**
+ * Inclusive prefix scan across a thread-local array with seed prefix.
  * Returns the aggregate.
  */
 template <
-	int LENGTH,
-	typename T,
-	typename ScanOp>				// Scan operator type (functor)
+	int 		LENGTH,					/// Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Scan operator type (functor)
 __device__ __forceinline__ T ThreadScanInclusive(
-	T		*input,					// Input array
-	T		*output,				// Output array (may be aliased to input)
-	ScanOp 	scan_op,				// Scan operator
-	T 		prefix,					// Prefix to prefix scan with (if non-null)
-	bool 	apply_prefix = true)	// Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
+	T			*input,					/// (in) Input array
+	T			*output,				/// (out) Output array (may be aliased to input)
+	ScanOp 		scan_op,				/// (in) Scan operator
+	T 			prefix,					/// (in) Prefix to seed scan with
+	bool 		apply_prefix = true)	/// (in) Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
 {
 	T inclusive = input[0];
-
-	// Apply prefix if appropriate
 	if (apply_prefix)
 	{
 		inclusive = scan_op(prefix, inclusive);
@@ -148,6 +169,25 @@ __device__ __forceinline__ T ThreadScanInclusive(
 	}
 
 	return inclusive;
+}
+
+
+/**
+ * Inclusive prefix scan across a thread-local array with seed prefix.
+ * Returns the aggregate.
+ */
+template <
+	int 		LENGTH,					/// (inferred) Length of input/output arrays
+	typename 	T,						/// (inferred) Input/output type
+	typename 	ScanOp>					/// (inferred) Scan operator type (functor)
+__device__ __forceinline__ T ThreadScanInclusive(
+	T			(&input)[LENGTH],		/// (in) Input array
+	T			(&output)[LENGTH],		/// (out) Output array (may be aliased to input)
+	ScanOp 		scan_op,				/// (in) Scan operator
+	T 			prefix,					/// (in) Prefix to seed scan with
+	bool 		apply_prefix = true)	/// (in) Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
+{
+	ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op, prefix, apply_prefix);
 }
 
 
