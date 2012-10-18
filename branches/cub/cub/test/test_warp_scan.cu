@@ -425,20 +425,21 @@ int main(int argc, char** argv)
     // Initialize device
     CubDebugExit(args.DeviceInit());
 
-    if (quick)
+//    if (quick)
     {
         // Quick exclusive test
         Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
     }
-    else
+/*    else
     {
+
         // Test logical warp sizes
         Test<32>();
         Test<16>();
         Test<9>();
         Test<7>();
     }
-
+*/
     return 0;
 }
 

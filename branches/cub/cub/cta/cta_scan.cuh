@@ -70,9 +70,8 @@ class CtaScan;
  */
 template <
 	typename 		T,							/// The data type to be scanned
-	int 			CTA_THREADS,				/// The CTA size in threads
-	CtaScanPolicy	POLICY = CTA_SCAN_RAKING>	/// (optional) CTA scan tuning policy
-class CtaScan
+	int 			CTA_THREADS>				/// The CTA size in threads
+class CtaScan<T, CTA_THREADS, CTA_SCAN_RAKING>
 {
 private:
 
@@ -145,7 +144,7 @@ public:
 			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
 			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
 
-			// Warp exclusive synchronous scan
+			// Exclusive warp synchronous scan
 			WarpScan::ExclusiveScan(
 				smem_storage.warp_scan,
 				raking_partial,
@@ -155,7 +154,7 @@ public:
 				aggregate,
 				cta_prefix);
 
-			// Raking downsweep exclusive scan
+			// Exclusive raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
 		}
 
@@ -183,7 +182,7 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative exclusive CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate);
 
 		// Exclusive scan in registers with prefix
@@ -217,7 +216,7 @@ public:
 			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
 			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
 
-			// Warp synchronous exclusive scan
+			// Exclusvie warp synchronous scan
 			WarpScan::ExclusiveScan(
 				smem_storage.warp_scan,
 				raking_partial,
@@ -227,7 +226,7 @@ public:
 				aggregate,
 				cta_prefix);
 
-			// Raking downsweep exclusive scan
+			// Exclusive raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
 		}
 
@@ -256,7 +255,7 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative exclusive CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op, aggregate, cta_prefix);
 
 		// Exclusive scan in registers with prefix
@@ -297,7 +296,7 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, identity, scan_op);
 
 		// Exclusive scan in registers with prefix
@@ -334,7 +333,7 @@ public:
 			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
 			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
 
-			// Warp synchronous scan
+			// Exclusive warp synchronous scan
 			WarpScan::ExclusiveScan(
 				smem_storage.warp_scan,
 				raking_partial,
@@ -343,7 +342,7 @@ public:
 				aggregate,
 				cta_prefix);
 
-			// Raking downsweep scan
+			// Exclusive raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
 		}
 
@@ -371,10 +370,10 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate);
 
-		// Scan in registers, prefixed by the exclusive partial
+		// Exclusive scan in registers with prefix
 		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
 	}
 
@@ -405,7 +404,7 @@ public:
 			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
 			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
 
-			// Warp synchronous scan
+			// Exclusive warp synchronous scan
 			WarpScan::ExclusiveScan(
 				smem_storage.warp_scan,
 				raking_partial,
@@ -414,7 +413,7 @@ public:
 				aggregate,
 				cta_prefix);
 
-			// Raking downsweep scan
+			// Exclusive raking downsweep scan
 			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
 		}
 
@@ -443,10 +442,10 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op, aggregate, cta_prefix);
 
-		// Scan in registers, prefixed by the exclusive partial
+		// Exclusive scan in registers with prefix
 		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
 	}
 
@@ -483,10 +482,10 @@ public:
 		// Reduce consecutive thread items in registers
 		T thread_partial = ThreadReduce(input, scan_op);
 
-		// Cooperative CTA-scan
+		// Exclusive CTA-scan
 		ExclusiveScan(smem_storage, thread_partial, thread_partial, scan_op);
 
-		// Scan in registers, prefixed by the exclusive partial
+		// Exclusive scan in registers with prefix
 		ThreadScanExclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
 	}
 
@@ -674,677 +673,6 @@ public:
 		ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x == 0));
 	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	/**
-	 * Exclusive CTA-wide prefix scan without identity (the item returned
-	 * by thread-0 is invalid).
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		// Place thread partial into shared memory raking grid
-		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-		*placement_ptr = input;
-
-		__syncthreads();
-
-		// Reduce parallelism down to just raking threads
-		if (threadIdx.x < RAKING_THREADS)
-		{
-			// Raking upsweep reduction in grid
-			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
-			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-
-			// Warp synchronous scan
-			WarpScan::ExclusiveScan(
-				smem_storage.warp_scan,
-				raking_partial,
-				raking_partial,
-				scan_op,
-				aggregate,
-				cta_prefix);
-
-			// Raking downsweep scan
-			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-		}
-
-		__syncthreads();
-
-		// Grab thread prefix from shared memory
-		output = *placement_ptr;
-	}
-};
-
-
-	/**
-	 * Specialized for tiled warp scan
-	 */
-	template <>
-	struct InternalScan<CTA_SCAN_WARPSCANS>
-	{
-		/**
-		 * Tiled warp-scan utility type
-		 */
-		typedef WarpScan<T, WARPS> WarpScan;
-
-		/**
-		 * Tiled warpscan shared memory storage type
-		 */
-		typedef typename WarpScan::SmemStorage SmemStorage;
-
-	};
-
-
-
-public:
-
-	/**
-	 * Shared memory storage type
-	 */
-	typedef If<(POLICY == CTA_SCAN_RAKING),
-		RakingSmemStorage,
-		TiledSmemStorage>::Type SmemStorage;
-
-
-public:
-
-	//---------------------------------------------------------------------
-	// Exclusive prefix scan interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity,						/// (in) Identity value.
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		// Reduce consecutive thread items in registers
-		T thread_partial = ThreadReduce(input, scan_op);
-
-		if (CTA_POLICY == CTA_SCAN_RAKING)
-		{
-			//
-			// Raking scan with thread partials
-			//
-
-			// Place thread partial into shared memory raking grid
-			T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-			*placement_ptr = thread_partial;
-
-			__syncthreads();
-
-			// Reduce parallelism down to just raking threads
-			if (threadIdx.x < RAKING_THREADS)
-			{
-				// Raking upsweep reduction in grid
-				T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
-				T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-
-				// Warp synchronous scan
-				WarpScan::ExclusiveScan(
-					smem_storage.warp_scan,
-					raking_partial,
-					raking_partial,
-					scan_op,
-					identity,
-					aggregate,
-					cta_prefix);
-
-				// Raking downsweep scan
-				ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, raking_partial);
-			}
-
-			__syncthreads();
-
-			// Grab thread prefix from shared memory
-			thread_partial = *placement_ptr;
-		}
-		else
-		{
-			//
-			// Tiled warp scan with thread partials
-			//
-
-			// Warp synchronous scan
-			WarpScan::ExclusiveScan(
-				smem_storage.warp_scan,
-				raking_partial,
-				exclusive_partial,
-				scan_op,
-				identity,
-				aggregate,
-				cta_prefix);
-
-		}
-
-		// Reduce consecutive thread items in registers
-		T thread_partial = ThreadReduce(input, scan_op);
-
-		// Scan in registers, prefixed by the exclusive partial
-		ThreadScanExclusive(
-			input,
-			output,
-			scan_op,
-			*placement_ptr);
-
-
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity,						/// (in) Identity value.
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity)						/// (in) Identity value.
-	{
-		T aggregate;
-		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity,						/// (in) Identity value.
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		typedef T Array1D[1];
-
-		ExclusiveScan(
-			smem_storage,
-			reinterpret_cast<Array1D&>(input),
-			reinterpret_cast<Array1D&>(output),
-			scan_op,
-			identity,
-			aggregate,
-			cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity,						/// (in) Identity value.
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void ExclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				identity)						/// (in) Identity value.
-	{
-		T aggregate;
-		ExclusiveScan(smem_storage, input, output, scan_op, identity, aggregate);
-	}
-
-
-	//---------------------------------------------------------------------
-	// Exclusive prefix sum interface
-	//---------------------------------------------------------------------
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		ExclusiveScan(smem_storage, input, output, Sum<T>(), T(0), aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		ExclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD])	/// (out) Output array (may be aliased to input)
-	{
-		T aggregate;
-		ExclusiveSum(smem_storage, input, output, aggregate);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output,						/// (out) Output array (may be aliased to input)
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		typedef T Array1D[1];
-
-		ExclusiveSum(
-			smem_storage,
-			reinterpret_cast<Array1D&>(input),
-			reinterpret_cast<Array1D&>(output),
-			aggregate,
-			cta_prefix);
-	}
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output,						/// (out) Output array (may be aliased to input)
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		ExclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide exclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void ExclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output)						/// (out) Output array (may be aliased to input)
-	{
-		T aggregate;
-		ExclusiveSum(smem_storage, input, output, aggregate);
-	}
-
-	//---------------------------------------------------------------------
-	// Inclusive prefix scan interface
-	//---------------------------------------------------------------------
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-
-		// Reduce in registers and place partial into shared memory raking grid
-		T *placement_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-		*placement_ptr = ThreadReduce(input, scan_op);
-
-		__syncthreads();
-
-		// Reduce parallelism down to just raking threads
-		if (threadIdx.x < RAKING_THREADS)
-		{
-			// Raking upsweep reduction in grid
-			T *raking_ptr = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
-			T raking_partial = ThreadReduce<RAKING_LENGTH>(raking_ptr, scan_op);
-
-			// Warp synchronous scan
-			T inclusive_partial;
-			WarpScan::InclusiveScan(
-				smem_storage.warp_scan,
-				raking_partial,
-				inclusive_partial,
-				scan_op,
-				aggregate,
-				cta_prefix);
-
-			// Raking downsweep scan
-			ThreadScanExclusive<RAKING_LENGTH>(raking_ptr, raking_ptr, scan_op, inclusive_partial);
-		}
-
-		__syncthreads();
-
-		// Scan in registers, prefixed by the inclusive partial from shared memory grid
-		ThreadScanInclusive(
-			input,
-			output,
-			scan_op,
-			*placement_ptr,
-			(threadIdx.x != 0));		// Thread0 does not apply prefix
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		InclusiveScan(smem_storage, input, output, scan_op, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <
-		int 			ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-		typename 		ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		ScanOp 			scan_op)						/// (in) Binary scan operator
-	{
-		T aggregate;
-		InclusiveScan(smem_storage, input, output, scan_op, aggregate);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		typedef T Array1D[1];
-
-		InclusiveScan(
-			smem_storage,
-			reinterpret_cast<Array1D&>(input),
-			reinterpret_cast<Array1D&>(output),
-			scan_op,
-			identity,
-			aggregate,
-			cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op,						/// (in) Binary scan operator
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		InclusiveScan(smem_storage, input, output, scan_op, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive scan over the input
-	 * using the specified scan operator.
-	 */
-	template <typename ScanOp>							/// (inferred) Binary scan operator type
-	static __device__ __forceinline__ void InclusiveScan(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input
-		T 				&output,						/// (out) Output (may be aliased to input)
-		ScanOp 			scan_op)						/// (in) Binary scan operator
-	{
-		T aggregate;
-		InclusiveScan(smem_storage, input, output, scan_op, aggregate);
-	}
-
-
-	//---------------------------------------------------------------------
-	// Inclusive prefix sum interface
-	//---------------------------------------------------------------------
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		InclusiveScan(smem_storage, input, output, Sum<T>(), T(0), aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD],	/// (out) Output array (may be aliased to input)
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		InclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	template <int ITEMS_PER_THREAD>						/// (inferred) The number of items per thread
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				(&input)[ITEMS_PER_THREAD],		/// (in) Input array
-		T 				(&output)[ITEMS_PER_THREAD])	/// (out) Output array (may be aliased to input)
-	{
-		T aggregate;
-		InclusiveSum(smem_storage, input, output, aggregate);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output,						/// (out) Output array (may be aliased to input)
-		T				&aggregate,						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-		T				&cta_prefix)					/// (in/out) Cta-wide prefix to scan (valid in lane-0).
-	{
-		typedef T Array1D[1];
-
-		InclusiveSum(
-			smem_storage,
-			reinterpret_cast<Array1D&>(input),
-			reinterpret_cast<Array1D&>(output),
-			aggregate,
-			cta_prefix);
-	}
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output,						/// (out) Output array (may be aliased to input)
-		T				&aggregate)						/// (out) Total aggregate (valid in lane-0).  May be aliased with cta_prefix.
-	{
-		T cta_prefix;
-		InclusiveSum(smem_storage, input, output, aggregate, cta_prefix);
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide inclusive prefix sum over the input.
-	 */
-	static __device__ __forceinline__ void InclusiveSum(
-		SmemStorage		&smem_storage,					/// (in) SmemStorage reference
-		T 				input,							/// (in) Input array
-		T 				&output)						/// (out) Output array (may be aliased to input)
-	{
-		T aggregate;
-		InclusiveSum(smem_storage, input, output, aggregate);
-	}
 
 
 };
