@@ -134,7 +134,7 @@ __device__ __forceinline__ T ThreadScanInclusive(
 	T			(&output)[LENGTH],		/// (out) Output array (may be aliased to input)
 	ScanOp 		scan_op)				/// (in) Scan operator
 {
-	ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op);
+	return ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op);
 }
 
 
@@ -187,7 +187,7 @@ __device__ __forceinline__ T ThreadScanInclusive(
 	T 			prefix,					/// (in) Prefix to seed scan with
 	bool 		apply_prefix = true)	/// (in) Whether or not the calling thread should apply its prefix.  (Handy for preventing thread-0 from applying a prefix.)
 {
-	ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op, prefix, apply_prefix);
+	return ThreadScanInclusive<LENGTH>((T*) input, (T*) output, scan_op, prefix, apply_prefix);
 }
 
 

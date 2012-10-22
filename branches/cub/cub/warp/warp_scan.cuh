@@ -226,7 +226,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Lane-IDs
@@ -289,7 +289,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
@@ -409,7 +409,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		ScanOp 			scan_op,			/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
@@ -440,7 +440,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		Sum<T, true>,						/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		InclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
@@ -632,7 +632,7 @@ public:
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		T				identity,			/// (in) Identity value.
 		ScanOp 			scan_op,			/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
@@ -668,7 +668,7 @@ public:
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		T,									/// (in) Identity value.
 		Sum<T, true>,						/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		ExclusiveSum(smem_storage, input, output, aggregate, warp_prefix);
@@ -686,7 +686,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		ScanOp 			scan_op,			/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		// Warp, lane-IDs
@@ -723,7 +723,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		Sum<T, true>,						/// (in) Scan operator.
-		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).  May be aliased with warp_prefix.
+		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
 		ExclusiveSum(smem_storage, input, output, aggregate, warp_prefix);

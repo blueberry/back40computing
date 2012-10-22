@@ -51,133 +51,6 @@ enum TestMode
 	PREFIX_AGGREGATE,
 };
 
-//---------------------------------------------------------------------
-// Complex data type Foo
-//---------------------------------------------------------------------
-
-/**
- * Foo complex data type
- */
-struct Foo
-{
-	long long 	x;
-	int 		y;
-	short 		z;
-	char 		w;
-
-	// Factory
-	static __host__ __device__ __forceinline__ Foo MakeFoo(long long x, int y, short z, char w)
-	{
-		Foo retval = {x, y, z, w};
-		return retval;
-	}
-
-	// Summation operator
-	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
-	{
-		return MakeFoo(x + b.x, y + b.y, z + b.z, w + b.w);
-	}
-
-	// Inequality operator
-	__host__ __device__ __forceinline__ bool operator !=(const Foo &b)
-	{
-		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
-	}
-};
-
-/**
- * Foo ostream operator
- */
-std::ostream& operator<<(std::ostream& os, const Foo& val)
-{
-	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << CoutCast(val.w) << ')';
-	return os;
-}
-
-/**
- * Foo test initialization
- */
-void InitValue(int gen_mode, Foo &value, int index = 0)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-	InitValue(gen_mode, value.z, index);
-	InitValue(gen_mode, value.w, index);
-}
-
-
-//---------------------------------------------------------------------
-// Complex data type Bar (with optimizations for fence-free warp-synchrony)
-//---------------------------------------------------------------------
-
-/**
- * Bar complex data type
- */
-struct Bar
-{
-	typedef void ThreadLoadTag;
-	typedef void ThreadStoreTag;
-
-	long long 	x;
-	int 		y;
-
-	// Factory
-	static __host__ __device__ __forceinline__ Bar MakeBar(long long x, int y)
-	{
-		Bar retval = {x, y};
-		return retval;
-	}
-
-	// Summation operator
-	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
-	{
-		return MakeBar(x + b.x, y + b.y);
-	}
-
-	// Inequality operator
-	__host__ __device__ __forceinline__ bool operator !=(const Bar &b)
-	{
-		return (x != b.x) && (y != b.y);
-	}
-
-	// ThreadLoad
-	template <PtxLoadModifier MODIFIER>
-	__device__ __forceinline__
-	void ThreadLoad(Bar *ptr)
-	{
-		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
-		y = cub::ThreadLoad<MODIFIER>(&(ptr->y));
-	}
-
-	 // ThreadStore
-	template <PtxStoreModifier MODIFIER>
-	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
-	{
-		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
-		cub::ThreadStore<MODIFIER>(&(ptr->y), y);
-	}
-};
-
-/**
- * Bar ostream operator
- */
-std::ostream& operator<<(std::ostream& os, const Bar& val)
-{
-	os << '(' << val.x << ',' << val.y << ')';
-	return os;
-}
-
-/**
- * Bar test initialization
- */
-void InitValue(int gen_mode, Bar &value, int index = 0)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-}
-
-
-
 
 
 //---------------------------------------------------------------------
@@ -185,11 +58,11 @@ void InitValue(int gen_mode, Bar &value, int index = 0)
 //---------------------------------------------------------------------
 
 /**
- * CtaScan test kernel (specialized for exclusive scan with identity value).
+ * Exclusive CtaScan test kernel.
  */
 template <
 	int 		CTA_THREADS,
-	int			ITEMS_PER_THREAD,
+	int 		ITEMS_PER_THREAD,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp,
@@ -202,63 +75,59 @@ __global__ void CtaScanKernel(
 	T			prefix,
 	clock_t		*d_elapsed)
 {
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
 	// Cooperative warp-scan utility type (1 warp)
-	typedef CtaScan<T, CTA_THREADS, STRIPS_PER_TILE> CtaScan;
+	typedef CtaScan<T, CTA_THREADS> CtaScan;
 
 	// Shared memory
 	__shared__ typename CtaScan::SmemStorage smem_storage;
 
 	// Per-thread tile data
-	T aggregate;
-	clock_t cycles;
 	T data[ITEMS_PER_THREAD];
-
-	// Load items
 	CtaLoadDirect<CTA_THREADS>(data, d_in, 0);
 
+	// Record elapsed clocks
+	clock_t start = clock();
+
+	// Test scan
+	T aggregate;
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
-		cycles = clock();
-		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
-		cycles = clock() - start;
+		CtaScan::ExclusiveScan(smem_storage, data, data, identity, scan_op);
 	}
 	else if (TEST_MODE == AGGREGATE)
 	{
 		// Test with cumulative aggregate
-		cycles = clock();
-		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
-		cycles = clock() - start;
+		CtaScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate);
 	}
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		cycles = clock();
-		CtaScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
-		cycles = clock() - start;
+		CtaScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix);
 	}
 
 	// Record elapsed clocks
-	*d_elapsed = cycles;
+	*d_elapsed = clock() - start;
 
-	// Store data
+	// Store output
 	CtaStoreDirect<CTA_THREADS>(data, d_out, 0);
 
 	// Store aggregate
 	if (threadIdx.x == 0)
 	{
-		d_out[blockDim.x] = aggregate;
+		d_out[TILE_SIZE] = aggregate;
 	}
 }
 
 
 /**
- * CtaScan test kernel (specialized for inclusive scan without identity value).
+ * Inclusive CtaScan test kernel.
  */
 template <
 	int 		CTA_THREADS,
-	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_THREAD,
+	int 		ITEMS_PER_THREAD,
 	TestMode	TEST_MODE,
 	typename 	T,
 	typename 	ScanOp>
@@ -270,14 +139,17 @@ __global__ void CtaScanKernel(
 	T			prefix,
 	clock_t		*d_elapsed)
 {
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
+
 	// Cooperative warp-scan utility type (1 warp)
-	typedef CtaScan<T, 1, CTA_THREADS> CtaScan;
+	typedef CtaScan<T, CTA_THREADS> CtaScan;
 
 	// Shared memory
 	__shared__ typename CtaScan::SmemStorage smem_storage;
 
 	// Per-thread tile data
-	T data = d_in[threadIdx.x];
+	T data[ITEMS_PER_THREAD];
+	CtaLoadDirect<CTA_THREADS>(data, d_in, 0);
 
 	// Record elapsed clocks
 	clock_t start = clock();
@@ -302,19 +174,19 @@ __global__ void CtaScanKernel(
 	// Record elapsed clocks
 	*d_elapsed = clock() - start;
 
-	// Store data
-	d_out[threadIdx.x] = data;
+	// Store output
+	CtaStoreDirect<CTA_THREADS>(data, d_out, 0);
 
 	// Store aggregate
 	if (threadIdx.x == 0)
 	{
-		d_out[blockDim.x] = aggregate;
+		d_out[TILE_SIZE] = aggregate;
 	}
 }
 
 
 //---------------------------------------------------------------------
-// Host testing subroutines
+// Host utility subroutines
 //---------------------------------------------------------------------
 
 /**
@@ -331,7 +203,7 @@ T Initialize(
 	int 		num_elements,
 	ScanOp 		scan_op,
 	IdentityT 	identity,
-	T			*prefix = NULL)
+	T			*prefix)
 {
 	T inclusive = (prefix != NULL) ? *prefix : identity;
 
@@ -359,7 +231,7 @@ T Initialize(
 	int 		num_elements,
 	ScanOp 		scan_op,
 	NullType,
-	T			*prefix = NULL)
+	T			*prefix)
 {
 	T inclusive;
 	for (int i = 0; i < num_elements; ++i)
@@ -383,12 +255,11 @@ T Initialize(
 
 
 /**
- * Test warp scan
+ * Test CTA scan
  */
 template <
 	int 		CTA_THREADS,
-	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_THREAD,
+	int 		ITEMS_PER_THREAD,
 	TestMode 	TEST_MODE,
 	typename 	ScanOp,
 	typename 	IdentityT,		// NullType implies inclusive-scan, otherwise inclusive scan
@@ -400,7 +271,7 @@ void Test(
 	T			prefix,
 	char		*type_string)
 {
-	const int TILE_SIZE = CTA_THREADS * STRIPS_PER_TILE * ITEMS_PER_THREAD;
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
 	// Allocate host arrays
 	T *h_in = new T[TILE_SIZE];
@@ -408,7 +279,14 @@ void Test(
 
 	// Initialize problem
 	T *p_prefix = (TEST_MODE == PREFIX_AGGREGATE) ? &prefix : NULL;
-	T aggregate = Initialize(gen_mode, h_in, h_reference, TILE_SIZE, scan_op, identity, &p_prefix);
+	T aggregate = Initialize(
+		gen_mode,
+		h_in,
+		h_reference,
+		TILE_SIZE,
+		scan_op,
+		identity,
+		p_prefix);
 
 	// Initialize device arrays
 	T *d_in = NULL;
@@ -420,14 +298,26 @@ void Test(
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
 
 	// Run kernel
-	printf("Test-mode %d, gen-mode %d, %s warpscan, %d warp threads, %s (%d bytes) elements:\n",
+	printf("Test-mode %d, gen-mode %d, %s CtaScan, %d CTA threads, %d items per thread, %s (%d bytes) elements:\n",
 		TEST_MODE,
 		gen_mode,
 		(Equals<IdentityT, NullType>::VALUE) ? "Inclusive" : "Exclusive",
 		CTA_THREADS,
+		ITEMS_PER_THREAD,
 		type_string,
 		(int) sizeof(T));
 	fflush(stdout);
+
+	// Display input problem data
+	if (g_verbose)
+	{
+		printf("Input data: ");
+		for (int i = 0; i < TILE_SIZE; i++)
+		{
+			std::cout << CoutCast(h_in[i]) << ", ";
+		}
+		printf("\n\n");
+	}
 
 	// Run aggregate/prefix kernel
 	CtaScanKernel<CTA_THREADS, ITEMS_PER_THREAD, TEST_MODE><<<1, CTA_THREADS>>>(
@@ -472,8 +362,7 @@ void Test(
  */
 template <
 	int 		CTA_THREADS,
-	int			STRIPS_PER_TILE,
-	int			ITEMS_PER_THREAD,
+	int 		ITEMS_PER_THREAD,
 	typename 	ScanOp,
 	typename 	T>
 void Test(
@@ -498,7 +387,9 @@ void Test(
 /**
  * Run battery of tests for different data types and scan ops
  */
-template <int CTA_THREADS, int int ITEMS_PER_THREAD>
+template <
+	int CTA_THREADS,
+	int ITEMS_PER_THREAD>
 void Test(int gen_mode)
 {
 	// primitive
@@ -534,16 +425,39 @@ void Test(int gen_mode)
 /**
  * Run battery of tests for different problem generation options
  */
-template <
-	int CTA_THREADS,
-	int STRIPS_PER_TILE,
-	int ITEMS_PER_THREAD>
+template <int CTA_THREADS, int ITEMS_PER_THREAD>
 void Test()
 {
-	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
-	{
-		Test<CTA_THREADS, ITEMS_PER_THREAD>(gen_mode);
-	}
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(UNIFORM);
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(SEQ_INC);
+	Test<CTA_THREADS, ITEMS_PER_THREAD>(RANDOM);
+}
+
+
+/**
+ * Run battery of tests for different items per thread
+ */
+template <int CTA_THREADS>
+void Test()
+{
+	Test<CTA_THREADS, 1>();
+	Test<CTA_THREADS, 2>();
+	Test<CTA_THREADS, 3>();
+	Test<CTA_THREADS, 8>();
+}
+
+
+/**
+ * Run battery of tests for different CTA sizes
+ */
+void Test()
+{
+	Test<17>();
+	Test<32>();
+	Test<63>();
+	Test<65>();
+	Test<96>();
+	Test<128>();
 }
 
 
@@ -571,25 +485,16 @@ int main(int argc, char** argv)
     // Initialize device
     CubDebugExit(args.DeviceInit());
 
-
-//    if (quick)
+    if (quick)
     {
         // Quick exclusive test
-        Test<128, 1, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
+    	Test<128, 4, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
     }
-/*
     else
     {
-        // Test logical warp sizes
-        Test<32>();
-        Test<16>();
-        Test<9>();
-        Test<7>();
+        // Test CTA thread sizessizes
+        Test();
     }
-*/
-
-    // Flush any stdout from the kernel;
-    cudaDeviceSynchronize();
 
     return 0;
 }

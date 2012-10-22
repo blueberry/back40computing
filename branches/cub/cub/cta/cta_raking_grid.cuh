@@ -100,10 +100,11 @@ struct CtaRakingGrid
 	 */
 	static __device__ __forceinline__ T* PlacementPtr(
 		SmemStorage &smem_storage,
-		int cta_strip = 0)
+		int cta_strip = 0,
+		int tid = threadIdx.x)
 	{
 		// Offset for partial
-		unsigned int offset = (cta_strip * CTA_THREADS) + threadIdx.x;
+		unsigned int offset = (cta_strip * CTA_THREADS) + tid;
 
 		// Incorporating a block of padding partials every shared memory segment
 		return smem_storage + offset + (offset / PADDING_STRIDE) * PADDING_ELEMENTS;
@@ -113,9 +114,11 @@ struct CtaRakingGrid
 	/**
 	 * Pointer for sequential warp-synchronous raking within grid (with padding)
 	 */
-	static __device__ __forceinline__ T* RakingPtr(SmemStorage &smem_storage)
+	static __device__ __forceinline__ T* RakingPtr(
+		SmemStorage &smem_storage,
+		int tid = threadIdx.x)
 	{
-		unsigned int raking_begin_bytes 	= threadIdx.x * RAKING_LENGTH * sizeof(T);
+		unsigned int raking_begin_bytes 	= tid * RAKING_LENGTH * sizeof(T);
 		unsigned int padding_bytes 			= (raking_begin_bytes / (PADDING_STRIDE * sizeof(T))) * PADDING_ELEMENTS * sizeof(T);
 
 		return reinterpret_cast<T*>(
