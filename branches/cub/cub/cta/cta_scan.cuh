@@ -149,8 +149,8 @@ public:
 				smem_storage.warp_scan,
 				raking_partial,
 				raking_partial,
-				scan_op,
 				identity,
+				scan_op,
 				aggregate,
 				cta_prefix);
 
@@ -221,8 +221,8 @@ public:
 				smem_storage.warp_scan,
 				raking_partial,
 				raking_partial,
-				scan_op,
 				identity,
+				scan_op,
 				aggregate,
 				cta_prefix);
 

@@ -39,132 +39,6 @@ bool g_verbose = false;
 
 
 //---------------------------------------------------------------------
-// Complex data type Foo
-//---------------------------------------------------------------------
-
-/**
- * Foo complex data type
- */
-struct Foo
-{
-	long long 	x;
-	int 		y;
-	short 		z;
-	char 		w;
-
-	// Factory
-	static __host__ __device__ __forceinline__ Foo MakeFoo(long long x, int y, short z, char w)
-	{
-		Foo retval = {x, y, z, w};
-		return retval;
-	}
-
-	// Summation operator
-	__host__ __device__ __forceinline__ Foo operator+(const Foo &b) const
-	{
-		return MakeFoo(x + b.x, y + b.y, z + b.z, w + b.w);
-	}
-
-	// Inequality operator
-	__host__ __device__ __forceinline__ bool operator !=(const Foo &b)
-	{
-		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
-	}
-};
-
-/**
- * Foo ostream operator
- */
-std::ostream& operator<<(std::ostream& os, const Foo& val)
-{
-	os << '(' << val.x << ',' << val.y << ',' << val.z << ',' << CoutCast(val.w) << ')';
-	return os;
-}
-
-/**
- * Foo test initialization
- */
-void InitValue(int gen_mode, Foo &value, int index = 0)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-	InitValue(gen_mode, value.z, index);
-	InitValue(gen_mode, value.w, index);
-}
-
-
-//---------------------------------------------------------------------
-// Complex data type Bar (with optimizations for fence-free warp-synchrony)
-//---------------------------------------------------------------------
-
-/**
- * Bar complex data type
- */
-struct Bar
-{
-	typedef void ThreadLoadTag;
-	typedef void ThreadStoreTag;
-
-	long long 	x;
-	int 		y;
-
-	// Factory
-	static __host__ __device__ __forceinline__ Bar MakeBar(long long x, int y)
-	{
-		Bar retval = {x, y};
-		return retval;
-	}
-
-	// Summation operator
-	__host__ __device__ __forceinline__ Bar operator+(const Bar &b) const
-	{
-		return MakeBar(x + b.x, y + b.y);
-	}
-
-	// Inequality operator
-	__host__ __device__ __forceinline__ bool operator !=(const Bar &b)
-	{
-		return (x != b.x) && (y != b.y);
-	}
-
-	// ThreadLoad
-	template <PtxLoadModifier MODIFIER>
-	__device__ __forceinline__
-	void ThreadLoad(Bar *ptr)
-	{
-		x = cub::ThreadLoad<MODIFIER>(&(ptr->x));
-		y = cub::ThreadLoad<MODIFIER>(&(ptr->y));
-	}
-
-	 // ThreadStore
-	template <PtxStoreModifier MODIFIER>
-	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
-	{
-		cub::ThreadStore<MODIFIER>(&(ptr->x), x);
-		cub::ThreadStore<MODIFIER>(&(ptr->y), y);
-	}
-};
-
-/**
- * Bar ostream operator
- */
-std::ostream& operator<<(std::ostream& os, const Bar& val)
-{
-	os << '(' << val.x << ',' << val.y << ')';
-	return os;
-}
-
-/**
- * Bar test initialization
- */
-void InitValue(int gen_mode, Bar &value, int index = 0)
-{
-	InitValue(gen_mode, value.x, index);
-	InitValue(gen_mode, value.y, index);
-}
-
-
-//---------------------------------------------------------------------
 // Test kernels
 //---------------------------------------------------------------------
 
@@ -174,8 +48,7 @@ void InitValue(int gen_mode, Bar &value, int index = 0)
  */
 template <
 	int 		CTA_THREADS,
-	int 		STRIPS,
-	int 		ELEMENTS,
+	int 		ITEMS_PER_THREAD,
 	typename 	T,
 	typename 	ReductionOp>
 __launch_bounds__ (CTA_THREADS, 1)
@@ -185,20 +58,20 @@ __global__ void FullTileReduceKernel(
 	ReductionOp 	reduction_op,
 	int				tiles)
 {
-	const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
 	// Cooperative CTA reduction utility type (returns aggregate in thread 0)
-	typedef CtaReduce<T, CTA_THREADS, STRIPS> CtaReduce;
+	typedef CtaReduce<T, CTA_THREADS> CtaReduce;
 
 	// Shared memory
 	__shared__ typename CtaReduce::SmemStorage smem_storage;
 
 	// Per-thread tile data
-	T data[STRIPS][ELEMENTS];
+	T data[ITEMS_PER_THREAD];
 
 	// Load first tile of data
 	int cta_offset = 0;
-	CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, cta_offset);
+	CtaLoadDirect<CTA_THREADS>(data, d_in, cta_offset);
 	cta_offset += TILE_SIZE;
 
 	// Cooperative reduce first tile
@@ -211,7 +84,7 @@ __global__ void FullTileReduceKernel(
 		__syncthreads();
 
 		// Load tile of data
-		CtaLoad<CTA_THREADS>::LoadUnguarded(data, d_in, cta_offset);
+		CtaLoadDirect<CTA_THREADS>(data, d_in, cta_offset);
 		cta_offset += TILE_SIZE;
 
 		// Cooperatively reduce the tile's aggregate
@@ -310,8 +183,7 @@ void Initialize(
  */
 template <
 	int 		CTA_THREADS,
-	int 		STRIPS,
-	int			ELEMENTS,
+	int			ITEMS_PER_THREAD,
 	typename 	T,
 	typename 	ReductionOp>
 void TestFullTile(
@@ -320,7 +192,7 @@ void TestFullTile(
 	ReductionOp 	reduction_op,
 	char			*type_string)
 {
-	const int TILE_SIZE = CTA_THREADS * STRIPS * ELEMENTS;
+	const int TILE_SIZE = CTA_THREADS * ITEMS_PER_THREAD;
 
 	int num_elements = TILE_SIZE * tiles;
 
@@ -339,17 +211,16 @@ void TestFullTile(
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * num_elements, cudaMemcpyHostToDevice));
 
 	// Test multi-tile (unguarded)
-	printf("TestFullTile, gen-mode %d, num_elements(%d), CTA_THREADS(%d), STRIPS(%d), ELEMENTS(%d), %s (%d bytes) elements:\n",
+	printf("TestFullTile, gen-mode %d, num_elements(%d), CTA_THREADS(%d), ITEMS_PER_THREAD(%d), %s (%d bytes) elements:\n",
 		gen_mode,
 		num_elements,
 		CTA_THREADS,
-		STRIPS,
-		ELEMENTS,
+		ITEMS_PER_THREAD,
 		type_string,
 		(int) sizeof(T));
 	fflush(stdout);
 
-	FullTileReduceKernel<CTA_THREADS, STRIPS, ELEMENTS><<<1, CTA_THREADS>>>(
+	FullTileReduceKernel<CTA_THREADS, ITEMS_PER_THREAD><<<1, CTA_THREADS>>>(
 		d_in,
 		d_out,
 		reduction_op,
@@ -363,32 +234,13 @@ void TestFullTile(
 	printf("\n");
 
 	// Cleanup
-	if (h_in) free(h_in);
+	if (h_in) delete(h_in);
 	if (d_in) CubDebugExit(cudaFree(d_in));
 	if (d_out) CubDebugExit(cudaFree(d_out));
 }
 
 /**
- * Run battery of tests for different thread strip elements
- */
-template <
-	int 		CTA_THREADS,
-	int 		STRIPS,
-	typename 	T,
-	typename 	ReductionOp>
-void TestFullTile(
-	int 			gen_mode,
-	int 			tiles,
-	ReductionOp 	reduction_op,
-	char			*type_string)
-{
-	TestFullTile<CTA_THREADS, STRIPS, 1, T>(gen_mode, tiles, reduction_op, type_string);
-//	TestFullTile<CTA_THREADS, STRIPS, 4, T>(gen_mode, tiles, reduction_op, type_string);
-}
-
-
-/**
- * Run battery of tests for different strips
+ * Run battery of tests for different thread items
  */
 template <
 	int 		CTA_THREADS,
@@ -474,7 +326,7 @@ void TestPartialTile(
 	T *d_out = NULL;
 	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * TILE_SIZE));
 	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * 1));
-	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * TILE_SIZE, cudaMemcpyHostToDevice));
+	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * num_elements, cudaMemcpyHostToDevice));
 
 	printf("TestPartialTile, gen-mode %d, num_elements(%d), CTA_THREADS(%d), %s (%d bytes) elements:\n",
 		gen_mode,
@@ -498,7 +350,7 @@ void TestPartialTile(
 	printf("\n");
 
 	// Cleanup
-	if (h_in) free(h_in);
+	if (h_in) delete(h_in);
 	if (d_in) CubDebugExit(cudaFree(d_in));
 	if (d_out) CubDebugExit(cudaFree(d_out));
 }
@@ -555,11 +407,14 @@ void TestPartialTile(
 template <typename T, typename ReductionOp>
 void Test(ReductionOp reduction_op, char *type_string)
 {
-	for (int gen_mode = UNIFORM; gen_mode < GEN_MODE_END; gen_mode++)
-	{
-		TestFullTile<T>(gen_mode, reduction_op, type_string);
-		TestPartialTile<T>(gen_mode, reduction_op, type_string);
-	}
+	TestFullTile<T>(UNIFORM, reduction_op, type_string);
+	TestPartialTile<T>(UNIFORM, reduction_op, type_string);
+
+	TestFullTile<T>(SEQ_INC, reduction_op, type_string);
+	TestPartialTile<T>(SEQ_INC, reduction_op, type_string);
+
+	TestFullTile<T>(RANDOM, reduction_op, type_string);
+	TestPartialTile<T>(RANDOM, reduction_op, type_string);
 }
 
 
@@ -591,7 +446,7 @@ int main(int argc, char** argv)
     {
         // Quick test
     	typedef int T;
-    	TestFullTile<128, 1, 4, T>(UNIFORM, 1, Sum<T>(), CUB_TYPE_STRING(T));
+    	TestFullTile<128, 4, T>(UNIFORM, 1, Sum<T>(), CUB_TYPE_STRING(T));
     }
     else
     {

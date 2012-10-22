@@ -560,7 +560,7 @@ struct Foo
 	// Inequality operator
 	__host__ __device__ __forceinline__ bool operator !=(const Foo &b)
 	{
-		return (x != b.x) && (y != b.y) && (z != b.z) && (w != b.w);
+		return (x != b.x) || (y != b.y) || (z != b.z) || (w != b.w);
 	}
 };
 
@@ -616,11 +616,11 @@ struct Bar
 	// Inequality operator
 	__host__ __device__ __forceinline__ bool operator !=(const Bar &b)
 	{
-		return (x != b.x) && (y != b.y);
+		return (x != b.x) || (y != b.y);
 	}
 
 	// ThreadLoad
-	template <PtxLoadModifier MODIFIER>
+	template <cub::PtxLoadModifier MODIFIER>
 	__device__ __forceinline__
 	void ThreadLoad(Bar *ptr)
 	{
@@ -629,7 +629,7 @@ struct Bar
 	}
 
 	 // ThreadStore
-	template <PtxStoreModifier MODIFIER>
+	template <cub::PtxStoreModifier MODIFIER>
 	__device__ __forceinline__ void ThreadStore(Bar *ptr) const
 	{
 		cub::ThreadStore<MODIFIER>(&(ptr->x), x);

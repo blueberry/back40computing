@@ -102,7 +102,7 @@ CUB_HAS_NESTED_TYPE(HasThreadStore, ThreadStoreTag)
 /**
  * Dispatch specializer
  */
-template <PtxStoreModifier MODIFIER, bool HAS_THREAD_LOAD>
+template <PtxStoreModifier MODIFIER, bool HAS_THREAD_STORE>
 struct ThreadStoreDispatch;
 
 
@@ -164,9 +164,15 @@ struct ThreadStoreDispatch<PTX_STORE_VS, false>
 	template <typename T>
 	static __device__ __forceinline__ void ThreadStore(T *ptr, const T& val)
 	{
-		// Straightforward dereference of volatile pointer
-		volatile T *volatile_ptr = ptr;
-		*volatile_ptr = val;
+		const bool USE_VOLATILE = NumericTraits<T>::PRIMITIVE;
+
+		typedef typename If<USE_VOLATILE, volatile T, T>::Type PtrT;
+
+		// Straightforward dereference of pointer
+		*reinterpret_cast<PtrT*>(ptr) = val;
+
+		// Prevent compiler from reordering or omitting memory accesses between rounds
+		if (!USE_VOLATILE) __threadfence_block();
 	}
 };
 

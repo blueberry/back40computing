@@ -91,17 +91,17 @@ __global__ void WarpScanKernel(
 	if (TEST_MODE == BASIC)
 	{
 		// Test basic warp scan
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity);
+		WarpScan::ExclusiveScan(smem_storage, data, data, identity, scan_op);
 	}
 	else if (TEST_MODE == AGGREGATE)
 	{
 		// Test with cumulative aggregate
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate);
+		WarpScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate);
 	}
 	else if (TEST_MODE == PREFIX_AGGREGATE)
 	{
 		// Test with warp-prefix and cumulative aggregate
-		WarpScan::ExclusiveScan(smem_storage, data, data, scan_op, identity, aggregate, prefix);
+		WarpScan::ExclusiveScan(smem_storage, data, data, identity, scan_op, aggregate, prefix);
 	}
 
 	// Record elapsed clocks
@@ -425,21 +425,20 @@ int main(int argc, char** argv)
     // Initialize device
     CubDebugExit(args.DeviceInit());
 
-//    if (quick)
+    if (quick)
     {
         // Quick exclusive test
-        Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
+    	Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
     }
-/*    else
+    else
     {
-
         // Test logical warp sizes
         Test<32>();
         Test<16>();
         Test<9>();
         Test<7>();
     }
-*/
+
     return 0;
 }
 

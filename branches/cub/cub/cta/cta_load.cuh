@@ -166,16 +166,16 @@ public:
  * CTA load direct interface
  */
 template <
-	int 			CTA_THREADS,					/// The CTA size in threads
+	int 				CTA_THREADS,					/// The CTA size in threads
 	PtxLoadModifier 	MODIFIER,						/// Cache load modifier Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
-	typename 		T,								/// (inferred) Value type
-	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-	typename 		InputIterator,					/// (inferred) Input iterator type
-	typename 		SizeT>							/// (inferred) Integer counting type
+	typename 			T,								/// (inferred) Value type
+	int					ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 			InputIterator,					/// (inferred) Input iterator type
+	typename 			SizeT>							/// (inferred) Integer counting type
 __device__ __forceinline__ void CtaLoadDirect(
-	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
-	InputIterator 	itr,							/// (in) Input iterator for loading from
-	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to load the tile
+	T 					(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 		itr,							/// (in) Input iterator for loading from
+	const SizeT 		&cta_offset)					/// (in) Offset in itr at which to load the tile
 {
 	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoad;
 	CtaLoad::Load(CtaLoad::SmemStorage(), items, itr, cta_offset);
@@ -186,15 +186,15 @@ __device__ __forceinline__ void CtaLoadDirect(
  * CTA load direct interface
  */
 template <
-	int 			CTA_THREADS,					/// The CTA size in threads
-	typename 		T,								/// (inferred) Value type
-	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-	typename 		InputIterator,					/// (inferred) Input iterator type
-	typename 		SizeT>							/// (inferred) Integer counting type
+	int 				CTA_THREADS,					/// The CTA size in threads
+	typename 			T,								/// (inferred) Value type
+	int					ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 			InputIterator,					/// (inferred) Input iterator type
+	typename 			SizeT>							/// (inferred) Integer counting type
 __device__ __forceinline__ void CtaLoadDirect(
-	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
-	InputIterator 	itr,							/// (in) Input iterator for loading from
-	const SizeT 	&cta_offset)					/// (in) Offset in itr at which to load the tile
+	T 					(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 		itr,							/// (in) Input iterator for loading from
+	const SizeT 		&cta_offset)					/// (in) Offset in itr at which to load the tile
 {
 	CtaLoadDirect<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset);
 }
@@ -203,17 +203,17 @@ __device__ __forceinline__ void CtaLoadDirect(
  * CTA load direct interface, guarded by range
  */
 template <
-	int 			CTA_THREADS,					/// The CTA size in threads
+	int 				CTA_THREADS,					/// The CTA size in threads
 	PtxLoadModifier 	MODIFIER,						/// Cache load modifier Cache modifier (e.g., PTX_LOAD_NONE/LOAD_WB/PTX_LOAD_CG/PTX_LOAD_CS/LOAD_WT/etc.)
-	typename 		T,								/// (inferred) Value type
-	int				ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
-	typename 		InputIterator,					/// (inferred) Input iterator type
-	typename 		SizeT>							/// (inferred) Integer counting type
+	typename 			T,								/// (inferred) Value type
+	int					ITEMS_PER_THREAD,				/// (inferred) The number of items per thread
+	typename 			InputIterator,					/// (inferred) Input iterator type
+	typename 			SizeT>							/// (inferred) Integer counting type
 __device__ __forceinline__ void CtaLoadDirect(
-	T 				(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
-	InputIterator 	itr,							/// (in) Input iterator for loading from
-	const SizeT 	&cta_offset,					/// (in) Offset in itr at which to load the tile
-	const SizeT 	&guarded_elements)				/// (in) Number of valid items in the tile
+	T 					(&items)[ITEMS_PER_THREAD],		/// (out) Data to load
+	InputIterator 		itr,							/// (in) Input iterator for loading from
+	const SizeT 		&cta_offset,					/// (in) Offset in itr at which to load the tile
+	const SizeT 		&guarded_elements)				/// (in) Number of valid items in the tile
 {
 	typedef CtaLoad<InputIterator, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_DIRECT, MODIFIER> CtaLoad;
 	CtaLoad::Load(CtaLoad::SmemStorage(), items, itr, cta_offset, guarded_elements);

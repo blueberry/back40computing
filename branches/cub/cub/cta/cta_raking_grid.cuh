@@ -83,9 +83,9 @@ struct CtaRakingGrid
 		// Total number of elements in the raking grid
 		GRID_ELEMENTS = RAKING_ELEMENTS + (RAKING_ELEMENTS / PADDING_STRIDE),
 
-		// Whether or not we may need bounds checking on a full tile (the number
-		// of reduction elements is not a multiple of the warp size)
-		FULL_UNGUARDED = (SHARED_ELEMENTS % DeviceProps::WARP_THREADS == 0),
+		// Whether or not we need bounds checking during raking (the number of
+		// reduction elements is not a multiple of the warp size)
+		UNGUARDED = (SHARED_ELEMENTS % DeviceProps::WARP_THREADS == 0),
 	};
 
 

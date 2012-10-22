@@ -45,10 +45,6 @@ namespace cub {
  * 		- Supports non-commutative reduction operators.
  * 		- Supports partially-full CTAs (i.e., high-order threads having
  * 			undefined values).
- * 		- Supports reduction over strip-mined CTA tiles.  (For a given tile of
- * 			input, each thread acquires SUB_TILES arrays of ELEMENTS consecutive
- * 			inputs, where the logical stride between a given thread's strips is
- * 			(ELEMENTS * CTA_THREADS) elements.)
  * 		- Very efficient (only one synchronization barrier).
  * 		- Zero bank conflicts for most types.
  *
@@ -59,8 +55,7 @@ namespace cub {
  */
 template <
 	typename 	T,					// The reduction type
-	int 		CTA_THREADS,		// The CTA size in threads
-	int 		SUB_TILES = 1>		// The number of consecutive subtiles strip-mined for a larger CTA-wide tile
+	int 		CTA_THREADS>		// The CTA size in threads
 class CtaReduce
 {
 private:
@@ -72,14 +67,11 @@ private:
 	/**
 	 * Layout type for padded CTA raking grid
 	 */
-	typedef CtaRakingGrid<CTA_THREADS, T, SUB_TILES> CtaRakingGrid;
+	typedef CtaRakingGrid<CTA_THREADS, T, 1> CtaRakingGrid;
 
 
 	enum
 	{
-		// The total number of elements that need to be cooperatively reduced
-		SHARED_ELEMENTS = CTA_THREADS * SUB_TILES,
-
 		// Number of raking threads
 		RAKING_THREADS = CtaRakingGrid::RAKING_THREADS,
 
@@ -87,16 +79,17 @@ private:
 		RAKING_LENGTH = CtaRakingGrid::RAKING_LENGTH,
 
 		// Number of warp-synchronous steps
-		WARP_SYNCH_STEPS = Log2<CUB_MIN(RAKING_THREADS, SHARED_ELEMENTS)>::VALUE,
+		WARP_SYNCH_STEPS = Log2<RAKING_THREADS>::VALUE,
 
 		// Cooperative work can be entirely warp synchronous
-		WARP_SYNCHRONOUS = (SHARED_ELEMENTS == RAKING_THREADS),
+		WARP_SYNCHRONOUS = (RAKING_THREADS == CTA_THREADS),
 
-		// Whether or not the number of reduction elements is a power of two
-		POWER_OF_TWO = ((SHARED_ELEMENTS & (SHARED_ELEMENTS - 1)) == 0),
+		// Whether or not warp-synchronous reduction should be unguarded (i.e., the warp-reduction elements is a power of two
+		WARP_SYNCHRONOUS_UNGUARDED = ((RAKING_THREADS & (RAKING_THREADS - 1)) == 0),
 
-		// Whether or not we need bounds checking on a full tile (because of odd CTA sizes)
-		FULL_UNGUARDED = (POWER_OF_TWO || CtaRakingGrid::FULL_UNGUARDED),
+		// Whether or not accesses into smem are unguarded
+		RAKING_UNGUARDED = CtaRakingGrid::UNGUARDED,
+
 	};
 
 public:
@@ -113,129 +106,97 @@ public:
 private:
 
 	//---------------------------------------------------------------------
-	// Template iteration structures.  (Regular iteration cannot always be
-	// unrolled due to conditionals or ABI procedure calls within
-	// functors).
+	// Utility methods
 	//---------------------------------------------------------------------
 
-	// General template iteration
-	template <int COUNT, int MAX, bool UNGUARDED>
-	struct Iterate
+	/**
+	 * Warp reduction
+	 */
+	template <
+		bool				FULL_TILE,
+		int 				RAKING_LENGTH,
+		typename 			ReductionOp>
+	static __device__ __forceinline__ T WarpReduce(
+		SmemStorage			&smem_storage,			// SmemStorage reference
+		T 					partial,				// Calling thread's input partial reduction
+		const unsigned int 	&valid_threads,				// Number valid threads (may be less than CTA_THREADS)
+		ReductionOp 		reduction_op)			// Reduction operator
 	{
-		// WarpReduce
-		template <typename ReductionOp>
-		static __device__ __forceinline__ T WarpReduce(
-			SmemStorage		&smem_storage,			// SmemStorage reference
-			T 				partial,				// Calling thread's input partial reduction
-			unsigned int 	num_valid,				// Number of threads containing valid elements (may be less than CTA_THREADS)
-			ReductionOp 	reduction_op)			// Reduction operator
+
+		for (int STEP = 0; STEP < WARP_SYNCH_STEPS; STEP++)
 		{
-			const int OFFSET = 1 << COUNT;
+			const int OFFSET = 1 << STEP;
 
 			// Share partial into buffer
 			ThreadStore<PTX_STORE_VS>(&smem_storage.warp_buffer[threadIdx.x], partial);
 
 			// Update partial if addend is in range
-			if (UNGUARDED || ((threadIdx.x + OFFSET) * RAKING_LENGTH < num_valid))
+			if ((FULL_TILE && WARP_SYNCHRONOUS_UNGUARDED) || ((threadIdx.x + OFFSET) * RAKING_LENGTH < valid_threads))
 			{
 				T addend = ThreadLoad<PTX_LOAD_VS>(&smem_storage.warp_buffer[threadIdx.x + OFFSET]);
 				partial = reduction_op(partial, addend);
 			}
-
-			// Recurse
-			return Iterate<COUNT + 1, MAX, UNGUARDED>::WarpReduce(
-				smem_storage,
-				partial,
-				num_valid,
-				reduction_op);
 		}
-	};
+
+		return partial;
+	}
 
 
-	// Termination
-	template <int MAX, bool UNGUARDED>
-	struct Iterate<MAX, MAX, UNGUARDED>
-	{
-		template <typename ReductionOp>
-		static __device__ __forceinline__ T WarpReduce(
-			SmemStorage		&smem_storage,			// SmemStorage reference
-			T 				partial,				// Calling thread's input partial reduction
-			unsigned int 	num_valid,				// Number of threads containing valid elements (may be less than CTA_THREADS)
-			ReductionOp 	reduction_op)			// Reduction operator
-		{
-			return partial;
-		}
-	};
-
-
-	//---------------------------------------------------------------------
-	// Utility methods
-	//---------------------------------------------------------------------
 
 	/**
-	 * Perform a cooperative, CTA-wide reduction. The first num_valid
+	 * Perform a cooperative, CTA-wide reduction. The first valid_threads
 	 * threads each contribute one reduction partial.
 	 *
 	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	template <
-		bool UNGUARDED,								// Whether we can skip bounds-checking
-		typename ReductionOp>						// Reduction operator type
+		bool 				FULL_TILE,
+		typename			ReductionOp>				// Reduction operator type
 	static __device__ __forceinline__ T ReduceHelper(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partials[SUB_TILES],			// Calling thread's input partial reductions
-		unsigned int 	num_valid,					// Number of valid elements (may be less than CTA_THREADS)
-		ReductionOp 	reduction_op)				// Reduction operator
+		SmemStorage			&smem_storage,				// SmemStorage reference
+		T 					partial,					// Calling thread's input partial reductions
+		const unsigned int 	&valid_threads,				// Number of valid elements (may be less than CTA_THREADS)
+		ReductionOp 		reduction_op)				// Reduction operator
 	{
-		T partial = partials[0];
-
 		if (WARP_SYNCHRONOUS)
 		{
-			// Short-circuit directly to warp synchronous reduction (there is only one strip)
-			partial = Iterate<0, WARP_SYNCH_STEPS, UNGUARDED>::WarpReduce(
+			// Short-circuit directly to warp synchronous reduction (unguarded if active threads is a power-of-two)
+			partial = WarpReduce<FULL_TILE, 1>(
 				smem_storage,
 				partial,
-				num_valid,
+				valid_threads,
 				reduction_op);
 		}
 		else
 		{
-			// Raking reduction.  Place CTA-strided partials into raking grid.
-			#pragma unroll
-			for (int STRIP = 0; STRIP < SUB_TILES; STRIP++)
-			{
-				// Place partial into shared memory grid.
-				*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid, STRIP) = partials[STRIP];
-			}
+			// Place partial into shared memory grid.
+			*CtaRakingGrid::PlacementPtr(smem_storage.raking_grid) = partial;
 
 			__syncthreads();
 
 			// Reduce parallelism to one warp
 			if (threadIdx.x < RAKING_THREADS)
 			{
-
-				// Raking reduction. Compute pointer to raking segment and load first element.
+				// Raking reduction in grid
 				T *raking_segment = CtaRakingGrid::RakingPtr(smem_storage.raking_grid);
 				partial = raking_segment[0];
 
 				#pragma unroll
-				for (int ELEMENT = 1; ELEMENT < RAKING_LENGTH; ELEMENT++)
+				for (int ITEM = 1; ITEM < RAKING_LENGTH; ITEM++)
 				{
-					// Determine logical index of partial
-					unsigned int logical_partial = (threadIdx.x * RAKING_LENGTH) + ELEMENT;
-
-					if (UNGUARDED || (logical_partial < num_valid))
+					// Update partial if addend is in range
+					if ((FULL_TILE && RAKING_UNGUARDED) || ((threadIdx.x * RAKING_LENGTH) + ITEM < valid_threads))
 					{
-						partial = reduction_op(partial, raking_segment[ELEMENT]);
+						partial = reduction_op(partial, raking_segment[ITEM]);
 					}
 				}
 
 				// Warp synchronous reduction
-				partial = Iterate<0, WARP_SYNCH_STEPS, UNGUARDED>::WarpReduce(
+				partial = WarpReduce<(FULL_TILE && RAKING_UNGUARDED), RAKING_LENGTH>(
 					smem_storage,
 					partial,
-					num_valid,
+					valid_threads,
 					reduction_op);
 			}
 		}
@@ -250,7 +211,7 @@ public:
 	//---------------------------------------------------------------------
 
 	/**
-	 * Perform a cooperative, CTA-wide reduction. The first num_valid
+	 * Perform a cooperative, CTA-wide reduction. The first valid_threads
 	 * threads each contribute one reduction partial.
 	 *
 	 * The return value is only valid for thread-0 (and is undefined for
@@ -258,37 +219,37 @@ public:
 	 */
 	template <typename ReductionOp>
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partial,					// Calling thread's input partial reduction
-		int 			num_valid,					// Number of threads containing valid elements (may be less than CTA_THREADS)
-		ReductionOp 	reduction_op)				// Reduction operator
+		SmemStorage			&smem_storage,				// SmemStorage reference
+		T 					partial,					// Calling thread's input partial reduction
+		const unsigned int 	&valid_threads,				// Number of threads containing valid elements (may be less than CTA_THREADS)
+		ReductionOp 		reduction_op)				// Reduction operator
 	{
 		// Determine if we don't need bounds checking
-		if (FULL_UNGUARDED && (num_valid == CTA_THREADS))
+		if (valid_threads == CTA_THREADS)
 		{
-			return ReduceHelper<true>(smem_storage, &partial, num_valid, reduction_op);
+			return ReduceHelper<true>(smem_storage, partial, valid_threads, reduction_op);
 		}
 		else
 		{
-			return ReduceHelper<false>(smem_storage, &partial, num_valid, reduction_op);
+			return ReduceHelper<false>(smem_storage, partial, valid_threads, reduction_op);
 		}
 	}
 
 
 	/**
-	 * Perform a cooperative, CTA-wide reduction. The first num_valid
+	 * Perform a cooperative, CTA-wide sum reduction. The first valid_threads
 	 * threads each contribute one reduction partial.
 	 *
 	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
 	 */
 	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partial,					// Calling thread's input partial reduction
-		int 			num_valid)					// Number of threads containing valid elements (may be less than CTA_THREADS)
+		SmemStorage			&smem_storage,				// SmemStorage reference
+		T 					partial,					// Calling thread's input partial reduction
+		const unsigned int 	&valid_threads)				// Number of threads containing valid elements (may be less than CTA_THREADS)
 	{
 		Sum<T> reduction_op;
-		return Reduce(smem_storage, partial, num_valid, reduction_op);
+		return Reduce(smem_storage, partial, valid_threads, reduction_op);
 	}
 
 
@@ -314,7 +275,7 @@ public:
 
 
 	/**
-	 * Perform a cooperative, CTA-wide reduction (sum) over a full tile.
+	 * Perform a cooperative, CTA-wide sum reduction over a full tile.
 	 *
 	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
@@ -340,16 +301,14 @@ public:
 		T 				(&tile)[ELEMENTS],			// Calling thread's input
 		ReductionOp 	reduction_op)				// Reduction operator
 	{
-		const int TILE_SIZE = CTA_THREADS * ELEMENTS;
-
 		// Reduce partials
 		T partial = ThreadReduce(tile, reduction_op);
-		return reduce(smem_storage, partial, TILE_SIZE, reduction_op);
+		return Reduce(smem_storage, partial, CTA_THREADS, reduction_op);
 	}
 
 
 	/**
-	 * Perform a cooperative, CTA-wide reduction (sum) over a full tile.
+	 * Perform a cooperative, CTA-wide sum reduction over a full tile.
 	 *
 	 * The return value is only valid for thread-0 (and is undefined for
 	 * other threads).
@@ -362,56 +321,6 @@ public:
 		Sum<T> reduction_op;
 		return Reduce(smem_storage, tile, reduction_op);
 	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide reduction over a full,
-	 * strip-mined tile using the specified reduction operator.
-	 *
-	 * The return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	template <int ELEMENTS, typename ReductionOp>
-	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				tile[SUB_TILES][ELEMENTS],		// Calling thread's input
-		ReductionOp 	reduction_op)				// Reduction operator
-	{
-		// Reduce partials within each segment
-		T segment_partials[SUB_TILES];
-		for (int STRIP = 0; STRIP < SUB_TILES; STRIP++)
-		{
-			segment_partials[STRIP] = ThreadReduce(tile[STRIP], reduction_op);
-		}
-
-		// Determine if we don't need bounds checking
-		if (FULL_UNGUARDED)
-		{
-			return ReduceHelper<true>(smem_storage, segment_partials, CTA_THREADS * SUB_TILES, reduction_op);
-		}
-		else
-		{
-			return ReduceHelper<false>(smem_storage, segment_partials, CTA_THREADS * SUB_TILES, reduction_op);
-		}
-	}
-
-
-	/**
-	 * Perform a cooperative, CTA-wide reduction (sum) over a full,
-	 * strip-mined tile.
-	 *
-	 * The return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	template <int ELEMENTS>
-	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				tile[SUB_TILES][ELEMENTS])		// Calling thread's input
-	{
-		Sum<T> reduction_op;
-		return Reduce(smem_storage, tile, reduction_op);
-	}
-
 };
 
 

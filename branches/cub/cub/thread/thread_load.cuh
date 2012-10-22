@@ -163,9 +163,17 @@ struct ThreadLoadDispatch<PTX_LOAD_VS, false>
 	template <typename T>
 	static __device__ __forceinline__ T ThreadLoad(T *ptr)
 	{
-		// Straightforward dereference of volatile pointer
-		volatile T *volatile_ptr = ptr;
-		return *volatile_ptr;
+		const bool USE_VOLATILE = NumericTraits<T>::PRIMITIVE;
+
+		typedef typename If<USE_VOLATILE, volatile T, T>::Type PtrT;
+
+		// Straightforward dereference of pointer
+		T val = *reinterpret_cast<PtrT*>(ptr);
+
+		// Prevent compiler from reordering or omitting memory accesses between rounds
+		if (!USE_VOLATILE) __threadfence_block();
+
+		return val;
 	}
 };
 

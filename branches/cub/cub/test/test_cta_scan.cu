@@ -331,7 +331,7 @@ T Initialize(
 	int 		num_elements,
 	ScanOp 		scan_op,
 	IdentityT 	identity,
-	T			*prefix)
+	T			*prefix = NULL)
 {
 	T inclusive = (prefix != NULL) ? *prefix : identity;
 
@@ -359,7 +359,7 @@ T Initialize(
 	int 		num_elements,
 	ScanOp 		scan_op,
 	NullType,
-	T			*prefix)
+	T			*prefix = NULL)
 {
 	T inclusive;
 	for (int i = 0; i < num_elements; ++i)
@@ -408,7 +408,7 @@ void Test(
 
 	// Initialize problem
 	T *p_prefix = (TEST_MODE == PREFIX_AGGREGATE) ? &prefix : NULL;
-	T aggregate = Initialize(gen_mode, h_in, h_reference, TILE_SIZE, scan_op, identity, p_prefix);
+	T aggregate = Initialize(gen_mode, h_in, h_reference, TILE_SIZE, scan_op, identity, &p_prefix);
 
 	// Initialize device arrays
 	T *d_in = NULL;
