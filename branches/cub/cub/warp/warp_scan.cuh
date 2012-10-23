@@ -349,7 +349,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>)						/// (in) Scan operator.
+		Sum<T>)								/// (in) Scan operator.
 	{
 		InclusiveSum(smem_storage, input, output);
 	}
@@ -392,7 +392,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate)			/// (out) Total aggregate (valid in lane-0)
 	{
 		InclusiveSum(smem_storage, input, output, aggregate);
@@ -439,7 +439,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
@@ -492,7 +492,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		T,									/// (in) Identity value.
-		Sum<T, true>)						/// (in) Scan operator.
+		Sum<T>)								/// (in) Scan operator.
 	{
 		ExclusiveSum(smem_storage, input, output);
 	}
@@ -535,7 +535,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>)						/// (in) Scan operator.
+		Sum<T>)								/// (in) Scan operator.
 	{
 		ExclusiveSum(smem_storage, input, output);
 	}
@@ -574,7 +574,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		T,									/// (in) Identity value.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate)			/// (out) Total aggregate (valid in lane-0)
 	{
 		ExclusiveSum(smem_storage, input, output, aggregate);
@@ -614,7 +614,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate)			/// (out) Total aggregate (valid in lane-0)
 	{
 		ExclusiveSum(smem_storage, input, output, aggregate);
@@ -667,7 +667,7 @@ public:
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
 		T,									/// (in) Identity value.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{
@@ -722,7 +722,7 @@ public:
 		SmemStorage 	&smem_storage,		/// (in) SmemStorage reference
 		T 				input, 				/// (in) Calling thread's input
 		T				&output,			/// (out) Calling thread's output.  May be aliased with input.
-		Sum<T, true>,						/// (in) Scan operator.
+		Sum<T>,								/// (in) Scan operator.
 		T				&aggregate,			/// (out) Total aggregate (valid in lane-0).
 		T				&warp_prefix)		/// (in/out) Warp-wide prefix to warp_prefix with (valid in lane-0).
 	{

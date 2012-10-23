@@ -60,9 +60,7 @@ struct Equality
 /**
  * Default sum functor
  */
-template <
-	typename T,
-	bool PRIMITIVE = Traits<T>::PRIMITIVE>
+template <typename T>
 struct Sum
 {
 	// Binary reduction

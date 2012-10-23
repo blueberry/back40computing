@@ -236,23 +236,6 @@ public:
 	}
 
 
-	/**
-	 * Perform a cooperative, CTA-wide sum reduction. The first valid_threads
-	 * threads each contribute one reduction partial.
-	 *
-	 * The return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	static __device__ __forceinline__ T Reduce(
-		SmemStorage			&smem_storage,				// SmemStorage reference
-		T 					partial,					// Calling thread's input partial reduction
-		const unsigned int 	&valid_threads)				// Number of threads containing valid elements (may be less than CTA_THREADS)
-	{
-		Sum<T> reduction_op;
-		return Reduce(smem_storage, partial, valid_threads, reduction_op);
-	}
-
-
 	//---------------------------------------------------------------------
 	// Full-tile reduction interface
 	//---------------------------------------------------------------------
@@ -275,20 +258,6 @@ public:
 
 
 	/**
-	 * Perform a cooperative, CTA-wide sum reduction over a full tile.
-	 *
-	 * The return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				partial)					// Calling thread's input partial reduction
-	{
-		return Reduce(smem_storage, partial, CTA_THREADS);
-	}
-
-
-	/**
 	 * Perform a cooperative, CTA-wide reduction over a full tile using the
 	 * specified reduction operator.
 	 *
@@ -306,21 +275,6 @@ public:
 		return Reduce(smem_storage, partial, CTA_THREADS, reduction_op);
 	}
 
-
-	/**
-	 * Perform a cooperative, CTA-wide sum reduction over a full tile.
-	 *
-	 * The return value is only valid for thread-0 (and is undefined for
-	 * other threads).
-	 */
-	template <int ELEMENTS>
-	static __device__ __forceinline__ T Reduce(
-		SmemStorage		&smem_storage,				// SmemStorage reference
-		T 				(&tile)[ELEMENTS])			// Calling thread's input
-	{
-		Sum<T> reduction_op;
-		return Reduce(smem_storage, tile, reduction_op);
-	}
 };
 
 
