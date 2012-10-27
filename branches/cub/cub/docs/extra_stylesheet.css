@@ -1,0 +1,204 @@
+body {
+        background-color: #EEE;
+        color: black;
+        margin: 0;
+}
+
+div.contents {
+        width: 960px;
+        margin-left: auto;
+        margin-right: auto;
+		margin-top: 10px;
+        padding-top: 20px;
+        padding-left: 50px;
+        padding-right: 50px;
+        padding-bottom: 20px;
+        background-color: white;
+        border-radius: 8px;
+		border-bottom: 1px solid #C4CFE5;
+		border-right: 1px solid #C4CFE5;
+}
+
+div.header {
+        width: 960px;
+        margin-left: auto;
+        margin-right: auto;
+		margin-top: 10px;
+        padding-left: 50px;
+        padding-right: 50px;
+		background-image: none;
+        background-color: white;
+        border-radius: 8px;
+		border-bottom: 1px solid #C4CFE5;
+		border-right: 1px solid #C4CFE5;
+}
+
+#projectname {
+		font: bold 300% "courier new",courier,monospace;
+}
+
+div.headertitle {
+		padding: 5px 5px 0px 0px;
+}
+
+div.title {
+		padding-top: 18px;
+		padding-bottom: 18px;
+		font: bold 130% "courier new",courier,monospace;
+		margin: auto;
+}
+
+
+
+#MSearchBox {
+        margin-left: 500px;
+		right: auto;
+}
+
+#top {
+        width: 1060px;
+        margin-left: auto;
+        margin-right: auto;
+}
+
+#titlearea {
+}
+
+hr.footer {
+        display: none;
+}
+
+.footer {
+        background-color: #EEE;
+}
+
+h2.groupheader {
+		margin-top: 30px;
+
+		font-size: 150%;
+        font-weight: bold;
+        color: #888;
+}
+
+tr.heading h2 {
+		margin-top: 30px;
+}
+
+address.footer {
+        width: 960px;
+        margin-left: auto;
+        margin-right: auto;
+}
+
+h1 {
+		padding-top: 10px;
+		font: bold 130% "courier new",courier,monospace;
+		color: #4665A2;
+}
+
+
+
+/* code syntax recoloring */
+
+div.line
+{
+	line-height: normal;
+}
+
+span.comment
+{
+		color: #3F7F5F;
+}
+
+span.preprocessor
+{
+		color: darkred;
+}
+
+span.keyword
+{
+		color: darkred;
+        font-weight: bold;
+}
+
+span.keywordflow
+{
+		color: darkred;
+        font-weight: bold;
+}
+
+span.keywordtype
+{
+		color: darkred;
+        font-weight: bold;
+}
+
+
+
+
+
+
+/* brief code description cells */
+
+div.memitem
+{
+		margin-bottom: 30px;
+}
+
+td.memTemplParams {
+		font-family: "courier new",courier,monospace;
+}
+
+td.memTemplItemLeft {
+		font-family: "courier new",courier,monospace;
+		font-size: 80%;
+}
+
+td.memTemplItemRight {
+		font-family: "courier new",courier,monospace;
+}
+
+td.memItemLeft {
+		font-family: "courier new",courier,monospace;
+		font-size: 80%;
+}
+
+td.memItemRight {
+		font-family: "courier new",courier,monospace;
+}
+
+td.memSeparator {
+		border-bottom: 1px dashed #DEE4F0;
+		border-top: 1px dashed #DEE4F0;
+        line-height: 8px;
+}
+
+td.mdescLeft {
+		padding-top: 6px;
+		padding-bottom: 6px;
+		color: #888;
+}
+
+td.mdescRight {
+		padding-top: 6px;
+		padding-bottom: 6px;
+		color: #888;
+}
+
+td.memname {
+		font-family: "courier new",courier,monospace;
+}
+
+div.memtemplate {
+		font-family: "courier new",courier,monospace;
+}
+
+td.paramtype {
+		font-family: "courier new",courier,monospace;
+}
+
+td.paramname {
+		font-family: "courier new",courier,monospace;
+		font-weight: bold;
+		color: darkred;
+}

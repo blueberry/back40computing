@@ -110,11 +110,74 @@ __global__ void WarpScanKernel(
 	// Store data
 	d_out[threadIdx.x] = data;
 
-	// Store aggregate
+	// Store aggregate and prefix
 	if (threadIdx.x == 0)
 	{
-		d_out[blockDim.x] = aggregate;
+		d_out[LOGICAL_WARP_THREADS] = aggregate;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
 	}
+}
+
+
+/**
+ * Exclusive WarpScan test kernel (specialized for prefix sum)
+ */
+template <
+	int 		LOGICAL_WARP_THREADS,
+	TestMode	TEST_MODE,
+	typename 	T,
+	typename 	IdentityT>
+__global__ void WarpScanKernel(
+	T 												*d_in,
+	T 												*d_out,
+	Sum<T>,
+	IdentityT,
+	T												prefix,
+	clock_t											*d_elapsed,
+	typename EnableIf<Traits<T>::PRIMITIVE>::Type 	*dummy = NULL)
+{
+	// Cooperative warp-scan utility type (1 warp)
+	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
+
+	// Shared memory
+	__shared__ typename WarpScan::SmemStorage smem_storage;
+
+	// Per-thread tile data
+	T data = d_in[threadIdx.x];
+
+	// Record elapsed clocks
+	clock_t start = clock();
+
+	// Test scan
+	T aggregate;
+	if (TEST_MODE == BASIC)
+	{
+		// Test basic warp scan
+		WarpScan::ExclusiveSum(smem_storage, data, data);
+	}
+	else if (TEST_MODE == AGGREGATE)
+	{
+		// Test with cumulative aggregate
+		WarpScan::ExclusiveSum(smem_storage, data, data, aggregate);
+	}
+	else if (TEST_MODE == PREFIX_AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::ExclusiveSum(smem_storage, data, data, aggregate, prefix);
+	}
+
+	// Record elapsed clocks
+	*d_elapsed = clock() - start;
+
+	// Store data
+	d_out[threadIdx.x] = data;
+
+    // Store aggregate and prefix
+    if (threadIdx.x == 0)
+    {
+        d_out[LOGICAL_WARP_THREADS] = aggregate;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+    }
 }
 
 
@@ -169,11 +232,73 @@ __global__ void WarpScanKernel(
 	// Store data
 	d_out[threadIdx.x] = data;
 
-	// Store aggregate
-	if (threadIdx.x == 0)
+    // Store aggregate and prefix
+    if (threadIdx.x == 0)
+    {
+        d_out[LOGICAL_WARP_THREADS] = aggregate;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+    }
+}
+
+
+/**
+ * Inclusive WarpScan test kernel (specialized for prefix sum).
+ */
+template <
+	int 		LOGICAL_WARP_THREADS,
+	TestMode	TEST_MODE,
+	typename 	T>
+__global__ void WarpScanKernel(
+	T 												*d_in,
+	T 												*d_out,
+	Sum<T>,
+	NullType,
+	T												prefix,
+	clock_t											*d_elapsed,
+	typename EnableIf<Traits<T>::PRIMITIVE>::Type 	*dummy = NULL)
+
+{
+	// Cooperative warp-scan utility type (1 warp)
+	typedef WarpScan<T, 1, LOGICAL_WARP_THREADS> WarpScan;
+
+	// Shared memory
+	__shared__ typename WarpScan::SmemStorage smem_storage;
+
+	// Per-thread tile data
+	T data = d_in[threadIdx.x];
+
+	// Record elapsed clocks
+	clock_t start = clock();
+
+	T aggregate;
+	if (TEST_MODE == BASIC)
 	{
-		d_out[blockDim.x] = aggregate;
+		// Test basic warp scan
+		WarpScan::InclusiveSum(smem_storage, data, data);
 	}
+	else if (TEST_MODE == AGGREGATE)
+	{
+		// Test with cumulative aggregate
+		WarpScan::InclusiveSum(smem_storage, data, data, aggregate);
+	}
+	else if (TEST_MODE == PREFIX_AGGREGATE)
+	{
+		// Test with warp-prefix and cumulative aggregate
+		WarpScan::InclusiveSum(smem_storage, data, data, aggregate, prefix);
+	}
+
+	// Record elapsed clocks
+	*d_elapsed = clock() - start;
+
+	// Store data
+	d_out[threadIdx.x] = data;
+
+    // Store aggregate and prefix
+    if (threadIdx.x == 0)
+    {
+        d_out[LOGICAL_WARP_THREADS] = aggregate;
+        d_out[LOGICAL_WARP_THREADS + 1] = prefix;
+    }
 }
 
 
@@ -275,7 +400,7 @@ void Test(
 	T *d_out = NULL;
 	clock_t *d_elapsed = NULL;
 	CubDebugExit(cudaMalloc((void**)&d_in, sizeof(T) * LOGICAL_WARP_THREADS));
-	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (LOGICAL_WARP_THREADS + 1)));
+	CubDebugExit(cudaMalloc((void**)&d_out, sizeof(T) * (LOGICAL_WARP_THREADS + 2)));
 	CubDebugExit(cudaMalloc((void**)&d_elapsed, sizeof(clock_t)));
 	CubDebugExit(cudaMemcpy(d_in, h_in, sizeof(T) * LOGICAL_WARP_THREADS, cudaMemcpyHostToDevice));
 
@@ -298,11 +423,8 @@ void Test(
 		prefix,
 		d_elapsed);
 
-	if (g_verbose)
-	{
-		printf("\tElapsed clocks: ");
-		DisplayDeviceResults(d_elapsed, 1);
-	}
+	printf("\tElapsed clocks: ");
+	DisplayDeviceResults(d_elapsed, 1);
 
 	CubDebugExit(cudaDeviceSynchronize());
 
@@ -317,6 +439,14 @@ void Test(
 		printf("\tScan aggregate: ");
 		AssertEquals(0, CompareDeviceResults(&aggregate, d_out + LOGICAL_WARP_THREADS, 1, g_verbose, g_verbose));
 		printf("\n");
+
+	    if (TEST_MODE == PREFIX_AGGREGATE)
+	    {
+	        printf("\tScan prefix: ");
+	        T new_prefix = scan_op(prefix, aggregate);
+	        AssertEquals(0, CompareDeviceResults(&new_prefix, d_out + LOGICAL_WARP_THREADS + 1, 1, g_verbose, g_verbose));
+	        printf("\n");
+	    }
 	}
 
 	// Cleanup
@@ -428,7 +558,7 @@ int main(int argc, char** argv)
     if (quick)
     {
         // Quick exclusive test
-    	Test<32, BASIC>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
+    	Test<32, PREFIX_AGGREGATE>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
     }
     else
     {

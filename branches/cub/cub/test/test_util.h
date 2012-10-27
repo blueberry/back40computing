@@ -311,7 +311,7 @@ int CoutCast(signed char val) { return val; }
  */
 enum GenMode
 {
-	UNIFORM,			// All 1s
+	UNIFORM,			// All 2s
 	SEQ_INC,			// Sequentially incrementing
 	RANDOM,				// Random
 };
@@ -325,7 +325,7 @@ void InitValue(int gen_mode, T &value, int index = 0)
 	switch (gen_mode)
 	{
 	case UNIFORM:
-		value = 1;
+		value = 2;
 		break;
 	case SEQ_INC:
 		value = index;
