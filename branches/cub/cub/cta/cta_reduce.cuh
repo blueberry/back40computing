@@ -39,21 +39,21 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
- * \brief The CtaReduce type provides variants of parallel reduction across threads within a CUDA CTA.
+ * \brief The CtaReduce type provides variants of parallel reduction across threads within a CUDA CTA. ![](reduce_logo.png)
  *
  * \tparam T                        The reduction input/output element type
  * \tparam CTA_THREADS              The CTA size in threads
  *
  * <b>Overview</b>
- *
  * \par
  * A <em>reduction</em> (or <em>fold</em>) uses a binary combining operator to
  * compute a single aggregate from a list of input elements.
  *
  * \par
- * These parallel reduction variants assume an <em>n</em>-element
- * input list that is partitioned among \p CTA_THREADS threads, with thread<sub><em>i</em></sub>
- * having the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The parallel operations exposed by this type assume <em>n</em>-element
+ * lists that are partitioned evenly among \p CTA_THREADS threads,
+ * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
+ * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
  *
  * <b>Features</b>
  * \par
@@ -68,16 +68,19 @@ namespace cub {
  *   -# Sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
  *   -# A single-warp performs a raking upsweep across partial reductions shared each thread in the CTA.
  *   -# A warp-synchronous Kogge-Stone style reduction within the raking warp to produce the total aggregate.
- *   \image html raking.png "Phase 2: One 16-thread warp sequentially rakes across a grid of 64 shared partial reductions from the entire CTA.  Padding is inserted to avoid bank conflicts.
  *   <br>
- *   \image html kogge_stone_reduction.png "Phase 3: Data flow within a 16-thread Kogge-Stone reduction construction.  Junctions represent binary operators, and thread<sub>0</sub> computes the total aggregate."
+ *   <br>
+ *   \image html cta_reduce.png
+ *   <center><b>Data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
  *   <br>
  *
- * <b>Considerations</b>
+ * <b>Important Considerations</b>
  * \par
+ * - After any CtaReduce operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ *   required if the supplied CtaReduce::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
- *        \p short, \p int2, \p double, \p float2, etc.)  The implementation may use memory
+ *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
  *        fences to prevent reference reordering of non-primitive types.
  *      - \p CTA_THREADS is a multiple of the architecture's warp size
  *      - Every thread has a valid input (i.e., unguarded reduction)
@@ -101,7 +104,7 @@ namespace cub {
  *      // A segment of four input items per thread
  *      int input[4] = {2, 2, 2, 2};
  *
- *      // Compute the CTA-wide sum in thread<sub>0</sub>.  (In this case, aggregate = 1024)
+ *      // Compute the CTA-wide sum in thread0.
  *      int aggregate = CtaReduce::Reduce(smem_storage, input);
  * \endcode
  * <br>
@@ -124,9 +127,9 @@ namespace cub {
  *      int input;
  *      if (threadIdx.x < num_elements) input = ...;
  *
- *      // Compute the CTA-wide sum of valid elements in thread<sub>0</sub>.
+ *      // Compute the CTA-wide sum of valid elements in thread0.
  *      int aggregate = CtaReduce::Reduce(smem_storage, input, num_elements);
- *\endcode
+ * \endcode
  */
 template <
     typename     T,
@@ -285,30 +288,17 @@ private:
 
 public:
 
-    //---------------------------------------------------------------------
-    // Full-inputs reduction interface
-    //---------------------------------------------------------------------
-
-    /**
-     * \brief Computes a CTA-wide reduction for thread<sub>0</sub>.  Each thread contributes one input element.
-     *
-     * The return value is undefined in threads other than thread<sub>0</sub>.
-     *
-     * \tparam ReductionOp     [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
-     */
-    template <typename ReductionOp>
-    static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,              ///< [in] SmemStorage reference
-        T               partial,                    ///< [in] Calling thread's input
-        ReductionOp     reduction_op)               ///< [in] Binary associative reduction functor
-    {
-        return Reduce(smem_storage, partial, CTA_THREADS, reduction_op);
-    }
+    /******************************************************************//**
+     * @name Summation Reduction
+     *********************************************************************/
+    //@{
 
     /**
      * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using addition (+) as the reduction operator.  Each thread contributes one input element.
      *
      * The return value is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
@@ -319,11 +309,74 @@ public:
         return Reduce(smem_storage, input, reduction_op);
     }
 
-
     /**
-     * \brief Computes a CTA-wide reduction for thread<sub>0</sub>.  Each thread contributes a segment of consecutive input elements.
+     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using addition (+) as the reduction operator.  Each thread contributes an array of consecutive input elements.
      *
      * The return value is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     */
+    template <int ITEMS_PER_THREAD>
+    static __device__ __forceinline__ T Reduce(
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               (&inputs)[ITEMS_PER_THREAD])    ///< [in] Calling thread's input segment
+    {
+        Sum<T> reduction_op;
+        return Reduce(smem_storage, inputs, reduction_op);
+    }
+
+
+    /**
+     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using addition (+) as the reduction operator.  The first \p valid_threads threads each contribute one input element.
+     *
+     * \smemreuse
+     *
+     * The return value is undefined in threads other than thread<sub>0</sub>.
+     */
+    static __device__ __forceinline__ T Reduce(
+        SmemStorage         &smem_storage,          ///< [in] SmemStorage reference
+        T                   input,                   ///< [in] Calling thread's input
+        const unsigned int  &valid_threads)         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
+    {
+        Sum<T> reduction_op;
+        Reduce(smem_storage, input, valid_threads);
+    }
+
+
+    //@}
+    /******************************************************************//**
+     * @name Generic reduction
+     *********************************************************************/
+    //@{
+
+
+    /**
+     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using the specified binary reduction functor.  Each thread contributes one input element.
+     *
+     * The return value is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     */
+    template <typename ReductionOp>
+    static __device__ __forceinline__ T Reduce(
+        SmemStorage     &smem_storage,              ///< [in] SmemStorage reference
+        T               input,                      ///< [in] Calling thread's input
+        ReductionOp     reduction_op)               ///< [in] Binary associative reduction functor
+    {
+        return Reduce(smem_storage, input, CTA_THREADS, reduction_op);
+    }
+
+
+    /**
+     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using the specified binary reduction functor.  Each thread contributes an array of consecutive input elements.
+     *
+     * The return value is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
      *
      * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
      * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
@@ -343,65 +396,34 @@ public:
 
 
     /**
-     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using addition (+) as the reduction operator.  Each thread contributes a segment of consecutive input elements.
+     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using the specified binary reduction functor.  The first \p valid_threads threads each contribute one input element.
      *
      * The return value is undefined in threads other than thread<sub>0</sub>.
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
-     */
-    template <int ITEMS_PER_THREAD>
-    static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
-        T               (&inputs)[ITEMS_PER_THREAD])    ///< [in] Calling thread's input segment
-    {
-        Sum<T> reduction_op;
-        return Reduce(smem_storage, inputs, reduction_op);
-    }
-
-
-    //---------------------------------------------------------------------
-    // Partial-inputs reduction interface
-    //---------------------------------------------------------------------
-
-    /**
-     * \brief Computes a CTA-wide reduction for thread<sub>0</sub>.  The first \p valid_threads threads each contribute one input element.
+     * \smemreuse
      *
-     * The return value is undefined in threads other than thread<sub>0</sub>.
-     *
-     * \tparam ReductionOp     [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
         SmemStorage         &smem_storage,          ///< [in] SmemStorage reference
-        T                   partial,                ///< [in] Calling thread's input
+        T                   input,                  ///< [in] Calling thread's input
         const unsigned int  &valid_threads,         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
         ReductionOp         reduction_op)           ///< [in] Binary associative reduction functor
     {
         // Determine if we don't need bounds checking
         if (valid_threads == CTA_THREADS)
         {
-            return ReduceHelper<true>(smem_storage, partial, valid_threads, reduction_op);
+            return ReduceHelper<true>(smem_storage, input, valid_threads, reduction_op);
         }
         else
         {
-            return ReduceHelper<false>(smem_storage, partial, valid_threads, reduction_op);
+            return ReduceHelper<false>(smem_storage, input, valid_threads, reduction_op);
         }
     }
 
+    //@}
 
-    /**
-     * \brief Computes a CTA-wide reduction for thread<sub>0</sub> using addition (+) as the reduction operator.  The first \p valid_threads threads each contribute one input element.
-     *
-     * The return value is undefined in threads other than thread<sub>0</sub>.
-     */
-    static __device__ __forceinline__ T Reduce(
-        SmemStorage         &smem_storage,          ///< [in] SmemStorage reference
-        T                   partial,                ///< [in] Calling thread's input
-        const unsigned int  &valid_threads)         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
-    {
-        Sum<T> reduction_op;
-        Reduce(smem_storage, partial, valid_threads);
-    }
 };
 
 

@@ -1,3 +1,7 @@
+body, table, div, p, dl {
+		font: 400 14px/21px arial,sans-serif;
+}
+
 body {
         background-color: #EEE;
         color: black;
@@ -5,13 +9,13 @@ body {
 }
 
 div.contents {
-        width: 960px;
+        width: 920px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
         padding-top: 20px;
-        padding-left: 50px;
-        padding-right: 50px;
+        padding-left: 60px;
+        padding-right: 60px;
         padding-bottom: 20px;
         background-color: white;
         border-radius: 8px;
@@ -20,12 +24,12 @@ div.contents {
 }
 
 div.header {
-        width: 960px;
+        width: 920px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
-        padding-left: 50px;
-        padding-right: 50px;
+        padding-left: 60px;
+        padding-right: 60px;
 		background-image: none;
         background-color: white;
         border-radius: 8px;
@@ -51,17 +55,18 @@ div.title {
 
 
 #MSearchBox {
-        margin-left: 500px;
+        margin-left: 480px;
 		right: auto;
 }
 
 #top {
-        width: 1060px;
+        width: 1040px;
         margin-left: auto;
         margin-right: auto;
 }
 
 #titlearea {
+		border-bottom: none;
 }
 
 hr.footer {
@@ -77,7 +82,7 @@ h2.groupheader {
 
 		font-size: 150%;
         font-weight: bold;
-        color: #888;
+        color: gray;
 }
 
 tr.heading h2 {
@@ -96,43 +101,48 @@ h1 {
 		color: #4665A2;
 }
 
+.tablist a, .navpath li.navelem a {
+		text-shadow: none;
+}
+
+p.startli, p.startdd, p.starttd {
+		margin-top: 1em;
+		margin-bottom: 1em;
+}
+
+.caption {
+		font-weight: normal;
+}
+
+.directory tr.even {
+		border-bottom: 1px dashed #4665A2;
+		border-top: 1px dashed #4665A2;
+		background-color: white;
+}
+
+td.entry {
+	padding-top: 3px;
+}
 
 
 /* code syntax recoloring */
 
-div.line
-{
+div.line {
 	line-height: normal;
 }
 
-span.comment
-{
+span.comment {
 		color: #3F7F5F;
 }
 
-span.preprocessor
-{
-		color: darkred;
-}
-
-span.keyword
-{
+span.preprocessor, span.keyword, span.keywordflow, span.keywordtype {
 		color: darkred;
         font-weight: bold;
 }
 
-span.keywordflow
-{
-		color: darkred;
-        font-weight: bold;
+a.code, a.code:visited {
+		color: black;
 }
-
-span.keywordtype
-{
-		color: darkred;
-        font-weight: bold;
-}
-
 
 
 
@@ -140,31 +150,41 @@ span.keywordtype
 
 /* brief code description cells */
 
-div.memitem
-{
+.params, .paramname, .retval, .paramname {
+		vertical-align: top;
+		padding-right: 8px;
+}
+
+div.memdoc {
+		color: gray;
+}
+
+dl.tparams, dl.params {
+		color: black;
+}
+
+div.memproto {
+		text-shadow: none;
+}
+
+div.memitem {
 		margin-bottom: 30px;
 }
 
-td.memTemplParams {
+td.memTemplParams, td.memTemplItemLeft, td.memItemLeft {
+		padding-left: 20px;
+		text-align: justify;
+		font-family: "courier new",courier,monospace;
+		font-size: 85%;
+}
+
+td.memTemplItemRight, td.memItemRight {
 		font-family: "courier new",courier,monospace;
 }
 
-td.memTemplItemLeft {
-		font-family: "courier new",courier,monospace;
-		font-size: 80%;
-}
-
-td.memTemplItemRight {
-		font-family: "courier new",courier,monospace;
-}
-
-td.memItemLeft {
-		font-family: "courier new",courier,monospace;
-		font-size: 80%;
-}
-
-td.memItemRight {
-		font-family: "courier new",courier,monospace;
+div.groupHeader {
+		margin-left: auto;
+		margin-bottom: 12px;
 }
 
 td.memSeparator {
@@ -173,28 +193,18 @@ td.memSeparator {
         line-height: 8px;
 }
 
-td.mdescLeft {
+td.mdescLeft, td.mdescRight {
 		padding-top: 6px;
 		padding-bottom: 6px;
-		color: #888;
+		color: gray;
 }
 
-td.mdescRight {
-		padding-top: 6px;
-		padding-bottom: 6px;
-		color: #888;
-}
-
-td.memname {
+td.memname, td.paramtype, div.memtemplate {
 		font-family: "courier new",courier,monospace;
 }
 
-div.memtemplate {
-		font-family: "courier new",courier,monospace;
-}
-
-td.paramtype {
-		font-family: "courier new",courier,monospace;
+.memtemplate {
+		font-size: 85%;
 }
 
 td.paramname {

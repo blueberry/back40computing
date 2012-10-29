@@ -47,14 +47,14 @@ enum CtaScanPolicy
 
 
 /**
- * \brief The CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA.
+ * \brief The CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA.  ![](scan_logo.png)
  *
  * \tparam T                The reduction input/output element type
  * \tparam CTA_THREADS      The CTA size in threads
  * \tparam POLICY           [optional] cub::CtaScanPolicy tuning policy enumeration
  *
  * <b>Overview</b>
- *
+ * \par
  * Given a list of input elements and a binary reduction operator, <em>prefix scan</em>
  * produces an output list where each element is computed to be the reduction
  * of the elements occurring earlier in the input list.  <em>Prefix sum</em>
@@ -64,9 +64,10 @@ enum CtaScanPolicy
  * input operand in the partial reduction.
  *
  * \par
- * These parallel prefix scan variants assume an <em>n</em>-element
- * input list that is partitioned among \p CTA_THREADS threads, with thread<sub><em>i</em></sub>
- * having the <em>i</em><sup>th</sup> segment of consecutive input and output elements.
+ * The parallel operations exposed by this type assume <em>n</em>-element
+ * lists that are partitioned evenly among \p CTA_THREADS threads,
+ * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
+ * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
  *
  * <b>Features</b>
  * \par
@@ -76,46 +77,62 @@ enum CtaScanPolicy
  *
  * <b>Algorithm</b>
  * \par
- *   - cub::CTA_SCAN_RAKING variant.  <em>O</em>(<em>n</em>) work complexity and are implemented in five phases:
- *     -# Upsweep sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
- *     -# Upsweep sequential reduction in shared memory.  Threads within a single warp rake across segments of shared partial reductions.
- *     \image html raking.png "One 16-thread warp sequentially rakes across a grid of 64 shared partial reductions from the entire CTA.  Padding is inserted to avoid bank conflicts.
- *     <br>
- *     -# A warp-synchronous Kogge-Stone style exclusive scan within the raking warp.
- *     \image html kogge_stone_reduction.png "Data flow within a 16-thread Kogge-Stone reduction construction.  Junctions represent binary operators, and thread<sub>0</sub> computes the total aggregate."
- *     -# Downsweep sequential exclusive scan in shared memory.  Threads within a single warp rake across segments of shared partial reductions, seeded with the warp-scan output.
- *     -# Downsweep sequential scan in registers (if threads contribute more than one input), seeded with the raking scan output.
- *     <br>
- *   - cub::CTA_SCAN_WARPSCANS variant.  <em>O</em>(<em>n</em>) work complexity and are implemented in three phases:
+ * The CtaScan class can be configured to use one of two alternative algorithms:
+ *
+ * \par
+ *   -# <b>Algorithm cub::CTA_SCAN_RAKING</b>:
+ *
+ *     These variants have <em>O</em>(<em>n</em>) work complexity and are comprised of five phases:
  *     -# Upsweep sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
  *     -# Upsweep sequential reduction in shared memory.  Threads within a single warp rake across segments of shared partial reductions.
  *     -# A warp-synchronous Kogge-Stone style exclusive scan within the raking warp.
  *     -# Downsweep sequential exclusive scan in shared memory.  Threads within a single warp rake across segments of shared partial reductions, seeded with the warp-scan output.
  *     -# Downsweep sequential scan in registers (if threads contribute more than one input), seeded with the raking scan output.
+ *     <br>
+ *     <br>
+ *     \image html cta_scan.png
+ *     <center><b>\p CTA_SCAN_RAKING data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
+ *     <br>
+ *   -# <b>Algorithm cub::CTA_SCAN_WARPSCANS</b>:
+ *
+ *     These variants have <em>O</em>(<em>n</em>log<em>n</em>) work complexity and are comprised of five phases:
  *     <br>
  *
- * <b>Considerations</b>
+ * <b>Important Considerations</b>
  * \par
+ * - After any CtaScan operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
- *        \p short, \p int2, \p double, \p float2, etc.)  The implementation may use memory
+ *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
  *        fences to prevent reference reordering of non-primitive types.
  *      - \p CTA_THREADS is a multiple of the architecture's warp size
  *      - Every thread has a valid input (i.e., unguarded reduction)
- * - To minimize synchronization overhead, the cumulative aggregate is only valid in thread<sub>0</sub>.
+ * - To minimize synchronization overhead for operations involving the cumulative
+ *   \p aggregate and \p cta_prefix, these values are only valid in thread<sub>0</sub>.
  *
  * <b>Examples</b>
  * \par
- * - <b>Example 1:</b> Simple prefix scan
- * \code
- * #include <cub.cuh>
+ * - <b>Example 1:</b> Simple exclusive prefix sum
+ *      \code
+ *      #include <cub.cuh>
  *
- * template <int CTA_THREADS>
- * __global__ void SomeKernel(...)
- * {
+ *      template <int CTA_THREADS>
+ *      __global__ void SomeKernel(...)
+ *      {
  *
- * \endcode
- * <br>
+ *      \endcode
+ *
+ * \par
+ * - <b>Example 2:</b> More sophisticated exclusive prefix sum
+ *      \code
+ *      #include <cub.cuh>
+ *
+ *      template <int CTA_THREADS>
+ *      __global__ void SomeKernel(...)
+ *      {
+ *
+ *      \endcode
  */
 template <
     typename        T,
@@ -161,18 +178,28 @@ private:
 
 public:
 
-    /// Opaque shared memory storage type required by the CtaScan template instantiation.
+    /// The operations exposed by CtaScan require shared memory of this
+    /// type.  This opaque storage can be allocated directly using the
+    /// <tt>__shared__</tt> keyword.  Alternatively, it can be aliased to
+    /// externally allocated shared memory or <tt>union</tt>'d with other types
+    /// to facilitate shared memory reuse.
     typedef SmemStorage SmemStorage;
 
 
-    //---------------------------------------------------------------------
-    // Exclusive scan interface (with identity)
-    //---------------------------------------------------------------------
+    /******************************************************************//**
+     * @name Exclusive prefix scan variants
+     *********************************************************************/
+    //@{
+
 
     /**
-     * Exclusive CTA-wide prefix scan also producing aggregate.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  Also computes the CTA-wide \p aggregate of all inputs for thread<sub>0</sub>.
      *
-     * \tparam ScanOp     [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
+     * The \p aggregate is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp   [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
@@ -238,18 +265,25 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan also producing aggregate.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  Also computes the CTA-wide \p aggregate of all inputs for thread<sub>0</sub>.
+     *
+     * The \p aggregate is undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename        ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T                identity,                        ///< [in] Identity value.
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage       &smem_storage,                ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        T                 identity,                     ///< [in] Identity value.
+        ScanOp            scan_op,                      ///< [in] Binary scan operator
+        T                 &aggregate)                   ///< [out] Total aggregate (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -263,18 +297,23 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix scan also producing aggregate and
-     * consuming/producing cta_prefix.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.  The \p cta_prefix value from thread<sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs for thread<sub>0</sub>.  The \p cta_prefix is further updated by the value of \p aggregate.
+     *
+     * The \p aggregate and \p cta_prefix are undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        T                identity,                        ///< [in] Identity value.
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        T               identity,                       ///< [in] Identity value.
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -333,20 +372,26 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan also producing aggregate and
-     * consuming/producing cta_prefix
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.  The \p cta_prefix value from thread<sub>0</sub> is applied to all scan outputs.  Also computes the CTA-wide \p aggregate of all inputs for thread<sub>0</sub>.  The \p cta_prefix is further updated by the value of \p aggregate.
+     *
+     * The \p aggregate and \p cta_prefix are undefined in threads other than thread<sub>0</sub>.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T                identity,                        ///< [in] Identity value.
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        T                 identity,                     ///< [in] Identity value.
+        ScanOp            scan_op,                      ///< [in] Binary scan operator
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -360,15 +405,19 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix scan.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes one input element.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        T                identity,                        ///< [in] Identity value.
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        T               identity,                       ///< [in] Identity value.
+        ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
         T aggregate;
         ExclusiveScan(smem_storage, input, output, identity, scan_op, aggregate);
@@ -377,17 +426,22 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan.
+     * \brief Computes an exclusive CTA-wide prefix scan using the specified binary scan functor.  Each thread contributes an array of consecutive input elements.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T                identity,                        ///< [in] Identity value.
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage       &smem_storage,                ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        T                 identity,                     ///< [in] Identity value.
+        ScanOp            scan_op)                      ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -400,21 +454,27 @@ public:
     }
 
 
-    //---------------------------------------------------------------------
-    // Exclusive scan interface (without identity)
-    //---------------------------------------------------------------------
+    //@}
+    /******************************************************************//**
+     * @name Exclusive prefix scan variants (without supplied identity)
+     *********************************************************************/
+    //@{
+
 
     /**
-     * Exclusive CTA-wide prefix scan also producing aggregate. With no
-     * identity value, the output computed for thread<sub>0</sub> is invalid.
+     * \brief Exclusive CTA-wide prefix scan also producing aggregate. With no identity value, the output computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -468,19 +528,22 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan also producing aggregate.  With no
-     * identity value, the first output element computed for thread<sub>0</sub> is
-     * invalid.
+     * \brief 2D exclusive CTA-wide prefix scan also producing aggregate.  With no identity value, the first output element computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -494,18 +557,20 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix scan also producing aggregate and
-     * consuming/producing cta_prefix.  With no identity value, the first
-     * output element computed for thread<sub>0</sub> is invalid.
+     * \brief Exclusive CTA-wide prefix scan also producing aggregate and consuming/producing cta_prefix.  With no identity value, the first output element computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -562,20 +627,23 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan also producing aggregate and
-     * consuming/producing cta_prefix.  With no identity value, the first
-     * output element computed for thread<sub>0</sub> is invalid.
+     * \brief 2D exclusive CTA-wide prefix scan also producing aggregate and consuming/producing cta_prefix.  With no identity value, the first output element computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        ScanOp            scan_op,                      ///< [in] Binary scan operator
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -589,15 +657,18 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix scan.  With no identity value, the output
-     * computed for thread<sub>0</sub> is invalid.
+     * \brief Exclusive CTA-wide prefix scan.  With no identity value, the output computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
         T aggregate;
         ExclusiveScan(smem_storage, input, output, scan_op, aggregate);
@@ -605,17 +676,21 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix scan.  With no identity value, the first
-     * output element computed for thread<sub>0</sub> is invalid.
+     * \brief 2D exclusive CTA-wide prefix scan.  With no identity value, the first output element computed for thread<sub>0</sub> is invalid.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        ScanOp            scan_op)                      ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -628,18 +703,23 @@ public:
     }
 
 
-    //---------------------------------------------------------------------
-    // Exclusive sum interface
-    //---------------------------------------------------------------------
+    //@}
+    /******************************************************************//**
+     * @name Exclusive prefix sum variants
+     *********************************************************************/
+    //@{
+
 
     /**
-     * Exclusive CTA-wide prefix sum also producing aggregate
+     * \brief Exclusive CTA-wide prefix sum also producing aggregate
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -694,14 +774,18 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix sum also producing aggregate.
+     * \brief 2D exclusive CTA-wide prefix sum also producing aggregate.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
      */
-    template <int ITEMS_PER_THREAD>                        /// [inferred] The number of items per thread
+    template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        T                 &aggregate)                   ///< [out] Total aggregate (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -716,15 +800,16 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix sum also producing aggregate and
-     * consuming/producing cta_prefix.
+     * \brief Exclusive CTA-wide prefix sum also producing aggregate and consuming/producing cta_prefix.
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -782,16 +867,19 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix sum also producing aggregate and
-     * consuming/producing cta_prefix.
+     * \brief 2D exclusive CTA-wide prefix sum also producing aggregate and consuming/producing cta_prefix.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
      */
-    template <int ITEMS_PER_THREAD>                        /// [inferred] The number of items per thread
-    static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+    template <int ITEMS_PER_THREAD>
+    static __device__ __forceinline__ void ExclusiveSum(
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -806,12 +894,14 @@ public:
 
 
     /**
-     * Exclusive CTA-wide prefix sum.
+     * \brief Exclusive CTA-wide prefix sum.
+     *
+     * \smemreuse
      */
-    static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output)                        ///< [out] Output (may be aliased to input)
+    static __device__ __forceinline__ void ExclusiveSum(
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output)                        ///< [out] Output (may be aliased to input)
     {
         T aggregate;
         ExclusiveSum(smem_storage, input, output, aggregate);
@@ -819,13 +909,17 @@ public:
 
 
     /**
-     * 2D exclusive CTA-wide prefix sum.
+     * \brief 2D exclusive CTA-wide prefix sum.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
      */
-    template <int ITEMS_PER_THREAD>                        /// [inferred] The number of items per thread
-    static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD])    ///< [out] Output (may be aliased to input)
+    template <int ITEMS_PER_THREAD>
+    static __device__ __forceinline__ void ExclusiveSum(
+        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
+        T                 (&output)[ITEMS_PER_THREAD])  ///< [out] Output (may be aliased to input)
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -839,20 +933,27 @@ public:
     }
 
 
-    //---------------------------------------------------------------------
-    // Inclusive scan interface
-    //---------------------------------------------------------------------
+    //@}
+    /******************************************************************//**
+     * @name Inclusive prefix scan variants
+     *********************************************************************/
+    //@{
+
 
     /**
-     * Inclusive CTA-wide prefix scan also producing aggregate
+     * \brief Inclusive CTA-wide prefix scan also producing aggregate
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -906,17 +1007,22 @@ public:
 
 
     /**
-     * Inclusive CTA-wide prefix scan also producing aggregate
+     * \brief Inclusive CTA-wide prefix scan also producing aggregate
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate)                        ///< [out] Total aggregate (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -930,17 +1036,20 @@ public:
 
 
     /**
-     * Inclusive CTA-wide prefix scan also producing aggregate,
-     * consuming/producing cta_prefix.
+     * \brief Inclusive CTA-wide prefix scan also producing aggregate, consuming/producing cta_prefix.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -997,19 +1106,23 @@ public:
 
 
     /**
-     * Inclusive CTA-wide prefix scan also producing aggregate,
-     * consuming/producing cta_prefix.
+     * \brief Inclusive CTA-wide prefix scan also producing aggregate, consuming/producing cta_prefix.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename         ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op,                        ///< [in] Binary scan operator
-        T                &aggregate,                        ///< [out] Total aggregate (valid in lane-0).
-        T                &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op,                        ///< [in] Binary scan operator
+        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -1023,14 +1136,18 @@ public:
 
 
     /**
-     * Inclusive CTA-wide prefix scan.
+     * \brief Inclusive CTA-wide prefix scan.
+     *
+     * \smemreuse
+     *
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <typename ScanOp>                            /// [inferred] Binary scan operator type
+    template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 input,                            ///< [in] Input
-        T                 &output,                        ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               input,                          ///< [in] Input
+        T               &output,                        ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
         T aggregate;
         InclusiveScan(smem_storage, input, output, scan_op);
@@ -1038,16 +1155,21 @@ public:
 
 
     /**
-     * Inclusive CTA-wide prefix scan.
+     * \brief Inclusive CTA-wide prefix scan.
+     *
+     * \smemreuse
+     *
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
-        int             ITEMS_PER_THREAD,                /// [inferred] The number of items per thread
-        typename         ScanOp>                            /// [inferred] Binary scan operator type
+        int             ITEMS_PER_THREAD,
+        typename        ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage        &smem_storage,                    ///< [in] SmemStorage reference
-        T                 (&input)[ITEMS_PER_THREAD],        ///< [in] Input
-        T                 (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        ScanOp             scan_op)                        ///< [in] Binary scan operator
+        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
+        T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
+        ScanOp          scan_op)                        ///< [in] Binary scan operator
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);

@@ -57,6 +57,8 @@
 /**
  * \mainpage
  *
+ * \tableofcontents
+ *
  * \section sec0 What is CUB?
  *
  * CUB is a library of reusable primitives for CUDA kernel programming. It's
