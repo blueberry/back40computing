@@ -61,6 +61,7 @@
  *
  * \section sec0 What is CUB?
  *
+ * \par
  * CUB is a library of reusable SIMT primitives for CUDA kernel programming. It
  * provides commonplace CTA-wide, warp-wide, and thread-level operations that
  * are flexible and tunable to fit your needs, i.e., your specific:
@@ -68,17 +69,61 @@
  * - Width of parallelism (CTA threads)
  * - Grain size (data items per thread)
  *
- * \section sec1 Why do you need CUB?
+ * \section sec1 A simple example
  *
+ * \par
+ * The following kernel snippet illustrates how easy it is to
+ * compose CUB primitives for computing a parallel prefix sum
+ * across CTA threads:
+ *
+ * \par
+ * \code
+ * #include <cub.cuh>
+ *
+ * // Exclusive prefix sum kernel (single-CTA)
+ * template <
+ *      int         CTA_THREADS,                        // Threads per CTA
+ *      int         KEYS_PER_THREAD,                    // Items per thread
+ *      typename    T>                                  // Data type
+ * __global__ void PrefixSumKernel(T *d_in, T *d_out)
+ * {
+ *      // Parameterize CtaScan for kernel configuration
+ *      typedef cub::CtaScan<T, CTA_THREADS> CtaScan;
+ *
+ *      // Declare shared memory for CtaScan
+ *      __shared__ typename CtaScan::SmemStorage smem_storage;
+ *
+ *      // A segment of data items per thread
+ *      T data[KEYS_PER_THREAD];
+ *
+ *      // Load, scan, and output a tile of data.
+ *      cub::CtaLoadDirect<CTA_THREADS>(data, d_in);
+ *      CtaScan::ExclusiveSum(smem_storage, data, data);
+ *      cub::CtaStoreDirect<CTA_THREADS>(data, d_in);
+ * }
+ * \endcode
+ *
+ * \par
+ * Features in this example:
+ * - <b>Vectorized global load/stores</b>.  The cub::CtaLoadDirect and
+ * cub::CtaStoreDirect primitives will use vectorized load/store
+ * instructions when possible.  For example, <tt>ld.global.v4.s32</tt>
+ * will be generated when \p T = \p int and \p KEYS_PER_THREAD >= 4.
+ *
+ * \section sec2 Why do you need CUB?
+ *
+ * \par
  * Whereas data-parallelism is easy to implement, cooperative-parallelism
- * is hard.  For problems requiring cooperative parallelism, the SIMT kernel
- * software is the most complex (and performance-sensitive) layer in the CUDA
- * software stack.  Developers must manage the state and interaction of many,
- * many cooperating threads.  Best practices would have us leverage libraries
- * and abstraction layers to help mitigate the complexity, risks, and
- * maintenance costs of this software.  However, with the exception of CUB,
- * there are few (if any) software libraries of reusable CTA-level primitives.
+ * is hard.  For algorithms requiring local cooperation between threads, the
+ * SIMT kernel software is the most complex (and performance-sensitive) layer
+ * in the CUDA software stack.  Developers must carefully manage the state
+ * and interaction of many, many threads.  Best practices would have us
+ * leverage libraries and abstraction layers to help mitigate the complexity,
+ * risks, and maintenance costs of this software.  However, with the exception
+ * of CUB, there are few (if any) software libraries of reusable CTA-level
+ * primitives.
  *
+ * \par
  * As a SIMT library and software abstraction layer, CUB gives you:
  * -# <b>The ease of sequential programming.</b>  Parallel primitives within kernels
  * can be simply sequenced together (similar to Thrust programming on the host).
@@ -86,8 +131,9 @@
  * simply recompiled against new CUB releases (instead of hand-rewritten)
  * to leverage new algorithmic developments, hardware instructions, etc.
  *
- * \section sec2 What are the challenges of SIMT code reuse?
+ * \section sec3 What are the challenges of SIMT code reuse?
  *
+ * \par
  * CUDA's data-parallel programming model complicates the prospect of software
  * reuse for thread-cooperative operations (e.g., CTA-reduce, CTA-sort, etc.).
  * The construction and usage of such SIMT components are not as straightforward
@@ -100,6 +146,7 @@
  * - The underlying architecture's warp width
  * - The underlying architecture's rules for bank conflicts
  *
+ * \par
  * These configuration details will vary considerably in the context of
  * different application kernels, yet a reusable SIMT component must
  * accommodate the entire configuration domain.  Furthermore, the

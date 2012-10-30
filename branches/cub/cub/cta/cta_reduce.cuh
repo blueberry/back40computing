@@ -95,17 +95,22 @@ namespace cub {
  * template <int CTA_THREADS>
  * __global__ void SomeKernel(...)
  * {
- *      // A parameterized CtaReduce type for use with CTA_THREADS threads on type int.
+ *      // Parameterize CtaReduce for use with CTA_THREADS threads on type int.
  *      typedef cub::CtaReduce<int, CTA_THREADS> CtaReduce;
  *
- *      // Opaque shared memory for CtaReduce
+ *      // Declare shared memory for CtaReduce
  *      __shared__ typename CtaReduce::SmemStorage smem_storage;
  *
  *      // A segment of four input items per thread
- *      int input[4] = {2, 2, 2, 2};
+ *      int input[4];
  *
- *      // Compute the CTA-wide sum in thread0.
+ *      ...
+ *
+ *      // Compute the CTA-wide sum for thread0.
  *      int aggregate = CtaReduce::Reduce(smem_storage, input);
+ *
+ *      ...
+ * }
  * \endcode
  * <br>
  *
@@ -117,10 +122,10 @@ namespace cub {
  * template <int CTA_THREADS>
  * __global__ void SomeKernel(..., int num_elements)
  * {
- *      // A parameterized CtaReduce type for use with CTA_THREADS threads on type int.
+ *      // Parameterize CtaReduce for use with CTA_THREADS threads on type int.
  *      typedef cub::CtaReduce<int, CTA_THREADS> CtaReduce;
  *
- *      // Opaque shared memory for CtaReduce
+ *      // Declare shared memory for CtaReduce
  *      __shared__ typename CtaReduce::SmemStorage smem_storage;
  *
  *      // Guarded load

@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA
+ * The cub::CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA.
  */
 
 #pragma once
@@ -38,6 +38,10 @@ CUB_NS_PREFIX
 namespace cub {
 
 
+//-----------------------------------------------------------------------------
+// Policy
+//-----------------------------------------------------------------------------
+
 /// Tuning policy for cub::CtaScan
 enum CtaScanPolicy
 {
@@ -51,7 +55,7 @@ enum CtaScanPolicy
  *
  * \tparam T                The reduction input/output element type
  * \tparam CTA_THREADS      The CTA size in threads
- * \tparam POLICY           [optional] cub::CtaScanPolicy tuning policy enumeration
+ * \tparam POLICY           [optional] cub::CtaScanPolicy tuning policy enumeration.  Default = cub::CTA_SCAN_RAKING.
  *
  * <b>Overview</b>
  * \par

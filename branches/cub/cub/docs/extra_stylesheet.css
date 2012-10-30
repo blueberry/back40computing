@@ -1,3 +1,7 @@
+/******************************************************************************
+ *  General
+ *****************************************************************************/
+
 body, table, div, p, dl {
 		font: 400 14px/21px arial,sans-serif;
 }
@@ -8,8 +12,12 @@ body {
         margin: 0;
 }
 
+/******************************************************************************
+ *  Page width
+ *****************************************************************************/
+
 div.contents {
-        width: 920px;
+        width: 800px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
@@ -23,7 +31,7 @@ div.contents {
 }
 
 div.header {
-        width: 920px;
+        width: 800px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
@@ -34,6 +42,30 @@ div.header {
         border-radius: 8px;
 		border: 1px solid #AAA;
 }
+
+#top {
+        width: 920px;
+        margin-left: auto;
+        margin-right: auto;
+}
+
+#MSearchBox {
+        margin-left: 340px;
+		right: auto;
+}
+
+address.footer {
+        width: 920px;
+        margin-left: auto;
+        margin-right: auto;
+}
+
+
+
+/******************************************************************************
+ *  Navigation bar
+ *****************************************************************************/
+
 
 #projectname {
 		font: bold 300% "courier new",courier,monospace;
@@ -59,52 +91,8 @@ div.title {
 		border-left: 1px solid #AAA;
 }
 
-
-#MSearchBox {
-        margin-left: 480px;
-		right: auto;
-}
-
-#top {
-        width: 1040px;
-        margin-left: auto;
-        margin-right: auto;
-}
-
 #titlearea {
 		border-bottom: none;
-}
-
-hr.footer {
-        display: none;
-}
-
-.footer {
-        background-color: #EEE;
-}
-
-h2.groupheader {
-		margin-top: 30px;
-
-		font-size: 150%;
-        font-weight: bold;
-        color: gray;
-}
-
-tr.heading h2 {
-		margin-top: 30px;
-}
-
-address.footer {
-        width: 960px;
-        margin-left: auto;
-        margin-right: auto;
-}
-
-h1 {
-		padding-top: 10px;
-		font: bold 130% "courier new",courier,monospace;
-		color: #4665A2;
 }
 
 .tablist a, .navpath li.navelem a, .tablist li.current a, .tablist a:hover {
@@ -119,13 +107,49 @@ h1 {
 		background-image: url('tab_a.png');
 		border: none;
 }
-		
-
-
 
 li.navelem {
 		padding: 0 20px;
 		font-style:italic;
+}
+
+.tabs2, .tabs3 {
+    font-size: 11px;
+}
+
+
+/******************************************************************************
+ *  Footer
+ *****************************************************************************/
+
+hr.footer {
+        display: none;
+}
+
+.footer {
+        background-color: #EEE;
+}
+
+/******************************************************************************
+ *  Text content
+ *****************************************************************************/
+
+
+h2.groupheader {
+		margin-top: 30px;
+		font-size: 150%;
+        font-weight: bold;
+        color: gray;
+}
+
+tr.heading h2 {
+		margin-top: 30px;
+}
+
+h1 {
+		padding-top: 10px;
+		font: bold 130% "courier new",courier,monospace;
+		color: #4665A2;
 }
 
 p.startli, p.startdd, p.starttd {
@@ -137,6 +161,10 @@ p.startli, p.startdd, p.starttd {
 		font-weight: normal;
 }
 
+/******************************************************************************
+ *  Class/namespace indices 
+ *****************************************************************************/
+
 .directory tr.even {
 		border-bottom: 1px dashed #4665A2;
 		border-top: 1px dashed #4665A2;
@@ -147,12 +175,10 @@ td.entry {
 	padding-top: 3px;
 }
 
-.tabs2, .tabs3 {
-    font-size: 11px;
-}
 
-
-/* code syntax recoloring */
+/******************************************************************************
+ * Code syntax highlighting
+ *****************************************************************************/
 
 div.line {
 	line-height: normal;
@@ -173,9 +199,9 @@ a.code, a.code:visited {
 
 
 
-
-
-/* brief code description cells */
+/******************************************************************************
+ * Brief member descriptions 
+ *****************************************************************************/
 
 .params, .paramname, .retval, .paramname {
 		vertical-align: top;
