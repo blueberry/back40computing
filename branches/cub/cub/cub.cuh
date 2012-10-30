@@ -61,54 +61,51 @@
  *
  * \section sec0 What is CUB?
  *
- * CUB is a library of reusable primitives for CUDA kernel programming. It's
- * a collection of CTA-wide, warp-wide, and thread primitives that are flexible
- * to fit your needs, i.e., your specific:
- * - data types
- * - parallelism (CTA threads)
- * - grain size (data items per thread)
- *
- * CUB also includes many useful host-primitives as well.
+ * CUB is a library of reusable SIMT primitives for CUDA kernel programming. It
+ * provides commonplace CTA-wide, warp-wide, and thread-level operations that
+ * are flexible and tunable to fit your needs, i.e., your specific:
+ * - Data types
+ * - Width of parallelism (CTA threads)
+ * - Grain size (data items per thread)
  *
  * \section sec1 Why do you need CUB?
  *
- * Abstraction layers, program modularity, and code reuse are Good Ideas.  They are
- * critical aspects of sustainable software engineering.  Complexity, risk, and
- * maintenance costs can all be mitigated by encapsulating sophisticated code
- * behind simple interfaces.
+ * Whereas data-parallelism is easy to implement, cooperative-parallelism
+ * is hard.  For problems requiring cooperative parallelism, the SIMT kernel
+ * software is the most complex (and performance-sensitive) layer in the CUDA
+ * software stack.  Developers must manage the state and interaction of many,
+ * many cooperating threads.  Best practices would have us leverage libraries
+ * and abstraction layers to help mitigate the complexity, risks, and
+ * maintenance costs of this software.  However, with the exception of CUB,
+ * there are few (if any) software libraries of reusable CTA-level primitives.
  *
- * However, the prospect of software reuse within CUDA is complicated.  The
- * programming model has two distinct software environments: (1) the sequential host
- * program and (2) the SIMT device kernels.  On one hand, libraries of GPU
- * primitives for host programs are abundant (Thrust, CUBLAS, etc.) and can
- * obviate the need to reason about the complexity of parallelism at all.
- * Yet there is negligible software reuse within GPU kernels themselves.
- * Kernel development is the more complicated arena of CUDA programming,
- * and virtually every kernel is written completely from scratch.
+ * As a SIMT library and software abstraction layer, CUB gives you:
+ * -# <b>The ease of sequential programming.</b>  Parallel primitives within kernels
+ * can be simply sequenced together (similar to Thrust programming on the host).
+ * -# <b>The benefits of transparent performance-portability.</b> Kernels can be
+ * simply recompiled against new CUB releases (instead of hand-rewritten)
+ * to leverage new algorithmic developments, hardware instructions, etc.
  *
- * This is an unfortunate state of affairs.  It can be extremely challenging to
- * implement commonplace CTA-wide operations (reduction, prefix sum, sort,
- * merge, etc.) that are work-efficient and avoid architecture-specific hazards
- * such as bank conflicts.  Furthermore, GPU computing requires efficient
- * utilization of the underlying hardware, a moving target that evolves
- * significantly every eighteen months.  It is unreasonable to continually
- * rewrite existing kernels for new microarchitectures that provision new
- * resources/instructions.  CUDA programmers are desperate for CTA-level
- * abstraction layers that provide:
- * -# The straightforward sequencing of parallel primitives within kernels
- * (similar to Thrust programming on the host)
- * -# Transparent benefits for simply recompiling kernels against fresh
- * libraries of high performance CTA primitives.
+ * \section sec2 What are the challenges of SIMT code reuse?
  *
- * This dearth of software reuse is a consequence of the daunting flexibility
- * and complexity needed to construct abstract SIMT components.  For example,
- * the code generation and shared memory layout for a CTA-wide prefix sum is
- * dependent on (1) the number of CTA threads, (2) the data type being
- * summed, (3) the number of items per thread, (4) warp width, and (5)
- * architecture rules for bank conflicts.  These details will vary
- * considerably in the context of different application kernels.  Furthermore,
- * the interface for CTA-wide prefix sum needs to export the corresponding
- * shared memory requirement to the caller (where it can be allocated and
- * possibly reused elsewhere by the CTA).
+ * CUDA's data-parallel programming model complicates the prospect of software
+ * reuse for thread-cooperative operations (e.g., CTA-reduce, CTA-sort, etc.).
+ * The construction and usage of such SIMT components are not as straightforward
+ * as traditional procedure definitions and function calls.  For example, the
+ * shared memory layout and the number of steps for a CTA-wide reduction are
+ * very specific to:
+ * - The number of CTA threads
+ * - The data type being reduced
+ * - The number of items contributed by each thread
+ * - The underlying architecture's warp width
+ * - The underlying architecture's rules for bank conflicts
+ *
+ * These configuration details will vary considerably in the context of
+ * different application kernels, yet a reusable SIMT component must
+ * accommodate the entire configuration domain.  Furthermore, the
+ * interface of any primitive that has been specialized to a given
+ * configuration needs to expose the corresponding shared memory requirement
+ * to the calling code (where it can be allocated and possibly reused
+ * elsewhere by the CTA).
  *
  */

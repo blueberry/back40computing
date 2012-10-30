@@ -107,7 +107,6 @@ enum CtaScanPolicy
  *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
  *        fences to prevent reference reordering of non-primitive types.
  *      - \p CTA_THREADS is a multiple of the architecture's warp size
- *      - Every thread has a valid input (i.e., unguarded reduction)
  * - To minimize synchronization overhead for operations involving the cumulative
  *   \p aggregate and \p cta_prefix, these values are only valid in thread<sub>0</sub>.
  *
@@ -203,7 +202,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,      ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T               input,              ///< [in] Input
         T               &output,            ///< [out] Output (may be aliased to input)
         T               identity,           ///< [in] Identity value.
@@ -278,7 +277,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename        ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage       &smem_storage,                ///< [in] SmemStorage reference
+        SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 identity,                     ///< [in] Identity value.
@@ -307,7 +306,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         T               identity,                       ///< [in] Identity value.
@@ -385,7 +384,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 identity,                     ///< [in] Identity value.
@@ -413,7 +412,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         T               identity,                       ///< [in] Identity value.
@@ -437,7 +436,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage       &smem_storage,                ///< [in] SmemStorage reference
+        SmemStorage       &smem_storage,                ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 identity,                     ///< [in] Identity value.
@@ -470,7 +469,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -539,7 +538,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -565,7 +564,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -638,7 +637,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         ScanOp            scan_op,                      ///< [in] Binary scan operator
@@ -665,7 +664,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator
@@ -687,7 +686,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void ExclusiveScan(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         ScanOp            scan_op)                      ///< [in] Binary scan operator
@@ -716,7 +715,7 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
@@ -782,7 +781,7 @@ public:
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 &aggregate)                   ///< [out] Total aggregate (valid in lane-0).
@@ -805,7 +804,7 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
@@ -875,7 +874,7 @@ public:
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
@@ -899,7 +898,7 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output)                        ///< [out] Output (may be aliased to input)
     {
@@ -917,7 +916,7 @@ public:
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
-        SmemStorage        &smem_storage,               ///< [in] SmemStorage reference
+        SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD])  ///< [out] Output (may be aliased to input)
     {
@@ -949,7 +948,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -1018,7 +1017,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -1044,7 +1043,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -1117,7 +1116,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename         ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
@@ -1144,7 +1143,7 @@ public:
      */
     template <typename ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator
@@ -1166,7 +1165,7 @@ public:
         int             ITEMS_PER_THREAD,
         typename        ScanOp>
     static __device__ __forceinline__ void InclusiveScan(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
         ScanOp          scan_op)                        ///< [in] Binary scan operator

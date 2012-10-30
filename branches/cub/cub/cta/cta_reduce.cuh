@@ -64,15 +64,15 @@ namespace cub {
  *
  * <b>Algorithm</b>
  * \par
- *   These parallel reduction variants have <em>O</em>(<em>n</em>) work complexity and are implemented in three phases:
- *   -# Sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
- *   -# A single-warp performs a raking upsweep across partial reductions shared each thread in the CTA.
- *   -# A warp-synchronous Kogge-Stone style reduction within the raking warp to produce the total aggregate.
- *   <br>
- *   <br>
- *   \image html cta_reduce.png
- *   <center><b>Data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
- *   <br>
+ * These parallel reduction variants have <em>O</em>(<em>n</em>) work complexity and are implemented in three phases:
+ * -# Sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
+ * -# A single-warp performs a raking upsweep across partial reductions shared each thread in the CTA.
+ * -# A warp-synchronous Kogge-Stone style reduction within the raking warp to produce the total aggregate.
+ * <br>
+ * <br>
+ * \image html cta_reduce.png
+ * <center><b>Data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
+ * <br>
  *
  * <b>Important Considerations</b>
  * \par
@@ -200,7 +200,7 @@ private:
         int                 RAKING_LENGTH,
         typename            ReductionOp>
     static __device__ __forceinline__ T WarpReduce(
-        SmemStorage         &smem_storage,      ///< [in] SmemStorage reference
+        SmemStorage         &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T                   partial,            ///< [in] Calling thread's input partial reduction
         const unsigned int  &valid_threads,     ///< [in] Number valid threads (may be less than CTA_THREADS)
         ReductionOp         reduction_op)       ///< [in] Reduction operator
@@ -236,7 +236,7 @@ private:
         bool                FULL_TILE,
         typename            ReductionOp>
     static __device__ __forceinline__ T ReduceHelper(
-        SmemStorage         &smem_storage,      ///< [in] SmemStorage reference
+        SmemStorage         &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T                   partial,            ///< [in] Calling thread's input partial reductions
         const unsigned int  &valid_threads,     ///< [in] Number of valid elements (may be less than CTA_THREADS)
         ReductionOp         reduction_op)       ///< [in] Reduction operator
@@ -302,7 +302,7 @@ public:
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,              ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
         T               input)                      ///< [in] Calling thread's input
     {
         Sum<T> reduction_op;
@@ -320,7 +320,7 @@ public:
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&inputs)[ITEMS_PER_THREAD])    ///< [in] Calling thread's input segment
     {
         Sum<T> reduction_op;
@@ -336,7 +336,7 @@ public:
      * The return value is undefined in threads other than thread<sub>0</sub>.
      */
     static __device__ __forceinline__ T Reduce(
-        SmemStorage         &smem_storage,          ///< [in] SmemStorage reference
+        SmemStorage         &smem_storage,          ///< [in] Shared reference to opaque SmemStorage layout
         T                   input,                   ///< [in] Calling thread's input
         const unsigned int  &valid_threads)         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
     {
@@ -363,7 +363,7 @@ public:
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,              ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                      ///< [in] Calling thread's input
         ReductionOp     reduction_op)               ///< [in] Binary associative reduction functor
     {
@@ -385,7 +385,7 @@ public:
         int ITEMS_PER_THREAD,
         typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
-        SmemStorage     &smem_storage,                  ///< [in] SmemStorage reference
+        SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&inputs)[ITEMS_PER_THREAD],    ///< [in] Calling thread's input segment
         ReductionOp     reduction_op)                   ///< [in] Binary associative reduction functor
     {
@@ -406,7 +406,7 @@ public:
      */
     template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
-        SmemStorage         &smem_storage,          ///< [in] SmemStorage reference
+        SmemStorage         &smem_storage,          ///< [in] Shared reference to opaque SmemStorage layout
         T                   input,                  ///< [in] Calling thread's input
         const unsigned int  &valid_threads,         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
         ReductionOp         reduction_op)           ///< [in] Binary associative reduction functor
