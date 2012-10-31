@@ -161,6 +161,17 @@ p.startli, p.startdd, p.starttd {
 		font-weight: normal;
 }
 
+
+.memproto, dl.reflist dt {
+		background-image: none;
+		background-color: #F9FAFC;
+}
+
+div.toc {
+		box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
+		margin: 0px 0px 0px 20px;
+}
+
 /******************************************************************************
  *  Class/namespace indices 
  *****************************************************************************/
@@ -196,6 +207,16 @@ span.preprocessor, span.keyword, span.keywordflow, span.keywordtype {
 a.code, a.code:visited {
 		color: black;
 }
+
+div.fragment {
+	border-color: #AAA;
+	padding: 14px 14px 14px 14px;
+	margin-top: 14px;
+	background-color: white;
+	border-radius: 8px 8px 8px 8px;
+	box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
+}
+
 
 
 
@@ -241,8 +262,8 @@ div.groupHeader {
 }
 
 td.memSeparator {
-		border-bottom: 1px dashed #DEE4F0;
-		border-top: 1px dashed #DEE4F0;
+		border-bottom: 1px dashed #AAA;
+		border-top: 1px dashed #AAA;
         line-height: 8px;
 }
 

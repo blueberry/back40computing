@@ -80,17 +80,17 @@
  * \code
  * #include <cub.cuh>
  *
- * // Exclusive prefix sum kernel (single-CTA)
+ * // An axclusive prefix sum kernel (single-CTA)
  * template <
  *      int         CTA_THREADS,                        // Threads per CTA
  *      int         KEYS_PER_THREAD,                    // Items per thread
  *      typename    T>                                  // Data type
  * __global__ void PrefixSumKernel(T *d_in, T *d_out)
  * {
- *      // Parameterize CtaScan for kernel configuration
+ *      // Declare a parameterized CtaScan type for the given kernel configuration
  *      typedef cub::CtaScan<T, CTA_THREADS> CtaScan;
  *
- *      // Declare shared memory for CtaScan
+ *      // The shared memory for CtaScan
  *      __shared__ typename CtaScan::SmemStorage smem_storage;
  *
  *      // A segment of data items per thread
@@ -99,16 +99,9 @@
  *      // Load, scan, and output a tile of data.
  *      cub::CtaLoadDirect<CTA_THREADS>(data, d_in);
  *      CtaScan::ExclusiveSum(smem_storage, data, data);
- *      cub::CtaStoreDirect<CTA_THREADS>(data, d_in);
+ *      cub::CtaStoreDirect<CTA_THREADS>(data, d_out);
  * }
  * \endcode
- *
- * \par
- * Features in this example:
- * - <b>Vectorized global load/stores</b>.  The cub::CtaLoadDirect and
- * cub::CtaStoreDirect primitives will use vectorized load/store
- * instructions when possible.  For example, <tt>ld.global.v4.s32</tt>
- * will be generated when \p T = \p int and \p KEYS_PER_THREAD >= 4.
  *
  * \section sec2 Why do you need CUB?
  *

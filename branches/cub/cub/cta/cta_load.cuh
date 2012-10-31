@@ -270,9 +270,14 @@ public:
 };
 
 
-//-----------------------------------------------------------------------------
-// CtaLoad abstraction specialized for CTA_LOAD_VECTORIZE
-//-----------------------------------------------------------------------------
+/*
+ * CtaLoad abstraction specialized for CTA_LOAD_VECTORIZE
+ *
+ * - <b>Vectorized global load/stores</b>.  The cub::CtaLoadDirect and
+ * cub::CtaStoreDirect primitives will use vectorized load/store
+ * instructions when possible.  For example, <tt>ld.global.v4.s32</tt>
+ * will be generated when \p T = \p int and \p KEYS_PER_THREAD >= 4.
+ */
 
 template <
     typename            InputIterator,
