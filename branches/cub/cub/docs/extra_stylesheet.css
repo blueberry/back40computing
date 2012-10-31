@@ -3,7 +3,7 @@
  *****************************************************************************/
 
 body, table, div, p, dl {
-		font: 400 14px/21px arial,sans-serif;
+		font: 400 13px/21px arial,sans-serif;
 }
 
 body {
@@ -17,11 +17,10 @@ body {
  *****************************************************************************/
 
 div.contents {
-        width: 800px;
+        width: 760px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
-        padding-top: 20px;
         padding-left: 60px;
         padding-right: 60px;
         padding-bottom: 20px;
@@ -31,7 +30,7 @@ div.contents {
 }
 
 div.header {
-        width: 800px;
+        width: 760px;
         margin-left: auto;
         margin-right: auto;
 		margin-top: 10px;
@@ -44,18 +43,19 @@ div.header {
 }
 
 #top {
-        width: 920px;
+        width: 880px;
         margin-left: auto;
         margin-right: auto;
 }
 
 #MSearchBox {
-        margin-left: 340px;
+        margin-top: 6px;
+        margin-left: 330px;
 		right: auto;
 }
 
 address.footer {
-        width: 920px;
+        width: 880px;
         margin-left: auto;
         margin-right: auto;
 }
@@ -76,23 +76,25 @@ div.headertitle {
 }
 
 div.title {
-		padding-top: 18px;
-		padding-bottom: 18px;
-		font: bold 130% "courier new",courier,monospace;
+		color: #2B4068;
+		padding-top: 16px;
+		padding-bottom: 16px;
+		font: bold 140% "courier new",courier,monospace;
 		margin: auto;
 }
 
 #navrow1 {
-		border-top: 1px solid #AAA;
+		border-top: 1px solid #7092BE;
 }
 
-#navrow2, #navrow1, div.navpath {
-		border-right: 1px solid #AAA;
-		border-left: 1px solid #AAA;
-}
 
 #titlearea {
 		border-bottom: none;
+}
+
+.tablist li {
+		line-height: 30px;
+		background-image: url('../images/tab_b_alt.png');
 }
 
 .tablist a, .navpath li.navelem a, .tablist li.current a, .tablist a:hover {
@@ -113,8 +115,18 @@ li.navelem {
 		font-style:italic;
 }
 
-.tabs2, .tabs3 {
-    font-size: 11px;
+.tabs {
+    	font-size: 12px;
+}
+
+.tabs2, .tabs3, .tabs4 {
+    	font-size: 11px;
+}
+
+.tabs, .tabs2, .tabs3, .tabs4 {
+		border-right: 1px solid #7092BE;
+		border-left: 1px solid #7092BE;
+		background-image: url('../images/tab_b_alt.png');
 }
 
 
@@ -135,22 +147,24 @@ hr.footer {
  *****************************************************************************/
 
 
-h2.groupheader {
-		margin-top: 30px;
-		font-size: 150%;
-        font-weight: bold;
-        color: gray;
-}
-
 tr.heading h2 {
 		margin-top: 30px;
 }
 
-h1 {
+h1, h2.groupheader {
+		margin-top: 30px;
 		padding-top: 10px;
-		font: bold 130% "courier new",courier,monospace;
-		color: #4665A2;
+		padding-bottom: 2px;
+		font: bold 140% "courier new",courier,monospace;
+		color: #2B4068;
+		border-top: 1px solid #2B4068;
+		border-bottom: none;
 }
+
+div.textblock {
+		margin-top: 20px;
+}
+
 
 p.startli, p.startdd, p.starttd {
 		margin-top: 1em;
@@ -169,16 +183,23 @@ p.startli, p.startdd, p.starttd {
 
 div.toc {
 		box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
-		margin: 0px 0px 0px 20px;
+		margin: 10px 0px 0px 20px;
 }
+
+div.textblock h3 {
+		visibility: hidden;
+		height: 0;
+		margin-top: -26px;
+}
+
 
 /******************************************************************************
  *  Class/namespace indices 
  *****************************************************************************/
 
 .directory tr.even {
-		border-bottom: 1px dashed #4665A2;
-		border-top: 1px dashed #4665A2;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+		border-top: 1px solid rgba(0, 0, 0, 0.05);
 		background-color: white;
 }
 
@@ -213,6 +234,7 @@ div.fragment {
 		border-color: #AAA;
 		padding: 14px 14px 14px 14px;
 		margin-top: 14px;
+		margin-bottom: 14px;
 		background-color: white;
 		border-radius: 8px 8px 8px 8px;
 		box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
@@ -225,13 +247,18 @@ div.fragment {
  * Brief member descriptions 
  *****************************************************************************/
 
+.mdescLeft, .mdescRight, .memItemLeft, .memItemRight, .memTemplItemLeft, .memTemplItemRight, .memTemplParams {
+		background-color: white;
+}
+
+
 .params, .paramname, .retval, .paramname {
 		vertical-align: top;
 		padding-right: 8px;
 }
 
 div.memdoc {
-		color: gray;
+		color: #666;
 }
 
 dl.tparams, dl.params {
@@ -272,15 +299,15 @@ div.groupHeader {
 }
 
 td.memSeparator {
-		border-bottom: 1px dashed #AAA;
-		border-top: 1px dashed #AAA;
+		border-bottom: none;
+		border-top: 1px dashed #999;
         line-height: 8px;
 }
 
 td.mdescLeft, td.mdescRight {
 		padding-top: 6px;
 		padding-bottom: 6px;
-		color: gray;
+		color: #666;
 }
 
 td.memname, td.paramtype, div.memtemplate {

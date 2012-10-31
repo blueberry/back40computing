@@ -45,8 +45,8 @@ namespace cub {
 /// Tuning policy for cub::CtaScan
 enum CtaScanPolicy
 {
-    CTA_SCAN_RAKING,        ///< Use an work-efficient, but longer-latency algorithm (raking reduce-then-scan).  Useful when the GPU is fully occupied.
-    CTA_SCAN_WARPSCANS,     ///< Use an work-inefficient, but shorter-latency algorithm (tiled warpscans).  Useful when the GPU is under-occupied.
+    CTA_SCAN_RAKING,        ///< Uses an work-efficient, but longer-latency algorithm (raking reduce-then-scan).  Useful when the GPU is fully occupied.
+    CTA_SCAN_WARPSCANS,     ///< Uses an work-inefficient, but shorter-latency algorithm (tiled warpscans).  Useful when the GPU is under-occupied.
 };
 
 
@@ -55,7 +55,7 @@ enum CtaScanPolicy
  *
  * \tparam T                The reduction input/output element type
  * \tparam CTA_THREADS      The CTA size in threads
- * \tparam POLICY           [optional] cub::CtaScanPolicy tuning policy enumeration.  Default = cub::CTA_SCAN_RAKING.
+ * \tparam POLICY           <b>[optional]</b> cub::CtaScanPolicy tuning policy enumeration.  Default = cub::CTA_SCAN_RAKING.
  *
  * <b>Overview</b>
  * \par
@@ -69,7 +69,7 @@ enum CtaScanPolicy
  *
  * \par
  * The parallel operations exposed by this type assume <em>n</em>-element
- * lists that are partitioned evenly among \p CTA_THREADS threads,
+ * lists that are partitioned evenly across \p CTA_THREADS threads,
  * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
  * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
  *
@@ -81,30 +81,26 @@ enum CtaScanPolicy
  *
  * <b>Algorithm</b>
  * \par
- * The CtaScan class can be configured to use one of two alternative algorithms:
+ * The CtaScan type can be configured to use one of two alternative algorithms:
  *
  * \par
- *   -# <b>Algorithm cub::CTA_SCAN_RAKING</b>:
- *
- *     These variants have <em>O</em>(<em>n</em>) work complexity and are comprised of five phases:
+ *   -# <b>cub::CTA_SCAN_RAKING</b>.  Uses an work-efficient, but longer-latency algorithm (raking reduce-then-scan).  Useful when the GPU is fully occupied. These variants have <em>O</em>(<em>n</em>) work complexity and are comprised of five phases:
+ *   <br><br>
  *     -# Upsweep sequential reduction in registers (if threads contribute more than one input each).  Each thread then places the partial reduction of its item(s) into shared memory.
  *     -# Upsweep sequential reduction in shared memory.  Threads within a single warp rake across segments of shared partial reductions.
  *     -# A warp-synchronous Kogge-Stone style exclusive scan within the raking warp.
  *     -# Downsweep sequential exclusive scan in shared memory.  Threads within a single warp rake across segments of shared partial reductions, seeded with the warp-scan output.
  *     -# Downsweep sequential scan in registers (if threads contribute more than one input), seeded with the raking scan output.
- *     <br>
- *     <br>
+ *     <br><br>
  *     \image html cta_scan.png
  *     <center><b>\p CTA_SCAN_RAKING data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
  *     <br>
- *   -# <b>Algorithm cub::CTA_SCAN_WARPSCANS</b>:
- *
- *     These variants have <em>O</em>(<em>n</em>log<em>n</em>) work complexity and are comprised of five phases:
+ *   -# <b>Algorithm cub::CTA_SCAN_WARPSCANS</b>.  Uses an work-inefficient, but shorter-latency algorithm (tiled warpscans).  Useful when the GPU is under-occupied.  These variants have <em>O</em>(<em>n</em>log<em>n</em>) work complexity and are comprised of five phases:
  *     <br>
  *
  * <b>Important Considerations</b>
  * \par
- * - After any CtaScan operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
  *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
@@ -274,7 +270,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -381,7 +377,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -433,7 +429,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -535,7 +531,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -634,7 +630,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -683,7 +679,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -781,7 +777,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
@@ -874,7 +870,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
@@ -916,7 +912,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void ExclusiveSum(
@@ -1014,7 +1010,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -1113,7 +1109,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <
@@ -1162,7 +1158,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <

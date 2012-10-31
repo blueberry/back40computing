@@ -51,7 +51,7 @@ namespace cub {
  *
  * \par
  * The parallel operations exposed by this type assume <em>n</em>-element
- * lists that are partitioned evenly among \p CTA_THREADS threads,
+ * lists that are partitioned evenly across \p CTA_THREADS threads,
  * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
  * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
  *
@@ -76,7 +76,7 @@ namespace cub {
  *
  * <b>Important Considerations</b>
  * \par
- * - After any CtaReduce operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
  *   required if the supplied CtaReduce::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
@@ -102,12 +102,12 @@ namespace cub {
  *      __shared__ typename CtaReduce::SmemStorage smem_storage;
  *
  *      // A segment of four input items per thread
- *      int input[4];
+ *      int data[4];
  *
  *      ...
  *
  *      // Compute the CTA-wide sum for thread0.
- *      int aggregate = CtaReduce::Reduce(smem_storage, input);
+ *      int aggregate = CtaReduce::Reduce(smem_storage, data);
  *
  *      ...
  * }
@@ -129,11 +129,11 @@ namespace cub {
  *      __shared__ typename CtaReduce::SmemStorage smem_storage;
  *
  *      // Guarded load
- *      int input;
- *      if (threadIdx.x < num_elements) input = ...;
+ *      int data;
+ *      if (threadIdx.x < num_elements) data = ...;
  *
  *      // Compute the CTA-wide sum of valid elements in thread0.
- *      int aggregate = CtaReduce::Reduce(smem_storage, input, num_elements);
+ *      int aggregate = CtaReduce::Reduce(smem_storage, data, num_elements);
  * \endcode
  */
 template <
@@ -321,7 +321,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      */
     template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ T Reduce(
@@ -383,7 +383,7 @@ public:
      *
      * \smemreuse
      *
-     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items contributed by each thread.
+     * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ReductionOp          [inferred] Binary reduction functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
     template <

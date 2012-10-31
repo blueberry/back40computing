@@ -42,7 +42,7 @@ namespace cub {
  *
  * \tparam T                        The scan input/output element type
  * \tparam WARPS                    The number of "logical" warps performing concurrent warp scans
- * \tparam LOGICAL_WARP_THREADS     [optional] The number of threads per "logical" warp (may be less than the number of hardware warp threads).  Default is the warp size associated with the CUDA Compute Capability targeted by the compiler (e.g., 32 warps for SM20).
+ * \tparam LOGICAL_WARP_THREADS     <b>[optional]</b> The number of threads per "logical" warp (may be less than the number of hardware warp threads).  Default is the warp size associated with the CUDA Compute Capability targeted by the compiler (e.g., 32 warps for SM20).
  *
  * <b>Overview</b>
  * \par
@@ -78,7 +78,7 @@ namespace cub {
  *
  * <b>Important Considerations</b>
  * \par
- * - After any WarpScan operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
  *   required if the supplied WarpScan::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
@@ -140,7 +140,7 @@ namespace cub {
  *          // Opaque shared memory for WarpScan
  *          __shared__ typename WarpScan::SmemStorage smem_storage;
  *
- *          // Perform prefix sum of 2s in first warp, all seeded with a prefix value of 10
+ *          // Perform prefix sum of 2s, all seeded with a warp prefix value of 10
  *          if (threadIdx.x < 32)
  *          {
  *              int output, aggregate, input = 2, warp_prefix = 10;

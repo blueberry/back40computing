@@ -43,9 +43,9 @@ namespace cub {
  * \tparam KeyType              Key type
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam ITEMS_PER_THREAD     The number of items per thread
- * \tparam ValueType            [optional] Value type (default: cub::NullType)
- * \tparam RADIX_BITS           [optional] The number of radix bits per digit place (default: 5 bits)
- * \tparam SMEM_CONFIG          [optional] Shared memory bank mode (default: \p cudaSharedMemBankSizeFourByte)
+ * \tparam ValueType            <b>[optional]</b> Value type (default: cub::NullType)
+ * \tparam RADIX_BITS           <b>[optional]</b> The number of radix bits per digit place (default: 5 bits)
+ * \tparam SMEM_CONFIG          <b>[optional]</b> Shared memory bank mode (default: \p cudaSharedMemBankSizeFourByte)
  *
  * <b>Overview</b>
  * \par
@@ -75,7 +75,7 @@ namespace cub {
  *
  * <b>Important Considerations</b>
  * \par
- * - After any CtaRadixSort operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
+ * - After any CtaRadixSort operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
  *   required if the supplied CtaRadixSort::SmemStorage is to be reused/repurposed by the CTA.
  * - Keys must be in a form suitable for radix ranking (i.e., unsigned integer types).
  * - The operations are most efficient (lowest instruction overhead) when:
@@ -176,8 +176,8 @@ public:
 	static __device__ __forceinline__ void SortBlocked(
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 		while (true)
@@ -225,8 +225,8 @@ public:
 	static __device__ __forceinline__ void SortStriped(
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Transpose keys from "CTA-striped" to "blocked" arrangement
 		KeyCtaExchange::TransposeStripedBlocked(
@@ -292,8 +292,8 @@ public:
 	static __device__ __forceinline__ void SortBlockedToStriped(
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 		while (true)
@@ -353,8 +353,8 @@ public:
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
 		ValueType 			values[ITEMS_PER_THREAD],					///< [in-out] Values to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 		while (true)
@@ -410,8 +410,8 @@ public:
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
 		ValueType 			values[ITEMS_PER_THREAD],					///< [in-out] Values to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Transpose keys from "CTA-striped" to "blocked" arrangement
 		KeyCtaExchange::TransposeStripedBlocked(
@@ -501,8 +501,8 @@ public:
 		SmemStorage			&smem_storage,								///< [in] Shared reference to opaque SmemStorage layout
 		KeyType 			keys[ITEMS_PER_THREAD],						///< [in-out] Keys to sort
 		ValueType 			values[ITEMS_PER_THREAD],					///< [in-out] Values to sort
-		unsigned int 		current_bit = 0,							///< [in] [optional] The least-significant bit needed for key comparison
-		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] [optional] The number of bits needed for key comparison
+		unsigned int 		current_bit = 0,							///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
+		const unsigned int	&bits_remaining = sizeof(KeyType) * 8)		///< [in] <b>[optional]</b> The number of bits needed for key comparison
 	{
 		// Radix sorting passes
 		while (true)
