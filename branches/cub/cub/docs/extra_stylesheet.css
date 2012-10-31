@@ -205,16 +205,17 @@ span.preprocessor, span.keyword, span.keywordflow, span.keywordtype {
 }
 
 a.code, a.code:visited {
-		color: black;
+		color: #4665A2;
+		font-weight: bold;
 }
 
 div.fragment {
-	border-color: #AAA;
-	padding: 14px 14px 14px 14px;
-	margin-top: 14px;
-	background-color: white;
-	border-radius: 8px 8px 8px 8px;
-	box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
+		border-color: #AAA;
+		padding: 14px 14px 14px 14px;
+		margin-top: 14px;
+		background-color: white;
+		border-radius: 8px 8px 8px 8px;
+		box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
 }
 
 
@@ -245,15 +246,24 @@ div.memitem {
 		margin-bottom: 30px;
 }
 
-td.memTemplParams, td.memTemplItemLeft, td.memItemLeft {
+.memTemplParams, td.memTemplItemLeft, td.memItemLeft {
 		padding-left: 20px;
 		text-align: justify;
 		font-family: "courier new",courier,monospace;
 		font-size: 85%;
 }
 
+.memTemplParams {
+		color: darkGoldenrod;
+		white-space: normal;
+}
+
 td.memTemplItemRight, td.memItemRight {
 		font-family: "courier new",courier,monospace;
+}
+
+td.memTemplItemLeft, td.memItemLeft {
+		color: darkCyan;
 }
 
 div.groupHeader {
@@ -279,6 +289,7 @@ td.memname, td.paramtype, div.memtemplate {
 
 .memtemplate {
 		font-size: 85%;
+		color: darkGoldenrod;
 }
 
 td.paramname {

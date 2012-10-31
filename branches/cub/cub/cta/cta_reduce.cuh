@@ -240,7 +240,7 @@ private:
     template <
         bool                FULL_TILE,
         typename            ReductionOp>
-    static __device__ __forceinline__ T ReduceHelper(
+    static __device__ __forceinline__ T ReduceInternal(
         SmemStorage         &smem_storage,      ///< [in] Shared reference to opaque SmemStorage layout
         T                   partial,            ///< [in] Calling thread's input partial reductions
         const unsigned int  &valid_threads,     ///< [in] Number of valid elements (may be less than CTA_THREADS)
@@ -419,11 +419,11 @@ public:
         // Determine if we don't need bounds checking
         if (valid_threads == CTA_THREADS)
         {
-            return ReduceHelper<true>(smem_storage, input, valid_threads, reduction_op);
+            return ReduceInternal<true>(smem_storage, input, valid_threads, reduction_op);
         }
         else
         {
-            return ReduceHelper<false>(smem_storage, input, valid_threads, reduction_op);
+            return ReduceInternal<false>(smem_storage, input, valid_threads, reduction_op);
         }
     }
 

@@ -205,13 +205,13 @@ public:
     typedef SmemStorage SmemStorage;
 
 
+private:
+
     //---------------------------------------------------------------------
     // Template iteration structures.  (Regular iteration cannot always be
     // unrolled due to conditionals or ABI procedure calls within
     // functors).
     //---------------------------------------------------------------------
-
-private:
 
     /// General template iteration
     template <int COUNT, int MAX, bool HAS_IDENTITY, bool SHARE_FINAL>

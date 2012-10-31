@@ -64,7 +64,7 @@
  * \par
  * CUB is a library of reusable SIMT primitives for CUDA kernel programming. It
  * provides commonplace CTA-wide, warp-wide, and thread-level operations that
- * are flexible and tunable to fit your needs, i.e., your specific:
+ * are flexible and tunable to fit your needs.  CUB accommodates your specific:
  * - Data types
  * - Width of parallelism (CTA threads)
  * - Grain size (data items per thread)
@@ -80,15 +80,17 @@
  * \code
  * #include <cub.cuh>
  *
- * // An axclusive prefix sum kernel (single-CTA)
+ * // An exclusive prefix sum kernel (assuming only a single CTA)
  * template <
  *      int         CTA_THREADS,                        // Threads per CTA
  *      int         KEYS_PER_THREAD,                    // Items per thread
  *      typename    T>                                  // Data type
  * __global__ void PrefixSumKernel(T *d_in, T *d_out)
  * {
+ *      using namespace cub;
+ *
  *      // Declare a parameterized CtaScan type for the given kernel configuration
- *      typedef cub::CtaScan<T, CTA_THREADS> CtaScan;
+ *      typedef CtaScan<T, CTA_THREADS> CtaScan;
  *
  *      // The shared memory for CtaScan
  *      __shared__ typename CtaScan::SmemStorage smem_storage;
@@ -96,10 +98,14 @@
  *      // A segment of data items per thread
  *      T data[KEYS_PER_THREAD];
  *
- *      // Load, scan, and output a tile of data.
- *      cub::CtaLoadDirect<CTA_THREADS>(data, d_in);
+ *      // Load a tile of data using vector-load instructions if possible
+ *      CtaLoadVectorized(data, d_in, 0);
+ *
+ *      // Perform an exclusive prefix sum across the tile of data
  *      CtaScan::ExclusiveSum(smem_storage, data, data);
- *      cub::CtaStoreDirect<CTA_THREADS>(data, d_out);
+ *
+ *      // Store a tile of data using vector-load instructions if possible
+ *      CtaStoreVectorized(data, d_out, 0);
  * }
  * \endcode
  *
@@ -108,7 +114,7 @@
  * \par
  * Whereas data-parallelism is easy to implement, cooperative-parallelism
  * is hard.  For algorithms requiring local cooperation between threads, the
- * SIMT kernel software is the most complex (and performance-sensitive) layer
+ * SIMT kernel is the most complex (and performance-sensitive) layer
  * in the CUDA software stack.  Developers must carefully manage the state
  * and interaction of many, many threads.  Best practices would have us
  * leverage libraries and abstraction layers to help mitigate the complexity,

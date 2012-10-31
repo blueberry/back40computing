@@ -38,7 +38,7 @@ namespace cub {
 
 
 /**
- * \brief The cub::CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across threads within a CUDA CTA.  ![](sorting_logo.png)
+ * \brief The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across threads within a CUDA CTA.  ![](sorting_logo.png)
  *
  * \tparam KeyType              Key type
  * \tparam CTA_THREADS          The CTA size in threads
