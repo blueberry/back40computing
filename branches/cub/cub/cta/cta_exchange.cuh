@@ -17,6 +17,11 @@
  * 
  ******************************************************************************/
 
+/**
+ * \file
+ * The cub::CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads.
+ */
+
 /******************************************************************************
  * CTA abstractions for commonplace all-to-all exchanges between threads
  ******************************************************************************/
@@ -29,230 +34,246 @@
 #include "../type_utils.cuh"
 
 CUB_NS_PREFIX
+
+/// CUB namespace
 namespace cub {
 
 
 /**
- * Cooperative all-to-all exchange abstractions for CTAs.
+ * \brief The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads. ![](transpose_logo.png)
+ *
+ * \tparam T                    The data type to be exchanged.
+ * \tparam CTA_THREADS          The CTA size in threads.
+ * \tparam ITEMS_PER_THREAD     The number of items partitioned onto each thread.
+ *
+ * <b>Overview</b>
+ * \par
+ * The operations exposed by CtaExchange allow CTAs to reorganize data items between
+ * threads, either converting between or scattering to:
+ * - <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
+ *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * - <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
+ *   each thread have logical stride \p CTA_THREADS between them.
+ *
+ * <b>Features</b>
+ * \par
+ * - Zero bank conflicts for most types.
+ *
+ * <b>Algorithm</b>
+ * \par
+ * Regardless of the initial blocked/striped arrangement, CTA threads scatter
+ * items into shared memory in <em>CTA-blocked</em>, taking care to include
+ * one item of padding for every shared memory bank's worth of items.  After a
+ * barrier, items are gathered in the desired blocked/striped arrangement.
+ * <br>
+ * <br>
+ * \image html raking.png
+ * <center><b>A CTA of 16 threads performing a conflict-free <em>CTA-blocked</em> gathering of 64 exchanged items.</b></center>
+ * <br>
+ *
+ * <b>Important Considerations</b>
+ * \par
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
+ *   required if the supplied CtaScan::CtaExchange is to be reused/repurposed by the CTA.
  */
 template <
-	typename 	T,						/// The data type to be exchanged
-	int 		CTA_THREADS,			/// The CTA size in threads
-	int			ITEMS_PER_THREAD>		/// The number of items per thread
+    typename     T,
+    int         CTA_THREADS,
+    int            ITEMS_PER_THREAD>
 class CtaExchange
 {
-	//---------------------------------------------------------------------
-	// Type definitions and constants
-	//---------------------------------------------------------------------
+    //---------------------------------------------------------------------
+    // Type definitions and constants
+    //---------------------------------------------------------------------
 
 private:
 
-	enum
-	{
-		TILE_ITEMS					= CTA_THREADS * ITEMS_PER_THREAD,
+    enum
+    {
+        TILE_ITEMS                    = CTA_THREADS * ITEMS_PER_THREAD,
 
-		LOG_SMEM_BANKS				= DeviceProps::LOG_SMEM_BANKS,
-		SMEM_BANKS					= 1 << LOG_SMEM_BANKS,
+        LOG_SMEM_BANKS                = DeviceProps::LOG_SMEM_BANKS,
+        SMEM_BANKS                    = 1 << LOG_SMEM_BANKS,
 
-		// Insert padding if the number of items per thread is a power of two
-		PADDING  					= ((ITEMS_PER_THREAD & (ITEMS_PER_THREAD - 1)) == 0),
-		PADDING_ELEMENTS			= (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
-	};
+        // Insert padding if the number of items per thread is a power of two
+        PADDING                      = ((ITEMS_PER_THREAD & (ITEMS_PER_THREAD - 1)) == 0),
+        PADDING_ELEMENTS            = (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
+    };
+
+    /// Shared memory storage layout type
+    struct SmemStorage
+    {
+        T exchange[TILE_ITEMS + PADDING_ELEMENTS];
+    };
 
 public:
 
-	/**
-	 * Shared memory storage layout
-	 */
-	struct SmemStorage
-	{
-		T exchange[TILE_ITEMS + PADDING_ELEMENTS];
-	};
+    /// The operations exposed by CtaExchange require shared memory of this
+    /// type.  This opaque storage can be allocated directly using the
+    /// <tt>__shared__</tt> keyword.  Alternatively, it can be aliased to
+    /// externally allocated shared memory or <tt>union</tt>'d with other types
+    /// to facilitate shared memory reuse.
+    typedef SmemStorage SmemStorage;
 
 
 private:
 
-	static __device__ __forceinline__ void ScatterBlocked(
-		T items[ITEMS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-			if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
-			buffer[item_offset] = items[ITEM];
-		}
-	}
+    static __device__ __forceinline__ void ScatterBlocked(
+        T items[ITEMS_PER_THREAD],
+        T *buffer)
+    {
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
+            if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
+            buffer[item_offset] = items[ITEM];
+        }
+    }
 
-	static __device__ __forceinline__ void ScatterStriped(
-		T items[ITEMS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-			if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
-			buffer[item_offset] = items[ITEM];
-		}
-	}
+    static __device__ __forceinline__ void ScatterStriped(
+        T items[ITEMS_PER_THREAD],
+        T *buffer)
+    {
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
+            if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
+            buffer[item_offset] = items[ITEM];
+        }
+    }
 
-	static __device__ __forceinline__ void GatherBlocked(
-		T items[ITEMS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-			if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
-			items[ITEM] = buffer[item_offset];
-		}
-	}
+    static __device__ __forceinline__ void GatherBlocked(
+        T items[ITEMS_PER_THREAD],
+        T *buffer)
+    {
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
+            if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
+            items[ITEM] = buffer[item_offset];
+        }
+    }
 
-	static __device__ __forceinline__ void GatherStriped(
-		T items[ITEMS_PER_THREAD],
-		T *buffer)
-	{
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-			if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
-			items[ITEM] = buffer[item_offset];
-		}
-	}
+    static __device__ __forceinline__ void GatherStriped(
+        T items[ITEMS_PER_THREAD],
+        T *buffer)
+    {
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
+            if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
+            items[ITEM] = buffer[item_offset];
+        }
+    }
 
-	static __device__ __forceinline__ void ScatterRanked(
-		T 				items[ITEMS_PER_THREAD],
-		unsigned int 	ranks[ITEMS_PER_THREAD],
-		T 				*buffer)
-	{
-		#pragma unroll
-		for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-		{
-			int item_offset = ranks[ITEM];
-			if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
+    static __device__ __forceinline__ void ScatterRanked(
+        T                 items[ITEMS_PER_THREAD],
+        unsigned int     ranks[ITEMS_PER_THREAD],
+        T                 *buffer)
+    {
+        #pragma unroll
+        for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+        {
+            int item_offset = ranks[ITEM];
+            if (PADDING) item_offset = SHR_ADD(item_offset, LOG_SMEM_BANKS, item_offset);
 
-			buffer[item_offset] = items[ITEM];
-		}
-	}
+            buffer[item_offset] = items[ITEM];
+        }
+    }
 
 
-	//---------------------------------------------------------------------
-	// Interface
-	//---------------------------------------------------------------------
+    //---------------------------------------------------------------------
+    // Interface
+    //---------------------------------------------------------------------
 
 public:
 
-	/**
-	 * Transposes data items across the CTA from "blocked" arrangement
-	 * to CTA-striped arrangement.
-	 *
-	 * As input, the aggregate set of items is assumed to be ordered across
-	 * threads in "blocked" fashion, i.e., each thread owns an array
-	 * of logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 *
-	 * As output, the aggregate set of items is assumed to be ordered
-	 * across threads in "CTA-striped" fashion, i.e., each thread owns an
-	 * array of items having logical stride CTA_THREADS between each item
-	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
-	 * thread-1, and so on).
-	 */
-	static __device__ __forceinline__ void TransposeBlockedStriped(
-		SmemStorage			&smem_storage,					/// (opaque) Shared memory storage
-		T 					items[ITEMS_PER_THREAD])		/// (in/out) Items to exchange
-	{
-		// Scatter items to shared memory
-		ScatterStriped(items, smem_storage.exchange);
+    /******************************************************************//**
+     * \name Transpose exchanges
+     *********************************************************************/
+    //@{
 
-		__syncthreads();
+    /**
+     * \brief Transposes data items from <em>CTA-blocked</em> arrangement to <em>CTA-striped</em> arrangement.
+     */
+    static __device__ __forceinline__ void BlockedToStriped(
+        SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
+        T               items[ITEMS_PER_THREAD])    ///< [in-out] Items to exchange, converting between <em>CTA-blocked</em> and <em>CTA-striped</em> arrangements.
+    {
+        // Scatter items to shared memory
+        ScatterStriped(items, smem_storage.exchange);
 
-		// Gather items from shared memory
-		GatherBlocked(items, smem_storage.exchange);
-	}
+        __syncthreads();
+
+        // Gather items from shared memory
+        GatherBlocked(items, smem_storage.exchange);
+    }
 
 
-	/**
-	 * Transposes data items across the CTA from "CTA-striped"
-	 * arrangement
-	 * to blocked arrangement.
-	 *
-	 * As input, the aggregate set of items is assumed to be ordered
-	 * across threads in "CTA-striped" fashion, i.e., each thread owns
-	 * an array of items having logical stride CTA_THREADS between each item
-	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
-	 * thread-1, and so on).
-	 *
-	 * As output, the aggregate set of items is assumed to be ordered across
-	 * threads in "blocked fashion", i.e., each thread owns an array of
-	 * logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	static __device__ __forceinline__ void TransposeStripedBlocked(
-		SmemStorage			&smem_storage,					/// (opaque) Shared memory storage
-		T 					items[ITEMS_PER_THREAD])		/// (in/out) Items to exchange
-	{
-		// Scatter items to shared memory
-		ScatterBlocked(items, smem_storage.exchange);
+    /**
+     * \brief Transposes data items from <em>CTA-striped</em> arrangement to <em>CTA-blocked</em> arrangement.
+     */
+    static __device__ __forceinline__ void StripedToBlocked(
+        SmemStorage      &smem_storage,             ///< [in] Shared reference to opaque SmemStorage layout
+        T                items[ITEMS_PER_THREAD])   ///< [in-out] Items to exchange, converting between <em>CTA-striped</em> and <em>CTA-blocked</em> arrangements.
+    {
+        // Scatter items to shared memory
+        ScatterBlocked(items, smem_storage.exchange);
 
-		__syncthreads();
+        __syncthreads();
 
-		// Gather items from shared memory
-		GatherStriped(items, smem_storage.exchange);
-	}
+        // Gather items from shared memory
+        GatherStriped(items, smem_storage.exchange);
+    }
 
+    //@}
+    /******************************************************************//**
+     * \name Scatter exchanges
+     *********************************************************************/
+    //@{
 
-	/**
-	 * Rearranges data items by rank across the CTA in "blocked"
-	 * arrangement.
-	 *
-	 * As output, the aggregate set of items is assumed to be ordered across
-	 * threads in "blocked fashion", i.e., each thread owns an array of
-	 * logically-consecutive items (and consecutive thread ranks own
-	 * logically-consecutive arrays).
-	 */
-	static __device__ __forceinline__ void ScatterGatherBlocked(
-		SmemStorage			&smem_storage,					/// (opaque) Shared memory storage
-		T 					items[ITEMS_PER_THREAD],		/// (in/out) Items to exchange
-		unsigned int 		ranks[ITEMS_PER_THREAD])		/// (in) Corresponding scatter ranks
-	{
-		// Scatter items to shared memory
-		Scatter(items, ranks, smem_storage.exchange);
+    /**
+     * \brief Exchanges data items annotated by rank into <em>CTA-blocked</em> arrangement.
+     */
+    static __device__ __forceinline__ void ScatterToBlocked(
+        SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
+        T               items[ITEMS_PER_THREAD],    ///< [in-out] Items to exchange
+        unsigned int    ranks[ITEMS_PER_THREAD])    ///< [in] Corresponding scatter ranks
+    {
+        // Scatter items to shared memory
+        Scatter(items, ranks, smem_storage.exchange);
 
-		__syncthreads();
+        __syncthreads();
 
-		// Gather items from shared memory
-		GatherBlocked(items, smem_storage.exchange);
-	}
+        // Gather items from shared memory
+        GatherBlocked(items, smem_storage.exchange);
+    }
 
 
-	/**
-	 * Rearranges data items by rank across the CTA in "CTA-striped"
-	 * arrangement.
-	 *
-	 * As output, the aggregate set of items is assumed to be ordered
-	 * across threads in "CTA-striped" fashion, i.e., each thread owns an
-	 * array of items having logical stride CTA_THREADS between each item
-	 * (e.g., items[0] in thread-0 is logically followed by items[0] in
-	 * thread-1, and so on).
-	 */
-	static __device__ __forceinline__ void ScatterGatherStriped(
-		SmemStorage			&smem_storage,					/// (opaque) Shared memory storage
-		T 					items[ITEMS_PER_THREAD],		/// (in/out) Items to exchange
-		unsigned int 		ranks[ITEMS_PER_THREAD])		/// (in) Corresponding scatter ranks
-	{
-		// Scatter items to shared memory
-		Scatter(items, ranks, smem_storage.exchange);
+    /**
+     * \brief Exchanges data items annotated by rank into <em>CTA-striped</em> arrangement.
+     */
+    static __device__ __forceinline__ void ScatterToStriped(
+        SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
+        T               items[ITEMS_PER_THREAD],    ///< [in-out] Items to exchange
+        unsigned int    ranks[ITEMS_PER_THREAD])    ///< [in] Corresponding scatter ranks
+    {
+        // Scatter items to shared memory
+        Scatter(items, ranks, smem_storage.exchange);
 
-		__syncthreads();
+        __syncthreads();
 
-		// Gather items from shared memory
-		GatherStriped(items, smem_storage.exchange);
-	}
+        // Gather items from shared memory
+        GatherStriped(items, smem_storage.exchange);
+    }
 
+    //@}
 
 
 };

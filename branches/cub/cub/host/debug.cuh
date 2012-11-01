@@ -17,9 +17,10 @@
  * 
  ******************************************************************************/
 
-/******************************************************************************
+/**
+ * \file
  * Debug error display routines
- ******************************************************************************/
+ */
 
 #pragma once
 
@@ -27,6 +28,8 @@
 #include "../ns_wrapper.cuh"
 
 CUB_NS_PREFIX
+
+/// CUB namespace
 namespace cub {
 
 
@@ -37,9 +40,9 @@ namespace cub {
 
 
 /**
- * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
- * error message is printed to stderr along with the supplied source context.  Returns
- * the CUDA error.
+ * \brief If \p CUB_STDERR is defined and \p error is not \p cudaSuccess, \p message is printed to \p stderr along with the supplied source context.
+ *
+ * \return The CUDA error.
  */
 __forceinline__ cudaError_t Debug(
 	cudaError_t error,
@@ -58,9 +61,9 @@ __forceinline__ cudaError_t Debug(
 
 
 /**
- * If print is true and the specified CUDA error is not cudaSuccess, the corresponding
- * error message is printed to stderr along with the supplied source context.  Returns
- * the CUDA error.
+ * \brief If \p CUB_STDERR is defined and \p error is not \p cudaSuccess, the corresponding error message is printed to \p stderr along with the supplied source context.
+ *
+ * \return The CUDA error.
  */
 __forceinline__ cudaError_t Debug(
 	cudaError_t error,

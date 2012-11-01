@@ -19,12 +19,8 @@
 
 /**
  * \file
- * The cub::CtaLoad type provides global data movement operations for loading tiles of items across threads within a CUDA CTA.
+ * The cub::CtaLoad type provides global data movement operations for loading tiles of items across threads within a CTA.
  */
-
-/******************************************************************************
- * CTA abstraction for loading tiles of items
- ******************************************************************************/
 
 #pragma once
 
@@ -43,12 +39,13 @@ CUB_NS_PREFIX
 namespace cub {
 
 
-//-----------------------------------------------------------------------------
-// CtaLoadDirect() methods
-//-----------------------------------------------------------------------------
+/******************************************************************//**
+ * \name CTA-blocked direct loads
+ *********************************************************************/
+//@{
 
 /**
- * Load a tile of items across CTA threads directly using the specified cache modifier.
+ * \brief Load a tile of items across CTA threads directly using the specified cache modifier.
  *
  * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
  * \tparam T                    [inferred] The data type to load.
@@ -82,7 +79,7 @@ __device__ __forceinline__ void CtaLoadDirect(
 
 
 /**
- * Load a tile of items across CTA threads directly.
+ * \brief Load a tile of items across CTA threads directly.
  *
  * \tparam T                    [inferred] The data type to load.
  * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
@@ -107,8 +104,81 @@ __device__ __forceinline__ void CtaLoadDirect(
 }
 
 
+
 /**
- * Load striped tile directly using the specified cache modifier.
+ * \brief Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range
+ *
+ * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
+ * \tparam T                    [inferred] The data type to load.
+ * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
+ * \tparam SizeT                [inferred] Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned evenly across
+ * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ */
+template <
+    PtxLoadModifier MODIFIER,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirect(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+{
+    // Load directly in thread-blocked order
+    #pragma unroll
+    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+    {
+        int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
+        if (item_offset < guarded_elements)
+        {
+            items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
+        }
+    }
+}
+
+
+/**
+ * \brief Load a tile of items across CTA threads directly, guarded by range
+ *
+ * \tparam T                    [inferred] The data type to load.
+ * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
+ * \tparam SizeT                [inferred] Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned evenly across
+ * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ */
+template <
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaLoadDirect(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
+    InputIterator   itr,                            ///< [in] Input iterator for loading from
+    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
+    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
+{
+    CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
+}
+
+
+//@}
+/******************************************************************//**
+ * \name CTA-striped direct loads
+ *********************************************************************/
+//@{
+
+
+/**
+ * \brief Load striped tile directly using the specified cache modifier.
  *
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
@@ -144,7 +214,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
 
 
 /**
- * Load striped tile directly.
+ * \brief Load striped tile directly.
  *
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
@@ -171,74 +241,8 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset);
 }
 
-
 /**
- * Load a tile of items across CTA threads directly using the specified cache modifier, guarded by range
- *
- * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
- * \tparam T                    [inferred] The data type to load.
- * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
- * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
- * \tparam SizeT                [inferred] Integer type for offsets
- *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
- */
-template <
-    PtxLoadModifier MODIFIER,
-    typename        T,
-    int             ITEMS_PER_THREAD,
-    typename        InputIterator,
-    typename        SizeT>
-__device__ __forceinline__ void CtaLoadDirect(
-    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
-    InputIterator   itr,                            ///< [in] Input iterator for loading from
-    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
-{
-    // Load directly in thread-blocked order
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        int item_offset = (threadIdx.x * ITEMS_PER_THREAD) + ITEM;
-        if (item_offset < guarded_elements)
-        {
-            items[ITEM] = ThreadLoad<MODIFIER>(itr + cta_offset + item_offset);
-        }
-    }
-}
-
-
-/**
- * Load a tile of items across CTA threads directly, guarded by range
- *
- * \tparam T                    [inferred] The data type to load.
- * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
- * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
- * \tparam SizeT                [inferred] Integer type for offsets
- *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
- */
-template <
-    typename        T,
-    int             ITEMS_PER_THREAD,
-    typename        InputIterator,
-    typename        SizeT>
-__device__ __forceinline__ void CtaLoadDirect(
-    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to load
-    InputIterator   itr,                            ///< [in] Input iterator for loading from
-    const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
-    const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
-{
-    CtaLoadDirect<PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
-}
-
-
-/**
- * Load striped directly tile using the specified cache modifier, guarded by range
+ * \brief Load striped directly tile using the specified cache modifier, guarded by range
  *
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
@@ -247,9 +251,9 @@ __device__ __forceinline__ void CtaLoadDirect(
  * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
  * \tparam SizeT                [inferred] Integer type for offsets
  *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
     int             CTA_THREADS,
@@ -278,7 +282,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
 
 
 /**
- * Load striped tile directly, guarded by range
+ * \brief Load striped tile directly, guarded by range
  *
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam T                    [inferred] The data type to load.
@@ -286,9 +290,9 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
  * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
  * \tparam SizeT                [inferred] Integer type for offsets
  *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
     int             CTA_THREADS,
@@ -305,15 +309,14 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
 }
 
-
-
-
-//-----------------------------------------------------------------------------
-// CtaLoadVectorized() methods
-//-----------------------------------------------------------------------------
+//@}
+/******************************************************************//**
+ * \name CTA vectorized loads
+ *********************************************************************/
+//@{
 
 /**
- * Load a tile of items across CTA threads directly using the specified cache modifier.
+ * \brief Load a tile of items across CTA threads directly using the specified cache modifier.
  *
  * \tparam MODIFIER             cub::PtxLoadModifier cache modifier.
  * \tparam T                    [inferred] The data type to load.
@@ -384,8 +387,9 @@ __device__ __forceinline__ void CtaLoadVectorized(
 }
 
 
+
 /**
- * Load a tile of items across CTA threads directly.
+ * \brief Load a tile of items across CTA threads directly.
  *
  * \tparam T                    [inferred] The data type to load.
  * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
@@ -413,6 +417,7 @@ __device__ __forceinline__ void CtaLoadVectorized(
     CtaLoadVectorized<PTX_LOAD_NONE>(items, ptr, cta_offset);
 }
 
+//@}
 
 
 //-----------------------------------------------------------------------------
@@ -429,7 +434,7 @@ enum CtaLoadPolicy
 
 
 /**
- * \brief The CtaLoad type provides global data movement operations for loading tiles of items across threads within a CUDA CTA.<br><br>
+ * \brief The CtaLoad type provides global data movement operations for loading tiles of items across threads within a CTA. ![](cta_load_logo.png)
  *
  * \tparam InputIterator        The input iterator type (may be a simple pointer).
  * \tparam CTA_THREADS          The CTA size in threads.
@@ -444,8 +449,9 @@ enum CtaLoadPolicy
  * threads, with thread<sub><em>i</em></sub> owning the
  * <em>i</em><sup>th</sup> segment of consecutive elements.
  *
+ * <b>Algorithms</b>
  * \par
- * The CtaLoad type can be configured to use one of three alternative algorithms:
+ * CtaLoad can be configured to use one of three alternative algorithms:
  *   -# <b>cub::CTA_LOAD_DIRECT</b>.  Loads consecutive thread-items
  *      directly from the input.  (The exposed \p SmemStorage type's size is empty in this case.)
  *   <br><br>

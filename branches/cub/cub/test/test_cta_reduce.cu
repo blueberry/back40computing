@@ -136,8 +136,8 @@ __global__ void PartialTileReduceKernel(
 	T tile_aggregate = CtaReduce::Reduce(
 		smem_storage,
 		partial,
-		num_elements,
-		reduction_op);
+		reduction_op,
+		num_elements);
 
 	// Store data
 	if (threadIdx.x == 0)

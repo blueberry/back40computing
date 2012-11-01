@@ -187,11 +187,17 @@ div.toc {
 }
 
 div.textblock h3 {
-		visibility: hidden;
-		height: 0;
-		margin-top: -26px;
+		display: none;
 }
 
+table.memname tbody tr:first-child td.paramtype {
+		padding-top: 50px;
+}
+
+table.memname tbody tr td.memname {
+	position: absolute;
+	width: 760px;
+}
 
 /******************************************************************************
  *  Class/namespace indices 

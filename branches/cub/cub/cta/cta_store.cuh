@@ -19,12 +19,8 @@
 
 /**
  * \file
- * The cub::CtaStore type provides global data movement operations for storeing tiles of items across threads within a CUDA CTA.
+ * The cub::CtaStore type provides global data movement operations for storing tiles of items across threads within a CTA.
  */
-
-/******************************************************************************
- * CTA abstraction for storeing tiles of items
- ******************************************************************************/
 
 #pragma once
 
@@ -43,12 +39,13 @@ CUB_NS_PREFIX
 namespace cub {
 
 
-//-----------------------------------------------------------------------------
-// CtaStoreDirect() methods
-//-----------------------------------------------------------------------------
+/******************************************************************//**
+ * \name CTA-blocked direct stores
+ *********************************************************************/
+//@{
 
 /**
- * Store a tile of items across CTA threads directly using the specified cache modifier.
+ * \brief Store a tile of items across CTA threads directly using the specified cache modifier.
  *
  * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
  * \tparam T                    [inferred] The data type to store.
@@ -57,7 +54,7 @@ namespace cub {
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -68,7 +65,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
 {
     // Store directly in thread-blocked order
@@ -82,7 +79,7 @@ __device__ __forceinline__ void CtaStoreDirect(
 
 
 /**
- * Store a tile of items across CTA threads directly.
+ * \brief Store a tile of items across CTA threads directly.
  *
  * \tparam T                    [inferred] The data type to store.
  * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
@@ -90,7 +87,7 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -100,7 +97,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
 {
     CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset);
@@ -108,72 +105,7 @@ __device__ __forceinline__ void CtaStoreDirect(
 
 
 /**
- * Store striped tile directly using the specified cache modifier.
- *
- * \tparam CTA_THREADS          The CTA size in threads
- * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
- * \tparam T                    [inferred] The data type to store.
- * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
- * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
- * \tparam SizeT                [inferred] Integer type for offsets
- *
- * The aggregate tile of items is assumed to be partitioned across
- * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
- * items owned by each thread have logical stride \p CTA_THREADS between them.
- */
-template <
-    int             CTA_THREADS,
-    PtxStoreModifier MODIFIER,
-    typename        T,
-    int             ITEMS_PER_THREAD,
-    typename        InputIterator,
-    typename        SizeT>
-__device__ __forceinline__ void CtaStoreDirectStriped(
-    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
-    const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
-{
-    // Store directly in CTA-striped order
-    #pragma unroll
-    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
-    {
-        int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
-        ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
-    }
-}
-
-
-/**
- * Store striped tile directly.
- *
- * \tparam CTA_THREADS          The CTA size in threads
- * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
- * \tparam T                    [inferred] The data type to store.
- * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
- * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
- * \tparam SizeT                [inferred] Integer type for offsets
- *
- * The aggregate tile of items is assumed to be partitioned across
- * threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD
- * items owned by each thread have logical stride \p CTA_THREADS between them.
- */
-template <
-    int             CTA_THREADS,
-    typename        T,
-    int             ITEMS_PER_THREAD,
-    typename        InputIterator,
-    typename        SizeT>
-__device__ __forceinline__ void CtaStoreDirectStriped(
-    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
-    const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
-{
-    CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset);
-}
-
-
-/**
- * Store a tile of items across CTA threads directly using the specified cache modifier, guarded by range
+ * \brief Store a tile of items across CTA threads directly using the specified cache modifier, guarded by range
  *
  * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
  * \tparam T                    [inferred] The data type to store.
@@ -182,7 +114,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -193,7 +125,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
@@ -211,7 +143,7 @@ __device__ __forceinline__ void CtaStoreDirect(
 
 
 /**
- * Store a tile of items across CTA threads directly, guarded by range
+ * \brief Store a tile of items across CTA threads directly, guarded by range
  *
  * \tparam T                    [inferred] The data type to store.
  * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
@@ -219,7 +151,7 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -229,11 +161,84 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirect(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
     CtaStoreDirect<PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);
+}
+
+
+//@}
+/******************************************************************//**
+ * \name CTA-striped direct stores
+ *********************************************************************/
+//@{
+
+
+
+/**
+ * \brief Store striped tile directly using the specified cache modifier.
+ *
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
+ * \tparam T                    [inferred] The data type to store.
+ * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
+ * \tparam SizeT                [inferred] Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in "striped" arrangement, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
+ */
+template <
+    int             CTA_THREADS,
+    PtxStoreModifier MODIFIER,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaStoreDirectStriped(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
+    const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
+{
+    // Store directly in CTA-striped order
+    #pragma unroll
+    for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
+    {
+        int item_offset = (ITEM * CTA_THREADS) + threadIdx.x;
+        ThreadStore<MODIFIER>(itr + cta_offset + item_offset, items[ITEM]);
+    }
+}
+
+
+/**
+ * \brief Store striped tile directly.
+ *
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
+ * \tparam T                    [inferred] The data type to store.
+ * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
+ * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
+ * \tparam SizeT                [inferred] Integer type for offsets
+ *
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
+ */
+template <
+    int             CTA_THREADS,
+    typename        T,
+    int             ITEMS_PER_THREAD,
+    typename        InputIterator,
+    typename        SizeT>
+__device__ __forceinline__ void CtaStoreDirectStriped(
+    T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
+    const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
+{
+    CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset);
 }
 
 
@@ -247,9 +252,9 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
  * \tparam SizeT                [inferred] Integer type for offsets
  *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
     int             CTA_THREADS,
@@ -260,7 +265,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
@@ -278,7 +283,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
 
 
 /**
- * Store striped tile directly, guarded by range
+ * \brief Store striped tile directly, guarded by range
  *
  * \tparam CTA_THREADS          The CTA size in threads
  * \tparam T                    [inferred] The data type to store.
@@ -286,9 +291,9 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam InputIterator        [inferred] The input iterator type (may be a simple pointer).
  * \tparam SizeT                [inferred] Integer type for offsets
  *
- * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
- * the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The aggregate tile of items is assumed to be partitioned across
+ * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
     int             CTA_THREADS,
@@ -298,7 +303,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreDirectStriped(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    InputIterator   itr,                            ///< [in] Input iterator for storeing from
+    InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
@@ -306,14 +311,14 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
 }
 
 
-
-
-//-----------------------------------------------------------------------------
-// CtaStoreVectorized() methods
-//-----------------------------------------------------------------------------
+//@}
+/******************************************************************//**
+ * \name CTA vectorized stores
+ *********************************************************************/
+//@{
 
 /**
- * Store a tile of items across CTA threads directly using the specified cache modifier.
+ * \brief Store a tile of items across CTA threads directly using the specified cache modifier.
  *
  * \tparam MODIFIER             cub::PtxStoreModifier cache modifier.
  * \tparam T                    [inferred] The data type to store.
@@ -321,10 +326,10 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
- * The following conditions will prevent vectorization and storeing will fall back to cub::CTA_STORE_DIRECT:
+ * The following conditions will prevent vectorization and storing will fall back to cub::CTA_STORE_DIRECT:
  * - \p ITEMS_PER_THREAD is odd
  * - The \p InputIterator is not a simple pointer type
  * - The input offset (\p ptr + \p cta_offset) is not quad-aligned
@@ -337,7 +342,7 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreVectorized(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    T               *ptr,                           ///< [in] Input pointer for storeing from
+    T               *ptr,                           ///< [in] Input pointer for storing from
     const SizeT     &cta_offset)                    ///< [in] Offset in ptr at which to store the tile
 {
     enum
@@ -385,17 +390,17 @@ __device__ __forceinline__ void CtaStoreVectorized(
 
 
 /**
- * Store a tile of items across CTA threads directly.
+ * \brief Store a tile of items across CTA threads directly.
  *
  * \tparam T                    [inferred] The data type to store.
  * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
+ * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
- * The following conditions will prevent vectorization and storeing will fall back to cub::CTA_STORE_DIRECT:
+ * The following conditions will prevent vectorization and storing will fall back to cub::CTA_STORE_DIRECT:
  * - \p ITEMS_PER_THREAD is odd
  * - The \p InputIterator is not a simple pointer type
  * - The input offset (\p ptr + \p cta_offset) is not quad-aligned
@@ -407,12 +412,13 @@ template <
     typename        SizeT>
 __device__ __forceinline__ void CtaStoreVectorized(
     T               (&items)[ITEMS_PER_THREAD],     ///< [out] Data to store
-    T               *ptr,                           ///< [in] Input pointer for storeing from
+    T               *ptr,                           ///< [in] Input pointer for storing from
     const SizeT     &cta_offset)                    ///< [in] Offset in ptr at which to store the tile
 {
     CtaStoreVectorized<PTX_STORE_NONE>(items, ptr, cta_offset);
 }
 
+//@}
 
 
 //-----------------------------------------------------------------------------
@@ -429,7 +435,7 @@ enum CtaStorePolicy
 
 
 /**
- * \brief The CtaStore type provides global data movement operations for storeing tiles of items across threads within a CUDA CTA.<br><br>
+ * \brief The CtaStore type provides global data movement operations for storing tiles of items across threads within a CTA. ![](cta_store_logo.png)
  *
  * \tparam InputIterator        The input iterator type (may be a simple pointer).
  * \tparam CTA_THREADS          The CTA size in threads.
@@ -444,8 +450,9 @@ enum CtaStorePolicy
  * threads, with thread<sub><em>i</em></sub> owning the
  * <em>i</em><sup>th</sup> segment of consecutive elements.
  *
+ * <b>Algorithms</b>
  * \par
- * The CtaStore type can be configured to use one of three alternative algorithms:
+ * CtaStore can be configured to use one of three alternative algorithms:
  *   -# <b>cub::CTA_STORE_DIRECT</b>.  Stores consecutive thread-items
  *      directly from the input.  (The exposed \p SmemStorage type's size is empty in this case.)
  *   <br><br>
@@ -454,7 +461,7 @@ enum CtaStorePolicy
  *      example, <tt>ld.global.v4.s32</tt> will be generated when
  *      \p T = \p int and \p ITEMS_PER_THREAD > 4.  (The exposed \p SmemStorage
  *      type's size is empty in this case.)  The following conditions will
- *      prevent vectorization and storeing will fall back to cub::CTA_STORE_DIRECT:
+ *      prevent vectorization and storing will fall back to cub::CTA_STORE_DIRECT:
  *      - \p ITEMS_PER_THREAD is odd
  *      - The \p InputIterator is not a simple pointer type
  *      - The input offset (\p ptr + \p cta_offset) is not quad-aligned
@@ -556,7 +563,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               items[ITEMS_PER_THREAD],    ///< [out] Data to store
-            InputIterator   itr,                        ///< [in] Input iterator for storeing from
+            InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to store the tile
         {
             CtaStoreDirect<MODIFIER>(items, ptr, cta_offset);
@@ -567,7 +574,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to store
-            InputIterator   itr,                        ///< [in] Input iterator for storeing from
+            InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
             const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
         {
@@ -590,7 +597,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               items[ITEMS_PER_THREAD],    ///< [out] Data to store
-            T               *ptr,                       ///< [in] Input iterator for storeing from
+            T               *ptr,                       ///< [in] Input iterator for storing from
             const SizeT     &cta_offset)                ///< [in] Offset in ptr at which to store the tile
         {
             CtaStoreVectorized<MODIFIER>(items, ptr, cta_offset);
@@ -604,7 +611,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               items[ITEMS_PER_THREAD],    ///< [out] Data to store
-            InputIterator   itr,                        ///< [in] Input iterator for storeing from
+            InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to store the tile
         {
             CtaStoreDirect<MODIFIER>(items, ptr, cta_offset);
@@ -615,7 +622,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to store
-            InputIterator   itr,                        ///< [in] Input iterator for storeing from
+            InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
             const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
         {
@@ -641,7 +648,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
                           items[ITEMS_PER_THREAD],    ///< [out] Data to store
-            _InputIterator  itr,                        ///< [in] Input iterator for storeing from
+            _InputIterator  itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to store the tile
         {
             CtaStoreDirectStriped<CTA_THREADS, MODIFIER>(items, ptr, cta_offset);
@@ -655,7 +662,7 @@ private:
         static __device__ __forceinline__ void Store(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
             T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to store
-            InputIterator   itr,                        ///< [in] Input iterator for storeing from
+            InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
             const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
         {
@@ -693,7 +700,7 @@ public:
     static __device__ __forceinline__ void Store(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
         T               items[ITEMS_PER_THREAD],    ///< [out] Data to store
-        InputIterator   itr,                        ///< [in] Input iterator for storeing from
+        InputIterator   itr,                        ///< [in] Input iterator for storing from
         const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to store the tile
     {
         StoreInternal<POLICY>::template Store(smem_storage, items, itr, cta_offset);
@@ -708,7 +715,7 @@ public:
     static __device__ __forceinline__ void Store(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
         T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to store
-        InputIterator   itr,                        ///< [in] Input iterator for storeing from
+        InputIterator   itr,                        ///< [in] Input iterator for storing from
         const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
         const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
     {

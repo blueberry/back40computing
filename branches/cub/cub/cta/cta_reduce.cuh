@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaReduce type provides variants of parallel reduction across threads within a CUDA CTA
+ * The cub::CtaReduce type provides variants of parallel reduction across threads within a CTA
  */
 
 #pragma once
@@ -39,7 +39,7 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
- * \brief The CtaReduce type provides variants of parallel reduction across threads within a CUDA CTA. ![](reduce_logo.png)
+ * \brief The CtaReduce type provides variants of parallel reduction across threads within a CTA. ![](reduce_logo.png)
  *
  * \tparam T                        The reduction input/output element type
  * \tparam CTA_THREADS              The CTA size in threads
@@ -294,7 +294,7 @@ private:
 public:
 
     /******************************************************************//**
-     * @name Summation Reduction
+     * \name Summation reductions
      *********************************************************************/
     //@{
 
@@ -305,7 +305,6 @@ public:
      *
      * \smemreuse
      */
-    template <typename ReductionOp>
     static __device__ __forceinline__ T Reduce(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
         T               input)                      ///< [in] Calling thread's input
@@ -352,7 +351,7 @@ public:
 
     //@}
     /******************************************************************//**
-     * @name Generic reduction
+     * \name Generic reductions
      *********************************************************************/
     //@{
 
@@ -413,8 +412,8 @@ public:
     static __device__ __forceinline__ T Reduce(
         SmemStorage         &smem_storage,          ///< [in] Shared reference to opaque SmemStorage layout
         T                   input,                  ///< [in] Calling thread's input
-        const unsigned int  &valid_threads,         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
-        ReductionOp         reduction_op)           ///< [in] Binary associative reduction functor
+        ReductionOp         reduction_op,           ///< [in] Binary associative reduction functor
+        const unsigned int  &valid_threads)         ///< [in] Number of threads containing valid elements (may be less than CTA_THREADS)
     {
         // Determine if we don't need bounds checking
         if (valid_threads == CTA_THREADS)

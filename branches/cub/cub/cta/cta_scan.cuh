@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA.
+ * The cub::CtaScan type provides variants of parallel prefix scan across threads within a CTA.
  */
 
 #pragma once
@@ -51,7 +51,7 @@ enum CtaScanPolicy
 
 
 /**
- * \brief The CtaScan type provides variants of parallel prefix scan across threads within a CUDA CTA.  ![](scan_logo.png)
+ * \brief The CtaScan type provides variants of parallel prefix scan across threads within a CTA. ![](scan_logo.png)
  *
  * \tparam T                The reduction input/output element type
  * \tparam CTA_THREADS      The CTA size in threads
@@ -186,7 +186,7 @@ public:
 
 
     /******************************************************************//**
-     * @name Exclusive prefix scan variants
+     * \name Exclusive prefix scans
      *********************************************************************/
     //@{
 
@@ -455,7 +455,7 @@ public:
 
     //@}
     /******************************************************************//**
-     * @name Exclusive prefix scan variants (without supplied identity)
+     * \name Exclusive prefix scans (without supplied identity)
      *********************************************************************/
     //@{
 
@@ -704,7 +704,7 @@ public:
 
     //@}
     /******************************************************************//**
-     * @name Exclusive prefix sum variants
+     * \name Exclusive prefix sums
      *********************************************************************/
     //@{
 
@@ -934,7 +934,7 @@ public:
 
     //@}
     /******************************************************************//**
-     * @name Inclusive prefix scan variants
+     * \name Inclusive prefix scans
      *********************************************************************/
     //@{
 
