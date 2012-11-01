@@ -36,13 +36,13 @@ CUB_NS_PREFIX
 /// CUB namespace
 namespace cub {
 
+/**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
 
 /**
  * \brief The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp.  ![](warp_scan_logo.png)
- *
- * \tparam T                        The scan input/output element type
- * \tparam WARPS                    The number of "logical" warps performing concurrent warp scans
- * \tparam LOGICAL_WARP_THREADS     <b>[optional]</b> The number of threads per "logical" warp (may be less than the number of hardware warp threads).  Default is the warp size associated with the CUDA Compute Capability targeted by the compiler (e.g., 32 warps for SM20).
  *
  * <b>Overview</b>
  * \par
@@ -55,29 +55,23 @@ namespace cub {
  * input operand in the partial reduction.
  *
  * \par
- * These parallel prefix scan variants assume the input and
- * output lists to be logically partitioned among threads with warp thread-lane-<em>i</em>
- * having the <em>i</em><sup>th</sup> input and output elements.
+ * These parallel prefix scan variants assume the input and output lists to
+ * be logically partitioned among threads with warp thread-lane-<em>i</em>
+ * having the <em>i</em><sup>th</sup> input and output elements.  To minimize
+ * synchronization overhead for operations involving the cumulative
+ * \p aggregate and \p warp_prefix, these values are only valid in
+ * thread-lane<sub>0</sub>.
  *
- * <b>Features</b>
+ * \tparam T                        The scan input/output element type
+ * \tparam WARPS                    The number of "logical" warps performing concurrent warp scans
+ * \tparam LOGICAL_WARP_THREADS     <b>[optional]</b> The number of threads per "logical" warp (may be less than the number of hardware warp threads).  Default is the warp size associated with the CUDA Compute Capability targeted by the compiler (e.g., 32 warps for SM20).
+ *
+ * <b>Important Features and Considerations</b>
  * \par
  * - Support for "logical" warps smaller than the physical warp size (e.g., 8 threads).
  * - Support for non-commutative binary associative scan functors.
  * - Support for concurrent scans within multiple warps.
  * - Zero bank conflicts for most types.
- *
- * <b>Algorithm</b>
- * \par
- * These parallel prefix scan variants implement a warp-synchronous
- * Kogge-Stone algorithm having <em>O</em>(log<em>n</em>)
- * steps and <em>O</em>(<em>n</em>log<em>n</em>) work complexity,
- * where <em>n</em> = \p LOGICAL_WARP_THREADS (which defaults to the warp
- * size associated with the CUDA Compute Capability targeted by the compiler).
- *
- * \image html kogge_stone_scan.png "Data flow within a 16-thread Kogge-Stone scan construction.  Junctions represent binary operators."
- *
- * <b>Important Considerations</b>
- * \par
  * - After any operation, a subsequent CTA barrier (<tt>__syncthreads</tt>) is
  *   required if the supplied WarpScan::SmemStorage is to be reused/repurposed by the CTA.
  * - The operations are most efficient (lowest instruction overhead) when:
@@ -88,8 +82,17 @@ namespace cub {
  *      - Performing exclusive scans. The implementation may use guarded
  *        shared memory accesses for inclusive scans (other than prefix sum)
  *        because no identity element is provided.
- * - To minimize synchronization overhead for operations involving the cumulative
- *   \p aggregate and \p warp_prefix, these values are only valid in thread-lane<sub>0</sub>.
+ *
+ * <b>Algorithm</b>
+ * \par
+ * These parallel prefix scan variants implement a warp-synchronous
+ * Kogge-Stone algorithm having <em>O</em>(log<em>n</em>)
+ * steps and <em>O</em>(<em>n</em>log<em>n</em>) work complexity,
+ * where <em>n</em> = \p LOGICAL_WARP_THREADS (which defaults to the warp
+ * size associated with the CUDA Compute Capability targeted by the compiler).
+ *
+ * \image html kogge_stone_scan.png
+ * <center><b>"Data flow within a 16-thread Kogge-Stone scan construction.  Junctions represent binary operators."</b></center>
  *
  * <b>Examples</b>
  *
@@ -766,6 +769,7 @@ public:
     //@}
 };
 
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

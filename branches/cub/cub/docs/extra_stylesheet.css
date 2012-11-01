@@ -50,7 +50,7 @@ div.header {
 
 #MSearchBox {
         margin-top: 6px;
-        margin-left: 330px;
+        margin-left: 250px;
 		right: auto;
 }
 
@@ -171,8 +171,9 @@ p.startli, p.startdd, p.starttd {
 		margin-bottom: 1em;
 }
 
+/** Workaround where image in brief class description creates unwanted "." caption */
 .caption {
-		font-weight: normal;
+		display: none;
 }
 
 
@@ -195,9 +196,13 @@ table.memname tbody tr:first-child td.paramtype {
 }
 
 table.memname tbody tr td.memname {
-	position: absolute;
-	width: 760px;
+		position: absolute;
+		width: 760px;
 }
+
+div.image {
+}
+
 
 /******************************************************************************
  *  Class/namespace indices 

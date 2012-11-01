@@ -36,16 +36,13 @@ CUB_NS_PREFIX
 /// CUB namespace
 namespace cub {
 
+/**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
 
 /**
  * \brief The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across threads within a CTA.  ![](sorting_logo.png)
- *
- * \tparam KeyType              Key type
- * \tparam CTA_THREADS          The CTA size in threads
- * \tparam ITEMS_PER_THREAD     The number of items per thread
- * \tparam ValueType            <b>[optional]</b> Value type (default: cub::NullType)
- * \tparam RADIX_BITS           <b>[optional]</b> The number of radix bits per digit place (default: 5 bits)
- * \tparam SMEM_CONFIG          <b>[optional]</b> Shared memory bank mode (default: \p cudaSharedMemBankSizeFourByte)
  *
  * <b>Overview</b>
  * \par
@@ -56,30 +53,26 @@ namespace cub {
  * of the symbolic alphabet, the radix sorting method produces a lexicographic
  * ordering of those keys.
  *
- * \par
- * The parallel operations exposed by this type assume <em>n</em>-element
- * lists that are partitioned evenly among \p CTA_THREADS threads,
- * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
- * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
+ * \tparam KeyType              Key type
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam ITEMS_PER_THREAD     The number of items per thread
+ * \tparam ValueType            <b>[optional]</b> Value type (default: cub::NullType)
+ * \tparam RADIX_BITS           <b>[optional]</b> The number of radix bits per digit place (default: 5 bits)
+ * \tparam SMEM_CONFIG          <b>[optional]</b> Shared memory bank mode (default: \p cudaSharedMemBankSizeFourByte)
  *
- * <b>Features</b>
- * \par
- * - Blah
- * - Blah
- *
- * <b>Algorithm</b>
- * \par
- * These parallel radix sorting variants have <em>O</em>(<em>n</em>) work complexity and are implemented in XXX phases:
- * -# blah
- * -# blah
- *
- * <b>Important Considerations</b>
+ * <b>Important Features and Considerations</b>
  * \par
  * - After any CtaRadixSort operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
  *   required if the supplied CtaRadixSort::SmemStorage is to be reused/repurposed by the CTA.
  * - Keys must be in a form suitable for radix ranking (i.e., unsigned integer types).
  * - The operations are most efficient (lowest instruction overhead) when:
  *      - \p CTA_THREADS is a multiple of the architecture's warp size
+ *
+ * <b>Algorithm</b>
+ * \par
+ * These parallel radix sorting variants have <em>O</em>(<em>n</em>) work complexity and are implemented in XXX phases:
+ * -# blah
+ * -# blah
  *
  * <b>Examples</b>
  * \par
@@ -560,8 +553,7 @@ public:
 
 };
 
-
-
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

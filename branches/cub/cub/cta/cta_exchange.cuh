@@ -38,27 +38,33 @@ CUB_NS_PREFIX
 /// CUB namespace
 namespace cub {
 
+/**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
 
 /**
  * \brief The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads. ![](transpose_logo.png)
+ *
+ * <b>Overview</b>
+ * \par
+ * The operations exposed by CtaExchange allow CTAs to reorganize data items between
+ * threads, converting between (or scattering to) the following partitioning arrangements:
+ * -# <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
+ *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
+ * -# <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
+ *   each thread have logical stride \p CTA_THREADS between them.
  *
  * \tparam T                    The data type to be exchanged.
  * \tparam CTA_THREADS          The CTA size in threads.
  * \tparam ITEMS_PER_THREAD     The number of items partitioned onto each thread.
  *
- * <b>Overview</b>
+ * <b>Important Features and Considerations</b>
  * \par
- * The operations exposed by CtaExchange allow CTAs to reorganize data items between
- * threads, either converting between or scattering to:
- * - <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
- *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
- *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
- * - <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
- *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
- *   each thread have logical stride \p CTA_THREADS between them.
- *
- * <b>Features</b>
- * \par
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
+ *   required if the supplied CtaScan::CtaExchange is to be reused/repurposed by the CTA.
  * - Zero bank conflicts for most types.
  *
  * <b>Algorithm</b>
@@ -73,15 +79,11 @@ namespace cub {
  * <center><b>A CTA of 16 threads performing a conflict-free <em>CTA-blocked</em> gathering of 64 exchanged items.</b></center>
  * <br>
  *
- * <b>Important Considerations</b>
- * \par
- * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
- *   required if the supplied CtaScan::CtaExchange is to be reused/repurposed by the CTA.
  */
 template <
-    typename     T,
-    int         CTA_THREADS,
-    int            ITEMS_PER_THREAD>
+    typename        T,
+    int             CTA_THREADS,
+    int             ITEMS_PER_THREAD>
 class CtaExchange
 {
     //---------------------------------------------------------------------
@@ -92,14 +94,14 @@ private:
 
     enum
     {
-        TILE_ITEMS                    = CTA_THREADS * ITEMS_PER_THREAD,
+        TILE_ITEMS          = CTA_THREADS * ITEMS_PER_THREAD,
 
-        LOG_SMEM_BANKS                = DeviceProps::LOG_SMEM_BANKS,
-        SMEM_BANKS                    = 1 << LOG_SMEM_BANKS,
+        LOG_SMEM_BANKS      = DeviceProps::LOG_SMEM_BANKS,
+        SMEM_BANKS          = 1 << LOG_SMEM_BANKS,
 
         // Insert padding if the number of items per thread is a power of two
-        PADDING                      = ((ITEMS_PER_THREAD & (ITEMS_PER_THREAD - 1)) == 0),
-        PADDING_ELEMENTS            = (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
+        PADDING             = ((ITEMS_PER_THREAD & (ITEMS_PER_THREAD - 1)) == 0),
+        PADDING_ELEMENTS    = (PADDING) ? (TILE_ITEMS >> LOG_SMEM_BANKS) : 0,
     };
 
     /// Shared memory storage layout type
@@ -207,12 +209,12 @@ public:
         T               items[ITEMS_PER_THREAD])    ///< [in-out] Items to exchange, converting between <em>CTA-blocked</em> and <em>CTA-striped</em> arrangements.
     {
         // Scatter items to shared memory
-        ScatterStriped(items, smem_storage.exchange);
+        ScatterBlocked(items, smem_storage.exchange);
 
         __syncthreads();
 
         // Gather items from shared memory
-        GatherBlocked(items, smem_storage.exchange);
+        GatherStriped(items, smem_storage.exchange);
     }
 
 
@@ -224,12 +226,12 @@ public:
         T                items[ITEMS_PER_THREAD])   ///< [in-out] Items to exchange, converting between <em>CTA-striped</em> and <em>CTA-blocked</em> arrangements.
     {
         // Scatter items to shared memory
-        ScatterBlocked(items, smem_storage.exchange);
+        ScatterStriped(items, smem_storage.exchange);
 
         __syncthreads();
 
         // Gather items from shared memory
-        GatherStriped(items, smem_storage.exchange);
+        GatherBlocked(items, smem_storage.exchange);
     }
 
     //@}
@@ -277,6 +279,8 @@ public:
 
 
 };
+
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

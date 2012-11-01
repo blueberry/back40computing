@@ -37,11 +37,6 @@ CUB_NS_PREFIX
 /// CUB namespace
 namespace cub {
 
-
-//-----------------------------------------------------------------------------
-// Policy
-//-----------------------------------------------------------------------------
-
 /// Tuning policy for cub::CtaScan
 enum CtaScanPolicy
 {
@@ -49,13 +44,13 @@ enum CtaScanPolicy
     CTA_SCAN_WARPSCANS,     ///< Uses an work-inefficient, but shorter-latency algorithm (tiled warpscans).  Useful when the GPU is under-occupied.
 };
 
+/**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
 
 /**
  * \brief The CtaScan type provides variants of parallel prefix scan across threads within a CTA. ![](scan_logo.png)
- *
- * \tparam T                The reduction input/output element type
- * \tparam CTA_THREADS      The CTA size in threads
- * \tparam POLICY           <b>[optional]</b> cub::CtaScanPolicy tuning policy enumeration.  Default = cub::CTA_SCAN_RAKING.
  *
  * <b>Overview</b>
  * \par
@@ -68,16 +63,30 @@ enum CtaScanPolicy
  * input operand in the partial reduction.
  *
  * \par
- * The parallel operations exposed by this type assume <em>n</em>-element
+ * The parallel operations exposed by this type assume a <em>CTA-blocked</em>
+ * arrangement of elements across threads, i.e., <em>n</em>-element
  * lists that are partitioned evenly across \p CTA_THREADS threads,
  * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
  * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
  *
- * <b>Features</b>
+ * \tparam T                The reduction input/output element type
+ * \tparam CTA_THREADS      The CTA size in threads
+ * \tparam POLICY           <b>[optional]</b> cub::CtaScanPolicy tuning policy enumeration.  Default = cub::CTA_SCAN_RAKING.
+ *
+ * <b>Important Features and Considerations</b>
  * \par
  * - Supports non-commutative scan operators.
  * - Very efficient (only two synchronization barriers).
  * - Zero bank conflicts for most types.
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
+ *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
+ * - The operations are most efficient (lowest instruction overhead) when:
+ *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
+ *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
+ *        fences to prevent reference reordering of non-primitive types.
+ *      - \p CTA_THREADS is a multiple of the architecture's warp size
+ * - To minimize synchronization overhead for operations involving the cumulative
+ *   \p aggregate and \p cta_prefix, these values are only valid in thread<sub>0</sub>.
  *
  * <b>Algorithm</b>
  * \par
@@ -97,18 +106,6 @@ enum CtaScanPolicy
  *     <br>
  *   -# <b>Algorithm cub::CTA_SCAN_WARPSCANS</b>.  Uses an work-inefficient, but shorter-latency algorithm (tiled warpscans).  Useful when the GPU is under-occupied.  These variants have <em>O</em>(<em>n</em>log<em>n</em>) work complexity and are comprised of five phases:
  *     <br>
- *
- * <b>Important Considerations</b>
- * \par
- * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
- *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
- * - The operations are most efficient (lowest instruction overhead) when:
- *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
- *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
- *        fences to prevent reference reordering of non-primitive types.
- *      - \p CTA_THREADS is a multiple of the architecture's warp size
- * - To minimize synchronization overhead for operations involving the cumulative
- *   \p aggregate and \p cta_prefix, these values are only valid in thread<sub>0</sub>.
  *
  * <b>Examples</b>
  * \par
@@ -1183,7 +1180,7 @@ public:
 
 };
 
-
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

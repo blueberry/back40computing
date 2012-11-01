@@ -69,6 +69,12 @@
  * - Width of parallelism (CTA threads)
  * - Grain size (data items per thread)
  *
+ * \par
+ * Browse our collections of:
+ * - [<b>SIMT cooperative primitives</b>](annotated.html)
+ * - [<b>SIMT utilities</b>](group___simt_utils.html)
+ * - [<b>Host utilities</b>](group___host_util.html)
+ *
  * \section sec1 A simple example
  *
  * \par
@@ -154,4 +160,23 @@
  * to the calling code (where it can be allocated and possibly reused
  * elsewhere by the CTA).
  *
+ */
+
+
+/**
+ * \defgroup Simt SIMT Primitives
+ */
+
+/**
+ * \defgroup SimtCoop Cooperative SIMT Operations
+ * \ingroup Simt
+ */
+
+/**
+ * \defgroup SimtUtils SIMT Utilities
+ * \ingroup Simt
+ */
+
+/**
+ * \defgroup HostUtil Host Utilities
  */

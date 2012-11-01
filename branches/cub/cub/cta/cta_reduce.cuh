@@ -39,28 +39,41 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
+
+/**
  * \brief The CtaReduce type provides variants of parallel reduction across threads within a CTA. ![](reduce_logo.png)
- *
- * \tparam T                        The reduction input/output element type
- * \tparam CTA_THREADS              The CTA size in threads
  *
  * <b>Overview</b>
  * \par
  * A <em>reduction</em> (or <em>fold</em>) uses a binary combining operator to
- * compute a single aggregate from a list of input elements.
- *
- * \par
- * The parallel operations exposed by this type assume <em>n</em>-element
+ * compute a single aggregate from a list of input elements.  The parallel
+ * operations exposed by this type assume <em>n</em>-element
  * lists that are partitioned evenly across \p CTA_THREADS threads,
  * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
  * element (or <em>i</em><sup>th</sup> segment of consecutive elements).
+ * To minimize synchronization overhead, these operations only produce a
+ * valid cumulative aggregate for thread<sub>0</sub>.
  *
- * <b>Features</b>
+ * \tparam T                        The reduction input/output element type
+ * \tparam CTA_THREADS              The CTA size in threads
+ *
+ * <b>Important Features and Considerations</b>
  * \par
  * - Supports non-commutative reduction operators.
  * - Supports partially-full CTAs (i.e., high-order threads having undefined values).
  * - Very efficient (only one synchronization barrier).
  * - Zero bank conflicts for most types.
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
+ *   required if the supplied CtaReduce::SmemStorage is to be reused/repurposed by the CTA.
+ * - The operations are most efficient (lowest instruction overhead) when:
+ *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
+ *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
+ *        fences to prevent reference reordering of non-primitive types.
+ *      - \p CTA_THREADS is a multiple of the architecture's warp size
+ *      - Every thread has a valid input (i.e., unguarded reduction)
  *
  * <b>Algorithm</b>
  * \par
@@ -73,18 +86,6 @@ namespace cub {
  * \image html cta_reduce.png
  * <center><b>Data flow for a hypothetical 16-thread CTA and 4-thread raking warp.</b></center>
  * <br>
- *
- * <b>Important Considerations</b>
- * \par
- * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
- *   required if the supplied CtaReduce::SmemStorage is to be reused/repurposed by the CTA.
- * - The operations are most efficient (lowest instruction overhead) when:
- *      - The data type \p T is a built-in primitive or CUDA vector type (e.g.,
- *        \p short, \p int2, \p double, \p float2, etc.)  Otherwise the implementation may use memory
- *        fences to prevent reference reordering of non-primitive types.
- *      - \p CTA_THREADS is a multiple of the architecture's warp size
- *      - Every thread has a valid input (i.e., unguarded reduction)
- * - To minimize synchronization overhead, the cumulative aggregate is only valid in thread<sub>0</sub>.
  *
  * <b>Examples</b>
  * \par
@@ -430,6 +431,7 @@ public:
 
 };
 
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

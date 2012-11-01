@@ -38,6 +38,11 @@ CUB_NS_PREFIX
 /// CUB namespace
 namespace cub {
 
+/**
+ *  \addtogroup SimtUtils
+ *  @{
+ */
+
 
 /******************************************************************//**
  * \name CTA-blocked direct loads
@@ -367,10 +372,12 @@ __device__ __forceinline__ void CtaLoadVectorized(
     {
         // Alias local data (use raw_items array here which should get optimized away to prevent conservative PTXAS lmem spilling)
         T raw_items[ITEMS_PER_THREAD];
-        Vector *item_vectors = reinterpret_cast<Vector *>(raw_items);
 
         // Direct-load using vector types
-        CtaLoadDirect<MODIFIER>(item_vectors, ptr_vectors, 0);
+        CtaLoadDirect<MODIFIER>(
+            reinterpret_cast<Vector (&)[VECTORS_PER_THREAD]>(raw_items),
+            ptr_vectors,
+            0);
 
         // Copy
         #pragma unroll
@@ -419,6 +426,9 @@ __device__ __forceinline__ void CtaLoadVectorized(
 
 //@}
 
+/** @} */       // end of SimtUtils group
+
+
 
 //-----------------------------------------------------------------------------
 // Generic CtaLoad abstraction
@@ -434,7 +444,34 @@ enum CtaLoadPolicy
 
 
 /**
+ *  \addtogroup SimtCoop
+ *  @{
+ */
+
+
+/**
  * \brief The CtaLoad type provides global data movement operations for loading tiles of items across threads within a CTA. ![](cta_load_logo.png)
+ *
+ * <b>Overview</b>
+ * \par
+ * CtaLoad can be configured to use one of three alternative algorithms:
+ *   -# <b>cub::CTA_LOAD_DIRECT</b>.  Loads consecutive thread-items
+ *      directly from the input.
+ *   <br><br>
+ *   -# <b>cub::CTA_LOAD_VECTORIZE</b>.  Attempts to use CUDA's
+ *      built-in vectorized items as a coalescing optimization.  For
+ *      example, <tt>ld.global.v4.s32</tt> will be generated when
+ *      \p T = \p int and \p ITEMS_PER_THREAD > 4.
+ *   <br><br>
+ *   -# <b>cub::CTA_LOAD_TRANSPOSE</b>.  Loads CTA-striped inputs as
+ *      a coalescing optimization and then transposes them through
+ *      shared memory into the desired blocks of thread-consecutive items
+ *
+ * \par
+ * The data movement operations exposed by this type assume <em>n</em>-element
+ * lists (or <em>tiles</em>) that are partitioned evenly among \p CTA_THREADS
+ * threads, with thread<sub><em>i</em></sub> owning the
+ * <em>i</em><sup>th</sup> segment of consecutive elements.
  *
  * \tparam InputIterator        The input iterator type (may be a simple pointer).
  * \tparam CTA_THREADS          The CTA size in threads.
@@ -442,38 +479,15 @@ enum CtaLoadPolicy
  * \tparam POLICY               <b>[optional]</b> cub::CtaLoadPolicy tuning policy enumeration.  Default = cub::CTA_LOAD_DIRECT.
  * \tparam MODIFIER             <b>[optional]</b> cub::PtxLoadModifier cache modifier.  Default = cub::PTX_LOAD_NONE.
  *
- * <b>Overview</b>
- * \par
- * The data movement operations exposed by this type assume <em>n</em>-element
- * lists (or <em>tiles</em>) that are partitioned evenly among \p CTA_THREADS
- * threads, with thread<sub><em>i</em></sub> owning the
- * <em>i</em><sup>th</sup> segment of consecutive elements.
- *
- * <b>Algorithms</b>
- * \par
- * CtaLoad can be configured to use one of three alternative algorithms:
- *   -# <b>cub::CTA_LOAD_DIRECT</b>.  Loads consecutive thread-items
- *      directly from the input.  (The exposed \p SmemStorage type's size is empty in this case.)
- *   <br><br>
- *   -# <b>cub::CTA_LOAD_VECTORIZE</b>.  Attempts to use CUDA's
- *      built-in vectorized items as a coalescing optimization.  For
- *      example, <tt>ld.global.v4.s32</tt> will be generated when
- *      \p T = \p int and \p ITEMS_PER_THREAD > 4.  (The exposed \p SmemStorage
- *      type's size is empty in this case.)  The following conditions will
- *      prevent vectorization and loading will fall back to cub::CTA_LOAD_DIRECT:
- *      - \p ITEMS_PER_THREAD is odd
- *      - The \p InputIterator is not a simple pointer type
- *      - The input offset (\p ptr + \p cta_offset) is not quad-aligned
- *      - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
- *   <br><br>
- *   -# <b>cub::CTA_LOAD_TRANSPOSE</b>.  Loads CTA-striped inputs as
- *      a coalescing optimization and then transposes them through
- *      shared memory into the desired blocks of thread-consecutive items
- *
- * <b>Important Considerations</b>
+ * <b>Important Features and Considerations</b>
  * \par
  * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
  *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
+ * - The following conditions will prevent vectorization and loading will fall back to cub::CTA_LOAD_DIRECT:
+ *   - \p ITEMS_PER_THREAD is odd
+ *   - The \p InputIterator is not a simple pointer type
+ *   - The input offset (\p ptr + \p cta_offset) is not quad-aligned
+ *   - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
  *
  * <b>Examples</b>
  * \par
@@ -552,7 +566,7 @@ private:
      * CTA_LOAD_DIRECT load helper
      */
     template <int DUMMY>
-    struct LoadInternal<CTA_LOAD_VECTORIZE, DUMMY>
+    struct LoadInternal<CTA_LOAD_DIRECT, DUMMY>
     {
         /// Shared memory storage layout type
         typedef NullType SmemStorage;
@@ -561,11 +575,11 @@ private:
         template <typename SizeT>
         static __device__ __forceinline__ void Load(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-            T               items[ITEMS_PER_THREAD],    ///< [out] Data to load
+            T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to load the tile
         {
-            CtaLoadDirect<MODIFIER>(items, ptr, cta_offset);
+            CtaLoadDirect<MODIFIER>(items, itr, cta_offset);
         }
 
         /// Load a tile of items across CTA threads, guarded by range
@@ -595,7 +609,7 @@ private:
         template <typename SizeT>
         static __device__ __forceinline__ void Load(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-            T               items[ITEMS_PER_THREAD],    ///< [out] Data to load
+            T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             T               *ptr,                       ///< [in] Input iterator for loading from
             const SizeT     &cta_offset)                ///< [in] Offset in ptr at which to load the tile
         {
@@ -609,11 +623,11 @@ private:
             typename SizeT>
         static __device__ __forceinline__ void Load(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-            T               items[ITEMS_PER_THREAD],    ///< [out] Data to load
+            T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
             InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to load the tile
         {
-            CtaLoadDirect<MODIFIER>(items, ptr, cta_offset);
+            CtaLoadDirect<MODIFIER>(items, itr, cta_offset);
         }
 
         /// Load a tile of items across CTA threads, guarded by range
@@ -631,10 +645,10 @@ private:
 
 
     /**
-     * CTA_LOAD_VECTORIZE load helper
+     * CTA_LOAD_TRANSPOSE load helper
      */
     template <int DUMMY>
-    struct LoadInternal<CTA_LOAD_VECTORIZE, DUMMY>
+    struct LoadInternal<CTA_LOAD_TRANSPOSE, DUMMY>
     {
         // CtaExchange utility type for keys
         typedef CtaExchange<T, CTA_THREADS, ITEMS_PER_THREAD> CtaExchange;
@@ -646,14 +660,14 @@ private:
         template <typename SizeT>
         static __device__ __forceinline__ void Load(
             SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-                          items[ITEMS_PER_THREAD],    ///< [out] Data to load
-            _InputIterator  itr,                        ///< [in] Input iterator for loading from
+            T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to store
+            InputIterator   itr,                        ///< [in] Input iterator for loading from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to load the tile
         {
-            CtaLoadDirectStriped<CTA_THREADS, MODIFIER>(items, ptr, cta_offset);
+            CtaLoadDirectStriped<CTA_THREADS, MODIFIER>(items, itr, cta_offset);
 
-            // Transpose to CTA-striped order
-            CtaExchange::TransposeStripedBlocked(smem_storage, items);
+            // Transpose to CTA-blocked order
+            CtaExchange::StripedToBlocked(smem_storage, items);
         }
 
         /// Load a tile of items across CTA threads, guarded by range
@@ -667,23 +681,24 @@ private:
         {
             CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
 
-            // Transpose to CTA-striped order
-            CtaExchange::TransposeStripedBlocked(smem_storage, items);
+            // Transpose to CTA-blocked order
+            CtaExchange::StripedToBlocked(smem_storage, items);
         }
 
     };
 
     /// Shared memory storage layout type
-    typedef typename LoadInternal<POLICY>::SmemStorage SmemStorage;
+    typedef typename LoadInternal<POLICY>::SmemStorage SmemLayout;
 
 public:
+
 
     /// The operations exposed by CtaLoad require shared memory of this
     /// type.  This opaque storage can be allocated directly using the
     /// <tt>__shared__</tt> keyword.  Alternatively, it can be aliased to
     /// externally allocated shared memory or <tt>union</tt>'d with other types
     /// to facilitate shared memory reuse.
-    typedef SmemStorage SmemStorage;
+    typedef SmemLayout SmemStorage;
 
 
     //---------------------------------------------------------------------
@@ -698,11 +713,11 @@ public:
     template <typename SizeT>
     static __device__ __forceinline__ void Load(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-        T               items[ITEMS_PER_THREAD],    ///< [out] Data to load
+        T               (&items)[ITEMS_PER_THREAD], ///< [out] Data to load
         InputIterator   itr,                        ///< [in] Input iterator for loading from
         const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to load the tile
     {
-        LoadInternal<POLICY>::template Load(smem_storage, items, itr, cta_offset);
+        LoadInternal<POLICY>::Load(smem_storage, items, itr, cta_offset);
     }
 
     /**
@@ -718,10 +733,11 @@ public:
         const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to load the tile
         const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
     {
-        LoadInternal<POLICY>::template Load(smem_storage, items, itr, cta_offset, guarded_elements);
+        LoadInternal<POLICY>::Load(smem_storage, items, itr, cta_offset, guarded_elements);
     }
 };
 
+/** @} */       // end of SimtCoop group
 
 } // namespace cub
 CUB_NS_POSTFIX

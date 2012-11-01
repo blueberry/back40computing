@@ -41,6 +41,7 @@ namespace cub {
 
 /**
  * \brief If \p CUB_STDERR is defined and \p error is not \p cudaSuccess, \p message is printed to \p stderr along with the supplied source context.
+ * \ingroup HostUtil
  *
  * \return The CUDA error.
  */
@@ -62,6 +63,7 @@ __forceinline__ cudaError_t Debug(
 
 /**
  * \brief If \p CUB_STDERR is defined and \p error is not \p cudaSuccess, the corresponding error message is printed to \p stderr along with the supplied source context.
+ * \ingroup HostUtil
  *
  * \return The CUDA error.
  */
