@@ -1,5 +1,6 @@
 #summary High performance GPU radix sorting in CUDA
 
+
 <table><tr><td>
 http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 </td><td valign="top">
@@ -12,6 +13,8 @@ http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 
 <BR>
 ----
+
+[http://back40computing.googlecode.com/svn/branches/cub/cub/docs/html/classes.html CUB Docs]
 
 =News=
 
