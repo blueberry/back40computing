@@ -461,7 +461,7 @@ enum CtaStorePolicy
  *   <br><br>
  *   -# <b>cub::CTA_STORE_VECTORIZE</b>.  Attempts to use CUDA's
  *      built-in vectorized items as a coalescing optimization.  For
- *      example, <tt>ld.global.v4.s32</tt> will be generated when
+ *      example, <tt>st.global.v4.s32</tt> will be generated when
  *      \p T = \p int and \p ITEMS_PER_THREAD > 4.
  *   <br><br>
  *   -# <b>cub::CTA_STORE_TRANSPOSE</b>.  Stores CTA-striped inputs as

@@ -62,12 +62,10 @@
  * \section sec0 What is CUB?
  *
  * \par
- * CUB is a library of reusable SIMT primitives for CUDA kernel programming. It
- * provides commonplace CTA-wide, warp-wide, and thread-level operations that
- * are flexible and tunable to fit your needs.  CUB accommodates your specific:
- * - Data types
- * - Width of parallelism (CTA threads)
- * - Grain size (data items per thread)
+ * CUB is a library of high performance SIMT primitives for CUDA kernel
+ * programming. CUB enhances productivity and portability
+ * by providing commonplace CTA-wide, warp-wide, and thread-level operations that
+ * are flexible and tunable to fit your kernel needs.
  *
  * \par
  * Browse our collections of:
@@ -79,8 +77,8 @@
  *
  * \par
  * The following kernel snippet illustrates how easy it is to
- * compose CUB primitives for computing a parallel prefix sum
- * across CTA threads:
+ * compose CUB's scan and data-movement primitives into a
+ * single kernel for computing prefix sum:
  *
  * \par
  * \code
@@ -89,7 +87,7 @@
  * // An exclusive prefix sum kernel (assuming only a single CTA)
  * template <
  *      int         CTA_THREADS,                        // Threads per CTA
- *      int         KEYS_PER_THREAD,                    // Items per thread
+ *      int         ITEMS_PER_THREAD,                   // Items per thread
  *      typename    T>                                  // Data type
  * __global__ void PrefixSumKernel(T *d_in, T *d_out)
  * {
@@ -102,7 +100,7 @@
  *      __shared__ typename CtaScan::SmemStorage smem_storage;
  *
  *      // A segment of data items per thread
- *      T data[KEYS_PER_THREAD];
+ *      T data[ITEMS_PER_THREAD];
  *
  *      // Load a tile of data using vector-load instructions if possible
  *      CtaLoadVectorized(data, d_in, 0);
@@ -114,6 +112,19 @@
  *      CtaStoreVectorized(data, d_out, 0);
  * }
  * \endcode
+ *
+ * \par
+ * The cub::CtaScan primitive implements an efficient prefix sum across CTA
+ * threads that is specialized to the underlying architecture.
+ * It is parameterized by the number of CTA threads and the aggregate
+ * data type \p T.  Once instantiated, it exposes the opaque
+ * cub::CtaScan::SmemStorage type which allows us to allocate the shared memory
+ * needed by the primitive.
+ *
+ * \par
+ * Furthermore, the kernel uses CUB's primitives for vectorizing global
+ * loads and stores.  For example, <tt>ld.global.v4.s32</tt> will be generated when
+ * \p T = \p int and \p ITEMS_PER_THREAD is a multiple of 4.
  *
  * \section sec2 Why do you need CUB?
  *
@@ -130,35 +141,48 @@
  *
  * \par
  * As a SIMT library and software abstraction layer, CUB gives you:
- * -# <b>The ease of sequential programming.</b>  Parallel primitives within kernels
- * can be simply sequenced together (similar to Thrust programming on the host).
- * -# <b>The benefits of transparent performance-portability.</b> Kernels can be
- * simply recompiled against new CUB releases (instead of hand-rewritten)
+ * -# <b>The ease of sequential programming.</b>  Parallel primitives within
+ * kernels can be simply sequenced together (similar to Thrust programming on
+ * the host).
+ * -# <b>The benefits of transparent performance-portability.</b> Kernels can
+ * be simply recompiled against new CUB releases (instead of hand-rewritten)
  * to leverage new algorithmic developments, hardware instructions, etc.
  *
- * \section sec3 What are the challenges of SIMT code reuse?
+ * \section sec3 How does CUB work?
+ * \subsection sec3sec0 Library overview
  *
  * \par
- * CUDA's data-parallel programming model complicates the prospect of software
- * reuse for thread-cooperative operations (e.g., CTA-reduce, CTA-sort, etc.).
- * The construction and usage of such SIMT components are not as straightforward
- * as traditional procedure definitions and function calls.  For example, the
- * shared memory layout and the number of steps for a CTA-wide reduction are
- * very specific to:
- * - The number of CTA threads
- * - The data type being reduced
- * - The number of items contributed by each thread
- * - The underlying architecture's warp width
- * - The underlying architecture's rules for bank conflicts
+ * CUDA's SIMT programming model complicates the prospect of software
+ * reuse within kernel code.  As a SIMT library, CUB must accommodate
+ * arbitrary kernel <em>configuration contexts</em>, i.e., specific:
+ *    - Data types
+ *    - Widths of parallelism (CTA threads)
+ *    - Grain sizes (data items per thread)
+ *    - Underlying architectures (special instructions, warp width, rules for bank conflicts, etc.)
+ *    - Tuning requirements (e.g., latency vs. throughput)
  *
  * \par
- * These configuration details will vary considerably in the context of
- * different application kernels, yet a reusable SIMT component must
- * accommodate the entire configuration domain.  Furthermore, the
- * interface of any primitive that has been specialized to a given
- * configuration needs to expose the corresponding shared memory requirement
- * to the calling code (where it can be allocated and possibly reused
- * elsewhere by the CTA).
+ * To provide this flexibility, CUB is implemented as a C++ template library.
+ * C++ templates are a way to write generic algorithms and data structures.
+ * There is no need to build CUB separately.  You simply #<tt>include</tt> the
+ * appropriate header files into your <tt>.cu</tt> or <tt>.cpp</tt> sources
+ * and compile with CUDA's <tt>nvcc</tt> compiler.
+ *
+ * \subsection sec3sec1 Reflective type structure
+ *
+ * \par
+ * Cooperative SIMT components cannot be constructed and composed like we
+ * would traditional procedures and function calls.  They require shared
+ * memory whose layout for a given primitive will be specific to the details
+ * of the calling kernel's <em>configuration context</em> (see above).
+ * Furthermore, this shared memory must be allocated externally to the
+ * component if it is to be reused elsewhere by the CTA.
+ *
+ * \par
+ * To address this issue, we encapsulate cooperative procedures within
+ * reflective type structure (C++ classes).  Thus our CUB primitives
+ * are C++ classes with interfaces that expose both procedural methods
+ * as well as the opaque shared memory types needed for their operation.
  *
  */
 

@@ -103,7 +103,7 @@ namespace cub {
  *
  *      __global__ void SomeKernel(...)
  *      {
- *          // A parameterized WarpScan type for use with 1 warp on type int.
+ *          // A parameterized WarpScan type for use with one warp on type int.
  *          typedef cub::WarpScan<int, 1> WarpScan;
  *
  *          // Opaque shared memory for WarpScan
@@ -137,7 +137,7 @@ namespace cub {
  *
  *      __global__ void SomeKernel(...)
  *      {
- *          // A parameterized WarpScan type for use with 1 warp on type int.
+ *          // A parameterized WarpScan type for use with one warp on type int.
  *          typedef cub::WarpScan<int, 1> WarpScan;
  *
  *          // Opaque shared memory for WarpScan
