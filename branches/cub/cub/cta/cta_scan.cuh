@@ -1312,7 +1312,7 @@ public:
      * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      * \tparam ScanOp               [inferred] Binary scan functor type (a model of <a href="http://www.sgi.com/tech/stl/BinaryFunction.html">Binary Function</a>).
      */
-    template <ITEMS_PER_THREAD>
+    template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
@@ -1409,7 +1409,7 @@ public:
      *
      * \tparam ITEMS_PER_THREAD     [inferred] The number of consecutive items partitioned onto each thread.
      */
-    template <ITEMS_PER_THREAD>
+    template <int ITEMS_PER_THREAD>
     static __device__ __forceinline__ void InclusiveSum(
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input

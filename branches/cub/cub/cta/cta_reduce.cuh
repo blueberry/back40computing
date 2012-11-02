@@ -370,7 +370,7 @@ public:
         T               input,                      ///< [in] Calling thread's input
         ReductionOp     reduction_op)               ///< [in] Binary associative reduction functor
     {
-        return Reduce(smem_storage, input, CTA_THREADS, reduction_op);
+        return Reduce(smem_storage, input, reduction_op, CTA_THREADS);
     }
 
 
@@ -394,7 +394,7 @@ public:
     {
         // Reduce partials
         T partial = ThreadReduce(inputs, reduction_op);
-        return Reduce(smem_storage, partial, CTA_THREADS, reduction_op);
+        return Reduce(smem_storage, partial, reduction_op);
     }
 
 

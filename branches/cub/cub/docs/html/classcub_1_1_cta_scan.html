@@ -238,7 +238,7 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a650a17f037b364dee89b57f109c8c949">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
 <tr class="memdesc:a650a17f037b364dee89b57f109c8c949"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a650a17f037b364dee89b57f109c8c949"></a><br/></td></tr>
 <tr class="separator:a650a17f037b364dee89b57f109c8c949"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a28360d55f757c32be6ddafc2bd546754"><td class="memTemplParams" colspan="2">template&lt;ITEMS_PER_THREAD &gt; </td></tr>
+<tr class="memitem:a28360d55f757c32be6ddafc2bd546754"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a28360d55f757c32be6ddafc2bd546754"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a28360d55f757c32be6ddafc2bd546754">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate)</td></tr>
 <tr class="memdesc:a28360d55f757c32be6ddafc2bd546754"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>.  <a href="#a28360d55f757c32be6ddafc2bd546754"></a><br/></td></tr>
@@ -247,7 +247,7 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a7f005f96e78661db9863af10e5b09cd1">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;cta_prefix)</td></tr>
 <tr class="memdesc:a7f005f96e78661db9863af10e5b09cd1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes one input element. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a7f005f96e78661db9863af10e5b09cd1"></a><br/></td></tr>
 <tr class="separator:a7f005f96e78661db9863af10e5b09cd1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a63a95f29d7773b8c879c40a88d92194e"><td class="memTemplParams" colspan="2">template&lt;ITEMS_PER_THREAD &gt; </td></tr>
+<tr class="memitem:a63a95f29d7773b8c879c40a88d92194e"><td class="memTemplParams" colspan="2">template&lt;int ITEMS_PER_THREAD&gt; </td></tr>
 <tr class="memitem:a63a95f29d7773b8c879c40a88d92194e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_scan.html#a63a95f29d7773b8c879c40a88d92194e">InclusiveSum</a> (<a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805">SmemStorage</a> &amp;smem_storage, T(&amp;input)[ITEMS_PER_THREAD], T(&amp;output)[ITEMS_PER_THREAD], T &amp;aggregate, T &amp;cta_prefix)</td></tr>
 <tr class="memdesc:a63a95f29d7773b8c879c40a88d92194e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive CTA-wide prefix scan using the specified binary scan functor. Each thread contributes an array of consecutive input elements. The <code>cta_prefix</code> value from thread<sub>0</sub> is applied to all scan outputs. Also computes the CTA-wide <code>aggregate</code> of all inputs for thread<sub>0</sub>. The <code>cta_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a63a95f29d7773b8c879c40a88d92194e"></a><br/></td></tr>
@@ -2239,7 +2239,7 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 <div class="memtemplate">
 template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING&gt; </div>
 <div class="memtemplate">
-template&lt;ITEMS_PER_THREAD &gt; </div>
+template&lt;int ITEMS_PER_THREAD&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -2377,7 +2377,7 @@ template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING
 <div class="memtemplate">
 template&lt;typename T , int CTA_THREADS, CtaScanPolicy POLICY = CTA_SCAN_RAKING&gt; </div>
 <div class="memtemplate">
-template&lt;ITEMS_PER_THREAD &gt; </div>
+template&lt;int ITEMS_PER_THREAD&gt; </div>
 <table class="mlabels">
   <tr>
   <td class="mlabels-left">
@@ -2568,7 +2568,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Nov 2 2012 12:13:10 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Fri Nov 2 2012 15:37:30 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>
