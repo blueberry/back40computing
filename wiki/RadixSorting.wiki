@@ -14,8 +14,6 @@ http://back40computing.googlecode.com/svn/wiki/images/SortingSmall.jpg
 <BR>
 ----
 
-[http://back40computing.googlecode.com/svn/branches/cub/cub/docs/html/classes.html CUB Docs]
-
 =News=
 
   * We are now also distributing an alternative sorting enactor designed specifically for small problem sizes that are not large enough to saturate the GPU (e.g., problems < 1.2M elements.). It performs multiple digit-place passes over the input problem all within a single kernel launch. It performs up to 3x faster than our original, high-bandwidth sorting implementation for such problems. 
