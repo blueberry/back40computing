@@ -3,7 +3,7 @@
  *****************************************************************************/
 
 body, table, div, p, dl {
-		font: 400 13px/23px arial,sans-serif;
+		font: 400 13px/22px arial,sans-serif;
 }
 
 body {
@@ -187,7 +187,20 @@ p.startli, p.startdd, p.starttd {
 
 .memproto, dl.reflist dt {
 		background-image: none;
-		background-color: #F9FAFC;
+		background-color: white;
+		text-shadow: none;
+		box-shadow: 3px 3px 3px rgba(0, 0, 0, 0.1);
+		-webkit-box-shadow: 3px 3px 3px rgba(0, 0, 0, 0.1);
+}
+
+div.memdoc {
+		background-image: none;
+		color: #666;
+		box-shadow: 3px 3px 3px rgba(0, 0, 0, 0.1);
+}
+
+div.memdoc p {
+		line-height: normal;
 }
 
 div.toc {
@@ -201,6 +214,14 @@ div.textblock h3 {
 
 table.memname tbody tr:first-child td.paramtype {
 		padding-top: 50px;
+}
+
+table.memname tbody tr td {
+		line-height: normal;
+}
+
+table.memname tbody tr td.paramtype {
+		padding-left: 40px;
 }
 
 table.memname tbody tr td.memname {
@@ -257,7 +278,8 @@ div.fragment {
 		margin-bottom: 20px;
 		background-color: white;
 		border-radius: 8px 8px 8px 8px;
-		box-shadow: 5px 5px 5px rgba(0, 0, 0, 0.15);
+		box-shadow: 3px 3px 3px rgba(0, 0, 0, 0.1);
+		border-style: dashed;
 }
 
 
@@ -277,16 +299,8 @@ div.fragment {
 		padding-right: 8px;
 }
 
-div.memdoc {
-		color: #666;
-}
-
 dl.tparams, dl.params {
 		color: black;
-}
-
-div.memproto {
-		text-shadow: none;
 }
 
 div.memitem {
