@@ -153,7 +153,7 @@ enum CtaScanPolicy
  *          // A segment of four input items per thread
  *          int data[4];
  *          ...
- *          // Compute the CTA-wide exclusve prefix sum, seeded with a CTA-wide prefix
+ *          // Compute the CTA-wide exclusive prefix sum, seeded with a CTA-wide prefix
  *          CtaScan::ExclusiveSum(smem_storage, data, data, aggregate, cta_prefix);
  *          ...
  *      \endcode
