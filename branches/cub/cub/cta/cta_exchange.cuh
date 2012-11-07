@@ -39,8 +39,8 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
- *  \addtogroup SimtCoop
- *  @{
+ * \addtogroup SimtCoop
+ * @{
  */
 
 /**
@@ -203,6 +203,8 @@ public:
 
     /**
      * \brief Transposes data items from <em>CTA-blocked</em> arrangement to <em>CTA-striped</em> arrangement.
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void BlockedToStriped(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
@@ -220,6 +222,8 @@ public:
 
     /**
      * \brief Transposes data items from <em>CTA-striped</em> arrangement to <em>CTA-blocked</em> arrangement.
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void StripedToBlocked(
         SmemStorage      &smem_storage,             ///< [in] Shared reference to opaque SmemStorage layout
@@ -242,6 +246,8 @@ public:
 
     /**
      * \brief Exchanges data items annotated by rank into <em>CTA-blocked</em> arrangement.
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void ScatterToBlocked(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
@@ -260,6 +266,8 @@ public:
 
     /**
      * \brief Exchanges data items annotated by rank into <em>CTA-striped</em> arrangement.
+     *
+     * \smemreuse
      */
     static __device__ __forceinline__ void ScatterToStriped(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout

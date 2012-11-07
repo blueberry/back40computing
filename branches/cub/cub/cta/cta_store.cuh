@@ -40,7 +40,7 @@ namespace cub {
 
 /**
  *  \addtogroup SimtUtils
- *  @{
+ * @{
  */
 
 
@@ -445,8 +445,8 @@ enum CtaStorePolicy
 
 
 /**
- *  \addtogroup SimtCoop
- *  @{
+ * \addtogroup SimtCoop
+ * @{
  */
 
 

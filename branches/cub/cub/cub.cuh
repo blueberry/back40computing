@@ -180,7 +180,7 @@
  *
  * \par
  * To address this issue, we encapsulate cooperative procedures within
- * reflective type structure (C++ classes).  Thus our CUB primitives
+ * <em>reflective type structure</em> (C++ classes).  Thus our CUB primitives
  * are C++ classes with interfaces that expose both procedural methods
  * as well as the opaque shared memory types needed for their operation.
  *

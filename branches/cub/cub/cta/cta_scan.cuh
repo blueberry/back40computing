@@ -45,8 +45,8 @@ enum CtaScanPolicy
 };
 
 /**
- *  \addtogroup SimtCoop
- *  @{
+ * \addtogroup SimtCoop
+ * @{
  */
 
 /**
@@ -1469,11 +1469,11 @@ public:
         ThreadScanInclusive(input, output, scan_op, thread_partial, (threadIdx.x != 0));
     }
 
-    //@}
+    //@}        // Inclusive prefix sums
 
 };
 
-/** @} */       // end of SimtCoop group
+/** @} */       // SimtCoop
 
 } // namespace cub
 CUB_NS_POSTFIX

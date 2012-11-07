@@ -37,8 +37,8 @@ CUB_NS_PREFIX
 namespace cub {
 
 /**
- *  \addtogroup SimtCoop
- *  @{
+ * \addtogroup SimtCoop
+ * @{
  */
 
 /**
