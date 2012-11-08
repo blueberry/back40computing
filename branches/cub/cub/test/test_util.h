@@ -253,13 +253,17 @@ public:
  * Random bits
  */
 template <typename K>
-void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K) * 8)
+void RandomBits(
+    K &key,
+    int entropy_reduction = 0,
+    int begin_bit = 0,
+    int end_bit = sizeof(K) * 8)
 {
 	const unsigned int NUM_UCHARS = (sizeof(K) + sizeof(unsigned char) - 1) / sizeof(unsigned char);
 	unsigned char key_bits[NUM_UCHARS];
 
 	do {
-
+	    // Generate random bits
 		for (int j = 0; j < NUM_UCHARS; j++)
 		{
 			unsigned char quarterword = 0xff;
@@ -270,11 +274,13 @@ void RandomBits(K &key, int entropy_reduction = 0, int lower_key_bits = sizeof(K
 			key_bits[j] = quarterword;
 		}
 
-		if (lower_key_bits < sizeof(K) * 8)
+		// Mask off unwanted portions
+		int num_bits = end_bit - begin_bit;
+		if ((begin_bit > 0) || (end_bit < sizeof(K) * 8))
 		{
 			unsigned long long base = 0;
 			memcpy(&base, key_bits, sizeof(K));
-			base &= (1ull << lower_key_bits) - 1;
+			base &= ((1ull << num_bits) - 1) << begin_bit;
 			memcpy(key_bits, &base, sizeof(K));
 		}
 
@@ -778,6 +784,24 @@ int CompareDeviceDeviceResults(
  * of a host array
  */
 template <typename T>
+void DisplayResults(
+    T *h_data,
+    size_t num_elements)
+{
+    // Display data
+    for (int i = 0; i < num_elements; i++)
+    {
+        std::cout << CoutCast(h_data[i]) << ", ";
+    }
+    printf("\n");
+}
+
+
+/**
+ * Verify the contents of a device array match those
+ * of a host array
+ */
+template <typename T>
 void DisplayDeviceResults(
 	T *d_data,
 	size_t num_elements)
@@ -788,12 +812,7 @@ void DisplayDeviceResults(
 	// Copy data back
 	cudaMemcpy(h_data, d_data, sizeof(T) * num_elements, cudaMemcpyDeviceToHost);
 
-	// Display data
-	for (int i = 0; i < num_elements; i++)
-	{
-		std::cout << CoutCast(h_data[i]) << ", ";
-	}
-	printf("\n");
+	DisplayResults(h_data, num_elements);
 
 	// Cleanup
 	if (h_data) free(h_data);

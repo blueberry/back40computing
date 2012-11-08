@@ -162,19 +162,18 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortBlocked(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Radix sorting passes
-        unsigned int end_bit = min_bit + num_bits;
         while (true)
         {
             // Rank the CTA-blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
-            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, min_bit);
-            min_bit += RADIX_BITS;
+            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
+            begin_bit += RADIX_BITS;
 
             __syncthreads();
 
@@ -182,7 +181,7 @@ public:
             KeyCtaExchange::ScatterToBlocked(smem_storage.key_storage, keys, ranks);
 
             // Quit if done
-            if (min_bit >= end_bit) break;
+            if (begin_bit >= end_bit) break;
 
             __syncthreads();
         }
@@ -195,24 +194,23 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortBlockedToStriped(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Radix sorting passes
-        unsigned int end_bit = min_bit + num_bits;
         while (true)
         {
             // Rank the CTA-blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
-            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, min_bit);
-            min_bit += RADIX_BITS;
+            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
+            begin_bit += RADIX_BITS;
 
             __syncthreads();
 
             // Check if this is the last pass
-            if (min_bit >= end_bit)
+            if (begin_bit >= end_bit)
             {
                 // Last pass exchanges keys through shared memory in CTA-striped arrangement
                 KeyCtaExchange::ScatterToStriped(smem_storage.key_storage, keys, ranks);
@@ -238,10 +236,10 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortStriped(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Transpose keys from CTA-striped to CTA-blocked arrangement
         KeyCtaExchange::StripedToBlocked(smem_storage.key_storage, keys);
@@ -249,7 +247,7 @@ public:
         __syncthreads();
 
         // Sort blocked-to-striped
-        SortBlockedToStriped(smem_storage, keys, min_bit, num_bits);
+        SortBlockedToStriped(smem_storage, keys, begin_bit, end_bit);
     }
 
     //@}
@@ -264,20 +262,19 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortBlocked(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        ValueType           values[ITEMS_PER_THREAD],                       ///< [in-out] Values to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        ValueType           (&values)[ITEMS_PER_THREAD],        ///< [in-out] Values to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Radix sorting passes
-        unsigned int end_bit = min_bit + num_bits;
         while (true)
         {
             // Rank the CTA-blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
-            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, min_bit);
-            min_bit += RADIX_BITS;
+            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
+            begin_bit += RADIX_BITS;
 
             __syncthreads();
 
@@ -290,7 +287,7 @@ public:
             ValueCtaExchange::ScatterToBlocked(smem_storage.value_storage, values, ranks);
 
             // Quit if done
-            if (min_bit >= end_bit) break;
+            if (begin_bit >= end_bit) break;
 
             __syncthreads();
         }
@@ -303,25 +300,24 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortBlockedToStriped(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        ValueType           values[ITEMS_PER_THREAD],                       ///< [in-out] Values to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        ValueType           (&values)[ITEMS_PER_THREAD],        ///< [in-out] Values to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Radix sorting passes
-        unsigned int end_bit = min_bit + num_bits;
         while (true)
         {
             // Rank the CTA-blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
-            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, min_bit);
-            min_bit += RADIX_BITS;
+            CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
+            begin_bit += RADIX_BITS;
 
             __syncthreads();
 
             // Check if this is the last pass
-            if (min_bit >= end_bit)
+            if (begin_bit >= end_bit)
             {
                 // Last pass exchanges keys through shared memory in CTA-striped arrangement
                 KeyCtaExchange::ScatterToStriped(smem_storage.key_storage, keys, ranks);
@@ -354,11 +350,11 @@ public:
      * \smemreuse
      */
     static __device__ __forceinline__ void SortStriped(
-        SmemStorage         &smem_storage,                                  ///< [in] Shared reference to opaque SmemStorage layout
-        KeyType             keys[ITEMS_PER_THREAD],                         ///< [in-out] Keys to sort
-        ValueType           values[ITEMS_PER_THREAD],                       ///< [in-out] Values to sort
-        unsigned int        min_bit = 0,                                    ///< [in] <b>[optional]</b> The least-significant bit needed for key comparison
-        const unsigned int  &num_bits = (sizeof(KeyType) * 8) - min_bit)    ///< [in] <b>[optional]</b> The number of bits needed for key comparison
+        SmemStorage         &smem_storage,                      ///< [in] Shared reference to opaque SmemStorage layout
+        KeyType             (&keys)[ITEMS_PER_THREAD],          ///< [in-out] Keys to sort
+        ValueType           (&values)[ITEMS_PER_THREAD],        ///< [in-out] Values to sort
+        unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
+        const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
         // Transpose keys from CTA-striped to CTA-blocked arrangement
         KeyCtaExchange::StripedToBlocked(smem_storage.key_storage, keys);
@@ -371,7 +367,7 @@ public:
         __syncthreads();
 
         // Sort blocked-to-striped
-        SortBlockedToStriped(smem_storage, keys, values, min_bit, num_bits);
+        SortBlockedToStriped(smem_storage, keys, values, begin_bit, end_bit);
     }
 
 

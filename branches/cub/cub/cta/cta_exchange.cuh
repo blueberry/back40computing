@@ -255,7 +255,7 @@ public:
         unsigned int    ranks[ITEMS_PER_THREAD])    ///< [in] Corresponding scatter ranks
     {
         // Scatter items to shared memory
-        Scatter(items, ranks, smem_storage.exchange);
+        ScatterRanked(items, ranks, smem_storage.exchange);
 
         __syncthreads();
 
@@ -275,7 +275,7 @@ public:
         unsigned int    ranks[ITEMS_PER_THREAD])    ///< [in] Corresponding scatter ranks
     {
         // Scatter items to shared memory
-        Scatter(items, ranks, smem_storage.exchange);
+        ScatterRanked(items, ranks, smem_storage.exchange);
 
         __syncthreads();
 

@@ -175,6 +175,17 @@ bin/test_cta_load_store_$(SUFFIX) : test_cta_load_store.cu $(DEPS)
 	
 	
 #-------------------------------------------------------------------------------
+# make test_cta_radix_sort 
+#-------------------------------------------------------------------------------
+
+test_cta_radix_sort: bin/test_cta_radix_sort_$(SUFFIX)
+
+bin/test_cta_radix_sort_$(SUFFIX) : test_cta_radix_sort.cu $(DEPS)
+	mkdir -p bin
+	$(NVCC) $(DEFINES) $(SM_TARGETS) -o bin/test_cta_radix_sort_$(SUFFIX) test_cta_radix_sort.cu $(NVCCFLAGS) $(ARCH) $(INC) -O3
+
+
+#-------------------------------------------------------------------------------
 # make clean
 #-------------------------------------------------------------------------------
 
