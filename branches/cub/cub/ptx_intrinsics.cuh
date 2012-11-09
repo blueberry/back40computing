@@ -94,19 +94,33 @@ __device__ __forceinline__ unsigned int SHL_ADD(
 /**
  * Bitfield-extract.
  */
+template <typename UnsignedBits>
 __device__ __forceinline__ unsigned int BFE(
-	unsigned int source,
+    UnsignedBits source,
 	unsigned int bit_start,
 	unsigned int num_bits)
 {
 	unsigned int bits;
 #if __CUDA_ARCH__ >= 200
-	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"(source), "r"(bit_start), "r"(num_bits));
+	asm("bfe.u32 %0, %1, %2, %3;" : "=r"(bits) : "r"((unsigned int) source), "r"(bit_start), "r"(num_bits));
 #else
 	const unsigned int MASK = (1 << num_bits) - 1;
 	bits = (source >> bit_start) & MASK;
 #endif
 	return bits;
+}
+
+
+/**
+ * Bitfield-extract for 64-bit types.
+ */
+__device__ __forceinline__ unsigned int BFE(
+    unsigned long long source,
+    unsigned int bit_start,
+    unsigned int num_bits)
+{
+    const unsigned long long MASK = (1ull << num_bits) - 1;
+    return (source >> bit_start) & MASK;
 }
 
 

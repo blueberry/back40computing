@@ -204,6 +204,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><div class="memdoc">
 
 <p>Transposes data items from <em>CTA-blocked</em> arrangement to <em>CTA-striped</em> arrangement. </p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
@@ -249,6 +250,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><div class="memdoc">
 
 <p>Transposes data items from <em>CTA-striped</em> arrangement to <em>CTA-blocked</em> arrangement. </p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
@@ -300,6 +302,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><div class="memdoc">
 
 <p>Exchanges data items annotated by rank into <em>CTA-blocked</em> arrangement. </p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
@@ -352,6 +355,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><div class="memdoc">
 
 <p>Exchanges data items annotated by rank into <em>CTA-striped</em> arrangement. </p>
+<p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">smem_storage</td><td>Shared reference to opaque SmemStorage layout </td></tr>
@@ -369,7 +373,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Nov 2 2012 15:37:30 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Fri Nov 9 2012 16:25:08 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

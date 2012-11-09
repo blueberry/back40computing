@@ -84,13 +84,29 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
 Classes</h2></td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">WarpScan</a> type provides variants of parallel prefix scan across threads within a CUDA warp. </p>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_exchange.html">cub::CtaExchange&lt; T, CTA_THREADS, ITEMS_PER_THREAD &gt;</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> type provides operations for reorganizing the partitioning of logical lists across CTA threads. </p>
 <div class="image">
-<img src="warp_scan_logo.png" alt="warp_scan_logo.png"/>
+<img src="transpose_logo.png" alt="transpose_logo.png"/>
 <div class="caption">
 .</div></div>
-  <a href="classcub_1_1_warp_scan.html#details">More...</a><br/></td></tr>
+  <a href="classcub_1_1_cta_exchange.html#details">More...</a><br/></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_load.html">cub::CtaLoad&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides global data movement operations for loading tiles of items across threads w...">CtaLoad</a> type provides global data movement operations for loading tiles of items across threads within a CTA. </p>
+<div class="image">
+<img src="cta_load_logo.png" alt="cta_load_logo.png"/>
+<div class="caption">
+.</div></div>
+  <a href="classcub_1_1_cta_load.html#details">More...</a><br/></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html">cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, RADIX_BITS, SMEM_CONFIG &gt;</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">CtaRadixSort</a> type provides variants of parallel radix sorting of unsigned numeric types across threads within a CTA. </p>
+<div class="image">
+<img src="sorting_logo.png" alt="sorting_logo.png"/>
+<div class="caption">
+.</div></div>
+  <a href="classcub_1_1_cta_radix_sort.html#details">More...</a><br/></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_reduce.html">cub::CtaReduce&lt; T, CTA_THREADS &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_reduce.html" title="The CtaReduce type provides variants of parallel reduction across threads within a CTA...">CtaReduce</a> type provides variants of parallel reduction across threads within a CTA. </p>
@@ -108,22 +124,6 @@ Classes</h2></td></tr>
 .</div></div>
   <a href="classcub_1_1_cta_scan.html#details">More...</a><br/></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html">cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, RADIX_BITS, SMEM_CONFIG &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">CtaRadixSort</a> type provides variants of parallel radix sorting of unsigned numeric types across threads within a CTA. </p>
-<div class="image">
-<img src="sorting_logo.png" alt="sorting_logo.png"/>
-<div class="caption">
-.</div></div>
-  <a href="classcub_1_1_cta_radix_sort.html#details">More...</a><br/></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_load.html">cub::CtaLoad&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides global data movement operations for loading tiles of items across threads w...">CtaLoad</a> type provides global data movement operations for loading tiles of items across threads within a CTA. </p>
-<div class="image">
-<img src="cta_load_logo.png" alt="cta_load_logo.png"/>
-<div class="caption">
-.</div></div>
-  <a href="classcub_1_1_cta_load.html#details">More...</a><br/></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_store.html">cub::CtaStore&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</a></td></tr>
 <tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> type provides global data movement operations for storing tiles of items across threads within a CTA. </p>
 <div class="image">
@@ -132,20 +132,20 @@ Classes</h2></td></tr>
 .</div></div>
   <a href="classcub_1_1_cta_store.html#details">More...</a><br/></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_exchange.html">cub::CtaExchange&lt; T, CTA_THREADS, ITEMS_PER_THREAD &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> type provides operations for reorganizing the partitioning of logical lists across CTA threads. </p>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</a></td></tr>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">WarpScan</a> type provides variants of parallel prefix scan across threads within a CUDA warp. </p>
 <div class="image">
-<img src="transpose_logo.png" alt="transpose_logo.png"/>
+<img src="warp_scan_logo.png" alt="warp_scan_logo.png"/>
 <div class="caption">
 .</div></div>
-  <a href="classcub_1_1_cta_exchange.html#details">More...</a><br/></td></tr>
+  <a href="classcub_1_1_warp_scan.html#details">More...</a><br/></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Nov 2 2012 15:37:29 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Fri Nov 9 2012 16:25:07 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

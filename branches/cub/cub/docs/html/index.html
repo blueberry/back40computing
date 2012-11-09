@@ -157,11 +157,11 @@ Library overview</h2>
 <h2><a class="anchor" id="sec3sec1"></a>
 Reflective type structure</h2>
 <dl class="section user"><dt></dt><dd>Cooperative SIMT components cannot be constructed and composed like we would traditional procedures and function calls. They require shared memory whose layout for a given primitive will be specific to the details of the calling kernel's <em>configuration context</em> (see above). Furthermore, this shared memory must be allocated externally to the component if it is to be reused elsewhere by the CTA.</dd></dl>
-<dl class="section user"><dt></dt><dd>To address this issue, we encapsulate cooperative procedures within reflective type structure (C++ classes). Thus our CUB primitives are C++ classes with interfaces that expose both procedural methods as well as the opaque shared memory types needed for their operation. </dd></dl>
+<dl class="section user"><dt></dt><dd>To address this issue, we encapsulate cooperative procedures within <em>reflective type structure</em> (C++ classes). Thus our CUB primitives are C++ classes with interfaces that expose both procedural methods as well as the opaque shared memory types needed for their operation. </dd></dl>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Nov 2 2012 15:37:30 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Fri Nov 9 2012 16:25:08 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

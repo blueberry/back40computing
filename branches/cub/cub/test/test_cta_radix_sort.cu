@@ -119,6 +119,9 @@ __global__ void Kernel(
 // Host testing subroutines
 //---------------------------------------------------------------------
 
+// Caching allocator (caches up to 6MB in device allocations per GPU)
+CachedAllocator g_allocator;
+
 
 /**
  * Drive CtaRadixSort kernel
@@ -149,8 +152,8 @@ void TestDriver(
     // Allocate device arrays
     KeyType     *d_keys     = NULL;
     ValueType   *d_values   = NULL;
-    CubDebugExit(cudaMalloc((void**)&d_keys, sizeof(KeyType) * TILE_SIZE));
-    CubDebugExit(cudaMalloc((void**)&d_values, sizeof(ValueType) * TILE_SIZE));
+    CubDebugExit(g_allocator.Allocate((void**)&d_keys, sizeof(KeyType) * TILE_SIZE));
+    CubDebugExit(g_allocator.Allocate((void**)&d_values, sizeof(ValueType) * TILE_SIZE));
 
     // Initialize problem on host and device
     for (int i = 0; i < TILE_SIZE; ++i)
@@ -188,6 +191,8 @@ void TestDriver(
     std::sort(h_reference_keys, h_reference_keys + TILE_SIZE);
     printf(" Done.\n"); fflush(stdout);
 
+    cudaDeviceSetSharedMemConfig(SMEM_CONFIG);
+
     // Run kernel
     if (keys_only)
     {
@@ -210,8 +215,8 @@ void TestDriver(
     AssertEquals(0, CompareDeviceResults(h_reference_keys, d_keys, TILE_SIZE, g_verbose, g_verbose));
     printf("\n");
 
-    // Check value results
-    if (!keys_only)
+    // Check value results (which aren't valid for 8-bit values and tile size >= 256 because they can't fully index into the starting array)
+    if (!keys_only && ((sizeof(ValueType) > 1) || (TILE_SIZE < 256)))
     {
         CubDebugExit(cudaMemcpy(h_values, d_values, sizeof(ValueType) * TILE_SIZE, cudaMemcpyDeviceToHost));
 
@@ -241,8 +246,8 @@ void TestDriver(
     if (h_keys)             free(h_keys);
     if (h_reference_keys)   free(h_reference_keys);
     if (h_values)           free(h_values);
-    if (d_keys)             CubDebugExit(cudaFree(d_keys));
-    if (d_values)           CubDebugExit(cudaFree(d_values));
+    if (d_keys)             CubDebugExit(g_allocator.Deallocate(d_keys));
+    if (d_values)           CubDebugExit(g_allocator.Deallocate(d_values));
 }
 
 
@@ -305,10 +310,8 @@ template <
     typename                ValueType>
 struct Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, ValueType, false>
 {
-    static void Test()
-    {
-
-    }
+    // Do nothing
+    static void Test() {}
 };
 
 
@@ -323,10 +326,10 @@ template <
     typename KeyType>
 void Test()
 {
-//    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned char>::Test();
-//    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned short>::Test();
+    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned char>::Test();
+    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned short>::Test();
     Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned int>::Test();
-//    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned long long>::Test();
+    Valid<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, KeyType, unsigned long long>::Test();
 }
 
 
@@ -340,10 +343,10 @@ template <
     cudaSharedMemConfig SMEM_CONFIG>
 void Test()
 {
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned char>();
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned short>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned char>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned short>();
     Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned int>();
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned long long>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, SMEM_CONFIG, unsigned long long>();
 }
 
 
@@ -357,7 +360,7 @@ template <
 void Test()
 {
     Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeFourByte>();
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeEightByte>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, RADIX_BITS, cudaSharedMemBankSizeEightByte>();
 }
 
 
@@ -369,9 +372,9 @@ template <
     int ITEMS_PER_THREAD>
 void Test()
 {
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, 1>();
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, 3>();
-//    Test<CTA_THREADS, ITEMS_PER_THREAD, 4>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, 1>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, 3>();
+    Test<CTA_THREADS, ITEMS_PER_THREAD, 4>();
     Test<CTA_THREADS, ITEMS_PER_THREAD, 5>();
 }
 
@@ -382,11 +385,10 @@ void Test()
 template <int CTA_THREADS>
 void Test()
 {
-//    Test<CTA_THREADS, 1>();
-    Test<CTA_THREADS, 4>();
-//    Test<CTA_THREADS, 7>();
-//    Test<CTA_THREADS, 15>();
-//    Test<CTA_THREADS, 19>();
+    Test<CTA_THREADS, 1>();
+    Test<CTA_THREADS, 8>();
+    Test<CTA_THREADS, 15>();
+    Test<CTA_THREADS, 19>();
 }
 
 /**
@@ -423,14 +425,12 @@ int main(int argc, char** argv)
 
     if (quick)
     {
-/*
         // Quick test
         TestDriver<64, 2, 5, cudaSharedMemBankSizeFourByte, unsigned int, unsigned int>(
             true,
             0,
             0,
             sizeof(unsigned int) * 8);
-*/
     }
     else
     {
