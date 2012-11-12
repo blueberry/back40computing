@@ -188,7 +188,7 @@ struct EnableIf<false, T> {};
  *     Traits<int>::CATEGORY 			// SIGNED_INTEGER
  *     Traits<NullType>::NULL_TYPE 		// true
  *     Traits<uint4>::CATEGORY 			// NOT_A_NUMBER
- *     Traits<uint4>::PRIMITIV; 		// false
+ *     Traits<uint4>::PRIMITIVE; 		// false
  *
  ******************************************************************************/
 
