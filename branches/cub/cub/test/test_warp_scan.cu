@@ -558,7 +558,8 @@ int main(int argc, char** argv)
     if (quick)
     {
         // Quick exclusive test
-    	Test<32, PREFIX_AGGREGATE>(UNIFORM, Sum<int>(), int(0), int(10), CUB_TYPE_STRING(int));
+        Test<32, PREFIX_AGGREGATE>(UNIFORM, Sum<int>(), (int) 0, (int) 99, CUB_TYPE_STRING(int));
+//        Test<32, PREFIX_AGGREGATE>(UNIFORM, Max<int>(), (int) 0, (int) 99, CUB_TYPE_STRING(int));
     }
     else
     {
