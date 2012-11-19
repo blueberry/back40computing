@@ -17,9 +17,10 @@
  * 
  ******************************************************************************/
 
-/******************************************************************************
- * CTA abstraction for ranking keys (unsigned bits) by radix digit.
- ******************************************************************************/
+/**
+ * \file
+ * The cub::CtaRadixRank type provides operations for raking unsigned integer types across threads within a CTA
+ */
 
 #pragma once
 
@@ -32,13 +33,48 @@
 
 
 CUB_NS_PREFIX
+
+/// CUB namespace
 namespace cub {
 
+/**
+ * \addtogroup SimtCoop
+ * @{
+ */
 
 /**
- * CTA collective abstraction for ranking keys (unsigned bits) by radix digit.
+ * \brief The cub::CtaRadixRank type provides operations for raking unsigned integer types across threads within a CTA.
  *
- * Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
+ * <B>Overview</b>
+ * \par
+ * Blah...
+ *
+ * \tparam CTA_THREADS          The CTA size in threads
+ * \tparam RADIX_BITS           <b>[optional]</b> The number of radix bits per digit place (default: 5 bits)
+ * \tparam SMEM_CONFIG          <b>[optional]</b> Shared memory bank mode (default: \p cudaSharedMemBankSizeFourByte)
+ *
+ * <b>Important Features and Considerations</b>
+ * \par
+ * - Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
+ * - Blah...
+ *
+ * <b>Algorithm</b>
+ * \par
+ * These parallel radix ranking variants have <em>O</em>(<em>n</em>) work complexity and are implemented in XXX phases:
+ * -# blah
+ * -# blah
+ *
+ * <b>Examples</b>
+ * \par
+ * - <b>Example 1:</b> Simple radix rank of 32-bit integer keys
+ *      \code
+ *      #include <cub.cuh>
+ *
+ *      template <int CTA_THREADS>
+ *      __global__ void SomeKernel(...)
+ *      {
+ *
+ *      \endcode
  */
 template <
     int                     CTA_THREADS,
@@ -343,8 +379,7 @@ public:
     }
 };
 
-
-
+/** @} */       // SimtCoop
 
 } // namespace cub
 CUB_NS_POSTFIX
