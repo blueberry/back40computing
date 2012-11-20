@@ -71,7 +71,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
      onmouseover="return searchBox.OnSearchSelectShow()"
      onmouseout="return searchBox.OnSearchSelectHide()"
      onkeydown="return searchBox.OnSearchSelectKey(event)">
-<a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(0)"><span class="SelectionMark">&#160;</span>All</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(1)"><span class="SelectionMark">&#160;</span>Classes</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(2)"><span class="SelectionMark">&#160;</span>Namespaces</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(3)"><span class="SelectionMark">&#160;</span>Files</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(4)"><span class="SelectionMark">&#160;</span>Functions</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(5)"><span class="SelectionMark">&#160;</span>Typedefs</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(6)"><span class="SelectionMark">&#160;</span>Enumerations</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(7)"><span class="SelectionMark">&#160;</span>Enumerator</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(8)"><span class="SelectionMark">&#160;</span>Macros</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(9)"><span class="SelectionMark">&#160;</span>Groups</a></div>
+<a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(0)"><span class="SelectionMark">&#160;</span>All</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(1)"><span class="SelectionMark">&#160;</span>Classes</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(2)"><span class="SelectionMark">&#160;</span>Namespaces</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(3)"><span class="SelectionMark">&#160;</span>Files</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(4)"><span class="SelectionMark">&#160;</span>Functions</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(5)"><span class="SelectionMark">&#160;</span>Variables</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(6)"><span class="SelectionMark">&#160;</span>Typedefs</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(7)"><span class="SelectionMark">&#160;</span>Enumerations</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(8)"><span class="SelectionMark">&#160;</span>Enumerator</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(9)"><span class="SelectionMark">&#160;</span>Macros</a><a class="SelectItem" href="javascript:void(0)" onclick="searchBox.OnSelectItem(10)"><span class="SelectionMark">&#160;</span>Groups</a></div>
 
 <!-- iframe showing the search results (closed by default) -->
 <div id="MSearchResultsWindow">
@@ -105,85 +105,85 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-types"></a>
 Public Types</h2></td></tr>
-<tr class="memitem:a368510a18c2ea8a9fc26e0d20f949dc9"><td class="memItemLeft" align="right" valign="top"><a class="anchor" id="a368510a18c2ea8a9fc26e0d20f949dc9"></a>
-typedef SmemStorage&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a></td></tr>
-<tr class="memdesc:a368510a18c2ea8a9fc26e0d20f949dc9"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">WarpScan</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
-<tr class="separator:a368510a18c2ea8a9fc26e0d20f949dc9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2bfa864e963cb4965139ac1b6c66d1b7"><td class="memItemLeft" align="right" valign="top"><a class="anchor" id="a2bfa864e963cb4965139ac1b6c66d1b7"></a>
+typedef _SmemStorage&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a></td></tr>
+<tr class="memdesc:a2bfa864e963cb4965139ac1b6c66d1b7"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">WarpScan</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
+<tr class="separator:a2bfa864e963cb4965139ac1b6c66d1b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
 <tr><td colspan="2"><div class="groupHeader">Inclusive prefix sums</div></td></tr>
 <tr class="memitem:adec85c76d951c326e592e364aa63c728"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#adec85c76d951c326e592e364aa63c728">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#adec85c76d951c326e592e364aa63c728">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
 <tr class="memdesc:adec85c76d951c326e592e364aa63c728"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp.  <a href="#adec85c76d951c326e592e364aa63c728"></a><br/></td></tr>
 <tr class="separator:adec85c76d951c326e592e364aa63c728"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6665627fc09b719e5bd91c995139c94d"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a6665627fc09b719e5bd91c995139c94d">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a6665627fc09b719e5bd91c995139c94d">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
 <tr class="memdesc:a6665627fc09b719e5bd91c995139c94d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a6665627fc09b719e5bd91c995139c94d"></a><br/></td></tr>
 <tr class="separator:a6665627fc09b719e5bd91c995139c94d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a751686610b637caaf837c85d4c696345"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a751686610b637caaf837c85d4c696345">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a751686610b637caaf837c85d4c696345">InclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
 <tr class="memdesc:a751686610b637caaf837c85d4c696345"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a751686610b637caaf837c85d4c696345"></a><br/></td></tr>
 <tr class="separator:a751686610b637caaf837c85d4c696345"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix sums</div></td></tr>
 <tr class="memitem:a2695420235a1ace8817a595a6f930d61"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2695420235a1ace8817a595a6f930d61">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2695420235a1ace8817a595a6f930d61">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output)</td></tr>
 <tr class="memdesc:a2695420235a1ace8817a595a6f930d61"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp.  <a href="#a2695420235a1ace8817a595a6f930d61"></a><br/></td></tr>
 <tr class="separator:a2695420235a1ace8817a595a6f930d61"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a45ac1eeccf8f4d022769b35077abc912"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a45ac1eeccf8f4d022769b35077abc912">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a45ac1eeccf8f4d022769b35077abc912">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate)</td></tr>
 <tr class="memdesc:a45ac1eeccf8f4d022769b35077abc912"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a45ac1eeccf8f4d022769b35077abc912"></a><br/></td></tr>
 <tr class="separator:a45ac1eeccf8f4d022769b35077abc912"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a163b5f5f377b3580864c5942a6beb539"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a163b5f5f377b3580864c5942a6beb539">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
+__forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a163b5f5f377b3580864c5942a6beb539">ExclusiveSum</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
 <tr class="memdesc:a163b5f5f377b3580864c5942a6beb539"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix sum in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a163b5f5f377b3580864c5942a6beb539"></a><br/></td></tr>
 <tr class="separator:a163b5f5f377b3580864c5942a6beb539"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Inclusive prefix scans</div></td></tr>
 <tr class="memitem:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a9f0397ded5ce89a8750dc8fe10078f3e">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a9f0397ded5ce89a8750dc8fe10078f3e">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
 <tr class="memdesc:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp.  <a href="#a9f0397ded5ce89a8750dc8fe10078f3e"></a><br/></td></tr>
 <tr class="separator:a9f0397ded5ce89a8750dc8fe10078f3e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a1892b8790cb33405640c9e7b3ca5a91b">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a1892b8790cb33405640c9e7b3ca5a91b">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
 <tr class="memdesc:a1892b8790cb33405640c9e7b3ca5a91b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a1892b8790cb33405640c9e7b3ca5a91b"></a><br/></td></tr>
 <tr class="separator:a1892b8790cb33405640c9e7b3ca5a91b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a16b5ab8edbd37b8396b2fd0013f81f4f">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a16b5ab8edbd37b8396b2fd0013f81f4f">InclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
 <tr class="memdesc:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an inclusive prefix sum using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#a16b5ab8edbd37b8396b2fd0013f81f4f"></a><br/></td></tr>
 <tr class="separator:a16b5ab8edbd37b8396b2fd0013f81f4f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix scans</div></td></tr>
 <tr class="memitem:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a0f12aef5d3fa15ff13e59876b2983ce1">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a0f12aef5d3fa15ff13e59876b2983ce1">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op)</td></tr>
 <tr class="memdesc:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp.  <a href="#a0f12aef5d3fa15ff13e59876b2983ce1"></a><br/></td></tr>
 <tr class="separator:a0f12aef5d3fa15ff13e59876b2983ce1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2af3a3131d0657f8e4066acc312c1154"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:a2af3a3131d0657f8e4066acc312c1154"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2af3a3131d0657f8e4066acc312c1154">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#a2af3a3131d0657f8e4066acc312c1154">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate)</td></tr>
 <tr class="memdesc:a2af3a3131d0657f8e4066acc312c1154"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#a2af3a3131d0657f8e4066acc312c1154"></a><br/></td></tr>
 <tr class="separator:a2af3a3131d0657f8e4066acc312c1154"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa1ac1c9b53d7b930284820821632ce20"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:aa1ac1c9b53d7b930284820821632ce20"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa1ac1c9b53d7b930284820821632ce20">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aa1ac1c9b53d7b930284820821632ce20">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, T identity, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
 <tr class="memdesc:aa1ac1c9b53d7b930284820821632ce20"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. The <code>warp_prefix</code> value from thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#aa1ac1c9b53d7b930284820821632ce20"></a><br/></td></tr>
 <tr class="separator:aa1ac1c9b53d7b930284820821632ce20"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Exclusive prefix scans (without supplied identity)</div></td></tr>
 <tr class="memitem:ae84a95431640ff2d450c4b0a98dd826e"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:ae84a95431640ff2d450c4b0a98dd826e"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ae84a95431640ff2d450c4b0a98dd826e">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ae84a95431640ff2d450c4b0a98dd826e">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op)</td></tr>
 <tr class="memdesc:ae84a95431640ff2d450c4b0a98dd826e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-lane<sub>0</sub> is invalid.  <a href="#ae84a95431640ff2d450c4b0a98dd826e"></a><br/></td></tr>
 <tr class="separator:ae84a95431640ff2d450c4b0a98dd826e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aed1e6efb0f059852e81884f7264a3fe7"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:aed1e6efb0f059852e81884f7264a3fe7"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aed1e6efb0f059852e81884f7264a3fe7">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#aed1e6efb0f059852e81884f7264a3fe7">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate)</td></tr>
 <tr class="memdesc:aed1e6efb0f059852e81884f7264a3fe7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-lane<sub>0</sub> is invalid. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-lane<sub>0</sub>.  <a href="#aed1e6efb0f059852e81884f7264a3fe7"></a><br/></td></tr>
 <tr class="separator:aed1e6efb0f059852e81884f7264a3fe7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac2bcdc7488f883b7ed96da02ac129095"><td class="memTemplParams" colspan="2">template&lt;typename ScanOp &gt; </td></tr>
 <tr class="memitem:ac2bcdc7488f883b7ed96da02ac129095"><td class="memTemplItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
-__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ac2bcdc7488f883b7ed96da02ac129095">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
+__forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="classcub_1_1_warp_scan.html#ac2bcdc7488f883b7ed96da02ac129095">ExclusiveScan</a> (<a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;smem_storage, T input, T &amp;output, ScanOp scan_op, T &amp;aggregate, T &amp;warp_prefix)</td></tr>
 <tr class="memdesc:ac2bcdc7488f883b7ed96da02ac129095"><td class="mdescLeft">&#160;</td><td class="mdescRight">Computes an exclusive prefix scan using the specified binary scan functor in each logical warp. Because no identity value is supplied, the <code>output</code> computed for thread-thread-lane<sub>0</sub> is invalid. The <code>warp_prefix</code> value from thread-thread-lane<sub>0</sub> is applied to all scan outputs. Also computes the warp-wide <code>aggregate</code> of all inputs for thread-thread-lane<sub>0</sub>. The <code>warp_prefix</code> is further updated by the value of <code>aggregate</code>.  <a href="#ac2bcdc7488f883b7ed96da02ac129095"></a><br/></td></tr>
 <tr class="separator:ac2bcdc7488f883b7ed96da02ac129095"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -213,7 +213,7 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 <li>Support for non-commutative binary associative scan functors.</li>
 <li>Support for concurrent scans within multiple warps.</li>
 <li>Zero bank conflicts for most types.</li>
-<li>After any operation, a subsequent CTA barrier (<code>__syncthreads</code>) is required if the supplied <a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> is to be reused/repurposed by the CTA.</li>
+<li>After any operation, a subsequent CTA barrier (<code>__syncthreads</code>) is required if the supplied <a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> is to be reused/repurposed by the CTA.</li>
 <li>The operations are most efficient (lowest instruction overhead) when:<ul>
 <li>The data type <code>T</code> is a built-in primitive or CUDA vector type (e.g., <code>short</code>, <code>int2</code>, <code>double</code>, <code>float2</code>, etc.) Otherwise the implementation may use memory fences to prevent reference reordering of non-primitive types.</li>
 <li>Performing exclusive scans. The implementation may use guarded shared memory accesses for inclusive scans (other than prefix sum) because no identity element is provided.</li>
@@ -237,7 +237,7 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 <div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">cub::WarpScan&lt;int, 1&gt;</a> WarpScan;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Opaque shared memory for WarpScan</span></div>
-<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> smem_storage;</div>
+<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> smem_storage;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Perform prefix sum of threadIds in first warp</span></div>
 <div class="line">    <span class="keywordflow">if</span> (threadIdx.x &lt; 32)</div>
@@ -268,7 +268,7 @@ class cub::WarpScan&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;</h3>
 <div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_warp_scan.html" title="The WarpScan type provides variants of parallel prefix scan across threads within a CUDA warp...">cub::WarpScan&lt;int, 1&gt;</a> WarpScan;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Opaque shared memory for WarpScan</span></div>
-<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> smem_storage;</div>
+<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7" title="The operations exposed by WarpScan require shared memory of this type. This opaque storage can be all...">WarpScan::SmemStorage</a> smem_storage;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Perform prefix sum of 2s, all seeded with a warp prefix value of 10</span></div>
 <div class="line">    <span class="keywordflow">if</span> (threadIdx.x &lt; 32)</div>
@@ -306,7 +306,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -359,7 +359,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -420,7 +420,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -488,7 +488,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -541,7 +541,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -602,7 +602,7 @@ template&lt;typename T , int WARPS, int LOGICAL_WARP_THREADS = DeviceProps::WARP
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveSum </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -672,7 +672,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -740,7 +740,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -816,7 +816,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::InclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -899,7 +899,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -974,7 +974,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -1057,7 +1057,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -1147,7 +1147,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -1215,7 +1215,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -1291,7 +1291,7 @@ template&lt;typename ScanOp &gt; </div>
         <tr>
           <td class="memname">static __device__ __forceinline__ void <a class="el" href="classcub_1_1_warp_scan.html">cub::WarpScan</a>&lt; T, WARPS, LOGICAL_WARP_THREADS &gt;::ExclusiveScan </td>
           <td>(</td>
-          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a368510a18c2ea8a9fc26e0d20f949dc9">SmemStorage</a> &amp;&#160;</td>
+          <td class="paramtype"><a class="el" href="classcub_1_1_warp_scan.html#a2bfa864e963cb4965139ac1b6c66d1b7">SmemStorage</a> &amp;&#160;</td>
           <td class="paramname"><em>smem_storage</em>, </td>
         </tr>
         <tr>
@@ -1366,7 +1366,7 @@ template&lt;typename ScanOp &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Nov 9 2012 16:25:08 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Mon Nov 19 2012 14:57:41 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

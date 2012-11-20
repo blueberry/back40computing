@@ -22,10 +22,6 @@
  * The cub::CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads.
  */
 
-/******************************************************************************
- * CTA abstractions for commonplace all-to-all exchanges between threads
- ******************************************************************************/
-
 #pragma once
 
 #include "../ns_wrapper.cuh"

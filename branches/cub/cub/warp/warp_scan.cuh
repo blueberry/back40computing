@@ -470,6 +470,7 @@ private:
         /// Shared memory storage layout type
         struct SmemStorage
         {
+            /// Warpscan layout: 1.5 warps-worth of elements for each warp.
             T warp_scan[WARPS][WARP_SMEM_ELEMENTS];
         };
 

@@ -293,6 +293,10 @@ div.fragment {
 		background-color: white;
 }
 
+.directory td.desc {
+		padding-bottom: 1px;
+}
+
 
 .params, .paramname, .retval, .paramname {
 		vertical-align: top;
