@@ -55,10 +55,10 @@ namespace cub {
  *
  * \par
  * CtaRadixSort accommodates the following arrangements of data items among threads:
- * -# <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ * -# <b><em>blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
  *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
  *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
- * -# <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ * -# <b><em>striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
  *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
  *   each thread have logical stride \p CTA_THREADS between them.
  *
@@ -85,24 +85,53 @@ namespace cub {
  *
  * <b>Examples</b>
  * \par
- * - <b>Example 1:</b> Simple radix sort of 32-bit integer keys
+ * - <b>Example 1:</b> Simple radix sort of 32-bit integer keys (128 threads, 4 keys per thread, blocked arrangement)
  *      \code
  *      #include <cub.cuh>
  *
- *      template <int CTA_THREADS>
  *      __global__ void SomeKernel(...)
  *      {
+ *          // Parameterize a CtaRadixSort type for use in the current problem context
+ *          typedef cub::CtaRadixSort<unsigned int, 128, 4> CtaRadixSort;
+ *
+ *          // Declare shared memory for CtaRadixSort
+ *          __shared__ typename CtaRadixSort::SmemStorage smem_storage;
+ *
+ *          // A segment of consecutive input items per thread
+ *          int keys[4];
+ *
+ *          // Obtain items in blocked order
+ *          ...
+ *
+ *          // Sort keys in ascending order
+ *          CtaRadixSort::SortBlocked(smem_storage, keys);
  *
  *      \endcode
  *
  * \par
- * - <b>Example 2:</b> Simple key-value radix sort of 32-bit integer keys paird with 32-bit float values
+ * - <b>Example 2:</b> Lower 20-bit key-value radix sort of 32-bit integer keys and fp values (striped arrangement)
  *      \code
  *      #include <cub.cuh>
  *
- *      template <int CTA_THREADS>
+ *      template <int CTA_THREADS, int ITEMS_PER_THREAD>
  *      __global__ void SomeKernel(...)
  *      {
+ *          // Parameterize a CtaRadixSort type for use in the current problem context
+ *          typedef cub::CtaRadixSort<unsigned int, CTA_THREADS, ITEMS_PER_THREAD, float> CtaRadixSort;
+ *
+ *          // Declare shared memory for CtaRadixSort
+ *          __shared__ typename CtaRadixSort::SmemStorage smem_storage;
+ *
+ *          // Input items per thread (striped across the CTA)
+ *          int keys[ITEMS_PER_THREAD];
+ *          float values[ITEMS_PER_THREAD];
+ *
+ *          // Obtain keys in striped order
+ *          ...
+ *
+ *          // Sort pairs in ascending order (using only the lower 20 distinguishing key bits)
+ *          CtaRadixSort::SortStriped(smem_storage, keys, values, 0, 20);
+ *      }
  *
  *      \endcode
  */
@@ -157,7 +186,7 @@ public:
     //@{
 
     /**
-     * \brief Performs a CTA-wide radix sort over a <em>CTA-blocked</em> arrangement of keys.
+     * \brief Performs a CTA-wide radix sort over a <em>blocked</em> arrangement of keys.
      *
      * \smemreuse
      */
@@ -170,14 +199,14 @@ public:
         // Radix sorting passes
         while (true)
         {
-            // Rank the CTA-blocked keys
+            // Rank the blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
             CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
             begin_bit += RADIX_BITS;
 
             __syncthreads();
 
-            // Exchange keys through shared memory in CTA-blocked arrangement
+            // Exchange keys through shared memory in blocked arrangement
             KeyCtaExchange::ScatterToBlocked(smem_storage.key_storage, keys, ranks);
 
             // Quit if done
@@ -189,7 +218,7 @@ public:
 
 
     /**
-     * \brief Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys, leaving them in a <em>CTA-striped</em> arrangement.
+     * \brief Performs a radix sort across a <em>blocked</em> arrangement of keys, leaving them in a <em>striped</em> arrangement.
      *
      * \smemreuse
      */
@@ -202,7 +231,7 @@ public:
         // Radix sorting passes
         while (true)
         {
-            // Rank the CTA-blocked keys
+            // Rank the blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
             CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
             begin_bit += RADIX_BITS;
@@ -212,14 +241,14 @@ public:
             // Check if this is the last pass
             if (begin_bit >= end_bit)
             {
-                // Last pass exchanges keys through shared memory in CTA-striped arrangement
+                // Last pass exchanges keys through shared memory in striped arrangement
                 KeyCtaExchange::ScatterToStriped(smem_storage.key_storage, keys, ranks);
 
                 // Quit
                 break;
             }
 
-            // Exchange keys through shared memory in CTA-blocked arrangement
+            // Exchange keys through shared memory in blocked arrangement
             KeyCtaExchange::ScatterToBlocked(
                 smem_storage.key_storage,
                 keys,
@@ -231,7 +260,7 @@ public:
 
 
     /**
-     * \brief Performs a radix sort across a <em>CTA-striped</em> arrangement of keys.
+     * \brief Performs a radix sort across a <em>striped</em> arrangement of keys.
      *
      * \smemreuse
      */
@@ -241,7 +270,7 @@ public:
         unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
         const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
-        // Transpose keys from CTA-striped to CTA-blocked arrangement
+        // Transpose keys from striped to blocked arrangement
         KeyCtaExchange::StripedToBlocked(smem_storage.key_storage, keys);
 
         __syncthreads();
@@ -257,7 +286,7 @@ public:
     //@{
 
     /**
-     * \brief Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values.
+     * \brief Performs a radix sort across a <em>blocked</em> arrangement of keys and values.
      *
      * \smemreuse
      */
@@ -271,19 +300,19 @@ public:
         // Radix sorting passes
         while (true)
         {
-            // Rank the CTA-blocked keys
+            // Rank the blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
             CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
             begin_bit += RADIX_BITS;
 
             __syncthreads();
 
-            // Exchange keys through shared memory in CTA-blocked arrangement
+            // Exchange keys through shared memory in blocked arrangement
             KeyCtaExchange::ScatterToBlocked(smem_storage.key_storage, keys, ranks);
 
             __syncthreads();
 
-            // Exchange values through shared memory in CTA-blocked arrangement
+            // Exchange values through shared memory in blocked arrangement
             ValueCtaExchange::ScatterToBlocked(smem_storage.value_storage, values, ranks);
 
             // Quit if done
@@ -295,7 +324,7 @@ public:
 
 
     /**
-     * \brief Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values, leaving them in a <em>CTA-striped</em> arrangement.
+     * \brief Performs a radix sort across a <em>blocked</em> arrangement of keys and values, leaving them in a <em>striped</em> arrangement.
      *
      * \smemreuse
      */
@@ -309,7 +338,7 @@ public:
         // Radix sorting passes
         while (true)
         {
-            // Rank the CTA-blocked keys
+            // Rank the blocked keys
             unsigned int ranks[ITEMS_PER_THREAD];
             CtaRadixRank::RankKeys(smem_storage.ranking_storage, keys, ranks, begin_bit);
             begin_bit += RADIX_BITS;
@@ -319,24 +348,24 @@ public:
             // Check if this is the last pass
             if (begin_bit >= end_bit)
             {
-                // Last pass exchanges keys through shared memory in CTA-striped arrangement
+                // Last pass exchanges keys through shared memory in striped arrangement
                 KeyCtaExchange::ScatterToStriped(smem_storage.key_storage, keys, ranks);
 
                 __syncthreads();
 
-                // Last pass exchanges through shared memory in CTA-striped arrangement
+                // Last pass exchanges through shared memory in striped arrangement
                 ValueCtaExchange::ScatterToStriped(smem_storage.value_storage, values, ranks);
 
                 // Quit
                 break;
             }
 
-            // Exchange keys through shared memory in CTA-blocked arrangement
+            // Exchange keys through shared memory in blocked arrangement
             KeyCtaExchange::ScatterToBlocked(smem_storage.key_storage, keys, ranks);
 
             __syncthreads();
 
-            // Exchange values through shared memory in CTA-blocked arrangement
+            // Exchange values through shared memory in blocked arrangement
             ValueCtaExchange::ScatterToBlocked(smem_storage.value_storage, values, ranks);
 
             __syncthreads();
@@ -345,7 +374,7 @@ public:
 
 
     /**
-     * \brief Performs a radix sort across a <em>CTA-striped</em> arrangement of keys and values.
+     * \brief Performs a radix sort across a <em>striped</em> arrangement of keys and values.
      *
      * \smemreuse
      */
@@ -356,12 +385,12 @@ public:
         unsigned int        begin_bit = 0,                      ///< [in] <b>[optional]</b> The beginning (least-significant) bit index needed for key comparison
         const unsigned int  &end_bit = sizeof(KeyType) * 8)     ///< [in] <b>[optional]</b> The past-the-end (most-significant) bit index needed for key comparison
     {
-        // Transpose keys from CTA-striped to CTA-blocked arrangement
+        // Transpose keys from striped to blocked arrangement
         KeyCtaExchange::StripedToBlocked(smem_storage.key_storage, keys);
 
         __syncthreads();
 
-        // Transpose values from CTA-striped to CTA-blocked arrangement
+        // Transpose values from striped to blocked arrangement
         ValueCtaExchange::StripedToBlocked(smem_storage.value_storage, values);
 
         __syncthreads();

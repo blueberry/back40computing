@@ -104,7 +104,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_load.html">cub::CtaLoad&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides global data movement operations for loading tiles of items across threads w...">CtaLoad</a> type provides global data movement operations for loading tiles of items across threads within a CTA. </p>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides operations for reading global tiles of data into the CTA (in blocked arrang...">CtaLoad</a> type provides operations for reading global tiles of data into the CTA (in blocked arrangement across threads). </p>
 <div class="image">
 <img src="cta_load_logo.png" alt="cta_load_logo.png"/>
 <div class="caption">
@@ -124,12 +124,12 @@ Enumerations</h2></td></tr>
 <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa14c41521144161ce388c42407b6aae19">cub::CTA_LOAD_VECTORIZE</a>, 
 <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa130aac9bb12ce87e0ab0ec5dba4acfb8">cub::CTA_LOAD_TRANSPOSE</a>
  }</td></tr>
-<tr class="memdesc:ab659e51d8d1cb563d028fa55349ed27f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tuning policy for <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides global data movement operations for loading tiles of items across threads w...">cub::CtaLoad</a>.  <a href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27f">More...</a><br/></td></tr>
+<tr class="memdesc:ab659e51d8d1cb563d028fa55349ed27f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tuning policy for <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides operations for reading global tiles of data into the CTA (in blocked arrang...">cub::CtaLoad</a>.  <a href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27f">More...</a><br/></td></tr>
 <tr class="separator:ab659e51d8d1cb563d028fa55349ed27f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA-blocked direct loads</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA direct loads (blocked arrangement)</div></td></tr>
 <tr class="memitem:ga8908cdf2c26aed1a7ee61744a5a4a77f"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga8908cdf2c26aed1a7ee61744a5a4a77f"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga8908cdf2c26aed1a7ee61744a5a4a77f">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga8908cdf2c26aed1a7ee61744a5a4a77f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly using the specified cache modifier.  <a href="group___simt_utils.html#ga8908cdf2c26aed1a7ee61744a5a4a77f"></a><br/></td></tr>
@@ -146,7 +146,7 @@ Functions</h2></td></tr>
 <tr class="memitem:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gae9bdd49c36d9a6a221dc56290e1a77d8">cub::CtaLoadDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
 <tr class="memdesc:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly, guarded by range.  <a href="group___simt_utils.html#gae9bdd49c36d9a6a221dc56290e1a77d8"></a><br/></td></tr>
 <tr class="separator:gae9bdd49c36d9a6a221dc56290e1a77d8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA-striped direct loads</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA direct loads (striped arrangement)</div></td></tr>
 <tr class="memitem:ga0130723f2bf33cc840440e2600f9d251"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga0130723f2bf33cc840440e2600f9d251"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga0130723f2bf33cc840440e2600f9d251">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga0130723f2bf33cc840440e2600f9d251"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly using the specified cache modifier.  <a href="group___simt_utils.html#ga0130723f2bf33cc840440e2600f9d251"></a><br/></td></tr>
@@ -163,7 +163,7 @@ Functions</h2></td></tr>
 <tr class="memitem:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga8c2bfa877fb44a81c97edc2e020e839b">cub::CtaLoadDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
 <tr class="memdesc:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load striped tile directly, guarded by range.  <a href="group___simt_utils.html#ga8c2bfa877fb44a81c97edc2e020e839b"></a><br/></td></tr>
 <tr class="separator:ga8c2bfa877fb44a81c97edc2e020e839b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA vectorized loads</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA vectorized loads (blocked arrangement)</div></td></tr>
 <tr class="memitem:gaba3b58962601c11d7bc2c0addd08565b"><td class="memTemplParams" colspan="2">template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </td></tr>
 <tr class="memitem:gaba3b58962601c11d7bc2c0addd08565b"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#gaba3b58962601c11d7bc2c0addd08565b">cub::CtaLoadVectorized</a> (T(&amp;items)[ITEMS_PER_THREAD], T *ptr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:gaba3b58962601c11d7bc2c0addd08565b"><td class="mdescLeft">&#160;</td><td class="mdescRight">Load a tile of items across CTA threads directly using the specified cache modifier.  <a href="group___simt_utils.html#gaba3b58962601c11d7bc2c0addd08565b"></a><br/></td></tr>
@@ -174,11 +174,11 @@ Functions</h2></td></tr>
 <tr class="separator:ga6d817abb10d67f333e6ff616d21fd34a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><p>The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides global data movement operations for loading tiles of items across threads w...">cub::CtaLoad</a> type provides global data movement operations for loading tiles of items across threads within a CTA. </p>
+<div class="textblock"><p>The <a class="el" href="classcub_1_1_cta_load.html" title="The CtaLoad type provides operations for reading global tiles of data into the CTA (in blocked arrang...">cub::CtaLoad</a> type provides operations for reading global tiles of data into the CTA (in blocked arrangement across threads). </p>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 10:25:32 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 20 2012 17:38:43 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

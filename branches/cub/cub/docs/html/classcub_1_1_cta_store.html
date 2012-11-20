@@ -96,7 +96,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 </div><!--header-->
 <div class="contents">
 
-<p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> type provides global data movement operations for storing tiles of items across threads within a CTA. </p>
+<p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">CtaStore</a> type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads). </p>
 <div class="image">
 <img src="cta_store_logo.png" alt="cta_store_logo.png"/>
 <div class="caption">
@@ -108,7 +108,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 Public Types</h2></td></tr>
 <tr class="memitem:a454579a3e40683221a574f7c54a511f7"><td class="memItemLeft" align="right" valign="top"><a class="anchor" id="a454579a3e40683221a574f7c54a511f7"></a>
 typedef SmemLayout&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_store.html#a454579a3e40683221a574f7c54a511f7">SmemStorage</a></td></tr>
-<tr class="memdesc:a454579a3e40683221a574f7c54a511f7"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
+<tr class="memdesc:a454579a3e40683221a574f7c54a511f7"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">CtaStore</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
 <tr class="separator:a454579a3e40683221a574f7c54a511f7"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-static-methods"></a>
@@ -128,23 +128,23 @@ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a 
 <div class="textblock"><h3>template&lt;typename InputIterator, int CTA_THREADS, int ITEMS_PER_THREAD, CtaStorePolicy POLICY = CTA_STORE_DIRECT, PtxStoreModifier MODIFIER = PTX_STORE_NONE&gt;<br/>
 class cub::CtaStore&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</h3>
 
-<p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> type provides global data movement operations for storing tiles of items across threads within a CTA. </p>
+<p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">CtaStore</a> type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads). </p>
 <div class="image">
 <img src="cta_store_logo.png" alt="cta_store_logo.png"/>
 <div class="caption">
 .</div></div>
  <p><b>Overview</b> </p>
-<dl class="section user"><dt></dt><dd><a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> can be configured to use one of three alternative algorithms:<ol type="1">
+<dl class="section user"><dt></dt><dd><a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">CtaStore</a> can be configured to use one of three alternative algorithms:<ol type="1">
 <li><b><a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5" title="Stores consecutive thread-items directly from the input.">cub::CTA_STORE_DIRECT</a></b>. Stores consecutive thread-items directly from the input. <br/>
 <br/>
 </li>
 <li><b><a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca60250b5e6d978911bf61c6525b196c39" title="Attempts to use CUDA&#39;s built-in vectorized items as a coalescing optimization.">cub::CTA_STORE_VECTORIZE</a></b>. Attempts to use CUDA's built-in vectorized items as a coalescing optimization. For example, <code>st.global.v4.s32</code> will be generated when <code>T</code> = <code>int</code> and <code>ITEMS_PER_THREAD</code> &gt; 4. <br/>
 <br/>
 </li>
-<li><b><a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca991dcaff085113850fb90372ac9eb665" title="Stores CTA-striped inputs as a coalescing optimization and then transposes them through shared memory...">cub::CTA_STORE_TRANSPOSE</a></b>. Stores CTA-striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items</li>
+<li><b><a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca991dcaff085113850fb90372ac9eb665" title="Stores striped inputs as a coalescing optimization and then transposes them through shared memory int...">cub::CTA_STORE_TRANSPOSE</a></b>. Stores striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items</li>
 </ol>
 </dd></dl>
-<dl class="section user"><dt></dt><dd>The operations exposed by this type assume <em>n</em>-element lists (or <em>tiles</em>) that are partitioned evenly among <code>CTA_THREADS</code> threads, with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</dd></dl>
+<dl class="section user"><dt></dt><dd>The data movement operations exposed by this type assume a blocked arrangement of data amongst threads, i.e., an <em>n</em>-element list (or <em>tile</em>) that is partitioned evenly among <code>CTA_THREADS</code> threads, with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</dd></dl>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">InputIterator</td><td>The input iterator type (may be a simple pointer). </td></tr>
@@ -175,7 +175,7 @@ class cub::CtaStore&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MO
 <div class="line">__global__ <span class="keywordtype">void</span> SomeKernel(<span class="keywordtype">int</span> *d_in, ...)</div>
 <div class="line">{</div>
 <div class="line">     <span class="comment">// Declare a parameterized CtaStore type for the kernel configuration</span></div>
-<div class="line">     <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">cub::CtaStore&lt;int, CTA_THREADS, 4&gt;</a> CtaStore;</div>
+<div class="line">     <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">cub::CtaStore&lt;int, CTA_THREADS, 4&gt;</a> CtaStore;</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Declare shared memory for CtaStore</span></div>
 <div class="line">     __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_store.html#a454579a3e40683221a574f7c54a511f7" title="The operations exposed by CtaStore require shared memory of this type. This opaque storage can be all...">CtaStore::SmemStorage</a> smem_storage;</div>
@@ -197,7 +197,7 @@ class cub::CtaStore&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MO
 <div class="line">     <span class="keyword">const</span> <span class="keywordtype">int</span> ITEMS_PER_THREAD = 4;</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Declare a parameterized CtaStore type for the kernel configuration</span></div>
-<div class="line">     <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">cub::CtaStore&lt;int, CTA_THREADS, 4, CTA_STORE_VECTORIZE, PTX_STORE_CG&gt;</a> CtaStore;</div>
+<div class="line">     <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">cub::CtaStore&lt;int, CTA_THREADS, 4, CTA_STORE_VECTORIZE, PTX_STORE_CG&gt;</a> CtaStore;</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// Declare shared memory for CtaStore</span></div>
 <div class="line">     __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_store.html#a454579a3e40683221a574f7c54a511f7" title="The operations exposed by CtaStore require shared memory of this type. This opaque storage can be all...">CtaStore::SmemStorage</a> smem_storage;</div>
@@ -362,7 +362,7 @@ template&lt;typename SizeT &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 10:25:33 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 20 2012 17:38:44 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

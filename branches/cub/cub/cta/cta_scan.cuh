@@ -63,7 +63,7 @@ enum CtaScanPolicy
  * input operand in the partial reduction.
  *
  * \par
- * The parallel operations exposed by this type assume a <em>CTA-blocked</em>
+ * The parallel operations exposed by this type assume a <em>blocked</em>
  * arrangement of elements across threads, i.e., <em>n</em>-element
  * lists that are partitioned evenly across \p CTA_THREADS threads,
  * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup>
@@ -111,25 +111,27 @@ enum CtaScanPolicy
  *
  * <b>Examples</b>
  * \par
- * - <b>Example 1:</b> Simple exclusive prefix sum
+ * - <b>Example 1:</b> Simple exclusive prefix sum of 32-bit integer keys (128 threads, 4 keys per thread, blocked arrangement)
  *      \code
  *      #include <cub.cuh>
  *
- *      template <int CTA_THREADS>
  *      __global__ void SomeKernel(...)
  *      {
- *          // Parameterize CtaScan for use with CTA_THREADS threads on type int.
- *          typedef cub::CtaScan<int, CTA_THREADS> CtaReduce;
+ *          // Parameterize a CtaScan type for use in the current problem context
+ *          typedef cub::CtaScan<int, 128> CtaScan;
  *
  *          // Declare shared memory for CtaScan
  *          __shared__ typename CtaScan::SmemStorage smem_storage;
  *
- *          // A segment of four input items per thread
+ *          // A segment of consecutive input items per thread
  *          int data[4];
+ *
+ *          // Obtain items in blocked order
  *          ...
+ *
  *          // Compute the CTA-wide exclusve prefix sum
  *          CtaScan::ExclusiveSum(smem_storage, data, data);
- *          ...
+
  *      \endcode
  *
  * \par
@@ -137,11 +139,11 @@ enum CtaScanPolicy
  *      \code
  *      #include <cub.cuh>
  *
- *      template <int CTA_THREADS>
+ *      template <int CTA_THREADS, int ITEMS_PER_THREAD>
  *      __global__ void SomeKernel(int *d_cta_prefixes, ...)
  *      {
- *          // Parameterize CtaScan for use with CTA_THREADS threads on type int.
- *          typedef cub::CtaScan<int, CTA_THREADS> CtaReduce;
+ *          // Parameterize a CtaScan type for use in the current problem context
+ *          typedef cub::CtaScan<int, CTA_THREADS> CtaScan;
  *
  *          // Declare shared memory for CtaScan
  *          __shared__ typename CtaScan::SmemStorage smem_storage;
@@ -150,12 +152,14 @@ enum CtaScanPolicy
  *          int aggregate, cta_prefix;
  *          if (threadIdx.x == 0) cta_prefix = d_cta_prefixes[blockIdx.x];
 
- *          // A segment of four input items per thread
- *          int data[4];
+ *          // A segment of consecutive input items per thread
+ *          int data[ITEMS_PER_THREAD];
+
+ *          // Obtain keys in blocked order
  *          ...
+ *
  *          // Compute the CTA-wide exclusive prefix sum, seeded with a CTA-wide prefix
  *          CtaScan::ExclusiveSum(smem_storage, data, data, aggregate, cta_prefix);
- *          ...
  *      \endcode
  */
 template <

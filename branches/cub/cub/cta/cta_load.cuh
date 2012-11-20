@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaLoad type provides global data movement operations for loading tiles of items across threads within a CTA.
+ * The cub::CtaLoad type provides operations for reading global tiles of data into the CTA (in blocked arrangement across threads).
  */
 
 #pragma once
@@ -45,7 +45,7 @@ namespace cub {
 
 
 /******************************************************************//**
- * \name CTA-blocked direct loads
+ * \name CTA direct loads (blocked arrangement)
  *********************************************************************/
 //@{
 
@@ -177,7 +177,7 @@ __device__ __forceinline__ void CtaLoadDirect(
 
 //@}
 /******************************************************************//**
- * \name CTA-striped direct loads
+ * \name CTA direct loads (striped arrangement)
  *********************************************************************/
 //@{
 
@@ -208,7 +208,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     InputIterator   itr,                            ///< [in] Input iterator for loading from
     const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to load the tile
 {
-    // Load directly in CTA-striped order
+    // Load directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
@@ -273,7 +273,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to load the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
-    // Load directly in CTA-striped order
+    // Load directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
@@ -316,7 +316,7 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
 
 //@}
 /******************************************************************//**
- * \name CTA vectorized loads
+ * \name CTA vectorized loads (blocked arrangement)
  *********************************************************************/
 //@{
 
@@ -439,7 +439,7 @@ enum CtaLoadPolicy
 {
     CTA_LOAD_DIRECT,        ///< Loads consecutive thread-items directly from the input
     CTA_LOAD_VECTORIZE,     ///< Attempts to use CUDA's built-in vectorized items as a coalescing optimization
-    CTA_LOAD_TRANSPOSE,     ///< Loads CTA-striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
+    CTA_LOAD_TRANSPOSE,     ///< Loads striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
 };
 
 
@@ -450,7 +450,7 @@ enum CtaLoadPolicy
 
 
 /**
- * \brief The CtaLoad type provides global data movement operations for loading tiles of items across threads within a CTA. ![](cta_load_logo.png)
+ * \brief The CtaLoad type provides operations for reading global tiles of data into the CTA (in blocked arrangement across threads). ![](cta_load_logo.png)
  *
  * <b>Overview</b>
  * \par
@@ -463,15 +463,16 @@ enum CtaLoadPolicy
  *      example, <tt>ld.global.v4.s32</tt> will be generated when
  *      \p T = \p int and \p ITEMS_PER_THREAD > 4.
  *   <br><br>
- *   -# <b>cub::CTA_LOAD_TRANSPOSE</b>.  Loads CTA-striped inputs as
+ *   -# <b>cub::CTA_LOAD_TRANSPOSE</b>.  Loads striped inputs as
  *      a coalescing optimization and then transposes them through
  *      shared memory into the desired blocks of thread-consecutive items
  *
  * \par
- * The data movement operations exposed by this type assume <em>n</em>-element
- * lists (or <em>tiles</em>) that are partitioned evenly among \p CTA_THREADS
- * threads, with thread<sub><em>i</em></sub> owning the
- * <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The data movement operations exposed by this type assume a blocked
+ * arrangement of data amongst threads, i.e., an <em>n</em>-element list (or
+ * <em>tile</em>) that is partitioned evenly among \p CTA_THREADS threads,
+ * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of
+ * consecutive elements.
  *
  * \tparam InputIterator        The input iterator type (may be a simple pointer).
  * \tparam CTA_THREADS          The CTA size in threads.
@@ -491,52 +492,47 @@ enum CtaLoadPolicy
  *
  * <b>Examples</b>
  * \par
- * - <b>Example 1:</b> Load four consecutive integers per thread:
- * \code
- * #include <cub.cuh>
+ * - <b>Example 1:</b> Have a 128-thread CTA load four consecutive integers per thread (blocked arrangement):
+ *      \code
+ *      #include <cub.cuh>
  *
- * template <int CTA_THREADS>
- * __global__ void SomeKernel(int *d_in, ...)
- * {
- *      // Declare a parameterized CtaLoad type for the kernel configuration
- *      typedef cub::CtaLoad<int, CTA_THREADS, 4> CtaLoad;
+ *      __global__ void SomeKernel(int *d_in, ...)
+ *      {
+ *          // Parameterize a CtaLoad type for use in the current problem context
+ *          typedef cub::CtaLoad<int, CTA_THREADS, 4> CtaLoad;
  *
- *      // Declare shared memory for CtaLoad
- *      __shared__ typename CtaLoad::SmemStorage smem_storage;
+ *          // Declare shared memory for CtaLoad
+ *          __shared__ typename CtaLoad::SmemStorage smem_storage;
  *
- *      // A segment of four input items per thread
- *      int data[4];
+ *          // A segment of consecutive input items per thread
+ *          int data[4];
  *
- *      // Load a tile of data
- *      CtaLoad::Load(data, d_in, blockIdx.x * CTA_THREADS * 4);
+ *          // Load a tile of data at this block's offset
+ *          CtaLoad::Load(data, d_in, blockIdx.x * 128 * 4);
  *
- *      ...
- * }
- * \endcode
- * - <b>Example 2:</b> Load four consecutive integers per thread using vectorized loads and global-only caching:
- * \code
- * #include <cub.cuh>
+ *      \endcode
  *
- * template <int CTA_THREADS>
- * __global__ void SomeKernel(int *d_in, ...)
- * {
- *      const int ITEMS_PER_THREAD = 4;
+ * \par
+ * - <b>Example 2:</b> Have a CTA load consecutive integers per thread (blocked arrangement) using vectorized loads and global-only caching:
+ *      \code
+ *      #include <cub.cuh>
  *
- *      // Declare a parameterized CtaLoad type for the kernel configuration
- *      typedef cub::CtaLoad<int, CTA_THREADS, 4, CTA_LOAD_VECTORIZE, PTX_LOAD_CG> CtaLoad;
+ *      template <int CTA_THREADS, int ITEMS_PER_THREAD>
+ *      __global__ void SomeKernel(int *d_in, ...)
+ *      {
+ *          // Parameterize a CtaLoad type for use in the current problem context
+ *          typedef cub::CtaLoad<int, CTA_THREADS, ITEMS_PER_THREAD, CTA_LOAD_VECTORIZE, PTX_LOAD_CG> CtaLoad;
  *
- *      // Declare shared memory for CtaLoad
- *      __shared__ typename CtaLoad::SmemStorage smem_storage;
+ *          // Declare shared memory for CtaLoad
+ *          __shared__ typename CtaLoad::SmemStorage smem_storage;
  *
- *      // A segment of four input items per thread
- *      int data[4];
+ *          // A segment of consecutive input items per thread
+ *          int data[ITEMS_PER_THREAD];
  *
- *      // Load a tile of data using vector-load instructions if possible
- *      CtaLoad::Load(data, d_in, blockIdx.x * CTA_THREADS * 4);
+ *          // Load a tile of data at this block's offset
+ *          CtaLoad::Load(data, d_in, blockIdx.x * CTA_THREADS * ITEMS_PER_THREAD);
  *
- *      ...
- * }
- * \endcode
+ *      \endcode
  * <br>
  */
 template <
@@ -666,7 +662,7 @@ private:
         {
             CtaLoadDirectStriped<CTA_THREADS, MODIFIER>(items, itr, cta_offset);
 
-            // Transpose to CTA-blocked order
+            // Transpose to blocked order
             CtaExchange::StripedToBlocked(smem_storage, items);
         }
 
@@ -681,7 +677,7 @@ private:
         {
             CtaLoadDirectStriped<CTA_THREADS, PTX_LOAD_NONE>(items, itr, cta_offset, guarded_elements);
 
-            // Transpose to CTA-blocked order
+            // Transpose to blocked order
             CtaExchange::StripedToBlocked(smem_storage, items);
         }
 

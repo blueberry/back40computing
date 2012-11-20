@@ -59,7 +59,7 @@
  *
  * \tableofcontents
  *
- * \section sec0 What is CUB?
+ * \section sec1 (1) What is CUB?
  *
  * \par
  * CUB is a library of high performance SIMT primitives for CUDA kernel
@@ -70,10 +70,15 @@
  * \par
  * Browse our collections of:
  * - [<b>SIMT cooperative primitives</b>](annotated.html)
+ *   - CtaRadixSort, CtaReduce, WarpScan, etc.
  * - [<b>SIMT utilities</b>](group___simt_utils.html)
+ *   - CTA loads/stores in blocked/striped arrangements (vectorized, coalesced, etc.)
+ *   - Sequential ThreadScan, ThreadReduce, etc.
+ *   - Cache-modified ThreadLoad/ThreadStore
  * - [<b>Host utilities</b>](group___host_util.html)
+ *   - Caching allocators, error handling, etc.
  *
- * \section sec1 A simple example
+ * \section sec2 (2) A simple example
  *
  * \par
  * The following kernel snippet illustrates how easy it is to
@@ -126,18 +131,17 @@
  * loads and stores.  For example, <tt>ld.global.v4.s32</tt> will be generated when
  * \p T = \p int and \p ITEMS_PER_THREAD is a multiple of 4.
  *
- * \section sec2 Why do you need CUB?
+ * \section sec3 (3) Why do you need CUB?
  *
  * \par
- * Whereas data-parallelism is easy to implement, cooperative-parallelism
- * is hard.  For algorithms requiring local cooperation between threads, the
- * SIMT kernel is the most complex (and performance-sensitive) layer
- * in the CUDA software stack.  Developers must carefully manage the state
- * and interaction of many, many threads.  Best practices would have us
- * leverage libraries and abstraction layers to help mitigate the complexity,
- * risks, and maintenance costs of this software.  However, with the exception
- * of CUB, there are few (if any) software libraries of reusable CTA-level
- * primitives.
+ * With the exception of CUB, there are few (if any) software libraries of
+ * reusable CTA-level primitives.  This is unfortunate because cooperative parallelism
+ * is notoriously challenging to implement.  For non-data-parallel problems
+ * having dependences between threads, the SIMT kernel is the most complex
+ * (and performance-sensitive) layer in the CUDA software stack.  Developers must
+ * carefully manage the state and interaction of many, many threads.  Best
+ * practices would have us leverage libraries and abstraction layers to help
+ * mitigate the complexity, risks, and maintenance costs of this software.
  *
  * \par
  * As a SIMT library and software abstraction layer, CUB gives you:
@@ -148,13 +152,20 @@
  * be simply recompiled against new CUB releases (instead of hand-rewritten)
  * to leverage new algorithmic developments, hardware instructions, etc.
  *
- * \section sec3 How does CUB work?
- * \subsection sec3sec0 Library overview
+ * \section sec4 (4) How does CUB work?
  *
  * \par
- * CUDA's SIMT programming model complicates the prospect of software
- * reuse within kernel code.  As a SIMT library, CUB must accommodate
- * arbitrary kernel <em>configuration contexts</em>, i.e., specific:
+ * CUB leverages the following programming idioms:
+ * - [<b>C++ templates</b>](index.html#sec3sec1)
+ * - [<b>Reflective type structure</b>](index.html#sec3sec2)
+ * - [<b>Flexible data arrangement among threads</b>](index.html#sec3sec3)
+ *
+ * \subsection sec3sec1 C++ templates
+ *
+ * \par
+ * As a SIMT library, CUB must be flexible enough to accommodate a wide spectrum
+ * of <em>problem contexts</em>,
+ * i.e., specific:
  *    - Data types
  *    - Widths of parallelism (CTA threads)
  *    - Grain sizes (data items per thread)
@@ -165,16 +176,16 @@
  * To provide this flexibility, CUB is implemented as a C++ template library.
  * C++ templates are a way to write generic algorithms and data structures.
  * There is no need to build CUB separately.  You simply #<tt>include</tt> the
- * appropriate header files into your <tt>.cu</tt> or <tt>.cpp</tt> sources
+ * <tt>cub.cuh</tt> header file into your <tt>.cu</tt> or <tt>.cpp</tt> sources
  * and compile with CUDA's <tt>nvcc</tt> compiler.
  *
- * \subsection sec3sec1 Reflective type structure
+ * \subsection sec3sec2 Reflective type structure
  *
  * \par
  * Cooperative SIMT components cannot be constructed and composed like we
  * would traditional procedures and function calls.  They require shared
  * memory whose layout for a given primitive will be specific to the details
- * of the calling kernel's <em>configuration context</em> (see above).
+ * of the calling kernel's <em>problem context</em> (see above).
  * Furthermore, this shared memory must be allocated externally to the
  * component if it is to be reused elsewhere by the CTA.
  *
@@ -183,6 +194,20 @@
  * <em>reflective type structure</em> (C++ classes).  Thus our CUB primitives
  * are C++ classes with interfaces that expose both procedural methods
  * as well as the opaque shared memory types needed for their operation.
+ *
+* \subsection sec3sec3 Flexible data arrangement among threads
+ *
+ * \par
+ * The mapping of threads onto data items is a major consideration in
+ * GPU computing.  In particular, there are many advantages of
+ * having each thread process more than one data element:
+ * - <b>Algorithmic efficiency</b>.  Sequential work in thread-private registers is cheaper than
+ *   synchronized, cooperative work through shared memory spaces
+ * - <b>Data occupancy</b>.  The number of items that can be resident on-chip in thread-private
+ *   register storage is often greater than the number of
+ *   schedulable threads
+ * - <b>Instruction-level parallelism</b>.  Multiple items per thread also facilitates ILP for greater throughput and utilization
+ *
  *
  */
 

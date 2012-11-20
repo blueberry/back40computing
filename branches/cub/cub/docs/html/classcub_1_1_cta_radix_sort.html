@@ -115,28 +115,28 @@ Static Public Member Functions</h2></td></tr>
 <tr><td colspan="2"><div class="groupHeader">Keys-only sorting</div></td></tr>
 <tr class="memitem:aca8aff803cc404b3c3806f37fe179f41"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#aca8aff803cc404b3c3806f37fe179f41">SortBlocked</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:aca8aff803cc404b3c3806f37fe179f41"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a CTA-wide radix sort over a <em>CTA-blocked</em> arrangement of keys.  <a href="#aca8aff803cc404b3c3806f37fe179f41"></a><br/></td></tr>
+<tr class="memdesc:aca8aff803cc404b3c3806f37fe179f41"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a CTA-wide radix sort over a <em>blocked</em> arrangement of keys.  <a href="#aca8aff803cc404b3c3806f37fe179f41"></a><br/></td></tr>
 <tr class="separator:aca8aff803cc404b3c3806f37fe179f41"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a572688f5ee28f805b2395c3c5acd5749"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#a572688f5ee28f805b2395c3c5acd5749">SortBlockedToStriped</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:a572688f5ee28f805b2395c3c5acd5749"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys, leaving them in a <em>CTA-striped</em> arrangement.  <a href="#a572688f5ee28f805b2395c3c5acd5749"></a><br/></td></tr>
+<tr class="memdesc:a572688f5ee28f805b2395c3c5acd5749"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>blocked</em> arrangement of keys, leaving them in a <em>striped</em> arrangement.  <a href="#a572688f5ee28f805b2395c3c5acd5749"></a><br/></td></tr>
 <tr class="separator:a572688f5ee28f805b2395c3c5acd5749"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af414f48c4b084e763e83597c1e6f1fb8"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#af414f48c4b084e763e83597c1e6f1fb8">SortStriped</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:af414f48c4b084e763e83597c1e6f1fb8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>CTA-striped</em> arrangement of keys.  <a href="#af414f48c4b084e763e83597c1e6f1fb8"></a><br/></td></tr>
+<tr class="memdesc:af414f48c4b084e763e83597c1e6f1fb8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>striped</em> arrangement of keys.  <a href="#af414f48c4b084e763e83597c1e6f1fb8"></a><br/></td></tr>
 <tr class="separator:af414f48c4b084e763e83597c1e6f1fb8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr><td colspan="2"><div class="groupHeader">Key-value pair sorting</div></td></tr>
 <tr class="memitem:ac8d6558ae9d13a4747ec15324bd0a3fa"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#ac8d6558ae9d13a4747ec15324bd0a3fa">SortBlocked</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], ValueType(&amp;values)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:ac8d6558ae9d13a4747ec15324bd0a3fa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values.  <a href="#ac8d6558ae9d13a4747ec15324bd0a3fa"></a><br/></td></tr>
+<tr class="memdesc:ac8d6558ae9d13a4747ec15324bd0a3fa"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>blocked</em> arrangement of keys and values.  <a href="#ac8d6558ae9d13a4747ec15324bd0a3fa"></a><br/></td></tr>
 <tr class="separator:ac8d6558ae9d13a4747ec15324bd0a3fa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a08bbd6d7f7f583056715bf4d04b218b9"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#a08bbd6d7f7f583056715bf4d04b218b9">SortBlockedToStriped</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], ValueType(&amp;values)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:a08bbd6d7f7f583056715bf4d04b218b9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values, leaving them in a <em>CTA-striped</em> arrangement.  <a href="#a08bbd6d7f7f583056715bf4d04b218b9"></a><br/></td></tr>
+<tr class="memdesc:a08bbd6d7f7f583056715bf4d04b218b9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>blocked</em> arrangement of keys and values, leaving them in a <em>striped</em> arrangement.  <a href="#a08bbd6d7f7f583056715bf4d04b218b9"></a><br/></td></tr>
 <tr class="separator:a08bbd6d7f7f583056715bf4d04b218b9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a149ae1f7393f84dd7742f17c7bb0de72"><td class="memItemLeft" align="right" valign="top">static __device__ <br class="typebreak"/>
 __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_radix_sort.html#a149ae1f7393f84dd7742f17c7bb0de72">SortStriped</a> (<a class="el" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046">SmemStorage</a> &amp;smem_storage, KeyType(&amp;keys)[ITEMS_PER_THREAD], ValueType(&amp;values)[ITEMS_PER_THREAD], unsigned int begin_bit=0, const unsigned int &amp;end_bit=sizeof(KeyType)*8)</td></tr>
-<tr class="memdesc:a149ae1f7393f84dd7742f17c7bb0de72"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>CTA-striped</em> arrangement of keys and values.  <a href="#a149ae1f7393f84dd7742f17c7bb0de72"></a><br/></td></tr>
+<tr class="memdesc:a149ae1f7393f84dd7742f17c7bb0de72"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a radix sort across a <em>striped</em> arrangement of keys and values.  <a href="#a149ae1f7393f84dd7742f17c7bb0de72"></a><br/></td></tr>
 <tr class="separator:a149ae1f7393f84dd7742f17c7bb0de72"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
@@ -151,8 +151,8 @@ class cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, R
  <p><b>Overview</b> </p>
 <dl class="section user"><dt></dt><dd>The <em>radix sort</em> method relies upon a positional representation for keys, i.e., each key is comprised of an ordered sequence of numeral symbols (i.e., digits) specified from least-significant to most-significant. For a given input sequence of keys and a set of rules specifying a total ordering of the symbolic alphabet, the radix sorting method produces a lexicographic ordering of those keys.</dd></dl>
 <dl class="section user"><dt></dt><dd><a class="el" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">CtaRadixSort</a> accommodates the following arrangements of data items among threads:<ol type="1">
-<li><b><em>CTA-blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</li>
-<li><b><em>CTA-striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</li>
+<li><b><em>blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</li>
+<li><b><em>striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</li>
 </ol>
 </dd></dl>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
@@ -184,20 +184,49 @@ class cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, R
 </dd></dl>
 <p><b>Examples</b> </p>
 <dl class="section user"><dt></dt><dd><ul>
-<li><b>Example 1:</b> Simple radix sort of 32-bit integer keys <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
+<li><b>Example 1:</b> Simple radix sort of 32-bit integer keys (128 threads, 4 keys per thread, blocked arrangement) <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
 <div class="line"></div>
-<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS&gt;</div>
 <div class="line">__global__ <span class="keywordtype">void</span> SomeKernel(...)</div>
 <div class="line">{</div>
+<div class="line">    <span class="comment">// Parameterize a CtaRadixSort type for use in the current problem context</span></div>
+<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort&lt;unsigned int, 128, 4&gt;</a> CtaRadixSort;</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Declare shared memory for CtaRadixSort</span></div>
+<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046" title="The operations exposed by CtaRadixSort require shared memory of this type. This opaque storage can be...">CtaRadixSort::SmemStorage</a> smem_storage;</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// A segment of consecutive input items per thread</span></div>
+<div class="line">    <span class="keywordtype">int</span> keys[4];</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Obtain items in blocked order</span></div>
+<div class="line">    ...</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Sort keys in ascending order</span></div>
+<div class="line">    <a class="code" href="classcub_1_1_cta_radix_sort.html#aca8aff803cc404b3c3806f37fe179f41" title="Performs a CTA-wide radix sort over a blocked arrangement of keys.">CtaRadixSort::SortBlocked</a>(smem_storage, keys);</div>
 </div><!-- fragment --></li>
 </ul>
 </dd></dl>
 <dl class="section user"><dt></dt><dd><ul>
-<li><b>Example 2:</b> Simple key-value radix sort of 32-bit integer keys paird with 32-bit float values <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
+<li><b>Example 2:</b> Lower 20-bit key-value radix sort of 32-bit integer keys and fp values (striped arrangement) <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
 <div class="line"></div>
-<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS&gt;</div>
+<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS, <span class="keywordtype">int</span> ITEMS_PER_THREAD&gt;</div>
 <div class="line">__global__ <span class="keywordtype">void</span> SomeKernel(...)</div>
 <div class="line">{</div>
+<div class="line">    <span class="comment">// Parameterize a CtaRadixSort type for use in the current problem context</span></div>
+<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort&lt;unsigned int, CTA_THREADS, ITEMS_PER_THREAD, float&gt;</a> CtaRadixSort;</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Declare shared memory for CtaRadixSort</span></div>
+<div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046" title="The operations exposed by CtaRadixSort require shared memory of this type. This opaque storage can be...">CtaRadixSort::SmemStorage</a> smem_storage;</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Input items per thread (striped across the CTA)</span></div>
+<div class="line">    <span class="keywordtype">int</span> keys[ITEMS_PER_THREAD];</div>
+<div class="line">    <span class="keywordtype">float</span> values[ITEMS_PER_THREAD];</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Obtain keys in striped order</span></div>
+<div class="line">    ...</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Sort pairs in ascending order (using only the lower 20 distinguishing key bits)</span></div>
+<div class="line">    <a class="code" href="classcub_1_1_cta_radix_sort.html#af414f48c4b084e763e83597c1e6f1fb8" title="Performs a radix sort across a striped arrangement of keys.">CtaRadixSort::SortStriped</a>(smem_storage, keys, values, 0, 20);</div>
+<div class="line">}</div>
 </div><!-- fragment --> </li>
 </ul>
 </dd></dl>
@@ -248,7 +277,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a CTA-wide radix sort over a <em>CTA-blocked</em> arrangement of keys. </p>
+<p>Performs a CTA-wide radix sort over a <em>blocked</em> arrangement of keys. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -308,7 +337,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys, leaving them in a <em>CTA-striped</em> arrangement. </p>
+<p>Performs a radix sort across a <em>blocked</em> arrangement of keys, leaving them in a <em>striped</em> arrangement. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -368,7 +397,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a radix sort across a <em>CTA-striped</em> arrangement of keys. </p>
+<p>Performs a radix sort across a <em>striped</em> arrangement of keys. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -434,7 +463,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values. </p>
+<p>Performs a radix sort across a <em>blocked</em> arrangement of keys and values. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -501,7 +530,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a radix sort across a <em>CTA-blocked</em> arrangement of keys and values, leaving them in a <em>CTA-striped</em> arrangement. </p>
+<p>Performs a radix sort across a <em>blocked</em> arrangement of keys and values, leaving them in a <em>striped</em> arrangement. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -568,7 +597,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </table>
 </div><div class="memdoc">
 
-<p>Performs a radix sort across a <em>CTA-striped</em> arrangement of keys and values. </p>
+<p>Performs a radix sort across a <em>striped</em> arrangement of keys and values. </p>
 <p>A subsequent <code>__syncthreads()</code> CTA barrier is required if the supplied <code>smem_storage</code> is to be reused/repurposed by the CTA. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
@@ -589,7 +618,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 10:25:32 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 20 2012 17:38:43 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

@@ -46,10 +46,10 @@ namespace cub {
  * \par
  * The operations exposed by CtaExchange allow CTAs to reorganize data items between
  * threads, converting between (or scattering to) the following partitioning arrangements:
- * -# <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ * -# <b><em>blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
  *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
  *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
- * -# <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ * -# <b><em>striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
  *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
  *   each thread have logical stride \p CTA_THREADS between them.
  *
@@ -66,13 +66,13 @@ namespace cub {
  * <b>Algorithm</b>
  * \par
  * Regardless of the initial blocked/striped arrangement, CTA threads scatter
- * items into shared memory in <em>CTA-blocked</em>, taking care to include
+ * items into shared memory in <em>blocked</em>, taking care to include
  * one item of padding for every shared memory bank's worth of items.  After a
  * barrier, items are gathered in the desired blocked/striped arrangement.
  * <br>
  * <br>
  * \image html raking.png
- * <center><b>A CTA of 16 threads performing a conflict-free <em>CTA-blocked</em> gathering of 64 exchanged items.</b></center>
+ * <center><b>A CTA of 16 threads performing a conflict-free <em>blocked</em> gathering of 64 exchanged items.</b></center>
  * <br>
  *
  */
@@ -198,13 +198,13 @@ public:
     //@{
 
     /**
-     * \brief Transposes data items from <em>CTA-blocked</em> arrangement to <em>CTA-striped</em> arrangement.
+     * \brief Transposes data items from <em>blocked</em> arrangement to <em>striped</em> arrangement.
      *
      * \smemreuse
      */
     static __device__ __forceinline__ void BlockedToStriped(
         SmemStorage     &smem_storage,              ///< [in] Shared reference to opaque SmemStorage layout
-        T               items[ITEMS_PER_THREAD])    ///< [in-out] Items to exchange, converting between <em>CTA-blocked</em> and <em>CTA-striped</em> arrangements.
+        T               items[ITEMS_PER_THREAD])    ///< [in-out] Items to exchange, converting between <em>blocked</em> and <em>striped</em> arrangements.
     {
         // Scatter items to shared memory
         ScatterBlocked(items, smem_storage.exchange);
@@ -217,13 +217,13 @@ public:
 
 
     /**
-     * \brief Transposes data items from <em>CTA-striped</em> arrangement to <em>CTA-blocked</em> arrangement.
+     * \brief Transposes data items from <em>striped</em> arrangement to <em>blocked</em> arrangement.
      *
      * \smemreuse
      */
     static __device__ __forceinline__ void StripedToBlocked(
         SmemStorage      &smem_storage,             ///< [in] Shared reference to opaque SmemStorage layout
-        T                items[ITEMS_PER_THREAD])   ///< [in-out] Items to exchange, converting between <em>CTA-striped</em> and <em>CTA-blocked</em> arrangements.
+        T                items[ITEMS_PER_THREAD])   ///< [in-out] Items to exchange, converting between <em>striped</em> and <em>blocked</em> arrangements.
     {
         // Scatter items to shared memory
         ScatterStriped(items, smem_storage.exchange);
@@ -241,7 +241,7 @@ public:
     //@{
 
     /**
-     * \brief Exchanges data items annotated by rank into <em>CTA-blocked</em> arrangement.
+     * \brief Exchanges data items annotated by rank into <em>blocked</em> arrangement.
      *
      * \smemreuse
      */
@@ -261,7 +261,7 @@ public:
 
 
     /**
-     * \brief Exchanges data items annotated by rank into <em>CTA-striped</em> arrangement.
+     * \brief Exchanges data items annotated by rank into <em>striped</em> arrangement.
      *
      * \smemreuse
      */

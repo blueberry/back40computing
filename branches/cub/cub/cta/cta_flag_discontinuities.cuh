@@ -48,10 +48,10 @@ namespace cub {
  * The operations exposed by CtaFlagDiscontinuities allow CTAs to set "head flags" for data elements that
  * are different from their predecessor (as specified by a binary boolean operator).  flag discontinuities reorganize data items between
  * threads, converting between (or scattering to) the following partitioning arrangements:
- * -# <b><em>CTA-blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ * -# <b><em>blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
  *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
  *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
- * -# <b><em>CTA-striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ * -# <b><em>striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
  *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
  *   each thread have logical stride \p CTA_THREADS between them.
  *
@@ -68,13 +68,13 @@ namespace cub {
  * <b>Algorithm</b>
  * \par
  * Regardless of the initial blocked/striped arrangement, CTA threads scatter
- * items into shared memory in <em>CTA-blocked</em>, taking care to include
+ * items into shared memory in <em>blocked</em>, taking care to include
  * one item of padding for every shared memory bank's worth of items.  After a
  * barrier, items are gathered in the desired blocked/striped arrangement.
  * <br>
  * <br>
  * \image html raking.png
- * <center><b>A CTA of 16 threads performing a conflict-free <em>CTA-blocked</em> gathering of 64 exchanged items.</b></center>
+ * <center><b>A CTA of 16 threads performing a conflict-free <em>blocked</em> gathering of 64 exchanged items.</b></center>
  * <br>
  *
  */

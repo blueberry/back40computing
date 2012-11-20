@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaStore type provides global data movement operations for storing tiles of items across threads within a CTA.
+ * The cub::CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads).
  */
 
 #pragma once
@@ -45,7 +45,7 @@ namespace cub {
 
 
 /******************************************************************//**
- * \name CTA-blocked direct stores
+ * \name CTA direct stores (blocked arrangement)
  *********************************************************************/
 //@{
 
@@ -59,7 +59,7 @@ namespace cub {
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -92,7 +92,7 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -119,7 +119,7 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -156,7 +156,7 @@ __device__ __forceinline__ void CtaStoreDirect(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  */
 template <
@@ -176,7 +176,7 @@ __device__ __forceinline__ void CtaStoreDirect(
 
 //@}
 /******************************************************************//**
- * \name CTA-striped direct stores
+ * \name CTA direct stores (striped arrangement)
  *********************************************************************/
 //@{
 
@@ -208,7 +208,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
     InputIterator   itr,                            ///< [in] Input iterator for storing from
     const SizeT     &cta_offset)                    ///< [in] Offset in \p itr at which to store the tile
 {
-    // Store directly in CTA-striped order
+    // Store directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
@@ -229,7 +229,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned across
- * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * threads in <em>striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
  * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
@@ -258,7 +258,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned across
- * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * threads in <em>striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
  * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
@@ -274,7 +274,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
     const SizeT     &cta_offset,                    ///< [in] Offset in \p itr at which to store the tile
     const SizeT     &guarded_elements)              ///< [in] Number of valid items in the tile
 {
-    // Store directly in CTA-striped order
+    // Store directly in striped order
     #pragma unroll
     for (int ITEM = 0; ITEM < ITEMS_PER_THREAD; ITEM++)
     {
@@ -297,7 +297,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned across
- * threads in <em>CTA-striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
+ * threads in <em>striped</em> arrangement, i.e., the \p ITEMS_PER_THREAD
  * items owned by each thread have logical stride \p CTA_THREADS between them.
  */
 template <
@@ -318,7 +318,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
 
 //@}
 /******************************************************************//**
- * \name CTA vectorized stores
+ * \name CTA vectorized stores (blocked arrangement)
  *********************************************************************/
 //@{
 
@@ -331,7 +331,7 @@ __device__ __forceinline__ void CtaStoreDirectStriped(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
  * The following conditions will prevent vectorization and storing will fall back to cub::CTA_STORE_DIRECT:
@@ -403,7 +403,7 @@ __device__ __forceinline__ void CtaStoreVectorized(
  * \tparam SizeT                [inferred] Integer type for offsets
  *
  * The aggregate tile of items is assumed to be partitioned evenly across
- * threads in <em>CTA-blocked</em> arrangement with thread<sub><em>i</em></sub> owning
+ * threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
  * The following conditions will prevent vectorization and storing will fall back to cub::CTA_STORE_DIRECT:
@@ -439,7 +439,7 @@ enum CtaStorePolicy
 {
     CTA_STORE_DIRECT,        ///< Stores consecutive thread-items directly from the input
     CTA_STORE_VECTORIZE,     ///< Attempts to use CUDA's built-in vectorized items as a coalescing optimization
-    CTA_STORE_TRANSPOSE,     ///< Stores CTA-striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
+    CTA_STORE_TRANSPOSE,     ///< Stores striped inputs as a coalescing optimization and then transposes them through shared memory into the desired blocks of thread-consecutive items
 };
 
 
@@ -451,7 +451,7 @@ enum CtaStorePolicy
 
 
 /**
- * \brief The CtaStore type provides global data movement operations for storing tiles of items across threads within a CTA. ![](cta_store_logo.png)
+ * \brief The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads). ![](cta_store_logo.png)
  *
  * <b>Overview</b>
  * \par
@@ -464,15 +464,16 @@ enum CtaStorePolicy
  *      example, <tt>st.global.v4.s32</tt> will be generated when
  *      \p T = \p int and \p ITEMS_PER_THREAD > 4.
  *   <br><br>
- *   -# <b>cub::CTA_STORE_TRANSPOSE</b>.  Stores CTA-striped inputs as
+ *   -# <b>cub::CTA_STORE_TRANSPOSE</b>.  Stores striped inputs as
  *      a coalescing optimization and then transposes them through
  *      shared memory into the desired blocks of thread-consecutive items
  *
  * \par
- * The operations exposed by this type assume <em>n</em>-element
- * lists (or <em>tiles</em>) that are partitioned evenly among \p CTA_THREADS
- * threads, with thread<sub><em>i</em></sub> owning the
- * <em>i</em><sup>th</sup> segment of consecutive elements.
+ * The data movement operations exposed by this type assume a blocked
+ * arrangement of data amongst threads, i.e., an <em>n</em>-element list (or
+ * <em>tile</em>) that is partitioned evenly among \p CTA_THREADS threads,
+ * with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of
+ * consecutive elements.
  *
  * \tparam InputIterator        The input iterator type (may be a simple pointer).
  * \tparam CTA_THREADS          The CTA size in threads.
@@ -665,7 +666,7 @@ private:
             InputIterator   itr,                        ///< [in] Input iterator for storing from
             const SizeT     &cta_offset)                ///< [in] Offset in \p itr at which to store the tile
         {
-            // Transpose to CTA-striped order
+            // Transpose to striped order
             CtaExchange::BlockedToStriped(smem_storage, items);
 
             CtaStoreDirectStriped<CTA_THREADS, MODIFIER>(items, itr, cta_offset);
@@ -680,7 +681,7 @@ private:
             const SizeT     &cta_offset,                ///< [in] Offset in \p itr at which to store the tile
             const SizeT     &guarded_elements)          ///< [in] Number of valid items in the tile
         {
-            // Transpose to CTA-striped order
+            // Transpose to striped order
             CtaExchange::BlockedToStriped(smem_storage, items);
 
             CtaStoreDirectStriped<CTA_THREADS, PTX_STORE_NONE>(items, itr, cta_offset, guarded_elements);

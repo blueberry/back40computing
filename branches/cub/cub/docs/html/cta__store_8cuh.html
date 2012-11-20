@@ -104,7 +104,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="nested-classes"></a>
 Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_store.html">cub::CtaStore&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MODIFIER &gt;</a></td></tr>
-<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">CtaStore</a> type provides global data movement operations for storing tiles of items across threads within a CTA. </p>
+<tr class="memdesc:"><td class="mdescLeft">&#160;</td><td class="mdescRight">The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">CtaStore</a> type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads). </p>
 <div class="image">
 <img src="cta_store_logo.png" alt="cta_store_logo.png"/>
 <div class="caption">
@@ -124,12 +124,12 @@ Enumerations</h2></td></tr>
 <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca60250b5e6d978911bf61c6525b196c39">cub::CTA_STORE_VECTORIZE</a>, 
 <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca991dcaff085113850fb90372ac9eb665">cub::CTA_STORE_TRANSPOSE</a>
  }</td></tr>
-<tr class="memdesc:a47ce001bb3545160ee2a725d9de40b9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tuning policy for <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">cub::CtaStore</a>.  <a href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9c">More...</a><br/></td></tr>
+<tr class="memdesc:a47ce001bb3545160ee2a725d9de40b9c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Tuning policy for <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">cub::CtaStore</a>.  <a href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9c">More...</a><br/></td></tr>
 <tr class="separator:a47ce001bb3545160ee2a725d9de40b9c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="func-members"></a>
 Functions</h2></td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA-blocked direct stores</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA direct stores (blocked arrangement)</div></td></tr>
 <tr class="memitem:ga5d985f7ef6064e3d67ca79124f534596"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga5d985f7ef6064e3d67ca79124f534596"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga5d985f7ef6064e3d67ca79124f534596">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga5d985f7ef6064e3d67ca79124f534596"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly using the specified cache modifier.  <a href="group___simt_utils.html#ga5d985f7ef6064e3d67ca79124f534596"></a><br/></td></tr>
@@ -146,7 +146,7 @@ Functions</h2></td></tr>
 <tr class="memitem:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga2c3bd14d9879a8d552bdd6ce07978c07">cub::CtaStoreDirect</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
 <tr class="memdesc:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly, guarded by range.  <a href="group___simt_utils.html#ga2c3bd14d9879a8d552bdd6ce07978c07"></a><br/></td></tr>
 <tr class="separator:ga2c3bd14d9879a8d552bdd6ce07978c07"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA-striped direct stores</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA direct stores (striped arrangement)</div></td></tr>
 <tr class="memitem:ga87048895ba5130b3e1df4bf339fbb934"><td class="memTemplParams" colspan="2">template&lt;int CTA_THREADS, PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename InputIterator , typename SizeT &gt; </td></tr>
 <tr class="memitem:ga87048895ba5130b3e1df4bf339fbb934"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga87048895ba5130b3e1df4bf339fbb934">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga87048895ba5130b3e1df4bf339fbb934"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly using the specified cache modifier.  <a href="group___simt_utils.html#ga87048895ba5130b3e1df4bf339fbb934"></a><br/></td></tr>
@@ -162,7 +162,7 @@ Functions</h2></td></tr>
 <tr class="memitem:ga3a65a1256d95ff1d525d608f640aadff"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga3a65a1256d95ff1d525d608f640aadff">cub::CtaStoreDirectStriped</a> (T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)</td></tr>
 <tr class="memdesc:ga3a65a1256d95ff1d525d608f640aadff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store striped tile directly, guarded by range.  <a href="group___simt_utils.html#ga3a65a1256d95ff1d525d608f640aadff"></a><br/></td></tr>
 <tr class="separator:ga3a65a1256d95ff1d525d608f640aadff"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr><td colspan="2"><div class="groupHeader">CTA vectorized stores</div></td></tr>
+<tr><td colspan="2"><div class="groupHeader">CTA vectorized stores (blocked arrangement)</div></td></tr>
 <tr class="memitem:ga175a94f15417edb776706412b31dc019"><td class="memTemplParams" colspan="2">template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </td></tr>
 <tr class="memitem:ga175a94f15417edb776706412b31dc019"><td class="memTemplItemLeft" align="right" valign="top">__device__ __forceinline__ void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="group___simt_utils.html#ga175a94f15417edb776706412b31dc019">cub::CtaStoreVectorized</a> (T(&amp;items)[ITEMS_PER_THREAD], T *ptr, const SizeT &amp;cta_offset)</td></tr>
 <tr class="memdesc:ga175a94f15417edb776706412b31dc019"><td class="mdescLeft">&#160;</td><td class="mdescRight">Store a tile of items across CTA threads directly using the specified cache modifier.  <a href="group___simt_utils.html#ga175a94f15417edb776706412b31dc019"></a><br/></td></tr>
@@ -173,11 +173,11 @@ Functions</h2></td></tr>
 <tr class="separator:ga44815b7f49bdd697119ba01e50e7c4af"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides global data movement operations for storing tiles of items across threads ...">cub::CtaStore</a> type provides global data movement operations for storing tiles of items across threads within a CTA. </p>
+<div class="textblock"><p>The <a class="el" href="classcub_1_1_cta_store.html" title="The CtaStore type provides store operations for writing global tiles of data from the CTA (in blocked...">cub::CtaStore</a> type provides store operations for writing global tiles of data from the CTA (in blocked arrangement across threads). </p>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 10:25:32 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 20 2012 17:38:43 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

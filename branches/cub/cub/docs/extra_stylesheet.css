@@ -152,10 +152,12 @@ tr.heading h2 {
 }
 
 h2 {
-		margin-left: 20px;
-		font-size: 100%;
-		color: darkGoldenrod;
-		font-style: italic;
+		margin-top: 30px;
+		margin-bottom: 0px;
+		margin-left: 25px;
+        font-weight: bold;
+		font-size: 115%;
+		color: #2B4068;
 }
 
 h1, h2.groupheader {

@@ -273,7 +273,7 @@ class cub::CtaScan&lt; T, CTA_THREADS, POLICY &gt;</h3>
 .</div></div>
  <p><b>Overview</b> </p>
 <dl class="section user"><dt></dt><dd>Given a list of input elements and a binary reduction operator, <em>prefix scan</em> produces an output list where each element is computed to be the reduction of the elements occurring earlier in the input list. <em>Prefix sum</em> connotes a prefix scan with the addition operator. The term <em>inclusive</em> means that each result includes the corresponding input operand in the partial sum. The term <em>exclusive</em> means that each result does not include the corresponding input operand in the partial reduction.</dd></dl>
-<dl class="section user"><dt></dt><dd>The parallel operations exposed by this type assume a <em>CTA-blocked</em> arrangement of elements across threads, i.e., <em>n</em>-element lists that are partitioned evenly across <code>CTA_THREADS</code> threads, with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> element (or <em>i</em><sup>th</sup> segment of consecutive elements).</dd></dl>
+<dl class="section user"><dt></dt><dd>The parallel operations exposed by this type assume a <em>blocked</em> arrangement of elements across threads, i.e., <em>n</em>-element lists that are partitioned evenly across <code>CTA_THREADS</code> threads, with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> element (or <em>i</em><sup>th</sup> segment of consecutive elements).</dd></dl>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">T</td><td>The reduction input/output element type </td></tr>
@@ -325,34 +325,35 @@ class cub::CtaScan&lt; T, CTA_THREADS, POLICY &gt;</h3>
 </dd></dl>
 <p><b>Examples</b> </p>
 <dl class="section user"><dt></dt><dd><ul>
-<li><b>Example 1:</b> Simple exclusive prefix sum <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
+<li><b>Example 1:</b> Simple exclusive prefix sum of 32-bit integer keys (128 threads, 4 keys per thread, blocked arrangement) <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
 <div class="line"></div>
-<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS&gt;</div>
 <div class="line">__global__ <span class="keywordtype">void</span> SomeKernel(...)</div>
 <div class="line">{</div>
-<div class="line">    <span class="comment">// Parameterize CtaScan for use with CTA_THREADS threads on type int.</span></div>
-<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_scan.html" title="The CtaScan type provides variants of parallel prefix scan across threads within a CTA...">cub::CtaScan&lt;int, CTA_THREADS&gt;</a> CtaReduce;</div>
+<div class="line">    <span class="comment">// Parameterize a CtaScan type for use in the current problem context</span></div>
+<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_scan.html" title="The CtaScan type provides variants of parallel prefix scan across threads within a CTA...">cub::CtaScan&lt;int, 128&gt;</a> CtaScan;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Declare shared memory for CtaScan</span></div>
 <div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805" title="The operations exposed by CtaScan require shared memory of this type. This opaque storage can be allo...">CtaScan::SmemStorage</a> smem_storage;</div>
 <div class="line"></div>
-<div class="line">    <span class="comment">// A segment of four input items per thread</span></div>
+<div class="line">    <span class="comment">// A segment of consecutive input items per thread</span></div>
 <div class="line">    <span class="keywordtype">int</span> data[4];</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Obtain items in blocked order</span></div>
 <div class="line">    ...</div>
+<div class="line"></div>
 <div class="line">    <span class="comment">// Compute the CTA-wide exclusve prefix sum</span></div>
 <div class="line">    <a class="code" href="classcub_1_1_cta_scan.html#a5ea28e4ec740677272952997c7793075" title="Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide aggregate of all inputs for thread0.">CtaScan::ExclusiveSum</a>(smem_storage, data, data);</div>
-<div class="line">    ...</div>
 </div><!-- fragment --></li>
 </ul>
 </dd></dl>
 <dl class="section user"><dt></dt><dd><ul>
 <li><b>Example 2:</b> More sophisticated exclusive prefix sum <div class="fragment"><div class="line"><span class="preprocessor">#include &lt;<a class="code" href="cub_8cuh.html">cub.cuh</a>&gt;</span></div>
 <div class="line"></div>
-<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS&gt;</div>
+<div class="line"><span class="keyword">template</span> &lt;<span class="keywordtype">int</span> CTA_THREADS, <span class="keywordtype">int</span> ITEMS_PER_THREAD&gt;</div>
 <div class="line">__global__ <span class="keywordtype">void</span> SomeKernel(<span class="keywordtype">int</span> *d_cta_prefixes, ...)</div>
 <div class="line">{</div>
-<div class="line">    <span class="comment">// Parameterize CtaScan for use with CTA_THREADS threads on type int.</span></div>
-<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_scan.html" title="The CtaScan type provides variants of parallel prefix scan across threads within a CTA...">cub::CtaScan&lt;int, CTA_THREADS&gt;</a> CtaReduce;</div>
+<div class="line">    <span class="comment">// Parameterize a CtaScan type for use in the current problem context</span></div>
+<div class="line">    <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_scan.html" title="The CtaScan type provides variants of parallel prefix scan across threads within a CTA...">cub::CtaScan&lt;int, CTA_THREADS&gt;</a> CtaScan;</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Declare shared memory for CtaScan</span></div>
 <div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805" title="The operations exposed by CtaScan require shared memory of this type. This opaque storage can be allo...">CtaScan::SmemStorage</a> smem_storage;</div>
@@ -361,12 +362,14 @@ class cub::CtaScan&lt; T, CTA_THREADS, POLICY &gt;</h3>
 <div class="line">    <span class="keywordtype">int</span> aggregate, cta_prefix;</div>
 <div class="line">    <span class="keywordflow">if</span> (threadIdx.x == 0) cta_prefix = d_cta_prefixes[blockIdx.x];</div>
 <div class="line"></div>
-<div class="line">    <span class="comment">// A segment of four input items per thread</span></div>
-<div class="line">    <span class="keywordtype">int</span> data[4];</div>
+<div class="line">    <span class="comment">// A segment of consecutive input items per thread</span></div>
+<div class="line">    <span class="keywordtype">int</span> data[ITEMS_PER_THREAD];</div>
+<div class="line"></div>
+<div class="line">    <span class="comment">// Obtain keys in blocked order</span></div>
 <div class="line">    ...</div>
+<div class="line"></div>
 <div class="line">    <span class="comment">// Compute the CTA-wide exclusive prefix sum, seeded with a CTA-wide prefix</span></div>
 <div class="line">    <a class="code" href="classcub_1_1_cta_scan.html#a5ea28e4ec740677272952997c7793075" title="Computes an exclusive CTA-wide prefix scan using addition (+) as the scan operator. Each thread contributes one input element. Also computes the CTA-wide aggregate of all inputs for thread0.">CtaScan::ExclusiveSum</a>(smem_storage, data, data, aggregate, cta_prefix);</div>
-<div class="line">    ...</div>
 </div><!-- fragment --> </li>
 </ul>
 </dd></dl>
@@ -2568,7 +2571,7 @@ template&lt;int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 10:25:33 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Tue Nov 20 2012 17:38:44 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>
