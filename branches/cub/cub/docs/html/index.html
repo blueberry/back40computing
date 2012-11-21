@@ -124,7 +124,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 <div class="line">{</div>
 <div class="line">     <span class="keyword">using namespace </span>cub;</div>
 <div class="line"></div>
-<div class="line">     <span class="comment">// Declare a parameterized CtaScan type for the given kernel configuration</span></div>
+<div class="line">     <span class="comment">// Parameterize a CtaScan type for use in the current problem context</span></div>
 <div class="line">     <span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_scan.html" title="The CtaScan type provides variants of parallel prefix scan across threads within a CTA...">CtaScan&lt;T, CTA_THREADS&gt;</a> CtaScan;</div>
 <div class="line"></div>
 <div class="line">     <span class="comment">// The shared memory for CtaScan</span></div>
@@ -174,8 +174,24 @@ C++ templates</h2>
 <dl class="section user"><dt></dt><dd>To provide this flexibility, CUB is implemented as a C++ template library. C++ templates are a way to write generic algorithms and data structures. There is no need to build CUB separately. You simply #<code>include</code> the <code><a class="el" href="cub_8cuh.html">cub.cuh</a></code> header file into your <code>.cu</code> or <code>.cpp</code> sources and compile with CUDA's <code>nvcc</code> compiler.</dd></dl>
 <h2><a class="anchor" id="sec3sec2"></a>
 Reflective type structure</h2>
-<dl class="section user"><dt></dt><dd>Cooperative SIMT components cannot be constructed and composed like we would traditional procedures and function calls. They require shared memory whose layout for a given primitive will be specific to the details of the calling kernel's <em>problem context</em> (see above). Furthermore, this shared memory must be allocated externally to the component if it is to be reused elsewhere by the CTA.</dd></dl>
-<dl class="section user"><dt></dt><dd>To address this issue, we encapsulate cooperative procedures within <em>reflective type structure</em> (C++ classes). Thus our CUB primitives are C++ classes with interfaces that expose both procedural methods as well as the opaque shared memory types needed for their operation.</dd></dl>
+<dl class="section user"><dt></dt><dd>By their nature, cooperative SIMT components require shared memory for communication between threads. However, the specific size and layout of the memory needed by a given primitive will be specific to the details of its parameterization (e.g., how may threads are calling into it, how many items per thread, etc.). Furthermore, this shared memory must be allocated externally to the component if it is to be reused elsewhere by the CTA.</dd></dl>
+<dl class="section user"><dt></dt><dd><div class="fragment"><div class="line"><span class="comment">// Parameterize a CtaRadixSort type for use with 128 threads</span></div>
+<div class="line"><span class="comment">// and 4 items per thread</span></div>
+<div class="line"><span class="keyword">typedef</span> <a class="code" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort&lt;unsigned int, 128, 4&gt;</a> CtaRadixSort;</div>
+<div class="line"></div>
+<div class="line"><span class="comment">// Declare shared memory for CtaRadixSort</span></div>
+<div class="line">__shared__ <span class="keyword">typename</span> CtaRadixSort::SmemStorage smem_storage;</div>
+<div class="line"></div>
+<div class="line"><span class="comment">// A segment of consecutive input items per thread</span></div>
+<div class="line"><span class="keywordtype">int</span> keys[4];</div>
+<div class="line"></div>
+<div class="line"><span class="comment">// Obtain keys in blocked order</span></div>
+<div class="line">...</div>
+<div class="line"></div>
+<div class="line"><span class="comment">// Sort keys in ascending order</span></div>
+<div class="line">CtaRadixSort::SortBlocked(smem_storage, keys);</div>
+</div><!-- fragment --></dd></dl>
+<dl class="section user"><dt></dt><dd>To address this issue, we encapsulate cooperative procedures within <em>reflective type structure</em> (C++ classes). As illustrated in the <a class="el" href="classcub_1_1_cta_radix_sort.html" title="The CtaRadixSort type provides variants of parallel radix sorting of unsigned numeric types across th...">cub::CtaRadixSort</a> example above, these primitives are C++ classes with interfaces that expose both (1) procedural methods as well as (2) the opaque shared memory types needed for their operation.</dd></dl>
 <h2><a class="anchor" id="sec3sec3"></a>
 Flexible data arrangement among threads</h2>
 <dl class="section user"><dt></dt><dd>The mapping of threads onto data items is a major consideration in GPU computing. In particular, there are many advantages of having each thread process more than one data element:<ul>
@@ -187,7 +203,7 @@ Flexible data arrangement among threads</h2>
 </div></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 17:38:44 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Nov 21 2012 10:39:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

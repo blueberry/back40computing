@@ -98,7 +98,7 @@
  * {
  *      using namespace cub;
  *
- *      // Declare a parameterized CtaScan type for the given kernel configuration
+ *      // Parameterize a CtaScan type for use in the current problem context
  *      typedef CtaScan<T, CTA_THREADS> CtaScan;
  *
  *      // The shared memory for CtaScan
@@ -182,18 +182,40 @@
  * \subsection sec3sec2 Reflective type structure
  *
  * \par
- * Cooperative SIMT components cannot be constructed and composed like we
- * would traditional procedures and function calls.  They require shared
- * memory whose layout for a given primitive will be specific to the details
- * of the calling kernel's <em>problem context</em> (see above).
- * Furthermore, this shared memory must be allocated externally to the
- * component if it is to be reused elsewhere by the CTA.
+ * By their nature, cooperative SIMT components require shared memory for
+ * communication between threads.  However, the specific size and layout
+ * of the memory needed by a given primitive will be
+ * specific to the details of its parameterization (e.g., how may threads are
+ * calling into it, how many items per thread, etc.).  Furthermore, this shared
+ * memory must be allocated externally to the component if it is to be reused
+ * elsewhere by the CTA.
+ *
+ * \par
+ * \code
+ * // Parameterize a CtaRadixSort type for use with 128 threads
+ * // and 4 items per thread
+ * typedef cub::CtaRadixSort<unsigned int, 128, 4> CtaRadixSort;
+ *
+ * // Declare shared memory for CtaRadixSort
+ * __shared__ typename CtaRadixSort::SmemStorage smem_storage;
+ *
+ * // A segment of consecutive input items per thread
+ * int keys[4];
+ *
+ * // Obtain keys in blocked order
+ * ...
+ *
+ * // Sort keys in ascending order
+ * CtaRadixSort::SortBlocked(smem_storage, keys);
+ *
+ * \endcode
  *
  * \par
  * To address this issue, we encapsulate cooperative procedures within
- * <em>reflective type structure</em> (C++ classes).  Thus our CUB primitives
- * are C++ classes with interfaces that expose both procedural methods
- * as well as the opaque shared memory types needed for their operation.
+ * <em>reflective type structure</em> (C++ classes).  As illustrated in the
+ * cub::CtaRadixSort example above, these primitives are C++ classes with
+ * interfaces that expose both (1) procedural methods as well as (2) the opaque
+ * shared memory types needed for their operation.
  *
 * \subsection sec3sec3 Flexible data arrangement among threads
  *

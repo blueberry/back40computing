@@ -197,7 +197,7 @@ class cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, R
 <div class="line">    <span class="comment">// A segment of consecutive input items per thread</span></div>
 <div class="line">    <span class="keywordtype">int</span> keys[4];</div>
 <div class="line"></div>
-<div class="line">    <span class="comment">// Obtain items in blocked order</span></div>
+<div class="line">    <span class="comment">// Obtain keys in blocked order</span></div>
 <div class="line">    ...</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Sort keys in ascending order</span></div>
@@ -217,11 +217,11 @@ class cub::CtaRadixSort&lt; KeyType, CTA_THREADS, ITEMS_PER_THREAD, ValueType, R
 <div class="line">    <span class="comment">// Declare shared memory for CtaRadixSort</span></div>
 <div class="line">    __shared__ <span class="keyword">typename</span> <a class="code" href="classcub_1_1_cta_radix_sort.html#a16512f94340efe40e28a4cfcdbcd5046" title="The operations exposed by CtaRadixSort require shared memory of this type. This opaque storage can be...">CtaRadixSort::SmemStorage</a> smem_storage;</div>
 <div class="line"></div>
-<div class="line">    <span class="comment">// Input items per thread (striped across the CTA)</span></div>
+<div class="line">    <span class="comment">// Input keys and values per thread (striped across the CTA)</span></div>
 <div class="line">    <span class="keywordtype">int</span> keys[ITEMS_PER_THREAD];</div>
 <div class="line">    <span class="keywordtype">float</span> values[ITEMS_PER_THREAD];</div>
 <div class="line"></div>
-<div class="line">    <span class="comment">// Obtain keys in striped order</span></div>
+<div class="line">    <span class="comment">// Obtain keys and values in striped order</span></div>
 <div class="line">    ...</div>
 <div class="line"></div>
 <div class="line">    <span class="comment">// Sort pairs in ascending order (using only the lower 20 distinguishing key bits)</span></div>
@@ -618,7 +618,7 @@ template&lt;typename KeyType , int CTA_THREADS, int ITEMS_PER_THREAD, typename V
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 17:38:43 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Nov 21 2012 10:39:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

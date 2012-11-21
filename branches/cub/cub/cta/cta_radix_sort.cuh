@@ -100,7 +100,7 @@ namespace cub {
  *          // A segment of consecutive input items per thread
  *          int keys[4];
  *
- *          // Obtain items in blocked order
+ *          // Obtain keys in blocked order
  *          ...
  *
  *          // Sort keys in ascending order
@@ -122,11 +122,11 @@ namespace cub {
  *          // Declare shared memory for CtaRadixSort
  *          __shared__ typename CtaRadixSort::SmemStorage smem_storage;
  *
- *          // Input items per thread (striped across the CTA)
+ *          // Input keys and values per thread (striped across the CTA)
  *          int keys[ITEMS_PER_THREAD];
  *          float values[ITEMS_PER_THREAD];
  *
- *          // Obtain keys in striped order
+ *          // Obtain keys and values in striped order
  *          ...
  *
  *          // Sort pairs in ascending order (using only the lower 20 distinguishing key bits)

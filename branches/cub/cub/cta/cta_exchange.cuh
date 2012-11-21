@@ -19,7 +19,7 @@
 
 /**
  * \file
- * The cub::CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads.
+ * The cub::CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA threads.
  */
 
 #pragma once
@@ -40,7 +40,7 @@ namespace cub {
  */
 
 /**
- * \brief The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CTA threads. ![](transpose_logo.png)
+ * \brief The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA threads. ![](transpose_logo.png)
  *
  * <b>Overview</b>
  * \par

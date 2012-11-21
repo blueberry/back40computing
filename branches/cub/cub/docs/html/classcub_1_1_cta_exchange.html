@@ -95,7 +95,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 </div><!--header-->
 <div class="contents">
 
-<p>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> type provides operations for reorganizing the partitioning of logical lists across CTA threads. </p>
+<p>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> type provides operations for reorganizing the partitioning of ordered data across CTA threads. </p>
 <div class="image">
 <img src="transpose_logo.png" alt="transpose_logo.png"/>
 <div class="caption">
@@ -107,7 +107,7 @@ var searchBox = new SearchBox("searchBox", "search",false,'Search');
 Public Types</h2></td></tr>
 <tr class="memitem:a24420accfe084b0dc1b7cbb028f5fbcc"><td class="memItemLeft" align="right" valign="top"><a class="anchor" id="a24420accfe084b0dc1b7cbb028f5fbcc"></a>
 typedef SmemStorage&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classcub_1_1_cta_exchange.html#a24420accfe084b0dc1b7cbb028f5fbcc">SmemStorage</a></td></tr>
-<tr class="memdesc:a24420accfe084b0dc1b7cbb028f5fbcc"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
+<tr class="memdesc:a24420accfe084b0dc1b7cbb028f5fbcc"><td class="mdescLeft">&#160;</td><td class="mdescRight">The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> require shared memory of this type. This opaque storage can be allocated directly using the <code>__shared__</code> keyword. Alternatively, it can be aliased to externally allocated shared memory or <code>union</code>'d with other types to facilitate shared memory reuse. <br/></td></tr>
 <tr class="separator:a24420accfe084b0dc1b7cbb028f5fbcc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-static-methods"></a>
@@ -135,13 +135,13 @@ __forceinline__ void&#160;</td><td class="memItemRight" valign="bottom"><a class
 <div class="textblock"><h3>template&lt;typename T, int CTA_THREADS, int ITEMS_PER_THREAD&gt;<br/>
 class cub::CtaExchange&lt; T, CTA_THREADS, ITEMS_PER_THREAD &gt;</h3>
 
-<p>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> type provides operations for reorganizing the partitioning of logical lists across CTA threads. </p>
+<p>The <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> type provides operations for reorganizing the partitioning of ordered data across CTA threads. </p>
 <div class="image">
 <img src="transpose_logo.png" alt="transpose_logo.png"/>
 <div class="caption">
 .</div></div>
  <p><b>Overview</b> </p>
-<dl class="section user"><dt></dt><dd>The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of logical lists across CT...">CtaExchange</a> allow CTAs to reorganize data items between threads, converting between (or scattering to) the following partitioning arrangements:<ol type="1">
+<dl class="section user"><dt></dt><dd>The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> allow CTAs to reorganize data items between threads, converting between (or scattering to) the following partitioning arrangements:<ol type="1">
 <li><b><em>blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</li>
 <li><b><em>striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</li>
 </ol>
@@ -373,7 +373,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Nov 20 2012 17:38:43 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Wed Nov 21 2012 10:39:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>
