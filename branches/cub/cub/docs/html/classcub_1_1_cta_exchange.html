@@ -141,11 +141,7 @@ class cub::CtaExchange&lt; T, CTA_THREADS, ITEMS_PER_THREAD &gt;</h3>
 <div class="caption">
 .</div></div>
  <p><b>Overview</b> </p>
-<dl class="section user"><dt></dt><dd>The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> allow CTAs to reorganize data items between threads, converting between (or scattering to) the following partitioning arrangements:<ol type="1">
-<li><b><em>blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</li>
-<li><b><em>striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</li>
-</ol>
-</dd></dl>
+<dl class="section user"><dt></dt><dd>The operations exposed by <a class="el" href="classcub_1_1_cta_exchange.html" title="The CtaExchange type provides operations for reorganizing the partitioning of ordered data across CTA...">CtaExchange</a> allow CTAs to reorganize data items between threads, converting between (or scattering to) the following partitioning arrangements: -<b><em>blocked</em> arrangement</b>. The aggregate tile of items is partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements. -<b><em>striped</em> arrangement</b>. The aggregate tile of items is partitioned across threads in "striped" fashion, i.e., the <code>ITEMS_PER_THREAD</code> items owned by each thread have logical stride <code>CTA_THREADS</code> between them.</dd></dl>
 <dl class="tparams"><dt>Template Parameters</dt><dd>
   <table class="tparams">
     <tr><td class="paramname">T</td><td>The data type to be exchanged. </td></tr>
@@ -156,7 +152,7 @@ class cub::CtaExchange&lt; T, CTA_THREADS, ITEMS_PER_THREAD &gt;</h3>
 </dl>
 <p><b>Important Features and Considerations</b> </p>
 <dl class="section user"><dt></dt><dd><ul>
-<li>After any operation, a subsequent CTA barrier (<code>__syncthreads()</code>) is required if the supplied CtaScan::CtaExchange is to be reused/repurposed by the CTA.</li>
+<li>After any operation, a subsequent CTA barrier (<code>__syncthreads()</code>) is required if the supplied <a class="el" href="classcub_1_1_cta_exchange.html#a24420accfe084b0dc1b7cbb028f5fbcc" title="The operations exposed by CtaExchange require shared memory of this type. This opaque storage can be ...">CtaExchange::SmemStorage</a> is to be reused/repurposed by the CTA.</li>
 <li>Zero bank conflicts for most types.</li>
 </ul>
 </dd></dl>
@@ -373,7 +369,7 @@ template&lt;typename T , int CTA_THREADS, int ITEMS_PER_THREAD&gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 21 2012 10:39:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Mon Nov 26 2012 16:36:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

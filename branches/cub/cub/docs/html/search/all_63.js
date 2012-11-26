@@ -1,5 +1,6 @@
 var searchData=
 [
+  ['cta_5fdiscontinuity_2ecuh',['cta_discontinuity.cuh',['../cta__discontinuity_8cuh.html',1,'']]],
   ['cta_5fexchange_2ecuh',['cta_exchange.cuh',['../cta__exchange_8cuh.html',1,'']]],
   ['cta_5fload_2ecuh',['cta_load.cuh',['../cta__load_8cuh.html',1,'']]],
   ['cta_5fload_5fdirect',['CTA_LOAD_DIRECT',['../namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76',1,'cub']]],
@@ -14,6 +15,7 @@ var searchData=
   ['cta_5fstore_5fdirect',['CTA_STORE_DIRECT',['../namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5',1,'cub']]],
   ['cta_5fstore_5ftranspose',['CTA_STORE_TRANSPOSE',['../namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca991dcaff085113850fb90372ac9eb665',1,'cub']]],
   ['cta_5fstore_5fvectorize',['CTA_STORE_VECTORIZE',['../namespacecub.html#a47ce001bb3545160ee2a725d9de40b9ca60250b5e6d978911bf61c6525b196c39',1,'cub']]],
+  ['ctadiscontinuity',['CtaDiscontinuity',['../classcub_1_1_cta_discontinuity.html',1,'cub']]],
   ['ctaexchange',['CtaExchange',['../classcub_1_1_cta_exchange.html',1,'cub']]],
   ['ctaload',['CtaLoad',['../classcub_1_1_cta_load.html',1,'cub']]],
   ['ctaloaddirect',['CtaLoadDirect',['../group___simt_utils.html#ga8908cdf2c26aed1a7ee61744a5a4a77f',1,'cub::CtaLoadDirect(T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)'],['../group___simt_utils.html#gaf34b5a5a058645a9527a36fd24a2b175',1,'cub::CtaLoadDirect(T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset)'],['../group___simt_utils.html#ga9e7c939434d5446f03eb674349fc6551',1,'cub::CtaLoadDirect(T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)'],['../group___simt_utils.html#gae9bdd49c36d9a6a221dc56290e1a77d8',1,'cub::CtaLoadDirect(T(&amp;items)[ITEMS_PER_THREAD], InputIterator itr, const SizeT &amp;cta_offset, const SizeT &amp;guarded_elements)']]],

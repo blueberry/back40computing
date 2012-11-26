@@ -157,7 +157,7 @@ class cub::CtaLoad&lt; InputIterator, CTA_THREADS, ITEMS_PER_THREAD, POLICY, MOD
 </dl>
 <p><b>Important Features and Considerations</b> </p>
 <dl class="section user"><dt></dt><dd><ul>
-<li>After any operation, a subsequent CTA barrier (<code>__syncthreads()</code>) is required if the supplied <a class="el" href="classcub_1_1_cta_scan.html#a98037d2e1f2390059ef8f7d97493f805" title="The operations exposed by CtaScan require shared memory of this type. This opaque storage can be allo...">CtaScan::SmemStorage</a> is to be reused/repurposed by the CTA.</li>
+<li>After any operation, a subsequent CTA barrier (<code>__syncthreads()</code>) is required if the supplied <a class="el" href="classcub_1_1_cta_load.html#a6284a76220842cef10470002855a3c57" title="The operations exposed by CtaLoad require shared memory of this type. This opaque storage can be allo...">CtaLoad::SmemStorage</a> is to be reused/repurposed by the CTA.</li>
 <li>The following conditions will prevent vectorization and loading will fall back to <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76" title="Loads consecutive thread-items directly from the input.">cub::CTA_LOAD_DIRECT</a>:<ul>
 <li><code>ITEMS_PER_THREAD</code> is odd</li>
 <li>The <code>InputIterator</code> is not a simple pointer type</li>
@@ -356,7 +356,7 @@ template&lt;typename SizeT &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 21 2012 10:39:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Mon Nov 26 2012 16:36:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

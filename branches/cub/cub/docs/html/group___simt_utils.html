@@ -691,13 +691,13 @@ template&lt;PtxLoadModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typenam
   </dd>
 </dl>
 <p>The aggregate tile of items is assumed to be partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</p>
-<p>The following conditions will prevent vectorization and loading will fall back to <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76" title="Loads consecutive thread-items directly from the input.">cub::CTA_LOAD_DIRECT</a>:</p>
-<ul>
+<dl class="section user"><dt></dt><dd>The following conditions will prevent vectorization and loading will fall back to <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76" title="Loads consecutive thread-items directly from the input.">cub::CTA_LOAD_DIRECT</a>:<ul>
 <li><code>ITEMS_PER_THREAD</code> is odd</li>
 <li>The <code>InputIterator</code> is not a simple pointer type</li>
 <li>The input offset (<code>ptr</code> + <code>cta_offset</code>) is not quad-aligned</li>
 <li>The data type <code>T</code> is not a built-in primitive or CUDA vector type (e.g., <code>short</code>, <code>int2</code>, <code>double</code>, <code>float2</code>, etc.) </li>
 </ul>
+</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
@@ -751,13 +751,13 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </div>
   </dd>
 </dl>
 <p>The aggregate tile of items is assumed to be partitioned evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</p>
-<p>The following conditions will prevent vectorization and loading will fall back to <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76" title="Loads consecutive thread-items directly from the input.">cub::CTA_LOAD_DIRECT</a>:</p>
-<ul>
+<dl class="section user"><dt></dt><dd>The following conditions will prevent vectorization and loading will fall back to <a class="el" href="namespacecub.html#ab659e51d8d1cb563d028fa55349ed27fa0504ed5bbda32afba910a5ccbf4b3c76" title="Loads consecutive thread-items directly from the input.">cub::CTA_LOAD_DIRECT</a>:<ul>
 <li><code>ITEMS_PER_THREAD</code> is odd</li>
 <li>The <code>InputIterator</code> is not a simple pointer type</li>
 <li>The input offset (<code>ptr</code> + <code>cta_offset</code>) is not quad-aligned</li>
 <li>The data type <code>T</code> is not a built-in primitive or CUDA vector type (e.g., <code>short</code>, <code>int2</code>, <code>double</code>, <code>float2</code>, etc.) </li>
 </ul>
+</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[out]</td><td class="paramname">items</td><td>Data to load </td></tr>
@@ -1280,13 +1280,13 @@ template&lt;PtxStoreModifier MODIFIER, typename T , int ITEMS_PER_THREAD, typena
   </dd>
 </dl>
 <p>The aggregate tile of items is assumed to be partitioned evenly across threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</p>
-<p>The following conditions will prevent vectorization and storing will fall back to <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5" title="Stores consecutive thread-items directly from the input.">cub::CTA_STORE_DIRECT</a>:</p>
-<ul>
+<dl class="section user"><dt></dt><dd>The following conditions will prevent vectorization and storing will fall back to <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5" title="Stores consecutive thread-items directly from the input.">cub::CTA_STORE_DIRECT</a>:<ul>
 <li><code>ITEMS_PER_THREAD</code> is odd</li>
 <li>The <code>InputIterator</code> is not a simple pointer type</li>
 <li>The input offset (<code>ptr</code> + <code>cta_offset</code>) is not quad-aligned</li>
 <li>The data type <code>T</code> is not a built-in primitive or CUDA vector type (e.g., <code>short</code>, <code>int2</code>, <code>double</code>, <code>float2</code>, etc.) </li>
 </ul>
+</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
@@ -1340,13 +1340,13 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </div>
   </dd>
 </dl>
 <p>The aggregate tile of items is assumed to be partitioned evenly across threads in <em>blocked</em> arrangement with thread<sub><em>i</em></sub> owning the <em>i</em><sup>th</sup> segment of consecutive elements.</p>
-<p>The following conditions will prevent vectorization and storing will fall back to <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5" title="Stores consecutive thread-items directly from the input.">cub::CTA_STORE_DIRECT</a>:</p>
-<ul>
+<dl class="section user"><dt></dt><dd>The following conditions will prevent vectorization and storing will fall back to <a class="el" href="namespacecub.html#a47ce001bb3545160ee2a725d9de40b9cac74f459f7d9e98b8bc7d76e3168c17b5" title="Stores consecutive thread-items directly from the input.">cub::CTA_STORE_DIRECT</a>:<ul>
 <li><code>ITEMS_PER_THREAD</code> is odd</li>
 <li>The <code>InputIterator</code> is not a simple pointer type</li>
 <li>The input offset (<code>ptr</code> + <code>cta_offset</code>) is not quad-aligned</li>
 <li>The data type <code>T</code> is not a built-in primitive or CUDA vector type (e.g., <code>short</code>, <code>int2</code>, <code>double</code>, <code>float2</code>, etc.) </li>
 </ul>
+</dd></dl>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramdir">[in]</td><td class="paramname">items</td><td>Data to store </td></tr>
@@ -1361,7 +1361,7 @@ template&lt;typename T , int ITEMS_PER_THREAD, typename SizeT &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Nov 21 2012 10:39:24 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
+Generated on Mon Nov 26 2012 16:36:25 for CUB by &#160;<a href="http://www.doxygen.org/index.html">
 <img class="footer" src="doxygen.png" alt="doxygen"/>
 </a> 1.8.2
 </small></address>

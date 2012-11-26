@@ -46,10 +46,10 @@ namespace cub {
  * \par
  * The operations exposed by CtaExchange allow CTAs to reorganize data items between
  * threads, converting between (or scattering to) the following partitioning arrangements:
- * -# <b><em>blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
+ * -<b><em>blocked</em> arrangement</b>.  The aggregate tile of items is partitioned
  *   evenly across threads in "blocked" fashion with thread<sub><em>i</em></sub>
  *   owning the <em>i</em><sup>th</sup> segment of consecutive elements.
- * -# <b><em>striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
+ * -<b><em>striped</em> arrangement</b>.  The aggregate tile of items is partitioned across
  *   threads in "striped" fashion, i.e., the \p ITEMS_PER_THREAD items owned by
  *   each thread have logical stride \p CTA_THREADS between them.
  *
@@ -60,7 +60,7 @@ namespace cub {
  * <b>Important Features and Considerations</b>
  * \par
  * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
- *   required if the supplied CtaScan::CtaExchange is to be reused/repurposed by the CTA.
+ *   required if the supplied CtaExchange::SmemStorage is to be reused/repurposed by the CTA.
  * - Zero bank conflicts for most types.
  *
  * <b>Algorithm</b>

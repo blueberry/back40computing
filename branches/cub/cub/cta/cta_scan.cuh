@@ -174,11 +174,10 @@ private:
     // Type definitions and constants
     //---------------------------------------------------------------------
 
-    /**
-     * Layout type for padded CTA raking grid
-     */
+    /// Layout type for padded CTA raking grid
     typedef CtaRakingGrid<CTA_THREADS, T> CtaRakingGrid;
 
+    /// Constants
     enum
     {
         /// Number of active warps
@@ -236,7 +235,7 @@ public:
         T               &output,            ///< [out] Output (may be aliased to input)
         T               identity,           ///< [in] Identity value.
         ScanOp          scan_op,            ///< [in] Binary scan operator
-        T               &aggregate)         ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)         ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -311,7 +310,7 @@ public:
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 identity,                     ///< [in] Identity value.
         ScanOp            scan_op,                      ///< [in] Binary scan operator
-        T                 &aggregate)                   ///< [out] Total aggregate (valid in lane-0).
+        T                 &aggregate)                   ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -340,8 +339,8 @@ public:
         T               &output,                        ///< [out] Output (may be aliased to input)
         T               identity,                       ///< [in] Identity value.
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -418,8 +417,8 @@ public:
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         T                 identity,                     ///< [in] Identity value.
         ScanOp            scan_op,                      ///< [in] Binary scan operator
-        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
-        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -504,7 +503,7 @@ public:
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -575,7 +574,7 @@ public:
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -603,8 +602,8 @@ public:
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -678,8 +677,8 @@ public:
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
         ScanOp            scan_op,                      ///< [in] Binary scan operator
-        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
-        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -757,7 +756,7 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -825,7 +824,7 @@ public:
         SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
-        T                 &aggregate)                   ///< [out] Total aggregate (valid in lane-0).
+        T                 &aggregate)                   ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -850,8 +849,8 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -922,8 +921,8 @@ public:
         SmemStorage        &smem_storage,               ///< [in] Shared reference to opaque SmemStorage layout
         T                 (&input)[ITEMS_PER_THREAD],   ///< [in] Input
         T                 (&output)[ITEMS_PER_THREAD],  ///< [out] Output (may be aliased to input)
-        T                 &aggregate,                   ///< [out] Total aggregate (valid in lane-0).
-        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T                 &aggregate,                   ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T                 &cta_prefix)                  ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -999,7 +998,7 @@ public:
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1070,7 +1069,7 @@ public:
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -1098,8 +1097,8 @@ public:
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1173,8 +1172,8 @@ public:
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
         ScanOp          scan_op,                        ///< [in] Binary scan operator
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         T thread_partial = ThreadReduce(input, scan_op);
@@ -1252,7 +1251,7 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1321,7 +1320,7 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T               &aggregate)                     ///< [out] Total aggregate (valid in lane-0).
+        T               &aggregate)                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;
@@ -1346,8 +1345,8 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               input,                          ///< [in] Input
         T               &output,                        ///< [out] Output (may be aliased to input)
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         if (WARP_SYNCHRONOUS)
         {
@@ -1418,8 +1417,8 @@ public:
         SmemStorage     &smem_storage,                  ///< [in] Shared reference to opaque SmemStorage layout
         T               (&input)[ITEMS_PER_THREAD],     ///< [in] Input
         T               (&output)[ITEMS_PER_THREAD],    ///< [out] Output (may be aliased to input)
-        T               &aggregate,                     ///< [out] Total aggregate (valid in lane-0).
-        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in lane-0).
+        T               &aggregate,                     ///< [out] Total aggregate (valid in thread<sub>0</sub>).
+        T               &cta_prefix)                    ///< [in-out] Cta-wide prefix to scan (valid in thread<sub>0</sub>).
     {
         // Reduce consecutive thread items in registers
         Sum<T> scan_op;

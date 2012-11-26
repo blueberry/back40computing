@@ -29,6 +29,14 @@ div.contents {
 		border: 1px solid #AAA;
 }
 
+div.contents p:first-of-type {
+		color: #666;
+}
+
+div.textblock p:first-of-type {
+		color: #666;
+}
+
 div.header {
         width: 760px;
         margin-left: auto;
@@ -147,9 +155,6 @@ hr.footer {
  *****************************************************************************/
 
 
-tr.heading h2 {
-		margin-top: 30px;
-}
 
 h2 {
 		margin-top: 30px;
@@ -160,16 +165,25 @@ h2 {
 		color: #2B4068;
 }
 
-h1, h2.groupheader {
-		margin-left: 0px;
+h1, h2.groupheader, tr.heading h2 {
+		margin-left: -10px;
 		margin-top: 30px;
-		padding-top: 10px;
-		padding-bottom: 2px;
-		font: bold 140% "courier new",courier,monospace;
-		color: #2B4068;
-		border-top: 1px solid #2B4068;
+		margin-bottom: 10px;
+		padding-left: 8px;
+		padding-top: 5px;
+		padding-bottom: 5px;
+		font: bold 115% "courier new",courier,monospace;
+		color: white;
+		background-image: url('tab_a.png');
+		background-color: white;
+		border-top: none;
 		border-bottom: none;
+		border-radius: 8px;
+		background-repeat: repeat-x;
+		background-position: 0 -5px;
+		width: 101%;
 }
+
 
 div.textblock {
 		margin-top: 20px;
@@ -203,6 +217,7 @@ div.memdoc {
 
 div.memdoc p {
 		line-height: normal;
+		margin-left: 40px;
 }
 
 div.toc {
@@ -234,6 +249,7 @@ table.memname tbody tr td.memname {
 dl.section.user dd {
 		text-align: justify;
 		margin-right: 40px;
+		color: #666;
 }
 
 /******************************************************************************
@@ -310,6 +326,7 @@ dl.tparams, dl.params {
 
 div.memitem {
 		margin-bottom: 30px;
+		margin-top: 30px;
 }
 
 .memTemplParams, td.memTemplItemLeft, td.memItemLeft {

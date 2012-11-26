@@ -332,11 +332,12 @@ __device__ __forceinline__ void CtaLoadDirectStriped(
  * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
+ * \par
  * The following conditions will prevent vectorization and loading will fall back to cub::CTA_LOAD_DIRECT:
- * - \p ITEMS_PER_THREAD is odd
- * - The \p InputIterator is not a simple pointer type
- * - The input offset (\p ptr + \p cta_offset) is not quad-aligned
- * - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
+ *   - \p ITEMS_PER_THREAD is odd
+ *   - The \p InputIterator is not a simple pointer type
+ *   - The input offset (\p ptr + \p cta_offset) is not quad-aligned
+ *   - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
  */
 template <
     PtxLoadModifier MODIFIER,
@@ -406,11 +407,12 @@ __device__ __forceinline__ void CtaLoadVectorized(
  * threads in "blocked" fashion with thread<sub><em>i</em></sub> owning
  * the <em>i</em><sup>th</sup> segment of consecutive elements.
  *
+ * \par
  * The following conditions will prevent vectorization and loading will fall back to cub::CTA_LOAD_DIRECT:
- * - \p ITEMS_PER_THREAD is odd
- * - The \p InputIterator is not a simple pointer type
- * - The input offset (\p ptr + \p cta_offset) is not quad-aligned
- * - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
+ *   - \p ITEMS_PER_THREAD is odd
+ *   - The \p InputIterator is not a simple pointer type
+ *   - The input offset (\p ptr + \p cta_offset) is not quad-aligned
+ *   - The data type \p T is not a built-in primitive or CUDA vector type (e.g., \p short, \p int2, \p double, \p float2, etc.)
  */
 template <
     typename        T,
@@ -483,7 +485,7 @@ enum CtaLoadPolicy
  * <b>Important Features and Considerations</b>
  * \par
  * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
- *   required if the supplied CtaScan::SmemStorage is to be reused/repurposed by the CTA.
+ *   required if the supplied CtaLoad::SmemStorage is to be reused/repurposed by the CTA.
  * - The following conditions will prevent vectorization and loading will fall back to cub::CTA_LOAD_DIRECT:
  *   - \p ITEMS_PER_THREAD is odd
  *   - The \p InputIterator is not a simple pointer type

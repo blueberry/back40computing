@@ -56,6 +56,8 @@ namespace cub {
  * <b>Important Features and Considerations</b>
  * \par
  * - Keys must be in a form suitable for radix ranking (i.e., unsigned bits).
+ * - After any operation, a subsequent CTA barrier (<tt>__syncthreads()</tt>) is
+ *   required if the supplied CtaRadixRank::SmemStorage is to be reused/repurposed by the CTA.
  * - Blah...
  *
  * <b>Algorithm</b>
@@ -159,11 +161,11 @@ private :
          */
         template <typename UnsignedBits, int KEYS_PER_THREAD>
         static __device__ __forceinline__ void DecodeKeys(
-            SmemStorage        &smem_storage,                        // Shared memory storage
-            UnsignedBits     (&keys)[KEYS_PER_THREAD],                // Key to decode
-            DigitCounter     (&thread_prefixes)[KEYS_PER_THREAD],    // Prefix counter value (out parameter)
-            DigitCounter*     (&digit_counters)[KEYS_PER_THREAD],        // Counter smem offset (out parameter)
-            unsigned int     current_bit)                            // The least-significant bit position of the current digit to extract
+            SmemStorage        &smem_storage,                       // Shared memory storage
+            UnsignedBits     (&keys)[KEYS_PER_THREAD],              // Key to decode
+            DigitCounter     (&thread_prefixes)[KEYS_PER_THREAD],   // Prefix counter value (out parameter)
+            DigitCounter*     (&digit_counters)[KEYS_PER_THREAD],   // Counter smem offset (out parameter)
+            unsigned int     current_bit)                           // The least-significant bit position of the current digit to extract
         {
             // Add in sub-counter offset
             UnsignedBits sub_counter = BFE(keys[COUNT], current_bit + LOG_COUNTER_LANES, LOG_PACKING_RATIO);
@@ -188,10 +190,10 @@ private :
         // Termination
         template <int KEYS_PER_THREAD>
         static __device__ __forceinline__ void UpdateRanks(
-            SmemStorage        &smem_storage,                        // Shared memory storage
-            unsigned int     (&ranks)[KEYS_PER_THREAD],                // Local ranks (out parameter)
-            DigitCounter     (&thread_prefixes)[KEYS_PER_THREAD],    // Prefix counter value
-            DigitCounter*     (&digit_counters)[KEYS_PER_THREAD])        // Counter smem offset
+            SmemStorage        &smem_storage,                       // Shared memory storage
+            unsigned int     (&ranks)[KEYS_PER_THREAD],             // Local ranks (out parameter)
+            DigitCounter     (&thread_prefixes)[KEYS_PER_THREAD],   // Prefix counter value
+            DigitCounter*     (&digit_counters)[KEYS_PER_THREAD])   // Counter smem offset
         {
             // Add in CTA exclusive prefix
             ranks[COUNT] = thread_prefixes[COUNT] + *digit_counters[COUNT];
